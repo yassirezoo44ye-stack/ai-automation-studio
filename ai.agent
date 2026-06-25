@@ -1,0 +1,46 @@
+from langchain_openai import ChatOpenAI
+from langchain.agents import Tool, AgentExecutor, create_react_agent
+from langchain.prompts import PromptTemplate
+
+# 1. تعريف الأدوات (Tools)
+def search_browser(query: str) -> str:
+    """يبحث في المتصفح عن استعلام معين"""
+    # هنا يتم دمج Playwright فعلياً
+    return f"نتائج البحث عن: {query} (محاكاة)"
+
+def execute_sql(sql_query: str) -> str:
+    """ينفذ استعلام SQL آمن (للقراءة فقط في الوضع الافتراضي)"""
+    return f"تم تنفيذ: {sql_query} -> النتيجة: [(1, 'بيانات تجريبية')]"
+
+tools = [
+    Tool(name="BrowserSearch", func=search_browser, description="مفيد للبحث في مواقع الويب وجلب البيانات."),
+    Tool(name="SQLExecutor", func=execute_sql, description="مفيد للاستعلام عن البيانات من قاعدة البيانات. استخدم فقط أوامر SELECT افتراضياً.")
+]
+
+# 2. إعداد نموذج الذكاء الاصطناعي
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
+
+# 3. إعداد الوكيل (Agent)
+prompt = PromptTemplate.from_template("""
+أنت مساعد أتمتة ذكي. لديك حق الوصول للأدوات التالية: {tools}
+اسم الأداة ووصفها: {tool_names}
+استخدم التنسيق التالي دائماً:
+السؤال: سؤال المستخدم
+الفكرة: ما يجب فعله
+الأداة: [اسم الأداة]
+إدخال الأداة: [الإدخال المطلوب]
+الملاحظة: نتيجة الأداة
+... (يمكن تكرار ذلك)
+الفكرة: أعرف الآن الإجابة النهائية
+الإجابة النهائية: الإجابة للمستخدم
+
+السؤال: {input}
+{agent_scratchpad}
+""")
+
+agent = create_react_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
+
+# 4. التنفيذ
+response = agent_executor.invoke({"input": "ابحث عن أسعار laptops ثم احفظها في قاعدة البيانات"})
+print(response["output"])

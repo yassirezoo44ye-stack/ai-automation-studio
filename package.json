@@ -1,0 +1,26 @@
+{
+  "name": "ai-automation-studio",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/main/main.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.54.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^37.0.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  }
+}
