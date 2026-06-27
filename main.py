@@ -946,6 +946,193 @@ async def stats_timeseries(days: int = 14):
     return {"labels": labels, "messages": msgs, "builds": builds}
 
 
+# ── YouTube ───────────────────────────────────────────────────────────────────
+
+class YoutubeRequest(BaseModel):
+    url: str
+
+class YoutubeAskRequest(BaseModel):
+    url: str
+    question: str
+    transcript: Optional[str] = None
+
+def extract_video_id(url: str) -> Optional[str]:
+    import re
+    patterns = [
+        r"(?:v=|youtu\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})",
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return None
+
+@app.post("/api/youtube/info")
+async def youtube_info(req: YoutubeRequest):
+    vid = extract_video_id(req.url)
+    if not vid:
+        raise HTTPException(400, "Invalid YouTube URL")
+    try:
+        import yt_dlp
+        ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
+        return {
+            "video_id": vid,
+            "title":       info.get("title", ""),
+            "channel":     info.get("uploader", ""),
+            "duration":    info.get("duration", 0),
+            "view_count":  info.get("view_count", 0),
+            "like_count":  info.get("like_count", 0),
+            "description": (info.get("description") or "")[:800],
+            "thumbnail":   info.get("thumbnail", ""),
+            "upload_date": info.get("upload_date", ""),
+            "tags":        (info.get("tags") or [])[:10],
+        }
+    except Exception as e:
+        raise HTTPException(502, f"Could not fetch video info: {e}")
+
+
+@app.post("/api/youtube/transcript")
+async def youtube_transcript(req: YoutubeRequest):
+    vid = extract_video_id(req.url)
+    if not vid:
+        raise HTTPException(400, "Invalid YouTube URL")
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+        try:
+            transcript_list = YouTubeTranscriptApi.list_transcripts(vid)
+            # prefer manual, fallback to auto, then any
+            try:
+                t = transcript_list.find_manually_created_transcript(["ar", "en"])
+            except Exception:
+                try:
+                    t = transcript_list.find_generated_transcript(["ar", "en"])
+                except Exception:
+                    t = next(iter(transcript_list))
+            entries = t.fetch()
+            text = " ".join(e.text for e in entries)
+            return {"video_id": vid, "language": t.language_code, "transcript": text, "length": len(text)}
+        except (NoTranscriptFound, TranscriptsDisabled):
+            raise HTTPException(404, "No transcript available for this video.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.post("/api/youtube/analyze/stream")
+async def youtube_analyze_stream(req: YoutubeAskRequest):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+
+    transcript = req.transcript or ""
+    system = (
+        "You are a YouTube video analyst. You are given the transcript of a video and a user question. "
+        "Answer thoughtfully using the transcript content. If summarizing, include key points with bullet points. "
+        "If the transcript is empty, say so and answer from general knowledge."
+    )
+    user_msg = f"VIDEO TRANSCRIPT:\n{transcript[:6000]}\n\n---\nQUESTION: {req.question}"
+
+    async def event_stream():
+        ai_client = anthropic.Anthropic(api_key=api_key)
+        try:
+            with ai_client.messages.stream(
+                model="claude-sonnet-4-6", max_tokens=2048,
+                system=system,
+                messages=[{"role": "user", "content": user_msg}],
+            ) as stream:
+                for text in stream.text_stream:
+                    yield f"data: {json.dumps({'type': 'delta', 'text': text})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── Social Media (Facebook / Instagram / Twitter) ─────────────────────────────
+
+class SocialRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=500)
+    platform: str = "facebook"          # facebook | instagram | twitter | linkedin
+    content_type: str = "post"          # post | ad | story | reel_caption | thread
+    tone: str = "engaging"              # engaging | professional | funny | inspirational | urgent
+    language: str = "arabic"            # arabic | english | both
+    include_hashtags: bool = True
+    include_emoji: bool = True
+    variations: int = 3
+
+
+SOCIAL_SYSTEM = """You are an expert social media content creator specializing in Arabic and English content.
+Create highly engaging, platform-optimized content. Follow these rules:
+- Match the tone perfectly
+- Use platform best practices (Facebook: longer narrative; Instagram: visual-focused; Twitter: punchy)
+- Arabic content should feel natural, not translated
+- Return ONLY a JSON array of variation objects: [{"text": "...", "hashtags": [...], "tip": "..."}]
+- No markdown fences, just raw JSON array
+"""
+
+@app.post("/api/social/generate/stream")
+async def social_generate_stream(req: SocialRequest):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+
+    lang_instruction = {
+        "arabic": "Write ONLY in Arabic (العربية).",
+        "english": "Write ONLY in English.",
+        "both": "Write a bilingual version: Arabic first, then English translation.",
+    }.get(req.language, "Write in Arabic.")
+
+    platform_tips = {
+        "facebook": "Facebook posts: 150-300 words, storytelling format, call to action at end",
+        "instagram": "Instagram: 3-5 punchy lines + strong call to action, visual description hint",
+        "twitter": "Twitter/X: under 280 chars each, punchy and direct",
+        "linkedin": "LinkedIn: professional, value-driven, thought leadership style",
+    }.get(req.platform, "")
+
+    user_msg = (
+        f"Platform: {req.platform.upper()}\n"
+        f"Content type: {req.content_type}\n"
+        f"Tone: {req.tone}\n"
+        f"Language: {lang_instruction}\n"
+        f"Include hashtags: {req.include_hashtags}\n"
+        f"Include emojis: {req.include_emoji}\n"
+        f"Tip: {platform_tips}\n\n"
+        f"Topic/Product/Brief:\n{req.topic}\n\n"
+        f"Generate {req.variations} unique variations."
+    )
+
+    async def event_stream():
+        ai_client = anthropic.Anthropic(api_key=api_key)
+        full = ""
+        try:
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Generating content…'})}\n\n"
+            msg = ai_client.messages.create(
+                model="claude-sonnet-4-6", max_tokens=3000,
+                system=SOCIAL_SYSTEM,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            raw = msg.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
+            variations = json.loads(raw)
+            for i, v in enumerate(variations):
+                yield f"data: {json.dumps({'type': 'variation', 'index': i, 'data': v})}\n\n"
+                await asyncio.sleep(0.05)
+            yield f"data: {json.dumps({'type': 'done', 'count': len(variations)})}\n\n"
+        except json.JSONDecodeError:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Could not parse response. Try again.'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 if __name__ == "__main__":
     import uvicorn
     env_path = os.path.join(os.path.dirname(__file__), ".env")
