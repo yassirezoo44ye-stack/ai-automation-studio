@@ -1,9 +1,14 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import asyncpg
 import os
 import json
+import subprocess
+import shutil
+import asyncio
+from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -12,6 +17,7 @@ import uuid
 import anthropic
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://ai_user:aiStudio2026!@127.0.0.1:5432/ai_studio")
+WORKSPACES   = Path(os.getenv("WORKSPACES_DIR", "./workspaces"))
 
 pool: asyncpg.Pool = None
 
@@ -441,6 +447,236 @@ async def list_usage_logs():
     return [{"id": str(r["id"]), "action": r["action"],
              "details": dict(r["details"]) if r["details"] else {},
              "created_at": r["created_at"].isoformat()} for r in rows]
+
+
+# ── Builder ───────────────────────────────────────────────────────────────────
+
+WORKSPACES.mkdir(exist_ok=True)
+
+BUILD_SYSTEM = """You are an expert software engineer and code generator.
+When the user asks you to build something, respond ONLY with a valid JSON object (no markdown, no explanation outside the JSON).
+
+JSON schema:
+{
+  "description": "Short description of what was built",
+  "files": [
+    {"path": "relative/path/to/file.ext", "content": "full file content as string"}
+  ],
+  "run_command": "command to run the program (e.g. python main.py)",
+  "language": "primary language (python, javascript, html, etc.)"
+}
+
+Rules:
+- Always include a README.md explaining how to use the program
+- Use relative paths only, never absolute
+- Make programs self-contained and runnable
+- For Python: include a requirements.txt if needed
+- For web apps: use a single index.html with embedded CSS/JS
+- Write clean, working, production-quality code
+"""
+
+class BuildRequest(BaseModel):
+    project_id: str
+    prompt: str = Field(..., min_length=1, max_length=2000)
+
+class RunRequest2(BaseModel):
+    project_id: str
+    command: Optional[str] = None
+
+class FileWrite(BaseModel):
+    path: str
+    content: str
+
+def workspace(project_id: str) -> Path:
+    ws = WORKSPACES / project_id
+    ws.mkdir(parents=True, exist_ok=True)
+    return ws
+
+def safe_path(ws: Path, rel: str) -> Path:
+    """Ensure path stays inside workspace."""
+    p = (ws / rel).resolve()
+    if not str(p).startswith(str(ws.resolve())):
+        raise HTTPException(400, "Invalid path")
+    return p
+
+
+@app.post("/api/build")
+async def build_program(req: BuildRequest):
+    """Ask Claude to build a program, write all files, return the result."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+
+    try:
+        ai = anthropic.Anthropic(api_key=api_key)
+        msg = ai.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=8096,
+            system=BUILD_SYSTEM,
+            messages=[{"role": "user", "content": req.prompt}],
+        )
+    except anthropic.BadRequestError as e:
+        body = e.body if hasattr(e, "body") and e.body else {}
+        detail = body.get("error", {}).get("message", str(e)) if isinstance(body, dict) else str(e)
+        raise HTTPException(402, detail)
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+    raw = msg.content[0].text.strip()
+    # Strip markdown fences if Claude added them
+    if raw.startswith("```"):
+        raw = "\n".join(raw.split("\n")[1:])
+        if raw.endswith("```"):
+            raw = raw[:-3].strip()
+
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(502, f"Claude returned non-JSON: {raw[:200]}")
+
+    ws = workspace(req.project_id)
+    written = []
+    for f in result.get("files", []):
+        dest = safe_path(ws, f["path"])
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(f["content"], encoding="utf-8")
+        written.append(f["path"])
+
+    # Log to DB
+    async with pool.acquire() as conn:
+        pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+        await conn.execute(
+            "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
+            USER_ID, json.dumps({"prompt": req.prompt[:80], "files": written, "project_id": req.project_id}),
+        )
+
+    return {
+        "description": result.get("description", ""),
+        "files": written,
+        "run_command": result.get("run_command", ""),
+        "language": result.get("language", ""),
+        "workspace": str(ws),
+    }
+
+
+@app.post("/api/build/stream")
+async def build_stream(req: BuildRequest):
+    """Stream the build progress via SSE."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+
+    async def event_stream():
+        try:
+            ai = anthropic.Anthropic(api_key=api_key)
+            yield f"data: {json.dumps({'type':'status','message':'🤖 Thinking…'})}\n\n"
+
+            # Collect full response (build needs complete JSON)
+            msg = ai.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=8096,
+                system=BUILD_SYSTEM,
+                messages=[{"role": "user", "content": req.prompt}],
+            )
+            raw = msg.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = "\n".join(raw.split("\n")[1:])
+                if raw.endswith("```"):
+                    raw = raw[:-3].strip()
+
+            result = json.loads(raw)
+            n = len(result.get("files", []))
+            yield f"data: {json.dumps({'type':'status','message':f'Writing {n} files…'})}\n\n"
+
+            ws = workspace(req.project_id)
+            written = []
+            for f in result.get("files", []):
+                dest = safe_path(ws, f["path"])
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(f["content"], encoding="utf-8")
+                written.append(f["path"])
+                yield f"data: {json.dumps({'type':'file','path':f['path'],'content':f['content']})}\n\n"
+                await asyncio.sleep(0.05)
+
+            async with pool.acquire() as conn:
+                pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+                await conn.execute(
+                    "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
+                    USER_ID, json.dumps({"prompt": req.prompt[:80], "files": written}),
+                )
+
+            yield f"data: {json.dumps({'type':'done','description':result.get('description',''),'files':written,'run_command':result.get('run_command',''),'language':result.get('language','')})}\n\n"
+
+        except anthropic.BadRequestError as e:
+            body = e.body if hasattr(e, "body") and e.body else {}
+            msg2 = body.get("error", {}).get("message", str(e)) if isinstance(body, dict) else str(e)
+            yield f"data: {json.dumps({'type':'error','message':msg2})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/projects/{project_id}/files")
+async def list_files(project_id: str):
+    ws = workspace(project_id)
+    files = []
+    for p in sorted(ws.rglob("*")):
+        if p.is_file():
+            rel = str(p.relative_to(ws)).replace("\\", "/")
+            files.append({"path": rel, "size": p.stat().st_size})
+    return {"files": files, "workspace": str(ws)}
+
+
+@app.get("/api/projects/{project_id}/files/{file_path:path}")
+async def read_file(project_id: str, file_path: str):
+    ws = workspace(project_id)
+    dest = safe_path(ws, file_path)
+    if not dest.exists():
+        raise HTTPException(404, "File not found")
+    try:
+        content = dest.read_text(encoding="utf-8")
+    except Exception:
+        content = "<binary file>"
+    return {"path": file_path, "content": content}
+
+
+@app.delete("/api/projects/{project_id}/files")
+async def clear_workspace(project_id: str):
+    ws = workspace(project_id)
+    if ws.exists():
+        shutil.rmtree(ws)
+    ws.mkdir(parents=True, exist_ok=True)
+    return {"message": "Workspace cleared"}
+
+
+@app.post("/api/projects/{project_id}/run")
+async def run_project(project_id: str, body: RunRequest2):
+    ws = workspace(project_id)
+    command = body.command or "python main.py"
+
+    # Safety: block dangerous commands
+    blocked = ["rm ", "del ", "format ", "shutdown", "reboot", ":(){", "dd if"]
+    if any(b in command.lower() for b in blocked):
+        raise HTTPException(400, "Command not allowed.")
+
+    try:
+        proc = subprocess.run(
+            command, shell=True, cwd=str(ws),
+            capture_output=True, text=True, timeout=30,
+            encoding="utf-8", errors="replace",
+        )
+        return {
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "returncode": proc.returncode,
+            "command": command,
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(408, "Execution timed out after 30 seconds.")
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 if __name__ == "__main__":

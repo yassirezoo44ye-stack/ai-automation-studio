@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 
-type Page = "chat" | "projects" | "settings";
+type Page = "chat" | "build" | "projects" | "settings";
 type Message  = { id: string; role: "user" | "assistant"; content: string };
 type Conv     = { id: string; title: string; updated_at: string };
 type Project  = { id: string; name: string; description: string; status: string; created_at: string };
@@ -231,6 +231,274 @@ function ChatPage() {
   );
 }
 
+// ─── Build Page ───────────────────────────────────────────────────────────────
+type BuildFile = { path: string; content: string };
+type BuildState = "idle" | "building" | "done" | "error";
+
+function BuildPage() {
+  const [projects, setProjects]       = useState<Project[]>([]);
+  const [projectId, setProjectId]     = useState("demo");
+  const [prompt, setPrompt]           = useState("");
+  const [state, setState]             = useState<BuildState>("idle");
+  const [status, setStatus]           = useState("");
+  const [files, setFiles]             = useState<BuildFile[]>([]);
+  const [activeFile, setActiveFile]   = useState<BuildFile | null>(null);
+  const [runCmd, setRunCmd]           = useState("");
+  const [runOutput, setRunOutput]     = useState("");
+  const [running, setRunning]         = useState(false);
+  const [description, setDescription] = useState("");
+  const [existingFiles, setExistingFiles] = useState<{path:string;size:number}[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/projects`).then(r => r.json()).then(setProjects).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadExisting();
+  }, [projectId]);
+
+  async function loadExisting() {
+    try {
+      const r = await fetch(`${API}/api/projects/${projectId}/files`);
+      const d = await r.json();
+      setExistingFiles(d.files ?? []);
+    } catch {}
+  }
+
+  async function loadFile(path: string) {
+    try {
+      const r = await fetch(`${API}/api/projects/${projectId}/files/${path}`);
+      const d = await r.json();
+      setActiveFile({ path: d.path, content: d.content });
+    } catch {}
+  }
+
+  async function clearWorkspace() {
+    if (!confirm("Clear all files in this workspace?")) return;
+    await fetch(`${API}/api/projects/${projectId}/files`, { method: "DELETE" });
+    setFiles([]); setExistingFiles([]); setActiveFile(null); setRunOutput(""); setRunCmd("");
+  }
+
+  async function build() {
+    if (!prompt.trim() || state === "building") return;
+    setState("building"); setStatus("🤖 Connecting to Claude…");
+    setFiles([]); setActiveFile(null); setRunOutput(""); setDescription("");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const res = await fetch(`${API}/api/build/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId, prompt }),
+        signal: controller.signal,
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const ev = JSON.parse(line.slice(6));
+          if (ev.type === "status") {
+            setStatus(ev.message);
+          } else if (ev.type === "file") {
+            setFiles(prev => [...prev, { path: ev.path, content: ev.content }]);
+            setStatus(`📝 Writing ${ev.path}…`);
+          } else if (ev.type === "done") {
+            setDescription(ev.description);
+            setRunCmd(ev.run_command || "");
+            setState("done");
+            setStatus(`✅ Built ${ev.files.length} files`);
+            loadExisting();
+          } else if (ev.type === "error") {
+            setState("error");
+            setStatus(`❌ ${ev.message}`);
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if ((err as Error).name !== "AbortError") {
+        setState("error");
+        setStatus(`❌ ${(err as Error).message}`);
+      } else {
+        setState("idle"); setStatus("");
+      }
+    }
+  }
+
+  async function runCode() {
+    if (!runCmd.trim()) return;
+    setRunning(true); setRunOutput("Running…\n");
+    try {
+      const r = await fetch(`${API}/api/projects/${projectId}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: runCmd }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setRunOutput(`❌ ${d.detail}`); return; }
+      const out = [
+        d.stdout ? `$ ${d.command}\n${d.stdout}` : `$ ${d.command}`,
+        d.stderr ? `\n--- stderr ---\n${d.stderr}` : "",
+        `\n[exit code: ${d.returncode}]`,
+      ].join("");
+      setRunOutput(out);
+    } catch (e) {
+      setRunOutput(`Error: ${e}`);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const allFiles = state === "done" ? files : existingFiles.map(f => ({ path: f.path, content: "" }));
+
+  return (
+    <>
+      <header style={S.header}>
+        <span style={S.headerTitle}>🔨 Build Programs</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select value={projectId} onChange={e => setProjectId(e.target.value)} style={{ ...S.projectSelect, width: "auto" }}>
+            <option value="demo">Demo Project</option>
+            {projects.filter(p => p.id !== "00000000-0000-0000-0000-000000000001").map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {(allFiles.length > 0) && (
+            <button onClick={clearWorkspace} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>
+              🗑 Clear
+            </button>
+          )}
+        </div>
+      </header>
+
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Left: prompt + file tree */}
+        <div style={{ width: 280, borderRight: "1px solid #1e2438", display: "flex", flexDirection: "column", background: "#0a0c10" }}>
+          {/* Prompt */}
+          <div style={{ padding: 14, borderBottom: "1px solid #1e2438" }}>
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && e.ctrlKey) build(); }}
+              placeholder={"Describe what to build…\n\nExamples:\n• Calculator in Python\n• Todo list web app\n• Snake game in HTML\n• REST API with FastAPI"}
+              style={{ ...S.input, height: 140, fontSize: 12, width: "100%" }}
+            />
+            <button
+              onClick={state === "building" ? () => abortRef.current?.abort() : build}
+              disabled={!prompt.trim() && state !== "building"}
+              style={{ ...S.btnPrimary, width: "100%", marginTop: 8, fontSize: 13 }}
+            >
+              {state === "building" ? "⏹ Stop" : "🔨 Build"}
+            </button>
+            {status && (
+              <div style={{ marginTop: 8, fontSize: 11, color: state === "error" ? "#f87171" : "#34d399", lineHeight: 1.4 }}>
+                {status}
+              </div>
+            )}
+            {description && (
+              <div style={{ marginTop: 8, fontSize: 12, color: "#8896b3", lineHeight: 1.5, background: "#13172080", borderRadius: 6, padding: 8 }}>
+                {description}
+              </div>
+            )}
+          </div>
+
+          {/* File tree */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+            {allFiles.length === 0 && (
+              <div style={{ padding: "16px", fontSize: 12, color: "#4b5980" }}>
+                No files yet — describe a program and click Build.
+              </div>
+            )}
+            {allFiles.map(f => (
+              <div
+                key={f.path}
+                onClick={() => state === "done" ? setActiveFile(f) : loadFile(f.path)}
+                style={{
+                  padding: "7px 16px", cursor: "pointer", fontSize: 12,
+                  color: activeFile?.path === f.path ? "#c8d3f0" : "#8896b3",
+                  background: activeFile?.path === f.path ? "#1a1f2e" : "transparent",
+                  borderLeft: activeFile?.path === f.path ? "2px solid #6c8ef7" : "2px solid transparent",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}
+              >
+                <span>{fileIcon(f.path)}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.path}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: code viewer + terminal */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* Code viewer */}
+          <div style={{ flex: 1, overflow: "auto", background: "#080a0f" }}>
+            {activeFile ? (
+              <div>
+                <div style={{ padding: "10px 20px", borderBottom: "1px solid #1e2438", fontSize: 12, color: "#6b7a99", display: "flex", justifyContent: "space-between" }}>
+                  <span>{fileIcon(activeFile.path)} {activeFile.path}</span>
+                  <span>{activeFile.content.split("\n").length} lines</span>
+                </div>
+                <pre style={{ margin: 0, padding: "16px 20px", fontSize: 13, color: "#c8d3f0", lineHeight: 1.6, overflowX: "auto", fontFamily: "'Consolas','Courier New',monospace" }}>
+                  <code>{activeFile.content}</code>
+                </pre>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#4b5980", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontSize: 36 }}>🔨</span>
+                <span style={{ fontSize: 14 }}>Select a file to view its code</span>
+              </div>
+            )}
+          </div>
+
+          {/* Terminal */}
+          <div style={{ height: 200, borderTop: "1px solid #1e2438", display: "flex", flexDirection: "column", background: "#040506" }}>
+            <div style={{ padding: "6px 12px", borderBottom: "1px solid #1e2438", display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "#6b7a99", flexShrink: 0 }}>▶ Run:</span>
+              <input
+                value={runCmd}
+                onChange={e => setRunCmd(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") runCode(); }}
+                placeholder="python main.py"
+                style={{ flex: 1, background: "none", border: "none", color: "#c8d3f0", fontSize: 12, fontFamily: "monospace" }}
+              />
+              <button onClick={runCode} disabled={running || !runCmd.trim()} style={{ ...S.btnPrimary, padding: "4px 12px", fontSize: 12 }}>
+                {running ? "Running…" : "Run ▶"}
+              </button>
+            </div>
+            <pre style={{ flex: 1, margin: 0, padding: "10px 14px", overflowY: "auto", fontSize: 12, color: "#34d399", fontFamily: "'Consolas','Courier New',monospace", lineHeight: 1.5 }}>
+              {runOutput || <span style={{ color: "#4b5980" }}>Output will appear here…</span>}
+            </pre>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function fileIcon(path: string) {
+  const ext = path.split(".").pop()?.toLowerCase();
+  const map: Record<string, string> = {
+    py: "🐍", js: "🟨", ts: "🔷", tsx: "⚛️", jsx: "⚛️",
+    html: "🌐", css: "🎨", json: "📋", md: "📄",
+    txt: "📝", sh: "⚙️", bat: "⚙️", yaml: "📋", yml: "📋",
+    sql: "🗄️", env: "🔑", gitignore: "🔧", dockerfile: "🐳",
+    requirements: "📦", toml: "📋",
+  };
+  return map[ext ?? ""] ?? "📄";
+}
+
 // ─── Projects Page ────────────────────────────────────────────────────────────
 function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -441,7 +709,7 @@ export default function App() {
       <aside style={S.sidebar}>
         <div style={S.sidebarLogo}>◈ AI Studio</div>
         <nav style={S.nav}>
-          {([ ["chat","💬","Chat"], ["projects","📁","Projects"], ["settings","⚙️","Settings"] ] as const).map(([id,icon,label]) => (
+          {([ ["chat","💬","Chat"], ["build","🔨","Build"], ["projects","📁","Projects"], ["settings","⚙️","Settings"] ] as const).map(([id,icon,label]) => (
             <div key={id} onClick={() => setPage(id)}
               style={{ ...S.navItem, ...(page === id ? S.navItemActive : {}) }}>
               {icon} {label}
@@ -456,6 +724,7 @@ export default function App() {
 
       <main style={S.main}>
         {page === "chat"     && <ChatPage />}
+        {page === "build"    && <BuildPage />}
         {page === "projects" && <ProjectsPage />}
         {page === "settings" && <SettingsPage />}
       </main>
