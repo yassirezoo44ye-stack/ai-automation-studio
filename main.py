@@ -1,11 +1,11 @@
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import asyncpg
 import os
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 import uuid
@@ -16,7 +16,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://ai_user:aiStudio2026!@127
 pool: asyncpg.Pool = None
 
 
-# ── Models ──────────────────────────────────────────────────────────────────
+# ── Models ────────────────────────────────────────────────────────────────────
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -31,16 +31,22 @@ class AgentRunCreate(BaseModel):
     agent_type: str = Field(..., min_length=1, max_length=50)
     input_data: dict
 
-class UsageLogCreate(BaseModel):
-    action: str = Field(..., min_length=1, max_length=100)
-    details: Optional[dict] = None
-
 class RunRequest(BaseModel):
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=4000)
+    conversation_id: Optional[str] = None
+
+class ConversationCreate(BaseModel):
+    project_id: str
+    title: Optional[str] = "New conversation"
+
+class MessageCreate(BaseModel):
+    conversation_id: str
+    role: str
+    content: str
 
 
-# ── DB init ──────────────────────────────────────────────────────────────────
+# ── DB init ───────────────────────────────────────────────────────────────────
 
 async def init_db(conn: asyncpg.Connection):
     await conn.execute('''
@@ -60,6 +66,24 @@ async def init_db(conn: asyncpg.Connection):
             status VARCHAR(50) DEFAULT 'active',
             created_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    ''')
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS conversations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            title VARCHAR(200) NOT NULL DEFAULT 'New conversation',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    ''')
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            role VARCHAR(20) NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
         )
     ''')
     await conn.execute('''
@@ -87,14 +111,12 @@ async def init_db(conn: asyncpg.Connection):
     # Seed test user
     test_uid = uuid.UUID("00000000-0000-0000-0000-000000000000")
     await conn.execute('''
-        INSERT INTO users (id, email, name) VALUES ($1, $2, $3)
-        ON CONFLICT (id) DO NOTHING
+        INSERT INTO users (id, email, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING
     ''', test_uid, "test@example.com", "Test User")
     # Seed demo project
     demo_pid = uuid.UUID("00000000-0000-0000-0000-000000000001")
     await conn.execute('''
-        INSERT INTO projects (id, user_id, name, description) VALUES ($1, $2, $3, $4)
-        ON CONFLICT (id) DO NOTHING
+        INSERT INTO projects (id, user_id, name, description) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING
     ''', demo_pid, test_uid, "Demo Project", "Default project for the chat UI")
 
 
@@ -123,78 +145,170 @@ app.add_middleware(
 USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+# ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>AI Automation Studio</title></head>
+    return """<!DOCTYPE html><html><head><meta charset="UTF-8"><title>AI Automation Studio</title></head>
 <body style="font-family:sans-serif;padding:40px;background:#0d0f14;color:#e2e8f0">
 <h1 style="color:#6c8ef7">◈ AI Automation Studio</h1>
-<p>Backend running on PostgreSQL. <a href="/docs" style="color:#6c8ef7">API Docs →</a></p>
+<p>Backend running. <a href="/docs" style="color:#6c8ef7">API Docs →</a></p>
 </body></html>"""
-
 
 @app.get("/health")
 async def health():
     async with pool.acquire() as conn:
         pg_version = await conn.fetchval("SELECT version()")
-    return {"status": "healthy", "db": "postgresql", "pg_version": pg_version, "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "db": "postgresql", "pg_version": pg_version,
+            "timestamp": datetime.utcnow().isoformat()}
 
+
+# ── Streaming run ─────────────────────────────────────────────────────────────
+
+@app.post("/run/stream")
+async def run_stream(req: RunRequest):
+    """Stream Claude's response token by token using SSE."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+
+    # Build message history if conversation_id provided
+    history: list[dict] = []
+    conv_id: Optional[uuid.UUID] = None
+
+    async with pool.acquire() as conn:
+        if req.conversation_id:
+            try:
+                conv_id = uuid.UUID(req.conversation_id)
+                rows = await conn.fetch(
+                    "SELECT role, content FROM messages WHERE conversation_id=$1 ORDER BY created_at",
+                    conv_id,
+                )
+                history = [{"role": r["role"], "content": r["content"]} for r in rows]
+            except Exception:
+                pass
+        else:
+            # Create new conversation
+            pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+            conv_id = await conn.fetchval(
+                "INSERT INTO conversations (project_id, title) VALUES ($1, $2) RETURNING id",
+                pid, req.prompt[:60] + ("…" if len(req.prompt) > 60 else ""),
+            )
+
+        # Save user message
+        await conn.execute(
+            "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
+            conv_id, req.prompt,
+        )
+        await conn.execute(
+            "UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id,
+        )
+
+    history.append({"role": "user", "content": req.prompt})
+
+    async def event_stream():
+        ai = anthropic.Anthropic(api_key=api_key)
+        full_text = ""
+        try:
+            with ai.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=2048,
+                messages=history,
+            ) as stream:
+                # First send the conversation_id so the client can track it
+                yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': str(conv_id)})}\n\n"
+                for text in stream.text_stream:
+                    full_text += text
+                    yield f"data: {json.dumps({'type': 'delta', 'text': text})}\n\n"
+
+            # Save assistant message
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)",
+                    conv_id, full_text,
+                )
+                await conn.execute(
+                    "UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id,
+                )
+                pid2 = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+                run_id = await conn.fetchval(
+                    "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
+                    "VALUES ($1,'claude',$2,$3,'completed',NOW()) RETURNING id",
+                    pid2, json.dumps({"prompt": req.prompt}), json.dumps({"summary": full_text}),
+                )
+                await conn.execute(
+                    "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
+                    USER_ID, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
+                )
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except anthropic.BadRequestError as e:
+            body = e.body if hasattr(e, 'body') and e.body else {}
+            msg = body.get('error', {}).get('message', str(e)) if isinstance(body, dict) else str(e)
+            yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── Non-streaming run (kept for compatibility) ────────────────────────────────
 
 @app.post("/run")
 async def run_agent(req: RunRequest):
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not set on the server.")
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
     try:
         ai = anthropic.Anthropic(api_key=api_key)
         message = ai.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
+            model="claude-sonnet-4-6", max_tokens=1024,
             messages=[{"role": "user", "content": req.prompt}],
         )
     except anthropic.AuthenticationError:
-        raise HTTPException(status_code=401, detail="Invalid Anthropic API key. Update ANTHROPIC_API_KEY in .env.")
-    except anthropic.PermissionDeniedError as e:
-        raise HTTPException(status_code=402, detail=f"Anthropic account issue: {e.message}")
+        raise HTTPException(401, "Invalid Anthropic API key.")
     except anthropic.BadRequestError as e:
         body = e.body if hasattr(e, 'body') and e.body else {}
         msg = body.get('error', {}).get('message', str(e)) if isinstance(body, dict) else str(e)
-        raise HTTPException(status_code=402, detail=msg)
+        raise HTTPException(402, msg)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(502, str(e))
+
     summary = message.content[0].text
-
     pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
-
     async with pool.acquire() as conn:
-        run_id = await conn.fetchval('''
-            INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at)
-            VALUES ($1, 'claude', $2, $3, 'completed', NOW()) RETURNING id
-        ''', pid, json.dumps({"prompt": req.prompt}), json.dumps({"summary": summary}))
-
-        await conn.execute('''
-            INSERT INTO usage_logs (user_id, action, details)
-            VALUES ($1, 'agent_run', $2)
-        ''', USER_ID, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}))
-
+        run_id = await conn.fetchval(
+            "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
+            "VALUES ($1,'claude',$2,$3,'completed',NOW()) RETURNING id",
+            pid, json.dumps({"prompt": req.prompt}), json.dumps({"summary": summary}),
+        )
+        await conn.execute(
+            "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
+            USER_ID, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
+        )
     return {"result": {"summary": summary}}
 
+
+# ── Stats ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/stats")
 async def get_stats():
     async with pool.acquire() as conn:
-        project_count  = await conn.fetchval("SELECT COUNT(*) FROM projects")
-        run_count      = await conn.fetchval("SELECT COUNT(*) FROM agent_runs")
-        completed      = await conn.fetchval("SELECT COUNT(*) FROM agent_runs WHERE status='completed'")
-        logs           = await conn.fetch(
+        project_count = await conn.fetchval("SELECT COUNT(*) FROM projects")
+        run_count     = await conn.fetchval("SELECT COUNT(*) FROM agent_runs")
+        completed     = await conn.fetchval("SELECT COUNT(*) FROM agent_runs WHERE status='completed'")
+        conv_count    = await conn.fetchval("SELECT COUNT(*) FROM conversations")
+        msg_count     = await conn.fetchval("SELECT COUNT(*) FROM messages")
+        logs          = await conn.fetch(
             "SELECT action, details, created_at FROM usage_logs ORDER BY created_at DESC LIMIT 10"
         )
     return {
         "projects":       int(project_count),
         "agent_runs":     int(run_count),
         "completed_runs": int(completed),
+        "conversations":  int(conv_count),
+        "messages":       int(msg_count),
         "success_rate":   round(int(completed) / max(int(run_count), 1) * 100, 1),
         "recent_activity": [
             {"action": r["action"], "details": dict(r["details"]) if r["details"] else {}, "time": r["created_at"].isoformat()}
@@ -203,15 +317,61 @@ async def get_stats():
     }
 
 
+# ── Conversations ─────────────────────────────────────────────────────────────
+
+@app.post("/api/conversations")
+async def create_conversation(body: ConversationCreate):
+    pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if body.project_id == "demo" else uuid.UUID(body.project_id)
+    async with pool.acquire() as conn:
+        cid = await conn.fetchval(
+            "INSERT INTO conversations (project_id, title) VALUES ($1,$2) RETURNING id",
+            pid, body.title,
+        )
+    return {"id": str(cid), "title": body.title}
+
+@app.get("/api/conversations")
+async def list_conversations(project_id: Optional[str] = None):
+    async with pool.acquire() as conn:
+        if project_id:
+            pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if project_id == "demo" else uuid.UUID(project_id)
+            rows = await conn.fetch(
+                "SELECT id, title, created_at, updated_at FROM conversations WHERE project_id=$1 ORDER BY updated_at DESC",
+                pid,
+            )
+        else:
+            rows = await conn.fetch(
+                "SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT 50"
+            )
+    return [{"id": str(r["id"]), "title": r["title"],
+             "created_at": r["created_at"].isoformat(), "updated_at": r["updated_at"].isoformat()} for r in rows]
+
+@app.get("/api/conversations/{conv_id}/messages")
+async def get_messages(conv_id: str):
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, role, content, created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at",
+            uuid.UUID(conv_id),
+        )
+    return [{"id": str(r["id"]), "role": r["role"], "content": r["content"],
+             "created_at": r["created_at"].isoformat()} for r in rows]
+
+@app.delete("/api/conversations/{conv_id}")
+async def delete_conversation(conv_id: str):
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM conversations WHERE id=$1", uuid.UUID(conv_id))
+    return {"message": "Deleted"}
+
+
+# ── Projects ──────────────────────────────────────────────────────────────────
+
 @app.post("/api/projects")
 async def create_project(project: ProjectCreate):
     async with pool.acquire() as conn:
         pid = await conn.fetchval(
-            "INSERT INTO projects (user_id, name, description) VALUES ($1, $2, $3) RETURNING id",
+            "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) RETURNING id",
             USER_ID, project.name, project.description,
         )
     return {"id": str(pid), "message": "Project created"}
-
 
 @app.get("/api/projects")
 async def list_projects():
@@ -223,7 +383,6 @@ async def list_projects():
              "status": r["status"], "created_at": r["created_at"].isoformat(),
              "updated_at": r["updated_at"].isoformat()} for r in rows]
 
-
 @app.get("/api/projects/{project_id}")
 async def get_project(project_id: str):
     async with pool.acquire() as conn:
@@ -232,62 +391,46 @@ async def get_project(project_id: str):
             uuid.UUID(project_id),
         )
     if not row:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(404, "Project not found")
     return {"id": str(row["id"]), "name": row["name"], "description": row["description"],
             "status": row["status"], "created_at": row["created_at"].isoformat(),
             "updated_at": row["updated_at"].isoformat()}
 
-
 @app.put("/api/projects/{project_id}")
 async def update_project(project_id: str, project: ProjectUpdate):
     async with pool.acquire() as conn:
-        result = await conn.execute('''
-            UPDATE projects SET
-                name        = COALESCE($1, name),
-                description = COALESCE($2, description),
-                updated_at  = NOW()
-            WHERE id = $3
-        ''', project.name, project.description, uuid.UUID(project_id))
+        result = await conn.execute(
+            "UPDATE projects SET name=COALESCE($1,name), description=COALESCE($2,description), updated_at=NOW() WHERE id=$3",
+            project.name, project.description, uuid.UUID(project_id),
+        )
     if result == "UPDATE 0":
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(404, "Project not found")
     return {"message": "Updated"}
-
 
 @app.delete("/api/projects/{project_id}")
 async def delete_project(project_id: str):
     async with pool.acquire() as conn:
-        result = await conn.execute("DELETE FROM projects WHERE id=$1", uuid.UUID(project_id))
-    if result == "DELETE 0":
-        raise HTTPException(status_code=404, detail="Project not found")
+        await conn.execute("DELETE FROM projects WHERE id=$1", uuid.UUID(project_id))
     return {"message": "Deleted"}
 
 
-@app.post("/api/agent-runs")
-async def create_agent_run(run: AgentRunCreate):
-    async with pool.acquire() as conn:
-        run_id = await conn.fetchval('''
-            INSERT INTO agent_runs (project_id, agent_type, input_data, status)
-            VALUES ($1, $2, $3, 'running') RETURNING id
-        ''', uuid.UUID(run.project_id), run.agent_type, json.dumps(run.input_data))
-    return {"id": str(run_id), "status": "running"}
-
+# ── Agent runs ────────────────────────────────────────────────────────────────
 
 @app.get("/api/agent-runs")
 async def list_agent_runs(project_id: Optional[str] = None):
     async with pool.acquire() as conn:
         if project_id:
             rows = await conn.fetch(
-                "SELECT id, project_id, agent_type, status, started_at, completed_at FROM agent_runs WHERE project_id=$1 ORDER BY started_at DESC",
+                "SELECT id,project_id,agent_type,status,started_at,completed_at FROM agent_runs WHERE project_id=$1 ORDER BY started_at DESC",
                 uuid.UUID(project_id),
             )
         else:
             rows = await conn.fetch(
-                "SELECT id, project_id, agent_type, status, started_at, completed_at FROM agent_runs ORDER BY started_at DESC"
+                "SELECT id,project_id,agent_type,status,started_at,completed_at FROM agent_runs ORDER BY started_at DESC"
             )
     return [{"id": str(r["id"]), "project_id": str(r["project_id"]), "agent_type": r["agent_type"],
              "status": r["status"], "started_at": r["started_at"].isoformat(),
              "completed_at": r["completed_at"].isoformat() if r["completed_at"] else None} for r in rows]
-
 
 @app.get("/api/usage-logs")
 async def list_usage_logs():
@@ -302,7 +445,6 @@ async def list_usage_logs():
 
 if __name__ == "__main__":
     import uvicorn
-    # Load .env manually if python-dotenv not installed
     env_path = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(env_path):
         for line in open(env_path):
