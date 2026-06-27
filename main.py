@@ -144,12 +144,26 @@ async def health():
 
 @app.post("/run")
 async def run_agent(req: RunRequest):
-    ai = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    message = ai.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": req.prompt}],
-    )
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not set on the server.")
+    try:
+        ai = anthropic.Anthropic(api_key=api_key)
+        message = ai.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": req.prompt}],
+        )
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=401, detail="Invalid Anthropic API key. Update ANTHROPIC_API_KEY in .env.")
+    except anthropic.PermissionDeniedError as e:
+        raise HTTPException(status_code=402, detail=f"Anthropic account issue: {e.message}")
+    except anthropic.BadRequestError as e:
+        body = e.body if hasattr(e, 'body') and e.body else {}
+        msg = body.get('error', {}).get('message', str(e)) if isinstance(body, dict) else str(e)
+        raise HTTPException(status_code=402, detail=msg)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
     summary = message.content[0].text
 
     pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
@@ -158,12 +172,12 @@ async def run_agent(req: RunRequest):
         run_id = await conn.fetchval('''
             INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at)
             VALUES ($1, 'claude', $2, $3, 'completed', NOW()) RETURNING id
-        ''', pid, {"prompt": req.prompt}, {"summary": summary})
+        ''', pid, json.dumps({"prompt": req.prompt}), json.dumps({"summary": summary}))
 
         await conn.execute('''
             INSERT INTO usage_logs (user_id, action, details)
             VALUES ($1, 'agent_run', $2)
-        ''', USER_ID, {"run_id": str(run_id), "prompt_preview": req.prompt[:80]})
+        ''', USER_ID, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}))
 
     return {"result": {"summary": summary}}
 
@@ -254,7 +268,7 @@ async def create_agent_run(run: AgentRunCreate):
         run_id = await conn.fetchval('''
             INSERT INTO agent_runs (project_id, agent_type, input_data, status)
             VALUES ($1, $2, $3, 'running') RETURNING id
-        ''', uuid.UUID(run.project_id), run.agent_type, run.input_data)
+        ''', uuid.UUID(run.project_id), run.agent_type, json.dumps(run.input_data))
     return {"id": str(run_id), "status": "running"}
 
 

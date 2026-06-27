@@ -33,16 +33,27 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: "demo", prompt: text }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (!res.ok) {
+        const detail = data?.detail || data?.error?.message || `Server error ${res.status}`;
+        throw new Error(detail);
+      }
       setMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), role: "assistant", content: data.result.summary },
       ]);
-    } catch {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isOffline = msg.includes("fetch") || msg.includes("network") || msg.includes("Failed to fetch");
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: "assistant", content: "⚠️ Could not reach the backend. Make sure `python main.py` is running on port 8000." },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: isOffline
+            ? "⚠️ Backend offline — make sure `python main.py` is running on port 8000."
+            : `⚠️ ${msg}`,
+        },
       ]);
     } finally {
       setLoading(false);
