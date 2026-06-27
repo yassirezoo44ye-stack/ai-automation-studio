@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
 import ReactMarkdown from "react-markdown";
+import DesignStudio from "./DesignStudio";
+import AppPackager  from "./AppPackager";
 
-type Page    = "dashboard" | "chat" | "agents" | "build" | "social" | "projects" | "settings";
+type Page    = "dashboard" | "chat" | "agents" | "build" | "design" | "package" | "social" | "projects" | "settings";
 type Message = { id: string; role: "user" | "assistant"; content: string };
 type Conv    = { id: string; title: string; updated_at: string };
 type Project = { id: string; name: string; description: string; status: string; created_at: string };
@@ -1255,7 +1257,8 @@ function relTime(iso: string) {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────────
-export default function App() {
+function AppInner() {
+  const add  = useToast();
   const [page, setPage] = useState<Page>("dashboard");
 
   const nav: [Page, string, string][] = [
@@ -1263,13 +1266,14 @@ export default function App() {
     ["chat",      "💬", "Chat"],
     ["agents",    "🤖", "Agents"],
     ["build",     "🔨", "Build"],
+    ["design",    "🎨", "Design"],
+    ["package",   "📦", "Package"],
     ["social",    "🌐", "Social"],
     ["projects",  "📁", "Projects"],
     ["settings",  "⚙️",  "Settings"],
   ];
 
   return (
-    <ToastProvider>
       <div style={S.root}>
         <aside style={S.sidebar}>
           <div style={S.sidebarLogo}>◈ AI Studio</div>
@@ -1292,6 +1296,8 @@ export default function App() {
           {page === "chat"      && <ChatPage />}
           {page === "agents"    && <AgentsPage />}
           {page === "build"     && <BuildPage />}
+          {page === "design"    && <DesignStudio toast={add} />}
+          {page === "package"   && <AppPackager  toast={add} />}
           {page === "social"    && <SocialPage />}
           {page === "projects"  && <ProjectsPage />}
           {page === "settings"  && <SettingsPage />}
@@ -1383,8 +1389,11 @@ export default function App() {
           .md-body tr:nth-child(even) td { background: rgba(255,255,255,.02); }
         `}</style>
       </div>
-    </ToastProvider>
   );
+}
+
+export default function App() {
+  return <ToastProvider><AppInner /></ToastProvider>;
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────

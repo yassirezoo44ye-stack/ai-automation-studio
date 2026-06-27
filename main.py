@@ -1133,6 +1133,316 @@ async def social_generate_stream(req: SocialRequest):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+# ── App Packager ──────────────────────────────────────────────────────────────
+
+DIST_DIR = Path("./dist_packages")
+DIST_DIR.mkdir(exist_ok=True)
+
+class PackageRequest(BaseModel):
+    project_id: str
+    target:      str = "exe"        # exe | apk
+    lang:        str = "python"     # python | web | electron
+    app_name:    str = "MyApp"
+    app_version: str = "1.0.0"
+    one_file:    bool = True
+
+def _sanitize(name: str) -> str:
+    import re
+    return re.sub(r"[^A-Za-z0-9_\-]", "_", name)
+
+@app.post("/api/package/stream")
+async def package_stream(req: PackageRequest):
+    ws = workspace(req.project_id)
+    safe_name = _sanitize(req.app_name or "App")
+
+    async def event_stream():
+        def log(text: str, level: str = "info"):
+            return f"data: {json.dumps({'type':'log','text':text,'level':level})}\n\n"
+
+        try:
+            # ── Python → .exe (PyInstaller) ──────────────────────────────────
+            if req.lang == "python" and req.target == "exe":
+                yield log("Checking for main.py…", "cmd")
+                main_py = ws / "main.py"
+                if not main_py.exists():
+                    # find any .py
+                    py_files = list(ws.glob("*.py"))
+                    if not py_files:
+                        yield log("No Python file found in workspace. Build a Python project first.", "err")
+                        yield f"data: {json.dumps({'type':'error','message':'No Python file found.'})}\n\n"
+                        return
+                    main_py = py_files[0]
+                    yield log(f"Found: {main_py.name}", "info")
+                else:
+                    yield log("Found main.py ✅", "ok")
+
+                # write .spec if needed
+                yield log(f"Running PyInstaller on {main_py.name}…", "cmd")
+                dist_out = DIST_DIR / safe_name
+                dist_out.mkdir(exist_ok=True)
+
+                cmd = [
+                    "python", "-m", "PyInstaller",
+                    "--onefile" if req.one_file else "--onedir",
+                    "--noconfirm", "--clean",
+                    "--name", safe_name,
+                    "--distpath", str(dist_out),
+                    "--workpath", str(dist_out / "build"),
+                    "--specpath", str(dist_out),
+                    str(main_py),
+                ]
+                yield log("$ " + " ".join(cmd), "cmd")
+
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, cwd=str(ws),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+                async for raw_line in proc.stdout:
+                    line = raw_line.decode("utf-8", errors="replace").rstrip()
+                    if line.strip():
+                        lvl = "err" if "ERROR" in line.upper() else "ok" if "completed" in line.lower() or "success" in line.lower() else "info"
+                        yield log(line, lvl)
+                    await asyncio.sleep(0)
+
+                await proc.wait()
+                if proc.returncode != 0:
+                    yield log(f"PyInstaller exited with code {proc.returncode}", "err")
+                    yield f"data: {json.dumps({'type':'error','message':f'Build failed (exit {proc.returncode})'})}\n\n"
+                    return
+
+                # find the exe
+                exe_files = list(dist_out.glob(f"{safe_name}.exe")) + list(dist_out.glob(f"{safe_name}"))
+                if exe_files:
+                    exe_path = exe_files[0]
+                    size_mb  = round(exe_path.stat().st_size / 1024 / 1024, 1)
+                    rel      = exe_path.relative_to(Path("."))
+                    yield log(f"✅ Output: {exe_path.name} ({size_mb} MB)", "ok")
+                    yield f"data: {json.dumps({'type':'done','output_file':str(exe_path.name),'download_url':f'/api/package/download/{safe_name}/{exe_path.name}','size_mb':size_mb})}\n\n"
+                else:
+                    yield log("Build completed but output file not found.", "err")
+                    yield f"data: {json.dumps({'type':'error','message':'Output file not found.'})}\n\n"
+
+            # ── Python → .apk (Buildozer spec) ───────────────────────────────
+            elif req.lang == "python" and req.target == "apk":
+                yield log("Generating Kivy + Buildozer project…", "cmd")
+                main_py = ws / "main.py"
+                if not main_py.exists():
+                    main_py.write_text(f'''from kivy.app import App
+from kivy.uix.label import Label
+
+class {safe_name}App(App):
+    def build(self):
+        return Label(text='{req.app_name}')
+
+if __name__ == '__main__':
+    {safe_name}App().run()
+''')
+                    yield log("Created Kivy main.py template", "ok")
+
+                spec = f"""[app]
+title = {req.app_name}
+package.name = {safe_name.lower()}
+package.domain = org.example
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas
+version = {req.app_version}
+requirements = python3,kivy
+orientation = portrait
+osx.python_version = 3
+osx.kivy_version = 1.9.1
+fullscreen = 0
+android.archs = arm64-v8a, armeabi-v7a
+android.allow_backup = True
+[buildozer]
+log_level = 2
+warn_on_root = 1
+"""
+                (ws / "buildozer.spec").write_text(spec)
+                req_txt = ws / "requirements.txt"
+                if not req_txt.exists():
+                    req_txt.write_text("kivy\n")
+
+                yield log("Created buildozer.spec ✅", "ok")
+                yield log("Created requirements.txt ✅", "ok")
+                yield log("", "info")
+                yield log("To build the APK, run these commands in WSL/Linux:", "info")
+                yield log("  pip install buildozer", "cmd")
+                yield log("  buildozer android debug", "cmd")
+                yield log("", "info")
+                yield log("Output will be in: bin/myapp-debug.apk", "ok")
+
+                # Zip the workspace for download
+                import zipfile, io
+                zip_path = DIST_DIR / f"{safe_name}_apk_project.zip"
+                with zipfile.ZipFile(zip_path, "w") as zf:
+                    for f in ws.rglob("*"):
+                        if f.is_file():
+                            zf.write(f, f.relative_to(ws))
+                yield log(f"✅ Project zipped: {zip_path.name}", "ok")
+                yield f"data: {json.dumps({'type':'done','output_file':zip_path.name,'download_url':f'/api/package/download/zips/{zip_path.name}'})}\n\n"
+
+            # ── Web → APK (Capacitor) ─────────────────────────────────────────
+            elif req.lang == "web" and req.target == "apk":
+                yield log("Generating Capacitor APK project…", "cmd")
+                # Create package.json for Capacitor
+                pkg = {
+                    "name": safe_name.lower(), "version": req.app_version,
+                    "scripts": {"build": "echo 'Add your build step'", "cap:add": "cap add android", "cap:sync": "cap sync"},
+                    "dependencies": {"@capacitor/core": "^5.0.0", "@capacitor/android": "^5.0.0"},
+                }
+                (ws / "package.json").write_text(json.dumps(pkg, indent=2))
+                cap_cfg = {"appId": f"com.example.{safe_name.lower()}", "appName": req.app_name, "webDir": "dist", "server": {"androidScheme": "https"}}
+                (ws / "capacitor.config.json").write_text(json.dumps(cap_cfg, indent=2))
+                yield log("Created package.json ✅", "ok")
+                yield log("Created capacitor.config.json ✅", "ok")
+                yield log("", "info")
+                yield log("To build APK with Android Studio:", "info")
+                yield log("  npm install", "cmd")
+                yield log("  npx cap add android", "cmd")
+                yield log("  npx cap sync", "cmd")
+                yield log("  npx cap open android  # opens Android Studio", "cmd")
+
+                import zipfile
+                zip_path = DIST_DIR / f"{safe_name}_capacitor.zip"
+                with zipfile.ZipFile(zip_path, "w") as zf:
+                    for f in ws.rglob("*"):
+                        if f.is_file():
+                            zf.write(f, f.relative_to(ws))
+                yield log(f"✅ Project zipped: {zip_path.name}", "ok")
+                yield f"data: {json.dumps({'type':'done','output_file':zip_path.name,'download_url':f'/api/package/download/zips/{zip_path.name}'})}\n\n"
+
+            # ── Electron .exe ─────────────────────────────────────────────────
+            elif req.lang == "electron" and req.target == "exe":
+                yield log("Generating Electron project…", "cmd")
+                # Check for index.html
+                html_files = list(ws.glob("*.html"))
+                entry = html_files[0].name if html_files else "index.html"
+                if not (ws / entry).exists():
+                    (ws / "index.html").write_text(f"<html><body><h1>{req.app_name}</h1></body></html>")
+                main_js = f"""const {{ app, BrowserWindow }} = require('electron')
+const path = require('path')
+function createWindow() {{
+  const win = new BrowserWindow({{ width: 1200, height: 800, webPreferences: {{ nodeIntegration: false }} }})
+  win.loadFile('{entry}')
+}}
+app.whenReady().then(createWindow)
+app.on('window-all-closed', () => {{ if (process.platform !== 'darwin') app.quit() }})
+"""
+                (ws / "main.js").write_text(main_js)
+                pkg = {
+                    "name": safe_name.lower(), "version": req.app_version, "main": "main.js",
+                    "scripts": {"start": "electron .", "build": f"electron-builder --win --x64"},
+                    "build": {"appId": f"com.example.{safe_name.lower()}", "productName": req.app_name, "win": {"target": "nsis"}},
+                    "devDependencies": {"electron": "^28.0.0", "electron-builder": "^24.0.0"},
+                }
+                (ws / "package.json").write_text(json.dumps(pkg, indent=2))
+                yield log("Created main.js (Electron entry) ✅", "ok")
+                yield log("Created package.json ✅", "ok")
+                yield log("", "info")
+                yield log("To build .exe:", "info")
+                yield log("  npm install", "cmd")
+                yield log("  npm run build", "cmd")
+                yield log("Output: dist/win-unpacked/*.exe", "ok")
+
+                import zipfile
+                zip_path = DIST_DIR / f"{safe_name}_electron.zip"
+                with zipfile.ZipFile(zip_path, "w") as zf:
+                    for f in ws.rglob("*"):
+                        if f.is_file():
+                            zf.write(f, f.relative_to(ws))
+                yield log(f"✅ Project zipped: {zip_path.name}", "ok")
+                yield f"data: {json.dumps({'type':'done','output_file':zip_path.name,'download_url':f'/api/package/download/zips/{zip_path.name}'})}\n\n"
+
+            else:
+                yield log(f"Combination {req.lang}→{req.target} not yet supported.", "err")
+                yield f"data: {json.dumps({'type':'error','message':'Unsupported combination.'})}\n\n"
+
+        except Exception as e:
+            yield log(f"Fatal error: {e}", "err")
+            yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/package/download/{folder}/{filename}")
+async def download_package(folder: str, filename: str):
+    from fastapi.responses import FileResponse
+    safe_f = _sanitize(folder)
+    safe_n = filename.replace("..", "").replace("/", "").replace("\\", "")
+    path   = DIST_DIR / safe_f / safe_n
+    if not path.exists():
+        path = DIST_DIR / "zips" / safe_n
+    if not path.exists():
+        raise HTTPException(404, "File not found")
+    media = "application/zip" if safe_n.endswith(".zip") else "application/octet-stream"
+    return FileResponse(str(path), media_type=media, filename=safe_n)
+
+
+# ── AI Design ─────────────────────────────────────────────────────────────────
+
+class DesignAIRequest(BaseModel):
+    prompt: str
+    template: Optional[str] = "Instagram Post"
+
+@app.post("/api/design/ai-generate")
+async def design_ai_generate(req: DesignAIRequest):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+
+    SIZES = {"Instagram Post": (1080,1080), "Instagram Story": (1080,1920), "Facebook Cover": (820,312),
+             "Facebook Post": (1200,630), "YouTube Thumb": (1280,720), "A4 Portrait": (794,1123), "Presentation": (1920,1080)}
+    w, h = SIZES.get(req.template or "", (1080,1080))
+
+    system = f"""You are a graphic design AI. Given a design brief, output ONLY a valid JSON object representing a Fabric.js canvas.
+
+Canvas size: {w}x{h}
+
+JSON format:
+{{
+  "version": "6.0.0",
+  "objects": [
+    {{
+      "type": "Rect", "left": 0, "top": 0, "width": {w}, "height": {h},
+      "fill": "gradient_or_hex", "selectable": false
+    }},
+    {{
+      "type": "IText", "text": "MAIN TITLE", "left": {w//2}, "top": {h//3},
+      "fontSize": 80, "fontFamily": "Cairo", "fill": "#ffffff",
+      "fontWeight": "bold", "textAlign": "center", "originX": "center", "originY": "center"
+    }}
+  ],
+  "background": "#hex_or_gradient_string"
+}}
+
+Rules:
+- Use Arabic-friendly fonts (Cairo, Tajawal, Almarai) for Arabic text
+- Choose beautiful, trendy color combinations
+- Include 2-5 text elements and 2-4 decorative shapes
+- Make it visually striking and professional
+- Return ONLY the JSON, no explanation
+"""
+
+    try:
+        ai = anthropic.Anthropic(api_key=api_key)
+        msg = ai.messages.create(
+            model="claude-sonnet-4-6", max_tokens=3000,
+            system=system,
+            messages=[{"role": "user", "content": f"Design brief: {req.prompt}\nTemplate: {req.template}"}],
+        )
+        raw = msg.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
+        canvas_json = json.loads(raw)
+        return {"canvas_json": canvas_json}
+    except json.JSONDecodeError:
+        raise HTTPException(502, "Claude returned invalid JSON for the design.")
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     env_path = os.path.join(os.path.dirname(__file__), ".env")
