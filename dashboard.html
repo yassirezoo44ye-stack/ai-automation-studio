@@ -333,6 +333,61 @@
   updateClock();
   setInterval(updateClock, 1000);
 
+  // Fetch live stats from backend
+  async function loadStats() {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/stats', { signal: AbortSignal.timeout(3000) });
+      if (!res.ok) return;
+      const s = await res.json();
+
+      // Update stat cards
+      document.querySelector('.card.blue .card-value').textContent = s.projects;
+      document.querySelector('.card.blue .card-label').textContent = 'Total Projects';
+      document.querySelector('.card.blue .card-change').textContent = '';
+
+      document.querySelector('.card.green .card-value').textContent = s.agent_runs;
+      document.querySelector('.card.green .card-label').textContent = 'Agent Runs';
+      document.querySelector('.card.green .card-change').textContent = '';
+
+      document.querySelector('.card.purple .card-value').textContent = s.success_rate + '%';
+      document.querySelector('.card.purple .card-label').textContent = 'Success Rate';
+      document.querySelector('.card.purple .card-change').textContent = '';
+
+      document.querySelector('.card.orange .card-value').textContent = s.completed_runs;
+      document.querySelector('.card.orange .card-label').textContent = 'Completed Runs';
+      document.querySelector('.card.orange .card-change').textContent = '';
+
+      // Update activity feed
+      if (s.recent_activity && s.recent_activity.length > 0) {
+        const list = document.querySelector('.activity-list');
+        list.innerHTML = '';
+        const colors = ['#6c8ef7','#34d399','#a78bfa','#fb923c','#f87171'];
+        s.recent_activity.slice(0, 5).forEach((item, i) => {
+          const el = document.createElement('div');
+          el.className = 'activity-item';
+          const ago = timeSince(new Date(item.time));
+          const detail = item.details?.prompt_preview || item.details?.project_id || '';
+          el.innerHTML = `
+            <div class="activity-dot" style="background:${colors[i % colors.length]}"></div>
+            <div class="activity-text"><strong>${item.action.replace('_', ' ')}</strong>${detail ? ' — ' + detail.slice(0, 40) : ''}</div>
+            <div class="activity-time">${ago}</div>
+          `;
+          list.appendChild(el);
+        });
+      }
+    } catch {}
+  }
+
+  function timeSince(date) {
+    const s = Math.floor((Date.now() - date) / 1000);
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+  }
+
+  loadStats();
+
   // Bar chart
   const data = [
     { label: 'Mon', value: 62, color: '#6c8ef7' },

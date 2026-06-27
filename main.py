@@ -8,6 +8,7 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 import uuid
+import anthropic
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/ai_studio")
@@ -155,6 +156,13 @@ async def init_db():
         await conn.execute('''
             INSERT INTO users (id, email, name)
             VALUES ($1, 'test@example.com', 'Test User')
+            ON CONFLICT (id) DO NOTHING
+        ''', uuid.UUID(test_user_id))
+
+        # Insert demo project used by the frontend chat
+        await conn.execute('''
+            INSERT INTO projects (id, user_id, name, description)
+            VALUES ('00000000-0000-0000-0000-000000000001', $1, 'Demo Project', 'Default project for chat')
             ON CONFLICT (id) DO NOTHING
         ''', uuid.UUID(test_user_id))
 
@@ -433,6 +441,60 @@ async def list_usage_logs(user_id: str = Depends(get_current_user_id)):
         ''')
         return [{"id": str(r["id"]), "action": r["action"], "details": r["details"],
                  "created_at": r["created_at"]} for r in rows]
+
+class RunRequest(BaseModel):
+    project_id: str
+    prompt: str = Field(..., min_length=1, max_length=4000)
+
+@app.post("/run")
+async def run_agent(req: RunRequest, user_id: str = Depends(get_current_user_id)):
+    ai = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    message = ai.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": req.prompt}],
+    )
+    summary = message.content[0].text
+
+    async with pool.acquire() as conn:
+        await set_user_context(conn, user_id)
+        pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+        run_id = await conn.fetchval(
+            "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
+            "VALUES ($1, 'claude', $2, $3, 'completed', NOW()) RETURNING id",
+            pid,
+            {"prompt": req.prompt},
+            {"summary": summary},
+        )
+        await conn.execute(
+            "INSERT INTO usage_logs (user_id, action, details) VALUES ($1, 'agent_run', $2)",
+            uuid.UUID(user_id), {"run_id": str(run_id), "prompt_preview": req.prompt[:80]},
+        )
+
+    return {"result": {"summary": summary}}
+
+
+@app.get("/api/stats")
+async def get_stats(user_id: str = Depends(get_current_user_id)):
+    async with pool.acquire() as conn:
+        await set_user_context(conn, user_id)
+        project_count = await conn.fetchval("SELECT COUNT(*) FROM projects")
+        run_count = await conn.fetchval("SELECT COUNT(*) FROM agent_runs")
+        completed_count = await conn.fetchval("SELECT COUNT(*) FROM agent_runs WHERE status = 'completed'")
+        recent_logs = await conn.fetch(
+            "SELECT action, details, created_at FROM usage_logs ORDER BY created_at DESC LIMIT 10"
+        )
+    return {
+        "projects": int(project_count),
+        "agent_runs": int(run_count),
+        "completed_runs": int(completed_count),
+        "success_rate": round(int(completed_count) / max(int(run_count), 1) * 100, 1),
+        "recent_activity": [
+            {"action": r["action"], "details": r["details"], "time": r["created_at"].isoformat()}
+            for r in recent_logs
+        ],
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
