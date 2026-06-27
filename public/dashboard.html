@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Analytics Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0d0f14;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  /* Top bar */
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 28px;
+  }
+  .topbar-title { font-size: 20px; font-weight: 700; color: #f0f4ff; letter-spacing: -0.3px; }
+  .topbar-title span { color: #6c8ef7; }
+  .topbar-right { display: flex; gap: 12px; align-items: center; }
+  .badge {
+    background: #1a1f2e;
+    border: 1px solid #2a3050;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: #8896b3;
+  }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(135deg, #6c8ef7, #a78bfa);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: #fff;
+  }
+
+  /* Stat cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: #13172080;
+    border: 1px solid #1e2438;
+    border-radius: 14px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .card.blue::before  { background: #6c8ef7; }
+  .card.green::before { background: #34d399; }
+  .card.purple::before { background: #a78bfa; }
+  .card.orange::before { background: #fb923c; }
+  .card-label { font-size: 11px; color: #6b7a99; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+  .card-value { font-size: 28px; font-weight: 700; color: #f0f4ff; letter-spacing: -1px; }
+  .card-change { font-size: 12px; margin-top: 6px; }
+  .card-change.up   { color: #34d399; }
+  .card-change.down { color: #f87171; }
+
+  /* Main grid */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+  }
+
+  .panel {
+    background: #13172080;
+    border: 1px solid #1e2438;
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .panel-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 18px;
+  }
+  .panel-title { font-size: 14px; font-weight: 600; color: #c8d3f0; }
+  .panel-sub   { font-size: 12px; color: #4b5980; }
+
+  /* Bar chart */
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    height: 160px;
+    padding-bottom: 4px;
+  }
+  .bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    justify-content: flex-end;
+  }
+  .bar {
+    width: 100%;
+    border-radius: 5px 5px 0 0;
+    transition: opacity 0.2s;
+    cursor: pointer;
+  }
+  .bar:hover { opacity: 0.75; }
+  .bar-label { font-size: 10px; color: #4b5980; }
+
+  /* Activity list */
+  .activity-list { display: flex; flex-direction: column; gap: 12px; }
+  .activity-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: #0d0f1480;
+    border-radius: 10px;
+    border: 1px solid #1a1f2e;
+  }
+  .activity-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .activity-text { flex: 1; font-size: 12px; color: #8896b3; }
+  .activity-text strong { color: #c8d3f0; font-weight: 500; }
+  .activity-time { font-size: 11px; color: #4b5980; }
+
+  /* Bottom grid */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  /* Donut */
+  .donut-wrap {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+  .donut-legend { display: flex; flex-direction: column; gap: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8896b3; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* Progress list */
+  .progress-list { display: flex; flex-direction: column; gap: 14px; }
+  .progress-item {}
+  .progress-row {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: #8896b3; margin-bottom: 6px;
+  }
+  .progress-row span:last-child { color: #c8d3f0; font-weight: 500; }
+  .progress-track {
+    height: 5px; background: #1a1f2e; border-radius: 99px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 99px;
+    transition: width 1s ease;
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed;
+    background: #1e2438;
+    border: 1px solid #2a3050;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #c8d3f0;
+    pointer-events: none;
+    display: none;
+    z-index: 999;
+  }
+</style>
+</head>
+<body>
+<div id="tooltip"></div>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="topbar-title"><span>◈</span> Analytics Dashboard</div>
+  <div class="topbar-right">
+    <div class="badge">Jun 2026</div>
+    <div class="badge" id="live-time">--:--</div>
+    <div class="avatar">YZ</div>
+  </div>
+</div>
+
+<!-- Stat cards -->
+<div class="cards">
+  <div class="card blue">
+    <div class="card-label">Total Revenue</div>
+    <div class="card-value">$84.2K</div>
+    <div class="card-change up">↑ 12.4% vs last month</div>
+  </div>
+  <div class="card green">
+    <div class="card-label">Active Users</div>
+    <div class="card-value">3,491</div>
+    <div class="card-change up">↑ 8.1% vs last month</div>
+  </div>
+  <div class="card purple">
+    <div class="card-label">Conversions</div>
+    <div class="card-value">6.7%</div>
+    <div class="card-change down">↓ 1.2% vs last month</div>
+  </div>
+  <div class="card orange">
+    <div class="card-label">Avg. Session</div>
+    <div class="card-value">4m 32s</div>
+    <div class="card-change up">↑ 0.4% vs last month</div>
+  </div>
+</div>
+
+<!-- Main grid -->
+<div class="main-grid">
+  <!-- Bar chart -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Weekly Revenue</div>
+      <div class="panel-sub">Last 7 days</div>
+    </div>
+    <div class="bar-chart" id="bar-chart"></div>
+  </div>
+
+  <!-- Activity -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Recent Activity</div>
+    </div>
+    <div class="activity-list">
+      <div class="activity-item">
+        <div class="activity-dot" style="background:#6c8ef7"></div>
+        <div class="activity-text"><strong>New signup</strong> — alex@mail.com</div>
+        <div class="activity-time">2m ago</div>
+      </div>
+      <div class="activity-item">
+        <div class="activity-dot" style="background:#34d399"></div>
+        <div class="activity-text"><strong>Payment received</strong> — $249 Pro plan</div>
+        <div class="activity-time">14m ago</div>
+      </div>
+      <div class="activity-item">
+        <div class="activity-dot" style="background:#a78bfa"></div>
+        <div class="activity-text"><strong>Report exported</strong> — Q2 summary</div>
+        <div class="activity-time">1h ago</div>
+      </div>
+      <div class="activity-item">
+        <div class="activity-dot" style="background:#fb923c"></div>
+        <div class="activity-text"><strong>Alert triggered</strong> — CPU spike 92%</div>
+        <div class="activity-time">2h ago</div>
+      </div>
+      <div class="activity-item">
+        <div class="activity-dot" style="background:#34d399"></div>
+        <div class="activity-text"><strong>Deploy successful</strong> — v2.4.1 live</div>
+        <div class="activity-time">3h ago</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom grid -->
+<div class="bottom-grid">
+  <!-- Donut -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Traffic Sources</div>
+      <div class="panel-sub">This month</div>
+    </div>
+    <div class="donut-wrap">
+      <svg width="120" height="120" viewBox="0 0 42 42">
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#1a1f2e" stroke-width="6"/>
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#6c8ef7" stroke-width="6"
+          stroke-dasharray="40 60" stroke-dashoffset="25"/>
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#34d399" stroke-width="6"
+          stroke-dasharray="25 75" stroke-dashoffset="-15"/>
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#a78bfa" stroke-width="6"
+          stroke-dasharray="20 80" stroke-dashoffset="-40"/>
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#fb923c" stroke-width="6"
+          stroke-dasharray="15 85" stroke-dashoffset="-60"/>
+        <text x="21" y="23" text-anchor="middle" fill="#f0f4ff" font-size="5" font-weight="700">100%</text>
+      </svg>
+      <div class="donut-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#6c8ef7"></div>Organic — 40%</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Direct — 25%</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#a78bfa"></div>Referral — 20%</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div>Paid — 15%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">Goal Progress</div>
+      <div class="panel-sub">Q2 targets</div>
+    </div>
+    <div class="progress-list">
+      <div class="progress-item">
+        <div class="progress-row"><span>Revenue</span><span>84%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:84%;background:#6c8ef7"></div></div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-row"><span>New Users</span><span>61%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:61%;background:#34d399"></div></div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-row"><span>Retention</span><span>92%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:92%;background:#a78bfa"></div></div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-row"><span>Support SLA</span><span>78%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:78%;background:#fb923c"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Live clock
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('live-time').textContent =
+      now.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // Bar chart
+  const data = [
+    { label: 'Mon', value: 62, color: '#6c8ef7' },
+    { label: 'Tue', value: 78, color: '#6c8ef7' },
+    { label: 'Wed', value: 54, color: '#6c8ef7' },
+    { label: 'Thu', value: 91, color: '#a78bfa' },
+    { label: 'Fri', value: 84, color: '#6c8ef7' },
+    { label: 'Sat', value: 47, color: '#6c8ef7' },
+    { label: 'Sun', value: 69, color: '#6c8ef7' },
+  ];
+  const maxVal = Math.max(...data.map(d => d.value));
+  const chart = document.getElementById('bar-chart');
+  const tooltip = document.getElementById('tooltip');
+
+  data.forEach(d => {
+    const col = document.createElement('div');
+    col.className = 'bar-col';
+    const pct = (d.value / maxVal) * 140;
+    col.innerHTML = `
+      <div class="bar" style="height:${pct}px;background:${d.color};" data-label="${d.label}" data-val="$${d.value}K"></div>
+      <div class="bar-label">${d.label}</div>
+    `;
+    chart.appendChild(col);
+  });
+
+  document.querySelectorAll('.bar').forEach(bar => {
+    bar.addEventListener('mouseenter', () => { tooltip.style.display = 'block'; tooltip.textContent = `${bar.dataset.label}: ${bar.dataset.val}`; });
+    bar.addEventListener('mousemove', e => { tooltip.style.left = (e.clientX + 12) + 'px'; tooltip.style.top = (e.clientY - 28) + 'px'; });
+    bar.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  });
+</script>
+</body>
+</html>
