@@ -338,22 +338,41 @@ function ChatPage() {
         <div style={S.messages}>
           {messages.length === 0 && (
             <div style={S.empty}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>{activeAgent ? activeAgent.avatar : "◈"}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#c8d3f0", marginBottom: 8 }}>
+              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 20px", background: "linear-gradient(135deg, rgba(139,92,246,.25), rgba(99,102,241,.2))", border: "1px solid rgba(139,92,246,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>
+                {activeAgent ? activeAgent.avatar : "◈"}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#f1f5f9", marginBottom: 8, letterSpacing: "-.3px" }}>
                 {activeAgent ? activeAgent.name : "AI Automation Studio"}
               </div>
-              {activeAgent?.description && <div style={{ fontSize: 13, color: "#6b7a99", maxWidth: 400, textAlign: "center" }}>{activeAgent.description}</div>}
+              <div style={{ fontSize: 14, color: "rgba(148,163,184,.5)", maxWidth: 340, lineHeight: 1.6 }}>
+                {activeAgent?.description ?? "ابدأ محادثة جديدة أو اختر واحدة من القائمة الجانبية"}
+              </div>
             </div>
           )}
-          {messages.map(m => (
-            <div key={m.id} style={{ ...S.bubble, ...(m.role === "user" ? S.bubbleUser : S.bubbleAssist) }}>
-              <div style={S.bubbleRole}>{m.role === "user" ? "You" : (activeAgent?.name ?? "Claude")}</div>
-              {m.role === "assistant" && m.content === "" ? (
-                <div className="typing"><span /><span /><span /></div>
-              ) : m.role === "assistant" ? (
-                <div style={S.bubbleText} className="md-body"><ReactMarkdown>{m.content}</ReactMarkdown></div>
-              ) : (
-                <div style={S.bubbleText}>{m.content}</div>
+          {messages.map((m, idx) => (
+            <div key={m.id} style={m.role === "user" ? S.msgRowUser : S.msgRowAssist} className="msg-row">
+              {m.role === "assistant" && (
+                <div style={S.avatar}>
+                  <span style={{ fontSize: 18 }}>{activeAgent ? activeAgent.avatar : "◈"}</span>
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={m.role === "user" ? S.msgLabelUser : S.msgLabelAssist}>
+                  {m.role === "user" ? "أنت" : (activeAgent?.name ?? "Claude")}
+                  <span style={S.msgTime}>{idx === messages.length - 1 ? "الآن" : ""}</span>
+                </div>
+                {m.role === "user" ? (
+                  <div style={S.msgBubbleUser}>{m.content}</div>
+                ) : m.content === "" ? (
+                  <div style={{ padding: "8px 0" }} className="typing"><span /><span /><span /></div>
+                ) : (
+                  <div style={S.msgBubbleAssist} className="md-body">
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
+                )}
+              </div>
+              {m.role === "user" && (
+                <div style={S.avatarUser}>Y</div>
               )}
             </div>
           ))}
@@ -919,7 +938,7 @@ export default function App() {
         </main>
 
         <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
           *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
           body { margin: 0; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
@@ -962,23 +981,46 @@ export default function App() {
           .btn-primary-hover:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(139,92,246,.4) !important; }
           .btn-primary-hover:active { transform: translateY(0); }
 
-          /* Markdown */
-          .md-body { line-height: 1.7; }
-          .md-body p { margin: 0 0 10px; }
+          /* Message rows centering */
+          .msg-row { align-self: stretch; }
+
+          /* Markdown — tuned for 15px base */
+          .md-body { line-height: 1.8; font-size: 15px; color: #e2e8f0; }
+          .md-body p { margin: 0 0 12px; }
           .md-body p:last-child { margin: 0; }
-          .md-body pre { background: rgba(0,0,0,.4); border: 1px solid rgba(139,92,246,.2); border-radius: 12px; padding: 16px; overflow-x: auto; margin: 10px 0; }
-          .md-body code { background: rgba(139,92,246,.15); padding: 2px 7px; border-radius: 6px; font-size: 12.5px; color: #c4b5fd; font-family: 'Consolas','Courier New',monospace; }
-          .md-body pre code { background: none; padding: 0; color: #e2e8f0; font-size: 13px; }
-          .md-body ul, .md-body ol { padding-left: 22px; margin: 6px 0; }
-          .md-body li { margin: 4px 0; }
-          .md-body h1,.md-body h2,.md-body h3 { color: #f1f5f9; margin: 16px 0 8px; font-weight: 600; }
+          .md-body pre {
+            background: rgba(0,0,0,.45);
+            border: 1px solid rgba(139,92,246,.18);
+            border-radius: 14px; padding: 18px 20px;
+            overflow-x: auto; margin: 14px 0;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+          }
+          .md-body code {
+            background: rgba(139,92,246,.14);
+            padding: 2px 8px; border-radius: 6px;
+            font-size: 13px; color: #c4b5fd;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+          }
+          .md-body pre code { background: none; padding: 0; color: #e2e8f0; font-size: 13.5px; }
+          .md-body ul, .md-body ol { padding-left: 24px; margin: 8px 0; }
+          .md-body li { margin: 5px 0; line-height: 1.7; }
+          .md-body h1 { font-size: 20px; font-weight: 700; color: #f1f5f9; margin: 20px 0 10px; letter-spacing: -.3px; }
+          .md-body h2 { font-size: 17px; font-weight: 600; color: #f1f5f9; margin: 18px 0 8px; }
+          .md-body h3 { font-size: 15px; font-weight: 600; color: #e2e8f0; margin: 14px 0 6px; }
           .md-body strong { color: #f1f5f9; font-weight: 600; }
-          .md-body a { color: #818cf8; text-decoration: underline; }
-          .md-body blockquote { border-left: 3px solid rgba(139,92,246,.5); padding-left: 14px; margin: 10px 0; color: #94a3b8; font-style: italic; }
-          .md-body table { border-collapse: collapse; width: 100%; margin: 10px 0; border-radius: 8px; overflow: hidden; }
-          .md-body th, .md-body td { border: 1px solid rgba(255,255,255,.06); padding: 8px 14px; font-size: 13px; }
-          .md-body th { background: rgba(139,92,246,.12); color: #e2e8f0; font-weight: 600; }
-          .md-body tr:nth-child(even) { background: rgba(255,255,255,.02); }
+          .md-body em { color: #c4b5fd; }
+          .md-body a { color: #818cf8; text-decoration: none; border-bottom: 1px solid rgba(129,140,248,.3); }
+          .md-body a:hover { border-bottom-color: #818cf8; }
+          .md-body blockquote {
+            border-left: 3px solid rgba(139,92,246,.5);
+            padding: 4px 0 4px 16px; margin: 12px 0;
+            color: #94a3b8; font-style: italic;
+          }
+          .md-body hr { border: none; border-top: 1px solid rgba(255,255,255,.07); margin: 16px 0; }
+          .md-body table { border-collapse: collapse; width: 100%; margin: 14px 0; border-radius: 10px; overflow: hidden; }
+          .md-body th, .md-body td { border: 1px solid rgba(255,255,255,.06); padding: 10px 16px; font-size: 14px; }
+          .md-body th { background: rgba(139,92,246,.14); color: #e2e8f0; font-weight: 600; }
+          .md-body tr:nth-child(even) td { background: rgba(255,255,255,.02); }
         `}</style>
       </div>
     </ToastProvider>
@@ -1070,32 +1112,60 @@ const S: Record<string, React.CSSProperties> = {
 
   // Messages
   messages: {
-    flex: 1, overflowY: "auto", padding: "28px 32px",
-    display: "flex", flexDirection: "column", gap: 20,
+    flex: 1, overflowY: "auto", padding: "32px 0",
+    display: "flex", flexDirection: "column", gap: 0,
   },
-  empty: { margin: "auto", textAlign: "center", color: "rgba(148,163,184,.4)", paddingBottom: 80 },
+  empty: { margin: "auto", textAlign: "center", color: "rgba(148,163,184,.35)", paddingBottom: 80 },
 
-  // Chat bubbles
-  bubble:     { maxWidth: 760, padding: "14px 18px", borderRadius: 16, lineHeight: 1.65, animation: "slideIn .2s ease" },
-  bubbleUser: {
-    alignSelf: "flex-end", borderBottomRightRadius: 4,
-    background: "linear-gradient(135deg, rgba(99,102,241,.25), rgba(139,92,246,.2))",
-    border: "1px solid rgba(139,92,246,.3)",
-    boxShadow: "0 4px 20px rgba(99,102,241,.1)",
+  // New message rows
+  msgRowAssist: {
+    display: "flex", gap: 14, alignItems: "flex-start",
+    padding: "18px 32px", maxWidth: 900, width: "100%",
+    animation: "slideIn .22s ease",
   },
-  bubbleAssist: {
-    alignSelf: "flex-start", borderBottomLeftRadius: 4,
-    background: "rgba(255,255,255,.03)",
-    border: "1px solid rgba(255,255,255,.07)",
-    boxShadow: "0 4px 20px rgba(0,0,0,.15)",
+  msgRowUser: {
+    display: "flex", gap: 14, alignItems: "flex-start",
+    padding: "18px 32px", maxWidth: 900, width: "100%",
+    alignSelf: "flex-end", flexDirection: "row-reverse",
+    animation: "slideIn .22s ease",
   },
-  bubbleRole: {
-    fontSize: 10, fontWeight: 600, marginBottom: 8,
-    textTransform: "uppercase", letterSpacing: 1,
-    background: "linear-gradient(90deg,#a78bfa,#818cf8)",
-    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+  avatar: {
+    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+    background: "linear-gradient(135deg, rgba(139,92,246,.3), rgba(99,102,241,.2))",
+    border: "1px solid rgba(139,92,246,.25)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    marginTop: 2,
   },
-  bubbleText: { fontSize: 14, color: "#e2e8f0" },
+  avatarUser: {
+    width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 13, fontWeight: 700, color: "#fff", marginTop: 2,
+  },
+  msgLabelAssist: {
+    fontSize: 12, fontWeight: 600, color: "rgba(167,139,250,.8)",
+    marginBottom: 8, display: "flex", alignItems: "center", gap: 8,
+    letterSpacing: "0.02em",
+  },
+  msgLabelUser: {
+    fontSize: 12, fontWeight: 600, color: "rgba(148,163,184,.5)",
+    marginBottom: 8, display: "flex", alignItems: "center", gap: 8,
+    justifyContent: "flex-end", letterSpacing: "0.02em",
+  },
+  msgTime: { fontSize: 10, color: "rgba(148,163,184,.3)", fontWeight: 400 },
+  msgBubbleAssist: {
+    fontSize: 15, color: "#e2e8f0", lineHeight: 1.8,
+    fontWeight: 400,
+  },
+  msgBubbleUser: {
+    fontSize: 15, color: "#e2e8f0", lineHeight: 1.75,
+    background: "linear-gradient(135deg, rgba(99,102,241,.22), rgba(139,92,246,.18))",
+    border: "1px solid rgba(139,92,246,.28)",
+    borderRadius: 16, borderTopRightRadius: 4,
+    padding: "12px 18px",
+    boxShadow: "0 2px 16px rgba(99,102,241,.1)",
+    display: "inline-block",
+  },
 
   // Input row
   inputRow: {
