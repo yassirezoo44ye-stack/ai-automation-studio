@@ -85,7 +85,7 @@ function DashboardPage() {
     const maxVal  = Math.max(...allVals, 1);
     const n = series.labels.length;
 
-    const x = (i: number) => pad.left + (i / (n - 1)) * gW;
+    const x = (i: number) => n <= 1 ? pad.left + gW / 2 : pad.left + (i / (n - 1)) * gW;
     const y = (v: number) => pad.top + gH - (v / maxVal) * gH;
 
     // Grid lines
@@ -246,12 +246,15 @@ function ChatPage() {
 
   async function exportConv() {
     if (!activeConv) return;
-    const r = await fetch(`${API}/api/export/conversations/${activeConv}`);
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "conversation.md"; a.click();
-    URL.revokeObjectURL(url);
-    toast("Exported as Markdown");
+    try {
+      const r = await fetch(`${API}/api/export/conversations/${activeConv}`);
+      if (!r.ok) { toast("Export failed", "err"); return; }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "conversation.md"; a.click();
+      URL.revokeObjectURL(url);
+      toast("Exported as Markdown");
+    } catch { toast("Export failed", "err"); }
   }
 
   async function sendMessage() {
@@ -840,16 +843,19 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
         body: JSON.stringify({ url, question: finalQ, transcript }),
         signal: ctrl.signal,
       });
-      const reader = res.body!.getReader(); const dec = new TextDecoder(); let buf = "";
+      if (!res.ok || !res.body) { toast(`Error ${res.status}`, "err"); return; }
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
       while (true) {
         const { done, value } = await reader.read(); if (done) break;
         buf += dec.decode(value, { stream: true });
         const lines = buf.split("\n"); buf = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === "delta") setAnswer(p => p + ev.text);
-          else if (ev.type === "error") { toast(ev.message, "err"); break; }
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === "delta") setAnswer(p => p + ev.text);
+            else if (ev.type === "error") { toast(ev.message, "err"); break; }
+          } catch {}
         }
       }
     } catch (e: any) { if (e.name !== "AbortError") toast(e.message, "err"); }
@@ -989,18 +995,21 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic, platform, content_type: contentType, tone, language, include_hashtags: hashtags, include_emoji: emoji, variations: 3 }),
       });
-      const reader = res.body!.getReader(); const dec = new TextDecoder(); let buf = "";
+      if (!res.ok || !res.body) { toast(`Error ${res.status}`, "err"); return; }
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
       while (true) {
         const { done, value } = await reader.read(); if (done) break;
         buf += dec.decode(value, { stream: true });
         const lines = buf.split("\n"); buf = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === "status")    setStatus(ev.message);
-          else if (ev.type === "variation") setVars(p => [...p, ev.data]);
-          else if (ev.type === "done") { setStatus(""); toast(`تم توليد ${ev.count} نسخ`); }
-          else if (ev.type === "error") { setStatus(""); toast(ev.message, "err"); }
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === "status")         setStatus(ev.message);
+            else if (ev.type === "variation") setVars(p => [...p, ev.data]);
+            else if (ev.type === "done")      { setStatus(""); toast(`تم توليد ${ev.count} نسخ`); }
+            else if (ev.type === "error")     { setStatus(""); toast(ev.message, "err"); }
+          } catch {}
         }
       }
     } catch (e: any) { toast(e.message, "err"); setStatus(""); }
@@ -1282,6 +1291,21 @@ function relTime(iso: string) {
 function AppInner() {
   const add  = useToast();
   const [page, setPage] = useState<Page>("dashboard");
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [installDone, setInstallDone]     = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  async function installApp() {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") { setInstallDone(true); setInstallPrompt(null); add("تم تثبيت التطبيق!", "ok"); }
+  }
 
   const nav: [Page, string, string][] = [
     ["dashboard", "📊", "Dashboard"],
@@ -1308,7 +1332,18 @@ function AppInner() {
               </div>
             ))}
           </nav>
-          <div style={{ marginTop: "auto", padding: "0 10px 16px" }}>
+          <div style={{ marginTop: "auto", padding: "0 10px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {!installDone && installPrompt && (
+              <button onClick={installApp} style={{
+                background: "linear-gradient(135deg,#7c3aed,#a855f7)",
+                color: "#fff", border: "none", borderRadius: 10, padding: "10px 8px",
+                cursor: "pointer", fontSize: 12, fontWeight: 600,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                boxShadow: "0 0 12px rgba(139,92,246,.4)",
+              }}>
+                ⬇ تثبيت التطبيق
+              </button>
+            )}
             <div style={{ fontSize: 11, color: "#2a3050", textAlign: "center" }}>v3.0 · Powered by Claude</div>
           </div>
         </aside>

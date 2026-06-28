@@ -41,6 +41,9 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
   const fabricRef     = useRef<fabric.Canvas | null>(null);
   const wrapRef       = useRef<HTMLDivElement>(null);
   const fileRef       = useRef<HTMLInputElement>(null);
+  // toolRef keeps the current tool accessible inside Fabric event handlers
+  // without stale-closure issues (the handler is registered once, deps=[])
+  const toolRef       = useRef<Tool>("select");
 
   const [tool, setTool]               = useState<Tool>("select");
   const [template, setTemplate]       = useState<Template>(TEMPLATES[0]);
@@ -109,8 +112,9 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
     fc.renderAll();
   }, [bgColor]);
 
-  // Tool cursor
+  // Tool cursor — also keep ref in sync so mouse:down handler is never stale
   useEffect(() => {
+    toolRef.current = tool;
     const fc = fabricRef.current; if (!fc) return;
     fc.defaultCursor = tool === "select" ? "default" : "crosshair";
     fc.isDrawingMode = tool === "pen";
@@ -123,8 +127,9 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
   function handleCanvasClick(fc: fabric.Canvas, e: any) {
     const pt = fc.getScenePoint ? fc.getScenePoint(e.e) : (fc as any).getPointer(e.e);
     const x = pt.x, y = pt.y;
+    const currentTool = toolRef.current;  // read from ref, never stale
 
-    if (tool === "text") {
+    if (currentTool === "text") {
       const obj = new fabric.IText("اكتب هنا", {
         left: x, top: y,
         fontSize, fontFamily, fill: textColor,
@@ -133,19 +138,19 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
         textAlign, originX: "center", originY: "center",
         scaleX: 1/1, scaleY: 1/1,
       });
-      fc.add(obj); fc.setActiveObject(obj); obj.enterEditing(); setTool("select");
-    } else if (tool === "rect") {
+      fc.add(obj); fc.setActiveObject(obj); obj.enterEditing(); setTool("select"); toolRef.current = "select";
+    } else if (currentTool === "rect") {
       const obj = new fabric.Rect({ left: x - 100, top: y - 60, width: 200, height: 120, fill: fillColor, stroke: strokeColor, strokeWidth, opacity: opacity/100, rx: 8, ry: 8 });
-      fc.add(obj); fc.setActiveObject(obj); setTool("select");
-    } else if (tool === "circle") {
+      fc.add(obj); fc.setActiveObject(obj); setTool("select"); toolRef.current = "select";
+    } else if (currentTool === "circle") {
       const obj = new fabric.Circle({ left: x - 60, top: y - 60, radius: 60, fill: fillColor, stroke: strokeColor, strokeWidth, opacity: opacity/100 });
-      fc.add(obj); fc.setActiveObject(obj); setTool("select");
-    } else if (tool === "triangle") {
+      fc.add(obj); fc.setActiveObject(obj); setTool("select"); toolRef.current = "select";
+    } else if (currentTool === "triangle") {
       const obj = new fabric.Triangle({ left: x - 70, top: y - 60, width: 140, height: 120, fill: fillColor, stroke: strokeColor, strokeWidth, opacity: opacity/100 });
-      fc.add(obj); fc.setActiveObject(obj); setTool("select");
-    } else if (tool === "line") {
+      fc.add(obj); fc.setActiveObject(obj); setTool("select"); toolRef.current = "select";
+    } else if (currentTool === "line") {
       const obj = new fabric.Line([x - 80, y, x + 80, y], { stroke: fillColor, strokeWidth: Math.max(strokeWidth, 3), opacity: opacity/100 });
-      fc.add(obj); fc.setActiveObject(obj); setTool("select");
+      fc.add(obj); fc.setActiveObject(obj); setTool("select"); toolRef.current = "select";
     }
     fc.renderAll();
   }
@@ -275,7 +280,9 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
       if (!res.ok) throw new Error((await res.json()).detail);
       const data = await res.json();
       const fc = fabricRef.current; if (!fc) return;
-      fc.loadFromJSON(data.canvas_json).then(() => { fc.renderAll(); toast("تم توليد التصميم بالذكاء الاصطناعي"); });
+      fc.loadFromJSON(data.canvas_json)
+        .then(() => { fc.renderAll(); toast("تم توليد التصميم بالذكاء الاصطناعي"); })
+        .catch((err: Error) => { toast(err.message || "فشل تحميل التصميم", "err"); });
     } catch (e: any) { toast(e.message, "err"); }
     finally { setAiLoading(false); }
   }
@@ -311,7 +318,7 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
           ["rect","▭","مستطيل"],["circle","○","دائرة"],
           ["triangle","△","مثلث"],["line","—","خط"],["pen","✎","رسم حر"],
         ] as [Tool,string,string][]).map(([id,icon,label]) => (
-          <button key={id} title={label} onClick={() => setTool(id)}
+          <button key={id} title={label} onClick={() => { setTool(id); toolRef.current = id; }}
             style={{ ...TB.btn, ...(tool === id ? TB.btnActive : {}), minWidth: 36, padding: "7px 10px", fontSize: id === "text" ? 15 : 13 }}>
             {icon}
           </button>
@@ -447,7 +454,7 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
                 ["مثلث","triangle"],["خط","line"],
                 ["نص","text"],["صورة","image"],
               ].map(([label,id]) => (
-                <button key={id} onClick={() => id === "image" ? uploadImage() : setTool(id as Tool)}
+                <button key={id} onClick={() => id === "image" ? uploadImage() : (setTool(id as Tool), toolRef.current = id as Tool)}
                   style={{ ...TB.btn, fontSize: 12, padding: "8px 6px" }}>
                   {label}
                 </button>

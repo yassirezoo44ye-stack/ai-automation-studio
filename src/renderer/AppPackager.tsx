@@ -74,10 +74,12 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
         const lines = buf.split("\n"); buf = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === "log")     addLog(ev.text, ev.level ?? "info");
-          else if (ev.type === "done")  { setState("done"); setDownload(ev.download_url ?? ""); addLog(`✅ Build successful! Output: ${ev.output_file}`, "ok"); toast("تم البناء بنجاح! 🎉"); }
-          else if (ev.type === "error") { setState("error"); addLog(`❌ ${ev.message}`, "err"); toast(ev.message, "err"); }
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === "log")        addLog(ev.text, ev.level ?? "info");
+            else if (ev.type === "done")  { setState("done"); setDownload(ev.download_url ?? ""); addLog(`✅ Build successful! Output: ${ev.output_file}`, "ok"); toast("تم البناء بنجاح! 🎉"); }
+            else if (ev.type === "error") { setState("error"); addLog(`❌ ${ev.message}`, "err"); toast(ev.message, "err"); }
+          } catch { /* malformed SSE line, skip */ }
         }
       }
     } catch (err: unknown) {

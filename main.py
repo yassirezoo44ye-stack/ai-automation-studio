@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import asyncpg
@@ -132,6 +132,8 @@ async def lifespan(app: FastAPI):
     pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     async with pool.acquire() as conn:
         await init_db(conn)
+    # Ensure agents table exists (merged here to avoid on_event race)
+    await ensure_agents_table()
     yield
     await pool.close()
 
@@ -155,7 +157,9 @@ USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 DIST = Path(__file__).parent / "dist"
 if DIST.exists():
-    app.mount("/assets", StaticFiles(directory=str(DIST / "assets")), name="assets")
+    # Mount /assets for JS/CSS chunks
+    if (DIST / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(DIST / "assets")), name="assets")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -163,6 +167,35 @@ async def root():
     if index.exists():
         return HTMLResponse(index.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>◈ AI Automation Studio — Backend Running</h1><p><a href='/docs'>API Docs</a></p>")
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    f = DIST / "manifest.json"
+    if not f.exists():
+        f = Path(__file__).parent / "public" / "manifest.json"
+    if not f.exists():
+        raise HTTPException(404)
+    return Response(f.read_text(encoding="utf-8"), media_type="application/manifest+json")
+
+@app.get("/sw.js")
+async def serve_sw():
+    f = DIST / "sw.js"
+    if not f.exists():
+        f = Path(__file__).parent / "public" / "sw.js"
+    if not f.exists():
+        raise HTTPException(404)
+    return Response(f.read_text(encoding="utf-8"), media_type="application/javascript")
+
+@app.get("/icon-{size}.png")
+async def serve_icon(size: str):
+    if size not in ("192", "512"):
+        raise HTTPException(404)
+    f = DIST / f"icon-{size}.png"
+    if not f.exists():
+        f = Path(__file__).parent / "public" / f"icon-{size}.png"
+    if not f.exists():
+        raise HTTPException(404)
+    return Response(f.read_bytes(), media_type="image/png")
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
@@ -497,7 +530,10 @@ class FileWrite(BaseModel):
     content: str
 
 def workspace(project_id: str) -> Path:
-    ws = WORKSPACES / project_id
+    # Guard against path traversal (e.g. project_id = "../../etc")
+    ws = (WORKSPACES / project_id).resolve()
+    if not str(ws).startswith(str(WORKSPACES.resolve())):
+        raise HTTPException(400, "Invalid project_id")
     ws.mkdir(parents=True, exist_ok=True)
     return ws
 
@@ -663,16 +699,25 @@ async def clear_workspace(project_id: str):
 @app.post("/api/projects/{project_id}/run")
 async def run_project(project_id: str, body: RunRequest2):
     ws = workspace(project_id)
-    command = body.command or "python main.py"
+    raw_command = (body.command or "python main.py").strip()
 
-    # Safety: block dangerous commands
-    blocked = ["rm ", "del ", "format ", "shutdown", "reboot", ":(){", "dd if"]
-    if any(b in command.lower() for b in blocked):
-        raise HTTPException(400, "Command not allowed.")
+    # Allowlist: only permit safe interpreter invocations
+    # Format: "python <script.py> [args]" or "node <script.js> [args]"
+    ALLOWED_INTERPRETERS = ("python", "python3", "node", "npm run")
+    if not any(raw_command.startswith(p) for p in ALLOWED_INTERPRETERS):
+        raise HTTPException(400, "Only python/node commands are allowed.")
+
+    # Reject shell metacharacters (prevent injection even without shell=True)
+    SHELL_CHARS = (";", "&", "|", ">", "<", "`", "$", "(", ")", "{", "}")
+    if any(c in raw_command for c in SHELL_CHARS):
+        raise HTTPException(400, "Shell metacharacters are not allowed.")
+
+    import shlex
+    args = shlex.split(raw_command)
 
     try:
         proc = subprocess.run(
-            command, shell=True, cwd=str(ws),
+            args, shell=False, cwd=str(ws),
             capture_output=True, text=True, timeout=30,
             encoding="utf-8", errors="replace",
         )
@@ -680,7 +725,7 @@ async def run_project(project_id: str, body: RunRequest2):
             "stdout": proc.stdout,
             "stderr": proc.stderr,
             "returncode": proc.returncode,
-            "command": command,
+            "command": raw_command,
         }
     except subprocess.TimeoutExpired:
         raise HTTPException(408, "Execution timed out after 30 seconds.")
@@ -728,9 +773,10 @@ async def ensure_agents_table():
         ''')
 
 
-@app.on_event("startup")
-async def on_startup():
-    await ensure_agents_table()
+# NOTE: ensure_agents_table() is now called inside lifespan (above)
+# Keeping this stub to avoid breaking any imports, but it's a no-op.
+async def _on_startup_stub():
+    pass
 
 
 @app.post("/api/agents")
@@ -1592,19 +1638,21 @@ app.on('window-all-closed', () => {{ if (process.platform !== 'darwin') app.quit
 async def download_package(folder: str, filename: str):
     from fastapi.responses import FileResponse
     safe_f = _sanitize(folder)
-    safe_n = filename.replace("..", "").replace("/", "").replace("\\", "")
-    # search in dist_packages/<folder>/
-    path = DIST_DIR / safe_f / safe_n
+    # Strip any path separators or traversal sequences from filename
+    safe_n = _sanitize(filename.rsplit(".", 1)[0]) + ("." + filename.rsplit(".", 1)[1] if "." in filename else "")
+    safe_n = safe_n.replace("..", "")
+    path = (DIST_DIR / safe_f / safe_n).resolve()
+    # Hard guard: must stay inside DIST_DIR
+    if not str(path).startswith(str(DIST_DIR.resolve())):
+        raise HTTPException(400, "Invalid path")
     if not path.exists():
-        # fallback: search recursively
-        matches = list(DIST_DIR.rglob(safe_n))
-        if not matches:
-            raise HTTPException(404, "File not found")
-        path = matches[0]
-    media = ("application/vnd.android.package-archive" if safe_n.endswith(".apk")
+        raise HTTPException(404, "File not found")
+    ext = path.suffix.lower()
+    media = ("application/vnd.android.package-archive" if ext == ".apk"
+             else "application/zip" if ext == ".zip"
              else "application/octet-stream")
-    return FileResponse(str(path), media_type=media, filename=safe_n,
-                        headers={"Content-Disposition": f'attachment; filename="{safe_n}"'})
+    return FileResponse(str(path), media_type=media, filename=path.name,
+                        headers={"Content-Disposition": f'attachment; filename="{path.name}"'})
 
 
 # ── AI Design ─────────────────────────────────────────────────────────────────
