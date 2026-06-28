@@ -1293,18 +1293,29 @@ function AppInner() {
   const [page, setPage] = useState<Page>("dashboard");
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [installDone, setInstallDone]     = useState(false);
+  const [showInstallTip, setShowInstallTip] = useState(false);
 
   useEffect(() => {
+    // Check if already installed as PWA
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+      || (window.navigator as any).standalone === true;
+    if (isStandalone) { setInstallDone(true); return; }
+
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e); };
     window.addEventListener("beforeinstallprompt", handler);
+    window.addEventListener("appinstalled", () => { setInstallDone(true); setInstallPrompt(null); });
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
   async function installApp() {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === "accepted") { setInstallDone(true); setInstallPrompt(null); add("تم تثبيت التطبيق!", "ok"); }
+    if (installPrompt) {
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      if (outcome === "accepted") { setInstallDone(true); setInstallPrompt(null); add("تم تثبيت التطبيق! ✅", "ok"); }
+    } else {
+      // Fallback: show manual instructions
+      setShowInstallTip(p => !p);
+    }
   }
 
   const nav: [Page, string, string][] = [
@@ -1333,16 +1344,28 @@ function AppInner() {
             ))}
           </nav>
           <div style={{ marginTop: "auto", padding: "0 10px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-            {!installDone && installPrompt && (
-              <button onClick={installApp} style={{
-                background: "linear-gradient(135deg,#7c3aed,#a855f7)",
-                color: "#fff", border: "none", borderRadius: 10, padding: "10px 8px",
-                cursor: "pointer", fontSize: 12, fontWeight: 600,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                boxShadow: "0 0 12px rgba(139,92,246,.4)",
-              }}>
-                ⬇ تثبيت التطبيق
-              </button>
+            {!installDone && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <button onClick={installApp} style={{
+                  background: "linear-gradient(135deg,#7c3aed,#a855f7)",
+                  color: "#fff", border: "none", borderRadius: 10, padding: "10px 8px",
+                  cursor: "pointer", fontSize: 12, fontWeight: 600,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  boxShadow: "0 0 12px rgba(139,92,246,.4)",
+                }}>
+                  ⬇ تثبيت التطبيق
+                </button>
+                {showInstallTip && (
+                  <div style={{
+                    background: "#0f1629", border: "1px solid #2a3050", borderRadius: 8,
+                    padding: "8px 10px", fontSize: 11, color: "#94a3b8", lineHeight: 1.6,
+                  }}>
+                    في Chrome/Edge:<br/>
+                    اضغط ⋮ ثم<br/>
+                    "تثبيت AI Studio"
+                  </div>
+                )}
+              </div>
             )}
             <div style={{ fontSize: 11, color: "#2a3050", textAlign: "center" }}>v3.0 · Powered by Claude</div>
           </div>
