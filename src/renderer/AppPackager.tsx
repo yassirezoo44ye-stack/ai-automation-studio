@@ -7,9 +7,9 @@ type PackState  = "idle" | "building" | "done" | "error";
 type Project    = { id: string; name: string; description: string; status: string };
 
 const LANGS = [
-  { id: "python",     label: "Python",      icon: "🐍", ext: ".exe / .apk", desc: "PyInstaller + Kivy/Buildozer" },
-  { id: "web",        label: "Web App",      icon: "🌐", ext: ".apk",        desc: "Capacitor + Android Studio" },
-  { id: "electron",   label: "Electron",     icon: "⚡", ext: ".exe",        desc: "Electron Builder" },
+  { id: "python",   label: "Python",   icon: "🐍", ext: ".exe / .apk", desc: "PyInstaller / Briefcase" },
+  { id: "web",      label: "Web App",  icon: "🌐", ext: ".apk",        desc: "Capacitor + Gradle" },
+  { id: "electron", label: "Electron", icon: "⚡", ext: ".exe",        desc: "Electron Builder NSIS" },
 ];
 
 export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => void }) {
@@ -186,13 +186,12 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
           </button>
         )}
 
-        {/* Requirements note */}
-        <div style={{ background: "rgba(245,158,11,.06)", border: "1px solid rgba(245,158,11,.2)", borderRadius: 10, padding: "10px 12px", fontSize: 12, color: "rgba(245,158,11,.8)", lineHeight: 1.6 }}>
-          <strong>متطلبات:</strong><br />
-          {target === "exe" && lang === "python" && "• PyInstaller مثبّت ✅\n• Python 3.x\n• ملف main.py في المشروع"}
-          {target === "apk" && lang === "python" && "• Buildozer (Linux/WSL)\n• Python + Kivy\n• سيُولّد ملف .spec جاهز"}
-          {target === "apk" && lang === "web"    && "• Android Studio\n• Node.js + Capacitor\n• سيُولّد مشروع جاهز"}
-          {target === "exe" && lang === "electron" && "• Node.js\n• npm install electron-builder\n• سيُولّد package.json جاهز"}
+        {/* Info note */}
+        <div style={{ background: "rgba(16,185,129,.05)", border: "1px solid rgba(16,185,129,.2)", borderRadius: 10, padding: "10px 12px", fontSize: 12, color: "rgba(16,185,129,.8)", lineHeight: 1.7 }}>
+          {target === "exe" && lang === "python"   && <><strong>✅ تثبيت مباشر</strong><br/>ينتج ملف <code>.exe</code> جاهز للتشغيل على Windows — لا حاجة لتثبيت Python.</>}
+          {target === "apk" && lang === "python"   && <><strong>📲 تثبيت مباشر</strong><br/>ينتج ملف <code>.apk</code> حقيقي — حمِّله على Android وثبِّته مباشرة (فعِّل "مصادر غير معروفة").</>}
+          {target === "apk" && lang === "web"      && <><strong>📲 تثبيت مباشر</strong><br/>ينتج ملف <code>.apk</code> عبر Capacitor + Gradle — يتطلب Node.js و Android SDK.</>}
+          {target === "exe" && lang === "electron" && <><strong>✅ مُثبِّت Windows</strong><br/>ينتج مُثبِّت NSIS — انقر عليه لتثبيت التطبيق كأي برنامج عادي. يتطلب Node.js.</>}
         </div>
       </div>
 

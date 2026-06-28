@@ -69,30 +69,35 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
   // Init canvas
   useEffect(() => {
     if (!canvasElRef.current || fabricRef.current) return;
-    const fc = new fabric.Canvas(canvasElRef.current, {
-      width: template.w * zoom,
-      height: template.h * zoom,
-      backgroundColor: bgColor,
-      selection: true,
-      preserveObjectStacking: true,
-    });
+    let fc: fabric.Canvas;
+    try {
+      fc = new fabric.Canvas(canvasElRef.current, {
+        width: template.w * zoom,
+        height: template.h * zoom,
+        backgroundColor: bgColor,
+        selection: true,
+        preserveObjectStacking: true,
+      });
+    } catch (e) {
+      console.error("Fabric init error:", e);
+      return;
+    }
     fabricRef.current = fc;
 
-    fc.on("selection:created",  e => setSelected(e.selected?.[0] ?? null));
-    fc.on("selection:updated",  e => setSelected(e.selected?.[0] ?? null));
+    fc.on("selection:created",  (e: any) => setSelected(e.selected?.[0] ?? null));
+    fc.on("selection:updated",  (e: any) => setSelected(e.selected?.[0] ?? null));
     fc.on("selection:cleared",  () => setSelected(null));
-    fc.on("mouse:down", e => {
-      if (tool !== "select" && !e.target) handleCanvasClick(fc, e);
+    fc.on("mouse:down", (e: any) => {
+      if (!e.target) handleCanvasClick(fc, e);
     });
 
-    return () => { fc.dispose(); fabricRef.current = null; };
+    return () => { try { fc.dispose(); } catch {} fabricRef.current = null; };
   }, []);
 
   // Resize canvas when template or zoom changes
   useEffect(() => {
     const fc = fabricRef.current; if (!fc) return;
-    fc.setWidth(template.w * zoom);
-    fc.setHeight(template.h * zoom);
+    fc.setDimensions({ width: template.w * zoom, height: template.h * zoom });
     fc.setZoom(zoom);
     fc.renderAll();
   }, [template, zoom]);
@@ -107,14 +112,17 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
   // Tool cursor
   useEffect(() => {
     const fc = fabricRef.current; if (!fc) return;
-    fc.defaultCursor   = tool === "select" ? "default" : "crosshair";
-    fc.isDrawingMode   = tool === "pen";
-    if (tool === "pen") { fc.freeDrawingBrush.color = fillColor; fc.freeDrawingBrush.width = 3; }
+    fc.defaultCursor = tool === "select" ? "default" : "crosshair";
+    fc.isDrawingMode = tool === "pen";
+    if (tool === "pen" && fc.freeDrawingBrush) {
+      fc.freeDrawingBrush.color = fillColor;
+      fc.freeDrawingBrush.width = 3;
+    }
   }, [tool, fillColor]);
 
-  function handleCanvasClick(fc: fabric.Canvas, e: fabric.TPointerEventInfo<fabric.TPointerEvent>) {
-    const pt = fc.getPointerFromViewport(e.viewportPoint);
-    const x = pt.x / zoom, y = pt.y / zoom;
+  function handleCanvasClick(fc: fabric.Canvas, e: any) {
+    const pt = fc.getScenePoint ? fc.getScenePoint(e.e) : (fc as any).getPointer(e.e);
+    const x = pt.x, y = pt.y;
 
     if (tool === "text") {
       const obj = new fabric.IText("اكتب هنا", {
@@ -232,11 +240,11 @@ export default function DesignStudio({ toast }: { toast: (m: string, k?: "ok"|"e
   function exportPNG() {
     const fc = fabricRef.current; if (!fc) return;
     const origZoom = fc.getZoom();
-    fc.setZoom(1); fc.setWidth(template.w); fc.setHeight(template.h);
+    fc.setZoom(1); fc.setDimensions({ width: template.w, height: template.h });
     fc.renderAll();
     const url = fc.toDataURL({ format: "png", multiplier: 1 });
     const a = document.createElement("a"); a.href = url; a.download = "design.png"; a.click();
-    fc.setZoom(origZoom); fc.setWidth(template.w * origZoom); fc.setHeight(template.h * origZoom);
+    fc.setZoom(origZoom); fc.setDimensions({ width: template.w * origZoom, height: template.h * origZoom });
     fc.renderAll(); toast("تم التصدير PNG");
   }
 

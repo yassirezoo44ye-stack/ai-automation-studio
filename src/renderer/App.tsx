@@ -1,7 +1,29 @@
-import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useRef, useEffect, useCallback, createContext, useContext, Component } from "react";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import DesignStudio from "./DesignStudio";
 import AppPackager  from "./AppPackager";
+
+// ── Error Boundary ────────────────────────────────────────────────────────────
+class PageBoundary extends Component<{ name: string; children: ReactNode }, { err: string | null }> {
+  state = { err: null };
+  static getDerivedStateFromError(e: Error) { return { err: e.message }; }
+  componentDidCatch(e: Error) { console.error("PageBoundary:", e); }
+  render() {
+    if (this.state.err) return (
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, color: "rgba(148,163,184,.6)" }}>
+        <span style={{ fontSize: 48 }}>⚠️</span>
+        <div style={{ fontSize: 16, fontWeight: 600, color: "#e2e8f0" }}>خطأ في تحميل {this.props.name}</div>
+        <div style={{ fontSize: 13, maxWidth: 420, textAlign: "center", lineHeight: 1.7 }}>{this.state.err}</div>
+        <button onClick={() => this.setState({ err: null })}
+          style={{ marginTop: 8, padding: "8px 20px", borderRadius: 8, border: "none", background: "rgba(139,92,246,.3)", color: "#e2e8f0", cursor: "pointer" }}>
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 type Page    = "dashboard" | "chat" | "agents" | "build" | "design" | "package" | "social" | "projects" | "settings";
 type Message = { id: string; role: "user" | "assistant"; content: string };
@@ -1296,8 +1318,8 @@ function AppInner() {
           {page === "chat"      && <ChatPage />}
           {page === "agents"    && <AgentsPage />}
           {page === "build"     && <BuildPage />}
-          {page === "design"    && <DesignStudio toast={add} />}
-          {page === "package"   && <AppPackager  toast={add} />}
+          {page === "design"    && <PageBoundary name="Design Studio"><DesignStudio toast={add} /></PageBoundary>}
+          {page === "package"   && <PageBoundary name="App Packager"><AppPackager  toast={add} /></PageBoundary>}
           {page === "social"    && <SocialPage />}
           {page === "projects"  && <ProjectsPage />}
           {page === "settings"  && <SettingsPage />}
