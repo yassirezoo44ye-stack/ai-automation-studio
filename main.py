@@ -1346,56 +1346,106 @@ async def package_stream(req: PackageRequest):
                 size_mb = round(exe.stat().st_size / 1024 / 1024, 1)
                 yield log(f"✅ تم البناء: {exe.name} ({size_mb} MB)", "ok")
 
-                # ── Create PowerShell installer (.bat) ──────────────────────
-                yield log("📦 إنشاء مُثبِّت Windows مع اختصارات…", "info")
-                installer_name = f"Install_{safe_name}.bat"
-                installer_path = dist_out / installer_name
+                # ── Build single-file self-extracting installer .exe ─────────
+                yield log("📦 بناء مُثبِّت واحد self-extracting…", "info")
 
-                ps_script = f"""@echo off
-chcp 65001 >nul
-echo.
-echo  ================================
-echo   تثبيت {req.app_name}
-echo  ================================
-echo.
+                import base64
+                exe_b64 = base64.b64encode(exe.read_bytes()).decode("ascii")
 
-set "INSTALL_DIR=%LOCALAPPDATA%\\{safe_name}"
-set "EXE_NAME={exe.name}"
-set "APP_NAME={req.app_name}"
+                installer_py = dist_out / f"_installer_{safe_name}.py"
+                installer_py.write_text(f"""
+import base64, os, sys, ctypes, winreg
+from pathlib import Path
 
-echo [1/4] إنشاء مجلد التثبيت...
-if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+APP_NAME    = {repr(req.app_name)}
+SAFE_NAME   = {repr(safe_name)}
+EXE_NAME    = {repr(exe.name)}
+EXE_B64     = {repr(exe_b64)}
 
-echo [2/4] نسخ الملفات...
-copy /Y "%~dp0%EXE_NAME%" "%INSTALL_DIR%\\%EXE_NAME%" >nul
-if errorlevel 1 ( echo خطأ في النسخ! & pause & exit /b 1 )
+def is_admin():
+    try: return ctypes.windll.shell32.IsUserAnAdmin()
+    except: return False
 
-echo [3/4] إنشاء اختصار سطح المكتب...
-powershell -NoProfile -Command "$ws=New-Object -COM WScript.Shell; $s=$ws.CreateShortcut([Environment]::GetFolderPath('Desktop')+'\\\\{req.app_name}.lnk'); $s.TargetPath='%INSTALL_DIR%\\\\%EXE_NAME%'; $s.WorkingDirectory='%INSTALL_DIR%'; $s.Description='{req.app_name}'; $s.Save()"
+def create_shortcut(target, shortcut_path, work_dir):
+    import subprocess
+    ps = f'''$ws=New-Object -COM WScript.Shell
+$s=$ws.CreateShortcut("{shortcut_path}")
+$s.TargetPath="{target}"
+$s.WorkingDirectory="{work_dir}"
+$s.Description="{APP_NAME}"
+$s.Save()'''
+    subprocess.run(["powershell","-NoProfile","-Command",ps], capture_output=True)
 
-echo [4/4] إنشاء اختصار قائمة ابدأ...
-set "START_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{safe_name}"
-if not exist "%START_DIR%" mkdir "%START_DIR%"
-powershell -NoProfile -Command "$ws=New-Object -COM WScript.Shell; $s=$ws.CreateShortcut('%START_DIR%\\\\{req.app_name}.lnk'); $s.TargetPath='%INSTALL_DIR%\\\\%EXE_NAME%'; $s.WorkingDirectory='%INSTALL_DIR%'; $s.Description='{req.app_name}'; $s.Save()"
+def main():
+    install_dir = Path(os.environ["LOCALAPPDATA"]) / SAFE_NAME
+    install_dir.mkdir(parents=True, exist_ok=True)
 
-echo.
-echo  ================================
-echo   تم التثبيت بنجاح!
-echo   - اختصار سطح المكتب: {req.app_name}
-echo   - قائمة ابدأ: {req.app_name}
-echo   - مجلد التثبيت: %INSTALL_DIR%
-echo  ================================
-echo.
-pause
-"""
-                installer_path.write_text(ps_script, encoding="utf-8")
-                yield log(f"✅ مُثبِّت جاهز: {installer_name}", "ok")
-                yield log(f"📋 حمِّل الملفين وضعهما في نفس المجلد ثم شغِّل المُثبِّت", "ok")
+    # Extract embedded exe
+    exe_path = install_dir / EXE_NAME
+    print(f"[1/4] Installing to {{install_dir}}...")
+    exe_path.write_bytes(base64.b64decode(EXE_B64))
+    print("[2/4] Files extracted.")
+
+    # Desktop shortcut
+    desktop = Path(os.environ.get("USERPROFILE","")) / "Desktop"
+    create_shortcut(str(exe_path), str(desktop / f"{{APP_NAME}}.lnk"), str(install_dir))
+    print("[3/4] Desktop shortcut created.")
+
+    # Start Menu shortcut
+    start_menu = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / SAFE_NAME
+    start_menu.mkdir(parents=True, exist_ok=True)
+    create_shortcut(str(exe_path), str(start_menu / f"{{APP_NAME}}.lnk"), str(install_dir))
+    print("[4/4] Start Menu shortcut created.")
+
+    print(f"\\n✅ تم تثبيت {{APP_NAME}} بنجاح!")
+    print(f"   اختصار سطح المكتب: {{APP_NAME}}")
+    print(f"   المجلد: {{install_dir}}")
+
+    # Launch the app
+    import subprocess
+    subprocess.Popen([str(exe_path)], cwd=str(install_dir))
+
+if __name__ == "__main__":
+    main()
+""", encoding="utf-8")
+
+                # Build installer exe with PyInstaller
+                installer_exe_name = f"Install_{safe_name}"
+                installer_dist = dist_out / "_installer_dist"
+                installer_dist.mkdir(exist_ok=True)
+                ins_cmd = [
+                    "python", "-m", "PyInstaller",
+                    "--onefile", "--noconfirm", "--clean", "--console",
+                    "--name", installer_exe_name,
+                    "--distpath", str(installer_dist.resolve()),
+                    "--workpath", str((dist_out / "_ins_build").resolve()),
+                    "--specpath", str((dist_out / "_ins_spec").resolve()),
+                    str(installer_py.resolve()),
+                ]
+                yield log(f"$ PyInstaller installer…", "cmd")
+                yield log("⏳ بناء المُثبِّت — دقيقة واحدة…", "info")
+                rc2 = None
+                async for line, code in _run_stream(ins_cmd, str(Path(__file__).parent)):
+                    if code is not None: rc2 = code; break
+                    if line.strip():
+                        yield log(line, "info")
+
+                final_installer = installer_dist / f"{installer_exe_name}.exe"
+                if rc2 != 0 or not final_installer.exists():
+                    yield log("⚠️ فشل بناء المُثبِّت — سيُقدَّم الـ .exe المباشر", "info")
+                    yield done(exe.name, f"/api/package/download/{safe_name}/{exe.name}", size_mb)
+                    return
+
+                # Move installer to dist_out root for easy serving
+                final_dest = dist_out / final_installer.name
+                shutil.copy2(final_installer, final_dest)
+                ins_size = round(final_dest.stat().st_size / 1024 / 1024, 1)
+                yield log(f"✅ مُثبِّت جاهز: {installer_exe_name}.exe ({ins_size} MB)", "ok")
+                yield log("🖱️ نقرة واحدة = تثبيت + اختصار سطح المكتب + قائمة ابدأ + تشغيل فوري", "ok")
                 yield done(
-                    installer_name,
-                    f"/api/package/download/{safe_name}/{installer_name}",
-                    size_mb,
-                    extra_files=[{"name": exe.name, "url": f"/api/package/download/{safe_name}/{exe.name}"}]
+                    final_dest.name,
+                    f"/api/package/download/{safe_name}/{final_dest.name}",
+                    ins_size
                 )
 
             # ── 2. Python → .APK (Briefcase — builds real APK) ───────────────

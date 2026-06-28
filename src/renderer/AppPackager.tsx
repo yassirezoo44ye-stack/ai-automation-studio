@@ -218,17 +218,11 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
 
         {state === "done" && downloadUrl && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <button onClick={download} style={{ ...F.btnPrimary, padding: "12px", background: "linear-gradient(135deg,#10b981,#059669)" }}>
-              ⬇ تحميل المُثبِّت (.bat)
+            <button onClick={download} style={{ ...F.btnPrimary, padding: "14px", fontSize: 14, background: "linear-gradient(135deg,#10b981,#059669)", boxShadow: "0 4px 20px rgba(16,185,129,.4)" }}>
+              ⬇ تحميل المُثبِّت
             </button>
-            {extraFiles.map(f => (
-              <button key={f.url} onClick={() => { const a = document.createElement("a"); a.href = `${API}${f.url}`; a.click(); toast("Downloading…","info"); }}
-                style={{ ...F.btnPrimary, padding: "12px", background: "linear-gradient(135deg,#3b82f6,#2563eb)" }}>
-                ⬇ تحميل {f.name}
-              </button>
-            ))}
-            <div style={{ fontSize: 11, color: "rgba(148,163,184,.5)", lineHeight: 1.7, padding: "6px 8px", background: "rgba(255,255,255,.03)", borderRadius: 8 }}>
-              📋 ضع الملفين في نفس المجلد<br/>ثم شغِّل <strong>Install_*.bat</strong> للتثبيت
+            <div style={{ fontSize: 11, color: "rgba(52,211,153,.7)", lineHeight: 1.8, padding: "8px 10px", background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.15)", borderRadius: 8, textAlign: "center" }}>
+              🖱️ نقرة واحدة على الملف<br/>= تثبيت + اختصار سطح المكتب<br/>+ قائمة ابدأ + تشغيل فوري
             </div>
           </div>
         )}
