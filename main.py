@@ -1260,6 +1260,13 @@ async def package_stream(req: PackageRequest):
                         main_py = candidates[0]
                 yield log(f"✅ ملف الإدخال: {main_py.name}", "ok")
 
+                # Auto-detect GUI vs CLI: use --windowed only for GUI toolkits
+                GUI_IMPORTS = ("tkinter", "PyQt", "PySide", "wx", "kivy", "toga", "pyglet", "pygame")
+                src_text = main_py.read_text(encoding="utf-8", errors="replace")
+                is_gui = any(lib in src_text for lib in GUI_IMPORTS)
+                windowed_flag = "--windowed" if (is_gui or not req.console) and is_gui else "--console"
+                yield log(f"{'🖼 GUI detected → --windowed' if is_gui else '⌨️ CLI detected → --console'}", "info")
+
                 # install requirements if any
                 req_txt = ws / "requirements.txt"
                 if req_txt.exists():
@@ -1282,7 +1289,7 @@ async def package_stream(req: PackageRequest):
                     "python", "-m", "PyInstaller",
                     "--onefile" if req.one_file else "--onedir",
                     "--noconfirm", "--clean",
-                    "--windowed" if not req.console else "--console",
+                    windowed_flag,
                     "--name", safe_name,
                     "--distpath", str(dist_out.resolve()),
                     "--workpath",  str(build_tmp.resolve()),
