@@ -151,15 +151,20 @@ app.add_middleware(
 USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
-# ── Health ────────────────────────────────────────────────────────────────────
+# ── Static Frontend ───────────────────────────────────────────────────────────
+
+DIST = Path(__file__).parent / "dist"
+if DIST.exists():
+    app.mount("/assets", StaticFiles(directory=str(DIST / "assets")), name="assets")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return """<!DOCTYPE html><html><head><meta charset="UTF-8"><title>AI Automation Studio</title></head>
-<body style="font-family:sans-serif;padding:40px;background:#0d0f14;color:#e2e8f0">
-<h1 style="color:#6c8ef7">◈ AI Automation Studio</h1>
-<p>Backend running. <a href="/docs" style="color:#6c8ef7">API Docs →</a></p>
-</body></html>"""
+    index = DIST / "index.html"
+    if index.exists():
+        return HTMLResponse(index.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>◈ AI Automation Studio — Backend Running</h1><p><a href='/docs'>API Docs</a></p>")
+
+# ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():

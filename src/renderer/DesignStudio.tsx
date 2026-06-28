@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as fabric from "fabric";
 
-const API = "http://127.0.0.1:8000";
+const API = import.meta.env.VITE_API_URL ?? "";
 
 type Tool = "select" | "text" | "rect" | "circle" | "triangle" | "line" | "pen";
 type Template = { name: string; w: number; h: number; icon: string };

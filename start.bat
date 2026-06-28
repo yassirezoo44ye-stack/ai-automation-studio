@@ -1,45 +1,64 @@
 @echo off
 title AI Automation Studio
 color 0A
+chcp 65001 >nul
+
 echo.
-echo  =====================================
-echo   AI Automation Studio - Starting...
-echo  =====================================
+echo  ====================================
+echo   AI Automation Studio  v3.0
+echo   Powered by Claude
+echo  ====================================
 echo.
 
-:: Load env from .env file
+:: Load .env
+if not exist ".env" (
+    echo [ERROR] .env not found. Create it with ANTHROPIC_API_KEY and DATABASE_URL
+    pause & exit /b 1
+)
 for /f "tokens=1,* delims==" %%a in (.env) do (
-    if not "%%a"=="" if not "%%a:~0,1%"=="#" set %%a=%%b
+    if not "%%a"=="" set %%a=%%b
 )
 
-:: Start backend
-echo [1/2] Starting FastAPI backend on port 8000...
-start "AI Studio Backend" /min python main.py
+:: Build frontend if dist missing
+if not exist "dist\index.html" (
+    echo [1/3] Building frontend...
+    call npm run build
+    if errorlevel 1 ( echo Build failed! & pause & exit /b 1 )
+    echo [1/3] Frontend ready.
+) else (
+    echo [1/3] Frontend dist OK.
+)
 
-:: Wait for backend
-timeout /t 6 /nobreak >nul
-echo [1/2] Backend ready.
+:: Kill old backend
+echo [2/3] Stopping any old server...
+for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":8000.*LISTENING"') do (
+    taskkill /PID %%p /F >nul 2>&1
+)
+timeout /t 1 /nobreak >nul
 
-:: Start frontend
-echo [2/2] Starting React frontend on port 3000...
-start "AI Studio Frontend" /min cmd /c npm run dev
+:: Start backend (serves frontend too)
+echo [3/3] Starting server...
+start "AI Studio" /min python main.py
 
-timeout /t 5 /nobreak >nul
-echo [2/2] Frontend ready.
+:: Wait until healthy
+:wait
+timeout /t 2 /nobreak >nul
+curl -s http://127.0.0.1:8000/health >nul 2>&1
+if errorlevel 1 goto wait
+
 echo.
-echo  =====================================
-echo   App running at http://localhost:3000
-echo   API docs at  http://localhost:8000/docs
-echo  =====================================
+echo  ====================================
+echo   Ready!  http://localhost:8000
+echo   Docs:   http://localhost:8000/docs
+echo  ====================================
 echo.
 
-:: Open browser
-start http://localhost:3000
-
-echo  Press any key to stop all servers...
+start http://localhost:8000
+echo  Press any key to stop the server...
 pause >nul
 
 :: Cleanup
-taskkill /fi "WINDOWTITLE eq AI Studio Backend*" /f >nul 2>&1
-taskkill /fi "WINDOWTITLE eq AI Studio Frontend*" /f >nul 2>&1
-echo Servers stopped.
+for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":8000.*LISTENING"') do (
+    taskkill /PID %%p /F >nul 2>&1
+)
+echo Server stopped.

@@ -31,7 +31,7 @@ type Conv    = { id: string; title: string; updated_at: string };
 type Project = { id: string; name: string; description: string; status: string; created_at: string };
 type Agent   = { id: string; name: string; avatar: string; description: string; system_prompt: string; model: string; temperature: number; message_count: number; created_at: string };
 
-const API = "http://127.0.0.1:8000";
+const API = import.meta.env.VITE_API_URL ?? "";
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 type Toast = { id: string; msg: string; kind: "ok" | "err" | "info" };
