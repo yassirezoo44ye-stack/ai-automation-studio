@@ -24,6 +24,7 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
   const [state, setState]           = useState<PackState>("idle");
   const [logs, setLogs]             = useState<{ text: string; type: "info"|"ok"|"err"|"cmd" }[]>([]);
   const [downloadUrl, setDownload]  = useState("");
+  const [extraFiles, setExtraFiles] = useState<{name:string;url:string}[]>([]);
   const [files, setFiles]           = useState<{ path: string; size: number }[]>([]);
   const [uploading, setUploading]   = useState(false);
   const logsEndRef  = useRef<HTMLDivElement>(null);
@@ -67,7 +68,7 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
 
   async function startBuild() {
     if (state === "building") { abortRef.current?.abort(); return; }
-    setState("building"); setLogs([]); setDownload("");
+    setState("building"); setLogs([]); setDownload(""); setExtraFiles([]);
     addLog(`▶ Starting ${target.toUpperCase()} build for "${appName}"…`, "cmd");
     addLog(`  Project: ${projectId} | Lang: ${lang} | Version: ${appVersion}`, "info");
 
@@ -97,7 +98,7 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
           try {
             const ev = JSON.parse(line.slice(6));
             if (ev.type === "log")        addLog(ev.text, ev.level ?? "info");
-            else if (ev.type === "done")  { setState("done"); setDownload(ev.download_url ?? ""); addLog(`✅ Build successful! Output: ${ev.output_file}`, "ok"); toast("تم البناء بنجاح! 🎉"); }
+            else if (ev.type === "done")  { setState("done"); setDownload(ev.download_url ?? ""); setExtraFiles(ev.extra_files ?? []); addLog(`✅ Build successful! Output: ${ev.output_file}`, "ok"); toast("تم البناء بنجاح! 🎉"); }
             else if (ev.type === "error") { setState("error"); addLog(`❌ ${ev.message}`, "err"); toast(ev.message, "err"); }
           } catch { /* malformed SSE line, skip */ }
         }
@@ -216,14 +217,25 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
         </button>
 
         {state === "done" && downloadUrl && (
-          <button onClick={download} style={{ ...F.btnPrimary, padding: "12px", background: "linear-gradient(135deg,#10b981,#059669)" }}>
-            ⬇ تحميل الملف
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button onClick={download} style={{ ...F.btnPrimary, padding: "12px", background: "linear-gradient(135deg,#10b981,#059669)" }}>
+              ⬇ تحميل المُثبِّت (.bat)
+            </button>
+            {extraFiles.map(f => (
+              <button key={f.url} onClick={() => { const a = document.createElement("a"); a.href = `${API}${f.url}`; a.click(); toast("Downloading…","info"); }}
+                style={{ ...F.btnPrimary, padding: "12px", background: "linear-gradient(135deg,#3b82f6,#2563eb)" }}>
+                ⬇ تحميل {f.name}
+              </button>
+            ))}
+            <div style={{ fontSize: 11, color: "rgba(148,163,184,.5)", lineHeight: 1.7, padding: "6px 8px", background: "rgba(255,255,255,.03)", borderRadius: 8 }}>
+              📋 ضع الملفين في نفس المجلد<br/>ثم شغِّل <strong>Install_*.bat</strong> للتثبيت
+            </div>
+          </div>
         )}
 
         {/* Info note */}
         <div style={{ background: "rgba(16,185,129,.05)", border: "1px solid rgba(16,185,129,.2)", borderRadius: 10, padding: "10px 12px", fontSize: 12, color: "rgba(16,185,129,.8)", lineHeight: 1.7 }}>
-          {target === "exe" && lang === "python"   && <><strong>✅ تثبيت مباشر</strong><br/>ينتج ملف <code>.exe</code> جاهز للتشغيل على Windows — لا حاجة لتثبيت Python.</>}
+          {target === "exe" && lang === "python"   && <><strong>✅ مُثبِّت Windows</strong><br/>ينتج <code>Install_*.bat</code> + <code>.exe</code> — شغِّل المُثبِّت لتثبيت البرنامج مع اختصار سطح المكتب وقائمة ابدأ.</>}
           {target === "apk" && lang === "python"   && <><strong>📲 تثبيت مباشر</strong><br/>ينتج ملف <code>.apk</code> حقيقي — حمِّله على Android وثبِّته مباشرة (فعِّل "مصادر غير معروفة").</>}
           {target === "apk" && lang === "web"      && <><strong>📲 تثبيت مباشر</strong><br/>ينتج ملف <code>.apk</code> عبر Capacitor + Gradle — يتطلب Node.js و Android SDK.</>}
           {target === "exe" && lang === "electron" && <><strong>✅ مُثبِّت Windows</strong><br/>ينتج مُثبِّت NSIS — انقر عليه لتثبيت التطبيق كأي برنامج عادي. يتطلب Node.js.</>}

@@ -1244,8 +1244,8 @@ async def package_stream(req: PackageRequest):
     async def event_stream():
         def log(text: str, level: str = "info"):
             return f"data: {json.dumps({'type':'log','text':text,'level':level})}\n\n"
-        def done(file: str, url: str, size_mb: float = 0):
-            return f"data: {json.dumps({'type':'done','output_file':file,'download_url':url,'size_mb':size_mb})}\n\n"
+        def done(file: str, url: str, size_mb: float = 0, extra_files: list = None):
+            return f"data: {json.dumps({'type':'done','output_file':file,'download_url':url,'size_mb':size_mb,'extra_files': extra_files or []})}\n\n"
         def err(msg: str):
             return f"data: {json.dumps({'type':'error','message':msg})}\n\n"
 
@@ -1345,8 +1345,58 @@ async def package_stream(req: PackageRequest):
 
                 size_mb = round(exe.stat().st_size / 1024 / 1024, 1)
                 yield log(f"✅ تم البناء: {exe.name} ({size_mb} MB)", "ok")
-                yield log(f"📥 جاهز للتنزيل والتشغيل المباشر على Windows", "ok")
-                yield done(exe.name, f"/api/package/download/{safe_name}/{exe.name}", size_mb)
+
+                # ── Create PowerShell installer (.bat) ──────────────────────
+                yield log("📦 إنشاء مُثبِّت Windows مع اختصارات…", "info")
+                installer_name = f"Install_{safe_name}.bat"
+                installer_path = dist_out / installer_name
+
+                ps_script = f"""@echo off
+chcp 65001 >nul
+echo.
+echo  ================================
+echo   تثبيت {req.app_name}
+echo  ================================
+echo.
+
+set "INSTALL_DIR=%LOCALAPPDATA%\\{safe_name}"
+set "EXE_NAME={exe.name}"
+set "APP_NAME={req.app_name}"
+
+echo [1/4] إنشاء مجلد التثبيت...
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+
+echo [2/4] نسخ الملفات...
+copy /Y "%~dp0%EXE_NAME%" "%INSTALL_DIR%\\%EXE_NAME%" >nul
+if errorlevel 1 ( echo خطأ في النسخ! & pause & exit /b 1 )
+
+echo [3/4] إنشاء اختصار سطح المكتب...
+powershell -NoProfile -Command "$ws=New-Object -COM WScript.Shell; $s=$ws.CreateShortcut([Environment]::GetFolderPath('Desktop')+'\\\\{req.app_name}.lnk'); $s.TargetPath='%INSTALL_DIR%\\\\%EXE_NAME%'; $s.WorkingDirectory='%INSTALL_DIR%'; $s.Description='{req.app_name}'; $s.Save()"
+
+echo [4/4] إنشاء اختصار قائمة ابدأ...
+set "START_DIR=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{safe_name}"
+if not exist "%START_DIR%" mkdir "%START_DIR%"
+powershell -NoProfile -Command "$ws=New-Object -COM WScript.Shell; $s=$ws.CreateShortcut('%START_DIR%\\\\{req.app_name}.lnk'); $s.TargetPath='%INSTALL_DIR%\\\\%EXE_NAME%'; $s.WorkingDirectory='%INSTALL_DIR%'; $s.Description='{req.app_name}'; $s.Save()"
+
+echo.
+echo  ================================
+echo   تم التثبيت بنجاح!
+echo   - اختصار سطح المكتب: {req.app_name}
+echo   - قائمة ابدأ: {req.app_name}
+echo   - مجلد التثبيت: %INSTALL_DIR%
+echo  ================================
+echo.
+pause
+"""
+                installer_path.write_text(ps_script, encoding="utf-8")
+                yield log(f"✅ مُثبِّت جاهز: {installer_name}", "ok")
+                yield log(f"📋 حمِّل الملفين وضعهما في نفس المجلد ثم شغِّل المُثبِّت", "ok")
+                yield done(
+                    installer_name,
+                    f"/api/package/download/{safe_name}/{installer_name}",
+                    size_mb,
+                    extra_files=[{"name": exe.name, "url": f"/api/package/download/{safe_name}/{exe.name}"}]
+                )
 
             # ── 2. Python → .APK (Briefcase — builds real APK) ───────────────
             elif req.lang == "python" and req.target == "apk":
