@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -685,6 +685,20 @@ async def read_file(project_id: str, file_path: str):
     except Exception:
         content = "<binary file>"
     return {"path": file_path, "content": content}
+
+
+@app.post("/api/projects/{project_id}/upload")
+async def upload_files(project_id: str, files: list[UploadFile]):
+    """Upload one or more files into a project workspace."""
+    ws = workspace(project_id)
+    saved = []
+    for uf in files:
+        safe_name = Path(uf.filename).name  # strip any directory component
+        dest = safe_path(ws, safe_name)
+        content = await uf.read()
+        dest.write_bytes(content)
+        saved.append({"path": safe_name, "size": len(content)})
+    return {"saved": saved, "count": len(saved)}
 
 
 @app.delete("/api/projects/{project_id}/files")

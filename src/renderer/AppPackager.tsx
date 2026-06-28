@@ -25,8 +25,10 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
   const [logs, setLogs]             = useState<{ text: string; type: "info"|"ok"|"err"|"cmd" }[]>([]);
   const [downloadUrl, setDownload]  = useState("");
   const [files, setFiles]           = useState<{ path: string; size: number }[]>([]);
-  const logsEndRef = useRef<HTMLDivElement>(null);
-  const abortRef   = useRef<AbortController | null>(null);
+  const [uploading, setUploading]   = useState(false);
+  const logsEndRef  = useRef<HTMLDivElement>(null);
+  const abortRef    = useRef<AbortController | null>(null);
+  const uploadRef   = useRef<HTMLInputElement>(null);
 
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
 
@@ -43,6 +45,24 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
 
   function addLog(text: string, type: "info"|"ok"|"err"|"cmd" = "info") {
     setLogs(p => [...p, { text, type }]);
+  }
+
+  async function uploadFiles(ev: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(ev.target.files ?? []);
+    if (!picked.length) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      picked.forEach(f => fd.append("files", f));
+      const r = await fetch(`${API}/api/projects/${projectId}/upload`, { method: "POST", body: fd });
+      if (!r.ok) throw new Error(`Upload failed (${r.status})`);
+      const data = await r.json();
+      toast(`✅ رُفع ${data.count} ملف`, "ok");
+      // refresh file list
+      const fl = await fetch(`${API}/api/projects/${projectId}/files`).then(x => x.json());
+      setFiles(fl.files ?? []);
+    } catch (e: any) { toast(e.message, "err"); }
+    finally { setUploading(false); ev.target.value = ""; }
   }
 
   async function startBuild() {
@@ -154,9 +174,22 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+          {/* Upload your own files */}
+          <input ref={uploadRef} type="file" multiple accept=".py,.txt,.json,.toml,.cfg,.ini,.png,.ico"
+            style={{ display: "none" }} onChange={uploadFiles} />
+          <button onClick={() => uploadRef.current?.click()} disabled={uploading}
+            style={{ marginTop: 8, width: "100%", padding: "8px", borderRadius: 8, border: "1px dashed rgba(139,92,246,.4)",
+              background: "rgba(139,92,246,.07)", color: "#a78bfa", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
+            {uploading ? "⏳ جاري الرفع…" : "📂 ارفع ملفاتك (.py وغيرها)"}
+          </button>
           {files.length > 0 && (
             <div style={{ marginTop: 6, fontSize: 11, color: hasMainPy ? "#34d399" : "#f59e0b" }}>
               {hasMainPy ? `✅ ${files.length} ملف، main.py موجود` : `⚠️ ${files.length} ملف — لا يوجد main.py`}
+            </div>
+          )}
+          {files.length > 0 && (
+            <div style={{ marginTop: 4, maxHeight: 80, overflowY: "auto", fontSize: 11, color: "rgba(148,163,184,.5)", lineHeight: 1.8 }}>
+              {files.map(f => <div key={f.path}>📄 {f.path} ({(f.size/1024).toFixed(1)} KB)</div>)}
             </div>
           )}
         </div>
