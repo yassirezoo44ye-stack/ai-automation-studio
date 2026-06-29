@@ -3,10 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "jsx": "react-jsx",
-    "moduleResolution": "Node16",
-    "ignoreDeprecations": "6.0",
+    "moduleResolution": "Bundler",
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }

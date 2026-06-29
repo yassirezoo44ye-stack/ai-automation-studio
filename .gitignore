@@ -1,6 +1,7 @@
 .env
 __pycache__/
 *.pyc
+*.pyo
 venv/
 .venv/
 node_modules/
@@ -8,3 +9,10 @@ dist/
 build/
 *.egg-info/
 backend/
+*.db
+*.sqlite
+dist_packages/
+fly.toml
+workspaces/
+.DS_Store
+*.log
