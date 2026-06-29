@@ -16,11 +16,52 @@ from contextlib import asynccontextmanager
 import uuid
 import anthropic
 import stripe
+import hmac as _hmac
+import hashlib as _hashlib
+import base64 as _base64
+import time as _time
+import secrets as _secrets
+from collections import defaultdict
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_ID       = os.getenv("STRIPE_PRICE_ID", "")   # $1/month price ID
 APP_URL               = os.getenv("APP_URL", "http://localhost:8000")
+
+# ── Session token signing ─────────────────────────────────────────────────────
+SESSION_SECRET = os.getenv("SESSION_SECRET") or _secrets.token_hex(32)
+_TOKEN_TTL = 3600 * 6  # 6 hours
+
+def _make_token(email: str, trial: bool, days_remaining: int) -> str:
+    payload = {"e": email, "exp": int(_time.time()) + _TOKEN_TTL, "trial": trial, "dr": days_remaining}
+    data = _base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    sig = _hmac.new(SESSION_SECRET.encode(), data.encode(), _hashlib.sha256).hexdigest()
+    return f"{data}.{sig}"
+
+def _verify_token(token: str) -> dict | None:
+    try:
+        data, sig = token.rsplit(".", 1)
+        expected = _hmac.new(SESSION_SECRET.encode(), data.encode(), _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return None
+        padded = data + "=" * (4 - len(data) % 4)
+        payload = json.loads(_base64.urlsafe_b64decode(padded))
+        if payload["exp"] < int(_time.time()):
+            return None
+        return payload
+    except Exception:
+        return None
+
+# ── In-memory rate limiter ────────────────────────────────────────────────────
+_rl_store: dict[str, list[float]] = defaultdict(list)
+
+def _check_rate_limit(key: str, max_calls: int = 10, window: int = 60) -> bool:
+    now = _time.time()
+    _rl_store[key] = [t for t in _rl_store[key] if now - t < window]
+    if len(_rl_store[key]) >= max_calls:
+        return False
+    _rl_store[key].append(now)
+    return True
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -140,6 +181,12 @@ async def init_db(conn: asyncpg.Connection):
             updated_at TIMESTAMPTZ DEFAULT NOW()
         )
     ''')
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS trials (
+            email TEXT PRIMARY KEY,
+            started_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    ''')
     # Seed test user
     test_uid = uuid.UUID("00000000-0000-0000-0000-000000000000")
     await conn.execute('''
@@ -177,6 +224,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
+            "frame-src https://checkout.stripe.com https://js.stripe.com; "
+            "font-src 'self' data:;"
+        )
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
@@ -263,17 +319,47 @@ async def create_checkout(req: CheckoutRequest):
         raise HTTPException(400, str(e))
 
 @app.get("/api/subscription/status")
-async def subscription_status(email: str):
+async def subscription_status(email: str, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"sub:{client_ip}", max_calls=10, window=60):
+        raise HTTPException(429, "Too many requests. Try again later.")
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
+        sub = await conn.fetchrow(
             "SELECT status, current_period_end FROM subscriptions WHERE email=$1", email
         )
-    if not row:
-        return {"active": False}
-    active = row["status"] == "active" and (
-        row["current_period_end"] is None or row["current_period_end"] > datetime.utcnow()
-    )
-    return {"active": active, "status": row["status"], "period_end": row["current_period_end"]}
+        if sub and sub["status"] == "active" and (
+            sub["current_period_end"] is None or sub["current_period_end"] > datetime.utcnow()
+        ):
+            return {"active": True, "trial": False, "token": _make_token(email, False, 0)}
+
+        trial = await conn.fetchrow("SELECT started_at FROM trials WHERE email=$1", email)
+        if not trial:
+            await conn.execute(
+                "INSERT INTO trials (email) VALUES ($1) ON CONFLICT DO NOTHING", email
+            )
+            trial = await conn.fetchrow("SELECT started_at FROM trials WHERE email=$1", email)
+
+        elapsed = (datetime.utcnow() - trial["started_at"].replace(tzinfo=None)).days
+        days_remaining = max(0, 7 - elapsed)
+        if days_remaining > 0:
+            return {
+                "active": True,
+                "trial": True,
+                "days_remaining": days_remaining,
+                "token": _make_token(email, True, days_remaining),
+            }
+
+    return {"active": False, "trial_expired": True}
+
+@app.post("/api/subscription/verify")
+async def verify_session(request: Request):
+    body = await request.json()
+    token = body.get("token", "")
+    payload = _verify_token(token)
+    if not payload:
+        return {"valid": False}
+    refreshed = _make_token(payload["e"], payload.get("trial", False), payload.get("dr", 0))
+    return {"valid": True, "trial": payload.get("trial", False), "days_remaining": payload.get("dr", 0), "token": refreshed}
 
 @app.post("/api/stripe/webhook")
 async def stripe_webhook(request: Request):
