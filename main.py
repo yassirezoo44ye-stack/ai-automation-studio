@@ -722,7 +722,6 @@ class BuildRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=2000)
 
 class RunRequest2(BaseModel):
-    project_id: str
     command: Optional[str] = None
 
 class FileWrite(BaseModel):
