@@ -99,7 +99,7 @@ export default function SubscriptionGate({ children }: Props) {
         {/* Logo */}
         <div style={{ fontSize: 56, marginBottom: 8 }}>🤖</div>
         <h1 style={{ margin: "0 0 8px", fontSize: 26, fontWeight: 700 }}>
-          AI Automation Studio
+          Axon
         </h1>
         <p style={{ color: "#888", margin: "0 0 32px", fontSize: 14 }}>
           منصة الأتمتة الذكية بالذكاء الاصطناعي

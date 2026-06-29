@@ -1,6 +1,6 @@
 {
-  "name": "AI Automation Studio",
-  "short_name": "AI Studio",
+  "name": "Axon",
+  "short_name": "Axon",
   "description": "Platform powered by Claude — Chat, Build, Design, Package",
   "start_url": "/",
   "display": "standalone",

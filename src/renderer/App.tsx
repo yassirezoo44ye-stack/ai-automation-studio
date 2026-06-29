@@ -369,7 +369,7 @@ function ChatPage() {
                 {activeAgent ? activeAgent.avatar : "◈"}
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#f1f5f9", marginBottom: 8, letterSpacing: "-.3px" }}>
-                {activeAgent ? activeAgent.name : "AI Automation Studio"}
+                {activeAgent ? activeAgent.name : "Axon"}
               </div>
               <div style={{ fontSize: 14, color: "rgba(148,163,184,.5)", maxWidth: 340, lineHeight: 1.6 }}>
                 {activeAgent?.description ?? "ابدأ محادثة جديدة أو اختر واحدة من القائمة الجانبية"}
@@ -1258,7 +1258,7 @@ function SettingsPage() {
         <div style={S.card}>
           <div style={S.cardTitle}>About</div>
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-            <Row label="App"      value="AI Automation Studio" />
+            <Row label="App"      value="Axon" />
             <Row label="Version"  value="3.0.0" />
             <Row label="Frontend" value="React 19 + Vite 8" />
             <Row label="Backend"  value="FastAPI + asyncpg" />
@@ -1333,7 +1333,7 @@ function AppInner() {
   return (
       <div style={S.root}>
         <aside style={S.sidebar}>
-          <div style={S.sidebarLogo}>◈ AI Studio</div>
+          <div style={S.sidebarLogo}>◈ Axon</div>
           <nav style={S.nav}>
             {nav.map(([id, icon, label]) => (
               <div key={id} onClick={() => setPage(id)}
@@ -1362,7 +1362,7 @@ function AppInner() {
                   }}>
                     في Chrome/Edge:<br/>
                     اضغط ⋮ ثم<br/>
-                    "تثبيت AI Studio"
+                    "تثبيت Axon"
                   </div>
                 )}
               </div>
