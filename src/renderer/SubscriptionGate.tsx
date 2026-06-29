@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import AxonLogo from "./AxonLogo";
 
 const API = import.meta.env.VITE_API_URL ?? "";
 const TRIAL_DAYS = 7;
@@ -166,7 +167,9 @@ export default function SubscriptionGate({ children }: Props) {
         background: "#12121a", border: "1px solid #2a2a3a", borderRadius: 20,
         padding: "48px 40px", maxWidth: 420, width: "90%", textAlign: "center"
       }}>
-        <div style={{ fontSize: 56, marginBottom: 8 }}>🤖</div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <AxonLogo size={72} />
+        </div>
         <h1 style={{ margin: "0 0 8px", fontSize: 26, fontWeight: 700 }}>Axon</h1>
         <p style={{ color: "#888", margin: "0 0 24px", fontSize: 14 }}>
           منصة الأتمتة الذكية بالذكاء الاصطناعي
@@ -186,7 +189,7 @@ export default function SubscriptionGate({ children }: Props) {
 
         <div style={{ textAlign: "right", marginBottom: 28 }}>
           {[
-            "🤖 وكلاء ذكاء اصطناعي غير محدودة",
+            "🧠 وكلاء ذكاء اصطناعي غير محدودة",
             "💬 محادثات مع Claude AI",
             "🎨 استوديو التصميم",
             "📦 تحزيم تطبيقات Python",

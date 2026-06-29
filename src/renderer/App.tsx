@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import DesignStudio from "./DesignStudio";
 import AppPackager  from "./AppPackager";
+import AxonLogo from "./AxonLogo";
 
 // ── Error Boundary ────────────────────────────────────────────────────────────
 class PageBoundary extends Component<{ name: string; children: ReactNode }, { err: string | null }> {
@@ -366,7 +367,7 @@ function ChatPage() {
           {messages.length === 0 && (
             <div style={S.empty}>
               <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 20px", background: "linear-gradient(135deg, rgba(139,92,246,.25), rgba(99,102,241,.2))", border: "1px solid rgba(139,92,246,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>
-                {activeAgent ? activeAgent.avatar : "◈"}
+                {activeAgent ? activeAgent.avatar : <AxonLogo size={44} />}
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#f1f5f9", marginBottom: 8, letterSpacing: "-.3px" }}>
                 {activeAgent ? activeAgent.name : "Axon"}
@@ -1333,7 +1334,10 @@ function AppInner() {
   return (
       <div style={S.root}>
         <aside style={S.sidebar}>
-          <div style={S.sidebarLogo}>◈ Axon</div>
+          <div style={S.sidebarLogo}>
+            <AxonLogo size={22} style={{ display: "block" }} />
+            <span>Axon</span>
+          </div>
           <nav style={S.nav}>
             {nav.map(([id, icon, label]) => (
               <div key={id} onClick={() => setPage(id)}
@@ -1500,6 +1504,7 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 16, fontWeight: 700, letterSpacing: "-0.3px",
     background: "linear-gradient(135deg, #a78bfa, #6366f1)",
     WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+    display: "flex", alignItems: "center", gap: 8,
   },
   nav:           { display: "flex", flexDirection: "column", gap: 2, padding: "0 10px" },
   navItem: {
