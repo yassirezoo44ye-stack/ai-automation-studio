@@ -320,7 +320,10 @@ async def create_checkout(req: CheckoutRequest):
 
 @app.get("/api/subscription/status")
 async def subscription_status(email: str, request: Request):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or (request.client.host if request.client else "unknown")
+    )
     if not _check_rate_limit(f"sub:{client_ip}", max_calls=10, window=60):
         raise HTTPException(429, "Too many requests. Try again later.")
     async with pool.acquire() as conn:
