@@ -3,7 +3,7 @@ services:
     name: ai-automation-studio
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free
+    plan: starter
     healthCheckPath: /health
     envVars:
       - key: ANTHROPIC_API_KEY
@@ -16,6 +16,8 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      - key: SESSION_SECRET
+        generateValue: true
       - key: DATABASE_URL
         fromDatabase:
           name: ai-studio-db
