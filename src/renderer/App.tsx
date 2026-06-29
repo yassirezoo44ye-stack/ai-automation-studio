@@ -644,7 +644,11 @@ function BuildPage() {
     const controller = new AbortController(); abortRef.current = controller;
     try {
       const res = await fetch(`${API}/api/build/stream`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project_id: projectId, prompt }), signal: controller.signal });
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok || !res.body) {
+        const errBody = await res.json().catch(() => ({}));
+        const msg = errBody.detail ?? `HTTP ${res.status}`;
+        throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+      }
       const reader = res.body.getReader(); const decoder = new TextDecoder(); let buf = "";
       while (true) {
         const { done, value } = await reader.read(); if (done) break;

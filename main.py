@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, StreamingResponse, Response, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import asyncpg
@@ -216,6 +217,15 @@ async def lifespan(app: FastAPI):
 from starlette.middleware.base import BaseHTTPMiddleware
 
 app = FastAPI(title="Axon", lifespan=lifespan)
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    detail = "; ".join(
+        f"{' -> '.join(str(l) for l in e['loc'])}: {e['msg']}"
+        for e in errors
+    )
+    return JSONResponse(status_code=422, content={"detail": detail, "errors": errors})
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
