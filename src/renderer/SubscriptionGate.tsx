@@ -37,8 +37,7 @@ export default function SubscriptionGate({ children }: Props) {
         setActive(true);
       }
     } catch {
-      // offline — skip gate
-      setActive(true);
+      // network error — keep gate closed, show retry
     } finally {
       setChecking(false);
     }

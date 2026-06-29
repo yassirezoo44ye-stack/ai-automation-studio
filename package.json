@@ -9,7 +9,6 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.54.0",
     "fabric": "^7.4.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

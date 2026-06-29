@@ -22,10 +22,18 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_ID       = os.getenv("STRIPE_PRICE_ID", "")   # $1/month price ID
 APP_URL               = os.getenv("APP_URL", "http://localhost:8000")
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://ai_user:aiStudio2026!@127.0.0.1:5432/ai_studio")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is required")
 WORKSPACES   = Path(os.getenv("WORKSPACES_DIR", "./workspaces"))
 
 pool: asyncpg.Pool = None
+
+def get_ai_client() -> "anthropic.Anthropic":
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    return anthropic.Anthropic(api_key=key)
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -158,11 +166,28 @@ async def lifespan(app: FastAPI):
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
 app = FastAPI(title="AI Automation Studio", lifespan=lifespan)
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+_CORS_ORIGINS = (
+    [APP_URL] if APP_URL and APP_URL != "http://localhost:8000"
+    else ["http://localhost:5173", "http://localhost:8000", "http://127.0.0.1:8000"]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -252,12 +277,16 @@ async def subscription_status(email: str):
 
 @app.post("/api/stripe/webhook")
 async def stripe_webhook(request: Request):
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(503, "Webhook not configured")
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except Exception:
+    except stripe.error.SignatureVerificationError:
         raise HTTPException(400, "Invalid signature")
+    except Exception:
+        raise HTTPException(400, "Malformed webhook")
 
     async with pool.acquire() as conn:
         if event["type"] == "checkout.session.completed":
@@ -300,9 +329,7 @@ async def health():
 @app.post("/run/stream")
 async def run_stream(req: RunRequest):
     """Stream Claude's response token by token using SSE."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    ai = get_ai_client()
 
     # Build message history if conversation_id provided
     history: list[dict] = []
@@ -339,7 +366,6 @@ async def run_stream(req: RunRequest):
     history.append({"role": "user", "content": req.prompt})
 
     async def event_stream():
-        ai = anthropic.Anthropic(api_key=api_key)
         full_text = ""
         try:
             with ai.messages.stream(
@@ -389,11 +415,8 @@ async def run_stream(req: RunRequest):
 
 @app.post("/run")
 async def run_agent(req: RunRequest):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    ai = get_ai_client()
     try:
-        ai = anthropic.Anthropic(api_key=api_key)
         message = ai.messages.create(
             model="claude-sonnet-4-6", max_tokens=1024,
             messages=[{"role": "user", "content": req.prompt}],
@@ -636,12 +659,9 @@ def safe_path(ws: Path, rel: str) -> Path:
 @app.post("/api/build")
 async def build_program(req: BuildRequest):
     """Ask Claude to build a program, write all files, return the result."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    ai = get_ai_client()
 
     try:
-        ai = anthropic.Anthropic(api_key=api_key)
         msg = ai.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=8096,
@@ -695,13 +715,10 @@ async def build_program(req: BuildRequest):
 @app.post("/api/build/stream")
 async def build_stream(req: BuildRequest):
     """Stream the build progress via SSE."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    ai = get_ai_client()
 
     async def event_stream():
         try:
-            ai = anthropic.Anthropic(api_key=api_key)
             yield f"data: {json.dumps({'type':'status','message':'🤖 Thinking…'})}\n\n"
 
             # Collect full response (build needs complete JSON)
@@ -803,16 +820,17 @@ async def run_project(project_id: str, body: RunRequest2):
     ws = workspace(project_id)
     raw_command = (body.command or "python main.py").strip()
 
-    # Allowlist: only permit safe interpreter invocations
-    # Format: "python <script.py> [args]" or "node <script.js> [args]"
-    ALLOWED_INTERPRETERS = ("python", "python3", "node", "npm run")
-    if not any(raw_command.startswith(p) for p in ALLOWED_INTERPRETERS):
-        raise HTTPException(400, "Only python/node commands are allowed.")
-
     # Reject shell metacharacters (prevent injection even without shell=True)
     SHELL_CHARS = (";", "&", "|", ">", "<", "`", "$", "(", ")", "{", "}")
     if any(c in raw_command for c in SHELL_CHARS):
         raise HTTPException(400, "Shell metacharacters are not allowed.")
+
+    import shlex as _shlex
+    _args_check = _shlex.split(raw_command)
+    # Allowlist: check the actual executable (arg[0]), not just the string prefix
+    ALLOWED_EXECUTABLES = {"python", "python3", "node", "npm"}
+    if not _args_check or _args_check[0] not in ALLOWED_EXECUTABLES:
+        raise HTTPException(400, "Only python/node commands are allowed.")
 
     import shlex
     args = shlex.split(raw_command)
@@ -887,7 +905,7 @@ async def create_agent(body: AgentCreate):
     pid = None
     if body.project_id and body.project_id != "demo":
         try: pid = uuid.UUID(body.project_id)
-        except: pass
+        except ValueError: pass
     async with pool.acquire() as conn:
         aid = await conn.fetchval(
             "INSERT INTO ai_agents (user_id,project_id,name,avatar,description,system_prompt,model,temperature) "
@@ -957,9 +975,7 @@ class AgentChatRequest(BaseModel):
 
 @app.post("/api/agents/{agent_id}/chat/stream")
 async def agent_chat_stream(agent_id: str, req: AgentChatRequest):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    ai = get_ai_client()
 
     await ensure_agents_table()
     async with pool.acquire() as conn:
@@ -994,7 +1010,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest):
     history.append({"role": "user", "content": req.prompt})
 
     async def event_stream():
-        ai_client = anthropic.Anthropic(api_key=api_key)
+        ai_client = ai
         full_text = ""
         try:
             with ai_client.messages.stream(
@@ -1180,9 +1196,7 @@ async def youtube_transcript(req: YoutubeRequest):
 
 @app.post("/api/youtube/analyze/stream")
 async def youtube_analyze_stream(req: YoutubeAskRequest):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    ai = get_ai_client()
 
     transcript = req.transcript or ""
     system = (
@@ -1193,7 +1207,7 @@ async def youtube_analyze_stream(req: YoutubeAskRequest):
     user_msg = f"VIDEO TRANSCRIPT:\n{transcript[:6000]}\n\n---\nQUESTION: {req.question}"
 
     async def event_stream():
-        ai_client = anthropic.Anthropic(api_key=api_key)
+        ai_client = ai
         try:
             with ai_client.messages.stream(
                 model="claude-sonnet-4-6", max_tokens=2048,
@@ -1234,9 +1248,7 @@ Create highly engaging, platform-optimized content. Follow these rules:
 
 @app.post("/api/social/generate/stream")
 async def social_generate_stream(req: SocialRequest):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    ai = get_ai_client()
 
     lang_instruction = {
         "arabic": "Write ONLY in Arabic (العربية).",
@@ -1264,7 +1276,7 @@ async def social_generate_stream(req: SocialRequest):
     )
 
     async def event_stream():
-        ai_client = anthropic.Anthropic(api_key=api_key)
+        ai_client = ai
         full = ""
         try:
             yield f"data: {json.dumps({'type': 'status', 'message': 'Generating content…'})}\n\n"
@@ -1452,7 +1464,7 @@ EXE_B64     = {repr(exe_b64)}
 
 def is_admin():
     try: return ctypes.windll.shell32.IsUserAnAdmin()
-    except: return False
+    except Exception: return False
 
 def create_shortcut(target, shortcut_path, work_dir):
     import subprocess
@@ -1872,9 +1884,7 @@ class DesignAIRequest(BaseModel):
 
 @app.post("/api/design/ai-generate")
 async def design_ai_generate(req: DesignAIRequest):
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    ai = get_ai_client()
 
     SIZES = {"Instagram Post": (1080,1080), "Instagram Story": (1080,1920), "Facebook Cover": (820,312),
              "Facebook Post": (1200,630), "YouTube Thumb": (1280,720), "A4 Portrait": (794,1123), "Presentation": (1920,1080)}
@@ -1910,7 +1920,6 @@ Rules:
 """
 
     try:
-        ai = anthropic.Anthropic(api_key=api_key)
         msg = ai.messages.create(
             model="claude-sonnet-4-6", max_tokens=3000,
             system=system,
