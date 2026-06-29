@@ -27,5 +27,5 @@ services:
 
 databases:
   - name: ai-studio-db
-    plan: free
+    plan: starter
     databaseName: aistudio
