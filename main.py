@@ -33,7 +33,11 @@ APP_URL               = os.getenv("APP_URL", "http://localhost:8000")
 
 # ── Session token signing ─────────────────────────────────────────────────────
 SESSION_SECRET = os.getenv("SESSION_SECRET") or _secrets.token_hex(32)
-_TOKEN_TTL = 3600 * 6  # 6 hours
+if not os.getenv("SESSION_SECRET"):
+    import sys as _sys
+    print("WARNING: SESSION_SECRET not set — tokens will invalidate on every restart. "
+          "Set SESSION_SECRET in your environment.", file=_sys.stderr)
+_TOKEN_TTL = 3600 * 24 * 30  # 30 days
 
 def _make_token(email: str, trial: bool, days_remaining: int) -> str:
     payload = {"e": email, "exp": int(_time.time()) + _TOKEN_TTL, "trial": trial, "dr": days_remaining}
@@ -232,6 +236,26 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     )
     return JSONResponse(status_code=422, content={"detail": detail, "errors": errors})
 
+# Public API paths — no token required
+_PUBLIC_PREFIXES = (
+    "/api/subscription/",
+    "/api/stripe/",
+    "/health",
+)
+
+class ApiAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        if path.startswith("/api/") and not any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+            token = (
+                request.headers.get("X-Sub-Token") or
+                request.headers.get("Authorization", "").removeprefix("Bearer ").strip() or
+                request.cookies.get("sub_token", "")
+            )
+            if not token or not _verify_token(token):
+                return JSONResponse(status_code=401, content={"detail": "Subscription required"})
+        return await call_next(request)
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
@@ -250,6 +274,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         return response
 
+app.add_middleware(ApiAuthMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 _CORS_ORIGINS = (
