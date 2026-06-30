@@ -731,7 +731,7 @@ Rules:
 
 class BuildRequest(BaseModel):
     project_id: str
-    prompt: str = Field(..., min_length=1, max_length=2000)
+    prompt: str = Field(..., min_length=1, max_length=10000)
 
 class RunRequest2(BaseModel):
     command: Optional[str] = None
