@@ -696,6 +696,13 @@ function BuildPage() {
     if (!runCmd.trim()) return;
     setRunning(true); setRunOutput("Running…\n");
     try {
+      // Sync in-memory files to server (lost after every Render deploy)
+      if (files.length > 0) {
+        await fetch(`${API}/api/projects/${projectId}/sync`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ files }),
+        });
+      }
       const r = await fetch(`${API}/api/projects/${projectId}/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: runCmd }) });
       const d = await r.json();
       if (!r.ok) { setRunOutput(`Error: ${d.detail}`); return; }

@@ -896,6 +896,22 @@ async def read_file(project_id: str, file_path: str):
     return {"path": file_path, "content": content}
 
 
+class FileSyncRequest(BaseModel):
+    files: list[FileWrite]
+
+@app.post("/api/projects/{project_id}/sync")
+async def sync_files(project_id: str, body: FileSyncRequest):
+    """Write files from JSON body — used to restore state after server restart."""
+    ws = workspace(project_id)
+    written = []
+    for f in body.files:
+        dest = safe_path(ws, f.path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(f.content, encoding="utf-8")
+        written.append(f.path)
+    return {"synced": written}
+
+
 @app.post("/api/projects/{project_id}/upload")
 async def upload_files(project_id: str, files: list[UploadFile]):
     """Upload one or more files into a project workspace."""
