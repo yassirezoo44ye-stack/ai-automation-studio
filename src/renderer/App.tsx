@@ -707,7 +707,12 @@ function BuildPage() {
         });
       }
       const r = await fetch(`${API}/api/projects/${projectId}/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: runCmd }) });
-      const d = await r.json();
+      const text = await r.text();
+      if (!r.ok || text.trim().startsWith("<")) {
+        setRunOutput(`Error: السيرفر لا يستجيب — تأكد من اكتمال النشر على Render (HTTP ${r.status})`);
+        return;
+      }
+      const d = JSON.parse(text);
       if (!r.ok) { setRunOutput(`Error: ${d.detail}`); return; }
       setRunOutput([d.stdout ? `$ ${d.command}\n${d.stdout}` : `$ ${d.command}`, d.stderr ? `\nstderr:\n${d.stderr}` : "", `\n[exit ${d.returncode}]`].join(""));
     } catch (e) { setRunOutput(`Error: ${e}`); }
