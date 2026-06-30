@@ -867,6 +867,8 @@ async def build_stream(req: BuildRequest):
                         last_update = char_count
                         yield f"data: {json.dumps({'type':'status','message':f'✍️ يكتب الكود… {char_count} حرف'})}\n\n"
 
+            yield f"data: {json.dumps({'type':'status','message':'⚙️ جارٍ معالجة الكود…'})}\n\n"
+
             raw = "".join(chunks).strip()
             if raw.startswith("```"):
                 raw = "\n".join(raw.split("\n")[1:])
@@ -879,7 +881,7 @@ async def build_stream(req: BuildRequest):
                 yield f"data: {json.dumps({'type':'error','message':'الكود كبير جداً — حاول طلباً أبسط أو قسّمه إلى أجزاء'})}\n\n"
                 return
             n = len(result.get("files", []))
-            yield f"data: {json.dumps({'type':'status','message':f'Writing {n} files…'})}\n\n"
+            yield f"data: {json.dumps({'type':'status','message':f'✅ كتابة {n} ملف…'})}\n\n"
 
             ws = workspace(req.project_id)
             written = []
@@ -889,16 +891,20 @@ async def build_stream(req: BuildRequest):
                 dest.write_text(f["content"], encoding="utf-8")
                 written.append(f["path"])
                 yield f"data: {json.dumps({'type':'file','path':f['path'],'content':f['content']})}\n\n"
-                await asyncio.sleep(0.05)
 
-            async with pool.acquire() as conn:
-                pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
-                await conn.execute(
-                    "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
-                    USER_ID, json.dumps({"prompt": req.prompt[:80], "files": written}),
-                )
-
+            # Send done BEFORE DB write so Render's 30s no-data timeout doesn't kill the connection
             yield f"data: {json.dumps({'type':'done','description':result.get('description',''),'files':written,'run_command':result.get('run_command',''),'language':result.get('language','')})}\n\n"
+
+            # Log to DB in background (non-blocking from client's perspective)
+            try:
+                async with pool.acquire() as conn:
+                    pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+                    await conn.execute(
+                        "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
+                        USER_ID, json.dumps({"prompt": req.prompt[:80], "files": written}),
+                    )
+            except Exception:
+                pass  # DB log failure must not affect the user
 
         except anthropic.BadRequestError as e:
             body = e.body if hasattr(e, "body") and e.body else {}
