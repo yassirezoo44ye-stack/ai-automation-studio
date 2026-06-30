@@ -715,7 +715,10 @@ function BuildPage() {
             <option value="demo">Demo Project</option>
             {projects.filter(p => p.id !== "00000000-0000-0000-0000-000000000001").map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          {allFiles.length > 0 && <button onClick={clearWorkspace} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>🗑 Clear</button>}
+          {allFiles.length > 0 && <>
+            <button onClick={() => { const a = document.createElement("a"); a.href = `${API}/api/projects/${projectId}/download`; a.download = "project.zip"; a.click(); }} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>⬇ ZIP</button>
+            <button onClick={clearWorkspace} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>🗑 Clear</button>
+          </>}
         </div>
       </header>
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>

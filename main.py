@@ -9,6 +9,8 @@ import json
 import subprocess
 import shutil
 import asyncio
+import zipfile
+import io
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
@@ -911,6 +913,28 @@ async def clear_workspace(project_id: str):
         shutil.rmtree(ws)
     ws.mkdir(parents=True, exist_ok=True)
     return {"message": "Workspace cleared"}
+
+
+@app.get("/api/projects/{project_id}/download")
+async def download_workspace(project_id: str):
+    """Download all workspace files as a ZIP archive."""
+    ws = workspace(project_id)
+    if not ws.exists() or not any(ws.rglob("*")):
+        raise HTTPException(404, "No files to download")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in sorted(ws.rglob("*")):
+            if p.is_file():
+                zf.write(p, p.relative_to(ws))
+    buf.seek(0)
+
+    name = f"project-{project_id[:8]}.zip"
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
 
 
 @app.post("/api/projects/{project_id}/run")
