@@ -98,3 +98,11 @@ async def maintenance_loop() -> None:
     while True:
         await _maintenance_cycle()
         await asyncio.sleep(6 * 3600)
+
+
+async def process_cleanup_loop() -> None:
+    """Background task: kill idle project server processes every 60 s."""
+    from app.execution import process_mgr  # avoid circular import at module load
+    while True:
+        await asyncio.sleep(60)
+        await process_mgr.cleanup_idle()

@@ -657,6 +657,9 @@ function BuildPage() {
   const [runCmd, setRunCmd]             = useState("");
   const [runOutput, setRunOutput]       = useState("");
   const [running, setRunning]           = useState(false);
+  const [projectType, setProjectType]   = useState("");
+  const [serverPreviewUrl, setServerPreviewUrl] = useState<string | null>(null);
+  const runAbortRef = useRef<AbortController | null>(null);
   const [description, setDescription]  = useState("");
   const [existingFiles, setExistingFiles] = useState<{ path: string; size: number }[]>([]);
   const [previewUrl, setPreviewUrl]       = useState<string | null>(null);
@@ -750,55 +753,140 @@ function BuildPage() {
   }
 
   async function runCode() {
-    const allFiles = state === "done" ? files : existingFiles.map(f => ({ path: f.path, content: "" }));
-    setRunning(true); setRunOutput("Running…\n");
+    // Cancel any in-flight run
+    runAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    runAbortRef.current = ctrl;
+
+    setRunning(true);
+    setServerPreviewUrl(null);
+    setRunOutput("▶ Starting…\n");
+
     try {
-      // Sync in-memory files to server before running
+      // Sync in-memory files first so server has latest content
       if (files.length > 0) {
         await apiFetch(`/api/projects/${projectId}/sync`, {
           method: "POST", headers: authH(),
           body: JSON.stringify({ files }),
         });
       }
-      const r = await apiFetch(`/api/projects/${projectId}/run`, {
+
+      const res = await apiFetch(`/api/projects/${projectId}/run/stream`, {
         method: "POST", headers: authH(),
         body: JSON.stringify({ command: runCmd || null }),
+        signal: ctrl.signal,
       });
 
-      let d: Record<string, unknown>;
-      const text = await r.text();
-      try { d = JSON.parse(text); }
-      catch { setRunOutput(`Error: unexpected response (HTTP ${r.status})\n${text.slice(0, 500)}`); return; }
-
-      // HTML project → open in preview tab
-      if (d.type === "html" && d.html_content) {
-        const blob = new Blob([d.html_content as string], { type: "text/html" });
-        const url = URL.createObjectURL(blob);
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(url); setShowPreview(true);
-        setRunOutput(`✓ Opened ${d.entry_file ?? "index.html"} in preview tab`);
+      if (!res.ok || !res.body) {
+        const txt = await res.text().catch(() => "");
+        setRunOutput(`Error: HTTP ${res.status}\n${txt.slice(0, 400)}`);
         return;
       }
 
-      // Server app or unsupported → show informative message
-      if (d.type === "server_app" || (!d.success && d.error)) {
-        const lines = [`⚠ ${d.error}`, d.details ? `\n${d.details}` : ""];
-        if (d.checked_files && Array.isArray(d.checked_files) && d.checked_files.length)
-          lines.push(`\nFiles found: ${(d.checked_files as string[]).slice(0, 10).join(", ")}`);
-        setRunOutput(lines.join(""));
-        return;
-      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
 
-      // Normal terminal output
-      const parts: string[] = [];
-      if (d.command) parts.push(`$ ${d.command}`);
-      if (d.stdout) parts.push(d.stdout as string);
-      if (d.stderr) parts.push(`\nstderr:\n${d.stderr as string}`);
-      parts.push(`\n[exit ${d.returncode ?? "?"}]`);
-      if (d.warning) parts.push(`\n⚠ ${d.warning}`);
-      setRunOutput(parts.filter(Boolean).join("\n"));
-    } catch (e) { setRunOutput(`Error: ${e}`); }
-    finally { setRunning(false); }
+      const appendLog = (line: string) =>
+        setRunOutput(prev => prev + line + "\n");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const raw of lines) {
+          if (!raw.startsWith("data: ")) continue;
+          let ev: Record<string, unknown>;
+          try { ev = JSON.parse(raw.slice(6)); } catch { continue; }
+
+          switch (ev.type) {
+            case "status":
+              setRunOutput(prev => prev + (ev.message as string) + "\n");
+              if (ev.project_type) setProjectType(ev.project_type as string);
+              break;
+
+            case "log":
+              appendLog(`${ev.stream === "stderr" ? "⚠ " : ""}${ev.line}`);
+              break;
+
+            case "html": {
+              // Static HTML → open as blob URL in preview tab
+              const blob = new Blob([ev.html_content as string], { type: "text/html" });
+              const url = URL.createObjectURL(blob);
+              if (previewUrl) URL.revokeObjectURL(previewUrl);
+              setPreviewUrl(url);
+              setShowPreview(true);
+              setRunOutput(`✓ ${ev.entry_file ?? "index.html"} opened in Preview tab`);
+              setRunning(false);
+              return;
+            }
+
+            case "server_ready": {
+              // Server started → show proxy URL as an iframe or link
+              const proxyUrl = ev.preview_url as string;
+              setServerPreviewUrl(proxyUrl);
+              setRunOutput(
+                prev => prev +
+                `✓ ${ev.message}\n` +
+                `🌐 Preview: ${proxyUrl}\n`
+              );
+              // Open in the preview tab
+              setPreviewUrl(proxyUrl);
+              setShowPreview(true);
+              setRunning(false);
+              return;
+            }
+
+            case "unsupported":
+              setRunOutput(
+                `⚠ ${ev.error}\n\n${ev.details ?? ""}\n\n` +
+                (ev.local_run_hint ? `💻 Run locally:\n  ${ev.local_run_hint}\n` : "") +
+                `\n📦 Download the ZIP to run this project on your machine.`
+              );
+              setRunning(false);
+              return;
+
+            case "done": {
+              const rc = ev.exit_code as number;
+              const dur = ev.duration as number;
+              const out = (ev.stdout as string || "").trimEnd();
+              const err = (ev.stderr as string || "").trimEnd();
+              const parts: string[] = [];
+              if (ev.command) parts.push(`$ ${ev.command}`);
+              if (out) parts.push(out);
+              if (err) parts.push(`\nstderr:\n${err}`);
+              parts.push(`\n[exit ${rc}]  (${dur}s)`);
+              if (ev.warning) parts.push(`\n⚠ ${ev.warning as string}`);
+              setRunOutput(parts.filter(Boolean).join("\n"));
+              setRunning(false);
+              return;
+            }
+
+            case "error":
+              setRunOutput(
+                `✗ ${ev.error}\n${ev.details ?? ""}` +
+                (ev.hint ? `\n\n💡 ${ev.hint}` : "") +
+                (ev.stderr ? `\n\nstderr:\n${ev.stderr}` : "")
+              );
+              setRunning(false);
+              return;
+
+            case "warning":
+              appendLog(`⚠ ${ev.message}`);
+              break;
+          }
+        }
+      }
+    } catch (e: unknown) {
+      if ((e as Error).name !== "AbortError") {
+        setRunOutput(`Error: ${(e as Error).message}`);
+      }
+    } finally {
+      setRunning(false);
+    }
   }
 
   const allFiles = state === "done" ? files : existingFiles.map(f => ({ path: f.path, content: "" }));
@@ -862,7 +950,12 @@ function BuildPage() {
             {isHtmlProject(allFiles) && <button onClick={() => { if (allFiles.length > 0) openHtmlPreview(allFiles); }} style={{ padding: "8px 16px", fontSize: 12, background: "none", border: "none", borderBottom: showPreview ? "2px solid #6c8ef7" : "none", color: showPreview ? "#c8d3f0" : "#4b5980", cursor: "pointer" }}>🌐 Preview</button>}
           </div>
           {showPreview && previewUrl ? (
-            <iframe src={previewUrl} style={{ flex: 1, border: "none", background: "#fff" }} title="preview" sandbox="allow-scripts allow-same-origin" />
+            <iframe
+              src={previewUrl}
+              style={{ flex: 1, border: "none", background: "#fff" }}
+              title="preview"
+              sandbox={previewUrl.startsWith("blob:") ? "allow-scripts allow-same-origin" : undefined}
+            />
           ) : (
             <div style={{ flex: 1, overflow: "auto", background: "#080a0f" }}>
               {activeFile ? (
@@ -882,15 +975,22 @@ function BuildPage() {
             </div>
           )}
           {!showPreview && allFiles.length > 0 && (
-            <div style={{ height: 190, borderTop: "1px solid #1e2438", display: "flex", flexDirection: "column", background: "#040506" }}>
+            <div style={{ height: 200, borderTop: "1px solid #1e2438", display: "flex", flexDirection: "column", background: "#040506" }}>
               <div style={{ padding: "6px 12px", borderBottom: "1px solid #1e2438", display: "flex", gap: 8, alignItems: "center" }}>
                 <span style={{ fontSize: 11, color: "#6b7a99", flexShrink: 0 }}>▶</span>
                 <input value={runCmd} onChange={e => setRunCmd(e.target.value)} onKeyDown={e => { if (e.key === "Enter") runCode(); }}
                   placeholder="auto-detect (or: python main.py)" style={{ flex: 1, background: "none", border: "none", color: "#c8d3f0", fontSize: 12, fontFamily: "monospace" }} />
-                <button onClick={runCode} disabled={running} style={{ ...S.btnPrimary, padding: "4px 12px", fontSize: 12 }}>{running ? "…" : "Run ▶"}</button>
+                {running
+                  ? <button onClick={() => runAbortRef.current?.abort()} style={{ ...S.btnSecondary, padding: "4px 12px", fontSize: 12 }}>⏹ Stop</button>
+                  : <button onClick={runCode} style={{ ...S.btnPrimary, padding: "4px 12px", fontSize: 12 }}>Run ▶</button>
+                }
+                {serverPreviewUrl && !running && (
+                  <button onClick={() => { setPreviewUrl(serverPreviewUrl); setShowPreview(true); }}
+                    style={{ ...S.btnSecondary, padding: "4px 10px", fontSize: 12 }}>🌐 Preview</button>
+                )}
               </div>
-              <pre style={{ flex: 1, margin: 0, padding: "10px 14px", overflowY: "auto", fontSize: 12, color: "#34d399", fontFamily: "monospace", lineHeight: 1.5 }}>
-                {runOutput || <span style={{ color: "#4b5980" }}>Output will appear here… (leave blank for auto-detect)</span>}
+              <pre style={{ flex: 1, margin: 0, padding: "10px 14px", overflowY: "auto", fontSize: 12, color: "#34d399", fontFamily: "monospace", lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                {runOutput || <span style={{ color: "#4b5980" }}>Output appears here. Leave command blank for auto-detect.</span>}
               </pre>
             </div>
           )}
