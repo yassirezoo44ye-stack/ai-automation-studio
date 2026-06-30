@@ -170,6 +170,29 @@ def get_ai_client() -> "anthropic.Anthropic":
         raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
     return anthropic.Anthropic(api_key=key)
 
+DEMO_PROJECT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+def _resolve_project_id(project_id: Optional[str]) -> uuid.UUID:
+    """The frontend's "demo" pseudo-project maps to a fixed seeded UUID; anything else must be a real UUID."""
+    if not project_id or project_id == "demo":
+        return DEMO_PROJECT_ID
+    return uuid.UUID(project_id)
+
+def _anthropic_error_message(e: "anthropic.BadRequestError") -> str:
+    """Anthropic's 400s carry the user-facing message inside e.body['error']['message']."""
+    body = e.body if hasattr(e, "body") and e.body else {}
+    return body.get("error", {}).get("message", str(e)) if isinstance(body, dict) else str(e)
+
+def _ai_rate_limit(request: Request, max_calls: int = 20, window: int = 60):
+    """Cap AI-backed calls per identity to limit cost exposure from a single account/IP."""
+    owner = _owner_email(request)
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or (request.client.host if request.client else "unknown")
+    )
+    if not _check_rate_limit(f"ai:{owner}:{client_ip}", max_calls=max_calls, window=window):
+        raise HTTPException(429, "Too many AI requests. Please wait a moment and try again.")
+
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -592,8 +615,9 @@ async def health_full():
 # ── Streaming run ─────────────────────────────────────────────────────────────
 
 @app.post("/run/stream")
-async def run_stream(req: RunRequest):
+async def run_stream(req: RunRequest, request: Request):
     """Stream Claude's response token by token using SSE."""
+    _ai_rate_limit(request)
     ai = get_ai_client()
 
     # Build message history if conversation_id provided
@@ -613,7 +637,7 @@ async def run_stream(req: RunRequest):
                 pass
         else:
             # Create new conversation
-            pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+            pid = _resolve_project_id(req.project_id)
             conv_id = await conn.fetchval(
                 "INSERT INTO conversations (project_id, title) VALUES ($1, $2) RETURNING id",
                 pid, req.prompt[:60] + ("…" if len(req.prompt) > 60 else ""),
@@ -656,7 +680,7 @@ async def run_stream(req: RunRequest):
                     await conn.execute(
                         "UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id,
                     )
-                    pid2 = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+                    pid2 = _resolve_project_id(req.project_id)
                     run_id = await conn.fetchval(
                         "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
                         "VALUES ($1,'claude',$2,$3,'completed',NOW()) RETURNING id",
@@ -670,9 +694,7 @@ async def run_stream(req: RunRequest):
                 pass
 
         except anthropic.BadRequestError as e:
-            body = e.body if hasattr(e, 'body') and e.body else {}
-            msg = body.get('error', {}).get('message', str(e)) if isinstance(body, dict) else str(e)
-            yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': _anthropic_error_message(e)})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
@@ -693,14 +715,12 @@ async def run_agent(req: RunRequest):
     except anthropic.AuthenticationError:
         raise HTTPException(401, "Invalid Anthropic API key.")
     except anthropic.BadRequestError as e:
-        body = e.body if hasattr(e, 'body') and e.body else {}
-        msg = body.get('error', {}).get('message', str(e)) if isinstance(body, dict) else str(e)
-        raise HTTPException(402, msg)
+        raise HTTPException(402, _anthropic_error_message(e))
     except Exception as e:
         raise HTTPException(502, str(e))
 
     summary = message.content[0].text
-    pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+    pid = _resolve_project_id(req.project_id)
     async with pool.acquire() as conn:
         run_id = await conn.fetchval(
             "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
@@ -749,7 +769,7 @@ async def get_stats():
 
 @app.post("/api/conversations")
 async def create_conversation(body: ConversationCreate):
-    pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if body.project_id == "demo" else uuid.UUID(body.project_id)
+    pid = _resolve_project_id(body.project_id)
     async with pool.acquire() as conn:
         cid = await conn.fetchval(
             "INSERT INTO conversations (project_id, title) VALUES ($1,$2) RETURNING id",
@@ -761,7 +781,7 @@ async def create_conversation(body: ConversationCreate):
 async def list_conversations(project_id: Optional[str] = None):
     async with pool.acquire() as conn:
         if project_id:
-            pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if project_id == "demo" else uuid.UUID(project_id)
+            pid = _resolve_project_id(project_id)
             rows = await conn.fetch(
                 "SELECT id, title, created_at, updated_at FROM conversations WHERE project_id=$1 ORDER BY updated_at DESC",
                 pid,
@@ -966,9 +986,7 @@ async def build_program(req: BuildRequest):
             messages=[{"role": "user", "content": req.prompt}],
         )
     except anthropic.BadRequestError as e:
-        body = e.body if hasattr(e, "body") and e.body else {}
-        detail = body.get("error", {}).get("message", str(e)) if isinstance(body, dict) else str(e)
-        raise HTTPException(402, detail)
+        raise HTTPException(402, _anthropic_error_message(e))
     except Exception as e:
         raise HTTPException(502, str(e))
 
@@ -994,7 +1012,7 @@ async def build_program(req: BuildRequest):
 
     # Log to DB
     async with pool.acquire() as conn:
-        pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+        pid = _resolve_project_id(req.project_id)
         await conn.execute(
             "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
             USER_ID, json.dumps({"prompt": req.prompt[:80], "files": written, "project_id": req.project_id}),
@@ -1010,8 +1028,9 @@ async def build_program(req: BuildRequest):
 
 
 @app.post("/api/build/stream")
-async def build_stream(req: BuildRequest):
+async def build_stream(req: BuildRequest, request: Request):
     """Stream the build progress via SSE."""
+    _ai_rate_limit(request, max_calls=10, window=60)  # builds are expensive; tighter limit
     ai = get_ai_client()
 
     def _strip_fences(text: str) -> str:
@@ -1089,7 +1108,7 @@ async def build_stream(req: BuildRequest):
             # Log to DB in background (non-blocking from client's perspective)
             try:
                 async with pool.acquire() as conn:
-                    pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+                    pid = _resolve_project_id(req.project_id)
                     await conn.execute(
                         "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
                         USER_ID, json.dumps({"prompt": req.prompt[:80], "files": written}),
@@ -1098,9 +1117,7 @@ async def build_stream(req: BuildRequest):
                 pass  # DB log failure must not affect the user
 
         except anthropic.BadRequestError as e:
-            body = e.body if hasattr(e, "body") and e.body else {}
-            msg2 = body.get("error", {}).get("message", str(e)) if isinstance(body, dict) else str(e)
-            yield f"data: {json.dumps({'type':'error','message':msg2})}\n\n"
+            yield f"data: {json.dumps({'type':'error','message':_anthropic_error_message(e)})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
 
@@ -1372,7 +1389,8 @@ class AgentChatRequest(BaseModel):
 
 
 @app.post("/api/agents/{agent_id}/chat/stream")
-async def agent_chat_stream(agent_id: str, req: AgentChatRequest):
+async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Request):
+    _ai_rate_limit(request)
     ai = get_ai_client()
 
     await ensure_agents_table()
@@ -1394,7 +1412,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest):
             except Exception:
                 pass
         else:
-            pid = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id or "00000000-0000-0000-0000-000000000001")
+            pid = _resolve_project_id(req.project_id)
             conv_id = await conn.fetchval(
                 "INSERT INTO conversations (project_id, title) VALUES ($1,$2) RETURNING id",
                 pid, req.prompt[:60],
@@ -1596,7 +1614,8 @@ async def youtube_transcript(req: YoutubeRequest):
 
 
 @app.post("/api/youtube/analyze/stream")
-async def youtube_analyze_stream(req: YoutubeAskRequest):
+async def youtube_analyze_stream(req: YoutubeAskRequest, request: Request):
+    _ai_rate_limit(request)
     ai = get_ai_client()
 
     transcript = req.transcript or ""
@@ -1648,7 +1667,8 @@ Create highly engaging, platform-optimized content. Follow these rules:
 """
 
 @app.post("/api/social/generate/stream")
-async def social_generate_stream(req: SocialRequest):
+async def social_generate_stream(req: SocialRequest, request: Request):
+    _ai_rate_limit(request)
     ai = get_ai_client()
 
     lang_instruction = {
@@ -1963,7 +1983,6 @@ if __name__ == "__main__":
                 src_pkg = bf_dir / "src" / safe_name.lower()
                 src_pkg.mkdir(parents=True, exist_ok=True)
                 for f in ws.glob("*.py"):
-                    import shutil
                     dest = src_pkg / f.name
                     shutil.copy2(f, dest)
                 # rename main.py → __main__.py
@@ -2055,7 +2074,6 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 # copy to dist for serving
                 out_apk   = DIST_DIR / safe_name / apk.name
                 (DIST_DIR / safe_name).mkdir(exist_ok=True)
-                import shutil
                 shutil.copy2(apk, out_apk)
                 size_mb   = round(out_apk.stat().st_size / 1024 / 1024, 1)
                 yield log(f"✅ APK جاهز: {out_apk.name} ({size_mb} MB)", "ok")
@@ -2088,7 +2106,6 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 # copy web files to cap_dir/dist
                 dist_web = cap_dir / "dist"
                 dist_web.mkdir(exist_ok=True)
-                import shutil
                 for f in ws.iterdir():
                     if f.is_file() and f.suffix in (".html", ".css", ".js", ".png", ".jpg", ".svg", ".ico"):
                         shutil.copy2(f, dist_web / f.name)
@@ -2170,7 +2187,6 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
 
                 el_dir = DIST_DIR / f"{safe_name}_electron"
                 el_dir.mkdir(exist_ok=True)
-                import shutil
                 for f in ws.iterdir():
                     if f.is_file():
                         shutil.copy2(f, el_dir / f.name)
@@ -2286,7 +2302,8 @@ class DesignAIRequest(BaseModel):
     template: Optional[str] = "Instagram Post"
 
 @app.post("/api/design/ai-generate")
-async def design_ai_generate(req: DesignAIRequest):
+async def design_ai_generate(req: DesignAIRequest, request: Request):
+    _ai_rate_limit(request)
     ai = get_ai_client()
 
     SIZES = {"Instagram Post": (1080,1080), "Instagram Story": (1080,1920), "Facebook Cover": (820,312),
@@ -2566,8 +2583,7 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
             messages=[{"role": "user", "content": transcript}],
         )
     except anthropic.BadRequestError as e:
-        body = e.body if hasattr(e, "body") and e.body else {}
-        raise HTTPException(402, body.get("error", {}).get("message", str(e)) if isinstance(body, dict) else str(e))
+        raise HTTPException(402, _anthropic_error_message(e))
     except Exception as e:
         raise HTTPException(502, str(e))
 
