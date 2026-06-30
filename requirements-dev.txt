@@ -1,0 +1,5 @@
+# Development and testing dependencies — NOT installed in production
+pytest>=8.2
+pytest-asyncio>=0.23
+httpx>=0.27          # async test client for FastAPI (future integration tests)
+ruff>=0.5            # linter

@@ -1,0 +1,47 @@
+# Version control
+.git
+.gitignore
+
+# Secrets — never in Docker build context
+.env
+.env.production
+.env.local
+
+# Dependencies (rebuilt inside the image)
+node_modules
+venv
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# User-generated runtime data (mounted as volumes in production)
+workspaces/
+dist_packages/
+
+# Local databases
+*.db
+*.sqlite
+
+# Dev tooling
+.vscode
+.claude
+tests/
+docs/
+
+# Build artifacts (the Dockerfile rebuilds these)
+dist/
+build/
+
+# Deployment configs for other platforms
+fly.toml
+railway.toml
+
+# Large project artifacts
+project_tree.txt
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

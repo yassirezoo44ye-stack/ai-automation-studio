@@ -1,0 +1,58 @@
+version: "3.9"
+
+# ── Local development stack ────────────────────────────────────────────────────
+# Start everything:  docker compose up --build
+# Logs only:         docker compose logs -f app
+# Teardown:          docker compose down -v
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://axon:axon@db:5432/axon
+      SESSION_SECRET: dev-secret-not-for-production-use-change-me
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+      APP_URL: http://localhost:8000
+      PORT: "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Persist build workspaces and packaged apps across container restarts
+      - workspaces:/app/workspaces
+      - dist_packages:/app/dist_packages
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: axon
+      POSTGRES_PASSWORD: axon
+      POSTGRES_DB: axon
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U axon -d axon"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pg_data:
+  workspaces:
+  dist_packages:
