@@ -29,7 +29,11 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Syntax check (py_compile)
-        run: python -m py_compile main.py && echo "✅ Syntax OK"
+        run: |
+          python -m py_compile main.py
+          python -m py_compile app_main.py
+          find app -name "*.py" | xargs python -m py_compile
+          echo "✅ Syntax OK"
 
       - name: Unit tests
         run: pytest tests/ -v --tb=short

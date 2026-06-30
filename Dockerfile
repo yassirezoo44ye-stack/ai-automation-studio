@@ -28,6 +28,8 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 # Copy application code
 COPY main.py .
+COPY app_main.py .
+COPY app ./app
 
 # Copy built frontend from stage 1
 COPY --from=frontend /app/dist ./dist
@@ -51,4 +53,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     || exit 1
 
 # Use uvicorn directly (better signal handling than python main.py).
-CMD ["python", "main.py"]
+CMD ["sh", "-c", "uvicorn app_main:app --host 0.0.0.0 --port ${PORT:-8000}"]

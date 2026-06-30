@@ -40,6 +40,22 @@ type Agent   = { id: string; name: string; avatar: string; description: string; 
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
+// ── Authenticated fetch helpers ───────────────────────────────────────────────
+function getToken(): string { return localStorage.getItem("sub_token") ?? ""; }
+
+function authH(extra?: Record<string, string>): Record<string, string> {
+  return { "Content-Type": "application/json", "X-Sub-Token": getToken(), ...extra };
+}
+
+/** Authenticated fetch — all /api/* calls must use this. */
+function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers: Record<string, string> = {
+    "X-Sub-Token": getToken(),
+    ...(init?.headers as Record<string, string> ?? {}),
+  };
+  return fetch(`${API}${path}`, { ...init, headers });
+}
+
 // Keep Render free tier awake — ping every 14 minutes
 setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
@@ -77,8 +93,8 @@ function DashboardPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    fetch(`${API}/api/stats`).then(r => r.json()).then(d => { setStats(d); setActivity(d.recent_activity ?? []); }).catch(() => {});
-    fetch(`${API}/api/stats/timeseries?days=14`).then(r => r.json()).then(setSeries).catch(() => {});
+    apiFetch("/api/stats").then(r => r.json()).then(d => { setStats(d); setActivity(d.recent_activity ?? []); }).catch(() => {});
+    apiFetch("/api/stats/timeseries?days=14").then(r => r.json()).then(setSeries).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -224,14 +240,14 @@ function ChatPage() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const loadProjects = useCallback(async () => {
-    try { const r = await fetch(`${API}/api/projects`); setProjects(await r.json()); } catch {}
+    try { const r = await apiFetch("/api/projects"); setProjects(await r.json()); } catch {}
   }, []);
   const loadAgents = useCallback(async () => {
-    try { const r = await fetch(`${API}/api/agents`); setAgents(await r.json()); } catch {}
+    try { const r = await apiFetch("/api/agents"); setAgents(await r.json()); } catch {}
   }, []);
   const loadConvs = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/api/conversations?project_id=${projectId}`);
+      const r = await apiFetch(`/api/conversations?project_id=${projectId}`);
       setConvs(await r.json());
     } catch {}
   }, [projectId]);
@@ -241,7 +257,7 @@ function ChatPage() {
 
   async function loadMessages(cid: string) {
     try {
-      const r = await fetch(`${API}/api/conversations/${cid}/messages`);
+      const r = await apiFetch(`/api/conversations/${cid}/messages`);
       const msgs: { id: string; role: string; content: string }[] = await r.json();
       setMessages(msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content })));
     } catch {}
@@ -252,7 +268,7 @@ function ChatPage() {
     if (!activeConv || extracting) return;
     setExtracting(true);
     try {
-      const r = await fetch(`${API}/api/tasks/from-conversation/${activeConv}`, { method: "POST" });
+      const r = await apiFetch(`/api/tasks/from-conversation/${activeConv}`, { method: "POST" });
       if (!r.ok) throw new Error();
       const d = await r.json();
       const n = d.created?.length ?? 0;
@@ -263,7 +279,7 @@ function ChatPage() {
 
   async function deleteConv(e: React.MouseEvent, cid: string) {
     e.stopPropagation();
-    await fetch(`${API}/api/conversations/${cid}`, { method: "DELETE" });
+    await apiFetch(`/api/conversations/${cid}`, { method: "DELETE" });
     if (activeConv === cid) { setActiveConv(null); setMessages([]); }
     loadConvs();
   }
@@ -271,7 +287,7 @@ function ChatPage() {
   async function exportConv() {
     if (!activeConv) return;
     try {
-      const r = await fetch(`${API}/api/export/conversations/${activeConv}`);
+      const r = await apiFetch(`/api/export/conversations/${activeConv}`);
       if (!r.ok) { toast("Export failed", "err"); return; }
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
@@ -300,7 +316,7 @@ function ChatPage() {
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authH(),
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId }),
         signal: controller.signal,
       });
@@ -464,7 +480,7 @@ function AgentsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { const r = await fetch(`${API}/api/agents`); setAgents(await r.json()); }
+    try { const r = await apiFetch("/api/agents"); setAgents(await r.json()); }
     catch { toast("Could not load agents", "err"); }
     finally { setLoading(false); }
   }, []);
@@ -475,9 +491,9 @@ function AgentsPage() {
     setSaving(true);
     try {
       const isEdit = editing.id;
-      const url  = isEdit ? `${API}/api/agents/${editing.id}` : `${API}/api/agents`;
+      const path   = isEdit ? `/api/agents/${editing.id}` : `/api/agents`;
       const method = isEdit ? "PUT" : "POST";
-      const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(editing) });
+      const r = await apiFetch(path, { method, headers: authH(), body: JSON.stringify(editing) });
       if (!r.ok) throw new Error();
       toast(isEdit ? "Agent updated" : "Agent created");
       setView("list"); setEditing(null); load();
@@ -487,7 +503,7 @@ function AgentsPage() {
 
   async function del(id: string, name: string) {
     if (!confirm(`Delete agent "${name}"?`)) return;
-    await fetch(`${API}/api/agents/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/agents/${id}`, { method: "DELETE" });
     toast(`Deleted ${name}`); load();
   }
 
@@ -657,7 +673,7 @@ function BuildPage() {
     // load content if not in memory (existing files from server)
     if (!html.content) {
       try {
-        const r = await fetch(`${API}/api/projects/${projectId}/files/${html.path}`);
+        const r = await apiFetch(`/api/projects/${projectId}/files/${html.path}`);
         const d = await r.json();
         html = { path: d.path, content: d.content };
       } catch { return; }
@@ -669,20 +685,20 @@ function BuildPage() {
     setShowPreview(true);
   }
 
-  useEffect(() => { fetch(`${API}/api/projects`).then(r => r.json()).then(setProjects).catch(() => {}); }, []);
+  useEffect(() => { apiFetch("/api/projects").then(r => r.json()).then(setProjects).catch(() => {}); }, []);
   useEffect(() => { loadExisting(); }, [projectId]);
 
   async function loadExisting() {
-    try { const r = await fetch(`${API}/api/projects/${projectId}/files`); const d = await r.json(); setExistingFiles(d.files ?? []); } catch {}
+    try { const r = await apiFetch(`/api/projects/${projectId}/files`); const d = await r.json(); setExistingFiles(d.files ?? []); } catch {}
   }
 
   async function loadFile(path: string) {
-    try { const r = await fetch(`${API}/api/projects/${projectId}/files/${path}`); const d = await r.json(); setActiveFile({ path: d.path, content: d.content }); } catch {}
+    try { const r = await apiFetch(`/api/projects/${projectId}/files/${path}`); const d = await r.json(); setActiveFile({ path: d.path, content: d.content }); } catch {}
   }
 
   async function clearWorkspace() {
     if (!confirm("Clear all files?")) return;
-    await fetch(`${API}/api/projects/${projectId}/files`, { method: "DELETE" });
+    await apiFetch(`/api/projects/${projectId}/files`, { method: "DELETE" });
     setFiles([]); setExistingFiles([]); setActiveFile(null); setRunOutput(""); setRunCmd(""); toast("Workspace cleared");
   }
 
@@ -691,7 +707,10 @@ function BuildPage() {
     setState("building"); setStatus("Connecting to Claude…"); setFiles([]); setActiveFile(null); setRunOutput(""); setDescription("");
     const controller = new AbortController(); abortRef.current = controller;
     try {
-      const res = await fetch(`${API}/api/build/stream`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project_id: projectId, prompt }), signal: controller.signal });
+      const res = await fetch(`${API}/api/build/stream`, {
+        method: "POST", headers: authH(), body: JSON.stringify({ project_id: projectId, prompt }),
+        signal: controller.signal,
+      });
       if (!res.ok || !res.body) {
         const errBody = await res.json().catch(() => ({}));
         const msg = errBody.detail ?? `HTTP ${res.status}`;
@@ -722,12 +741,12 @@ function BuildPage() {
     try {
       // Sync in-memory files to server (lost after every Render deploy)
       if (files.length > 0) {
-        await fetch(`${API}/api/projects/${projectId}/sync`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+        await apiFetch(`/api/projects/${projectId}/sync`, {
+          method: "POST", headers: authH(),
           body: JSON.stringify({ files }),
         });
       }
-      const r = await fetch(`${API}/api/projects/${projectId}/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command: runCmd }) });
+      const r = await apiFetch(`/api/projects/${projectId}/run`, { method: "POST", headers: authH(), body: JSON.stringify({ command: runCmd }) });
       const text = await r.text();
       if (!r.ok || text.trim().startsWith("<")) {
         setRunOutput(`Error: السيرفر لا يستجيب — تأكد من اكتمال النشر على Render (HTTP ${r.status})`);
@@ -752,7 +771,7 @@ function BuildPage() {
             {projects.filter(p => p.id !== "00000000-0000-0000-0000-000000000001").map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           {allFiles.length > 0 && <>
-            <button onClick={async () => { const r = await fetch(`${API}/api/projects/${projectId}/download`); if (!r.ok) return; const blob = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "project.zip"; a.click(); URL.revokeObjectURL(a.href); }} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>⬇ ZIP</button>
+            <button onClick={async () => { const r = await apiFetch(`/api/projects/${projectId}/download`); if (!r.ok) return; const blob = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "project.zip"; a.click(); URL.revokeObjectURL(a.href); }} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>⬇ ZIP</button>
             <button onClick={clearWorkspace} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>🗑 Clear</button>
           </>}
         </div>
@@ -893,7 +912,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     if (!url.trim()) return;
     setLoading(true); setInfo(null); setTranscript(""); setAnswer("");
     try {
-      const r = await fetch(`${API}/api/youtube/info`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+      const r = await apiFetch("/api/youtube/info", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
       if (!r.ok) { const d = await r.json(); throw new Error(d.detail); }
       setInfo(await r.json()); toast("Video info loaded");
     } catch (e: any) { toast(e.message, "err"); }
@@ -904,7 +923,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     if (!url.trim()) return;
     setTL(true); setTranscript("");
     try {
-      const r = await fetch(`${API}/api/youtube/transcript`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+      const r = await apiFetch("/api/youtube/transcript", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
       if (!r.ok) { const d = await r.json(); throw new Error(d.detail); }
       const d = await r.json(); setTranscript(d.transcript); toast(`Transcript loaded (${d.language})`);
     } catch (e: any) { toast(e.message, "err"); }
@@ -918,7 +937,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     const ctrl = new AbortController(); abortRef.current = ctrl;
     try {
       const res = await fetch(`${API}/api/youtube/analyze/stream`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authH(),
         body: JSON.stringify({ url, question: finalQ, transcript }),
         signal: ctrl.signal,
       });
@@ -1071,7 +1090,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
     setGen(true); setVars([]); setStatus("Connecting…");
     try {
       const res = await fetch(`${API}/api/social/generate/stream`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: authH(),
         body: JSON.stringify({ topic, platform, content_type: contentType, tone, language, include_hashtags: hashtags, include_emoji: emoji, variations: 3 }),
       });
       if (!res.ok || !res.body) { toast(`Error ${res.status}`, "err"); return; }
@@ -1243,7 +1262,7 @@ function TasksPage() {
       if (priorityF) qs.set("priority", priorityF);
       if (search) qs.set("search", search);
       qs.set("sort", sort);
-      const r = await fetch(`${API}/api/tasks?${qs.toString()}`);
+      const r = await apiFetch(`/api/tasks?${qs.toString()}`);
       const d = await r.json();
       setTasks(d.tasks ?? []);
     } catch { toast("تعذّر تحميل المهام", "err"); }
@@ -1251,7 +1270,7 @@ function TasksPage() {
   }, [statusF, priorityF, search, sort]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { fetch(`${API}/api/projects`).then(r => r.json()).then(setProjects).catch(() => {}); }, []);
+  useEffect(() => { apiFetch(`/api/projects`).then(r => r.json()).then(setProjects).catch(() => {}); }, []);
 
   function resetForm() {
     setTitle(""); setNotes(""); setPriority("medium"); setCategory("");
@@ -1262,7 +1281,7 @@ function TasksPage() {
     if (!title.trim()) return;
     setSaving(true);
     try {
-      const r = await fetch(`${API}/api/tasks`, {
+      const r = await apiFetch(`/api/tasks`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(), notes: notes.trim() || null,
@@ -1281,7 +1300,7 @@ function TasksPage() {
   async function setTaskStatus(t: Task, status: string) {
     setTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: status as Task["status"] } : x));
     try {
-      const r = await fetch(`${API}/api/tasks/${t.id}`, {
+      const r = await apiFetch(`/api/tasks/${t.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
@@ -1293,7 +1312,7 @@ function TasksPage() {
   async function del(t: Task) {
     if (!confirm(`حذف "${t.title}"؟`)) return;
     try {
-      const r = await fetch(`${API}/api/tasks/${t.id}`, { method: "DELETE" });
+      const r = await apiFetch(`/api/tasks/${t.id}`, { method: "DELETE" });
       if (!r.ok) throw new Error();
       setTasks(prev => prev.filter(x => x.id !== t.id));
       toast("تم الحذف");
@@ -1420,7 +1439,7 @@ function ProjectsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { const r = await fetch(`${API}/api/projects`); setProjects(await r.json()); }
+    try { const r = await apiFetch(`/api/projects`); setProjects(await r.json()); }
     catch { toast("Could not load projects", "err"); }
     finally { setLoading(false); }
   }, []);
@@ -1430,7 +1449,7 @@ function ProjectsPage() {
     if (!newName.trim()) return;
     setSaving(true);
     try {
-      const r = await fetch(`${API}/api/projects`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() || null }) });
+      const r = await apiFetch(`/api/projects`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() || null }) });
       if (!r.ok) throw new Error();
       setNewName(""); setNewDesc(""); setCreating(false); load(); toast("Project created");
     } catch { toast("Failed to create", "err"); }
@@ -1439,7 +1458,7 @@ function ProjectsPage() {
 
   async function del(id: string, name: string) {
     if (!confirm(`Delete "${name}"?`)) return;
-    await fetch(`${API}/api/projects/${id}`, { method: "DELETE" });
+    await apiFetch(`/api/projects/${id}`, { method: "DELETE" });
     toast(`Deleted "${name}"`); load();
   }
 
@@ -1494,7 +1513,7 @@ function SettingsPage() {
 
   useEffect(() => {
     fetch(`${API}/health`).then(r => r.json()).then(setHealth).catch(() => {});
-    fetch(`${API}/api/stats`).then(r => r.json()).then(setStats).catch(() => {});
+    apiFetch(`/api/stats`).then(r => r.json()).then(setStats).catch(() => {});
   }, []);
 
   return (
