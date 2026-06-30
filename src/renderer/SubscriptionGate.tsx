@@ -60,7 +60,7 @@ export default function SubscriptionGate({ children }: Props) {
     }
   }
 
-  async function fetchStatus(e: string) {
+  async function fetchStatus(e: string): Promise<boolean> {
     setChecking(true);
     try {
       const res = await fetch(`${API}/api/subscription/status?email=${encodeURIComponent(e)}`);
@@ -69,10 +69,11 @@ export default function SubscriptionGate({ children }: Props) {
         localStorage.setItem("sub_email", e);
         localStorage.setItem("sub_token", data.token);
         setAccess({ active: true, trial: data.trial ?? false, daysRemaining: data.days_remaining ?? 0 });
+        return true;
       }
-      // inactive/expired → gate shown
+      return false;
     } catch {
-      // keep gate closed on network error
+      return false;
     } finally {
       setChecking(false);
     }
@@ -102,9 +103,9 @@ export default function SubscriptionGate({ children }: Props) {
     if (!email.includes("@")) { setError("أدخل بريد إلكتروني صحيح"); return; }
     setError("");
     setLoading(true);
-    await fetchStatus(email);
+    const ok = await fetchStatus(email);
     setLoading(false);
-    if (!access) setError("لا يوجد اشتراك أو تجربة مجانية نشطة لهذا البريد");
+    if (!ok) setError("حدث خطأ، حاول مرة أخرى");
   }
 
   if (checking) {
