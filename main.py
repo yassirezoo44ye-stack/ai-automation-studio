@@ -242,7 +242,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https:; "
             "connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
-            "frame-src https://checkout.stripe.com https://js.stripe.com; "
+            "frame-src https://checkout.stripe.com https://js.stripe.com blob:; "
             "font-src 'self' data:;"
         )
         return response
