@@ -80,6 +80,79 @@ WORKSPACES   = Path(os.getenv("WORKSPACES_DIR", "./workspaces"))
 
 pool: asyncpg.Pool = None
 
+# ── Self-healing / maintenance state ───────────────────────────────────────────
+_error_counts: dict = defaultdict(int)
+_error_window_start = _time.time()
+_ERROR_WINDOW_SEC = 300        # rolling 5-minute window
+_ERROR_ALERT_THRESHOLD = 5     # log an ALERT once a category hits this many failures in the window
+_maintenance_state = {"last_run": None, "last_result": None}
+
+def _record_error(category: str):
+    """Track recurring failures so repeated trouble gets logged loudly instead of silently."""
+    global _error_window_start
+    import sys as _sys
+    now = _time.time()
+    if now - _error_window_start > _ERROR_WINDOW_SEC:
+        _error_counts.clear()
+        _error_window_start = now
+    _error_counts[category] += 1
+    if _error_counts[category] == _ERROR_ALERT_THRESHOLD:
+        print(f"ALERT: '{category}' failed {_error_counts[category]}+ times in the last "
+              f"{_ERROR_WINDOW_SEC}s — investigate.", file=_sys.stderr)
+
+async def _with_retry(coro_fn, *args, retries: int = 3, base_delay: float = 0.5, **kwargs):
+    """Retry a transient (e.g. DB connection) failure with exponential backoff before giving up."""
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            return await coro_fn(*args, **kwargs)
+        except (asyncpg.exceptions.PostgresConnectionError, OSError, asyncio.TimeoutError) as e:
+            last_exc = e
+            _record_error("db_transient")
+            if attempt < retries - 1:
+                await asyncio.sleep(base_delay * (2 ** attempt))
+    raise last_exc
+
+async def _maintenance_cycle():
+    """Periodic internal cleanup: prune stale workspace/dist files and old usage logs."""
+    import sys as _sys
+    now = _time.time()
+    removed_files = 0
+    try:
+        for base, max_age_days in ((WORKSPACES, 7), (DIST_DIR, 3)):
+            if not base.exists():
+                continue
+            for child in base.iterdir():
+                try:
+                    age_days = (now - child.stat().st_mtime) / 86400
+                    if age_days > max_age_days:
+                        if child.is_dir():
+                            shutil.rmtree(child, ignore_errors=True)
+                        else:
+                            child.unlink(missing_ok=True)
+                        removed_files += 1
+                except OSError:
+                    continue
+        deleted_logs = 0
+        async with pool.acquire() as conn:
+            deleted_logs = await conn.fetchval(
+                "WITH d AS (DELETE FROM usage_logs WHERE created_at < NOW() - INTERVAL '30 days' RETURNING 1) "
+                "SELECT COUNT(*) FROM d"
+            )
+        result = {"removed_files": removed_files, "deleted_logs": deleted_logs or 0, "errors": dict(_error_counts)}
+        _maintenance_state["last_run"] = datetime.utcnow().isoformat()
+        _maintenance_state["last_result"] = result
+        print(f"MAINTENANCE: cleanup cycle done — {result}", file=_sys.stderr)
+    except Exception as e:
+        _record_error("maintenance")
+        print(f"MAINTENANCE: cycle failed: {e}", file=_sys.stderr)
+
+async def _maintenance_loop():
+    """Background task: run a maintenance cycle on startup, then every 6 hours."""
+    while True:
+        await _maintenance_cycle()
+        await asyncio.sleep(6 * 3600)
+
 def get_ai_client() -> "anthropic.Anthropic":
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
@@ -217,7 +290,9 @@ async def lifespan(app: FastAPI):
         await init_db(conn)
     # Ensure agents table exists (merged here to avoid on_event race)
     await ensure_agents_table()
+    maintenance_task = asyncio.create_task(_maintenance_loop())
     yield
+    maintenance_task.cancel()
     await pool.close()
 
 
@@ -236,10 +311,19 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     )
     return JSONResponse(status_code=422, content={"detail": detail, "errors": errors})
 
+@app.exception_handler(Exception)
+async def unhandled_error_handler(request: Request, exc: Exception):
+    category = "db" if isinstance(exc, (asyncpg.exceptions.PostgresError, OSError)) else "app"
+    _record_error(category)
+    import sys as _sys
+    print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=_sys.stderr)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
 # Public API paths — no token required
 _PUBLIC_PREFIXES = (
     "/api/subscription/",
     "/api/stripe/",
+    "/api/health/",
     "/health",
 )
 
@@ -452,6 +536,44 @@ async def health():
     async with pool.acquire() as conn:
         pg_version = await conn.fetchval("SELECT version()")
     return {"status": "healthy", "db": "postgresql", "pg_version": pg_version,
+            "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/api/health/full")
+async def health_full():
+    """Self-diagnostic snapshot: DB, disk, secrets config, and recent error rates."""
+    checks = {}
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {e}"
+
+    checks["db_pool"] = {"size": pool.get_size(), "free": pool.get_idle_size()} if pool else "not initialized"
+
+    for label, path in (("workspaces_dir", WORKSPACES), ("dist_dir", DIST_DIR)):
+        try:
+            usage = shutil.disk_usage(path if path.exists() else path.parent)
+            checks[label] = {
+                "exists": path.exists(),
+                "free_gb": round(usage.free / (1024 ** 3), 2),
+            }
+        except Exception as e:
+            checks[label] = f"error: {e}"
+
+    checks["session_secret_configured"] = bool(os.getenv("SESSION_SECRET"))
+    checks["anthropic_key_configured"] = bool(os.getenv("ANTHROPIC_API_KEY"))
+    checks["stripe_key_configured"] = bool(os.getenv("STRIPE_SECRET_KEY"))
+
+    checks["recent_errors"] = dict(_error_counts)
+    checks["error_window_sec"] = _ERROR_WINDOW_SEC
+    checks["last_maintenance_run"] = _maintenance_state["last_run"]
+    checks["last_maintenance_result"] = _maintenance_state["last_result"]
+
+    overall_ok = checks["database"] == "ok" and checks["session_secret_configured"]
+    return {"status": "healthy" if overall_ok else "degraded", "checks": checks,
             "timestamp": datetime.utcnow().isoformat()}
 
 
