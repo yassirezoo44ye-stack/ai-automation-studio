@@ -51,10 +51,17 @@ export default function SubscriptionGate({ children }: Props) {
       if (data.valid) {
         localStorage.setItem("sub_token", data.token);
         setAccess({ active: true, trial: data.trial, daysRemaining: data.days_remaining ?? 0 });
+        return;
       }
-      // invalid token → fall through, access stays null → show gate
+      // token expired/invalid → try saved email silently
+      const savedEmail = localStorage.getItem("sub_email");
+      if (savedEmail) await fetchStatus(savedEmail);
     } catch {
-      // network error — keep gate closed
+      // network error — try email fallback
+      try {
+        const savedEmail = localStorage.getItem("sub_email");
+        if (savedEmail) await fetchStatus(savedEmail);
+      } catch {}
     } finally {
       setChecking(false);
     }
