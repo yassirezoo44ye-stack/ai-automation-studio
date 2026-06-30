@@ -764,7 +764,7 @@ async def build_program(req: BuildRequest):
     try:
         msg = ai.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=8096,
+            max_tokens=16000,
             system=BUILD_SYSTEM,
             messages=[{"role": "user", "content": req.prompt}],
         )
@@ -824,7 +824,7 @@ async def build_stream(req: BuildRequest):
             # Collect full response (build needs complete JSON)
             msg = ai.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=8096,
+                max_tokens=16000,
                 system=BUILD_SYSTEM,
                 messages=[{"role": "user", "content": req.prompt}],
             )
@@ -834,7 +834,11 @@ async def build_stream(req: BuildRequest):
                 if raw.endswith("```"):
                     raw = raw[:-3].strip()
 
-            result = json.loads(raw)
+            try:
+                result = json.loads(raw)
+            except json.JSONDecodeError:
+                yield f"data: {json.dumps({'type':'error','message':'الكود كبير جداً — حاول طلباً أبسط أو قسّمه إلى أجزاء'})}\n\n"
+                return
             n = len(result.get("files", []))
             yield f"data: {json.dumps({'type':'status','message':f'Writing {n} files…'})}\n\n"
 
