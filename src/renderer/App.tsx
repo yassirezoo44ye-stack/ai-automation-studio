@@ -619,7 +619,31 @@ function BuildPage() {
   const [running, setRunning]           = useState(false);
   const [description, setDescription]  = useState("");
   const [existingFiles, setExistingFiles] = useState<{ path: string; size: number }[]>([]);
+  const [previewUrl, setPreviewUrl]       = useState<string | null>(null);
+  const [showPreview, setShowPreview]     = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  function isHtmlProject(fs: { path: string }[]) {
+    return fs.some(f => f.path.endsWith(".html"));
+  }
+
+  async function openHtmlPreview(fs: { path: string; content?: string }[]) {
+    let html = fs.find(f => f.path === "index.html") ?? fs.find(f => f.path.endsWith(".html"));
+    if (!html) return;
+    // load content if not in memory (existing files from server)
+    if (!html.content) {
+      try {
+        const r = await fetch(`${API}/api/projects/${projectId}/files/${html.path}`);
+        const d = await r.json();
+        html = { path: d.path, content: d.content };
+      } catch { return; }
+    }
+    const blob = new Blob([html.content!], { type: "text/html" });
+    const url  = URL.createObjectURL(blob);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(url);
+    setShowPreview(true);
+  }
 
   useEffect(() => { fetch(`${API}/api/projects`).then(r => r.json()).then(setProjects).catch(() => {}); }, []);
   useEffect(() => { loadExisting(); }, [projectId]);
@@ -730,35 +754,46 @@ function BuildPage() {
             ))}
           </div>
         </div>
-        {/* Right: code + terminal */}
+        {/* Right: code + terminal/preview */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ flex: 1, overflow: "auto", background: "#080a0f" }}>
-            {activeFile ? (
-              <div>
-                <div style={{ padding: "10px 20px", borderBottom: "1px solid #1e2438", fontSize: 12, color: "#6b7a99", display: "flex", justifyContent: "space-between" }}>
-                  <span>{fileIcon(activeFile.path)} {activeFile.path}</span>
-                  <span>{activeFile.content.split("\n").length} lines</span>
+          {/* Tab bar */}
+          <div style={{ display: "flex", borderBottom: "1px solid #1e2438", background: "#0a0c10" }}>
+            <button onClick={() => setShowPreview(false)} style={{ padding: "8px 16px", fontSize: 12, background: "none", border: "none", borderBottom: showPreview ? "none" : "2px solid #6c8ef7", color: showPreview ? "#4b5980" : "#c8d3f0", cursor: "pointer" }}>Code</button>
+            {isHtmlProject(allFiles) && <button onClick={() => { if (allFiles.length > 0) openHtmlPreview(allFiles); }} style={{ padding: "8px 16px", fontSize: 12, background: "none", border: "none", borderBottom: showPreview ? "2px solid #6c8ef7" : "none", color: showPreview ? "#c8d3f0" : "#4b5980", cursor: "pointer" }}>🌐 Preview</button>}
+          </div>
+          {showPreview && previewUrl ? (
+            <iframe src={previewUrl} style={{ flex: 1, border: "none", background: "#fff" }} title="preview" sandbox="allow-scripts allow-same-origin" />
+          ) : (
+            <div style={{ flex: 1, overflow: "auto", background: "#080a0f" }}>
+              {activeFile ? (
+                <div>
+                  <div style={{ padding: "10px 20px", borderBottom: "1px solid #1e2438", fontSize: 12, color: "#6b7a99", display: "flex", justifyContent: "space-between" }}>
+                    <span>{fileIcon(activeFile.path)} {activeFile.path}</span>
+                    <span>{activeFile.content.split("\n").length} lines</span>
+                  </div>
+                  <pre style={{ margin: 0, padding: "16px 20px", fontSize: 13, color: "#c8d3f0", lineHeight: 1.6, fontFamily: "'Consolas','Courier New',monospace", overflowX: "auto" }}><code>{activeFile.content}</code></pre>
                 </div>
-                <pre style={{ margin: 0, padding: "16px 20px", fontSize: 13, color: "#c8d3f0", lineHeight: 1.6, fontFamily: "'Consolas','Courier New',monospace", overflowX: "auto" }}><code>{activeFile.content}</code></pre>
-              </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#4b5980", flexDirection: "column", gap: 10 }}>
-                <span style={{ fontSize: 36 }}>🔨</span>
-                <span>Select a file or build something</span>
-              </div>
-            )}
-          </div>
-          <div style={{ height: 190, borderTop: "1px solid #1e2438", display: "flex", flexDirection: "column", background: "#040506" }}>
-            <div style={{ padding: "6px 12px", borderBottom: "1px solid #1e2438", display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: "#6b7a99", flexShrink: 0 }}>▶</span>
-              <input value={runCmd} onChange={e => setRunCmd(e.target.value)} onKeyDown={e => { if (e.key === "Enter") runCode(); }}
-                placeholder="python main.py" style={{ flex: 1, background: "none", border: "none", color: "#c8d3f0", fontSize: 12, fontFamily: "monospace" }} />
-              <button onClick={runCode} disabled={running || !runCmd.trim()} style={{ ...S.btnPrimary, padding: "4px 12px", fontSize: 12 }}>{running ? "…" : "Run ▶"}</button>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#4b5980", flexDirection: "column", gap: 10 }}>
+                  <span style={{ fontSize: 36 }}>🔨</span>
+                  <span>Select a file or build something</span>
+                </div>
+              )}
             </div>
-            <pre style={{ flex: 1, margin: 0, padding: "10px 14px", overflowY: "auto", fontSize: 12, color: "#34d399", fontFamily: "monospace", lineHeight: 1.5 }}>
-              {runOutput || <span style={{ color: "#4b5980" }}>Output will appear here…</span>}
-            </pre>
-          </div>
+          )}
+          {!showPreview && (
+            <div style={{ height: 190, borderTop: "1px solid #1e2438", display: "flex", flexDirection: "column", background: "#040506" }}>
+              <div style={{ padding: "6px 12px", borderBottom: "1px solid #1e2438", display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "#6b7a99", flexShrink: 0 }}>▶</span>
+                <input value={runCmd} onChange={e => setRunCmd(e.target.value)} onKeyDown={e => { if (e.key === "Enter") runCode(); }}
+                  placeholder="python main.py" style={{ flex: 1, background: "none", border: "none", color: "#c8d3f0", fontSize: 12, fontFamily: "monospace" }} />
+                <button onClick={runCode} disabled={running || !runCmd.trim()} style={{ ...S.btnPrimary, padding: "4px 12px", fontSize: 12 }}>{running ? "…" : "Run ▶"}</button>
+              </div>
+              <pre style={{ flex: 1, margin: 0, padding: "10px 14px", overflowY: "auto", fontSize: 12, color: "#34d399", fontFamily: "monospace", lineHeight: 1.5 }}>
+                {runOutput || <span style={{ color: "#4b5980" }}>Output will appear here…</span>}
+              </pre>
+            </div>
+          )}
         </div>
       </div>
     </>
