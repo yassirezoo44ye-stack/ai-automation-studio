@@ -717,6 +717,7 @@ function BuildPage() {
         throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
       }
       const reader = res.body.getReader(); const decoder = new TextDecoder(); let buf = "";
+      const accumulated: { path: string; content: string }[] = [];
       while (true) {
         const { done, value } = await reader.read(); if (done) break;
         buf += decoder.decode(value, { stream: true }); const lines = buf.split("\n"); buf = lines.pop() ?? "";
@@ -724,8 +725,21 @@ function BuildPage() {
           if (!line.startsWith("data: ")) continue;
           const ev = JSON.parse(line.slice(6));
           if (ev.type === "status") { setStatus(ev.message); }
-          else if (ev.type === "file") { setFiles(p => [...p, { path: ev.path, content: ev.content }]); setStatus(`Writing ${ev.path}…`); }
-          else if (ev.type === "done") { setDescription(ev.description); setRunCmd(ev.run_command || ""); setState("done"); setStatus(`Built ${ev.files.length} files`); loadExisting(); toast(`Built: ${ev.description || ev.files.length + " files"}`); }
+          else if (ev.type === "file") {
+            accumulated.push({ path: ev.path, content: ev.content });
+            setFiles(p => [...p, { path: ev.path, content: ev.content }]);
+            setStatus(`Writing ${ev.path}…`);
+          }
+          else if (ev.type === "done") {
+            setDescription(ev.description);
+            const cmd: string = ev.run_command || "";
+            setRunCmd(/^(python3?|node|npm)\b/.test(cmd) ? cmd : "");
+            setState("done"); setStatus(`Built ${ev.files.length} files`); loadExisting();
+            toast(`Built: ${ev.description || ev.files.length + " files"}`);
+            if (accumulated.some(f => f.path.endsWith(".html"))) {
+              setTimeout(() => openHtmlPreview(accumulated), 100);
+            }
+          }
           else if (ev.type === "error") { setState("error"); setStatus(`Error: ${ev.message}`); toast(ev.message, "err"); }
         }
       }
@@ -839,7 +853,7 @@ function BuildPage() {
               )}
             </div>
           )}
-          {!showPreview && (
+          {!showPreview && !isHtmlProject(allFiles) && (
             <div style={{ height: 190, borderTop: "1px solid #1e2438", display: "flex", flexDirection: "column", background: "#040506" }}>
               <div style={{ padding: "6px 12px", borderBottom: "1px solid #1e2438", display: "flex", gap: 8, alignItems: "center" }}>
                 <span style={{ fontSize: 11, color: "#6b7a99", flexShrink: 0 }}>▶</span>
