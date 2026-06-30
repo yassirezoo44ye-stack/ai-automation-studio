@@ -68,7 +68,10 @@ def _check_rate_limit(key: str, max_calls: int = 10, window: int = 60) -> bool:
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL environment variable is required")
+    import sys
+    print("FATAL: DATABASE_URL environment variable is not set. "
+          "Set it to a PostgreSQL connection string and restart.", file=sys.stderr)
+    sys.exit(1)
 WORKSPACES   = Path(os.getenv("WORKSPACES_DIR", "./workspaces"))
 
 pool: asyncpg.Pool = None
