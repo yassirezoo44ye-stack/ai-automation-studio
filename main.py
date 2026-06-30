@@ -510,26 +510,30 @@ async def run_stream(req: RunRequest):
                     full_text += text
                     yield f"data: {json.dumps({'type': 'delta', 'text': text})}\n\n"
 
-            # Save assistant message
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)",
-                    conv_id, full_text,
-                )
-                await conn.execute(
-                    "UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id,
-                )
-                pid2 = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
-                run_id = await conn.fetchval(
-                    "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
-                    "VALUES ($1,'claude',$2,$3,'completed',NOW()) RETURNING id",
-                    pid2, json.dumps({"prompt": req.prompt}), json.dumps({"summary": full_text}),
-                )
-                await conn.execute(
-                    "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
-                    USER_ID, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
-                )
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+            # Save assistant message (non-fatal — client already has the result)
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)",
+                        conv_id, full_text,
+                    )
+                    await conn.execute(
+                        "UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id,
+                    )
+                    pid2 = uuid.UUID("00000000-0000-0000-0000-000000000001") if req.project_id == "demo" else uuid.UUID(req.project_id)
+                    run_id = await conn.fetchval(
+                        "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
+                        "VALUES ($1,'claude',$2,$3,'completed',NOW()) RETURNING id",
+                        pid2, json.dumps({"prompt": req.prompt}), json.dumps({"summary": full_text}),
+                    )
+                    await conn.execute(
+                        "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
+                        USER_ID, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
+                    )
+            except Exception:
+                pass
 
         except anthropic.BadRequestError as e:
             body = e.body if hasattr(e, 'body') and e.body else {}
@@ -1207,17 +1211,21 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest):
                     full_text += text
                     yield f"data: {json.dumps({'type':'delta','text':text})}\n\n"
 
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    "INSERT INTO messages (conversation_id, role, content) VALUES ($1,'assistant',$2)",
-                    conv_id, full_text,
-                )
-                await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
-                await conn.execute(
-                    "UPDATE ai_agents SET message_count=message_count+1, updated_at=NOW() WHERE id=$1",
-                    uuid.UUID(agent_id),
-                )
             yield f"data: {json.dumps({'type':'done'})}\n\n"
+
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "INSERT INTO messages (conversation_id, role, content) VALUES ($1,'assistant',$2)",
+                        conv_id, full_text,
+                    )
+                    await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
+                    await conn.execute(
+                        "UPDATE ai_agents SET message_count=message_count+1, updated_at=NOW() WHERE id=$1",
+                        uuid.UUID(agent_id),
+                    )
+            except Exception:
+                pass
         except Exception as e:
             yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
 
