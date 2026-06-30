@@ -731,7 +731,7 @@ function BuildPage() {
             {projects.filter(p => p.id !== "00000000-0000-0000-0000-000000000001").map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           {allFiles.length > 0 && <>
-            <button onClick={() => { const a = document.createElement("a"); a.href = `${API}/api/projects/${projectId}/download`; a.download = "project.zip"; a.click(); }} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>⬇ ZIP</button>
+            <button onClick={async () => { const r = await fetch(`${API}/api/projects/${projectId}/download`); if (!r.ok) return; const blob = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "project.zip"; a.click(); URL.revokeObjectURL(a.href); }} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>⬇ ZIP</button>
             <button onClick={clearWorkspace} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>🗑 Clear</button>
           </>}
         </div>

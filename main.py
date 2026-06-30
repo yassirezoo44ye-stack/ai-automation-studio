@@ -243,18 +243,6 @@ _PUBLIC_PREFIXES = (
     "/health",
 )
 
-class ApiAuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        path = request.url.path
-        if path.startswith("/api/") and not any(path.startswith(p) for p in _PUBLIC_PREFIXES):
-            token = (
-                request.headers.get("X-Sub-Token") or
-                request.headers.get("Authorization", "").removeprefix("Bearer ").strip() or
-                request.cookies.get("sub_token", "")
-            )
-            if not token or not _verify_token(token):
-                return JSONResponse(status_code=401, content={"detail": "Subscription required"})
-        return await call_next(request)
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -274,7 +262,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         return response
 
-app.add_middleware(ApiAuthMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 _CORS_ORIGINS = (
@@ -290,6 +277,21 @@ app.add_middleware(
 )
 
 USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+# ── API auth — pure ASGI middleware (doesn't buffer streaming responses) ──────
+
+@app.middleware("http")
+async def api_auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and not any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+        token = (
+            request.headers.get("X-Sub-Token") or
+            request.headers.get("Authorization", "").removeprefix("Bearer ").strip() or
+            request.cookies.get("sub_token", "")
+        )
+        if not token or not _verify_token(token):
+            return JSONResponse(status_code=401, content={"detail": "Subscription required"})
+    return await call_next(request)
 
 
 # ── Static Frontend ───────────────────────────────────────────────────────────
