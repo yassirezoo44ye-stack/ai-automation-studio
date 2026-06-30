@@ -981,14 +981,13 @@ async def run_project(project_id: str, body: RunRequest2):
     if any(c in raw_command for c in SHELL_CHARS):
         raise HTTPException(400, "Shell metacharacters are not allowed.")
 
-    import shlex as _shlex
-    _args_check = _shlex.split(raw_command)
+    import shlex
+    _args_check = shlex.split(raw_command)
     # Allowlist: check the actual executable (arg[0]), not just the string prefix
     ALLOWED_EXECUTABLES = {"python", "python3", "node", "npm"}
     if not _args_check or _args_check[0] not in ALLOWED_EXECUTABLES:
         raise HTTPException(400, "Only python/node commands are allowed.")
 
-    import shlex
     args = shlex.split(raw_command)
 
     try:
@@ -1048,11 +1047,6 @@ async def ensure_agents_table():
             )
         ''')
 
-
-# NOTE: ensure_agents_table() is now called inside lifespan (above)
-# Keeping this stub to avoid breaking any imports, but it's a no-op.
-async def _on_startup_stub():
-    pass
 
 
 @app.post("/api/agents")
@@ -1240,7 +1234,6 @@ async def export_conversation(conv_id: str):
         lines.append(m["content"])
         lines.append("")
     md = "\n".join(lines)
-    from fastapi.responses import Response
     return Response(content=md, media_type="text/markdown",
                     headers={"Content-Disposition": f'attachment; filename="conversation.md"'})
 
@@ -1433,15 +1426,17 @@ async def social_generate_stream(req: SocialRequest):
 
     async def event_stream():
         ai_client = ai
-        full = ""
         try:
             yield f"data: {json.dumps({'type': 'status', 'message': 'Generating content…'})}\n\n"
-            msg = ai_client.messages.create(
+            chunks: list[str] = []
+            with ai_client.messages.stream(
                 model="claude-sonnet-4-6", max_tokens=3000,
                 system=SOCIAL_SYSTEM,
                 messages=[{"role": "user", "content": user_msg}],
-            )
-            raw = msg.content[0].text.strip()
+            ) as stream:
+                for text in stream.text_stream:
+                    chunks.append(text)
+            raw = "".join(chunks).strip()
             if raw.startswith("```"):
                 raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
             variations = json.loads(raw)
