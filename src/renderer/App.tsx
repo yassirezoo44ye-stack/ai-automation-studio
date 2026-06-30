@@ -750,25 +750,53 @@ function BuildPage() {
   }
 
   async function runCode() {
-    if (!runCmd.trim()) return;
+    const allFiles = state === "done" ? files : existingFiles.map(f => ({ path: f.path, content: "" }));
     setRunning(true); setRunOutput("Running…\n");
     try {
-      // Sync in-memory files to server (lost after every Render deploy)
+      // Sync in-memory files to server before running
       if (files.length > 0) {
         await apiFetch(`/api/projects/${projectId}/sync`, {
           method: "POST", headers: authH(),
           body: JSON.stringify({ files }),
         });
       }
-      const r = await apiFetch(`/api/projects/${projectId}/run`, { method: "POST", headers: authH(), body: JSON.stringify({ command: runCmd }) });
+      const r = await apiFetch(`/api/projects/${projectId}/run`, {
+        method: "POST", headers: authH(),
+        body: JSON.stringify({ command: runCmd || null }),
+      });
+
+      let d: Record<string, unknown>;
       const text = await r.text();
-      if (!r.ok || text.trim().startsWith("<")) {
-        setRunOutput(`Error: السيرفر لا يستجيب — تأكد من اكتمال النشر على Render (HTTP ${r.status})`);
+      try { d = JSON.parse(text); }
+      catch { setRunOutput(`Error: unexpected response (HTTP ${r.status})\n${text.slice(0, 500)}`); return; }
+
+      // HTML project → open in preview tab
+      if (d.type === "html" && d.html_content) {
+        const blob = new Blob([d.html_content as string], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(url); setShowPreview(true);
+        setRunOutput(`✓ Opened ${d.entry_file ?? "index.html"} in preview tab`);
         return;
       }
-      const d = JSON.parse(text);
-      if (!r.ok) { setRunOutput(`Error: ${d.detail}`); return; }
-      setRunOutput([d.stdout ? `$ ${d.command}\n${d.stdout}` : `$ ${d.command}`, d.stderr ? `\nstderr:\n${d.stderr}` : "", `\n[exit ${d.returncode}]`].join(""));
+
+      // Server app or unsupported → show informative message
+      if (d.type === "server_app" || (!d.success && d.error)) {
+        const lines = [`⚠ ${d.error}`, d.details ? `\n${d.details}` : ""];
+        if (d.checked_files && Array.isArray(d.checked_files) && d.checked_files.length)
+          lines.push(`\nFiles found: ${(d.checked_files as string[]).slice(0, 10).join(", ")}`);
+        setRunOutput(lines.join(""));
+        return;
+      }
+
+      // Normal terminal output
+      const parts: string[] = [];
+      if (d.command) parts.push(`$ ${d.command}`);
+      if (d.stdout) parts.push(d.stdout as string);
+      if (d.stderr) parts.push(`\nstderr:\n${d.stderr as string}`);
+      parts.push(`\n[exit ${d.returncode ?? "?"}]`);
+      if (d.warning) parts.push(`\n⚠ ${d.warning}`);
+      setRunOutput(parts.filter(Boolean).join("\n"));
     } catch (e) { setRunOutput(`Error: ${e}`); }
     finally { setRunning(false); }
   }
@@ -853,16 +881,16 @@ function BuildPage() {
               )}
             </div>
           )}
-          {!showPreview && !isHtmlProject(allFiles) && (
+          {!showPreview && allFiles.length > 0 && (
             <div style={{ height: 190, borderTop: "1px solid #1e2438", display: "flex", flexDirection: "column", background: "#040506" }}>
               <div style={{ padding: "6px 12px", borderBottom: "1px solid #1e2438", display: "flex", gap: 8, alignItems: "center" }}>
                 <span style={{ fontSize: 11, color: "#6b7a99", flexShrink: 0 }}>▶</span>
                 <input value={runCmd} onChange={e => setRunCmd(e.target.value)} onKeyDown={e => { if (e.key === "Enter") runCode(); }}
-                  placeholder="python main.py" style={{ flex: 1, background: "none", border: "none", color: "#c8d3f0", fontSize: 12, fontFamily: "monospace" }} />
-                <button onClick={runCode} disabled={running || !runCmd.trim()} style={{ ...S.btnPrimary, padding: "4px 12px", fontSize: 12 }}>{running ? "…" : "Run ▶"}</button>
+                  placeholder="auto-detect (or: python main.py)" style={{ flex: 1, background: "none", border: "none", color: "#c8d3f0", fontSize: 12, fontFamily: "monospace" }} />
+                <button onClick={runCode} disabled={running} style={{ ...S.btnPrimary, padding: "4px 12px", fontSize: 12 }}>{running ? "…" : "Run ▶"}</button>
               </div>
               <pre style={{ flex: 1, margin: 0, padding: "10px 14px", overflowY: "auto", fontSize: 12, color: "#34d399", fontFamily: "monospace", lineHeight: 1.5 }}>
-                {runOutput || <span style={{ color: "#4b5980" }}>Output will appear here…</span>}
+                {runOutput || <span style={{ color: "#4b5980" }}>Output will appear here… (leave blank for auto-detect)</span>}
               </pre>
             </div>
           )}

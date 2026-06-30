@@ -298,19 +298,107 @@ async def download_workspace(project_id: str):
 
 @router.post("/api/projects/{project_id}/run")
 async def run_project(project_id: str, body: RunRequest2):
+    """
+    Smart project runner. Auto-detects project type and chooses the right
+    execution strategy. Always returns structured JSON — never a bare HTTP 4xx
+    without an explanation.
+    """
+    import logging
     import shlex
+
+    log = logging.getLogger(__name__)
     ws = workspace(project_id)
-    raw_command = (body.command or "python main.py").strip()
 
-    SHELL_CHARS = (";", "&", "|", ">", "<", "`", "$", "(", ")", "{", "}")
-    if any(c in raw_command for c in SHELL_CHARS):
-        raise HTTPException(400, "Shell metacharacters are not allowed.")
+    if not ws.exists():
+        return _run_error(
+            "Workspace not found",
+            f"No workspace directory exists for project '{project_id}'. "
+            "Try rebuilding the project.",
+            project_type="unknown",
+            workspace=str(ws),
+        )
 
-    _args_check = shlex.split(raw_command)
-    ALLOWED_EXECUTABLES = {"python", "python3", "node", "npm"}
-    if not _args_check or _args_check[0] not in ALLOWED_EXECUTABLES:
-        raise HTTPException(400, "Only python/node commands are allowed.")
+    workspace_files: list[str] = sorted(
+        str(p.relative_to(ws)).replace("\\", "/")
+        for p in ws.rglob("*") if p.is_file()
+    )
 
+    if not workspace_files:
+        return _run_error(
+            "Empty workspace",
+            "No files found in the project workspace. Build the project first.",
+            project_type="unknown",
+            workspace=str(ws),
+            checked_files=[],
+        )
+
+    # ── Validate user-supplied command ────────────────────────────────────────
+    _SHELL_CHARS = frozenset(";& |><`$(){}\\")
+    _ALLOWED_EXE = {"python", "python3"}  # only Python guaranteed in production image
+
+    raw_command = (body.command or "").strip()
+    if raw_command:
+        bad = [c for c in raw_command if c in _SHELL_CHARS]
+        if bad:
+            return _run_error(
+                "Shell metacharacters are not allowed",
+                f"Command contains forbidden characters: {bad}",
+                project_type="unknown",
+                workspace=str(ws),
+                checked_files=workspace_files,
+            )
+        args = shlex.split(raw_command)
+        if args and args[0] not in _ALLOWED_EXE:
+            # Fall through to auto-detection; ignore non-Python command
+            log.warning("run_project: ignoring unsupported command %r, auto-detecting", raw_command)
+            raw_command = ""
+
+    # ── Auto-detect project type ───────────────────────────────────────────────
+    fset = set(workspace_files)
+    detected_type, detected_cmd = _detect_project(ws, fset)
+
+    if not raw_command:
+        raw_command = detected_cmd or ""
+
+    log.info("run_project: project=%s type=%s files=%d cmd=%r",
+             project_id, detected_type, len(workspace_files), raw_command)
+
+    # ── HTML project → return content for browser preview ─────────────────────
+    if detected_type == "html" and not raw_command:
+        return _serve_html(ws, fset, workspace_files, project_id)
+
+    # ── Server framework → cannot run inside sandbox ───────────────────────────
+    if detected_type in ("flask", "fastapi", "django", "express", "vite") and not raw_command:
+        return {
+            "success": False,
+            "type": "server_app",
+            "project_type": detected_type,
+            "error": "Server application detected",
+            "details": (
+                f"This is a {detected_type.title()} server app. "
+                "Long-running servers cannot be started inside this sandbox. "
+                "Download the ZIP and run it locally with: "
+                + (_server_run_hint(detected_type, fset))
+            ),
+            "stdout": "", "stderr": "", "returncode": -1,
+            "command": "",
+            "workspace": str(ws),
+            "checked_files": workspace_files,
+        }
+
+    # ── Nothing runnable found ─────────────────────────────────────────────────
+    if not raw_command:
+        return _run_error(
+            "No runnable entry point found",
+            "Could not determine how to run this project. "
+            "Add a main.py, app.py, or index.html file, "
+            "or type a command manually (e.g. python main.py).",
+            project_type=detected_type,
+            workspace=str(ws),
+            checked_files=workspace_files,
+        )
+
+    # ── Execute ────────────────────────────────────────────────────────────────
     args = shlex.split(raw_command)
     try:
         proc = subprocess.run(
@@ -318,13 +406,169 @@ async def run_project(project_id: str, body: RunRequest2):
             capture_output=True, text=True, timeout=30,
             encoding="utf-8", errors="replace",
         )
-        return {
+        result: dict = {
+            "success": True,
+            "type": "terminal",
+            "project_type": detected_type,
             "stdout": proc.stdout,
             "stderr": proc.stderr,
             "returncode": proc.returncode,
             "command": raw_command,
         }
+        # Surface a helpful warning if the script has no output at all
+        if not proc.stdout.strip() and not proc.stderr.strip() and proc.returncode == 0:
+            result["warning"] = (
+                "Program exited successfully with no output. "
+                "If you expected output, check that your script calls print()."
+            )
+        return result
     except subprocess.TimeoutExpired:
-        raise HTTPException(408, "Execution timed out after 30 seconds.")
-    except Exception as e:
-        raise HTTPException(500, str(e))
+        return _run_error(
+            "Execution timed out (30 s)",
+            "The script ran for 30 seconds without finishing. "
+            "This usually means it started a server (which cannot be served here) "
+            "or entered an infinite loop. Download and run it locally.",
+            project_type=detected_type,
+            workspace=str(ws),
+            checked_files=workspace_files,
+            status=408,
+        )
+    except FileNotFoundError:
+        return _run_error(
+            f"Executable not found: {args[0]}",
+            f"'{args[0]}' is not installed in this environment. "
+            "Only Python is available. Download and run Node/npm projects locally.",
+            project_type=detected_type,
+            workspace=str(ws),
+            checked_files=workspace_files,
+        )
+    except Exception as exc:
+        log.exception("run_project unexpected error: %s", exc)
+        return _run_error(
+            "Unexpected execution error",
+            str(exc),
+            project_type=detected_type,
+            workspace=str(ws),
+            checked_files=workspace_files,
+            status=500,
+        )
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _detect_project(ws: Path, fset: set[str]) -> tuple[str, str]:
+    """
+    Returns (project_type, run_command).
+    run_command="" means the caller must handle it (e.g. html preview).
+    """
+    has_py   = any(f.endswith(".py")   for f in fset)
+    has_html = any(f.endswith(".html") for f in fset)
+    has_pkg  = "package.json" in fset
+
+    # ── Server framework detection ─────────────────────────────────────────
+    if "requirements.txt" in fset:
+        reqs = (ws / "requirements.txt").read_text(encoding="utf-8").lower()
+        if "fastapi" in reqs or "uvicorn" in reqs:
+            return "fastapi", ""
+        if "flask" in reqs:
+            return "flask", ""
+        if "django" in reqs:
+            return "django", ""
+
+    if has_pkg:
+        try:
+            import json as _j
+            pkg = _j.loads((ws / "package.json").read_text(encoding="utf-8"))
+            deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+            if "vite" in deps or "react" in deps or "vue" in deps:
+                return "vite", ""
+            if "express" in deps or "koa" in deps:
+                return "express", ""
+        except Exception:
+            pass
+
+    # ── Runnable Python scripts ────────────────────────────────────────────
+    for fname in ("main.py", "app.py", "server.py", "run.py", "cli.py", "solution.py", "index.py"):
+        if fname in fset:
+            return "python", f"python {fname}"
+
+    # Any .py file (pick the non-test, non-setup one)
+    py_files = [
+        f for f in sorted(fset)
+        if f.endswith(".py") and not any(x in f for x in ("test", "setup", "conf", "__"))
+    ]
+    if py_files:
+        return "python", f"python {py_files[0]}"
+
+    # ── HTML-only project ──────────────────────────────────────────────────
+    if has_html and not has_py and not has_pkg:
+        return "html", ""
+
+    # ── Node bare scripts ──────────────────────────────────────────────────
+    if has_pkg:
+        for fname in ("index.js", "main.js", "server.js", "app.js"):
+            if fname in fset:
+                return "node", f"node {fname}"
+        return "node", ""
+
+    # ── HTML with other assets ─────────────────────────────────────────────
+    if has_html:
+        return "html", ""
+
+    return "unknown", ""
+
+
+def _serve_html(ws: Path, fset: set[str], workspace_files: list[str], project_id: str) -> dict:
+    """Return HTML content so the frontend can render it in an iframe."""
+    entry = next(
+        (f for f in ("index.html",) if f in fset),
+        next((f for f in workspace_files if f.endswith(".html")), None),
+    )
+    if not entry:
+        return _run_error(
+            "No HTML file found",
+            "Project was detected as HTML but no .html file exists in the workspace.",
+            project_type="html",
+            workspace=str(ws),
+            checked_files=workspace_files,
+        )
+    content = (ws / entry).read_text(encoding="utf-8")
+    return {
+        "success": True,
+        "type": "html",
+        "project_type": "html",
+        "html_content": content,
+        "entry_file": entry,
+        "command": f"preview {entry}",
+        "stdout": f"Opening {entry} in browser preview…",
+        "stderr": "",
+        "returncode": 0,
+    }
+
+
+def _server_run_hint(project_type: str, fset: set[str]) -> str:
+    hints = {
+        "fastapi": "uvicorn main:app --reload",
+        "flask":   "python app.py",
+        "django":  "python manage.py runserver",
+        "express": "npm start",
+        "vite":    "npm run dev",
+    }
+    return hints.get(project_type, "see README.md for instructions")
+
+
+def _run_error(error: str, details: str, *, project_type: str,
+               workspace: str = "", checked_files: list | None = None,
+               status: int = 400) -> dict:
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=status, content={
+        "success": False,
+        "type": "error",
+        "error": error,
+        "details": details,
+        "project_type": project_type,
+        "workspace": workspace,
+        "checked_files": checked_files or [],
+        "stdout": "", "stderr": "", "returncode": -1,
+        "command": "",
+    })
