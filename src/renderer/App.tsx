@@ -34,6 +34,9 @@ type Agent   = { id: string; name: string; avatar: string; description: string; 
 
 const API = import.meta.env.VITE_API_URL ?? "";
 
+// Keep Render free tier awake — ping every 14 minutes
+setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
+
 // ── Toast ─────────────────────────────────────────────────────────────────────
 type Toast = { id: string; msg: string; kind: "ok" | "err" | "info" };
 const ToastCtx = createContext<(msg: string, kind?: Toast["kind"]) => void>(() => {});
