@@ -819,16 +819,27 @@ async def build_stream(req: BuildRequest):
 
     async def event_stream():
         try:
-            yield f"data: {json.dumps({'type':'status','message':'🤖 Thinking…'})}\n\n"
+            yield f"data: {json.dumps({'type':'status','message':'🤖 يفكر…'})}\n\n"
 
-            # Collect full response (build needs complete JSON)
-            msg = ai.messages.create(
+            # Stream from Claude to avoid long silent hangs
+            chunks: list[str] = []
+            char_count = 0
+            last_update = 0
+            with ai.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=16000,
                 system=BUILD_SYSTEM,
                 messages=[{"role": "user", "content": req.prompt}],
-            )
-            raw = msg.content[0].text.strip()
+            ) as stream:
+                for text in stream.text_stream:
+                    chunks.append(text)
+                    char_count += len(text)
+                    # Send progress every ~500 chars so UI doesn't freeze
+                    if char_count - last_update >= 500:
+                        last_update = char_count
+                        yield f"data: {json.dumps({'type':'status','message':f'✍️ يكتب الكود… {char_count} حرف'})}\n\n"
+
+            raw = "".join(chunks).strip()
             if raw.startswith("```"):
                 raw = "\n".join(raw.split("\n")[1:])
                 if raw.endswith("```"):
