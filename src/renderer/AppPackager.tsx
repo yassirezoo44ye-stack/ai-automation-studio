@@ -112,10 +112,15 @@ export default function AppPackager({ toast }: { toast: (m: string, k?: "ok"|"er
     }
   }
 
-  function download() {
+  async function download() {
     if (!downloadUrl) return;
-    const a = document.createElement("a"); a.href = `${API}${downloadUrl}`; a.click();
     toast("Downloading…", "info");
+    const r = await fetch(`${API}${downloadUrl}`);
+    if (!r.ok) { toast("Download failed", "err"); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = ""; a.click();
+    URL.revokeObjectURL(url);
   }
 
   const logColor = { info: "rgba(148,163,184,.7)", ok: "#34d399", err: "#f87171", cmd: "#a78bfa" };
