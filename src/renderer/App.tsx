@@ -26,10 +26,16 @@ class PageBoundary extends Component<{ name: string; children: ReactNode }, { er
   }
 }
 
-type Page    = "dashboard" | "chat" | "agents" | "build" | "design" | "package" | "social" | "projects" | "settings";
+type Page    = "dashboard" | "chat" | "agents" | "build" | "design" | "package" | "social" | "tasks" | "projects" | "settings";
 type Message = { id: string; role: "user" | "assistant"; content: string };
 type Conv    = { id: string; title: string; updated_at: string };
 type Project = { id: string; name: string; description: string; status: string; created_at: string };
+type Task = {
+  id: string; title: string; notes: string | null; status: "pending" | "in_progress" | "done";
+  priority: "low" | "medium" | "high"; category: string | null; tags: string[];
+  due_date: string | null; recurrence: string; source: string; project_id: string | null;
+  created_at: string; completed_at: string | null;
+};
 type Agent   = { id: string; name: string; avatar: string; description: string; system_prompt: string; model: string; temperature: number; message_count: number; created_at: string };
 
 const API = import.meta.env.VITE_API_URL ?? "";
@@ -241,6 +247,20 @@ function ChatPage() {
     } catch {}
   }
 
+  const [extracting, setExtracting] = useState(false);
+  async function extractTasks() {
+    if (!activeConv || extracting) return;
+    setExtracting(true);
+    try {
+      const r = await fetch(`${API}/api/tasks/from-conversation/${activeConv}`, { method: "POST" });
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      const n = d.created?.length ?? 0;
+      toast(n > 0 ? `تم استخراج ${n} مهمة من المحادثة` : "لم يتم العثور على مهام واضحة في هذه المحادثة", n > 0 ? "ok" : "info");
+    } catch { toast("فشل استخراج المهام", "err"); }
+    finally { setExtracting(false); }
+  }
+
   async function deleteConv(e: React.MouseEvent, cid: string) {
     e.stopPropagation();
     await fetch(`${API}/api/conversations/${cid}`, { method: "DELETE" });
@@ -341,6 +361,7 @@ function ChatPage() {
         <div style={{ padding: "0 8px 6px", display: "flex", gap: 6 }}>
           <button onClick={() => { setActiveConv(null); setMessages([]); }} style={{ ...S.newChatBtn, flex: 1 }}>+ New Chat</button>
           {activeConv && <button onClick={exportConv} title="Export as Markdown" style={{ ...S.newChatBtn, width: 36, padding: 0, textAlign: "center", fontSize: 14 }}>↓</button>}
+          {activeConv && <button onClick={extractTasks} disabled={extracting} title="استخراج المهام من هذه المحادثة" style={{ ...S.newChatBtn, width: 36, padding: 0, textAlign: "center", fontSize: 14 }}>{extracting ? "…" : "✅"}</button>}
         </div>
         <div style={{ padding: "0 8px 6px" }}>
           <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search…" style={{ ...S.textInput, fontSize: 12, padding: "6px 10px" }} />
@@ -1188,6 +1209,205 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
   );
 }
 
+// ── Tasks Page ────────────────────────────────────────────────────────────────
+const PRIORITY_COLOR: Record<string, string> = { low: "#64748b", medium: "#f59e0b", high: "#f87171" };
+const PRIORITY_LABEL: Record<string, string> = { low: "منخفضة", medium: "متوسطة", high: "عالية" };
+const STATUS_LABEL: Record<string, string>   = { pending: "قيد الانتظار", in_progress: "قيد التنفيذ", done: "منجزة" };
+
+function TasksPage() {
+  const toast = useToast();
+  const [tasks, setTasks]       = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [statusF, setStatusF]   = useState("");
+  const [priorityF, setPriorityF] = useState("");
+  const [search, setSearch]     = useState("");
+  const [sort, setSort]         = useState("due_date");
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving]     = useState(false);
+
+  const [title, setTitle]       = useState("");
+  const [notes, setNotes]       = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [category, setCategory] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
+  const [dueDate, setDueDate]   = useState("");
+  const [recurrence, setRecurrence] = useState("none");
+  const [projectId, setProjectId]   = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (statusF) qs.set("status", statusF);
+      if (priorityF) qs.set("priority", priorityF);
+      if (search) qs.set("search", search);
+      qs.set("sort", sort);
+      const r = await fetch(`${API}/api/tasks?${qs.toString()}`);
+      const d = await r.json();
+      setTasks(d.tasks ?? []);
+    } catch { toast("تعذّر تحميل المهام", "err"); }
+    finally { setLoading(false); }
+  }, [statusF, priorityF, search, sort]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetch(`${API}/api/projects`).then(r => r.json()).then(setProjects).catch(() => {}); }, []);
+
+  function resetForm() {
+    setTitle(""); setNotes(""); setPriority("medium"); setCategory("");
+    setTagsInput(""); setDueDate(""); setRecurrence("none"); setProjectId("");
+  }
+
+  async function createTask() {
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`${API}/api/tasks`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(), notes: notes.trim() || null,
+          priority, category: category.trim() || null,
+          tags: tagsInput.split(",").map(t => t.trim()).filter(Boolean),
+          due_date: dueDate ? new Date(dueDate).toISOString() : null,
+          recurrence, project_id: projectId || null,
+        }),
+      });
+      if (!r.ok) throw new Error();
+      resetForm(); setCreating(false); load(); toast("تم إنشاء المهمة");
+    } catch { toast("فشل إنشاء المهمة", "err"); }
+    finally { setSaving(false); }
+  }
+
+  async function setTaskStatus(t: Task, status: string) {
+    setTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: status as Task["status"] } : x));
+    try {
+      const r = await fetch(`${API}/api/tasks/${t.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!r.ok) throw new Error();
+      load();
+    } catch { toast("فشل تحديث الحالة", "err"); load(); }
+  }
+
+  async function del(t: Task) {
+    if (!confirm(`حذف "${t.title}"؟`)) return;
+    try {
+      const r = await fetch(`${API}/api/tasks/${t.id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setTasks(prev => prev.filter(x => x.id !== t.id));
+      toast("تم الحذف");
+    } catch { toast("فشل الحذف", "err"); }
+  }
+
+  const overdue = (t: Task) => t.due_date && t.status !== "done" && new Date(t.due_date) < new Date();
+
+  return (
+    <>
+      <header style={S.header}>
+        <span style={S.headerTitle}>Tasks</span>
+        <button onClick={() => setCreating(c => !c)} style={S.btnPrimary}>{creating ? "إلغاء" : "+ مهمة جديدة"}</button>
+      </header>
+      <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        {creating && (
+          <div style={{ ...S.card, marginBottom: 16 }}>
+            <div style={S.cardTitle}>مهمة جديدة</div>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="العنوان *" style={{ ...S.textInput, marginTop: 12 }} autoFocus />
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="ملاحظات (اختياري)" style={{ ...S.textInput, marginTop: 10 }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              <select value={priority} onChange={e => setPriority(e.target.value)} style={S.projectSelect}>
+                <option value="low">أولوية منخفضة</option>
+                <option value="medium">أولوية متوسطة</option>
+                <option value="high">أولوية عالية</option>
+              </select>
+              <select value={recurrence} onChange={e => setRecurrence(e.target.value)} style={S.projectSelect}>
+                <option value="none">بدون تكرار</option>
+                <option value="daily">يومي</option>
+                <option value="weekly">أسبوعي</option>
+                <option value="monthly">شهري</option>
+              </select>
+              <select value={projectId} onChange={e => setProjectId(e.target.value)} style={S.projectSelect}>
+                <option value="">بدون مشروع</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <input type="datetime-local" value={dueDate} onChange={e => setDueDate(e.target.value)} style={{ ...S.textInput, width: 200 }} />
+              <input value={category} onChange={e => setCategory(e.target.value)} placeholder="التصنيف" style={{ ...S.textInput, width: 140 }} />
+              <input value={tagsInput} onChange={e => setTagsInput(e.target.value)} placeholder="وسوم، مفصولة بفاصلة" style={{ ...S.textInput, flex: 1, minWidth: 160 }} />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button onClick={createTask} disabled={saving || !title.trim()} style={S.btnPrimary}>{saving ? "جارٍ الحفظ…" : "حفظ"}</button>
+              <button onClick={() => { setCreating(false); resetForm(); }} style={S.btnSecondary}>إلغاء</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث…" style={{ ...S.textInput, width: 200 }} />
+          <select value={statusF} onChange={e => setStatusF(e.target.value)} style={S.projectSelect}>
+            <option value="">كل الحالات</option>
+            <option value="pending">قيد الانتظار</option>
+            <option value="in_progress">قيد التنفيذ</option>
+            <option value="done">منجزة</option>
+          </select>
+          <select value={priorityF} onChange={e => setPriorityF(e.target.value)} style={S.projectSelect}>
+            <option value="">كل الأولويات</option>
+            <option value="low">منخفضة</option>
+            <option value="medium">متوسطة</option>
+            <option value="high">عالية</option>
+          </select>
+          <select value={sort} onChange={e => setSort(e.target.value)} style={S.projectSelect}>
+            <option value="due_date">ترتيب حسب الاستحقاق</option>
+            <option value="priority">ترتيب حسب الأولوية</option>
+            <option value="created">الأحدث أولاً</option>
+            <option value="title">أبجدياً</option>
+          </select>
+        </div>
+
+        {loading && <div style={S.muted}>جارٍ التحميل…</div>}
+        {!loading && tasks.length === 0 && (
+          <div style={S.emptyState}><div style={{ fontSize: 32, marginBottom: 10 }}>✅</div><div style={{ color: "#c8d3f0", fontWeight: 600 }}>لا توجد مهام بعد</div></div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {tasks.map(t => (
+            <div key={t.id} style={{ ...S.card, opacity: t.status === "done" ? 0.6 : 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{
+                      ...S.cardTitle,
+                      textDecoration: t.status === "done" ? "line-through" : "none",
+                    }}>{t.title}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: PRIORITY_COLOR[t.priority], border: `1px solid ${PRIORITY_COLOR[t.priority]}`, borderRadius: 6, padding: "1px 6px" }}>
+                      {PRIORITY_LABEL[t.priority]}
+                    </span>
+                    {t.source === "ai" && <span style={{ fontSize: 10, color: "#a78bfa" }}>🤖 من المحادثة</span>}
+                    {overdue(t) && <span style={{ fontSize: 10, color: "#f87171", fontWeight: 700 }}>⚠ متأخرة</span>}
+                  </div>
+                  {t.notes && <div style={{ ...S.muted, marginTop: 4 }}>{t.notes}</div>}
+                  <div style={{ ...S.muted, marginTop: 8, fontSize: 11, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {t.category && <span>📂 {t.category}</span>}
+                    {t.tags.length > 0 && <span>🏷 {t.tags.join(", ")}</span>}
+                    {t.due_date && <span>📅 {new Date(t.due_date).toLocaleString()}</span>}
+                    {t.recurrence !== "none" && <span>🔁 {t.recurrence}</span>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <select value={t.status} onChange={e => setTaskStatus(t, e.target.value)} style={{ ...S.projectSelect, fontSize: 11, padding: "4px 8px" }}>
+                    <option value="pending">{STATUS_LABEL.pending}</option>
+                    <option value="in_progress">{STATUS_LABEL.in_progress}</option>
+                    <option value="done">{STATUS_LABEL.done}</option>
+                  </select>
+                  <button onClick={() => del(t)} style={{ background: "none", border: "none", color: "#4b5980", cursor: "pointer", fontSize: 16, padding: 4 }}>🗑</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Projects Page ─────────────────────────────────────────────────────────────
 function ProjectsPage() {
   const toast = useToast();
@@ -1384,6 +1604,7 @@ function AppInner() {
     ["design",    "🎨", "Design"],
     ["package",   "📦", "Package"],
     ["social",    "🌐", "Social"],
+    ["tasks",     "✅", "Tasks"],
     ["projects",  "📁", "Projects"],
     ["settings",  "⚙️",  "Settings"],
   ];
@@ -1440,6 +1661,7 @@ function AppInner() {
           {page === "design"    && <PageBoundary name="Design Studio"><DesignStudio toast={add} /></PageBoundary>}
           {page === "package"   && <PageBoundary name="App Packager"><AppPackager  toast={add} /></PageBoundary>}
           {page === "social"    && <SocialPage />}
+          {page === "tasks"     && <TasksPage />}
           {page === "projects"  && <ProjectsPage />}
           {page === "settings"  && <SettingsPage />}
         </main>

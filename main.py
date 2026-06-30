@@ -59,6 +59,17 @@ def _verify_token(token: str) -> dict | None:
     except Exception:
         return None
 
+def _owner_email(request: Request) -> str:
+    """The per-user identity used to scope owned records (tasks, etc.) — derived
+    from the same subscription token the auth middleware already validated."""
+    token = (
+        request.headers.get("X-Sub-Token") or
+        request.headers.get("Authorization", "").removeprefix("Bearer ").strip() or
+        request.cookies.get("sub_token", "")
+    )
+    payload = _verify_token(token) if token else None
+    return payload["e"] if payload else "demo@local"
+
 # ── In-memory rate limiter ────────────────────────────────────────────────────
 _rl_store: dict[str, list[float]] = defaultdict(list)
 
@@ -290,6 +301,7 @@ async def lifespan(app: FastAPI):
         await init_db(conn)
     # Ensure agents table exists (merged here to avoid on_event race)
     await ensure_agents_table()
+    await ensure_tasks_table()
     maintenance_task = asyncio.create_task(_maintenance_loop())
     yield
     maintenance_task.cancel()
@@ -885,6 +897,35 @@ Rules:
 - Write clean, working, production-quality code
 """
 
+# Two-phase prompts for /api/build/stream: plan the file list first (cheap, reliable),
+# then generate each file's full content in its own call. Avoids the single-call token
+# ceiling and JSON-escaping fragility that breaks on large, many-file projects.
+BUILD_PLAN_SYSTEM = """You are a senior full-stack software architect.
+Given a request, design the complete file/folder structure needed to deliver it as a genuinely runnable, production-quality result — including, when relevant: backend API, database schema/migrations, authentication, frontend, Docker support, .env.example, README.md, automated tests, and PWA assets (manifest/service worker) for web apps.
+Respond with ONLY a valid JSON object, no markdown fences, no explanation:
+{
+  "description": "short description of what will be built",
+  "run_command": "command to run the program",
+  "language": "primary language",
+  "files": [
+    {"path": "relative/path/to/file.ext", "purpose": "one or two sentences describing exactly what this file must contain"}
+  ]
+}
+Rules:
+- Use relative paths only, never absolute.
+- List every file needed for the result to actually work end-to-end — do not skip config, migrations, or env templates.
+- Keep the file list focused: prefer 8-30 files; do not split a project into more files than it needs.
+- Do NOT include file contents here — only path + purpose.
+"""
+
+BUILD_FILE_SYSTEM = """You are a senior full-stack software engineer.
+You are given the overall plan for a project and asked to write the COMPLETE, production-quality content for exactly ONE file in that project.
+Respond with ONLY the raw file content. No markdown code fences, no explanation, no JSON wrapper — just the file's exact contents.
+Write clean, secure, working code: validate inputs, parameterize SQL, escape/encode output to prevent XSS, and never hardcode secrets (reference environment variables instead, and list them in .env.example when you are writing that file).
+"""
+
+BUILD_MAX_FILES = 30
+
 class BuildRequest(BaseModel):
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=10000)
@@ -973,55 +1014,77 @@ async def build_stream(req: BuildRequest):
     """Stream the build progress via SSE."""
     ai = get_ai_client()
 
+    def _strip_fences(text: str) -> str:
+        t = text.strip()
+        if t.startswith("```"):
+            t = "\n".join(t.split("\n")[1:])
+            if t.endswith("```"):
+                t = t[:-3]
+        return t.strip()
+
     async def event_stream():
         try:
-            yield f"data: {json.dumps({'type':'status','message':'🤖 يفكر…'})}\n\n"
+            # ── Phase 1: plan the file list (cheap, reliable — no large content yet) ──
+            yield f"data: {json.dumps({'type':'status','message':'🤖 يخطط للمشروع…'})}\n\n"
 
-            # Stream from Claude to avoid long silent hangs
-            chunks: list[str] = []
-            char_count = 0
-            last_update = 0
+            plan_chunks: list[str] = []
             with ai.messages.stream(
                 model="claude-sonnet-4-6",
-                max_tokens=16000,
-                system=BUILD_SYSTEM,
+                max_tokens=4096,
+                system=BUILD_PLAN_SYSTEM,
                 messages=[{"role": "user", "content": req.prompt}],
             ) as stream:
                 for text in stream.text_stream:
-                    chunks.append(text)
-                    char_count += len(text)
-                    # Send progress every ~500 chars so UI doesn't freeze
-                    if char_count - last_update >= 500:
-                        last_update = char_count
-                        yield f"data: {json.dumps({'type':'status','message':f'✍️ يكتب الكود… {char_count} حرف'})}\n\n"
-
-            yield f"data: {json.dumps({'type':'status','message':'⚙️ جارٍ معالجة الكود…'})}\n\n"
-
-            raw = "".join(chunks).strip()
-            if raw.startswith("```"):
-                raw = "\n".join(raw.split("\n")[1:])
-                if raw.endswith("```"):
-                    raw = raw[:-3].strip()
+                    plan_chunks.append(text)
 
             try:
-                result = json.loads(raw)
+                plan = json.loads(_strip_fences("".join(plan_chunks)))
             except json.JSONDecodeError:
-                yield f"data: {json.dumps({'type':'error','message':'الكود كبير جداً — حاول طلباً أبسط أو قسّمه إلى أجزاء'})}\n\n"
+                yield f"data: {json.dumps({'type':'error','message':'تعذّر فهم خطة المشروع — حاول صياغة الطلب بشكل أوضح'})}\n\n"
                 return
-            n = len(result.get("files", []))
-            yield f"data: {json.dumps({'type':'status','message':f'✅ كتابة {n} ملف…'})}\n\n"
 
+            files_meta = [f for f in plan.get("files", []) if f.get("path")][:BUILD_MAX_FILES]
+            if not files_meta:
+                yield f"data: {json.dumps({'type':'error','message':'لم يتمكن النظام من تحديد أي ملفات لهذا الطلب'})}\n\n"
+                return
+
+            all_paths = ", ".join(f["path"] for f in files_meta)
+            yield f"data: {json.dumps({'type':'status','message':f'📋 الخطة جاهزة — {len(files_meta)} ملف…'})}\n\n"
+
+            # ── Phase 2: generate each file's full content in its own call ──
             ws = workspace(req.project_id)
             written = []
-            for f in result.get("files", []):
-                dest = safe_path(ws, f["path"])
+            for i, fmeta in enumerate(files_meta, 1):
+                path = fmeta["path"]
+                purpose = fmeta.get("purpose", "")
+                yield f"data: {json.dumps({'type':'status','message':f'✍️ ({i}/{len(files_meta)}) {path}…'})}\n\n"
+
+                file_prompt = (
+                    f"Project request: {req.prompt}\n\n"
+                    f"Overall plan: {plan.get('description', '')}\n"
+                    f"All files in this project: {all_paths}\n\n"
+                    f"Write the complete content for this one file:\n"
+                    f"Path: {path}\nPurpose: {purpose}"
+                )
+                content_chunks: list[str] = []
+                with ai.messages.stream(
+                    model="claude-sonnet-4-6",
+                    max_tokens=8000,
+                    system=BUILD_FILE_SYSTEM,
+                    messages=[{"role": "user", "content": file_prompt}],
+                ) as stream:
+                    for text in stream.text_stream:
+                        content_chunks.append(text)
+
+                content = _strip_fences("".join(content_chunks))
+                dest = safe_path(ws, path)
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(f["content"], encoding="utf-8")
-                written.append(f["path"])
-                yield f"data: {json.dumps({'type':'file','path':f['path'],'content':f['content']})}\n\n"
+                dest.write_text(content, encoding="utf-8")
+                written.append(path)
+                yield f"data: {json.dumps({'type':'file','path':path,'content':content})}\n\n"
 
             # Send done BEFORE DB write so Render's 30s no-data timeout doesn't kill the connection
-            yield f"data: {json.dumps({'type':'done','description':result.get('description',''),'files':written,'run_command':result.get('run_command',''),'language':result.get('language','')})}\n\n"
+            yield f"data: {json.dumps({'type':'done','description':plan.get('description',''),'files':written,'run_command':plan.get('run_command',''),'language':plan.get('language','')})}\n\n"
 
             # Log to DB in background (non-blocking from client's perspective)
             try:
@@ -1205,6 +1268,32 @@ async def ensure_agents_table():
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
         ''')
+
+
+async def ensure_tasks_table():
+    async with pool.acquire() as conn:
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS tasks (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                owner_email TEXT NOT NULL,
+                project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+                conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+                title TEXT NOT NULL,
+                notes TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                priority TEXT NOT NULL DEFAULT 'medium',
+                category TEXT,
+                tags TEXT[] NOT NULL DEFAULT '{}',
+                due_date TIMESTAMPTZ,
+                recurrence TEXT NOT NULL DEFAULT 'none',
+                source TEXT NOT NULL DEFAULT 'manual',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                completed_at TIMESTAMPTZ
+            )
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner_email)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)')
 
 
 
@@ -2248,6 +2337,262 @@ Rules:
         raise HTTPException(502, "Claude returned invalid JSON for the design.")
     except Exception as e:
         raise HTTPException(502, str(e))
+
+
+# ── Tasks module ────────────────────────────────────────────────────────────
+# Tasks are scoped per-user by owner_email (the only stable per-account identity
+# the platform has today — see _owner_email). They can optionally link to a
+# project and/or the conversation they were extracted from.
+
+_TASK_STATUSES   = ("pending", "in_progress", "done")
+_TASK_PRIORITIES = ("low", "medium", "high")
+_TASK_RECURRENCE = ("none", "daily", "weekly", "monthly")
+
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    notes: Optional[str] = Field(None, max_length=5000)
+    project_id: Optional[str] = None
+    priority: str = Field("medium", pattern="^(low|medium|high)$")
+    category: Optional[str] = Field(None, max_length=100)
+    tags: List[str] = Field(default_factory=list)
+    due_date: Optional[str] = None
+    recurrence: str = Field("none", pattern="^(none|daily|weekly|monthly)$")
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=300)
+    notes: Optional[str] = Field(None, max_length=5000)
+    project_id: Optional[str] = None
+    priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
+    category: Optional[str] = Field(None, max_length=100)
+    tags: Optional[List[str]] = None
+    due_date: Optional[str] = None
+    recurrence: Optional[str] = Field(None, pattern="^(none|daily|weekly|monthly)$")
+    status: Optional[str] = Field(None, pattern="^(pending|in_progress|done)$")
+
+def _parse_due_date(value: Optional[str]):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(400, "Invalid due_date — use ISO 8601 (e.g. 2026-07-10T09:00:00Z)")
+
+def _parse_uuid(value: Optional[str], field: str):
+    if not value:
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(400, f"Invalid {field}")
+
+def _task_row_to_dict(row) -> dict:
+    d = dict(row)
+    for k in ("id", "project_id", "conversation_id"):
+        if d.get(k) is not None:
+            d[k] = str(d[k])
+    for k in ("due_date", "created_at", "updated_at", "completed_at"):
+        if d.get(k) is not None:
+            d[k] = d[k].isoformat()
+    return d
+
+def _next_due_date(due, recurrence: str):
+    if not due or recurrence == "none":
+        return None
+    from datetime import timedelta
+    if recurrence == "daily":
+        return due + timedelta(days=1)
+    if recurrence == "weekly":
+        return due + timedelta(weeks=1)
+    if recurrence == "monthly":
+        month = due.month + 1
+        year = due.year + (1 if month > 12 else 0)
+        month = month if month <= 12 else 1
+        day = min(due.day, 28)
+        return due.replace(year=year, month=month, day=day)
+    return None
+
+
+@app.get("/api/tasks")
+async def list_tasks(
+    request: Request,
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    category: Optional[str] = None,
+    project_id: Optional[str] = None,
+    search: Optional[str] = None,
+    sort: str = "due_date",
+):
+    owner = _owner_email(request)
+    clauses = ["owner_email = $1"]
+    params: list = [owner]
+
+    def add(clause: str, value):
+        params.append(value)
+        clauses.append(clause.format(n=len(params)))
+
+    if status:
+        if status not in _TASK_STATUSES:
+            raise HTTPException(400, "Invalid status filter")
+        add("status = ${n}", status)
+    if priority:
+        if priority not in _TASK_PRIORITIES:
+            raise HTTPException(400, "Invalid priority filter")
+        add("priority = ${n}", priority)
+    if category:
+        add("category = ${n}", category)
+    if project_id:
+        add("project_id = ${n}", _parse_uuid(project_id, "project_id"))
+    if search:
+        add("(title ILIKE ${n} OR notes ILIKE ${n})", f"%{search}%")
+
+    sort_col = {
+        "due_date": "due_date NULLS LAST, priority DESC",
+        "priority": "priority DESC, due_date NULLS LAST",
+        "created": "created_at DESC",
+        "title": "title ASC",
+    }.get(sort, "due_date NULLS LAST")
+
+    query = f"SELECT * FROM tasks WHERE {' AND '.join(clauses)} ORDER BY {sort_col}"
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
+    return {"tasks": [_task_row_to_dict(r) for r in rows]}
+
+
+@app.post("/api/tasks")
+async def create_task(body: TaskCreate, request: Request):
+    owner = _owner_email(request)
+    pid = _parse_uuid(body.project_id, "project_id")
+    due = _parse_due_date(body.due_date)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow('''
+            INSERT INTO tasks (owner_email, project_id, title, notes, priority, category, tags, due_date, recurrence)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+        ''', owner, pid, body.title.strip(), body.notes, body.priority, body.category, body.tags, due, body.recurrence)
+    return _task_row_to_dict(row)
+
+
+@app.put("/api/tasks/{task_id}")
+async def update_task(task_id: str, body: TaskUpdate, request: Request):
+    owner = _owner_email(request)
+    tid = _parse_uuid(task_id, "task_id")
+    fields, params = [], []
+
+    def set_field(col: str, value):
+        params.append(value)
+        fields.append(f"{col} = ${len(params)}")
+
+    if body.title is not None: set_field("title", body.title.strip())
+    if body.notes is not None: set_field("notes", body.notes)
+    if body.project_id is not None: set_field("project_id", _parse_uuid(body.project_id, "project_id"))
+    if body.priority is not None: set_field("priority", body.priority)
+    if body.category is not None: set_field("category", body.category)
+    if body.tags is not None: set_field("tags", body.tags)
+    if body.due_date is not None: set_field("due_date", _parse_due_date(body.due_date))
+    if body.recurrence is not None: set_field("recurrence", body.recurrence)
+    if body.status is not None:
+        set_field("status", body.status)
+        set_field("completed_at", datetime.utcnow() if body.status == "done" else None)
+
+    if not fields:
+        raise HTTPException(400, "No fields to update")
+    fields.append("updated_at = NOW()")
+    params.extend([tid, owner])
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"UPDATE tasks SET {', '.join(fields)} WHERE id = ${len(params)-1} AND owner_email = ${len(params)} RETURNING *",
+            *params,
+        )
+        if not row:
+            raise HTTPException(404, "Task not found")
+
+        # Recurring task completed → spawn the next occurrence
+        if body.status == "done" and row["recurrence"] != "none" and row["due_date"]:
+            next_due = _next_due_date(row["due_date"], row["recurrence"])
+            if next_due:
+                await conn.execute('''
+                    INSERT INTO tasks (owner_email, project_id, conversation_id, title, notes, priority, category, tags, due_date, recurrence, source)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                ''', owner, row["project_id"], row["conversation_id"], row["title"], row["notes"],
+                     row["priority"], row["category"], row["tags"], next_due, row["recurrence"], row["source"])
+
+    return _task_row_to_dict(row)
+
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: str, request: Request):
+    owner = _owner_email(request)
+    tid = _parse_uuid(task_id, "task_id")
+    async with pool.acquire() as conn:
+        deleted = await conn.fetchval(
+            "WITH d AS (DELETE FROM tasks WHERE id=$1 AND owner_email=$2 RETURNING 1) SELECT COUNT(*) FROM d",
+            tid, owner,
+        )
+    if not deleted:
+        raise HTTPException(404, "Task not found")
+    return {"deleted": True}
+
+
+TASK_EXTRACT_SYSTEM = """Extract concrete, actionable tasks that were mentioned, requested, or agreed to in this conversation.
+Respond with ONLY a JSON array (no markdown fences, no explanation). Each item:
+{"title": "short specific action", "priority": "low"|"medium"|"high", "category": "short label or null", "notes": "1-2 sentences of context or null"}
+Return [] if there are no real actionable tasks. Do not invent tasks that weren't actually discussed."""
+
+@app.post("/api/tasks/from-conversation/{conversation_id}")
+async def extract_tasks_from_conversation(conversation_id: str, request: Request):
+    """Ask Claude to pull actionable tasks out of an existing conversation's messages."""
+    owner = _owner_email(request)
+    conv_id = _parse_uuid(conversation_id, "conversation_id")
+    ai = get_ai_client()
+
+    async with pool.acquire() as conn:
+        conv = await conn.fetchrow("SELECT id, project_id FROM conversations WHERE id=$1", conv_id)
+        if not conv:
+            raise HTTPException(404, "Conversation not found")
+        msgs = await conn.fetch(
+            "SELECT role, content FROM messages WHERE conversation_id=$1 ORDER BY created_at ASC LIMIT 100",
+            conv_id,
+        )
+
+    if not msgs:
+        return {"created": []}
+
+    transcript = "\n".join(f"{m['role']}: {m['content']}" for m in msgs)[:12000]
+
+    try:
+        msg = ai.messages.create(
+            model="claude-sonnet-4-6", max_tokens=2000,
+            system=TASK_EXTRACT_SYSTEM,
+            messages=[{"role": "user", "content": transcript}],
+        )
+    except anthropic.BadRequestError as e:
+        body = e.body if hasattr(e, "body") and e.body else {}
+        raise HTTPException(402, body.get("error", {}).get("message", str(e)) if isinstance(body, dict) else str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
+    try:
+        items = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(502, "Claude returned invalid JSON while extracting tasks.")
+
+    created = []
+    async with pool.acquire() as conn:
+        for item in items[:20]:
+            title = (item.get("title") or "").strip()
+            if not title:
+                continue
+            priority = item.get("priority") if item.get("priority") in _TASK_PRIORITIES else "medium"
+            row = await conn.fetchrow('''
+                INSERT INTO tasks (owner_email, project_id, conversation_id, title, notes, priority, category, source)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,'ai') RETURNING *
+            ''', owner, conv["project_id"], conv_id, title, item.get("notes"), priority, item.get("category"))
+            created.append(_task_row_to_dict(row))
+
+    return {"created": created}
 
 
 if __name__ == "__main__":
