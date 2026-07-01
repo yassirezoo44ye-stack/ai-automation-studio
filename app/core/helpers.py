@@ -20,6 +20,13 @@ def get_ai_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=key)
 
 
+def get_async_ai_client() -> anthropic.AsyncAnthropic:
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set.")
+    return anthropic.AsyncAnthropic(api_key=key)
+
+
 # ── Project ID resolution ─────────────────────────────────────────────────────
 
 def resolve_project_id(project_id: Optional[str]) -> uuid.UUID:

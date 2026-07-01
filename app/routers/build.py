@@ -3,7 +3,7 @@ import io
 import json
 import logging
 import shutil
-import subprocess
+import time
 import zipfile
 from pathlib import Path
 from typing import Optional
@@ -17,7 +17,10 @@ from pydantic import BaseModel, Field
 from app.core.config import USER_ID
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
-from app.core.helpers import get_ai_client, resolve_project_id, anthropic_error_message, strip_fences
+from app.core.helpers import (
+    get_ai_client, get_async_ai_client,
+    resolve_project_id, anthropic_error_message, strip_fences,
+)
 from app.core.security import ai_rate_limit
 from app.execution import process_mgr
 from app.execution.runner import run_stream, run_sync
@@ -48,31 +51,77 @@ Rules:
 - Write clean, working, production-quality code
 """
 
-BUILD_PLAN_SYSTEM = """You are a senior full-stack software architect.
-Given a request, design the complete file/folder structure needed to deliver it as a genuinely runnable, production-quality result — including, when relevant: backend API, database schema/migrations, authentication, frontend, Docker support, .env.example, README.md, automated tests, and PWA assets (manifest/service worker) for web apps.
-Respond with ONLY a valid JSON object, no markdown fences, no explanation:
-{
-  "description": "short description of what will be built",
-  "run_command": "command to run the program",
-  "language": "primary language",
-  "files": [
-    {"path": "relative/path/to/file.ext", "purpose": "one or two sentences describing exactly what this file must contain"}
-  ]
-}
-Rules:
-- Use relative paths only, never absolute.
-- List every file needed for the result to actually work end-to-end — do not skip config, migrations, or env templates.
-- Keep the file list focused: prefer 8-30 files; do not split a project into more files than it needs.
-- Do NOT include file contents here — only path + purpose.
-"""
+BUILD_UNIFIED_SYSTEM = """You are a senior full-stack software engineer.
+Build a complete, production-quality, runnable project for the user's request.
 
-BUILD_FILE_SYSTEM = """You are a senior full-stack software engineer.
-You are given the overall plan for a project and asked to write the COMPLETE, production-quality content for exactly ONE file in that project.
-Respond with ONLY the raw file content. No markdown code fences, no explanation, no JSON wrapper — just the file's exact contents.
-Write clean, secure, working code: validate inputs, parameterize SQL, escape/encode output to prevent XSS, and never hardcode secrets (reference environment variables instead, and list them in .env.example when you are writing that file).
+Output EVERY file using EXACTLY this format — no deviations, no preamble:
+
+<<<FILE: relative/path/to/file.ext>>>
+[complete file content — no fences, no truncation, no placeholder comments]
+<<<ENDFILE>>>
+
+Rules:
+- Start immediately with the first <<<FILE: ...>>> line — no introduction.
+- Write EVERY file the project needs end-to-end (entry point, dependencies, README.md, .env.example if needed).
+- Use relative paths only (e.g. src/main.py, not /app/src/main.py).
+- Write COMPLETE file content — never use "..." or "# add more here".
+- Write clean, secure code: validate inputs, parameterise SQL, escape output.
+- For simple projects: one index.html with inline CSS/JS is fine.
+- For Python: include requirements.txt when 3rd-party packages are needed.
+- For Node: include package.json with all dependencies listed.
+
+After ALL files, append metadata on its own line (no extra text):
+<<<META>>>
+{"description":"one line","run_command":"e.g. python main.py","language":"primary language"}
+<<<ENDMETA>>>
 """
 
 BUILD_MAX_FILES = 30
+
+
+class _BuildParser:
+    """
+    Line-by-line state machine that parses the Claude stream.
+
+    Transitions:
+      preamble  →  in_file  (on <<<FILE: path>>>)
+      in_file   →  preamble (on <<<ENDFILE>>>, emits file_done)
+      preamble  →  in_meta  (on <<<META>>>)
+      in_meta   →  done     (on <<<ENDMETA>>>, emits meta_done)
+    """
+
+    def __init__(self):
+        self.state = "preamble"
+        self.current_path = ""
+        self.content_lines: list[str] = []
+        self.meta_lines: list[str] = []
+        self.completed_files: list[str] = []
+
+    def feed(self, line: str):
+        """Return (event_type, data) or None."""
+        if self.state == "preamble":
+            if line.startswith("<<<FILE: ") and line.endswith(">>>"):
+                self.current_path = line[9:-3].strip()
+                self.content_lines = []
+                self.state = "in_file"
+                return ("file_start", self.current_path)
+            if line.strip() == "<<<META>>>":
+                self.meta_lines = []
+                self.state = "in_meta"
+        elif self.state == "in_file":
+            if line.strip() == "<<<ENDFILE>>>":
+                content = "\n".join(self.content_lines)
+                path = self.current_path
+                self.completed_files.append(path)
+                self.state = "preamble"
+                return ("file_done", (path, content))
+            self.content_lines.append(line)
+        elif self.state == "in_meta":
+            if line.strip() == "<<<ENDMETA>>>":
+                self.state = "done"
+                return ("meta_done", "\n".join(self.meta_lines))
+            self.meta_lines.append(line)
+        return None
 
 
 class BuildRequest(BaseModel):
@@ -140,87 +189,113 @@ async def build_program(req: BuildRequest):
 
 @router.post("/api/build/stream")
 async def build_stream(req: BuildRequest, request: Request):
+    """
+    Single-call async streaming build.
+
+    Root-cause fix for "No files yet":
+      - AsyncAnthropic: async for text in stream.text_stream yields control to
+        the event loop between tokens — event loop NEVER blocks.
+      - Single LLM call: no N+1 round-trips that allow the proxy to time out.
+      - Parses <<<FILE: path>>> / <<<ENDFILE>>> delimiters in real-time.
+      - Writes each file and emits its SSE event the moment <<<ENDFILE>>> arrives.
+      - Heartbeat every 15 s keeps the Render proxy alive.
+    """
     ai_rate_limit(request, max_calls=10, window=60)
-    ai = get_ai_client()
 
     async def event_stream():
         try:
-            yield f"data: {json.dumps({'type':'status','message':'🤖 يخطط للمشروع…'})}\n\n"
+            yield _sse("status", message="🤖 Connecting to Claude…")
 
-            plan_chunks: list[str] = []
-            with ai.messages.stream(
+            ai = get_async_ai_client()
+            parser = _BuildParser()
+            ws = workspace(req.project_id)
+            buf = ""
+            last_heartbeat = time.time()
+
+            async with ai.messages.stream(
                 model="claude-sonnet-4-6",
-                max_tokens=4096,
-                system=BUILD_PLAN_SYSTEM,
+                max_tokens=8192,
+                system=BUILD_UNIFIED_SYSTEM,
                 messages=[{"role": "user", "content": req.prompt}],
             ) as stream:
-                for text in stream.text_stream:
-                    plan_chunks.append(text)
+                async for text in stream.text_stream:
+                    buf += text
 
-            try:
-                plan = json.loads(strip_fences("".join(plan_chunks)))
-            except json.JSONDecodeError:
-                yield f"data: {json.dumps({'type':'error','message':'تعذّر فهم خطة المشروع — حاول صياغة الطلب بشكل أوضح'})}\n\n"
+                    # Heartbeat — prevents Render/nginx idle-timeout on long builds
+                    now = time.time()
+                    if now - last_heartbeat > 15:
+                        yield _sse("heartbeat", ts=round(now, 1))
+                        last_heartbeat = now
+
+                    # Process complete lines from buffer
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        event = parser.feed(line)
+                        if event is None:
+                            continue
+                        etype, data = event
+                        if etype == "file_start":
+                            yield _sse("status", message=f"✍️ Writing {data}…")
+                        elif etype == "file_done":
+                            path, content = data
+                            dest = safe_path(ws, path)
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            await asyncio.to_thread(dest.write_text, content, "utf-8")
+                            yield _sse("file", path=path, content=content)
+
+            # Flush remaining buffer (last line without trailing newline)
+            if buf.strip():
+                event = parser.feed(buf)
+                if event and event[0] == "file_done":
+                    path, content = event[1]
+                    dest = safe_path(ws, path)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    await asyncio.to_thread(dest.write_text, content, "utf-8")
+                    yield _sse("file", path=path, content=content)
+
+            if not parser.completed_files:
+                yield _sse("error",
+                           message="Claude did not produce any files. Try rephrasing your request.")
                 return
 
-            files_meta = [f for f in plan.get("files", []) if f.get("path")][:BUILD_MAX_FILES]
-            if not files_meta:
-                yield f"data: {json.dumps({'type':'error','message':'لم يتمكن النظام من تحديد أي ملفات لهذا الطلب'})}\n\n"
-                return
+            meta: dict = {}
+            if parser.meta_lines:
+                try:
+                    meta = json.loads("\n".join(parser.meta_lines))
+                except Exception:
+                    pass
 
-            all_paths = ", ".join(f["path"] for f in files_meta)
-            yield f"data: {json.dumps({'type':'status','message':f'📋 الخطة جاهزة — {len(files_meta)} ملف…'})}\n\n"
-
-            ws = workspace(req.project_id)
-            written = []
-            for i, fmeta in enumerate(files_meta, 1):
-                path = fmeta["path"]
-                purpose = fmeta.get("purpose", "")
-                yield f"data: {json.dumps({'type':'status','message':f'✍️ ({i}/{len(files_meta)}) {path}…'})}\n\n"
-
-                file_prompt = (
-                    f"Project request: {req.prompt}\n\n"
-                    f"Overall plan: {plan.get('description', '')}\n"
-                    f"All files in this project: {all_paths}\n\n"
-                    f"Write the complete content for this one file:\n"
-                    f"Path: {path}\nPurpose: {purpose}"
-                )
-                content_chunks: list[str] = []
-                with ai.messages.stream(
-                    model="claude-sonnet-4-6",
-                    max_tokens=8000,
-                    system=BUILD_FILE_SYSTEM,
-                    messages=[{"role": "user", "content": file_prompt}],
-                ) as stream:
-                    for text in stream.text_stream:
-                        content_chunks.append(text)
-
-                content = strip_fences("".join(content_chunks))
-                dest = safe_path(ws, path)
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(content, encoding="utf-8")
-                written.append(path)
-                yield f"data: {json.dumps({'type':'file','path':path,'content':content})}\n\n"
-
-            yield f"data: {json.dumps({'type':'done','description':plan.get('description',''),'files':written,'run_command':plan.get('run_command',''),'language':plan.get('language','')})}\n\n"
+            yield _sse("done",
+                       description=meta.get("description", ""),
+                       files=parser.completed_files,
+                       run_command=meta.get("run_command", ""),
+                       language=meta.get("language", ""))
 
             try:
                 async with get_pool().acquire() as conn:
-                    pid = resolve_project_id(req.project_id)
                     await conn.execute(
                         "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
-                        USER_ID, json.dumps({"prompt": req.prompt[:80], "files": written}),
+                        USER_ID,
+                        json.dumps({"prompt": req.prompt[:80], "files": parser.completed_files}),
                     )
             except Exception:
                 pass
 
         except anthropic.BadRequestError as e:
-            yield f"data: {json.dumps({'type':'error','message':anthropic_error_message(e)})}\n\n"
+            yield _sse("error", message=anthropic_error_message(e))
         except Exception as e:
-            yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
+            log.exception("build_stream error")
+            yield _sse("error", message=str(e))
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _sse(type_: str, **kw) -> str:
+    return f"data: {json.dumps({'type': type_, **kw})}\n\n"
 
 
 @router.get("/api/projects/{project_id}/files")

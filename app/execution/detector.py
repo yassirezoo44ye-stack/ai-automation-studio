@@ -2,15 +2,14 @@
 ProjectDetector — inspects workspace files and determines project type,
 run strategy, and entry point without executing any code.
 
-Supported project types and their run strategies:
-  html            → static   (serve file content as blob URL)
-  python_script   → script   (subprocess, capture stdout/stderr)
-  fastapi         → server   (uvicorn, proxy via FastAPI route)
-  flask           → unsupported (flask not in host requirements)
-  django          → unsupported
-  node / react / vite / nextjs → unsupported (npm not in production image)
-  docker / rust / java / electron / tauri → unsupported
-  unknown         → unsupported
+Run strategies:
+  static      → serve HTML content as blob URL
+  script      → subprocess, capture stdout/stderr
+  server      → uvicorn/gunicorn, proxy via FastAPI route
+  flask       → Flask server (node driver will pip-install if needed)
+  node        → Node.js server/script (node driver handles if runtime available)
+  npm         → npm start / npm run dev (node driver handles)
+  unsupported → cannot run in this sandbox (electron, docker, rust, java, etc.)
 """
 from __future__ import annotations
 
@@ -89,20 +88,28 @@ def _detect(ws: Path) -> ProjectInfo:
                             "mvn spring-boot:run  or  gradle run")
 
     if _has_prefix(fset, "next.config."):
-        return _unsupported("nextjs", fset, "Node.js/npm not installed in sandbox.",
-                            "npm run dev")
+        return ProjectInfo(project_type="nextjs", run_strategy="node",
+                           entry_point=None, confidence="high",
+                           detected_by=list(_triggers_prefix(fset, "next.config.")),
+                           notes=["Next.js — handled by Node driver if available."])
 
     if _has_prefix(fset, "vite.config."):
-        return _unsupported("vite", fset, "Node.js/npm not installed in sandbox.",
-                            "npm run dev")
+        return ProjectInfo(project_type="vite", run_strategy="node",
+                           entry_point=None, confidence="high",
+                           detected_by=list(_triggers_prefix(fset, "vite.config.")),
+                           notes=["Vite — handled by Node driver if available."])
 
     if _has_prefix(fset, "nuxt.config."):
-        return _unsupported("nuxt", fset, "Node.js/npm not installed in sandbox.",
-                            "npm run dev")
+        return ProjectInfo(project_type="nuxt", run_strategy="node",
+                           entry_point=None, confidence="high",
+                           detected_by=list(_triggers_prefix(fset, "nuxt.config.")),
+                           notes=["Nuxt — handled by Node driver if available."])
 
     if _has_prefix(fset, "svelte.config."):
-        return _unsupported("svelte", fset, "Node.js/npm not installed in sandbox.",
-                            "npm run dev")
+        return ProjectInfo(project_type="svelte", run_strategy="node",
+                           entry_point=None, confidence="high",
+                           detected_by=list(_triggers_prefix(fset, "svelte.config.")),
+                           notes=["Svelte — handled by Node driver if available."])
 
     # ── Python framework detection (highest priority for Python) ──────────
 
@@ -120,14 +127,15 @@ def _detect(ws: Path) -> ProjectInfo:
         except Exception:
             pass
 
-    # Flask — in requirements AND a known entry file exists
+    # Flask — return run_strategy="flask" so python_server driver can handle it
     if _has_flask(reqs_lower, fset, files):
         entry = _find_py_entry(fset)
-        return _unsupported("flask", fset,
-                            "Flask is not installed in this sandbox "
-                            "(only FastAPI/uvicorn are pre-installed).",
-                            f"pip install flask  &&  python {entry or 'app.py'}",
-                            entry=entry)
+        return ProjectInfo(
+            project_type="flask", run_strategy="flask",
+            entry_point=entry, confidence="high",
+            detected_by=_triggers(fset, "requirements.txt", entry or "app.py"),
+            notes=["Flask detected — will install dependencies and run."],
+        )
 
     # FastAPI — uvicorn IS installed → can actually run with proxy
     if _has_fastapi(reqs_lower, fset, files):
@@ -192,18 +200,25 @@ def _detect(ws: Path) -> ProjectInfo:
             detected_by=[all_py[0]],
         )
 
-    # ── Node.js (npm not available) ────────────────────────────────────────
+    # ── Node.js — route to node driver; it will check registry availability ───
 
     if "package.json" in fset:
         pkg_type = _node_type(files, fset)
-        return _unsupported(pkg_type, fset,
-                            "Node.js/npm is not installed in this sandbox.",
-                            "npm install && npm start")
+        return ProjectInfo(
+            project_type=pkg_type, run_strategy="node",
+            entry_point=None, confidence="high",
+            detected_by=["package.json"],
+            notes=[f"{pkg_type} project — handled by Node driver if runtime available."],
+        )
 
     js_entries = [f for f in ("main.js", "index.js", "server.js", "app.js") if f in fset]
     if js_entries:
-        return _unsupported("node", fset, "Node.js is not installed in this sandbox.",
-                            f"node {js_entries[0]}")
+        return ProjectInfo(
+            project_type="node", run_strategy="node",
+            entry_point=js_entries[0], confidence="medium",
+            detected_by=[js_entries[0]],
+            notes=["Node.js script — handled by Node driver if runtime available."],
+        )
 
     # ── HTML static ────────────────────────────────────────────────────────
 
@@ -241,6 +256,10 @@ def _has_prefix(fset: set, prefix: str) -> bool:
 
 def _triggers(fset: set, *names: str) -> list[str]:
     return [n for n in names if n in fset]
+
+
+def _triggers_prefix(fset: set, prefix: str) -> list[str]:
+    return [f for f in fset if f.startswith(prefix)]
 
 
 def _find_py_entry(fset: set) -> Optional[str]:

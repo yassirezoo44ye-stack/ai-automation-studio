@@ -24,6 +24,7 @@ from app.core.config import (
 )
 from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
+from app.execution import registry as runtime_registry
 from app.routers import (
     agents, build, chat, design, health, package, projects,
     social, stats, subscriptions, tasks, youtube,
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
     WORKSPACES.mkdir(exist_ok=True)
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
+    await runtime_registry.discover()
     maintenance_task = asyncio.create_task(maintenance_loop())
     cleanup_task     = asyncio.create_task(process_cleanup_loop())
     yield

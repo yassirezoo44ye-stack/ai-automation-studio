@@ -726,7 +726,8 @@ function BuildPage() {
         buf += decoder.decode(value, { stream: true }); const lines = buf.split("\n"); buf = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
+          let ev: any;
+          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
           if (ev.type === "status") { setStatus(ev.message); }
           else if (ev.type === "file") {
             accumulated.push({ path: ev.path, content: ev.content });
@@ -735,14 +736,17 @@ function BuildPage() {
           }
           else if (ev.type === "done") {
             setDescription(ev.description);
-            const cmd: string = ev.run_command || "";
-            setRunCmd(/^(python3?|node|npm)\b/.test(cmd) ? cmd : "");
+            // Leave runCmd empty so Run auto-detects the project type from the
+            // actual files on disk instead of trusting the LLM's (often wrong,
+            // e.g. boilerplate "python main.py") guess as a live override.
+            setRunCmd("");
             setState("done"); setStatus(`Built ${ev.files.length} files`); loadExisting();
             toast(`Built: ${ev.description || ev.files.length + " files"}`);
             if (accumulated.some(f => f.path.endsWith(".html"))) {
               setTimeout(() => openHtmlPreview(accumulated), 100);
             }
           }
+          else if (ev.type === "heartbeat") { /* keepalive — ignore */ }
           else if (ev.type === "error") { setState("error"); setStatus(`Error: ${ev.message}`); toast(ev.message, "err"); }
         }
       }

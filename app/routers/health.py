@@ -56,3 +56,10 @@ async def health_full():
     overall_ok = checks["database"] == "ok" and checks["session_secret_configured"]
     return {"status": "healthy" if overall_ok else "degraded",
             "checks": checks, "timestamp": datetime.utcnow().isoformat()}
+
+
+@router.get("/api/runtimes")
+async def get_runtimes():
+    """Return the runtime registry — which executables are available in this sandbox."""
+    from app.execution import registry
+    return {"runtimes": registry.to_dict()}

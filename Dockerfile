@@ -10,18 +10,23 @@ COPY src ./src
 COPY public ./public
 RUN npm run build
 
-# ── Stage 2: Python backend ───────────────────────────────────────────────────
+# ── Stage 2: Multi-runtime backend (Python 3.11 + Node.js 20 LTS) ─────────────
 FROM python:3.11-slim AS backend
 WORKDIR /app
 
-# Install build dependencies for asyncpg (C extension) then clean up
-# in the same layer so they don't bloat the final image.
+# Install system deps in a single layer:
+#   - gcc / libpq-dev: needed to build asyncpg (C extension)
+#   - curl / ca-certificates: needed to fetch NodeSource setup script
+#   - nodejs: Node.js 20 LTS — enables running Node/npm/Express projects
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && apt-get install -y --no-install-recommends \
+        gcc libpq-dev curl ca-certificates \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && pip install --upgrade pip --quiet \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first (own layer — cached unless requirements change)
+# Install Python dependencies (own layer — cached unless requirements change)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && apt-get purge -y --auto-remove gcc libpq-dev 2>/dev/null || true
