@@ -1,0 +1,111 @@
+.toolbar {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  padding:         0 12px;
+  height:          48px;
+  background:      var(--surface-1);
+  border-bottom:   1px solid var(--border);
+  flex-shrink:     0;
+  gap:             12px;
+}
+
+.left, .right, .center {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+}
+
+.left  { flex: 1; }
+.right { flex: 1; justify-content: flex-end; }
+
+.projectName {
+  font-size:   14px;
+  font-weight: 600;
+  color:       var(--text-primary);
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+}
+
+.dot {
+  width:         8px;
+  height:        8px;
+  border-radius: 50%;
+  background:    var(--accent);
+  flex-shrink:   0;
+}
+
+.btn {
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  width:           32px;
+  height:          32px;
+  border:          none;
+  border-radius:   var(--radius-sm);
+  background:      transparent;
+  color:           var(--text-secondary);
+  font-size:       16px;
+  cursor:          pointer;
+  transition:      background 0.15s, color 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-3);
+  color:      var(--text-primary);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor:  not-allowed;
+}
+
+.divider {
+  width:      1px;
+  height:     20px;
+  background: var(--border);
+  margin:     0 4px;
+}
+
+.zoomLabel {
+  min-width:     54px;
+  border:        none;
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  color:         var(--text-primary);
+  font-size:     12px;
+  font-weight:   600;
+  padding:       4px 6px;
+  cursor:        pointer;
+  text-align:    center;
+}
+
+.zoomLabel:hover { background: var(--surface-3); }
+
+.btnSecondary {
+  padding:       6px 14px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  color:         var(--text-primary);
+  font-size:     13px;
+  cursor:        pointer;
+  transition:    background 0.15s;
+}
+
+.btnSecondary:hover { background: var(--surface-3); }
+
+.btnPrimary {
+  padding:       6px 14px;
+  border:        none;
+  border-radius: var(--radius-sm);
+  background:    var(--accent);
+  color:         #fff;
+  font-size:     13px;
+  font-weight:   600;
+  cursor:        pointer;
+  transition:    opacity 0.15s;
+}
+
+.btnPrimary:hover { opacity: 0.88; }

@@ -2,14 +2,18 @@ import json
 import re
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.helpers import get_ai_client
+from app.core.rate_limit import make_rate_limit_dep
 from app.core.security import ai_rate_limit
 
 router = APIRouter(tags=["youtube"])
+
+# YouTube endpoints make outbound HTTP calls; tighter limit prevents abuse.
+_yt_rl = Depends(make_rate_limit_dep("youtube", max_calls=20, window=60))
 
 
 class YoutubeRequest(BaseModel):
@@ -32,7 +36,7 @@ def _extract_video_id(url: str) -> Optional[str]:
 
 
 @router.post("/api/youtube/info")
-async def youtube_info(req: YoutubeRequest):
+async def youtube_info(req: YoutubeRequest, _rl: None = _yt_rl):
     vid = _extract_video_id(req.url)
     if not vid:
         raise HTTPException(400, "Invalid YouTube URL")
@@ -58,7 +62,7 @@ async def youtube_info(req: YoutubeRequest):
 
 
 @router.post("/api/youtube/transcript")
-async def youtube_transcript(req: YoutubeRequest):
+async def youtube_transcript(req: YoutubeRequest, _rl: None = _yt_rl):
     vid = _extract_video_id(req.url)
     if not vid:
         raise HTTPException(400, "Invalid YouTube URL")

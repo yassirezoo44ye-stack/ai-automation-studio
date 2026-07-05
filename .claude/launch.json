@@ -2,10 +2,28 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "frontend-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5173"],
+      "port": 5173
+    },
+    {
+      "name": "frontend-3001",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3001"],
+      "port": 3001
+    },
+    {
       "name": "dashboard",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "-s", "dist", "-l", "3001"],
       "port": 3001
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["app_main.py"],
+      "port": 8000
     }
   ]
 }

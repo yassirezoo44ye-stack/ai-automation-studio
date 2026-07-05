@@ -1,0 +1,103 @@
+.panel {
+  display:        flex;
+  flex-direction: column;
+  height:         100%;
+  overflow:       hidden;
+}
+
+.header {
+  padding:       10px 12px 8px;
+  font-size:     13px;
+  font-weight:   600;
+  color:         var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink:   0;
+}
+
+.search {
+  margin:        8px 8px 4px;
+  padding:       6px 8px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  color:         var(--text-primary);
+  font-size:     12px;
+  outline:       none;
+  flex-shrink:   0;
+}
+
+.search:focus { border-color: var(--accent); }
+
+.categories {
+  display:    flex;
+  flex-wrap:  wrap;
+  gap:        4px;
+  padding:    4px 8px;
+  flex-shrink: 0;
+}
+
+.catBtn {
+  padding:       3px 8px;
+  border:        1px solid var(--border);
+  border-radius: 12px;
+  background:    transparent;
+  font-size:     11px;
+  color:         var(--text-secondary);
+  cursor:        pointer;
+}
+
+.catBtn.active {
+  background:   var(--accent);
+  color:        #fff;
+  border-color: var(--accent);
+}
+
+.grid {
+  display:               grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap:                   8px;
+  padding:               8px;
+  overflow-y:            auto;
+  flex:                  1;
+}
+
+.card {
+  display:        flex;
+  flex-direction: column;
+  gap:            4px;
+  border:         1px solid var(--border);
+  border-radius:  var(--radius-sm);
+  background:     var(--surface-1);
+  cursor:         pointer;
+  padding:        6px;
+  transition:     border-color 0.15s, box-shadow 0.15s;
+  text-align:     left;
+}
+
+.card:hover {
+  border-color: var(--accent);
+  box-shadow:   0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.thumb {
+  width:           100%;
+  background:      var(--surface-2);
+  border-radius:   var(--radius-sm);
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  overflow:        hidden;
+}
+
+.thumbLabel {
+  font-size:  10px;
+  color:      var(--text-secondary);
+}
+
+.name {
+  font-size:     11px;
+  color:         var(--text-primary);
+  white-space:   nowrap;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+}

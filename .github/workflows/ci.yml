@@ -25,8 +25,7 @@ jobs:
           cache: pip
 
       - name: Install runtime + dev dependencies
-        run: |
-          pip install -r requirements.txt -r requirements-dev.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Syntax check (py_compile)
         run: |
@@ -35,13 +34,16 @@ jobs:
           find app -name "*.py" | xargs python -m py_compile
           echo "✅ Syntax OK"
 
+      - name: Lint (ruff)
+        run: ruff check app/ tests/ --output-format=github
+
       - name: Unit tests
         run: pytest tests/ -v --tb=short
         env:
           DATABASE_URL: postgresql://test:test@localhost/test_axon
           SESSION_SECRET: ci-test-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
-  # ── Frontend: TypeScript check + Vite production build ─────────────────────
+  # ── Frontend: TypeScript check + ESLint + tests + build ────────────────────
   frontend:
     name: Frontend (Node 20)
     runs-on: ubuntu-latest
@@ -58,7 +60,13 @@ jobs:
         run: npm ci
 
       - name: TypeScript type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
+
+      - name: ESLint (zero errors)
+        run: npx eslint src --format json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf-8');const r=JSON.parse(d);const e=r.flatMap(f=>f.messages.filter(m=>m.severity===2));if(e.length){e.forEach(m=>console.error(m.ruleId,m.message));process.exit(1);}console.log('ESLint: 0 errors,',r.flatMap(f=>f.messages.filter(m=>m.severity===1)).length,'warnings')"
+
+      - name: Vitest unit tests
+        run: npm test
 
       - name: Production build
         run: npm run build

@@ -1,13 +1,16 @@
 """
-ProcessManager — manages long-running project server processes.
+ProcessManager — tracks and controls long-running project server processes.
 
 Responsibilities:
 - Allocate unique ports from a pool (8100–8199)
-- Start asyncio subprocesses for project servers
+- Start server subprocesses via runtime.process.start_persistent()
 - Track running processes per project_id
 - Health-poll a port until the server is ready
 - Kill processes on demand or after idle timeout
 - Cleanup zombie processes
+
+All subprocess creation is delegated to app.runtime.process.start_persistent()
+— this module owns lifecycle management, not process spawning.
 """
 from __future__ import annotations
 
@@ -18,12 +21,15 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from app.runtime import process as rt_process
+
 log = logging.getLogger(__name__)
 
-_PORT_MIN = 8100
-_PORT_MAX = 8200
-_IDLE_TIMEOUT = 300.0   # seconds before an idle server is killed
-_READY_POLL   = 0.25    # seconds between port-readiness checks
+_PORT_MIN      = 8100
+_PORT_MAX      = 8200
+_IDLE_TIMEOUT  = 300.0    # seconds before an idle server is killed
+_MAX_RUNTIME   = 3600.0   # hard cap — kill any server older than 1 hour
+_READY_POLL    = 0.25     # seconds between port-readiness checks
 
 
 @dataclass
@@ -85,13 +91,8 @@ async def start_server(
     if port not in _used_ports:
         _used_ports.add(port)
 
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=cwd,
-        env=env,
-    )
+    proc = await rt_process.start_persistent(args, cwd=cwd, env=env)
+
     rp = RunningProcess(
         project_id=project_id,
         process=proc,
@@ -131,13 +132,18 @@ async def wait_ready(port: int, timeout: float = 15.0) -> bool:
 
 
 async def cleanup_idle() -> None:
-    """Called periodically from maintenance loop to reap idle/dead processes."""
+    """Called periodically from maintenance loop to reap idle/dead/over-limit processes."""
+    now = time.time()
     dead = [
         pid for pid, rp in list(_processes.items())
-        if not rp.alive or rp.idle_seconds > _IDLE_TIMEOUT
+        if (
+            not rp.alive
+            or rp.idle_seconds > _IDLE_TIMEOUT
+            or (now - rp.started_at) > _MAX_RUNTIME
+        )
     ]
     for pid in dead:
-        log.info("cleanup idle: %s", pid)
+        log.info("cleanup idle/expired: %s", pid)
         await kill(pid)
 
 

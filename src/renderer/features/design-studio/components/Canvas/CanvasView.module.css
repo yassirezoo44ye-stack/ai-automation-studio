@@ -1,0 +1,25 @@
+.canvasContainer {
+  position:        relative;
+  flex:            1;
+  overflow:        hidden;
+  background:      #e5e7eb;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  cursor:          default;
+}
+
+.canvasContainer[data-grid="true"] {
+  background-image:
+    linear-gradient(rgba(0,0,0,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,.04) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.guide {
+  position:   absolute;
+  background: #2563eb;
+  opacity:    0.6;
+  pointer-events: none;
+  z-index:    100;
+}

@@ -1,0 +1,135 @@
+.panel {
+  display:        flex;
+  flex-direction: column;
+  height:         100%;
+  overflow:       hidden;
+}
+
+.header {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  padding:         10px 12px 8px;
+  font-size:       13px;
+  font-weight:     600;
+  color:           var(--text-primary);
+  border-bottom:   1px solid var(--border);
+  flex-shrink:     0;
+}
+
+.uploadBtn {
+  font-size:     11px;
+  padding:       4px 8px;
+  border:        1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color:         var(--accent);
+  cursor:        pointer;
+}
+
+.uploadBtn:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.hidden { display: none; }
+
+.tabs {
+  display:   flex;
+  gap:       2px;
+  padding:   6px 8px;
+  flex-shrink: 0;
+}
+
+.tab {
+  flex:          1;
+  padding:       4px 6px;
+  border:        none;
+  border-radius: var(--radius-sm);
+  background:    transparent;
+  font-size:     11px;
+  color:         var(--text-secondary);
+  cursor:        pointer;
+}
+
+.tab:hover  { background: var(--surface-2); }
+.tab.active { background: var(--surface-3); color: var(--text-primary); font-weight: 600; }
+
+.search {
+  margin:        0 8px 6px;
+  padding:       6px 8px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  color:         var(--text-primary);
+  font-size:     12px;
+  outline:       none;
+  flex-shrink:   0;
+}
+
+.search:focus { border-color: var(--accent); }
+
+.status {
+  padding:    16px 12px;
+  font-size:  12px;
+  color:      var(--text-secondary);
+  text-align: center;
+}
+
+.grid {
+  display:               grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap:                   6px;
+  padding:               0 8px 8px;
+  overflow-y:            auto;
+  flex:                  1;
+}
+
+.card {
+  position:      relative;
+  border-radius: var(--radius-sm);
+  overflow:      hidden;
+  border:        1px solid var(--border);
+  background:    var(--surface-2);
+  cursor:        pointer;
+}
+
+.card:hover .overlay { opacity: 1; }
+
+.thumb {
+  display:     block;
+  width:       100%;
+  aspect-ratio: 1;
+  object-fit:  cover;
+}
+
+.overlay {
+  position:        absolute;
+  inset:           0;
+  background:      rgba(0,0,0,.55);
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  gap:             6px;
+  opacity:         0;
+  transition:      opacity 0.15s;
+}
+
+.action {
+  border:          none;
+  border-radius:   var(--radius-sm);
+  background:      rgba(255,255,255,.15);
+  color:           #fff;
+  font-size:       14px;
+  padding:         4px 6px;
+  cursor:          pointer;
+  line-height:     1;
+}
+
+.action:hover { background: rgba(255,255,255,.3); }
+
+.name {
+  display:       block;
+  padding:       3px 5px;
+  font-size:     10px;
+  color:         var(--text-secondary);
+  white-space:   nowrap;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+}

@@ -1,0 +1,146 @@
+.studio {
+  display:        flex;
+  flex-direction: column;
+  height:         100%;
+  overflow:       hidden;
+  background:     var(--surface-1);
+  color:          var(--text-primary);
+  font-family:    var(--font-sans, system-ui, sans-serif);
+}
+
+.body {
+  display:  flex;
+  flex:     1;
+  overflow: hidden;
+}
+
+/* ── Left panel ─────────────────────────────────────────────────────────────── */
+
+.leftPanel {
+  display:        flex;
+  flex-direction: column;
+  width:          220px;
+  min-width:      200px;
+  border-right:   1px solid var(--border);
+  background:     var(--surface-1);
+  flex-shrink:    0;
+  overflow:       hidden;
+}
+
+.panelTabs {
+  display:     flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.panelTab {
+  flex:          1;
+  padding:       7px 4px;
+  border:        none;
+  background:    transparent;
+  font-size:     11px;
+  color:         var(--text-secondary);
+  cursor:        pointer;
+  transition:    color 0.15s, border-color 0.15s;
+  border-bottom: 2px solid transparent;
+}
+
+.panelTab:hover { color: var(--text-primary); }
+
+.panelTab.active {
+  color:        var(--text-primary);
+  font-weight:  600;
+  border-color: var(--accent);
+}
+
+.panelContent {
+  flex:     1;
+  overflow: hidden;
+  display:  flex;
+  flex-direction: column;
+}
+
+/* ── Canvas area ─────────────────────────────────────────────────────────────── */
+
+.canvasArea {
+  flex:     1;
+  overflow: hidden;
+  display:  flex;
+}
+
+/* ── Right panel ─────────────────────────────────────────────────────────────── */
+
+.rightPanel {
+  display:        flex;
+  flex-direction: column;
+  width:          220px;
+  min-width:      200px;
+  border-left:    1px solid var(--border);
+  background:     var(--surface-1);
+  flex-shrink:    0;
+  overflow:       hidden;
+}
+
+.rightPanelHeader {
+  padding:       10px 12px 8px;
+  font-size:     13px;
+  font-weight:   600;
+  color:         var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink:   0;
+}
+
+.minimapWrap {
+  padding:     8px;
+  border-top:  1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Page strip ──────────────────────────────────────────────────────────────── */
+
+.pageStrip {
+  display:      flex;
+  align-items:  center;
+  gap:          6px;
+  padding:      6px 12px;
+  border-top:   1px solid var(--border);
+  background:   var(--surface-1);
+  flex-shrink:  0;
+  overflow-x:   auto;
+}
+
+.pageThumb {
+  width:         36px;
+  height:        24px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  font-size:     11px;
+  color:         var(--text-secondary);
+  cursor:        pointer;
+  transition:    border-color 0.15s, color 0.15s;
+  flex-shrink:   0;
+}
+
+.pageThumb:hover    { border-color: var(--accent); }
+.pageThumb.activePage {
+  border-color: var(--accent);
+  background:   color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  color:        var(--accent);
+  font-weight:  700;
+}
+
+.addPage {
+  width:         28px;
+  height:        24px;
+  border:        1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background:    transparent;
+  font-size:     16px;
+  color:         var(--text-secondary);
+  cursor:        pointer;
+  flex-shrink:   0;
+  line-height:   1;
+}
+
+.addPage:hover { border-color: var(--accent); color: var(--accent); }

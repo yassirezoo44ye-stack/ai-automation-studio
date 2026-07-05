@@ -1,0 +1,12 @@
+export type { Command } from "./Command";
+export { BaseCommand } from "./Command";
+export { CommandManager, commandManager } from "./CommandManager";
+export { AddObjectCommand }      from "./commands/AddObject";
+export { DeleteObjectCommand }   from "./commands/DeleteObject";
+export { MoveObjectCommand }     from "./commands/MoveObject";
+export { ResizeObjectCommand }   from "./commands/ResizeObject";
+export { RotateObjectCommand }   from "./commands/RotateObject";
+export { LockObjectCommand, UnlockObjectCommand } from "./commands/LockObject";
+export { ChangeColorCommand }    from "./commands/ChangeColor";
+export { ChangeFontCommand }     from "./commands/ChangeFont";
+export { DuplicateObjectCommand } from "./commands/DuplicateObject";

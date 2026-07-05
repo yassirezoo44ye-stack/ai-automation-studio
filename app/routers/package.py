@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import json
 import shutil
@@ -12,8 +11,18 @@ from pydantic import BaseModel
 from app.core.config import DIST_DIR
 from app.core.filesystem import workspace
 from app.core.helpers import sanitize_name
+from app.runtime import registry
+from app.runtime import process as rt_process
+from app.runtime.preflight import run_preflight, preflight_error_events
+from app.runtime.errors import sse_error
 
 router = APIRouter(tags=["package"])
+
+
+@router.get("/api/package/runtimes")
+async def get_runtimes():
+    """Return the runtime registry — which tools are available on this machine."""
+    return registry.to_dict()
 
 
 class PackageRequest(BaseModel):
@@ -27,16 +36,9 @@ class PackageRequest(BaseModel):
 
 
 async def _run_stream(cmd: list, cwd: str):
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, cwd=cwd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    async for raw in proc.stdout:
-        yield raw.decode("utf-8", errors="replace").rstrip(), None
-        await asyncio.sleep(0)
-    await proc.wait()
-    yield "", proc.returncode
+    """Delegate to the unified runtime process API. Interface unchanged."""
+    async for line, code in rt_process.stream_process(cmd, cwd=cwd):
+        yield line, code
 
 
 @router.post("/api/package/stream")
@@ -55,6 +57,13 @@ async def package_stream(req: PackageRequest):
             return f"data: {json.dumps({'type':'error','message':msg})}\n\n"
 
         try:
+            # ── 0. Pre-flight: check required tools before any subprocess ─────
+            pf = run_preflight(req.lang, req.target)
+            if not pf.ok:
+                for event in preflight_error_events(pf):
+                    yield event
+                return
+
             # ── 1. Python → .EXE (PyInstaller) ───────────────────────────────
             if req.lang == "python" and req.target == "exe":
                 main_py = ws / "main.py"
@@ -262,12 +271,10 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 (bf_dir / "LICENSE").write_text("MIT License")
                 yield log("✅ هيكل مشروع Briefcase جاهز", "ok")
 
-                check = await asyncio.create_subprocess_exec(
-                    "python", "-m", "briefcase", "--version",
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                rc_bf, _, _ = await rt_process.run_process(
+                    ["python", "-m", "briefcase", "--version"], timeout=10.0
                 )
-                await check.wait()
-                if check.returncode != 0:
+                if rc_bf != 0:
                     yield log("📦 تثبيت Briefcase…", "cmd")
                     async for line, code in _run_stream(
                         ["python", "-m", "pip", "install", "briefcase", "--quiet"], str(bf_dir)
@@ -322,15 +329,6 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
             # ── 3. Web → .APK (Capacitor + Gradle) ───────────────────────────
             elif req.lang == "web" and req.target == "apk":
                 yield log("🌐 بناء APK من تطبيق ويب باستخدام Capacitor + Gradle…", "cmd")
-                npm_check = await asyncio.create_subprocess_exec(
-                    "npm", "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                await npm_check.wait()
-                if npm_check.returncode != 0:
-                    yield log("❌ Node.js غير مثبّت. يُرجى تثبيت Node.js من nodejs.org أولاً.", "err")
-                    yield err("Node.js not installed.")
-                    return
-
                 cap_dir = DIST_DIR / f"{safe_name}_capacitor"
                 cap_dir.mkdir(exist_ok=True)
                 html_files = list(ws.glob("*.html"))
@@ -411,15 +409,6 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
             # ── 4. Web → .EXE (Electron Builder) ─────────────────────────────
             elif req.lang == "electron" and req.target == "exe":
                 yield log("⚡ بناء .EXE باستخدام Electron Builder…", "cmd")
-                npm_check = await asyncio.create_subprocess_exec(
-                    "npm", "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                await npm_check.wait()
-                if npm_check.returncode != 0:
-                    yield log("❌ Node.js غير مثبّت. يُرجى تثبيت Node.js من nodejs.org.", "err")
-                    yield err("Node.js not installed.")
-                    return
-
                 el_dir = DIST_DIR / f"{safe_name}_electron"
                 el_dir.mkdir(exist_ok=True)
                 for f in ws.iterdir():
@@ -505,11 +494,27 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 yield log(f"التركيبة {req.lang}→{req.target} غير مدعومة حالياً.", "err")
                 yield err("Unsupported combination.")
 
+        except FileNotFoundError as e:
+            import logging
+            logging.getLogger(__name__).exception("Build FileNotFoundError (tool missing from PATH)")
+            tool = str(e).split("'")[1] if "'" in str(e) else str(e)
+            yield log(f"❌ الأداة غير موجودة: {tool}", "err")
+            yield sse_error(
+                category="missing_runtime",
+                message=f"Build tool not found: {tool}",
+                fix=[
+                    f"Install {tool} and ensure it is on PATH",
+                    "Restart the server after installation so the runtime registry refreshes",
+                ],
+                severity="high",
+                recoverable=False,
+                missing_tool=tool,
+            )
         except Exception as e:
-            import traceback
-            yield log(f"خطأ: {e}", "err")
-            yield log(traceback.format_exc(), "err")
-            yield err(str(e))
+            import logging
+            logging.getLogger(__name__).exception("Package build error")
+            yield log(f"❌ خطأ غير متوقع: {type(e).__name__}: {e}", "err")
+            yield err(f"{type(e).__name__}: {e}")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

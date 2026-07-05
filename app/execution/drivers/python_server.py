@@ -12,7 +12,10 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from app.execution import process_mgr, registry
+from app.execution import process_mgr
+from app.runtime import registry
+from app.runtime import process as rt_process
+from app.runtime.errors import sse_error
 
 _HANDLED_TYPES = {"fastapi", "flask", "aiohttp", "tornado"}
 _HANDLED_STRATEGIES = {"server", "flask"}
@@ -35,8 +38,14 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
 
     port = process_mgr.allocate_port()
     if port is None:
-        yield _ev("error", error="No available ports. Stop other running projects first.",
-                  project_type=info.project_type)
+        yield sse_error(
+            category="execution",
+            message="No available ports — all slots are in use",
+            fix=["Stop other running projects to free a port"],
+            severity="medium",
+            recoverable=True,
+            project_type=info.project_type,
+        )
         return
 
     # Build the command
@@ -51,10 +60,14 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
 
     if not args:
         process_mgr._used_ports.discard(port)
-        yield _ev("error",
-                  error=f"Cannot determine run command for {info.project_type}.",
-                  details="Add a main.py or app.py with a recognisable entry point.",
-                  project_type=info.project_type)
+        yield sse_error(
+            category="config",
+            message=f"Cannot determine run command for {info.project_type}",
+            fix=["Add a main.py or app.py with a recognisable entry point"],
+            severity="high",
+            recoverable=False,
+            project_type=info.project_type,
+        )
         return
 
     env = {**os.environ, "PORT": str(port), "FLASK_RUN_PORT": str(port),
@@ -70,12 +83,27 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
         )
     except FileNotFoundError:
         process_mgr._used_ports.discard(port)
-        yield _ev("error", error=f"Executable not found: {args[0]}",
-                  project_type=info.project_type)
+        yield sse_error(
+            category="missing_runtime",
+            message=f"Executable not found: {args[0]}",
+            fix=[f"Install {args[0]} and ensure it is on PATH",
+                 "Restart the server after installation"],
+            severity="high",
+            recoverable=False,
+            project_type=info.project_type,
+        )
         return
     except Exception as e:
         process_mgr._used_ports.discard(port)
-        yield _ev("error", error=str(e), project_type=info.project_type)
+        yield sse_error(
+            category="execution",
+            message="Unexpected error starting server process",
+            fix=["Check the project entry file for syntax errors",
+                 "Verify all dependencies are installed"],
+            severity="high",
+            recoverable=True,
+            project_type=info.project_type,
+        )
         return
 
     yield _ev("status", message=f"⏳ Waiting for server on :{port}…")
@@ -84,23 +112,26 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
     if not ready:
         stderr_text = ""
         try:
-            out, err = await asyncio.wait_for(rp.process.communicate(), timeout=2.0)
-            stderr_text = (err or b"").decode("utf-8", errors="replace")
+            _, err_bytes = await asyncio.wait_for(rp.process.communicate(), timeout=2.0)
+            stderr_text = (err_bytes or b"").decode("utf-8", errors="replace")
         except Exception:
             try:
                 rp.process.kill()
             except Exception:
                 pass
         process_mgr._release(project_id)
-        yield _ev("error",
-                  error="Server failed to start",
-                  details=(
-                      f"Port {port} did not respond within 30 s. "
-                      "Ensure the app listens on the PORT environment variable."
-                  ),
-                  stderr=stderr_text,
-                  project_type=info.project_type,
-                  hint=_hint(info.project_type))
+        yield sse_error(
+            category="execution",
+            message=f"Server failed to start — port {port} did not respond within 30 s",
+            fix=[
+                "Ensure the app listens on the PORT environment variable",
+                _hint(info.project_type),
+            ],
+            severity="high",
+            recoverable=True,
+            project_type=info.project_type,
+            stderr=stderr_text[:500] if stderr_text else None,
+        )
         return
 
     yield _ev("server_ready",
@@ -129,17 +160,12 @@ def _default_args(info, python: str, port: int) -> Optional[list]:
 
 
 async def _pip_install(ws: Path, python: str) -> bool:
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            python, "-m", "pip", "install", "-r", "requirements.txt", "--quiet",
-            cwd=str(ws),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await asyncio.wait_for(proc.communicate(), timeout=120.0)
-        return proc.returncode == 0
-    except Exception:
-        return False
+    rc, _, _ = await rt_process.run_process(
+        [python, "-m", "pip", "install", "-r", "requirements.txt", "--quiet"],
+        cwd=ws,
+        timeout=120.0,
+    )
+    return rc == 0
 
 
 async def _wait_ready(rp, port: int, timeout: float) -> bool:
@@ -170,5 +196,3 @@ def _hint(project_type: str) -> str:
     return hints.get(project_type, "Check the entry file for import errors.")
 
 
-def _ev(type_: str, **kw) -> str:
-    return f"data: {json.dumps({'type': type_, **kw})}\n\n"

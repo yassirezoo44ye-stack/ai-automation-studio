@@ -31,10 +31,13 @@ async def init_db(conn: asyncpg.Connection) -> None:
     """Create all core tables and seed the demo user/project if absent."""
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            email      TEXT UNIQUE NOT NULL,
-            name       TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            email          TEXT UNIQUE NOT NULL,
+            name           TEXT,
+            password_hash  TEXT,
+            email_verified BOOLEAN NOT NULL DEFAULT false,
+            avatar_url     TEXT,
+            created_at     TIMESTAMPTZ DEFAULT NOW()
         )
     ''')
     await conn.execute('''
@@ -106,16 +109,36 @@ async def init_db(conn: asyncpg.Connection) -> None:
             started_at TIMESTAMPTZ DEFAULT NOW()
         )
     ''')
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS design_canvases (
+            id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id  UUID        NOT NULL,
+            name        TEXT        NOT NULL DEFAULT 'Untitled Design',
+            canvas_json JSONB       NOT NULL DEFAULT '{}',
+            thumbnail   TEXT,
+            width       INTEGER     NOT NULL DEFAULT 1080,
+            height      INTEGER     NOT NULL DEFAULT 1080,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    ''')
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS dc_project_idx ON design_canvases(project_id)"
+    )
 
-    # Seed single-tenant demo user and project
-    await conn.execute(
-        "INSERT INTO users (id, email, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
-        USER_ID, "test@example.com", "Test User",
-    )
-    await conn.execute(
-        "INSERT INTO projects (id, user_id, name, description) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING",
-        DEMO_PROJECT_ID, USER_ID, "Demo Project", "Default project for the chat UI",
-    )
+    # Seed demo user only when explicitly requested (e.g. local dev / CI).
+    # Never seed in production — the demo UUID is a known value and represents
+    # a data isolation risk in a multi-user environment.
+    import os as _os
+    if _os.environ.get("SEED_DEMO_USER", "").lower() == "true":
+        await conn.execute(
+            "INSERT INTO users (id, email, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+            USER_ID, "test@example.com", "Test User",
+        )
+        await conn.execute(
+            "INSERT INTO projects (id, user_id, name, description) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING",
+            DEMO_PROJECT_ID, USER_ID, "Demo Project", "Default project for the chat UI",
+        )
 
 
 async def ensure_agents_table() -> None:
@@ -162,3 +185,76 @@ async def ensure_tasks_table() -> None:
         ''')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_tasks_owner   ON tasks(owner_email)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)')
+
+        # Auth tables
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                refresh_token TEXT NOT NULL UNIQUE,
+                ip_address    TEXT,
+                user_agent    TEXT,
+                created_at    TIMESTAMPTZ DEFAULT NOW(),
+                last_used_at  TIMESTAMPTZ,
+                expires_at    TIMESTAMPTZ NOT NULL
+            )
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id)')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                token      TEXT PRIMARY KEY,
+                user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token      TEXT PRIMARY KEY,
+                user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
+
+
+async def ensure_audit_table() -> None:
+    async with get_pool().acquire() as conn:
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                actor_email  TEXT NOT NULL,
+                action       VARCHAR(100) NOT NULL,
+                resource     VARCHAR(100),
+                resource_id  TEXT,
+                details      JSONB,
+                ip_address   TEXT,
+                created_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_audit_actor    ON audit_logs(actor_email)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_audit_action   ON audit_logs(action)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_audit_created  ON audit_logs(created_at)')
+
+
+async def write_audit(
+    actor_email: str,
+    action: str,
+    *,
+    resource: str | None = None,
+    resource_id: str | None = None,
+    details: dict | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Fire-and-forget audit record — errors are swallowed to never break the request path."""
+    import json
+    try:
+        async with get_pool().acquire() as conn:
+            await conn.execute(
+                "INSERT INTO audit_logs (actor_email, action, resource, resource_id, details, ip_address) "
+                "VALUES ($1, $2, $3, $4, $5, $6)",
+                actor_email, action, resource, resource_id,
+                json.dumps(details) if details else None, ip_address,
+            )
+    except Exception:
+        pass

@@ -38,7 +38,7 @@ timeout /t 1 /nobreak >nul
 
 :: Start backend (serves frontend too)
 echo [3/3] Starting server...
-start "AI Studio" /min python main.py
+start "AI Studio" /min python app_main.py
 
 :: Wait until healthy
 :wait

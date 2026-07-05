@@ -1,14 +1,13 @@
-"""Driver: Python script execution — captures stdout/stderr with live streaming."""
+"""Driver: Python script execution — streams stdout/stderr live."""
 from __future__ import annotations
 
-import asyncio
 import json
-import os
 import time
 from pathlib import Path
 from typing import Optional
 
-from app.execution import registry
+from app.runtime import registry
+from app.runtime import process as rt_process
 
 
 def can_handle(info) -> bool:
@@ -28,67 +27,30 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
               project_type=info.project_type)
 
     start = time.time()
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(ws),
-            env={**os.environ},
-        )
-    except FileNotFoundError:
-        yield _ev("error", error=f"Python not found: {args[0]}", project_type=info.project_type)
-        return
-    except Exception as e:
-        yield _ev("error", error=str(e), project_type=info.project_type)
-        return
-
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
-    q: asyncio.Queue = asyncio.Queue()
 
-    async def pump(stream_r: asyncio.StreamReader, name: str) -> None:
-        async for raw in stream_r:
-            await q.put((name, raw.decode("utf-8", errors="replace").rstrip()))
-        await q.put((name, None))
-
-    t_out = asyncio.create_task(pump(proc.stdout, "stdout"))
-    t_err = asyncio.create_task(pump(proc.stderr, "stderr"))
-
-    timeout = 60
-    deadline = time.time() + timeout
-    done_count = 0
-
-    while done_count < 2:
-        remaining = deadline - time.time()
-        if remaining <= 0:
-            proc.terminate()
-            yield _ev("warning", message=f"Script timed out after {timeout}s — terminated.",
-                      project_type=info.project_type)
+    async for line, code in rt_process.stream_process(
+        args,
+        cwd=ws,
+        merge_stderr=False,
+        timeout=60,
+    ):
+        if code is not None:
+            # Final sentinel — code is the exit code
+            rc = code
             break
-        try:
-            name, line = await asyncio.wait_for(q.get(), timeout=min(0.5, remaining))
-        except asyncio.TimeoutError:
-            if proc.returncode is not None:
-                break
-            continue
-        if line is None:
-            done_count += 1
+        if line.startswith("[stderr] "):
+            actual = line[len("[stderr] "):]
+            stderr_lines.append(actual)
+            yield _ev("log", stream="stderr", line=actual, ts=round(time.time(), 3))
         else:
-            (stdout_lines if name == "stdout" else stderr_lines).append(line)
-            yield _ev("log", stream=name, line=line, ts=round(time.time(), 3))
+            stdout_lines.append(line)
+            yield _ev("log", stream="stdout", line=line, ts=round(time.time(), 3))
+    else:
+        rc = 0
 
-    try:
-        await asyncio.wait_for(proc.wait(), timeout=2.0)
-    except asyncio.TimeoutError:
-        proc.kill()
-
-    t_out.cancel()
-    t_err.cancel()
-
-    rc = proc.returncode if proc.returncode is not None else -1
     elapsed = round(time.time() - start, 2)
-
     result: dict = {
         "exit_code": rc,
         "duration": elapsed,
@@ -100,7 +62,6 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
     }
     if not stdout_lines and not stderr_lines and rc == 0:
         result["warning"] = "Script exited with no output. Add print() calls to see results."
-
     yield _ev("done", **result)
 
 

@@ -5,7 +5,6 @@ Every other module imports from here — no scattered os.getenv() calls.
 import os
 import sys
 import uuid
-import secrets
 from pathlib import Path
 
 import stripe as _stripe
@@ -21,13 +20,15 @@ if not DATABASE_URL:
     sys.exit(1)
 
 # ── Session tokens ────────────────────────────────────────────────────────────
-SESSION_SECRET: str = os.getenv("SESSION_SECRET") or secrets.token_hex(32)
-if not os.getenv("SESSION_SECRET"):
+SESSION_SECRET: str = os.getenv("SESSION_SECRET", "")
+if not SESSION_SECRET:
     print(
-        "WARNING: SESSION_SECRET not set — tokens will invalidate on every restart. "
-        "Set SESSION_SECRET in your environment.",
+        "FATAL: SESSION_SECRET is not set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\" "
+        "and set it in your environment.",
         file=sys.stderr,
     )
+    sys.exit(1)
 TOKEN_TTL: int = 3600 * 24 * 30  # 30 days
 
 # ── Stripe ────────────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ DEMO_PROJECT_ID: uuid.UUID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 # ── Public API prefixes (no auth token required) ──────────────────────────────
 PUBLIC_PREFIXES: tuple = (
+    "/api/auth/",
     "/api/subscription/",
     "/api/stripe/",
     "/api/health/",

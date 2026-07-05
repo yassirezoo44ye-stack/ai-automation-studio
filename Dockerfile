@@ -14,15 +14,17 @@ RUN npm run build
 FROM python:3.11-slim AS backend
 WORKDIR /app
 
+# Copy Node.js binaries from the pinned node:20-slim image used in stage 1.
+# This avoids the supply-chain risk of curl | bash (NodeSource setup script).
+COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend /usr/local/bin/npm  /usr/local/bin/npm
+COPY --from=frontend /usr/local/lib/node_modules /usr/local/lib/node_modules
+
 # Install system deps in a single layer:
 #   - gcc / libpq-dev: needed to build asyncpg (C extension)
-#   - curl / ca-certificates: needed to fetch NodeSource setup script
-#   - nodejs: Node.js 20 LTS — enables running Node/npm/Express projects
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        gcc libpq-dev curl ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+        gcc libpq-dev \
     && pip install --upgrade pip --quiet \
     && rm -rf /var/lib/apt/lists/*
 

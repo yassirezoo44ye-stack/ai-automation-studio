@@ -1,0 +1,22 @@
+.minimap {
+  position:      relative;
+  width:         160px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow:      hidden;
+  background:    var(--surface-2);
+  flex-shrink:   0;
+}
+
+.thumb {
+  display: block;
+  width:   100%;
+  height:  auto;
+}
+
+.viewport {
+  position:   absolute;
+  border:     2px solid #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+  pointer-events: none;
+}

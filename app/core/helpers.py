@@ -2,6 +2,7 @@
 Cross-cutting helpers used by multiple routers.
 """
 import uuid
+from datetime import datetime
 from typing import Optional
 
 import anthropic
@@ -65,3 +66,23 @@ import re as _re
 def sanitize_name(name: str) -> str:
     """Replace characters that are unsafe in filenames/directory names with underscores."""
     return _re.sub(r"[^A-Za-z0-9_\-]", "_", name) or "App"
+
+
+# ── Task scheduling ───────────────────────────────────────────────────────────
+
+def next_due_date(due: Optional[datetime], recurrence: str) -> Optional[datetime]:
+    """Return the next due date for a recurring task, or None if non-recurring."""
+    if not due or recurrence == "none":
+        return None
+    from datetime import timedelta
+    if recurrence == "daily":
+        return due + timedelta(days=1)
+    if recurrence == "weekly":
+        return due + timedelta(weeks=1)
+    if recurrence == "monthly":
+        month = due.month + 1
+        year  = due.year + (1 if month > 12 else 0)
+        month = month if month <= 12 else 1
+        day   = min(due.day, 28)
+        return due.replace(year=year, month=month, day=day)
+    return None

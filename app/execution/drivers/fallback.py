@@ -8,7 +8,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from app.execution import registry
+from app.runtime import registry
+from app.runtime.errors import sse_error
 
 
 def can_handle(info) -> bool:
@@ -22,15 +23,13 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
 
     available = [n for n, r in registry.to_dict().items() if r.get("available")]
 
-    yield _ev(
-        "unsupported",
+    yield sse_error(
+        category="unsupported",
+        message=reason,
+        fix=[hint, "Check the project type is supported (Python, Node.js, HTML)"],
+        severity="medium",
+        recoverable=False,
         project_type=pt,
-        error=reason,
-        details=hint,
         local_run_hint=hint,
         available_runtimes=available,
     )
-
-
-def _ev(type_: str, **kw) -> str:
-    return f"data: {json.dumps({'type': type_, **kw})}\n\n"

@@ -16,7 +16,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from app.execution import process_mgr, registry
+from app.execution import process_mgr
+from app.runtime import registry
+from app.runtime import process as rt_process
 
 _SERVER_PROJECT_TYPES = {"express", "koa", "nestjs", "node"}
 _BUILD_PROJECT_TYPES  = {"react", "vue", "svelte", "vite", "nextjs", "nuxt"}
@@ -64,56 +66,23 @@ async def _run_script(ws: Path, info, command_override):
               project_type=info.project_type)
     start = time.time()
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *args, cwd=str(ws),
-            env={**os.environ},
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except Exception as e:
-        yield _ev("error", error=str(e), project_type=info.project_type)
-        return
-
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
-    q: asyncio.Queue = asyncio.Queue()
 
-    async def pump(sr: asyncio.StreamReader, name: str) -> None:
-        async for raw in sr:
-            await q.put((name, raw.decode("utf-8", errors="replace").rstrip()))
-        await q.put((name, None))
-
-    t1 = asyncio.create_task(pump(proc.stdout, "stdout"))
-    t2 = asyncio.create_task(pump(proc.stderr, "stderr"))
-    deadline = time.time() + 60
-    done_count = 0
-
-    while done_count < 2:
-        remaining = deadline - time.time()
-        if remaining <= 0:
-            proc.terminate()
+    async for line, code in rt_process.stream_process(args, cwd=ws, merge_stderr=False):
+        if code is not None:
+            rc = code
             break
-        try:
-            name, line = await asyncio.wait_for(q.get(), timeout=min(0.5, remaining))
-        except asyncio.TimeoutError:
-            if proc.returncode is not None:
-                break
-            continue
-        if line is None:
-            done_count += 1
+        if line.startswith("[stderr] "):
+            actual = line[len("[stderr] "):]
+            stderr_lines.append(actual)
+            yield _ev("log", stream="stderr", line=actual, ts=round(time.time(), 3))
         else:
-            (stdout_lines if name == "stdout" else stderr_lines).append(line)
-            yield _ev("log", stream=name, line=line, ts=round(time.time(), 3))
+            stdout_lines.append(line)
+            yield _ev("log", stream="stdout", line=line, ts=round(time.time(), 3))
+    else:
+        rc = 0
 
-    try:
-        await asyncio.wait_for(proc.wait(), timeout=2.0)
-    except asyncio.TimeoutError:
-        proc.kill()
-    t1.cancel()
-    t2.cancel()
-
-    rc = proc.returncode if proc.returncode is not None else -1
     yield _ev("done", exit_code=rc, duration=round(time.time() - start, 2),
               stdout="\n".join(stdout_lines), stderr="\n".join(stderr_lines),
               project_type=info.project_type, command=" ".join(args), success=rc == 0)
@@ -215,33 +184,22 @@ async def _build_and_serve(project_id: str, ws: Path, info):
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
 async def _npm_install(ws: Path) -> tuple[bool, list[str]]:
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "npm", "install", "--ignore-scripts",
-            cwd=str(ws),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=120.0)
-        lines = (out + err).decode("utf-8", errors="replace").splitlines()
-        return proc.returncode == 0, lines
-    except Exception as e:
-        return False, [str(e)]
+    rc, out, err = await rt_process.run_process(
+        ["npm", "install", "--ignore-scripts"],
+        cwd=ws,
+        timeout=120.0,
+    )
+    return rc == 0, out + err
 
 
 async def _npm_run(ws: Path, script: str) -> tuple[bool, list[str]]:
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "npm", "run", script,
-            cwd=str(ws),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=180.0)
-        lines = (out + err).decode("utf-8", errors="replace").splitlines()
-        return proc.returncode == 0, [l for l in lines if l.strip()]
-    except Exception as e:
-        return False, [str(e)]
+    rc, out, err = await rt_process.run_process(
+        ["npm", "run", script],
+        cwd=ws,
+        timeout=180.0,
+    )
+    lines = [l for l in (out + err) if l.strip()]
+    return rc == 0, lines
 
 
 def _server_command(ws: Path, port: int) -> list[str]:

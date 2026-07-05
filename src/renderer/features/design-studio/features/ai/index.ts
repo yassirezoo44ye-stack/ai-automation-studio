@@ -1,0 +1,2 @@
+export type { TextToImageParams, TextToImageResult, GenerateColorPaletteParams, ColorPaletteResult, FontPairingParams, FontPairingResult, BackgroundRemovalResult, SmartResizeParams, SmartResizeResult, MagicFillParams, MagicFillResult, DesignSuggestion, DesignOperation, DesignAssistantMessage, DesignAssistantResult } from "./AIDesignEngine";
+export { AIDesignEngine, aiDesignEngine } from "./AIDesignEngine";

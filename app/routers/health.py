@@ -61,5 +61,5 @@ async def health_full():
 @router.get("/api/runtimes")
 async def get_runtimes():
     """Return the runtime registry — which executables are available in this sandbox."""
-    from app.execution import registry
+    from app.runtime import registry
     return {"runtimes": registry.to_dict()}

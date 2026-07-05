@@ -1,0 +1,125 @@
+.backdrop {
+  position:        fixed;
+  inset:           0;
+  background:      rgba(0,0,0,.5);
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  z-index:         1000;
+}
+
+.modal {
+  background:    var(--surface-1);
+  border:        1px solid var(--border);
+  border-radius: var(--radius-md);
+  width:         min(480px, 96vw);
+  overflow:      hidden;
+  display:       flex;
+  flex-direction:column;
+}
+
+.header {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  padding:         16px 20px;
+  border-bottom:   1px solid var(--border);
+}
+
+.title { font-size: 16px; font-weight: 700; color: var(--text-primary); margin: 0; }
+
+.close {
+  border:     none;
+  background: transparent;
+  color:      var(--text-secondary);
+  font-size:  16px;
+  cursor:     pointer;
+  padding:    4px;
+}
+
+.close:hover { color: var(--text-primary); }
+
+.body { padding: 20px; display: flex; flex-direction: column; gap: 18px; }
+
+.group { display: flex; flex-direction: column; gap: 8px; }
+
+.label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+
+.formatGrid {
+  display:               grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap:                   8px;
+}
+
+.formatBtn {
+  display:       flex;
+  flex-direction:column;
+  align-items:   flex-start;
+  padding:       10px 12px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  cursor:        pointer;
+  transition:    border-color 0.15s;
+  text-align:    left;
+}
+
+.formatBtn.active {
+  border-color: var(--accent);
+  background:   color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+}
+
+.formatName { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.formatDesc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+.row { display: flex; gap: 8px; }
+
+.scaleBtn {
+  flex:          1;
+  padding:       6px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  font-size:     13px;
+  font-weight:   600;
+  color:         var(--text-secondary);
+  cursor:        pointer;
+}
+
+.scaleBtn.active {
+  border-color: var(--accent);
+  color:        var(--accent);
+}
+
+.slider { width: 100%; accent-color: var(--accent); }
+
+.footer {
+  display:         flex;
+  justify-content: flex-end;
+  gap:             8px;
+  padding:         16px 20px;
+  border-top:      1px solid var(--border);
+}
+
+.btnSecondary {
+  padding:       8px 16px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  color:         var(--text-primary);
+  font-size:     13px;
+  cursor:        pointer;
+}
+
+.btnPrimary {
+  padding:       8px 20px;
+  border:        none;
+  border-radius: var(--radius-sm);
+  background:    var(--accent);
+  color:         #fff;
+  font-size:     13px;
+  font-weight:   600;
+  cursor:        pointer;
+}
+
+.btnPrimary:disabled { opacity: 0.6; cursor: wait; }

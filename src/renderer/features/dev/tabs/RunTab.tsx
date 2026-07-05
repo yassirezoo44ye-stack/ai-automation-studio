@@ -1,0 +1,233 @@
+/**
+ * RunTab — streaming execution console.
+ * Handles run/stop lifecycle, error display, and server-preview detection.
+ */
+import { useRef } from "react";
+import { apiFetch, authH } from "../../../shared/utils/api";
+import { S } from "../../../styles/theme";
+import type { BuildFile } from "../../../shared/types";
+
+interface RunError {
+  category: string;
+  message:  string;
+  fix:      string[];
+  severity: "low" | "medium" | "high";
+}
+
+interface RunTabProps {
+  projectId:    string;
+  files:        BuildFile[];
+  runCmd:       string;
+  runOutput:    string;
+  running:      boolean;
+  runError:     RunError | null;
+  onCmd:        (c: string) => void;
+  onOutput:     (o: string | ((p: string) => string)) => void;
+  onRunning:    (r: boolean) => void;
+  onError:      (e: RunError | null) => void;
+  onPreviewUrl: (url: string) => void;
+  onSwitchTab:  (tab: string) => void;
+  currentPreviewUrl: string | null;
+}
+
+const SEVERITY_COLOR: Record<string, string> = {
+  high:   "#ef4444",
+  medium: "#f59e0b",
+  low:    "#6b7280",
+};
+
+export function RunTab({
+  projectId, files, runCmd, runOutput, running, runError,
+  onCmd, onOutput, onRunning, onError, onPreviewUrl, onSwitchTab, currentPreviewUrl,
+}: RunTabProps) {
+  const abortRef = useRef<AbortController | null>(null);
+
+  const run = async () => {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    onRunning(true);
+    onOutput("▶ Starting…\n");
+    onError(null);
+    onSwitchTab("run");
+
+    try {
+      if (files.length > 0) {
+        await apiFetch(`/api/projects/${projectId}/sync`, {
+          method: "POST",
+          headers: authH(),
+          body: JSON.stringify({ files }),
+        });
+      }
+
+      const res = await apiFetch(`/api/projects/${projectId}/run/stream`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({ command: runCmd || null }),
+        signal: ctrl.signal,
+      });
+
+      if (!res.ok || !res.body) {
+        onOutput(`Error: HTTP ${res.status}`);
+        onRunning(false);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      const append = (line: string) => onOutput(prev => (typeof prev === "string" ? prev : "") + line + "\n");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const raw of lines) {
+          if (!raw.startsWith("data: ")) continue;
+          let ev: Record<string, unknown>;
+          try { ev = JSON.parse(raw.slice(6)); } catch { continue; }
+
+          switch (ev.type) {
+            case "status": append(ev.message as string); break;
+            case "log":    append(`${ev.stream === "stderr" ? "⚠ " : ""}${ev.line}`); break;
+            case "html": {
+              const blob = new Blob([ev.html_content as string], { type: "text/html" });
+              const url = URL.createObjectURL(blob);
+              onPreviewUrl(url);
+              onSwitchTab("preview");
+              onRunning(false);
+              return;
+            }
+            case "server_ready": {
+              const proxyUrl = ev.preview_url as string;
+              onPreviewUrl(proxyUrl);
+              append(`✓ ${ev.message}\n🌐 Preview: ${proxyUrl}`);
+              onSwitchTab("preview");
+              onRunning(false);
+              return;
+            }
+            case "done": {
+              const parts: string[] = [];
+              if (ev.command) parts.push(`$ ${ev.command}`);
+              if (ev.stdout)  parts.push(String(ev.stdout).trimEnd());
+              if (ev.stderr)  parts.push(`\nstderr:\n${String(ev.stderr).trimEnd()}`);
+              parts.push(`\n[exit ${ev.exit_code}]  (${ev.duration}s)`);
+              onOutput(parts.join("\n"));
+              onRunning(false);
+              return;
+            }
+            case "error": {
+              const fix: string[] = Array.isArray(ev.fix) ? ev.fix : ev.hint ? [ev.hint as string] : [];
+              onError({
+                category: String(ev.category ?? "execution"),
+                message:  String(ev.message ?? ev.error ?? "Unknown error"),
+                fix,
+                severity: (ev.severity as "low" | "medium" | "high") ?? "high",
+              });
+              onRunning(false);
+              return;
+            }
+            case "unsupported": {
+              const hint = ev.local_run_hint ?? ev.details ?? "";
+              onError({
+                category: "unsupported",
+                message:  String(ev.message ?? ev.error ?? "Project type not supported"),
+                fix:      [String(hint), "Download the ZIP to run locally"].filter(Boolean),
+                severity: "medium",
+              });
+              onRunning(false);
+              return;
+            }
+          }
+        }
+      }
+    } catch (e: unknown) {
+      if ((e as Error).name !== "AbortError") {
+        onOutput(`Error: ${(e as Error).message}`);
+      }
+    } finally {
+      onRunning(false);
+    }
+  };
+
+  const stop = () => abortRef.current?.abort();
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {/* Toolbar */}
+      <div style={{
+        padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)",
+        display: "flex", gap: 8, alignItems: "center", flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 11, color: "var(--t5)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>$</span>
+        <input
+          value={runCmd}
+          onChange={e => onCmd(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") void run(); }}
+          placeholder="auto-detect (or: python main.py)"
+          style={{
+            flex: 1, background: "none", border: "none",
+            color: "var(--t2)", fontSize: 13, fontFamily: "var(--font-mono)", outline: "none",
+          }}
+          aria-label="Run command"
+        />
+        {running
+          ? (
+            <button onClick={stop} style={{ ...S.btnSecondary, padding: "5px 14px", fontSize: 12 }}>
+              ⏹ Stop
+            </button>
+          ) : (
+            <button onClick={() => void run()} style={{ ...S.btnPrimary, padding: "5px 14px", fontSize: 12 }}>
+              Run ▶
+            </button>
+          )
+        }
+        {currentPreviewUrl && !running && (
+          <button
+            onClick={() => onSwitchTab("preview")}
+            style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 12 }}
+          >🌐 Preview</button>
+        )}
+      </div>
+
+      {/* Output */}
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <pre style={{
+          flex: 1, margin: 0, padding: "14px 18px", overflowY: "auto",
+          fontSize: 12, color: "#34d399", fontFamily: "var(--font-mono)",
+          lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-all",
+          background: "#040506",
+        }}>
+          {runOutput || "Output will appear here…"}
+        </pre>
+
+        {runError && (
+          <div style={{
+            borderTop: `2px solid ${SEVERITY_COLOR[runError.severity] ?? "#6b7280"}`,
+            background: "#0f0a0a", padding: "14px 18px", flexShrink: 0,
+          }}>
+            <div style={{ color: SEVERITY_COLOR[runError.severity], fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
+              ✗ {runError.message}
+            </div>
+            {runError.fix.length > 0 && (
+              <div>
+                <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                  Fix Suggestions
+                </div>
+                {runError.fix.map((step, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4, fontSize: 12, color: "#cbd5e1" }}>
+                    <span style={{ color: "#60a5fa", minWidth: 18 }}>{i + 1}.</span>
+                    <span>{step}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
