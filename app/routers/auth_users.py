@@ -260,10 +260,14 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
     access_token = make_access_token(str(user["id"]), user["email"])
     await write_audit(body.email, "login", ip_address=ip)
 
+    from app.core.auth import make_token as _make_sub_token
+    sub_token = _make_sub_token(user["email"], trial=True, days_remaining=30)
+
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
+        "sub_token": sub_token,
         "user": _user_response(user),
     }
 

@@ -163,8 +163,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const err = await parseJSON<{ detail?: string }>(res, "/api/auth/login").catch(() => ({ detail: "Login failed" }));
       throw new Error(err.detail ?? "Login failed");
     }
-    const data = await parseJSON<{ access_token: string; refresh_token: string; user: AuthUser }>(res, "/api/auth/login");
+    const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token: string; user: AuthUser }>(res, "/api/auth/login");
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
+    if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
     setGlobalToken(data.access_token);
     setAccessToken(data.access_token);
     setUser(data.user);
