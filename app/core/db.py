@@ -40,6 +40,14 @@ async def init_db(conn: asyncpg.Connection) -> None:
             created_at     TIMESTAMPTZ DEFAULT NOW()
         )
     ''')
+    # Idempotent column migrations — safe to run on existing tables.
+    for _col_sql in (
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT",
+    ):
+        await conn.execute(_col_sql)
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS projects (
             id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
