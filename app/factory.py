@@ -182,9 +182,20 @@ def create_app() -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def root():
         index = DIST / "index.html"
+        content = index.read_text(encoding="utf-8") if index.exists() else (
+            "<h1>◈ Axon — Backend Running</h1><p><a href='/docs'>API Docs</a></p>"
+        )
+        return HTMLResponse(content, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    async def spa_fallback(full_path: str):
+        index = DIST / "index.html"
         if index.exists():
-            return HTMLResponse(index.read_text(encoding="utf-8"))
-        return HTMLResponse("<h1>◈ Axon — Backend Running</h1><p><a href='/docs'>API Docs</a></p>")
+            return HTMLResponse(
+                index.read_text(encoding="utf-8"),
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+            )
+        return HTMLResponse("Not found", status_code=404)
 
     @app.get("/manifest.json")
     async def serve_manifest():
