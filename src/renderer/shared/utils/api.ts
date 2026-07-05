@@ -2,14 +2,23 @@ export const API = import.meta.env.VITE_API_URL ?? "";
 
 export function getToken(): string { return localStorage.getItem("sub_token") ?? ""; }
 
+function getJwt(): string {
+  return (window as unknown as Record<string, string>).__axon_access_token ?? "";
+}
+
 export function authH(extra?: Record<string, string>): Record<string, string> {
-  return { "Content-Type": "application/json", "X-Sub-Token": getToken(), ...extra };
+  const h: Record<string, string> = { "Content-Type": "application/json", "X-Sub-Token": getToken(), ...extra };
+  const jwt = getJwt();
+  if (jwt) h["Authorization"] = `Bearer ${jwt}`;
+  return h;
 }
 
 /** Authenticated fetch — all /api/* calls must use this. */
 export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const jwt = getJwt();
   const headers: Record<string, string> = {
     "X-Sub-Token": getToken(),
+    ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     ...(init?.body != null ? { "Content-Type": "application/json" } : {}),
     ...(init?.headers as Record<string, string> ?? {}),
   };

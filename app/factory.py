@@ -137,13 +137,25 @@ def create_app() -> FastAPI:
     async def api_auth_middleware(request: Request, call_next):
         path = request.url.path
         if path.startswith("/api/") and not any(path.startswith(p) for p in PUBLIC_PREFIXES):
-            token = (
+            sub_token = (
                 request.headers.get("X-Sub-Token") or
-                request.headers.get("Authorization", "").removeprefix("Bearer ").strip() or
                 request.cookies.get("sub_token", "")
             )
-            if not token or not verify_token(token):
-                return JSONResponse(status_code=401, content={"detail": "Subscription required"})
+            bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+
+            if sub_token and verify_token(sub_token):
+                pass  # valid subscription token
+            else:
+                # Fall back to JWT — registered users who logged in via the
+                # new auth system are authorized even without a sub_token.
+                from app.core.jwt_utils import decode_access_token
+                import jwt as _jwt
+                try:
+                    if not bearer:
+                        raise ValueError("no bearer")
+                    decode_access_token(bearer)
+                except Exception:
+                    return JSONResponse(status_code=401, content={"detail": "Subscription required"})
         return await call_next(request)
 
     # ── CORS + security headers ─────────────────────────────────────────────

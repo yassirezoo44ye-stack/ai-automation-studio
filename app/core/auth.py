@@ -48,13 +48,24 @@ def verify_token(token: str) -> Optional[dict]:
 def owner_email(request: Request) -> str:
     """The per-user identity used to scope owned records (tasks, etc.).
 
-    Derived from the same subscription token the auth middleware already
-    validated, so no extra DB round-trip is needed.
+    Tries subscription token first; falls back to JWT so that users who
+    authenticated via the new JWT auth system are identified correctly.
     """
-    token = (
+    sub_token = (
         request.headers.get("X-Sub-Token")
-        or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         or request.cookies.get("sub_token", "")
     )
-    payload = verify_token(token) if token else None
-    return payload["e"] if payload else "demo@local"
+    payload = verify_token(sub_token) if sub_token else None
+    if payload:
+        return payload["e"]
+
+    # Fall back to JWT
+    bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if bearer:
+        try:
+            from app.core.jwt_utils import decode_access_token
+            claims = decode_access_token(bearer)
+            return claims.get("email", "demo@local")
+        except Exception:
+            pass
+    return "demo@local"
