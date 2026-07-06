@@ -271,44 +271,41 @@ def _check_external_services(ws: Path) -> list[str]:
         return []
 
 
-async def _npm_install(ws: Path) -> tuple[bool, list[str]]:
-    # Try standard npm first
-    rc, out, err = await rt_process.run_process(
-        ["npm", "install", "--ignore-scripts", "--prefer-offline"],
-        cwd=ws,
-        timeout=120.0,
-    )
-    if rc == 0:
-        return True, out + err
-
-    # Fallback: use node to invoke npm-cli.js directly (fixes MODULE_NOT_FOUND
-    # on systems where /usr/local/bin/npm has a broken shebang or module path)
-    npm_cli_candidates = [
+def _find_npm_cli() -> list[str]:
+    """Return the command to invoke npm — prefers node + npm-cli.js over npm binary."""
+    import os as _os
+    for cli in (
         "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
         "/usr/lib/node_modules/npm/bin/npm-cli.js",
         "/usr/share/npm/bin/npm-cli.js",
-    ]
-    for cli in npm_cli_candidates:
-        import os as _os
+        "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js",
+    ):
         if _os.path.exists(cli):
-            rc2, out2, err2 = await rt_process.run_process(
-                ["node", cli, "install", "--ignore-scripts", "--prefer-offline"],
-                cwd=ws, timeout=120.0,
-            )
-            if rc2 == 0:
-                return True, out2 + err2
+            return ["node", cli]
+    return ["npm"]   # last resort
 
-    return False, out + err
+
+async def _npm_install(ws: Path) -> tuple[bool, list[str]]:
+    npm_cmd = _find_npm_cli()
+    rc, out, err = await rt_process.run_process(
+        [*npm_cmd, "install", "--ignore-scripts", "--prefer-offline"],
+        cwd=ws,
+        timeout=120.0,
+    )
+    return rc == 0, out + err
+
+
+async def _npm_run_cmd(ws: Path, script: str) -> tuple[bool, list[str]]:
+    npm_cmd = _find_npm_cli()
+    rc, out, err = await rt_process.run_process(
+        [*npm_cmd, "run", script],
+        cwd=ws, timeout=180.0,
+    )
+    return rc == 0, [l for l in (out + err) if l.strip()]
 
 
 async def _npm_run(ws: Path, script: str) -> tuple[bool, list[str]]:
-    rc, out, err = await rt_process.run_process(
-        ["npm", "run", script],
-        cwd=ws,
-        timeout=180.0,
-    )
-    lines = [l for l in (out + err) if l.strip()]
-    return rc == 0, lines
+    return await _npm_run_cmd(ws, script)
 
 
 def _server_command(ws: Path, port: int) -> list[str]:
@@ -317,10 +314,11 @@ def _server_command(ws: Path, port: int) -> list[str]:
         try:
             pkg = json.loads(pkg_json.read_text())
             scripts = pkg.get("scripts", {})
+            npm_cmd = _find_npm_cli()
             if "start" in scripts:
-                return ["npm", "start"]
+                return [*npm_cmd, "start"]
             if "dev" in scripts:
-                return ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", str(port)]
+                return [*npm_cmd, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(port)]
         except Exception:
             pass
     entry = _find_node_entry(ws)
