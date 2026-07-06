@@ -32,6 +32,20 @@ def can_handle(info) -> bool:
 
 
 async def stream(project_id: str, ws: Path, info, command_override: Optional[str] = None):
+    # Check for projects that need external services (DB, cache, etc.)
+    missing = _check_external_services(ws)
+    if missing:
+        yield _ev("unsupported",
+                  project_type=info.project_type,
+                  error=f"This project requires external services not available in the sandbox: {', '.join(missing)}",
+                  details=(
+                      "Projects that depend on databases or message queues must be run locally.\n"
+                      "Download the ZIP and run with: docker compose up"
+                  ),
+                  local_run_hint="docker compose up",
+                  fix=["Download the ZIP and run locally with Docker", "docker compose up"])
+        return
+
     # Install node_modules if package.json present and node_modules absent
     if (ws / "package.json").exists() and not (ws / "node_modules").exists():
         if registry.has("npm"):
@@ -182,6 +196,34 @@ async def _build_and_serve(project_id: str, ws: Path, info):
 
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
+
+_EXTERNAL_SERVICE_DEPS: dict[str, str] = {
+    "pg": "PostgreSQL", "pg-pool": "PostgreSQL", "mysql": "MySQL",
+    "mysql2": "MySQL", "mongoose": "MongoDB", "mongodb": "MongoDB",
+    "redis": "Redis", "ioredis": "Redis", "bullmq": "Redis/BullMQ",
+    "bull": "Redis/Bull", "prisma": "Database (Prisma)",
+    "@prisma/client": "Database (Prisma)", "typeorm": "Database (TypeORM)",
+    "sequelize": "Database (Sequelize)", "knex": "Database (Knex)",
+    "amqplib": "RabbitMQ", "kafkajs": "Kafka",
+}
+
+
+def _check_external_services(ws: Path) -> list[str]:
+    """Return list of external services required by the project, or empty list if none."""
+    pkg_json = ws / "package.json"
+    if not pkg_json.exists():
+        return []
+    try:
+        pkg = json.loads(pkg_json.read_text(encoding="utf-8"))
+        all_deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+        found: dict[str, str] = {}
+        for dep, service in _EXTERNAL_SERVICE_DEPS.items():
+            if dep in all_deps:
+                found[service] = service
+        return list(found.values())
+    except Exception:
+        return []
+
 
 async def _npm_install(ws: Path) -> tuple[bool, list[str]]:
     rc, out, err = await rt_process.run_process(
