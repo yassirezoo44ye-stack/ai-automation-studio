@@ -174,7 +174,7 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type", "Authorization", "X-Sub-Token", "X-Request-Id"],
     )
 
-    # ── Static frontend ─────────────────────────────────────────────────────
+    # ── Static frontend (non-catch-all assets first) ────────────────────────
     DIST = Path(__file__).parent.parent / "dist"
     if DIST.exists() and (DIST / "assets").exists():
         app.mount("/assets", StaticFiles(directory=str(DIST / "assets")), name="assets")
@@ -186,19 +186,6 @@ def create_app() -> FastAPI:
             "<h1>◈ Axon — Backend Running</h1><p><a href='/docs'>API Docs</a></p>"
         )
         return HTMLResponse(content, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-    @app.get("/{full_path:path}", response_class=HTMLResponse)
-    async def spa_fallback(full_path: str):
-        from fastapi import HTTPException
-        if full_path.startswith("api/"):
-            raise HTTPException(404)
-        index = DIST / "index.html"
-        if index.exists():
-            return HTMLResponse(
-                index.read_text(encoding="utf-8"),
-                headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
-            )
-        return HTMLResponse("Not found", status_code=404)
 
     @app.get("/manifest.json")
     async def serve_manifest():
@@ -226,11 +213,22 @@ def create_app() -> FastAPI:
                 return Response(f.read_bytes(), media_type="image/png")
         raise HTTPException(404)
 
-    # ── Routers ─────────────────────────────────────────────────────────────
+    # ── API Routers (must be registered BEFORE the SPA catch-all) ───────────
     app.include_router(auth_users.router)
     app.include_router(orchestrator_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
+
+    # ── SPA catch-all (MUST be last — only reached if no API route matched) ─
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    async def spa_fallback(full_path: str):
+        index = DIST / "index.html"
+        if index.exists():
+            return HTMLResponse(
+                index.read_text(encoding="utf-8"),
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+            )
+        return HTMLResponse("Not found", status_code=404)
 
     return app

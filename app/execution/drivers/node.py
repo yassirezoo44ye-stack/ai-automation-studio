@@ -272,7 +272,12 @@ def _check_external_services(ws: Path) -> list[str]:
 
 
 def _find_npm_cli() -> list[str]:
-    """Return the command to invoke npm — prefers node + npm-cli.js over npm binary."""
+    """Return the command to invoke npm.
+
+    On some Render instances, /usr/local/bin/npm fails immediately with
+    MODULE_NOT_FOUND because /usr/local/lib/node_modules/npm/ is missing.
+    We probe for npm-cli.js and invoke it via node directly.
+    """
     import os as _os
     for cli in (
         "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
@@ -282,7 +287,18 @@ def _find_npm_cli() -> list[str]:
     ):
         if _os.path.exists(cli):
             return ["node", cli]
-    return ["npm"]   # last resort
+    return ["npm"]
+
+
+def _npm_is_functional() -> bool:
+    """Quick synchronous check: can npm report its own version?"""
+    import subprocess
+    import os as _os
+    try:
+        r = subprocess.run(["npm", "--version"], capture_output=True, timeout=5)
+        return r.returncode == 0
+    except Exception:
+        return False
 
 
 async def _npm_install(ws: Path) -> tuple[bool, list[str]]:
