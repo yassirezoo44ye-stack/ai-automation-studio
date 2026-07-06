@@ -48,14 +48,24 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
 
     # Install node_modules if package.json present and node_modules absent
     if (ws / "package.json").exists() and not (ws / "node_modules").exists():
-        if registry.has("npm"):
-            yield _ev("status", message="📦 npm install --ignore-scripts…")
+        try:
+            pm = _resolve_package_manager(ws)
+            yield _ev("status", message=f"📦 Installing dependencies with {pm.name}…")
             ok, install_log = await _npm_install(ws)
             if not ok:
                 for line in install_log[-5:]:
                     if line.strip():
                         yield _ev("log", stream="stderr", line=line, ts=round(time.time(), 3))
-                yield _ev("status", message="⚠ npm install had errors — continuing…")
+                yield _ev("status", message=f"⚠ {pm.name} install had errors — continuing…")
+        except RuntimeExecutorError as e:
+            yield _ev("error",
+                      category="runtime",
+                      error="No package manager available",
+                      details="\n".join(e.last_output),
+                      fix=["Download the ZIP and run locally: npm install && npm run dev"],
+                      severity="high",
+                      recoverable=False)
+            return
 
     pt = info.project_type
 
@@ -271,150 +281,165 @@ def _check_external_services(ws: Path) -> list[str]:
         return []
 
 
-# ── Package manager resolution (permanent fix for broken npm binaries) ────────
+# ── Runtime Executor — Package Manager Resolution ─────────────────────────────
 #
-# On Render free-tier, /usr/local/bin/npm crashes immediately with
-# MODULE_NOT_FOUND because /usr/local/lib/node_modules/npm/ is absent.
-# Strategy (tried in order):
-#   1. yarn   — often installed alongside Node.js via corepack
-#   2. pnpm   — lightweight, sometimes available
-#   3. node + npm-cli.js  — bypasses the broken shell wrapper
-#   4. npm binary  — last resort
+# Step 1: Detect package manager from lockfile
+#   pnpm-lock.yaml    → pnpm
+#   yarn.lock         → yarn
+#   package-lock.json → npm
 #
-# For running scripts, we also parse package.json and execute the raw
-# command directly via node_modules/.bin, completely bypassing any
-# package manager for the run step.
+# Step 2: Verify the detected executable exists
+#
+# Step 3: Execute  pnpm run <script> | yarn <script> | npm run <script>
+#
+# Step 4: If npm executable is broken → node <npm-cli.js> run <script>
+#
+# Step 5: All managers fail → structured RuntimeError
 
 import subprocess as _subprocess
+import os as _os
+from dataclasses import dataclass
 
-def _find_package_manager() -> tuple[str, list[str]]:
-    """Return (name, cmd_prefix) for the best available package manager."""
-    import os as _os
 
-    # yarn
+@dataclass
+class _PM:
+    name: str
+    cmd: list[str]
+
+    def install_args(self) -> list[str]:
+        if self.name == "yarn":
+            return [*self.cmd, "install", "--non-interactive", "--ignore-scripts"]
+        return [*self.cmd, "install", "--ignore-scripts", "--prefer-offline"]
+
+    def run_args(self, script: str) -> list[str]:
+        if self.name == "yarn":
+            return [*self.cmd, script]
+        return [*self.cmd, "run", script]
+
+
+class RuntimeExecutorError(Exception):
+    """Raised when no package manager can execute the requested script."""
+    def __init__(self, tried: list[str], last_output: list[str]):
+        self.tried = tried
+        self.last_output = last_output
+        super().__init__(f"All package managers failed: {tried}")
+
+
+def _detect_pm_from_lockfile(ws: Path) -> Optional[str]:
+    """Step 1: detect PM name from lockfile presence."""
+    if (ws / "pnpm-lock.yaml").exists():
+        return "pnpm"
+    if (ws / "yarn.lock").exists():
+        return "yarn"
+    if (ws / "package-lock.json").exists():
+        return "npm"
+    return None
+
+
+def _verify_executable(name: str) -> bool:
+    """Step 2: verify the executable is present and functional."""
     try:
-        r = _subprocess.run(["yarn", "--version"], capture_output=True, timeout=5)
-        if r.returncode == 0:
-            return "yarn", ["yarn"]
+        r = _subprocess.run([name, "--version"], capture_output=True, timeout=5)
+        return r.returncode == 0
     except Exception:
-        pass
+        return False
 
-    # pnpm
-    try:
-        r = _subprocess.run(["pnpm", "--version"], capture_output=True, timeout=5)
-        if r.returncode == 0:
-            return "pnpm", ["pnpm"]
-    except Exception:
-        pass
 
-    # node + npm-cli.js (bypasses broken /usr/local/bin/npm wrapper)
+def _npm_cli_fallback() -> Optional[list[str]]:
+    """Step 4: find npm-cli.js for when the npm binary is broken."""
     for cli in (
         "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
         "/usr/lib/node_modules/npm/bin/npm-cli.js",
         "/usr/share/npm/bin/npm-cli.js",
+        "/opt/homebrew/lib/node_modules/npm/bin/npm-cli.js",
     ):
         if _os.path.exists(cli):
-            return "npm-cli", ["node", cli]
-
-    # npm binary — last resort
-    return "npm", ["npm"]
-
-
-def _extract_script_command(ws: Path, script_name: str, port: int) -> Optional[list[str]]:
-    """Parse package.json and return the raw command for script_name.
-
-    Tries to run it via node_modules/.bin directly, completely bypassing
-    any package manager for the execution step.
-    Returns None if the script cannot be resolved to a direct command.
-    """
-    import shlex as _shlex
-    pkg_json = ws / "package.json"
-    if not pkg_json.exists():
-        return None
-    try:
-        pkg = json.loads(pkg_json.read_text(encoding="utf-8"))
-        raw = pkg.get("scripts", {}).get(script_name)
-        if not raw:
-            return None
-
-        # Substitute port placeholders
-        raw = raw.replace("$PORT", str(port)).replace("${PORT}", str(port))
-
-        parts = _shlex.split(raw)
-        if not parts:
-            return None
-
-        executable = parts[0]
-
-        # Resolve via node_modules/.bin first
-        bin_path = ws / "node_modules" / ".bin" / executable
-        if bin_path.exists():
-            return [str(bin_path)] + parts[1:]
-
-        # Known safe executables that can be called directly
-        _SAFE = {"node", "nodemon", "ts-node", "tsx", "vite", "next", "nuxt",
-                 "svelte-kit", "astro", "remix", "express", "fastify"}
-        if executable in _SAFE:
-            return parts
-
-    except Exception:
-        pass
+            return ["node", cli]
     return None
 
 
-async def _install_deps(ws: Path) -> tuple[bool, list[str]]:
-    """Install node_modules using the best available package manager."""
-    pm_name, pm_cmd = _find_package_manager()
-    if pm_name == "yarn":
-        args = [*pm_cmd, "install", "--non-interactive", "--ignore-scripts"]
-    elif pm_name == "pnpm":
-        args = [*pm_cmd, "install", "--ignore-scripts", "--prefer-offline"]
-    else:
-        args = [*pm_cmd, "install", "--ignore-scripts", "--prefer-offline"]
+def _resolve_package_manager(ws: Path) -> _PM:
+    """Steps 1–4: detect, verify, and fall back to get a working PM."""
+    # Step 1: lockfile detection → preferred order
+    preferred = _detect_pm_from_lockfile(ws)
 
-    rc, out, err = await rt_process.run_process(args, cwd=ws, timeout=120.0)
-    return rc == 0, out + err
+    candidates = []
+    if preferred:
+        candidates.append(preferred)
+    # Always append the others as fallbacks
+    for name in ("pnpm", "yarn", "npm"):
+        if name not in candidates:
+            candidates.append(name)
+
+    # Steps 2–3: try each candidate
+    for name in candidates:
+        if _verify_executable(name):
+            return _PM(name=name, cmd=[name])
+
+    # Step 4: npm binary broken → node + npm-cli.js
+    cli = _npm_cli_fallback()
+    if cli:
+        return _PM(name="npm-cli", cmd=cli)
+
+    # Step 5 will be triggered by the caller when this raises
+    raise RuntimeExecutorError(
+        tried=candidates,
+        last_output=["No package manager found: tried pnpm, yarn, npm, npm-cli.js"],
+    )
 
 
 async def _npm_install(ws: Path) -> tuple[bool, list[str]]:
-    return await _install_deps(ws)
+    """Install dependencies using the resolved package manager."""
+    try:
+        pm = _resolve_package_manager(ws)
+    except RuntimeExecutorError as e:
+        return False, e.last_output
+
+    rc, out, err = await rt_process.run_process(
+        pm.install_args(), cwd=ws, timeout=120.0,
+    )
+    return rc == 0, out + err
 
 
 async def _npm_run(ws: Path, script: str) -> tuple[bool, list[str]]:
-    _, pm_cmd = _find_package_manager()
-    if pm_cmd[0] == "yarn":
-        args = [*pm_cmd, script]
-    else:
-        args = [*pm_cmd, "run", script]
-    rc, out, err = await rt_process.run_process(args, cwd=ws, timeout=180.0)
+    """Run a package.json script using the resolved package manager."""
+    try:
+        pm = _resolve_package_manager(ws)
+    except RuntimeExecutorError as e:
+        return False, e.last_output
+
+    rc, out, err = await rt_process.run_process(
+        pm.run_args(script), cwd=ws, timeout=180.0,
+    )
     return rc == 0, [l for l in (out + err) if l.strip()]
 
 
 def _server_command(ws: Path, port: int) -> list[str]:
-    # 1. Try to resolve the raw script command (no package manager needed)
-    for script_name in ("start", "dev"):
-        direct = _extract_script_command(ws, script_name, port)
-        if direct:
-            return direct
-
-    # 2. Fall back to package manager
+    """Return the command to start the dev/production server."""
     pkg_json = ws / "package.json"
-    if pkg_json.exists():
-        try:
-            pkg = json.loads(pkg_json.read_text(encoding="utf-8"))
-            scripts = pkg.get("scripts", {})
-            _, pm_cmd = _find_package_manager()
-            pm = pm_cmd[0]
-            if "start" in scripts:
-                return [*pm_cmd, "start"] if pm != "yarn" else [*pm_cmd, "start"]
-            if "dev" in scripts:
-                if pm == "yarn":
-                    return [*pm_cmd, "dev"]
-                return [*pm_cmd, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(port)]
-        except Exception:
-            pass
+    if not pkg_json.exists():
+        entry = _find_node_entry(ws)
+        return ["node", entry or "index.js"]
 
-    # 3. Last resort: run entry file directly
+    try:
+        pkg = json.loads(pkg_json.read_text(encoding="utf-8"))
+        scripts = pkg.get("scripts", {})
+
+        pm = _resolve_package_manager(ws)
+
+        if "start" in scripts:
+            return pm.run_args("start")
+        if "dev" in scripts:
+            args = pm.run_args("dev")
+            # Inject host/port flags for Vite-based projects
+            if pm.name in ("npm", "npm-cli"):
+                args += ["--", "--host", "0.0.0.0", "--port", str(port)]
+            return args
+    except RuntimeExecutorError:
+        pass
+    except Exception:
+        pass
+
     entry = _find_node_entry(ws)
     return ["node", entry or "index.js"]
 
