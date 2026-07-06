@@ -91,7 +91,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
     abortRef.current = ctrl;
 
     try {
-      const res = await fetch(`${API}/api/package/build/stream`, {
+      const res = await fetch(`${API}/api/package/stream`, {
         method: "POST",
         headers: authH(),
         body: JSON.stringify({ project_id: projectId, target, lang, app_name: appName, version: appVersion, one_file: oneFile }),
