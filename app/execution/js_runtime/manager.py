@@ -29,7 +29,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from app.runtime import process as rt_process
 
@@ -41,6 +41,7 @@ from .errors import (
     PackageJsonMissing,
     ScriptNotFound,
 )
+from .probe import EnvironmentProbe, ProbeResult
 from .resolver import ScriptResolver
 from .validator import ValidationReport, WorkspaceValidator
 
@@ -70,6 +71,13 @@ class RuntimeManager:
         self._detector  = PackageManagerDetector()
         self._resolver  = ScriptResolver()
         self._validator = WorkspaceValidator()
+        self._probe     = EnvironmentProbe()
+
+    # ── Environment probe ─────────────────────────────────────────────────────
+
+    def probe(self, ws: Path) -> ProbeResult:
+        """Collect direct evidence about the runtime environment."""
+        return self._probe.probe(ws)
 
     # ── Detection ─────────────────────────────────────────────────────────────
 
@@ -142,6 +150,37 @@ class RuntimeManager:
             log.info("[%s] install completed in %s", ws.name, adapter.name)
 
         return success, lines
+
+    async def stream_install(
+        self, ws: Path, *, timeout: float = _INSTALL_TIMEOUT
+    ) -> AsyncIterator[tuple[str, Optional[int]]]:
+        """
+        Install dependencies and stream output lines in real-time.
+
+        Yields: (line: str, None) for each output line
+        Final:  ("", returncode: int)
+
+        This is the preferred install path for the driver — the buffered
+        install() is only for callers that need to collect all output first.
+        """
+        try:
+            result = self.detect(ws)
+        except JsRuntimeError as exc:
+            yield str(exc), None
+            for line in exc.fix:
+                yield line, None
+            yield "", 1
+            return
+
+        adapter = result.adapter
+        argv = adapter.install_args()
+        env = _npm_writable_env()
+
+        log.info("[%s] stream_install: %s (%s)", ws.name, adapter.name, result.evidence)
+        _log_execution(ws, argv, reason=result.evidence)
+
+        async for item in rt_process.stream_process(argv, cwd=ws, env=env, timeout=timeout):
+            yield item
 
     async def run_script(
         self,
@@ -261,15 +300,23 @@ def _find_entry(ws: Path) -> str:
 
 def _npm_writable_env() -> dict:
     """
-    Return env overrides that redirect npm's cache and log directories to
-    /tmp, which is always writable.  On Render the home dir (/home/axon)
-    may be read-only, causing npm install to fail with a permissions error
-    even though the install itself would succeed.
+    Return a full environment dict with npm cache/log dirs forced to /tmp.
+
+    Uses direct assignment (not setdefault) so that broken values already
+    in os.environ are overridden.  On Render the home dir (/home/axon) is
+    read-only — npm tries to write logs to ~/.npm/_logs before downloading
+    any packages and fails immediately.
+
+    npm respects both the lowercase npm_config_* form and the uppercase
+    NPM_CONFIG_* form; we set both to be safe across npm versions.
     """
     import os as _os
     env = dict(_os.environ)
-    env.setdefault("npm_config_cache", "/tmp/npm-cache")
-    env.setdefault("npm_config_logs_dir", "/tmp/npm-logs")
-    # pnpm uses a different cache var
-    env.setdefault("PNPM_HOME", "/tmp/pnpm-home")
+    # Force /tmp for cache and logs — override whatever may be set
+    env["npm_config_cache"]     = "/tmp/npm-cache"
+    env["npm_config_logs_dir"]  = "/tmp/npm-logs"
+    env["NPM_CONFIG_CACHE"]     = "/tmp/npm-cache"
+    env["NPM_CONFIG_LOGS_DIR"]  = "/tmp/npm-logs"
+    # pnpm home
+    env["PNPM_HOME"] = "/tmp/pnpm-home"
     return env

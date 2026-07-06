@@ -472,6 +472,78 @@ class TestRuntimeManager:
         assert lines  # error message returned
 
 
+# ── EnvironmentProbe tests ────────────────────────────────────────────────────
+
+class TestEnvironmentProbe:
+    def test_probe_returns_result(self, tmp_path):
+        _pkg(tmp_path, scripts={"dev": "vite"})
+        _lockfile(tmp_path, "package-lock.json")
+        from app.execution.js_runtime.probe import EnvironmentProbe
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=b"v20.0.0", stderr=b"")
+            result = EnvironmentProbe().probe(tmp_path)
+        assert result.pkg_json_exists is True
+        assert result.lockfile_found == "package-lock.json"
+
+    def test_probe_detects_missing_package_json(self, tmp_path):
+        from app.execution.js_runtime.probe import EnvironmentProbe
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=b"v20.0.0", stderr=b"")
+            result = EnvironmentProbe().probe(tmp_path)
+        assert result.pkg_json_exists is False
+        assert result.lockfile_found is None
+
+    def test_probe_as_log_lines_is_non_empty(self, tmp_path):
+        _pkg(tmp_path)
+        from app.execution.js_runtime.probe import EnvironmentProbe
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=b"v20.0.0", stderr=b"")
+            result = EnvironmentProbe().probe(tmp_path)
+        lines = result.as_log_lines()
+        assert len(lines) > 5
+        assert any("HOME" in l for l in lines)
+        assert any("npm cache" in l for l in lines)
+
+    def test_probe_warns_when_home_npm_unwritable(self, tmp_path):
+        from app.execution.js_runtime.probe import EnvironmentProbe
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        npm_dir = fake_home / ".npm"
+        npm_dir.mkdir()
+
+        with (
+            patch.dict("os.environ", {"HOME": str(fake_home)}, clear=False),
+            patch("os.access", return_value=False),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout=b"v20.0.0", stderr=b"")
+            result = EnvironmentProbe().probe(tmp_path)
+        assert result.warnings  # should have at least one warning
+
+
+class TestNpmWritableEnv:
+    def test_force_overrides_existing_bad_cache(self):
+        from app.execution.js_runtime.manager import _npm_writable_env
+        with patch.dict("os.environ", {
+            "npm_config_cache": "/home/axon/.npm",
+            "NPM_CONFIG_CACHE": "/home/axon/.npm",
+        }):
+            env = _npm_writable_env()
+        # Must override, not keep the broken value
+        assert env["npm_config_cache"] == "/tmp/npm-cache"
+        assert env["NPM_CONFIG_CACHE"] == "/tmp/npm-cache"
+        assert env["npm_config_logs_dir"] == "/tmp/npm-logs"
+
+    def test_env_contains_all_required_keys(self):
+        from app.execution.js_runtime.manager import _npm_writable_env
+        env = _npm_writable_env()
+        assert "npm_config_cache" in env
+        assert "npm_config_logs_dir" in env
+        assert "NPM_CONFIG_CACHE" in env
+        assert "NPM_CONFIG_LOGS_DIR" in env
+        assert "PNPM_HOME" in env
+
+
 # ── Error hierarchy tests ─────────────────────────────────────────────────────
 
 class TestErrorHierarchy:

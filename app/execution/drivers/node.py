@@ -40,10 +40,13 @@ def can_handle(info) -> bool:
 
 
 async def stream(project_id: str, ws: Path, info, command_override: Optional[str] = None):
-    # Pre-execution validation
-    report = runtime_manager.validate(ws)
+    # ── Step 1: Environment probe — stream direct evidence to the client ──────
+    probe = runtime_manager.probe(ws)
+    for line in probe.as_log_lines():
+        yield _ev("log", stream="stdout", line=line, ts=round(time.time(), 3))
 
-    # External services check — block before wasting install time
+    # ── Step 2: External services check ───────────────────────────────────────
+    report = runtime_manager.validate(ws)
     if report.diagnostics.get("external_services"):
         services = report.diagnostics["external_services"]
         yield _ev("unsupported",
@@ -57,38 +60,55 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
                   fix=["Download the ZIP and run locally with Docker", "docker compose up"])
         return
 
-    # Install dependencies if node_modules absent
+    # ── Step 3: Install dependencies — stream output, hard-stop on failure ────
     if (ws / "package.json").exists() and not (ws / "node_modules").exists():
         try:
             detection = runtime_manager.detect(ws)
-            yield _ev("status", message=f"📦 Installing with {detection.adapter.name} ({detection.method}: {detection.evidence})…")
-        except JsRuntimeError:
-            yield _ev("status", message="📦 Installing dependencies…")
+            yield _ev("status", message=(
+                f"📦 Installing with {detection.adapter.name}"
+                f" ({detection.method}: {detection.evidence})…"
+            ))
+        except JsRuntimeError as exc:
+            yield _ev("error",
+                      category="runtime",
+                      error=str(exc),
+                      details="\n".join(exc.fix),
+                      fix=exc.fix,
+                      severity="high",
+                      recoverable=False)
+            return
 
-        ok, install_log = await runtime_manager.install(ws)
-        if not ok:
-            for line in install_log[-8:]:
-                if line.strip():
-                    yield _ev("log", stream="stderr", line=line, ts=round(time.time(), 3))
-            # If node_modules still absent after a failed install, abort.
-            # Running the server without dependencies will always crash.
-            if not (ws / "node_modules").exists():
-                yield _ev("error",
-                          category="runtime",
-                          error="Dependency installation failed — node_modules missing",
-                          details=(
-                              "npm install failed and no node_modules directory was created.\n"
-                              "Download the ZIP and run locally:\n"
-                              "  npm install && npm run dev"
-                          ),
-                          fix=[
-                              "Download the ZIP and install locally: npm install && npm run dev",
-                              "Or use Docker: docker compose up",
-                          ],
-                          severity="high",
-                          recoverable=False)
-                return
-            yield _ev("status", message="⚠ Install had errors — node_modules present, continuing…")
+        install_rc: int = 0
+        async for line, code in runtime_manager.stream_install(ws):
+            if code is not None:
+                install_rc = code
+                break
+            if line.strip():
+                yield _ev("log", stream="stdout", line=line, ts=round(time.time(), 3))
+
+        # ── Step 4: STOP if install failed and node_modules absent ────────────
+        if install_rc != 0 and not (ws / "node_modules").exists():
+            yield _ev("error",
+                      category="dependency_installation",
+                      error=f"Dependency installation failed (exit {install_rc}) — node_modules not created",
+                      details=(
+                          "The install command exited non-zero and produced no node_modules.\n"
+                          "See the output above for the exact error.\n\n"
+                          "Download the ZIP and run locally:\n"
+                          "  npm install && npm run dev"
+                      ),
+                      fix=[
+                          "Download the ZIP and install locally: npm install && npm run dev",
+                          "Or use Docker: docker compose up",
+                      ],
+                      severity="high",
+                      recoverable=False)
+            return
+
+        if install_rc != 0:
+            # node_modules exists despite non-zero exit (partial install) — warn and continue
+            yield _ev("status",
+                      message=f"⚠ Install exited {install_rc} but node_modules exists — continuing…")
 
     pt = info.project_type
 

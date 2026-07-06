@@ -45,6 +45,7 @@ from .errors import (
 )
 from .manager import RuntimeManager, runtime_manager
 from .detector import DetectionResult, PackageManagerDetector
+from .probe import EnvironmentProbe, ProbeResult
 from .resolver import ScriptResolver
 from .validator import ValidationReport, WorkspaceValidator
 
@@ -56,8 +57,10 @@ __all__ = [
     "PackageManagerDetector",
     "ScriptResolver",
     "WorkspaceValidator",
+    "EnvironmentProbe",
     "DetectionResult",
     "ValidationReport",
+    "ProbeResult",
     # Errors
     "JsRuntimeError",
     "PackageManagerNotFound",
