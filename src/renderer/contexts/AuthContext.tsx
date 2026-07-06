@@ -138,9 +138,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
   }, []);
 
-  // Bootstrap from stored refresh token on mount
+  // Bootstrap from stored refresh token on mount (+ handle OAuth callback)
   useEffect(() => {
     void (async () => {
+      // OAuth callback: /oauth-callback?access_token=...&refresh_token=...&sub_token=...
+      if (window.location.pathname === "/oauth-callback") {
+        const params = new URLSearchParams(window.location.search);
+        const at  = params.get("access_token");
+        const rt  = params.get("refresh_token");
+        const st  = params.get("sub_token");
+        if (at && rt) {
+          localStorage.setItem(REFRESH_KEY, rt);
+          if (st) localStorage.setItem("sub_token", st);
+          setGlobalToken(at);
+          setAccessToken(at);
+          await fetchMe(at);
+          scheduleRefresh();
+          // Clean URL without reloading
+          window.history.replaceState({}, "", "/");
+          setLoading(false);
+          return;
+        }
+      }
+
       const stored = localStorage.getItem(REFRESH_KEY);
       if (!stored) { setLoading(false); return; }
       const { token, networkError } = await doRefresh();
@@ -152,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     })();
     return () => { if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current); };
-  }, [doRefresh, fetchMe]);
+  }, [doRefresh, fetchMe, scheduleRefresh]);
 
   const login = useCallback(async (email: string, password: string, remember = false) => {
     const res = await apiFetch("/api/auth/login", {

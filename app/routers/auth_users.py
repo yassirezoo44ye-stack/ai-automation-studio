@@ -547,3 +547,169 @@ async def delete_account(
 
     await write_audit(current["email"], "account_deleted", ip_address=_client_ip(request))
     return {"message": "Account deleted"}
+
+
+# ── OAuth (Google + GitHub) ───────────────────────────────────────────────────
+
+import os as _os
+import httpx as _httpx
+from fastapi.responses import RedirectResponse
+
+_GOOGLE_CLIENT_ID     = _os.getenv("GOOGLE_CLIENT_ID", "")
+_GOOGLE_CLIENT_SECRET = _os.getenv("GOOGLE_CLIENT_SECRET", "")
+_GITHUB_CLIENT_ID     = _os.getenv("GITHUB_CLIENT_ID", "")
+_GITHUB_CLIENT_SECRET = _os.getenv("GITHUB_CLIENT_SECRET", "")
+_APP_URL_BASE         = _os.getenv("APP_URL", "http://localhost:8000")
+
+
+def _oauth_not_configured(provider: str):
+    raise HTTPException(503, f"{provider} OAuth is not configured on this server. "
+                             f"Set {provider.upper()}_CLIENT_ID and {provider.upper()}_CLIENT_SECRET.")
+
+
+async def _upsert_oauth_user(conn, email: str, name: str, avatar_url: str, provider: str):
+    """Create or update a user from OAuth; return the user row."""
+    existing = await conn.fetchrow("SELECT * FROM users WHERE email=$1", email)
+    if existing:
+        await conn.execute(
+            "UPDATE users SET name=COALESCE($2, name), avatar_url=COALESCE($3, avatar_url), "
+            "email_verified=true WHERE id=$1",
+            existing["id"], name or None, avatar_url or None,
+        )
+        return existing
+    new_id = uuid.uuid4()
+    await conn.execute(
+        """INSERT INTO users (id, email, name, avatar_url, email_verified, password_hash, created_at)
+           VALUES ($1,$2,$3,$4,true,NULL,NOW())""",
+        new_id, email, name or email.split("@")[0], avatar_url or None,
+    )
+    return await conn.fetchrow("SELECT * FROM users WHERE id=$1", new_id)
+
+
+def _make_oauth_session(user) -> dict:
+    from app.core.auth import make_token as _make_sub_token
+    access  = make_access_token({"sub": str(user["id"]), "email": user["email"]})
+    refresh = make_refresh_token()
+    sub_tok = _make_sub_token(user["email"], trial=True, days_remaining=30)
+    return {"access_token": access, "refresh_token": refresh, "sub_token": sub_tok}
+
+
+@router.get("/google")
+async def google_oauth_start():
+    if not _GOOGLE_CLIENT_ID:
+        _oauth_not_configured("Google")
+    redirect_uri = f"{_APP_URL_BASE}/api/auth/google/callback"
+    params = (
+        f"client_id={_GOOGLE_CLIENT_ID}"
+        f"&redirect_uri={redirect_uri}"
+        f"&response_type=code"
+        f"&scope=openid%20email%20profile"
+        f"&access_type=offline"
+    )
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+
+@router.get("/google/callback")
+async def google_oauth_callback(code: str):
+    if not _GOOGLE_CLIENT_ID:
+        _oauth_not_configured("Google")
+    redirect_uri = f"{_APP_URL_BASE}/api/auth/google/callback"
+    async with _httpx.AsyncClient() as client:
+        token_res = await client.post("https://oauth2.googleapis.com/token", data={
+            "code": code, "client_id": _GOOGLE_CLIENT_ID,
+            "client_secret": _GOOGLE_CLIENT_SECRET,
+            "redirect_uri": redirect_uri, "grant_type": "authorization_code",
+        })
+        if token_res.status_code != 200:
+            raise HTTPException(400, "Google OAuth token exchange failed")
+        tokens = token_res.json()
+        info_res = await client.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        if info_res.status_code != 200:
+            raise HTTPException(400, "Failed to fetch Google user info")
+        info = info_res.json()
+
+    email = info.get("email")
+    if not email:
+        raise HTTPException(400, "Google did not return an email address")
+
+    async with get_pool().acquire() as conn:
+        user = await _upsert_oauth_user(conn, email, info.get("name", ""), info.get("picture", ""), "google")
+        session = _make_oauth_session(user)
+        await conn.execute(
+            """INSERT INTO refresh_tokens (token, user_id, expires_at)
+               VALUES ($1,$2,NOW()+INTERVAL '30 days')""",
+            session["refresh_token"], user["id"],
+        )
+
+    # Redirect to frontend with tokens in query params (picked up by AuthPage)
+    p = (f"access_token={session['access_token']}"
+         f"&refresh_token={session['refresh_token']}"
+         f"&sub_token={session['sub_token']}")
+    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+
+
+@router.get("/github")
+async def github_oauth_start():
+    if not _GITHUB_CLIENT_ID:
+        _oauth_not_configured("GitHub")
+    redirect_uri = f"{_APP_URL_BASE}/api/auth/github/callback"
+    params = (
+        f"client_id={_GITHUB_CLIENT_ID}"
+        f"&redirect_uri={redirect_uri}"
+        f"&scope=user:email"
+    )
+    return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
+
+
+@router.get("/github/callback")
+async def github_oauth_callback(code: str):
+    if not _GITHUB_CLIENT_ID:
+        _oauth_not_configured("GitHub")
+    redirect_uri = f"{_APP_URL_BASE}/api/auth/github/callback"
+    async with _httpx.AsyncClient() as client:
+        token_res = await client.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={"client_id": _GITHUB_CLIENT_ID, "client_secret": _GITHUB_CLIENT_SECRET,
+                  "code": code, "redirect_uri": redirect_uri},
+        )
+        if token_res.status_code != 200:
+            raise HTTPException(400, "GitHub OAuth token exchange failed")
+        gh_access = token_res.json().get("access_token")
+        if not gh_access:
+            raise HTTPException(400, "GitHub did not return an access token")
+
+        user_res = await client.get("https://api.github.com/user",
+                                    headers={"Authorization": f"Bearer {gh_access}"})
+        emails_res = await client.get("https://api.github.com/user/emails",
+                                      headers={"Authorization": f"Bearer {gh_access}"})
+        if user_res.status_code != 200:
+            raise HTTPException(400, "Failed to fetch GitHub user info")
+        gh_user = user_res.json()
+        emails = emails_res.json() if emails_res.status_code == 200 else []
+
+    # Pick primary verified email
+    email = gh_user.get("email")
+    if not email and emails:
+        primary = next((e["email"] for e in emails if e.get("primary") and e.get("verified")), None)
+        email = primary or emails[0].get("email")
+    if not email:
+        raise HTTPException(400, "GitHub account has no public email. Add a public email to your GitHub profile.")
+
+    async with get_pool().acquire() as conn:
+        avatar = gh_user.get("avatar_url", "")
+        user = await _upsert_oauth_user(conn, email, gh_user.get("name") or gh_user.get("login", ""), avatar, "github")
+        session = _make_oauth_session(user)
+        await conn.execute(
+            """INSERT INTO refresh_tokens (token, user_id, expires_at)
+               VALUES ($1,$2,NOW()+INTERVAL '30 days')""",
+            session["refresh_token"], user["id"],
+        )
+
+    p = (f"access_token={session['access_token']}"
+         f"&refresh_token={session['refresh_token']}"
+         f"&sub_token={session['sub_token']}")
+    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
