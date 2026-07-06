@@ -71,11 +71,21 @@ def _detect(ws: Path) -> ProjectInfo:
                             "cargo tauri dev")
 
     if _has_any(fset, "docker-compose.yml", "docker-compose.yaml"):
+        # Try to run the inner project directly (Docker not available in sandbox)
+        inner = _detect_inner_for_docker(ws, fset)
+        if inner:
+            inner.notes.insert(0, "⚠️ Docker Compose not available — running app directly without Docker.")
+            return inner
         return _unsupported("docker_compose", fset,
                             "Docker Compose is not available in this sandbox.",
                             "docker compose up")
 
     if "Dockerfile" in fset:
+        # Try inner project before giving up
+        inner = _detect_inner_for_docker(ws, fset)
+        if inner:
+            inner.notes.insert(0, "⚠️ Docker not available — running app directly.")
+            return inner
         return _unsupported("docker", fset, "Docker is not available in this sandbox.",
                             "docker build . && docker run ...")
 
@@ -338,3 +348,74 @@ def _unsupported(
         unsupported_reason=reason,
         local_run_hint=local_hint,
     )
+
+
+def _detect_inner_for_docker(ws: Path, fset: set) -> Optional[ProjectInfo]:
+    """
+    When Docker/Compose is detected, look for a runnable inner component
+    (Next.js, Vite, Node.js, Python) and return its ProjectInfo so we can
+    run the app directly without Docker.
+
+    Searches both root and common sub-directories (frontend/, backend/, app/).
+    Returns None if no runnable component is found.
+    """
+    search_dirs = [ws] + [
+        ws / d for d in ("frontend", "client", "web", "app", "backend", "server")
+        if (ws / d).is_dir()
+    ]
+
+    for base in search_dirs:
+        sub_fset: set[str] = {
+            str(p.relative_to(base)).replace("\\", "/")
+            for p in base.rglob("*") if p.is_file()
+        }
+
+        # Next.js
+        if any(f.startswith("next.config.") for f in sub_fset):
+            return ProjectInfo(
+                project_type="nextjs", run_strategy="node",
+                entry_point=None, confidence="high",
+                detected_by=["next.config.*"],
+                notes=["Next.js app detected inside Docker project."],
+            )
+
+        # Vite / React / Vue
+        if any(f.startswith("vite.config.") for f in sub_fset):
+            return ProjectInfo(
+                project_type="vite", run_strategy="node",
+                entry_point=None, confidence="high",
+                detected_by=["vite.config.*"],
+                notes=["Vite app detected inside Docker project."],
+            )
+
+        # package.json with start/dev script
+        if "package.json" in sub_fset:
+            pkg_path = base / "package.json"
+            try:
+                pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+                scripts = pkg.get("scripts", {})
+                if scripts.get("start") or scripts.get("dev"):
+                    pkg_type = _node_type({**{
+                        str(p.relative_to(base)).replace("\\", "/"): p
+                        for p in base.rglob("*") if p.is_file()
+                    }}, sub_fset)
+                    return ProjectInfo(
+                        project_type=pkg_type, run_strategy="node",
+                        entry_point=None, confidence="medium",
+                        detected_by=["package.json"],
+                        notes=[f"{pkg_type} project detected inside Docker project."],
+                    )
+            except Exception:
+                pass
+
+        # Python
+        py_entry = _find_py_entry(sub_fset)
+        if py_entry:
+            return ProjectInfo(
+                project_type="python_script", run_strategy="script",
+                entry_point=py_entry, confidence="medium",
+                detected_by=[py_entry],
+                notes=["Python entry detected inside Docker project."],
+            )
+
+    return None
