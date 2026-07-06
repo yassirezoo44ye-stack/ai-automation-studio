@@ -8,16 +8,17 @@ import { apiFetch, parseJSON, authH, API } from "../../../shared/utils/api";
 import { S } from "../../../styles/theme";
 import type { Project } from "../../../shared/types";
 
-type PackTarget = "exe" | "apk";
-type PackLang   = "python" | "web" | "electron";
+type PackTarget = "exe" | "apk" | "zip";
+type PackLang   = "python" | "web" | "electron" | "docker";
 type PackState  = "idle" | "building" | "done" | "error";
 
 interface LogEntry { text: string; kind: "info" | "ok" | "err" | "cmd" }
 
 const LANGS: { id: PackLang; label: string; icon: string; desc: string }[] = [
-  { id: "python",   label: "Python",   icon: "🐍", desc: "PyInstaller / Briefcase" },
-  { id: "web",      label: "Web App",  icon: "🌐", desc: "Capacitor + Gradle"      },
-  { id: "electron", label: "Electron", icon: "⚡", desc: "Electron Builder NSIS"   },
+  { id: "python",   label: "Python",      icon: "🐍", desc: "PyInstaller / Briefcase"       },
+  { id: "web",      label: "Web App",     icon: "🌐", desc: "Capacitor + Gradle"             },
+  { id: "electron", label: "Electron",    icon: "⚡", desc: "Electron Builder NSIS"          },
+  { id: "docker",   label: "Full-Stack",  icon: "🐳", desc: "Docker Compose — deploy-ready ZIP" },
 ];
 
 const LOG_COLOR: Record<string, string> = { ok: "#34d399", err: "#f87171", cmd: "#a78bfa", info: "#94a3b8" };
@@ -32,6 +33,13 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
   const [projectId, setProjectId] = useState(defaultProjectId);
   const [target, setTarget]       = useState<PackTarget>("exe");
   const [lang, setLang]           = useState<PackLang>("python");
+
+  // When switching to docker lang, force target to zip
+  const handleLangChange = (l: PackLang) => {
+    setLang(l);
+    if (l === "docker") setTarget("zip");
+    else if (target === "zip") setTarget("exe");
+  };
   const [appName, setAppName]     = useState("MyApp");
   const [appVersion, setVersion]  = useState("1.0.0");
   const [oneFile, setOneFile]     = useState(true);
@@ -161,7 +169,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
               {LANGS.map(l => (
                 <button
                   key={l.id}
-                  onClick={() => setLang(l.id)}
+                  onClick={() => handleLangChange(l.id)}
                   style={{
                     ...S.btnSecondary, flex: 1, fontSize: 12,
                     borderColor: lang === l.id ? "var(--accent)" : undefined,
@@ -173,19 +181,29 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
               ))}
             </div>
           </div>
-          <div style={{ flex: "0 0 auto" }}>
-            <label style={S.label}>Target</label>
-            <select
-              value={target}
-              onChange={e => setTarget(e.target.value as PackTarget)}
-              style={{ ...S.textInput, marginTop: 4 }}
-              aria-label="Package target"
-            >
-              <option value="exe">Windows .exe</option>
-              <option value="apk">Android .apk</option>
-            </select>
-          </div>
+          {lang !== "docker" && (
+            <div style={{ flex: "0 0 auto" }}>
+              <label style={S.label}>Target</label>
+              <select
+                value={target}
+                onChange={e => setTarget(e.target.value as PackTarget)}
+                style={{ ...S.textInput, marginTop: 4 }}
+                aria-label="Package target"
+              >
+                <option value="exe">Windows .exe</option>
+                <option value="apk">Android .apk</option>
+              </select>
+            </div>
+          )}
         </div>
+
+        {lang === "docker" && (
+          <div style={{ padding: "10px 14px", background: "rgba(56,189,248,.08)", borderRadius: 8,
+                        border: "1px solid rgba(56,189,248,.2)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
+            🐳 <strong>Full-Stack Deploy Package</strong> — يجمع كل ملفات المشروع مع سكربتات النشر وملف
+            {" "}<code>.env.example</code> وتعليمات Docker Compose كاملة.
+          </div>
+        )}
 
         {/* App metadata */}
         <div style={{ display: "flex", gap: 12 }}>
@@ -199,13 +217,15 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
             <input value={appVersion} onChange={e => setVersion(e.target.value)}
               style={{ ...S.textInput, marginTop: 4 }} aria-label="App version" />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "flex-end" }}>
-            <label style={S.label}>One-file</label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-              <input type="checkbox" checked={oneFile} onChange={e => setOneFile(e.target.checked)} aria-label="Bundle as one file" />
-              <span style={{ fontSize: 12, color: "var(--t3)" }}>Bundle</span>
-            </label>
-          </div>
+          {lang !== "docker" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "flex-end" }}>
+              <label style={S.label}>One-file</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={oneFile} onChange={e => setOneFile(e.target.checked)} aria-label="Bundle as one file" />
+                <span style={{ fontSize: 12, color: "var(--t3)" }}>Bundle</span>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Files */}

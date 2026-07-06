@@ -57,14 +57,20 @@ async def package_stream(req: PackageRequest):
             return f"data: {json.dumps({'type':'error','message':msg})}\n\n"
 
         try:
-            # ── 0. Pre-flight: check required tools before any subprocess ─────
+            # ── 0. Docker / Full-stack deploy package (no preflight needed) ───
+            if req.lang == "docker":
+                async for chunk in _package_docker(ws, safe_name, req.app_name, req.app_version, log, done, err):
+                    yield chunk
+                return
+
+            # ── 1. Pre-flight: check required tools before any subprocess ─────
             pf = run_preflight(req.lang, req.target)
             if not pf.ok:
                 for event in preflight_error_events(pf):
                     yield event
                 return
 
-            # ── 1. Python → .EXE (PyInstaller) ───────────────────────────────
+            # ── 2. Python → .EXE (PyInstaller) ───────────────────────────────
             if req.lang == "python" and req.target == "exe":
                 main_py = ws / "main.py"
                 if not main_py.exists():
@@ -521,6 +527,204 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
 
 
 @router.get("/api/package/download/{folder}/{filename}")
+async def _package_docker(ws, safe_name, app_name, app_version, log, done, err):
+    """Package a Docker Compose / full-stack project into a deploy-ready ZIP."""
+    import io
+    import re
+    import zipfile as _zip
+
+    yield log("🐳 جاري تجهيز حزمة النشر الكاملة…", "info")
+
+    if not any(ws.iterdir()):
+        yield err("مجلد المشروع فارغ — ابنِ المشروع أولاً.")
+        return
+
+    # ── Collect all source files (skip heavy build artifacts) ────────────────
+    SKIP_DIRS = {".git", "node_modules", "__pycache__", ".next", "dist", ".cache",
+                 "build", ".venv", "venv", ".mypy_cache", ".pytest_cache"}
+    SKIP_EXTS = {".pyc", ".pyo", ".log", ".tmp"}
+
+    all_files: list[Path] = []
+    for p in ws.rglob("*"):
+        if p.is_dir():
+            continue
+        rel = p.relative_to(ws)
+        if any(part in SKIP_DIRS for part in rel.parts):
+            continue
+        if p.suffix.lower() in SKIP_EXTS:
+            continue
+        all_files.append(p)
+
+    yield log(f"📁 {len(all_files)} ملف مُدرج في الحزمة", "info")
+
+    # ── Auto-generate .env.example from docker-compose.yml ───────────────────
+    dc_file = ws / "docker-compose.yml"
+    if not dc_file.exists():
+        dc_file = ws / "docker-compose.yaml"
+
+    env_vars: dict[str, str] = {}
+    if dc_file.exists():
+        dc_text = dc_file.read_text(encoding="utf-8", errors="replace")
+        # Capture ${VAR} and ${VAR:-default} patterns
+        for m in re.finditer(r'\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}', dc_text):
+            var, default = m.group(1), m.group(2) or ""
+            if var not in env_vars:
+                env_vars[var] = default
+
+    # Add common variables if not already present
+    defaults = {
+        "POSTGRES_USER": "admin", "POSTGRES_PASSWORD": "change_me_in_production",
+        "POSTGRES_DB": app_name.lower().replace(" ", "_"),
+        "REDIS_PASSWORD": "change_me_in_production",
+        "JWT_SECRET": "change_me_in_production_use_openssl_rand_hex_32",
+        "NODE_ENV": "production",
+    }
+    for k, v in defaults.items():
+        env_vars.setdefault(k, v)
+
+    env_example_lines = [
+        f"# {app_name} v{app_version} — Environment Variables",
+        "# Copy this file to .env and fill in your values",
+        "# NEVER commit .env to git\n",
+    ]
+    for k, v in sorted(env_vars.items()):
+        env_example_lines.append(f"{k}={v}")
+    env_example = "\n".join(env_example_lines)
+    yield log("✅ تم إنشاء .env.example", "ok")
+
+    # ── Generate setup.sh ─────────────────────────────────────────────────────
+    setup_sh = f"""#!/bin/bash
+# {app_name} v{app_version} — Quick Setup Script
+set -e
+
+echo "🚀 Setting up {app_name}..."
+
+# 1. Copy environment file
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "✅ Created .env from .env.example"
+  echo "⚠️  Edit .env and fill in your production values before continuing!"
+  exit 1
+fi
+
+# 2. Build and start all services
+echo "🐳 Starting Docker Compose services..."
+docker compose up --build -d
+
+# 3. Wait for database
+echo "⏳ Waiting for database to be ready..."
+sleep 5
+
+# 4. Run database migrations (if applicable)
+if docker compose exec backend ls prisma/ 2>/dev/null; then
+  echo "🗄️  Running Prisma migrations..."
+  docker compose exec backend npx prisma migrate deploy
+elif docker compose exec backend ls alembic.ini 2>/dev/null; then
+  echo "🗄️  Running Alembic migrations..."
+  docker compose exec backend alembic upgrade head
+fi
+
+echo ""
+echo "✅ {app_name} is running!"
+echo "   Frontend:  http://localhost:3000"
+echo "   Backend:   http://localhost:3001"
+echo "   API Docs:  http://localhost:3001/api/docs"
+echo ""
+echo "To stop: docker compose down"
+echo "To view logs: docker compose logs -f"
+"""
+
+    # ── Generate DEPLOY.md ────────────────────────────────────────────────────
+    deploy_md = f"""# {app_name} — Deployment Guide
+
+## Quick Start (Docker Compose)
+
+### Prerequisites
+- Docker Desktop (Windows/Mac) or Docker Engine + Compose plugin (Linux)
+- Git
+
+### Steps
+
+```bash
+# 1. Clone / extract the project
+cd {safe_name}
+
+# 2. Run the setup script (Linux/Mac)
+chmod +x setup.sh
+./setup.sh
+
+# OR on Windows (PowerShell)
+docker compose up --build -d
+```
+
+### Services
+| Service    | URL                         | Description              |
+|------------|-----------------------------|--------------------------|
+| Frontend   | http://localhost:3000       | Next.js / React UI       |
+| Backend    | http://localhost:3001       | NestJS / FastAPI backend |
+| API Docs   | http://localhost:3001/docs  | Swagger / OpenAPI        |
+| Database   | localhost:5432              | PostgreSQL               |
+| Cache      | localhost:6379              | Redis                    |
+
+### Environment Variables
+Copy `.env.example` to `.env` and set:
+```bash
+cp .env.example .env
+# Edit .env with your values
+```
+
+### Production Deployment (Render / Railway / Fly.io)
+1. Push to GitHub
+2. Connect your repo to Render / Railway
+3. Set environment variables from `.env.example`
+4. Deploy each service separately or use their Docker Compose support
+
+### Stop / Restart
+```bash
+docker compose down        # Stop
+docker compose up -d       # Start again
+docker compose logs -f     # View logs
+docker compose ps          # Check status
+```
+
+## Version: {app_version}
+Built with AI Automation Studio
+"""
+
+    # ── Build ZIP ─────────────────────────────────────────────────────────────
+    out_dir = DIST_DIR / safe_name
+    out_dir.mkdir(exist_ok=True)
+    zip_name = f"{safe_name}-v{app_version}-deploy.zip"
+    zip_path = out_dir / zip_name
+
+    yield log("📦 جاري ضغط الملفات…", "cmd")
+
+    with _zip.ZipFile(zip_path, "w", compression=_zip.ZIP_DEFLATED) as zf:
+        root_prefix = f"{safe_name}/"
+
+        # Source files
+        for p in all_files:
+            rel = str(p.relative_to(ws)).replace("\\", "/")
+            zf.write(p, root_prefix + rel)
+
+        # Generated files
+        zf.writestr(root_prefix + ".env.example", env_example)
+        zf.writestr(root_prefix + "setup.sh", setup_sh)
+        zf.writestr(root_prefix + "DEPLOY.md", deploy_md)
+
+    size_mb = round(zip_path.stat().st_size / 1_048_576, 2)
+    yield log(f"✅ الحزمة جاهزة — {size_mb} MB", "ok")
+    yield log("📄 تحتوي على: كل ملفات المشروع + .env.example + setup.sh + DEPLOY.md", "info")
+
+    download_url = f"/api/package/download/{safe_name}/{zip_name}"
+    yield done(zip_name, download_url, size_mb, extra_files=[
+        {"name": ".env.example",    "desc": "نسخه إلى .env واملأ القيم"},
+        {"name": "setup.sh",        "desc": "سكربت الإعداد التلقائي (Linux/Mac)"},
+        {"name": "DEPLOY.md",       "desc": "دليل النشر الكامل"},
+        {"name": "docker-compose.yml", "desc": "تشغيل كل الخدمات"},
+    ])
+
+
 async def download_package(folder: str, filename: str):
     safe_f = sanitize_name(folder)
     safe_n = sanitize_name(filename.rsplit(".", 1)[0]) + ("." + filename.rsplit(".", 1)[1] if "." in filename else "")
