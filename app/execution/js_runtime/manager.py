@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
+from dataclasses import dataclass, field
 from typing import AsyncIterator, Optional
 
 from app.runtime import process as rt_process
@@ -49,6 +50,40 @@ log = logging.getLogger(__name__)
 
 # Default timeouts (seconds)
 _INSTALL_TIMEOUT = 120.0
+
+
+@dataclass
+class InstallResult:
+    """
+    Complete record of a dependency installation attempt.
+
+    Every field is populated — nothing is truncated, nothing is hidden.
+    The driver uses this to decide whether to continue or abort.
+    """
+    exit_code: int
+    success: bool
+    pm_name: str
+    pm_cmd: list[str]
+    cwd: str
+    pkg_json_path: str
+    node_version: str
+    npm_version: str
+    home: str
+    npm_cache: str
+    stdout_lines: list[str] = field(default_factory=list)
+    stderr_lines: list[str] = field(default_factory=list)
+
+    @property
+    def all_output(self) -> list[str]:
+        return self.stdout_lines + self.stderr_lines
+
+    def failure_summary(self) -> list[str]:
+        """
+        Return the lines that contain the actual npm error code.
+        npm error codes (EACCES, ERESOLVE, ENOTFOUND, etc.) appear in stderr.
+        Returns ALL stderr so no information is lost.
+        """
+        return self.stderr_lines if self.stderr_lines else self.stdout_lines
 _SCRIPT_TIMEOUT  = 180.0
 
 # Scripts tried in order for "start server" resolution
@@ -114,73 +149,116 @@ class RuntimeManager:
     # ── Execution ─────────────────────────────────────────────────────────────
 
     async def install(
-        self, ws: Path, *, timeout: float = _INSTALL_TIMEOUT
-    ) -> tuple[bool, list[str]]:
+        self,
+        ws: Path,
+        *,
+        timeout: float = _INSTALL_TIMEOUT,
+    ) -> AsyncIterator[tuple[str, str, Optional[InstallResult]]]:
         """
-        Install dependencies in `ws` using the detected package manager.
+        Install dependencies and stream every output line in real-time.
 
-        Returns:
-            (success: bool, log_lines: list[str])
+        Yields:
+            (stream: "stdout"|"stderr", line: str, None)   — each output line
+            ("result", "", InstallResult)                   — final sentinel
+
+        stderr is captured separately so the exact npm error code (EACCES,
+        ERESOLVE, ENOTFOUND, etc.) is always visible and never mixed with
+        stdout progress lines.
+
+        Nothing is truncated.  The driver must handle all lines.
         """
-        try:
-            result = self.detect(ws)
-        except JsRuntimeError as exc:
-            return False, [str(exc)] + exc.fix
+        import os as _os
+        import subprocess as _sp
 
-        adapter = result.adapter
-        log.info(
-            "[%s] installing with %s (%s)",
-            ws.name, adapter.name, result.evidence,
-        )
-
-        argv = adapter.install_args()
-        _log_execution(ws, argv, reason=result.evidence)
-
-        # Point npm cache and logs at /tmp so Render's read-only home dir
-        # (/home/axon/.npm) doesn't cause permission errors.
         env = _npm_writable_env()
+        home = env.get("HOME", _os.path.expanduser("~"))
+        npm_cache = env["npm_config_cache"]
 
-        rc, stdout, stderr = await rt_process.run_process(argv, cwd=ws, timeout=timeout, env=env)
-        lines = stdout + stderr
-        success = rc == 0
+        # Collect node/npm versions synchronously (fast, <5 s each)
+        def _ver(cmd: list[str]) -> str:
+            try:
+                r = _sp.run(cmd, capture_output=True, timeout=5)
+                return r.stdout.decode().strip() if r.returncode == 0 else "unavailable"
+            except Exception as exc:
+                return f"error: {exc}"
 
-        if not success:
-            log.warning("[%s] install failed (exit %d)", ws.name, rc)
-        else:
-            log.info("[%s] install completed in %s", ws.name, adapter.name)
+        node_ver = _ver(["node", "--version"])
 
-        return success, lines
-
-    async def stream_install(
-        self, ws: Path, *, timeout: float = _INSTALL_TIMEOUT
-    ) -> AsyncIterator[tuple[str, Optional[int]]]:
-        """
-        Install dependencies and stream output lines in real-time.
-
-        Yields: (line: str, None) for each output line
-        Final:  ("", returncode: int)
-
-        This is the preferred install path for the driver — the buffered
-        install() is only for callers that need to collect all output first.
-        """
         try:
-            result = self.detect(ws)
+            detection = self.detect(ws)
         except JsRuntimeError as exc:
-            yield str(exc), None
-            for line in exc.fix:
-                yield line, None
-            yield "", 1
+            yield "stderr", str(exc), None
+            for fix_line in exc.fix:
+                yield "stderr", fix_line, None
+            yield "result", "", InstallResult(
+                exit_code=1, success=False,
+                pm_name="unknown", pm_cmd=[],
+                cwd=str(ws),
+                pkg_json_path=str(ws / "package.json"),
+                node_version=node_ver, npm_version="unavailable",
+                home=home, npm_cache=npm_cache,
+                stderr_lines=[str(exc)] + exc.fix,
+            )
             return
 
-        adapter = result.adapter
+        adapter = detection.adapter
         argv = adapter.install_args()
-        env = _npm_writable_env()
+        npm_ver = _ver(argv[:1] + ["--version"])
 
-        log.info("[%s] stream_install: %s (%s)", ws.name, adapter.name, result.evidence)
-        _log_execution(ws, argv, reason=result.evidence)
+        # ── Pre-install diagnostic header ─────────────────────────────────────
+        header = [
+            "── Dependency Installation ──────────────────────────────────",
+            f"  pm         : {adapter.name}  ({detection.method}: {detection.evidence})",
+            f"  command    : {' '.join(argv)}",
+            f"  cwd        : {ws}",
+            f"  package.json: {ws / 'package.json'} (exists={( ws / 'package.json').exists()})",
+            f"  node       : {node_ver}",
+            f"  npm/pm ver : {npm_ver}",
+            f"  HOME       : {home}",
+            f"  npm cache  : {npm_cache}",
+            "─────────────────────────────────────────────────────────────",
+        ]
+        for h in header:
+            yield "stdout", h, None
 
-        async for item in rt_process.stream_process(argv, cwd=ws, env=env, timeout=timeout):
-            yield item
+        log.info("[%s] install: %s  cwd=%s  node=%s  npm=%s  cache=%s",
+                 ws.name, " ".join(argv), ws, node_ver, npm_ver, npm_cache)
+
+        # ── Stream subprocess output with separated stderr ────────────────────
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
+
+        async for raw_line, code in rt_process.stream_process(
+            argv, cwd=ws, env=env, timeout=timeout, merge_stderr=False,
+        ):
+            if code is not None:
+                rc = code
+                break
+            if raw_line.startswith("[stderr] "):
+                actual = raw_line[len("[stderr] "):]
+                stderr_lines.append(actual)
+                yield "stderr", actual, None
+            else:
+                stdout_lines.append(raw_line)
+                yield "stdout", raw_line, None
+        else:
+            rc = 0
+
+        success = rc == 0
+        log.info("[%s] install exit=%d stdout=%d stderr=%d",
+                 ws.name, rc, len(stdout_lines), len(stderr_lines))
+
+        result = InstallResult(
+            exit_code=rc, success=success,
+            pm_name=adapter.name, pm_cmd=argv,
+            cwd=str(ws),
+            pkg_json_path=str(ws / "package.json"),
+            node_version=node_ver, npm_version=npm_ver,
+            home=home, npm_cache=npm_cache,
+            stdout_lines=stdout_lines,
+            stderr_lines=stderr_lines,
+        )
+        yield "result", "", result
 
     async def run_script(
         self,

@@ -43,7 +43,7 @@ from .errors import (
     RuntimeUnavailable,
     ScriptNotFound,
 )
-from .manager import RuntimeManager, runtime_manager
+from .manager import InstallResult, RuntimeManager, runtime_manager
 from .detector import DetectionResult, PackageManagerDetector
 from .probe import EnvironmentProbe, ProbeResult
 from .resolver import ScriptResolver
@@ -54,6 +54,7 @@ __all__ = [
     "runtime_manager",
     # Classes
     "RuntimeManager",
+    "InstallResult",
     "PackageManagerDetector",
     "ScriptResolver",
     "WorkspaceValidator",

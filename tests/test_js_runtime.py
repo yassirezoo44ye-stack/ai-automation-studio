@@ -463,13 +463,72 @@ class TestRuntimeManager:
                 await m.run_script(tmp_path, "build")
 
     @pytest.mark.asyncio
-    async def test_install_returns_false_when_no_pm(self, tmp_path):
+    async def test_install_emits_result_sentinel_when_no_pm(self, tmp_path):
         _pkg(tmp_path)
+        from app.execution.js_runtime.manager import InstallResult
         m = RuntimeManager()
+        result = None
         with _mock_probe(set()):
-            ok, lines = await m.install(tmp_path)
-        assert not ok
-        assert lines  # error message returned
+            async for stream_name, line, sentinel in m.install(tmp_path):
+                if sentinel is not None:
+                    result = sentinel
+                    break
+        assert result is not None
+        assert isinstance(result, InstallResult)
+        assert not result.success
+        assert result.exit_code != 0
+
+    @pytest.mark.asyncio
+    async def test_install_emits_header_lines(self, tmp_path):
+        """install() must yield the diagnostic header before any subprocess output."""
+        _pkg(tmp_path)
+        _lockfile(tmp_path, "package-lock.json")
+        from app.execution.js_runtime.manager import InstallResult
+        m = RuntimeManager()
+        header_lines: list[str] = []
+        with (
+            _mock_probe({"npm"}),
+            patch("app.runtime.process.run_process", return_value=(0, [], [])),
+            patch("app.runtime.process.stream_process") as mock_sp,
+        ):
+            async def _fake_stream(*a, **kw):
+                yield "[stderr] some error", None
+                yield "", 0
+            mock_sp.return_value = _fake_stream()
+            async for stream_name, line, sentinel in m.install(tmp_path):
+                if sentinel is not None:
+                    break
+                if "pm" in line or "command" in line or "node" in line:
+                    header_lines.append(line)
+        assert header_lines  # header must contain pm/command/node lines
+
+    @pytest.mark.asyncio
+    async def test_install_separates_stderr(self, tmp_path):
+        """stderr lines must be tagged 'stderr', stdout lines tagged 'stdout'."""
+        _pkg(tmp_path)
+        _lockfile(tmp_path, "package-lock.json")
+        from app.execution.js_runtime.manager import InstallResult
+        m = RuntimeManager()
+        stderr_seen = []
+        stdout_seen = []
+        with (
+            _mock_probe({"npm"}),
+            patch("app.runtime.process.stream_process") as mock_sp,
+        ):
+            async def _fake_stream(*a, **kw):
+                yield "progress line", None
+                yield "[stderr] EACCES: permission denied", None
+                yield "", 1
+            mock_sp.return_value = _fake_stream()
+            async for stream_name, line, sentinel in m.install(tmp_path):
+                if sentinel is not None:
+                    break
+                if stream_name == "stderr":
+                    stderr_seen.append(line)
+                elif stream_name == "stdout" and line.strip():
+                    stdout_seen.append(line)
+        assert any("EACCES" in l for l in stderr_seen)
+        assert any("progress" in l for l in stdout_seen)
 
 
 # ── EnvironmentProbe tests ────────────────────────────────────────────────────
