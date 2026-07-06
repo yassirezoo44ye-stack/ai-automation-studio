@@ -189,6 +189,9 @@ def create_app() -> FastAPI:
 
     @app.get("/{full_path:path}", response_class=HTMLResponse)
     async def spa_fallback(full_path: str):
+        from fastapi import HTTPException
+        if full_path.startswith("api/"):
+            raise HTTPException(404)
         index = DIST / "index.html"
         if index.exists():
             return HTMLResponse(
