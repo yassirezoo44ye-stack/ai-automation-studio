@@ -186,14 +186,14 @@ class NpmCliJsFallbackAdapter(AbstractRuntimeAdapter):
 
 # ── Registry (ordered by priority for lockfile-less detection) ────────────────
 #
-# The order here determines probe order when no lockfile is found:
-# bun > pnpm > yarn > npm  (faster tools first).
+# Probe order when no lockfile is found:
+# pnpm > yarn > bun > npm  (deterministic tools first; npm is last resort)
 # NpmCliJsFallbackAdapter is NOT in this list — it's added dynamically.
 
 ADAPTER_REGISTRY: tuple[type[AbstractRuntimeAdapter], ...] = (
-    BunAdapter,
     PnpmAdapter,
     YarnAdapter,
+    BunAdapter,
     NpmAdapter,
 )
 
