@@ -128,7 +128,11 @@ class RuntimeManager:
         argv = adapter.install_args()
         _log_execution(ws, argv, reason=result.evidence)
 
-        rc, stdout, stderr = await rt_process.run_process(argv, cwd=ws, timeout=timeout)
+        # Point npm cache and logs at /tmp so Render's read-only home dir
+        # (/home/axon/.npm) doesn't cause permission errors.
+        env = _npm_writable_env()
+
+        rc, stdout, stderr = await rt_process.run_process(argv, cwd=ws, timeout=timeout, env=env)
         lines = stdout + stderr
         success = rc == 0
 
@@ -253,3 +257,19 @@ def _find_entry(ws: Path) -> str:
         if (ws / name).exists():
             return name
     return "index.js"
+
+
+def _npm_writable_env() -> dict:
+    """
+    Return env overrides that redirect npm's cache and log directories to
+    /tmp, which is always writable.  On Render the home dir (/home/axon)
+    may be read-only, causing npm install to fail with a permissions error
+    even though the install itself would succeed.
+    """
+    import os as _os
+    env = dict(_os.environ)
+    env.setdefault("npm_config_cache", "/tmp/npm-cache")
+    env.setdefault("npm_config_logs_dir", "/tmp/npm-logs")
+    # pnpm uses a different cache var
+    env.setdefault("PNPM_HOME", "/tmp/pnpm-home")
+    return env

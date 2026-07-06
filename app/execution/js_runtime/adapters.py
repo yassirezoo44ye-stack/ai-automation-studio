@@ -73,7 +73,8 @@ class NpmAdapter(AbstractRuntimeAdapter):
         return ["npm"]
 
     def install_args(self) -> list[str]:
-        return ["npm", "install", "--ignore-scripts", "--prefer-offline"]
+        # No --prefer-offline: Render has no pre-existing npm cache.
+        return ["npm", "install", "--ignore-scripts"]
 
     def run_args(self, script: str) -> list[str]:
         return ["npm", "run", script]
@@ -91,7 +92,7 @@ class PnpmAdapter(AbstractRuntimeAdapter):
         return ["pnpm"]
 
     def install_args(self) -> list[str]:
-        return ["pnpm", "install", "--ignore-scripts", "--prefer-offline"]
+        return ["pnpm", "install", "--ignore-scripts"]
 
     def run_args(self, script: str) -> list[str]:
         return ["pnpm", "run", script]
@@ -174,7 +175,7 @@ class NpmCliJsFallbackAdapter(AbstractRuntimeAdapter):
         return ["node", self._cli_path]
 
     def install_args(self) -> list[str]:
-        return ["node", self._cli_path, "install", "--ignore-scripts", "--prefer-offline"]
+        return ["node", self._cli_path, "install", "--ignore-scripts"]
 
     def run_args(self, script: str) -> list[str]:
         return ["node", self._cli_path, "run", script]

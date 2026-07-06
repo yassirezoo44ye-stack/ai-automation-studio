@@ -67,10 +67,28 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
 
         ok, install_log = await runtime_manager.install(ws)
         if not ok:
-            for line in install_log[-5:]:
+            for line in install_log[-8:]:
                 if line.strip():
                     yield _ev("log", stream="stderr", line=line, ts=round(time.time(), 3))
-            yield _ev("status", message="⚠ Install had errors — continuing…")
+            # If node_modules still absent after a failed install, abort.
+            # Running the server without dependencies will always crash.
+            if not (ws / "node_modules").exists():
+                yield _ev("error",
+                          category="runtime",
+                          error="Dependency installation failed — node_modules missing",
+                          details=(
+                              "npm install failed and no node_modules directory was created.\n"
+                              "Download the ZIP and run locally:\n"
+                              "  npm install && npm run dev"
+                          ),
+                          fix=[
+                              "Download the ZIP and install locally: npm install && npm run dev",
+                              "Or use Docker: docker compose up",
+                          ],
+                          severity="high",
+                          recoverable=False)
+                return
+            yield _ev("status", message="⚠ Install had errors — node_modules present, continuing…")
 
     pt = info.project_type
 

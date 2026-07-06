@@ -92,7 +92,7 @@ def _mock_probe(available: set[str]):
 class TestAdapterArgBuilding:
     def test_npm_install_args(self):
         a = NpmAdapter()
-        assert a.install_args() == ["npm", "install", "--ignore-scripts", "--prefer-offline"]
+        assert a.install_args() == ["npm", "install", "--ignore-scripts"]
 
     def test_npm_run_args(self):
         a = NpmAdapter()
@@ -100,7 +100,7 @@ class TestAdapterArgBuilding:
 
     def test_pnpm_install_args(self):
         a = PnpmAdapter()
-        assert a.install_args() == ["pnpm", "install", "--ignore-scripts", "--prefer-offline"]
+        assert a.install_args() == ["pnpm", "install", "--ignore-scripts"]
 
     def test_pnpm_run_args(self):
         a = PnpmAdapter()
