@@ -125,23 +125,69 @@ async def _run_server(project_id: str, ws: Path, info, command_override):
         return
 
     yield _ev("status", message=f"⏳ Waiting for server on :{port}…")
-    ready = await _wait_ready(rp, port, timeout=20.0)
+
+    # Stream server output while waiting — user sees exactly why it fails
+    log_lines: list[str] = []
+    ready = False
+    deadline = time.time() + 25.0
+
+    async def _read_pipe(pipe):
+        if pipe is None:
+            return
+        try:
+            while True:
+                line = await asyncio.wait_for(pipe.readline(), timeout=1.0)
+                if not line:
+                    break
+                log_lines.append(line.decode("utf-8", errors="replace").rstrip())
+        except (asyncio.TimeoutError, Exception):
+            pass
+
+    while time.time() < deadline:
+        # Check port
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+                ready = True
+                break
+        except OSError:
+            pass
+        if not rp.alive:
+            break
+        # Drain any output
+        if rp.process.stdout:
+            try:
+                line = await asyncio.wait_for(rp.process.stdout.readline(), timeout=0.3)
+                if line:
+                    decoded = line.decode("utf-8", errors="replace").rstrip()
+                    log_lines.append(decoded)
+                    yield _ev("log", stream="stdout", line=decoded, ts=round(time.time(), 3))
+            except asyncio.TimeoutError:
+                pass
+        if rp.process.stderr:
+            try:
+                line = await asyncio.wait_for(rp.process.stderr.readline(), timeout=0.3)
+                if line:
+                    decoded = line.decode("utf-8", errors="replace").rstrip()
+                    log_lines.append(decoded)
+                    yield _ev("log", stream="stderr", line=decoded, ts=round(time.time(), 3))
+            except asyncio.TimeoutError:
+                pass
+        await asyncio.sleep(0.1)
 
     if not ready:
-        stderr_text = ""
         try:
-            out, err = await asyncio.wait_for(rp.process.communicate(), timeout=2.0)
-            stderr_text = (err or b"").decode("utf-8", errors="replace")
+            rp.process.kill()
         except Exception:
-            try:
-                rp.process.kill()
-            except Exception:
-                pass
+            pass
         process_mgr._release(project_id)
+        crash_log = "\n".join(log_lines[-20:]) if log_lines else "(no output captured)"
         yield _ev("error",
                   error="Node server failed to start",
-                  details=f"Port {port} did not respond within 20 s. Check that the app listens on process.env.PORT.",
-                  stderr=stderr_text,
+                  details=(
+                      f"The server did not respond on port {port} within 25 s.\n"
+                      f"Last output:\n{crash_log}"
+                  ),
+                  stderr=crash_log,
                   project_type=info.project_type)
         return
 
@@ -226,12 +272,33 @@ def _check_external_services(ws: Path) -> list[str]:
 
 
 async def _npm_install(ws: Path) -> tuple[bool, list[str]]:
+    # Try standard npm first
     rc, out, err = await rt_process.run_process(
-        ["npm", "install", "--ignore-scripts"],
+        ["npm", "install", "--ignore-scripts", "--prefer-offline"],
         cwd=ws,
         timeout=120.0,
     )
-    return rc == 0, out + err
+    if rc == 0:
+        return True, out + err
+
+    # Fallback: use node to invoke npm-cli.js directly (fixes MODULE_NOT_FOUND
+    # on systems where /usr/local/bin/npm has a broken shebang or module path)
+    npm_cli_candidates = [
+        "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
+        "/usr/lib/node_modules/npm/bin/npm-cli.js",
+        "/usr/share/npm/bin/npm-cli.js",
+    ]
+    for cli in npm_cli_candidates:
+        import os as _os
+        if _os.path.exists(cli):
+            rc2, out2, err2 = await rt_process.run_process(
+                ["node", cli, "install", "--ignore-scripts", "--prefer-offline"],
+                cwd=ws, timeout=120.0,
+            )
+            if rc2 == 0:
+                return True, out2 + err2
+
+    return False, out + err
 
 
 async def _npm_run(ws: Path, script: str) -> tuple[bool, list[str]]:
