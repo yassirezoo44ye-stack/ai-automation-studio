@@ -54,11 +54,11 @@ def _apply_resource_limits() -> None:
 # Safety gate — only these executables may be launched by the process API.
 # Prevents command injection if a caller accidentally passes user-supplied input.
 _ALLOWED_EXECUTABLES = {
-    "python", "python3", "node", "npm", "npx", "pnpm", "bun",
+    "python", "python3", "node", "npm", "npx", "pnpm", "yarn", "bun",
     "uvicorn", "java", "gradle", "gradlew", "cargo", "go",
     # Windows variants
     "python.exe", "python3.exe", "node.exe", "npm.cmd", "npx.cmd",
-    "gradlew.bat",
+    "yarn.cmd", "pnpm.cmd", "bun.exe", "gradlew.bat",
 }
 
 
