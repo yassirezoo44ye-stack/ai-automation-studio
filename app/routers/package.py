@@ -413,7 +413,10 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 yield done(out_apk.name, f"/api/package/download/{safe_name}/{out_apk.name}", size_mb)
 
             # ── 4. Web → .EXE (Electron Builder) ─────────────────────────────
-            elif req.lang == "electron" and req.target == "exe":
+            elif req.lang in ("electron", "web") and req.target == "exe":
+                # Web apps are wrapped in an Electron shell — same pipeline.
+                if req.lang == "web":
+                    yield log("🌐 تغليف تطبيق الويب داخل Electron ثم بناء .EXE…", "cmd")
                 yield log("⚡ بناء .EXE باستخدام Electron Builder…", "cmd")
                 el_dir = DIST_DIR / f"{safe_name}_electron"
                 el_dir.mkdir(exist_ok=True)
@@ -497,8 +500,10 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 yield done(out_exe.name, f"/api/package/download/{safe_name}/{out_exe.name}", size_mb)
 
             else:
+                supported = "python→exe, python→apk, web→exe, web→apk, electron→exe, docker→zip"
                 yield log(f"التركيبة {req.lang}→{req.target} غير مدعومة حالياً.", "err")
-                yield err("Unsupported combination.")
+                yield log(f"المدعوم: {supported}", "info")
+                yield err(f"Unsupported combination {req.lang}→{req.target}. Supported: {supported}")
 
         except FileNotFoundError as e:
             import logging

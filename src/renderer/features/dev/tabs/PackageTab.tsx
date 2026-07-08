@@ -16,10 +16,18 @@ interface LogEntry { text: string; kind: "info" | "ok" | "err" | "cmd" }
 
 const LANGS: { id: PackLang; label: string; icon: string; desc: string }[] = [
   { id: "python",   label: "Python",      icon: "🐍", desc: "PyInstaller / Briefcase"       },
-  { id: "web",      label: "Web App",     icon: "🌐", desc: "Capacitor + Gradle"             },
+  { id: "web",      label: "Web App",     icon: "🌐", desc: "Electron wrap (.exe) / Capacitor (.apk)" },
   { id: "electron", label: "Electron",    icon: "⚡", desc: "Electron Builder NSIS"          },
   { id: "docker",   label: "Full-Stack",  icon: "🐳", desc: "Docker Compose — deploy-ready ZIP" },
 ];
+
+// Valid runtime → target matrix (mirrors /api/package/stream support)
+const TARGETS_FOR: Record<PackLang, { id: PackTarget; label: string }[]> = {
+  python:   [{ id: "exe", label: "Windows .exe" }, { id: "apk", label: "Android .apk" }],
+  web:      [{ id: "exe", label: "Windows .exe" }, { id: "apk", label: "Android .apk" }],
+  electron: [{ id: "exe", label: "Windows .exe" }],
+  docker:   [{ id: "zip", label: "Deploy ZIP" }],
+};
 
 const LOG_COLOR: Record<string, string> = { ok: "#34d399", err: "#f87171", cmd: "#a78bfa", info: "#94a3b8" };
 
@@ -34,11 +42,11 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
   const [target, setTarget]       = useState<PackTarget>("exe");
   const [lang, setLang]           = useState<PackLang>("python");
 
-  // When switching to docker lang, force target to zip
+  // Snap target to a valid option whenever the runtime changes
   const handleLangChange = (l: PackLang) => {
     setLang(l);
-    if (l === "docker") setTarget("zip");
-    else if (target === "zip") setTarget("exe");
+    const valid = TARGETS_FOR[l];
+    if (!valid.some(t => t.id === target)) setTarget(valid[0].id);
   };
   const [appName, setAppName]     = useState("MyApp");
   const [appVersion, setVersion]  = useState("1.0.0");
@@ -190,12 +198,21 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
                 style={{ ...S.textInput, marginTop: 4 }}
                 aria-label="Package target"
               >
-                <option value="exe">Windows .exe</option>
-                <option value="apk">Android .apk</option>
+                {TARGETS_FOR[lang].map(t => (
+                  <option key={t.id} value={t.id}>{t.label}</option>
+                ))}
               </select>
             </div>
           )}
         </div>
+
+        {lang === "web" && target === "exe" && (
+          <div style={{ padding: "10px 14px", background: "rgba(139,92,246,.08)", borderRadius: 8,
+                        border: "1px solid rgba(139,92,246,.2)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
+            ⚡ <strong>Web → Windows .exe</strong> — يتم تغليف تطبيق الويب داخل Electron
+            ثم بناؤه كمثبِّت NSIS قابل للتوزيع.
+          </div>
+        )}
 
         {lang === "docker" && (
           <div style={{ padding: "10px 14px", background: "rgba(56,189,248,.08)", borderRadius: 8,
