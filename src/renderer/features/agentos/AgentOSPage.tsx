@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { agentOsApi } from "./api";
+import { apiFetch } from "../../utils/api";
 import type { AgentResult, AgentInfo, MemoryRecord, SystemStatus, Suggestion, DeliberationBid } from "./api";
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -473,7 +474,7 @@ function PerformancePanel({ stats }: { stats: { agent_stats: ReturnType<typeof a
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-type Tab = "terminal" | "agents" | "memory" | "evolution" | "performance";
+type Tab = "terminal" | "agents" | "memory" | "evolution" | "performance" | "jobs";
 
 export function AgentOSPage() {
   const [tab, setTab]               = useState<Tab>("terminal");
@@ -546,6 +547,7 @@ export function AgentOSPage() {
     { id: "memory",      label: `Memory (${records.length})` },
     { id: "evolution",   label: "Evolution" },
     { id: "performance", label: "Performance" },
+    { id: "jobs",        label: "Jobs" },
   ];
 
   return (
@@ -600,6 +602,111 @@ export function AgentOSPage() {
           />
         )}
         {tab === "performance" && <PerformancePanel stats={perfData} />}
+        {tab === "jobs"        && <JobsMonitor />}
+      </div>
+    </div>
+  );
+}
+
+// ── Jobs Monitor ──────────────────────────────────────────────────────────────
+
+function JobsMonitor() {
+  type Job = {
+    job_id: string; kind: string; status: string;
+    progress: number; error?: string;
+    created_at: string; started_at?: string; finished_at?: string;
+  };
+  const [jobs, setJobs]       = useState<Job[]>([]);
+  const [stats, setStats]     = useState<Record<string, number> | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [jr, sr] = await Promise.all([
+        apiFetch("/jobs").then(r => r.json()).catch(() => ({ jobs: [] })),
+        apiFetch("/jobs/stats").then(r => r.json()).catch(() => ({})),
+      ]);
+      setJobs(jr.jobs ?? []);
+      setStats(sr);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const cancel = async (job_id: string) => {
+    await apiFetch(`/jobs/${job_id}`, { method: "DELETE" }).catch(() => {});
+    load();
+  };
+
+  const STATUS_COLOR: Record<string, string> = {
+    pending:   "#f59e0b",
+    running:   "#6c8ef7",
+    completed: "#34d399",
+    failed:    "#ef4444",
+    cancelled: "#6b7280",
+  };
+
+  const elapsed = (job: Job) => {
+    const start = job.started_at ? new Date(job.started_at).getTime() : new Date(job.created_at).getTime();
+    const end   = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
+    const s     = Math.round((end - start) / 1000);
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`;
+  };
+
+  return (
+    <div style={S.card}>
+      <div style={S.cardHeader}>
+        <span>⚙ Background Jobs</span>
+        <button onClick={load} disabled={loading} style={{ ...S.btn("ghost"), padding: "4px 10px", fontSize: 11 }}>
+          {loading ? "…" : "↻"}
+        </button>
+      </div>
+      <div style={S.cardBody}>
+        {/* Stats row */}
+        {stats && (
+          <div style={{ display: "flex", gap: 20, marginBottom: 16, flexWrap: "wrap" as const }}>
+            {Object.entries(stats).map(([k, v]) => (
+              <StatPill key={k} label={k} value={v}
+                color={k === "failed" ? "#ef4444" : k === "running" ? "#6c8ef7" : k === "completed" ? "#34d399" : "var(--accent)"} />
+            ))}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ color: "var(--t3)", fontSize: 13 }}>Loading…</div>
+        ) : jobs.length === 0 ? (
+          <div style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
+            No jobs yet — jobs created via the API appear here.
+          </div>
+        ) : jobs.map(job => {
+          const color = STATUS_COLOR[job.status] ?? "var(--t4)";
+          return (
+            <div key={job.job_id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)", display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>{job.kind}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 7px", borderRadius: 99 }}>
+                    {job.status}
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--t4)" }}>{elapsed(job)}</span>
+                </div>
+                {job.status === "running" && (
+                  <div style={{ height: 3, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${job.progress}%`, background: "#6c8ef7", borderRadius: 99, transition: "width .4s" }} />
+                  </div>
+                )}
+                {job.error && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 2 }}>{job.error}</div>}
+              </div>
+              <span style={{ fontSize: 10, ...S.mono, color: "var(--t5)", flexShrink: 0 }}>{job.job_id.slice(0, 8)}…</span>
+              {(job.status === "pending" || job.status === "running") && (
+                <button onClick={() => cancel(job.job_id)} style={{ ...S.btn("danger"), padding: "3px 10px", fontSize: 11 }}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

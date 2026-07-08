@@ -9,9 +9,10 @@ const NAV: { id: Page; label: string; icon: keyof typeof Icons }[] = [
   { id: "dev",        label: "Dev",        icon: "dev"        },
   { id: "design",     label: "Design",     icon: "design"     },
   { id: "automation", label: "Automation", icon: "automation" },
-  { id: "agentos",    label: "AgentOS",    icon: "agentos"    },
-  { id: "social",     label: "Social",     icon: "social"     },
-  { id: "settings",   label: "Settings",   icon: "settings"   },
+  { id: "agentos",     label: "AgentOS",     icon: "agentos"     },
+  { id: "marketplace", label: "Marketplace", icon: "marketplace" },
+  { id: "social",      label: "Social",      icon: "social"      },
+  { id: "settings",    label: "Settings",    icon: "settings"    },
 ];
 
 function SunIcon() {

@@ -1,7 +1,7 @@
 /**
  * AutomationPage — task management and workflow automation hub.
  * Merges Tasks + Automation views into a single workspace.
- * Data: /api/tasks, /api/agents
+ * Data: /api/tasks, /api/agents, /workflows/*
  */
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "../../contexts/ToastContext";
@@ -102,6 +102,12 @@ export function AutomationPage() {
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [saving, setSaving]   = useState(false);
 
+  // ── Workflow state ──────────────────────────────────────────────────────────
+  type WfRun = { run_id: string; workflow_id: string; status: string; start_time: number; steps_total: number; steps_done: number; error?: string };
+  const [wfRuns, setWfRuns]         = useState<WfRun[]>([]);
+  const [wfLoading, setWfLoading]   = useState(false);
+  const [runningDemo, setRunningDemo] = useState<string | null>(null);
+
   const loadTasks = useCallback(async () => {
     setLoading(true);
     try {
@@ -112,13 +118,35 @@ export function AutomationPage() {
     finally { setLoading(false); }
   }, []);
 
+  const loadWorkflows = useCallback(async () => {
+    setWfLoading(true);
+    try {
+      const r = await apiFetch("/workflows/active");
+      if (r.ok) { const d = await r.json(); setWfRuns(d.runs ?? []); }
+    } catch {}
+    finally { setWfLoading(false); }
+  }, []);
+
+  const runDemoWorkflow = async (kind: string) => {
+    setRunningDemo(kind);
+    try {
+      const r = await apiFetch("/workflows/demo", { method: "POST", body: JSON.stringify({ kind }) });
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      toast(`Workflow started — run_id: ${d.run_id}`, "ok");
+      setTimeout(loadWorkflows, 800);
+    } catch { toast("Failed to start workflow", "err"); }
+    finally { setRunningDemo(null); }
+  };
+
   useEffect(() => {
     loadTasks();
+    loadWorkflows();
     apiFetch("/api/agents")
       .then(r => parseJSON<Agent[]>(r, "/api/agents"))
       .then(setAgents)
       .catch(() => {});
-  }, [loadTasks]);
+  }, [loadTasks, loadWorkflows]);
 
   async function createTask() {
     if (!newTitle.trim()) return;
@@ -261,95 +289,148 @@ export function AutomationPage() {
 
       {/* ── Workflows tab ─────────────────────────────────────────────────────── */}
       {tab === "workflows" && (
-        <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
-          {agents.length === 0 ? (
-            <div className="empty-state">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ color: "var(--ta)" }}>
-                <rect x="2" y="3" width="6" height="6" rx="1"/><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="16" y="3" width="6" height="6" rx="1"/>
-                <line x1="5" y1="9" x2="5" y2="12"/><line x1="12" y1="9" x2="12" y2="12"/><line x1="19" y1="9" x2="19" y2="12"/>
-                <rect x="8" y="12" width="8" height="6" rx="1"/><line x1="12" y1="18" x2="12" y2="21"/>
-              </svg>
-              <h3>No agents for workflows</h3>
-              <p>Create agents in the AI Workspace to build automated workflows.</p>
+        <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+
+          {/* Active runs */}
+          <div style={S.card}>
+            <div style={{ ...S.cardTitle, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>Active Workflow Runs</span>
+              <button onClick={loadWorkflows} disabled={wfLoading} style={{ ...S.btnSecondary, padding: "4px 12px", fontSize: 12 }}>
+                {wfLoading ? "…" : "↻ Refresh"}
+              </button>
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div className="section-label" style={{ marginBottom: 4 }}>AVAILABLE AGENTS</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
-                {agents.map(a => (
-                  <div key={a.id} style={{ ...S.card, padding: "16px 18px" }}>
-                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(139,92,246,.12)", border: "1px solid rgba(139,92,246,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{a.avatar}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
-                        <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 2 }}>{a.message_count ?? 0} conversations</div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399" }} />
-                        <span style={{ fontSize: 10, color: "#34d399" }}>Active</span>
-                      </div>
+            <div style={{ padding: "0 0 4px" }}>
+              {wfLoading ? (
+                <div style={{ padding: "16px 18px" }}><div className="skeleton" style={{ height: 40, borderRadius: 8 }} /></div>
+              ) : wfRuns.length === 0 ? (
+                <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>No active runs — start a workflow below.</div>
+              ) : wfRuns.map(run => {
+                const pct = run.steps_total > 0 ? Math.round((run.steps_done / run.steps_total) * 100) : 0;
+                const statusColor: Record<string, string> = { running: "#6c8ef7", completed: "#34d399", failed: "#ef4444", pending: "#f59e0b" };
+                const color = statusColor[run.status] ?? "var(--t4)";
+                return (
+                  <div key={run.run_id} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {run.workflow_id}
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "2px 8px", borderRadius: 99 }}>
+                        {run.status}
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--t4)" }}>
+                        {run.steps_done}/{run.steps_total} steps
+                      </span>
+                    </div>
+                    <div style={{ height: 4, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
+                    </div>
+                    {run.error && <div style={{ fontSize: 11, color: "#ef4444" }}>{run.error}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Workflow templates → run via real API */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 12 }}>WORKFLOW TEMPLATES</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
+              {([
+                { kind: "sequential", name: "Sequential Pipeline", desc: "Run steps one after another — fetch → process → store", icon: "📋", trigger: "On demand" },
+                { kind: "parallel",   name: "Parallel Fan-out",    desc: "Execute independent steps simultaneously for speed",   icon: "⚡", trigger: "On demand" },
+                { kind: "approval",   name: "Human-in-the-Loop",   desc: "Pause at checkpoints for manual review and approval",  icon: "👤", trigger: "On demand" },
+                { kind: "saga",       name: "Saga (Compensating)", desc: "Distributed transaction with automatic rollback",      icon: "🔄", trigger: "On demand" },
+              ] as const).map(wf => (
+                <div
+                  key={wf.kind}
+                  style={{ ...S.card, padding: "16px 18px", cursor: runningDemo ? "wait" : "pointer" }}
+                  className="card-hover"
+                >
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 10 }}>
+                    <div style={{ fontSize: 24, lineHeight: 1 }}>{wf.icon}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{wf.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 3, lineHeight: 1.5 }}>{wf.desc}</div>
                     </div>
                   </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <div className="section-label" style={{ marginBottom: 12 }}>WORKFLOW TEMPLATES</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
-                  {[
-                    { name: "Daily Briefing",     desc: "Summarize tasks and send a daily report",       icon: "📋", trigger: "Scheduled · 9:00 AM",  task: "Set up daily briefing: review all pending tasks and prepare a summary report" },
-                    { name: "Task from Chat",      desc: "Extract action items from AI conversations",    icon: "💬", trigger: "On conversation end",    task: "Extract tasks from AI conversations: review recent chat history and create tasks from action items" },
-                    { name: "Research Pipeline",   desc: "Chain search → summarize → store to project",  icon: "🔬", trigger: "On demand",               task: "Research pipeline: define research topic, gather sources, summarize findings, and store results" },
-                    { name: "Code Review Bot",     desc: "Review code files and generate feedback",       icon: "🤖", trigger: "On file change",           task: "Code review workflow: specify files to review, run through the Code Reviewer agent, and log feedback" },
-                  ].map(wf => (
-                    <div
-                      key={wf.name}
-                      role="button"
-                      tabIndex={0}
-                      style={{ ...S.card, padding: "16px 18px", cursor: "pointer" }}
-                      className="card-hover"
-                      onClick={async () => {
-                        try {
-                          const r = await apiFetch("/api/tasks", {
-                            method: "POST",
-                            body: JSON.stringify({ title: wf.task, priority: "medium" }),
-                          });
-                          if (!r.ok) throw new Error();
-                          toast(`"${wf.name}" task created — check Tasks tab`, "ok");
-                          loadTasks();
-                          setTab("tasks");
-                        } catch { toast("Failed to create workflow task", "err"); }
-                      }}
-                      onKeyDown={e => e.key === "Enter" && e.currentTarget.click()}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 10, color: "var(--ta)", fontWeight: 500, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 20, padding: "2px 8px" }}>
+                      {wf.trigger}
+                    </span>
+                    <button
+                      onClick={() => runDemoWorkflow(wf.kind)}
+                      disabled={!!runningDemo}
+                      style={{ ...S.btnPrimary, padding: "5px 14px", fontSize: 12 }}
                     >
-                      <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 10 }}>
-                        <div style={{ fontSize: 24, lineHeight: 1 }}>{wf.icon}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{wf.name}</div>
-                          <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 3, lineHeight: 1.5 }}>{wf.desc}</div>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <span style={{ fontSize: 10, color: "var(--ta)", fontWeight: 500, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 20, padding: "2px 8px" }}>{wf.trigger}</span>
-                        <span style={{ fontSize: 11, color: "var(--ta)", fontWeight: 500 }}>+ Create task →</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ ...S.card, padding: "14px 18px", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      {runningDemo === wf.kind ? "Starting…" : "▶ Run"}
+                    </button>
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>Custom Workflow</div>
-                    <div style={{ fontSize: 12, color: "var(--t4)" }}>Visual workflow builder — drag, connect, and configure agent steps</div>
-                  </div>
-                  <span style={{ fontSize: 11, color: "var(--ta)", fontWeight: 600, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 20, padding: "3px 10px", flexShrink: 0 }}>Coming Q3</span>
                 </div>
-              </div>
+              ))}
             </div>
-          )}
+          </div>
+
+          {/* Pending approvals */}
+          <div style={S.card}>
+            <div style={S.cardTitle}>Pending Approvals</div>
+            <ApprovalsList />
+          </div>
         </div>
       )}
     </>
+  );
+}
+
+function ApprovalsList() {
+  type Approval = { run_id: string; step_id: string; step_name: string; requested_at: number };
+  const toast = useToast();
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiFetch("/workflows/approvals/pending");
+      if (r.ok) { const d = await r.json(); setApprovals(d.approvals ?? []); }
+    } catch {}
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const decide = async (run_id: string, step_id: string, action: "approve" | "reject") => {
+    setBusy(`${run_id}:${step_id}`);
+    try {
+      const r = await apiFetch(`/workflows/approvals/${run_id}/${step_id}/${action}`, { method: "POST" });
+      if (!r.ok) throw new Error();
+      toast(`Step ${action}d`, "ok");
+      setApprovals(p => p.filter(a => !(a.run_id === run_id && a.step_id === step_id)));
+    } catch { toast(`Failed to ${action}`, "err"); }
+    finally { setBusy(null); }
+  };
+
+  if (approvals.length === 0) return (
+    <div style={{ padding: "12px 18px", color: "var(--t4)", fontSize: 13 }}>No pending approvals.</div>
+  );
+
+  return (
+    <div>
+      {approvals.map(a => (
+        <div key={`${a.run_id}:${a.step_id}`} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{a.step_name}</div>
+            <div style={{ fontSize: 11, color: "var(--t4)" }}>run {a.run_id.slice(0, 8)}…</div>
+          </div>
+          <button
+            onClick={() => decide(a.run_id, a.step_id, "approve")}
+            disabled={!!busy}
+            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#22c55e", color: "#fff" }}
+          >Approve</button>
+          <button
+            onClick={() => decide(a.run_id, a.step_id, "reject")}
+            disabled={!!busy}
+            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#ef4444", color: "#fff" }}
+          >Reject</button>
+        </div>
+      ))}
+    </div>
   );
 }

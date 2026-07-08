@@ -13,7 +13,8 @@ const SocialPage     = lazy(() => import("../../features/social").then(m => ({ d
 const SettingsPage   = lazy(() => import("../../features/settings").then(m => ({ default: m.SettingsPage })));
 const DesignStudio   = lazy(() => import("../../features/design-studio").then(m => ({ default: m.DesignStudio })));
 const AutomationPage = lazy(() => import("../../features/automation/AutomationPage").then(m => ({ default: m.AutomationPage })));
-const AgentOSPage    = lazy(() => import("../../features/agentos").then(m => ({ default: m.AgentOSPage })));
+const AgentOSPage      = lazy(() => import("../../features/agentos").then(m => ({ default: m.AgentOSPage })));
+const MarketplacePage  = lazy(() => import("../../features/marketplace").then(m => ({ default: m.MarketplacePage })));
 
 const FALLBACK = <LoadingSpinner fullPage label="Loading workspace…" />;
 
@@ -28,6 +29,7 @@ function WorkspaceContent() {
         {page === "design"     && <DesignStudio />}
         {page === "automation" && <AutomationPage />}
         {page === "agentos"    && <AgentOSPage />}
+        {page === "marketplace" && <MarketplacePage />}
         {page === "social"     && <SocialPage />}
         {page === "settings"   && <SettingsPage />}
       </Suspense>
