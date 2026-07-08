@@ -48,6 +48,10 @@ from app.routers import jobs_api         as jobs_api_router
 from app.routers import api_keys_router  as api_keys_router_mod
 from app.routers import ws               as ws_router
 from app.routers import metrics          as metrics_router
+from app.routers import organizations    as organizations_router
+from app.routers import usage_api        as usage_api_router
+from app.routers import ai_router_api    as ai_router_api_router
+from app.routers import events_api       as events_api_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -73,6 +77,21 @@ async def lifespan(app: FastAPI):
     ai_platform.init(pool)
     maintenance_task = asyncio.create_task(maintenance_loop())
     cleanup_task     = asyncio.create_task(process_cleanup_loop())
+
+    # ── Enterprise multi-tenancy + usage schemas ───────────────────────────
+    from app.tenancy import init_tenancy_schema
+    from app.billing import init_usage_schema
+    async with pool.acquire() as conn:
+        await init_tenancy_schema(conn)
+        await init_usage_schema(conn)
+
+    # ── Marketplace store (PostgreSQL primary, JSON fallback) ──────────────
+    from app.marketplace import init_marketplace_store
+    await init_marketplace_store(pool)
+
+    # ── Event bus (Redis Streams when available) ────────────────────────────
+    from app.core.events import get_event_bus
+    await get_event_bus().connect()
 
     # ── Redis cache adapter ─────────────────────────────────────────────────
     from app.core.cache import get_redis
@@ -309,6 +328,10 @@ def create_app() -> FastAPI:
     app.include_router(api_keys_router_mod.router)
     app.include_router(ws_router.router)
     app.include_router(metrics_router.router)
+    app.include_router(organizations_router.router)
+    app.include_router(usage_api_router.router)
+    app.include_router(ai_router_api_router.router)
+    app.include_router(events_api_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
