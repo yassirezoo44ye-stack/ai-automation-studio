@@ -82,6 +82,18 @@ def require_rate_limit(
         )
 
 
+def ai_rate_limit(request: Request, max_calls: int = 20, window: int = 60) -> None:
+    """Stricter limit for AI inference endpoints (cost-exposure protection)."""
+    from app.core.auth import owner_email as _owner_email
+    owner = _owner_email(request)
+    xff = request.headers.get("X-Forwarded-For", "")
+    ips = [x.strip() for x in xff.split(",") if x.strip()]
+    ip = ips[-1] if ips else (request.client.host if request.client else "unknown")
+    key = f"ai:{owner}:{ip}"
+    if not check_rate_limit(key, max_calls=max_calls, window=window):
+        raise HTTPException(429, "Too many AI requests — please wait a moment.")
+
+
 def make_rate_limit_dep(
     key_prefix  : str = "req",
     max_calls   : int = 60,
