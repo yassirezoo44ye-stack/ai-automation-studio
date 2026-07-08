@@ -215,6 +215,7 @@ input:focus, textarea:focus, select:focus {
 @keyframes slideInR  { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:translateX(0)} }
 @keyframes fadeIn    { from{opacity:0} to{opacity:1} }
 @keyframes scaleIn   { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
+@keyframes pulseOnce { 0%{transform:scale(.85);box-shadow:0 0 0 0 rgba(52,211,153,.45)} 55%{transform:scale(1.06)} 100%{transform:scale(1);box-shadow:0 0 0 12px rgba(52,211,153,0)} }
 @keyframes spin      { to{transform:rotate(360deg)} }
 @keyframes pulse     { 0%,100%{opacity:1} 50%{opacity:.45} }
 @keyframes shimmer   { 0%{background-position:-200% 0} 100%{background-position:200% 0} }

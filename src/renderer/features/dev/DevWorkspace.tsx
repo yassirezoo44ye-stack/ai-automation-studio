@@ -112,11 +112,12 @@ export function DevWorkspace() {
     ? files
     : existingFiles.map(f => ({ path: f.path, content: "" }));
 
+  // Flow order: Generate → Preview → Files → Terminal → Package
   const TABS: [DevTab, string][] = [
     ["generate", "Generate"],
-    ["files",    `Files${allFiles.length ? ` (${allFiles.length})` : ""}`],
     ["preview",  "Preview"],
-    ["run",      "Run"],
+    ["files",    `Files${allFiles.length ? ` (${allFiles.length})` : ""}`],
+    ["run",      "Terminal"],
     ["package",  "Package"],
   ];
 
@@ -186,6 +187,7 @@ export function DevWorkspace() {
             buildState={buildState}
             status={buildStatus}
             description={description}
+            files={files}
             onProjectId={setProjectId}
             onPrompt={setBuildPrompt}
             onStateChange={setBuildState}
@@ -195,6 +197,7 @@ export function DevWorkspace() {
             onBuildDone={fs => { setFiles(fs); setExistingFiles([]); }}
             onSwitchTab={setTab as (t: string) => void}
             onOpenPreview={openHtmlPreview}
+            onExportZip={downloadZip}
             onToast={(m, k) => toast(m, k)}
           />
         )}

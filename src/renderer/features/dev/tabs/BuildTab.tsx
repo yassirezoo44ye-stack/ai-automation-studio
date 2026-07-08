@@ -8,6 +8,7 @@ import { authH, API, parseJSON } from "../../../shared/utils/api";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import { S } from "../../../styles/theme";
 import { BUILD_TEMPLATES } from "../../../constants";
+import { InstallationPanel } from "../components/InstallationPanel";
 import type { BuildFile, BuildState, Project } from "../../../shared/types";
 
 interface BuildTabProps {
@@ -17,6 +18,7 @@ interface BuildTabProps {
   buildState:     BuildState;
   status:         string;
   description:    string;
+  files:          BuildFile[];
   onProjectId:    (id: string) => void;
   onPrompt:       (p: string) => void;
   onStateChange:  (s: BuildState) => void;
@@ -26,13 +28,14 @@ interface BuildTabProps {
   onBuildDone:    (files: BuildFile[]) => void;
   onSwitchTab:    (tab: string) => void;
   onOpenPreview:  (files: BuildFile[]) => void;
+  onExportZip:    () => void;
   onToast:        (m: string, k?: "ok" | "err" | "info") => void;
 }
 
 export function BuildTab({
-  projectId, buildPrompt, buildState, status, description,
+  projectId, buildPrompt, buildState, status, description, files,
   onPrompt, onStateChange, onStatus, onDescription,
-  onFileAppend, onBuildDone, onSwitchTab, onOpenPreview, onToast,
+  onFileAppend, onBuildDone, onSwitchTab, onOpenPreview, onExportZip, onToast,
 }: BuildTabProps) {
   const abortRef = useRef<AbortController | null>(null);
 
@@ -88,10 +91,8 @@ export function BuildTab({
             onStatus(`Built ${(ev.files as unknown[]).length} files`);
             onBuildDone(accumulated);
             onToast(`Built: ${(ev.description as string) || `${(ev.files as unknown[]).length} files`}`);
-            onSwitchTab("files");
-            if (accumulated.some(f => f.path.endsWith(".html"))) {
-              setTimeout(() => onOpenPreview(accumulated), 100);
-            }
+            // Stay on Generate — the Installation panel renders below the
+            // button and auto-scrolls into view as the first actionable step.
           } else if (ev.type === "error") {
             onStateChange("error");
             onStatus(`Error: ${ev.message}`);
@@ -149,6 +150,21 @@ export function BuildTab({
             <StatusBadge kind="info" label="Building" />
             <span style={{ fontSize: 12, color: "#34d399" }}>{status}</span>
           </div>
+        )}
+
+        {/* ── Installation — first actionable step after Generate ──────────── */}
+        {buildState === "done" && files.length > 0 && (
+          <InstallationPanel
+            files={files}
+            onOpenPreview={() => {
+              if (files.some(f => f.path.endsWith(".html"))) onOpenPreview(files);
+              else onSwitchTab("preview");
+            }}
+            onViewFiles={() => onSwitchTab("files")}
+            onOpenTerminal={() => onSwitchTab("run")}
+            onOpenPackage={() => onSwitchTab("package")}
+            onExportZip={onExportZip}
+          />
         )}
 
         {description && (
