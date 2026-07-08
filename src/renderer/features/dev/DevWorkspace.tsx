@@ -222,6 +222,7 @@ export function DevWorkspace() {
           <RunTab
             projectId={projectId}
             files={files}
+            hasFiles={allFiles.length > 0}
             runCmd={runCmd}
             runOutput={runOutput}
             running={running}

@@ -17,6 +17,7 @@ interface RunError {
 interface RunTabProps {
   projectId:    string;
   files:        BuildFile[];
+  hasFiles:     boolean;
   runCmd:       string;
   runOutput:    string;
   running:      boolean;
@@ -37,7 +38,7 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 export function RunTab({
-  projectId, files, runCmd, runOutput, running, runError,
+  projectId, files, hasFiles, runCmd, runOutput, running, runError,
   onCmd, onOutput, onRunning, onError, onPreviewUrl, onSwitchTab, currentPreviewUrl,
 }: RunTabProps) {
   const abortRef = useRef<AbortController | null>(null);
@@ -154,6 +155,28 @@ export function RunTab({
   };
 
   const stop = () => abortRef.current?.abort();
+
+  // Empty workspace — guide the user to Generate instead of letting Run fail
+  if (!hasFiles && !running && !runOutput) {
+    return (
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", gap: 14, padding: 24,
+      }}>
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" style={{ color: "var(--ta)" }}>
+          <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+        </svg>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>Nothing to run yet</div>
+        <p style={{ fontSize: 13, color: "var(--t4)", maxWidth: 320, textAlign: "center", margin: 0, lineHeight: 1.6 }}>
+          This workspace is empty. Generate a project first — the Terminal will
+          auto-detect the right command and run it here.
+        </p>
+        <button onClick={() => onSwitchTab("generate")} style={{ ...S.btnPrimary, padding: "9px 22px" }}>
+          ✦ Go to Generate
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
