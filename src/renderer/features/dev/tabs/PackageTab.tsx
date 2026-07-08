@@ -128,9 +128,9 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
           let ev: Record<string, unknown>;
           try { ev = JSON.parse(line.slice(6)); } catch { continue; }
 
-          if (ev.type === "log")   addLog(ev.message as string, (ev.level as LogEntry["kind"]) ?? "info");
+          if (ev.type === "log")   addLog(ev.text as string, (ev.level as LogEntry["kind"]) ?? "info");
           if (ev.type === "done")  { setState("done"); setDownload(ev.download_url as string); addLog("✓ Package ready", "ok"); }
-          if (ev.type === "error") { setState("error"); addLog(ev.message as string, "err"); }
+          if (ev.type === "error") { setState("error"); addLog(ev.text as string ?? ev.message as string, "err"); }
         }
       }
     } catch (e: unknown) {

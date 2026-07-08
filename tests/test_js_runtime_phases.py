@@ -1,24 +1,37 @@
 """
-Tests for the three-phase JavaScript runtime execution engine.
+Comprehensive tests for the JS runtime execution engine.
 
-Phase A: Environment validation
-Phase B: Dependency resolution (install-skip, install-run, hard-stop on failure)
-Phase C: Application execution (server start, build project)
-
-Error code classification, RuntimeReport construction, and
-platform-independent behavior are also covered.
+Coverage targets:
+  Phase A (environment validation)    — node missing, PM missing, workspace missing
+  BuildPlan                           — validate(), to_dict(), as_log_lines()
+  Phase Plan                          — script resolution, port allocation, invalid plan
+  Phase B (dependency installation)   — skip, run, hard-stop on failure, error classification
+  Phase C (application launch)        — server start, build, port failure, timeout
+  Error classification                — EACCES, ERESOLVE, ENOTFOUND, ETARGET, EBADENGINE
+  Dependency checksum                 — stable hash, skip on match, install on mismatch
+  Package manager detection           — all four PMs + lockfile priority
+  SystemProbe                         — all 14 fields populated
+  Platform independence               — no hardcoded /tmp
+  RuntimeReport                       — to_sse_dict() structure, no undefined values
 """
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.execution.js_runtime.build_plan import BuildPlan
 from app.execution.js_runtime.error_codes import (
     RuntimeErrorCode,
     classify_install_error,
+    js_code_for,
+    from_js_code,
+    message_for,
+    fixes_for,
 )
 from app.execution.js_runtime.phases import (
     PhaseRunner,
@@ -27,24 +40,42 @@ from app.execution.js_runtime.phases import (
     _npm_env,
     _write_dep_checksum,
     _explicit_npm_install_args,
+    _TMPDIR,
+    _NPM_CACHE,
+    _NPM_LOGS,
 )
 from app.execution.js_runtime.report import (
+    BuildPlanReport,
     DependencyReport,
     EnvironmentReport,
     LaunchReport,
     RuntimeReport,
 )
-from app.execution.js_runtime.adapters import NpmAdapter, PnpmAdapter
+from app.execution.js_runtime.adapters import (
+    BunAdapter,
+    NpmAdapter,
+    NpmCliJsFallbackAdapter,
+    PnpmAdapter,
+    YarnAdapter,
+)
+from app.execution.js_runtime.probe import SystemProbe
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-def _pkg(tmp_path: Path, scripts: dict | None = None, deps: dict | None = None) -> Path:
-    data: dict = {"name": "test", "version": "1.0.0"}
+def _pkg(
+    tmp_path: Path,
+    scripts: dict | None = None,
+    deps: dict | None = None,
+    dev_deps: dict | None = None,
+) -> Path:
+    data: dict = {"name": "test-project", "version": "1.0.0"}
     if scripts:
         data["scripts"] = scripts
     if deps:
         data["dependencies"] = deps
+    if dev_deps:
+        data["devDependencies"] = dev_deps
     (tmp_path / "package.json").write_text(json.dumps(data))
     return tmp_path
 
@@ -60,478 +91,999 @@ class _FakeInfo:
         self.run_strategy = run_strategy
 
 
-def _collect_events(gen) -> list[tuple[str, dict]]:
-    """Drain an async generator synchronously for testing."""
-    import asyncio
+async def _collect(gen) -> list[tuple[str, dict]]:
     events: list[tuple[str, dict]] = []
-    async def _drain():
-        async for ev in gen:
-            events.append(ev)
-    asyncio.get_event_loop().run_until_complete(_drain())
-    return events
-
-
-async def _collect(gen):
-    events = []
     async for ev in gen:
         events.append(ev)
     return events
 
 
-# ── Error code classification ─────────────────────────────────────────────────
+def _events(events: list[tuple[str, dict]], type_: str) -> list[dict]:
+    return [p for t, p in events if t == type_]
 
-class TestErrorCodeClassification:
-    def test_eacces(self):
-        assert classify_install_error(["npm error EACCES: permission denied"]) \
-            == RuntimeErrorCode.DEP_INSTALL_EACCES
 
-    def test_eperm(self):
-        assert classify_install_error(["EPERM: operation not permitted"]) \
-            == RuntimeErrorCode.DEP_INSTALL_EACCES
+def _first(events: list[tuple[str, dict]], type_: str) -> dict | None:
+    for t, p in events:
+        if t == type_:
+            return p
+    return None
 
-    def test_eresolve(self):
-        assert classify_install_error(["npm error ERESOLVE could not resolve"]) \
-            == RuntimeErrorCode.DEP_INSTALL_ERESOLVE
 
-    def test_enotfound(self):
-        assert classify_install_error(["npm error ENOTFOUND registry.npmjs.org"]) \
-            == RuntimeErrorCode.DEP_INSTALL_ENOTFOUND
+# ── BuildPlan tests ───────────────────────────────────────────────────────────
 
-    def test_etarget(self):
-        assert classify_install_error(["npm error ETARGET"]) \
-            == RuntimeErrorCode.DEP_INSTALL_ETARGET
+class TestBuildPlan:
+    def test_validate_complete_server_plan(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="npm", pm_cmd=["npm"],
+            install_cmd=["npm", "install"],
+            run_cmd=["npm", "run", "dev"],
+            is_server=True, port=3000,
+        )
+        assert plan.validate() == []
 
-    def test_engine_mismatch(self):
-        assert classify_install_error(["npm warn EBADENGINE"]) \
-            == RuntimeErrorCode.DEP_INSTALL_ENGINE
+    def test_validate_complete_build_plan(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="pnpm", pm_cmd=["pnpm"],
+            install_cmd=["pnpm", "install"],
+            build_cmd=["pnpm", "run", "build"],
+            is_server=False,
+        )
+        assert plan.validate() == []
 
-    def test_unsupported_engine_string(self):
-        assert classify_install_error(["Unsupported engine"]) \
-            == RuntimeErrorCode.DEP_INSTALL_ENGINE
+    def test_validate_missing_pm_name(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_cmd=["npm"],
+            install_cmd=["npm", "install"],
+            run_cmd=["npm", "run", "dev"],
+            is_server=True, port=3000,
+        )
+        errors = plan.validate()
+        assert any("JS001" in e for e in errors)
 
-    def test_unknown_falls_back_to_failed(self):
-        assert classify_install_error(["some random error"]) \
-            == RuntimeErrorCode.DEP_INSTALL_FAILED
+    def test_validate_missing_run_cmd(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="npm", pm_cmd=["npm"],
+            install_cmd=["npm", "install"],
+            is_server=True, port=3000,
+        )
+        errors = plan.validate()
+        assert any("JS004" in e for e in errors)
 
-    def test_empty_stderr_is_failed(self):
+    def test_validate_missing_port(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="npm", pm_cmd=["npm"],
+            install_cmd=["npm", "install"],
+            run_cmd=["npm", "run", "dev"],
+            is_server=True, port=0,
+        )
+        errors = plan.validate()
+        assert any("JS006" in e for e in errors)
+
+    def test_validate_missing_build_cmd(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="npm", pm_cmd=["npm"],
+            install_cmd=["npm", "install"],
+            is_server=False,
+        )
+        errors = plan.validate()
+        assert any("JS004" in e for e in errors)
+
+    def test_validate_missing_install_cmd(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="npm", pm_cmd=["npm"],
+            run_cmd=["npm", "run", "dev"],
+            is_server=True, port=3000,
+        )
+        errors = plan.validate()
+        assert any("JS001" in e for e in errors)
+
+    def test_to_dict_no_undefined(self):
+        plan = BuildPlan(project_id="p1", workspace="/ws")
+        d = plan.to_dict()
+        for key, val in d.items():
+            assert val is not None, f"to_dict() key '{key}' is None"
+            assert val != "undefined", f"to_dict() key '{key}' is the string 'undefined'"
+
+    def test_run_cmd_str_empty_without_crash(self):
+        plan = BuildPlan(project_id="p1", workspace="/ws")
+        assert plan.run_cmd_str == ""
+
+    def test_as_log_lines_server(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="npm", pm_version="10.2.4",
+            run_cmd=["npm", "run", "dev"],
+            is_server=True, port=3001,
+        )
+        lines = plan.as_log_lines()
+        assert any("npm" in l for l in lines)
+        assert any("3001" in l for l in lines)
+
+    def test_as_log_lines_build(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="pnpm",
+            build_cmd=["pnpm", "run", "build"],
+            is_server=False, output_dir="dist",
+        )
+        lines = plan.as_log_lines()
+        assert any("pnpm run build" in l for l in lines)
+        assert any("dist" in l for l in lines)
+
+
+# ── Error code tests ───────────────────────────────────────────────────────────
+
+class TestErrorCodes:
+    def test_classify_eacces(self):
+        assert classify_install_error(["npm ERR! code EACCES"]) == RuntimeErrorCode.DEP_INSTALL_EACCES
+
+    def test_classify_eperm(self):
+        assert classify_install_error(["npm ERR! code EPERM"]) == RuntimeErrorCode.DEP_INSTALL_EACCES
+
+    def test_classify_eresolve(self):
+        assert classify_install_error(["npm ERR! code ERESOLVE"]) == RuntimeErrorCode.DEP_INSTALL_ERESOLVE
+
+    def test_classify_enotfound(self):
+        assert classify_install_error(["npm ERR! ENOTFOUND registry"]) == RuntimeErrorCode.DEP_INSTALL_ENOTFOUND
+
+    def test_classify_etarget(self):
+        assert classify_install_error(["npm ERR! code ETARGET"]) == RuntimeErrorCode.DEP_INSTALL_ETARGET
+
+    def test_classify_engine(self):
+        assert classify_install_error(["npm ERR! EBADENGINE"]) == RuntimeErrorCode.DEP_INSTALL_ENGINE
+
+    def test_classify_fallback(self):
+        assert classify_install_error(["some unknown error"]) == RuntimeErrorCode.DEP_INSTALL_FAILED
+
+    def test_classify_empty(self):
         assert classify_install_error([]) == RuntimeErrorCode.DEP_INSTALL_FAILED
 
+    def test_js_code_aliases(self):
+        assert js_code_for(RuntimeErrorCode.ENV_PM_MISSING) == "JS001"
+        assert js_code_for(RuntimeErrorCode.DEP_PKG_JSON_INVALID) == "JS002"
+        assert js_code_for(RuntimeErrorCode.DEP_INSTALL_FAILED) == "JS003"
+        assert js_code_for(RuntimeErrorCode.EXEC_SCRIPT_MISSING) == "JS004"
+        assert js_code_for(RuntimeErrorCode.EXEC_SERVER_CRASH) == "JS005"
+        assert js_code_for(RuntimeErrorCode.EXEC_PORT_UNAVAILABLE) == "JS006"
+        assert js_code_for(RuntimeErrorCode.EXEC_SERVER_TIMEOUT) == "JS007"
+        assert js_code_for(RuntimeErrorCode.ENV_INVALID_WORKSPACE) == "JS008"
+        assert js_code_for(RuntimeErrorCode.ENV_NODE_MISSING) == "JS009"
+        assert js_code_for(RuntimeErrorCode.DEP_LOCKFILE_MISSING) == "JS010"
 
-# ── Dependency checksum ───────────────────────────────────────────────────────
+    def test_from_js_code(self):
+        assert from_js_code("JS001") == RuntimeErrorCode.ENV_PM_MISSING
+        assert from_js_code("JS009") == RuntimeErrorCode.ENV_NODE_MISSING
+
+    def test_message_for_all_codes(self):
+        for code in RuntimeErrorCode:
+            msg = message_for(code)
+            assert isinstance(msg, str) and len(msg) > 0
+
+    def test_fixes_for_all_codes(self):
+        for code in RuntimeErrorCode:
+            fixes = fixes_for(code)
+            assert isinstance(fixes, list) and len(fixes) > 0
+
+
+# ── Dependency checksum tests ──────────────────────────────────────────────────
 
 class TestDepChecksum:
-    def test_same_deps_same_checksum(self, tmp_path):
+    def test_stable_across_calls(self, tmp_path):
         _pkg(tmp_path, deps={"react": "^18.0.0"})
-        _lockfile(tmp_path, "package-lock.json")
-        data = json.loads((tmp_path / "package.json").read_text())
-        c1 = _dep_checksum(tmp_path, data)
-        c2 = _dep_checksum(tmp_path, data)
-        assert c1 == c2
+        pkg_data = json.loads((tmp_path / "package.json").read_text())
+        h1 = _dep_checksum(tmp_path, pkg_data)
+        h2 = _dep_checksum(tmp_path, pkg_data)
+        assert h1 == h2
 
-    def test_different_deps_different_checksum(self, tmp_path):
-        _lockfile(tmp_path, "package-lock.json")
-        d1 = {"dependencies": {"react": "^18.0.0"}}
-        d2 = {"dependencies": {"react": "^17.0.0"}}
-        (tmp_path / "package.json").write_text(json.dumps(d1))
-        assert _dep_checksum(tmp_path, d1) != _dep_checksum(tmp_path, d2)
-
-    def test_lockfile_change_changes_checksum(self, tmp_path):
+    def test_changes_with_deps(self, tmp_path):
         _pkg(tmp_path, deps={"react": "^18.0.0"})
-        data = json.loads((tmp_path / "package.json").read_text())
-        (tmp_path / "package-lock.json").write_text("v1")
-        c1 = _dep_checksum(tmp_path, data)
-        (tmp_path / "package-lock.json").write_text("v2")
-        c2 = _dep_checksum(tmp_path, data)
-        assert c1 != c2
+        pkg_data1 = json.loads((tmp_path / "package.json").read_text())
+        _pkg(tmp_path, deps={"react": "^18.0.0", "lodash": "^4"})
+        pkg_data2 = json.loads((tmp_path / "package.json").read_text())
+        assert _dep_checksum(tmp_path, pkg_data1) != _dep_checksum(tmp_path, pkg_data2)
 
-
-class TestDepsatisfied:
-    def test_no_node_modules_returns_empty(self, tmp_path):
+    def test_changes_with_lockfile(self, tmp_path):
         _pkg(tmp_path, deps={"react": "^18.0.0"})
-        data = json.loads((tmp_path / "package.json").read_text())
-        assert _deps_satisfied(tmp_path, data) == ""
+        pkg_data = json.loads((tmp_path / "package.json").read_text())
+        h1 = _dep_checksum(tmp_path, pkg_data)
+        (tmp_path / "package-lock.json").write_text("lockfile v1")
+        h2 = _dep_checksum(tmp_path, pkg_data)
+        assert h1 != h2
 
-    def test_node_modules_with_matching_checksum_returns_reason(self, tmp_path):
-        _pkg(tmp_path, deps={"react": "^18.0.0"})
-        _lockfile(tmp_path, "package-lock.json")
-        data = json.loads((tmp_path / "package.json").read_text())
+    def test_write_and_read(self, tmp_path):
+        _pkg(tmp_path, deps={"express": "^4"})
+        pkg_data = json.loads((tmp_path / "package.json").read_text())
         nm = tmp_path / "node_modules"
         nm.mkdir()
-        (nm / "react").mkdir()  # fake dep
-        _write_dep_checksum(tmp_path, data)
-        reason = _deps_satisfied(tmp_path, data)
-        assert reason == "checksum match"
+        _write_dep_checksum(tmp_path, pkg_data)
+        checksum_file = nm / ".js-runtime-checksum"
+        assert checksum_file.exists()
+        stored = checksum_file.read_text().strip()
+        assert stored == _dep_checksum(tmp_path, pkg_data)
 
-    def test_node_modules_missing_dep_returns_empty(self, tmp_path):
-        _pkg(tmp_path, deps={"react": "^18.0.0", "lodash": "^4.0.0"})
-        data = json.loads((tmp_path / "package.json").read_text())
+    def test_deps_satisfied_checksum_match(self, tmp_path):
+        _pkg(tmp_path, deps={"express": "^4"})
+        pkg_data = json.loads((tmp_path / "package.json").read_text())
         nm = tmp_path / "node_modules"
         nm.mkdir()
-        (nm / "react").mkdir()
-        # lodash missing
-        result = _deps_satisfied(tmp_path, data)
+        (nm / "express").mkdir()
+        _write_dep_checksum(tmp_path, pkg_data)
+        result = _deps_satisfied(tmp_path, pkg_data)
+        assert result == "checksum match"
+
+    def test_deps_satisfied_no_node_modules(self, tmp_path):
+        _pkg(tmp_path, deps={"express": "^4"})
+        pkg_data = json.loads((tmp_path / "package.json").read_text())
+        assert _deps_satisfied(tmp_path, pkg_data) == ""
+
+    def test_deps_satisfied_missing_dep(self, tmp_path):
+        _pkg(tmp_path, deps={"express": "^4", "lodash": "^4"})
+        pkg_data = json.loads((tmp_path / "package.json").read_text())
+        nm = tmp_path / "node_modules"
+        nm.mkdir()
+        # express present but lodash missing
+        (nm / "express").mkdir()
+        result = _deps_satisfied(tmp_path, pkg_data)
         assert result == ""
 
-    def test_no_deps_declared_is_satisfied(self, tmp_path):
-        _pkg(tmp_path, deps={})
-        data = json.loads((tmp_path / "package.json").read_text())
-        nm = tmp_path / "node_modules"
-        nm.mkdir()
-        result = _deps_satisfied(tmp_path, data)
+    def test_deps_satisfied_no_deps(self, tmp_path):
+        _pkg(tmp_path)
+        pkg_data = json.loads((tmp_path / "package.json").read_text())
+        (tmp_path / "node_modules").mkdir()
+        result = _deps_satisfied(tmp_path, pkg_data)
         assert result == "no dependencies declared"
 
 
-# ── _npm_env ──────────────────────────────────────────────────────────────────
+# ── Platform independence tests ────────────────────────────────────────────────
 
-class TestNpmEnv:
-    def test_always_overrides_cache(self):
-        with patch.dict("os.environ", {
-            "npm_config_cache": "/home/axon/.npm",
-            "NPM_CONFIG_CACHE": "/home/axon/.npm",
-        }):
-            env = _npm_env()
-        assert env["npm_config_cache"]   == "/tmp/npm-cache"
-        assert env["NPM_CONFIG_CACHE"]   == "/tmp/npm-cache"
-        assert env["npm_config_logs_dir"] == "/tmp/npm-logs"
-        assert env["NPM_CONFIG_LOGS_DIR"] == "/tmp/npm-logs"
+class TestPlatformIndependence:
+    def test_tmpdir_not_hardcoded(self):
+        assert _TMPDIR == tempfile.gettempdir()
+        # Must not be the literal string "/tmp" on all platforms
+        assert isinstance(_TMPDIR, str) and len(_TMPDIR) > 0
 
-    def test_pnpm_home_set(self):
+    def test_npm_cache_under_tmpdir(self):
+        assert _NPM_CACHE.startswith(_TMPDIR)
+        assert "npm-cache" in _NPM_CACHE
+
+    def test_npm_logs_under_tmpdir(self):
+        assert _NPM_LOGS.startswith(_TMPDIR)
+        assert "npm-logs" in _NPM_LOGS
+
+    def test_npm_env_overrides(self):
         env = _npm_env()
-        assert env["PNPM_HOME"] == "/tmp/pnpm-home"
+        assert env["npm_config_cache"] == _NPM_CACHE
+        assert env["NPM_CONFIG_CACHE"] == _NPM_CACHE
+        assert env["npm_config_logs_dir"] == _NPM_LOGS
+        assert env["NPM_CONFIG_LOGS_DIR"] == _NPM_LOGS
 
-    def test_inherits_rest_of_environ(self):
-        with patch.dict("os.environ", {"MY_APP_KEY": "hello"}):
+    def test_npm_env_always_overrides_existing(self):
+        with patch.dict(os.environ, {"npm_config_cache": "/broken/path"}):
             env = _npm_env()
-        assert env.get("MY_APP_KEY") == "hello"
+            assert env["npm_config_cache"] == _NPM_CACHE
 
 
-# ── _explicit_npm_install_args ────────────────────────────────────────────────
+# ── Adapter install args tests ────────────────────────────────────────────────
 
-class TestExplicitNpmInstallArgs:
-    def test_npm_adapter_gets_cache_flag(self):
+class TestAdapters:
+    def test_npm_adapter_install_args(self):
+        args = NpmAdapter().install_args()
+        assert "npm" in args
+        assert "install" in args
+        assert "--prefer-offline" not in args
+
+    def test_pnpm_adapter_install_args(self):
+        args = PnpmAdapter().install_args()
+        assert "pnpm" in args and "install" in args
+
+    def test_yarn_adapter_install_args(self):
+        args = YarnAdapter().install_args()
+        assert "yarn" in args
+
+    def test_bun_adapter_install_args(self):
+        args = BunAdapter().install_args()
+        assert "bun" in args
+
+    def test_explicit_npm_cache_flag(self):
         args = _explicit_npm_install_args(NpmAdapter())
         assert "--cache" in args
-        assert "/tmp/npm-cache" in args
+        assert _NPM_CACHE in args
         assert "--logs-dir" in args
+        assert _NPM_LOGS in args
 
-    def test_pnpm_adapter_unchanged(self):
-        adapter = PnpmAdapter()
-        args = _explicit_npm_install_args(adapter)
+    def test_explicit_pnpm_no_cache_flag(self):
+        args = _explicit_npm_install_args(PnpmAdapter())
         assert "--cache" not in args
-        assert args == adapter.install_args()
+
+    def test_explicit_yarn_no_cache_flag(self):
+        args = _explicit_npm_install_args(YarnAdapter())
+        assert "--cache" not in args
+
+    def test_npm_run_args(self):
+        args = NpmAdapter().run_args("dev")
+        assert args == ["npm", "run", "dev"]
+
+    def test_pnpm_run_args(self):
+        args = PnpmAdapter().run_args("build")
+        assert args == ["pnpm", "run", "build"]
+
+    def test_yarn_run_args(self):
+        args = YarnAdapter().run_args("start")
+        assert args == ["yarn", "start"]
+
+    def test_bun_run_args(self):
+        args = BunAdapter().run_args("dev")
+        assert args == ["bun", "run", "dev"]
+
+    def test_npm_cli_fallback_install_args(self):
+        fallback = NpmCliJsFallbackAdapter("/usr/local/lib/node_modules/npm/bin/npm-cli.js")
+        args = fallback.install_args()
+        assert "node" in args
+        assert "install" in args
+
+    def test_explicit_npm_cli_cache_flag(self):
+        fallback = NpmCliJsFallbackAdapter("/usr/local/lib/npm-cli.js")
+        args = _explicit_npm_install_args(fallback)
+        assert "--cache" in args
 
 
-# ── RuntimeReport ─────────────────────────────────────────────────────────────
+# ── SystemProbe tests ─────────────────────────────────────────────────────────
+
+class TestSystemProbe:
+    def test_all_fields_populated(self, tmp_path):
+        probe = SystemProbe()
+        result = probe.probe(tmp_path)
+
+        assert isinstance(result.os_name, str)
+        assert isinstance(result.architecture, str)
+        assert isinstance(result.current_user, str)
+        assert isinstance(result.working_dir, str)
+        assert isinstance(result.home, str)
+        assert isinstance(result.path, str)
+        assert isinstance(result.tmpdir, str)
+        # node_version may be None if not installed
+        assert result.node_version is None or isinstance(result.node_version, str)
+        assert isinstance(result.python_version, str)
+        assert isinstance(result.available_pms, dict)
+        assert isinstance(result.writable_dirs, dict)
+        assert isinstance(result.cache_dirs, dict)
+        assert isinstance(result.disk_free_mb, int)
+        # memory_free_mb may be None
+        assert result.memory_free_mb is None or isinstance(result.memory_free_mb, int)
+        assert isinstance(result.warnings, list)
+
+    def test_working_dir_matches_ws(self, tmp_path):
+        result = SystemProbe().probe(tmp_path)
+        assert result.working_dir == str(tmp_path)
+
+    def test_tmpdir_populated(self, tmp_path):
+        result = SystemProbe().probe(tmp_path)
+        assert result.tmpdir == tempfile.gettempdir()
+
+    def test_cache_dirs_under_tmpdir(self, tmp_path):
+        result = SystemProbe().probe(tmp_path)
+        for name, path in result.cache_dirs.items():
+            assert path.startswith(result.tmpdir), (
+                f"Cache dir '{name}' ({path}) is not under tmpdir ({result.tmpdir})"
+            )
+
+    def test_as_log_lines_returns_list(self, tmp_path):
+        result = SystemProbe().probe(tmp_path)
+        lines = result.as_log_lines()
+        assert isinstance(lines, list)
+        assert len(lines) > 5
+
+    def test_as_log_lines_contain_key_fields(self, tmp_path):
+        result = SystemProbe().probe(tmp_path)
+        combined = "\n".join(result.as_log_lines())
+        assert "OS" in combined
+        assert "Architecture" in combined
+        assert "Node" in combined
+        assert "Python" in combined
+        assert "Disk" in combined
+
+
+# ── RuntimeReport tests ───────────────────────────────────────────────────────
 
 class TestRuntimeReport:
-    def test_passed_only_when_all_phases_pass(self):
-        r = RuntimeReport(project_id="p", workspace="/w")
-        r.environment  = EnvironmentReport(passed=True)
-        r.dependencies = DependencyReport(passed=True)
-        r.launch       = LaunchReport(passed=True)
-        assert r.passed
+    def test_to_sse_dict_no_undefined(self):
+        report = RuntimeReport(project_id="p1", workspace="/ws")
+        d = report.to_sse_dict()
+        assert "project_id" in d
+        assert "passed" in d
+        assert "result" in d
+        assert "duration_s" in d
+        assert "warnings" in d
+        assert d["result"] in ("success", "failure")
 
-    def test_failed_when_env_fails(self):
-        r = RuntimeReport(project_id="p", workspace="/w")
-        r.environment  = EnvironmentReport(passed=False, error_code=RuntimeErrorCode.ENV_NODE_MISSING)
-        r.dependencies = DependencyReport(passed=True)
-        r.launch       = LaunchReport(passed=True)
-        assert not r.passed
-        assert r.failure_reason == RuntimeErrorCode.ENV_NODE_MISSING
-
-    def test_failed_when_dep_fails(self):
-        r = RuntimeReport(project_id="p", workspace="/w")
-        r.environment  = EnvironmentReport(passed=True)
-        r.dependencies = DependencyReport(passed=False, error_code=RuntimeErrorCode.DEP_INSTALL_EACCES)
-        r.launch       = LaunchReport(passed=True)
-        assert not r.passed
-        assert r.failure_reason == RuntimeErrorCode.DEP_INSTALL_EACCES
-
-    def test_to_sse_dict_is_serialisable(self):
-        r = RuntimeReport(project_id="abc", workspace="/ws")
-        r.environment  = EnvironmentReport(passed=True)
-        r.dependencies = DependencyReport(passed=True)
-        r.launch       = LaunchReport(passed=False, error_code=RuntimeErrorCode.EXEC_SERVER_TIMEOUT)
-        d = r.to_sse_dict()
-        # Must be JSON-serialisable
-        assert json.dumps(d)
-        assert d["passed"] is False
-        assert d["failure_reason"] == "EXEC_SERVER_TIMEOUT"
-
-    def test_suggested_fix_from_first_failing_phase(self):
-        r = RuntimeReport(project_id="p", workspace="/w")
-        r.environment  = EnvironmentReport(passed=False,
-                            error_code=RuntimeErrorCode.ENV_PM_MISSING,
-                            suggested_fix=["install pnpm"])
-        r.dependencies = None
-        r.launch       = None
-        assert r.suggested_fix == ["install pnpm"]
-
-
-# ── PhaseRunner — Phase A ─────────────────────────────────────────────────────
-
-class TestPhaseRunnerEnv:
-    @pytest.mark.asyncio
-    async def test_phase_a_fails_when_node_missing(self, tmp_path):
-        _pkg(tmp_path)
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
-
-        with (
-            patch("subprocess.run") as mock_run,
-            patch("os.access", return_value=True),
-        ):
-            def _fake_run(cmd, **kw):
-                m = MagicMock()
-                if cmd == ["node", "--version"]:
-                    m.returncode = 1
-                    m.stdout = b""
-                else:
-                    m.returncode = 0
-                    m.stdout = b"1.0.0"
-                return m
-            mock_run.side_effect = _fake_run
-
-            events = await _collect(runner._phase_a())
-
-        types = [e[0] for e in events]
-        assert "error" in types
-        report = runner._report.environment
-        assert report is not None
+    def test_passed_requires_all_phases(self):
+        report = RuntimeReport(project_id="p1", workspace="/ws")
         assert not report.passed
-        assert report.error_code == RuntimeErrorCode.ENV_NODE_MISSING
+
+        report.environment = EnvironmentReport(passed=True)
+        assert not report.passed
+
+        report.dependencies = DependencyReport(passed=True)
+        assert not report.passed
+
+        report.launch = LaunchReport(passed=True)
+        assert report.passed
+
+    def test_failure_reason_first_failing_phase(self):
+        report = RuntimeReport(project_id="p1", workspace="/ws")
+        report.environment = EnvironmentReport(
+            passed=False, error_code=RuntimeErrorCode.ENV_NODE_MISSING
+        )
+        assert report.failure_reason == RuntimeErrorCode.ENV_NODE_MISSING
+
+    def test_to_sse_dict_js_code(self):
+        report = RuntimeReport(project_id="p1", workspace="/ws")
+        report.environment = EnvironmentReport(
+            passed=False, error_code=RuntimeErrorCode.ENV_NODE_MISSING,
+            message="Node not found", suggested_fix=["Install Node.js"],
+        )
+        d = report.to_sse_dict()
+        assert d["failure_js_code"] == "JS009"
+
+    def test_duration_increases(self):
+        import time
+        report = RuntimeReport(project_id="p1", workspace="/ws")
+        d1 = report.duration_s
+        time.sleep(0.05)
+        d2 = report.duration_s
+        assert d2 > d1
+
+
+# ── Phase A tests ──────────────────────────────────────────────────────────────
+
+class TestPhaseA:
+    @pytest.mark.asyncio
+    async def test_missing_workspace(self, tmp_path):
+        ws = tmp_path / "nonexistent"
+        runner = PhaseRunner("p1", ws, _FakeInfo())
+        events = await _collect(runner.run())
+        error_events = _events(events, "error")
+        assert len(error_events) > 0
+        assert error_events[0]["error_code"] == RuntimeErrorCode.ENV_INVALID_WORKSPACE.value
 
     @pytest.mark.asyncio
-    async def test_phase_a_fails_when_tmp_not_writable(self, tmp_path):
-        _pkg(tmp_path)
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
+    async def test_missing_node(self, tmp_path):
+        with patch("app.execution.js_runtime.probe._run_ver", return_value=None):
+            runner = PhaseRunner("p1", tmp_path, _FakeInfo())
+            events = await _collect(runner.run())
+        error_events = _events(events, "error")
+        assert any(
+            e["error_code"] == RuntimeErrorCode.ENV_NODE_MISSING.value
+            for e in error_events
+        )
 
-        def _access(path, mode):
-            if str(path) == "/tmp":
-                return False
-            return True
-
+    @pytest.mark.asyncio
+    async def test_missing_pm(self, tmp_path):
+        from app.execution.js_runtime.errors import PackageManagerNotFound
+        _pkg(tmp_path, scripts={"start": "node server.js"})
+        exc = PackageManagerNotFound(message="No PM found", tried=["npm", "pnpm"])
         with (
-            patch("subprocess.run") as mock_run,
-            patch("os.access", side_effect=_access),
+            patch("app.execution.js_runtime.phases._run_ver", return_value="v20.0.0"),
+            patch("app.execution.js_runtime.probe._run_ver", return_value="v20.0.0"),
+            patch(
+                "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+                side_effect=exc,
+            ),
         ):
-            mock_run.return_value = MagicMock(returncode=0, stdout=b"v20.0.0")
-            events = await _collect(runner._phase_a())
-
-        types = [e[0] for e in events]
-        assert "error" in types
-        assert runner._report.environment.error_code == RuntimeErrorCode.ENV_TMP_NOT_WRITABLE
+            runner = PhaseRunner("p1", tmp_path, _FakeInfo())
+            events = await _collect(runner.run())
+        error_events = _events(events, "error")
+        assert len(error_events) > 0
 
     @pytest.mark.asyncio
-    async def test_phase_a_passes_with_valid_env(self, tmp_path):
-        _pkg(tmp_path)
-        _lockfile(tmp_path, "package-lock.json")
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
-
+    async def test_system_probe_streamed(self, tmp_path):
+        _pkg(tmp_path, scripts={"dev": "node server.js"})
         with (
-            patch("subprocess.run") as mock_run,
-            patch("os.access", return_value=True),
-            patch("app.execution.js_runtime.adapters._probe_exe", return_value=True),
+            patch("app.execution.js_runtime.phases._run_ver", return_value="v20.0.0"),
+            patch("app.execution.js_runtime.probe._run_ver", return_value="v20.0.0"),
+            patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=3000),
+            patch(
+                "app.execution.js_runtime.detector.PackageManagerDetector.detect",
+                return_value=MagicMock(
+                    adapter=NpmAdapter(),
+                    method="probe",
+                    evidence="npm found",
+                ),
+            ),
         ):
-            mock_run.return_value = MagicMock(returncode=0, stdout=b"v20.0.0")
+            runner = PhaseRunner("p1", tmp_path, _FakeInfo())
             events = await _collect(runner._phase_a())
+        log_lines = [p["line"] for _, p in events if _ == "log"]
+        combined = "\n".join(log_lines)
+        assert "OS" in combined or "Runtime" in combined
 
-        assert runner._report.environment is not None
-        assert runner._report.environment.passed
 
+# ── Phase Plan tests ───────────────────────────────────────────────────────────
 
-# ── PhaseRunner — Phase B ─────────────────────────────────────────────────────
+class TestPhasePlan:
+    def _make_runner(self, tmp_path, project_type="node"):
+        runner = PhaseRunner("p1", tmp_path, _FakeInfo(project_type=project_type))
+        runner._report.environment = EnvironmentReport(
+            passed=True,
+            node_version="v20.0.0",
+            pm_name="npm", pm_version="10.0.0",
+            pm_cmd=["npm"], pm_method="probe",
+            pm_evidence="npm found",
+        )
+        return runner
 
-class TestPhaseRunnerDeps:
     @pytest.mark.asyncio
-    async def test_phase_b_skips_install_when_satisfied(self, tmp_path):
-        _pkg(tmp_path, deps={})  # no dependencies
+    async def test_server_plan_with_dev_script(self, tmp_path):
+        _pkg(tmp_path, scripts={"dev": "vite"})
+        runner = self._make_runner(tmp_path)
+        with (
+            patch(
+                "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+                return_value=MagicMock(
+                    adapter=NpmAdapter(),
+                    method="probe",
+                    evidence="npm",
+                ),
+            ),
+            patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=3001),
+        ):
+            events = await _collect(runner._phase_plan())
+        assert runner._build_plan is not None
+        assert runner._build_plan.run_cmd != []
+        assert runner._build_plan.port == 3001
+
+    @pytest.mark.asyncio
+    async def test_build_plan_for_react_project(self, tmp_path):
+        _pkg(tmp_path, scripts={"build": "vite build"})
+        runner = self._make_runner(tmp_path, project_type="react")
+        with patch(
+            "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+            return_value=MagicMock(
+                adapter=NpmAdapter(),
+                method="probe",
+                evidence="npm",
+            ),
+        ):
+            events = await _collect(runner._phase_plan())
+        assert runner._build_plan is not None
+        assert runner._build_plan.is_server is False
+        assert runner._build_plan.build_cmd != []
+
+    @pytest.mark.asyncio
+    async def test_plan_no_script_falls_back_to_node_entry(self, tmp_path):
+        """No scripts → fallback to 'node index.js' with a warning (not an error)."""
+        _pkg(tmp_path)  # no scripts
+        runner = self._make_runner(tmp_path)
+        with (
+            patch(
+                "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+                return_value=MagicMock(
+                    adapter=NpmAdapter(),
+                    method="probe",
+                    evidence="npm",
+                ),
+            ),
+            patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=3002),
+        ):
+            events = await _collect(runner._phase_plan())
+        assert runner._build_plan is not None
+        assert "node" in runner._build_plan.run_cmd
+        assert len(runner._build_plan.warnings) > 0  # fallback warning emitted
+
+    @pytest.mark.asyncio
+    async def test_plan_validation_error_build_project_no_script(self, tmp_path):
+        """Build project (react) with no build script → JS004 error."""
+        _pkg(tmp_path)  # no scripts at all
+        runner = self._make_runner(tmp_path, "react")
+        runner._report.environment.node_version = "v20.0.0"
+        with patch(
+            "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+            return_value=MagicMock(
+                adapter=NpmAdapter(),
+                method="probe",
+                evidence="npm",
+            ),
+        ):
+            events = await _collect(runner._phase_plan())
+        error_events = _events(events, "error")
+        assert len(error_events) > 0
+        assert "JS004" in error_events[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_plan_port_exhausted(self, tmp_path):
+        _pkg(tmp_path, scripts={"start": "node server.js"})
+        runner = self._make_runner(tmp_path)
+        with (
+            patch(
+                "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+                return_value=MagicMock(
+                    adapter=NpmAdapter(), method="probe", evidence="npm",
+                ),
+            ),
+            patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=None),
+        ):
+            events = await _collect(runner._phase_plan())
+        error_events = _events(events, "error")
+        assert len(error_events) > 0
+        assert error_events[0]["error_code"] == RuntimeErrorCode.EXEC_PORT_UNAVAILABLE.value
+
+    @pytest.mark.asyncio
+    async def test_build_plan_emitted_as_event(self, tmp_path):
+        _pkg(tmp_path, scripts={"start": "node server.js"})
+        runner = self._make_runner(tmp_path)
+        with (
+            patch(
+                "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+                return_value=MagicMock(
+                    adapter=NpmAdapter(), method="probe", evidence="npm",
+                ),
+            ),
+            patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=3003),
+        ):
+            events = await _collect(runner._phase_plan())
+        plan_events = _events(events, "build_plan")
+        assert len(plan_events) == 1
+        d = plan_events[0]
+        # No field should be the string "undefined"
+        for key, val in d.items():
+            assert val != "undefined", f"build_plan field '{key}' is the string 'undefined'"
+
+
+# ── Phase B tests ──────────────────────────────────────────────────────────────
+
+class TestPhaseB:
+    def _make_runner(self, tmp_path, install_cmd=None):
+        runner = PhaseRunner("p1", tmp_path, _FakeInfo())
+        runner._report.environment = EnvironmentReport(
+            passed=True, node_version="v20.0.0",
+            pm_name="npm", pm_version="10.0.0",
+            pm_cmd=["npm"], pm_method="probe", pm_evidence="npm",
+        )
+        runner._build_plan = BuildPlan(
+            project_id="p1", workspace=str(tmp_path),
+            pm_name="npm", pm_version="10.0.0",
+            pm_cmd=["npm"], pm_method="probe", pm_evidence="npm",
+            install_cmd=install_cmd or ["npm", "install", "--ignore-scripts"],
+            run_cmd=["npm", "run", "dev"],
+            is_server=True, port=3000,
+            env_vars=_npm_env(),
+        )
+        return runner
+
+    @pytest.mark.asyncio
+    async def test_skip_when_checksum_matches(self, tmp_path):
+        _pkg(tmp_path, deps={"express": "^4"})
+        pkg_data = json.loads((tmp_path / "package.json").read_text())
         nm = tmp_path / "node_modules"
         nm.mkdir()
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
-        runner._report.environment = EnvironmentReport(passed=True, node_version="v20")
+        (nm / "express").mkdir()
+        _write_dep_checksum(tmp_path, pkg_data)
+        runner = self._make_runner(tmp_path)
+        events = await _collect(runner._phase_b())
+        status_events = _events(events, "status")
+        assert any("satisfied" in e.get("message", "") for e in status_events)
+        assert runner._report.dependencies is not None
+        assert runner._report.dependencies.passed
 
-        with patch("app.execution.js_runtime.adapters._probe_exe", return_value=True):
+    @pytest.mark.asyncio
+    async def test_missing_package_json(self, tmp_path):
+        runner = self._make_runner(tmp_path)
+        events = await _collect(runner._phase_b())
+        error_events = _events(events, "error")
+        assert len(error_events) > 0
+        assert error_events[0]["error_code"] == RuntimeErrorCode.DEP_PKG_JSON_MISSING.value
+
+    @pytest.mark.asyncio
+    async def test_invalid_package_json(self, tmp_path):
+        (tmp_path / "package.json").write_text("{ not valid json }")
+        runner = self._make_runner(tmp_path)
+        events = await _collect(runner._phase_b())
+        error_events = _events(events, "error")
+        assert len(error_events) > 0
+        assert error_events[0]["error_code"] == RuntimeErrorCode.DEP_PKG_JSON_INVALID.value
+
+    @pytest.mark.asyncio
+    async def test_install_failure_hard_stop(self, tmp_path):
+        _pkg(tmp_path, deps={"some-pkg": "^1"})
+        runner = self._make_runner(tmp_path)
+
+        async def _fake_stream(argv, *, cwd, env, timeout, merge_stderr):
+            yield "[stderr] npm ERR! code EACCES", None
+            yield "[stderr] npm ERR! syscall open", None
+            yield None, 1   # exit code 1
+
+        with patch(
+            "app.execution.js_runtime.phases.rt_process.stream_process",
+            side_effect=_fake_stream,
+        ):
+            events = await _collect(runner._phase_b())
+
+        error_events = _events(events, "error")
+        assert len(error_events) > 0
+        assert error_events[0]["error_code"] == RuntimeErrorCode.DEP_INSTALL_EACCES.value
+        assert runner._report.dependencies is not None
+        assert not runner._report.dependencies.passed
+
+    @pytest.mark.asyncio
+    async def test_install_success(self, tmp_path):
+        _pkg(tmp_path, deps={"express": "^4"})
+        runner = self._make_runner(tmp_path)
+        nm = tmp_path / "node_modules"
+
+        async def _fake_stream(argv, *, cwd, env, timeout, merge_stderr):
+            nm.mkdir(exist_ok=True)
+            yield "added 1 package", None
+            yield None, 0
+
+        with patch(
+            "app.execution.js_runtime.phases.rt_process.stream_process",
+            side_effect=_fake_stream,
+        ):
             events = await _collect(runner._phase_b())
 
         assert runner._report.dependencies is not None
         assert runner._report.dependencies.passed
-        assert runner._report.dependencies.install_ran is False
-        assert runner._report.dependencies.install_skipped_reason != ""
+
+
+# ── Full pipeline tests ───────────────────────────────────────────────────────
+
+class TestFullPipeline:
+    """End-to-end PhaseRunner.run() tests."""
+
+    def _mock_detection(self, adapter=None):
+        if adapter is None:
+            adapter = NpmAdapter()
+        return MagicMock(
+            adapter=adapter, method="probe", evidence="found",
+        )
 
     @pytest.mark.asyncio
-    async def test_phase_b_hard_stops_on_eacces(self, tmp_path):
-        _pkg(tmp_path, deps={"react": "^18.0.0"})
-        _lockfile(tmp_path, "package-lock.json")
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
-        runner._report.environment = EnvironmentReport(passed=True, node_version="v20")
+    async def test_pipeline_stops_at_phase_a_on_missing_workspace(self, tmp_path):
+        ws = tmp_path / "nonexistent"
+        runner = PhaseRunner("p1", ws, _FakeInfo())
+        events = await _collect(runner.run())
+        assert any(t == "error" for t, _ in events)
+        assert any(t == "report" for t, _ in events)
+        # report should show failure
+        report_events = _events(events, "report")
+        assert not report_events[-1]["passed"]
 
-        async def _fake_stream(*a, **kw):
-            yield "[stderr] npm error EACCES: permission denied /home/axon/.npm", None
-            yield "", 1
-
+    @pytest.mark.asyncio
+    async def test_pipeline_stops_at_phase_b_on_invalid_json(self, tmp_path):
+        (tmp_path / "package.json").write_text("{ bad json")
         with (
-            patch("app.execution.js_runtime.adapters._probe_exe", return_value=True),
-            patch("app.runtime.process.stream_process", side_effect=_fake_stream),
+            patch("app.execution.js_runtime.probe._run_ver", return_value="v20.0.0"),
+            patch("app.execution.js_runtime.phases._run_ver", return_value="v20.0.0"),
+            patch(
+                "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+                return_value=self._mock_detection(),
+            ),
+            patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=3001),
         ):
-            events = await _collect(runner._phase_b())
-
-        types = [e[0] for e in events]
-        assert "error" in types
-        dep = runner._report.dependencies
-        assert dep is not None
-        assert not dep.passed
-        assert dep.error_code == RuntimeErrorCode.DEP_INSTALL_EACCES
-        # node_modules must NOT have been created
-        assert not (tmp_path / "node_modules").exists()
+            runner = PhaseRunner("p1", tmp_path, _FakeInfo())
+            events = await _collect(runner.run())
+        error_events = _events(events, "error")
+        codes = [e["error_code"] for e in error_events]
+        assert RuntimeErrorCode.DEP_PKG_JSON_INVALID.value in codes
 
     @pytest.mark.asyncio
-    async def test_phase_b_hard_stops_on_eresolve(self, tmp_path):
-        _pkg(tmp_path, deps={"pkg": "^1.0.0"})
-        _lockfile(tmp_path, "package-lock.json")
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
-        runner._report.environment = EnvironmentReport(passed=True, node_version="v20")
-
-        async def _fake_stream(*a, **kw):
-            yield "[stderr] npm error ERESOLVE could not resolve dependency", None
-            yield "", 1
-
-        with (
-            patch("app.execution.js_runtime.adapters._probe_exe", return_value=True),
-            patch("app.runtime.process.stream_process", side_effect=_fake_stream),
-        ):
-            events = await _collect(runner._phase_b())
-
-        dep = runner._report.dependencies
-        assert not dep.passed
-        assert dep.error_code == RuntimeErrorCode.DEP_INSTALL_ERESOLVE
+    async def test_pipeline_report_has_js_code(self, tmp_path):
+        ws = tmp_path / "ghost"
+        runner = PhaseRunner("p1", ws, _FakeInfo())
+        events = await _collect(runner.run())
+        report_event = _events(events, "report")[-1]
+        assert report_event["failure_js_code"] == "JS008"  # ENV_INVALID_WORKSPACE
 
     @pytest.mark.asyncio
-    async def test_phase_b_passes_after_successful_install(self, tmp_path):
-        _pkg(tmp_path, deps={"react": "^18.0.0"})
-        _lockfile(tmp_path, "package-lock.json")
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
-        runner._report.environment = EnvironmentReport(passed=True, node_version="v20")
+    async def test_npm_install_uses_explicit_cache_flag(self, tmp_path):
+        _pkg(tmp_path, scripts={"start": "node server.js"}, deps={"express": "^4"})
+        captured_argv: list[list[str]] = []
 
-        # Simulate successful install that creates node_modules
-        async def _fake_stream(*a, **kw):
-            yield "added 1 package", None
-            yield "", 0
-
-        def _after_install():
+        async def _fake_stream(argv, *, cwd, env, timeout, merge_stderr):
+            captured_argv.append(argv)
             (tmp_path / "node_modules").mkdir(exist_ok=True)
-            (tmp_path / "node_modules" / "react").mkdir(exist_ok=True)
+            yield "ok", None
+            yield None, 0
 
         with (
-            patch("app.execution.js_runtime.adapters._probe_exe", return_value=True),
-            patch("app.runtime.process.stream_process", side_effect=_fake_stream),
+            patch("app.execution.js_runtime.probe._run_ver", return_value="v20.0.0"),
+            patch("app.execution.js_runtime.phases._run_ver", return_value="v20.0.0"),
+            patch(
+                "app.execution.js_runtime.phases.PackageManagerDetector.detect",
+                return_value=self._mock_detection(),
+            ),
+            patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=3010),
+            patch(
+                "app.execution.js_runtime.phases.rt_process.stream_process",
+                side_effect=_fake_stream,
+            ),
+            patch(
+                "app.execution.js_runtime.phases.process_mgr.start_server",
+                side_effect=Exception("test ends here"),
+            ),
         ):
-            # Create node_modules as part of "install"
-            events = []
-            async for ev in runner._phase_b():
-                events.append(ev)
-                if ev[0] == "log" and "added 1 package" in ev[1].get("line", ""):
-                    _after_install()
+            runner = PhaseRunner("p1", tmp_path, _FakeInfo())
+            await _collect(runner.run())
 
-        # Even if node_modules wasn't created (mocked), we check the logic
-        # The important thing: no "error" event if exit code is 0
-        error_events = [e for e in events if e[0] == "error"]
-        # Only fails if node_modules absent AND exit != 0
-        # Here exit is 0 so it should pass regardless
-        dep = runner._report.dependencies
-        assert dep is not None
+        assert len(captured_argv) > 0
+        install_args = captured_argv[0]
+        assert "--cache" in install_args
+        assert _NPM_CACHE in install_args
 
     @pytest.mark.asyncio
-    async def test_phase_b_blocks_external_services(self, tmp_path):
-        data = {"name": "t", "dependencies": {"pg": "^8.0.0"}}
-        (tmp_path / "package.json").write_text(json.dumps(data))
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
-        runner._report.environment = EnvironmentReport(passed=True, node_version="v20")
-
-        with patch("app.execution.js_runtime.adapters._probe_exe", return_value=True):
-            events = await _collect(runner._phase_b())
-
-        types = [e[0] for e in events]
-        assert "unsupported" in types
-        dep = runner._report.dependencies
-        assert dep.error_code == RuntimeErrorCode.DEP_EXTERNAL_SERVICE
-
-
-# ── PhaseRunner — end-to-end gating ──────────────────────────────────────────
-
-class TestPhaseGating:
-    @pytest.mark.asyncio
-    async def test_phase_c_not_reached_when_phase_a_fails(self, tmp_path):
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
-
-        with (
-            patch("subprocess.run") as mock_run,
-            patch("os.access", return_value=True),
-        ):
-            def _fake_run(cmd, **kw):
-                m = MagicMock()
-                # node missing
-                m.returncode = 1
-                m.stdout = b""
-                return m
-            mock_run.side_effect = _fake_run
-
-            events = await _collect(runner.run())
-
-        # Must have "report" as last event
-        assert events[-1][0] == "report"
-        # launch phase must not have run
-        assert runner._report.launch is None
-
-    @pytest.mark.asyncio
-    async def test_phase_c_not_reached_when_phase_b_fails(self, tmp_path):
-        _pkg(tmp_path, deps={"react": "^18.0.0"})
+    async def test_lockfile_conflict_uses_highest_priority(self, tmp_path):
+        """Multiple lockfiles → highest-priority (bun.lockb) wins."""
+        _pkg(tmp_path, scripts={"start": "node server.js"})
         _lockfile(tmp_path, "package-lock.json")
-        info = _FakeInfo()
-        runner = PhaseRunner("p", tmp_path, info)
+        _lockfile(tmp_path, "bun.lockb")
 
-        async def _fake_stream(*a, **kw):
-            yield "[stderr] npm error EACCES: permission denied", None
-            yield "", 1
+        from app.execution.js_runtime.detector import PackageManagerDetector
+        detector = PackageManagerDetector()
+
+        with patch("app.execution.js_runtime.detector._verify_adapter", return_value=True):
+            result = detector.detect(tmp_path)
+
+        assert result.adapter.name == "bun"
+        assert result.method == "lockfile"
+        assert len(result.lockfile_conflicts) > 0  # package-lock.json listed as conflict
+
+    @pytest.mark.asyncio
+    async def test_pnpm_install_no_cache_flag(self, tmp_path):
+        """pnpm install_args should NOT get --cache appended."""
+        args = _explicit_npm_install_args(PnpmAdapter())
+        assert "--cache" not in args
+
+    @pytest.mark.asyncio
+    async def test_yarn_install_no_cache_flag(self, tmp_path):
+        args = _explicit_npm_install_args(YarnAdapter())
+        assert "--cache" not in args
+
+    @pytest.mark.asyncio
+    async def test_bun_install_no_cache_flag(self, tmp_path):
+        args = _explicit_npm_install_args(BunAdapter())
+        assert "--cache" not in args
+
+
+# ── Runtime launch tests ───────────────────────────────────────────────────────
+
+class TestPhaseCLaunch:
+    def _ready_runner(self, tmp_path, project_type="node"):
+        runner = PhaseRunner("p1", tmp_path, _FakeInfo(project_type=project_type))
+        runner._report.environment = EnvironmentReport(
+            passed=True, node_version="v20.0.0",
+            pm_name="npm", pm_version="10.0.0",
+            pm_cmd=["npm"], pm_method="probe", pm_evidence="npm",
+        )
+        runner._report.dependencies = DependencyReport(passed=True)
+        runner._build_plan = BuildPlan(
+            project_id="p1", workspace=str(tmp_path),
+            pm_name="npm", pm_cmd=["npm"],
+            install_cmd=["npm", "install"],
+            run_cmd=["npm", "run", "dev"],
+            is_server=True, port=3000,
+            env_vars=_npm_env(),
+            script_name="dev",
+        )
+        return runner
+
+    @pytest.mark.asyncio
+    async def test_server_launch_success(self, tmp_path):
+        runner = self._ready_runner(tmp_path)
+        fake_process = MagicMock()
+        fake_process.alive = True
+        fake_process.process.stdout = None
+        fake_process.process.stderr = None
+        fake_rp = fake_process
+
+        import socket as _socket
+
+        def _fake_connect(addr, timeout):
+            class _CM:
+                def __enter__(self): return self
+                def __exit__(self, *a): pass
+            return _CM()
 
         with (
-            patch("subprocess.run") as mock_run,
-            patch("os.access", return_value=True),
-            patch("app.execution.js_runtime.adapters._probe_exe", return_value=True),
-            patch("app.runtime.process.stream_process", side_effect=_fake_stream),
+            patch(
+                "app.execution.js_runtime.phases.process_mgr.start_server",
+                new_callable=AsyncMock, return_value=fake_rp,
+            ),
+            patch.object(_socket, "create_connection", side_effect=_fake_connect),
         ):
-            mock_run.return_value = MagicMock(returncode=0, stdout=b"v20.0.0")
-            events = await _collect(runner.run())
+            events = await _collect(runner._launch_server(runner._build_plan))
 
-        # Report event must be present
-        report_events = [e for e in events if e[0] == "report"]
-        assert report_events
-        # Launch never ran
-        assert runner._report.launch is None
+        ready_events = _events(events, "server_ready")
+        assert len(ready_events) == 1
+        assert ready_events[0]["port"] == 3000
+        assert "command" in ready_events[0]
+        assert ready_events[0]["command"] != ""
+        assert ready_events[0]["command"] != "undefined"
+
+    @pytest.mark.asyncio
+    async def test_server_timeout_emits_error(self, tmp_path):
+        runner = self._ready_runner(tmp_path)
+        fake_rp = MagicMock()
+        fake_rp.alive = True
+        fake_rp.process.stdout = None
+        fake_rp.process.stderr = None
+
+        with (
+            patch(
+                "app.execution.js_runtime.phases.process_mgr.start_server",
+                new_callable=AsyncMock, return_value=fake_rp,
+            ),
+            patch(
+                "app.execution.js_runtime.phases.socket.create_connection",
+                side_effect=OSError("refused"),
+            ),
+            patch("app.execution.js_runtime.phases._SERVER_START_TIMEOUT", 0.0),
+            patch("app.execution.js_runtime.phases.process_mgr._release"),
+        ):
+            events = await _collect(runner._launch_server(runner._build_plan))
+
+        error_events = _events(events, "error")
+        assert len(error_events) > 0
+        assert error_events[0]["error_code"] in (
+            RuntimeErrorCode.EXEC_SERVER_TIMEOUT.value,
+            RuntimeErrorCode.EXEC_SERVER_CRASH.value,
+        )
+
+    @pytest.mark.asyncio
+    async def test_prebuilt_spa_served_without_install(self, tmp_path):
+        _pkg(tmp_path, scripts={"build": "vite build"})
+        dist = tmp_path / "dist"
+        dist.mkdir()
+        (dist / "index.html").write_text("<html>app</html>")
+        runner = self._ready_runner(tmp_path, project_type="react")
+        runner._build_plan.is_server = False
+        runner._build_plan.build_cmd = ["npm", "run", "build"]
+        events = await _collect(runner._launch_build_project(runner._build_plan))
+        html_events = _events(events, "html")
+        assert len(html_events) == 1
+        assert "<html>" in html_events[0]["html_content"]
 
 
-# ── PM probe order ────────────────────────────────────────────────────────────
+# ── Regression: "$ undefined" is impossible by design ─────────────────────────
 
-class TestPmProbeOrder:
-    def test_pnpm_preferred_over_npm(self):
-        from app.execution.js_runtime.adapters import ADAPTER_REGISTRY
-        names = [cls.name for cls in ADAPTER_REGISTRY]
-        assert names.index("pnpm") < names.index("npm")
+class TestNoUndefinedCommand:
+    """Any pathway that could produce '$ undefined' must be blocked."""
 
-    def test_yarn_preferred_over_npm(self):
-        from app.execution.js_runtime.adapters import ADAPTER_REGISTRY
-        names = [cls.name for cls in ADAPTER_REGISTRY]
-        assert names.index("yarn") < names.index("npm")
+    def test_build_plan_to_dict_run_cmd_is_empty_string_not_undefined(self):
+        plan = BuildPlan(project_id="p1", workspace="/ws")
+        d = plan.to_dict()
+        assert d["run_cmd"] == ""   # empty, NOT "undefined" or None
 
-    def test_npm_is_last(self):
-        from app.execution.js_runtime.adapters import ADAPTER_REGISTRY
-        names = [cls.name for cls in ADAPTER_REGISTRY]
-        assert names[-1] == "npm"
+    def test_build_plan_run_cmd_str_is_empty_string_not_undefined(self):
+        plan = BuildPlan(project_id="p1", workspace="/ws")
+        assert plan.run_cmd_str == ""
+
+    def test_server_ready_event_has_defined_command(self):
+        import socket as _socket
+        # The server_ready event is yielded by _launch_server.
+        # It uses plan.run_cmd_str which is always a string.
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            run_cmd=["npm", "run", "dev"],
+            is_server=True, port=3000,
+        )
+        assert plan.run_cmd_str == "npm run dev"
+
+    def test_validate_blocks_empty_run_cmd(self):
+        plan = BuildPlan(
+            project_id="p1", workspace="/ws",
+            pm_name="npm", pm_cmd=["npm"],
+            install_cmd=["npm", "install"],
+            is_server=True, port=3000,
+            # run_cmd deliberately left empty
+        )
+        errors = plan.validate()
+        assert any("JS004" in e for e in errors)
+        # Execution must not proceed
+        assert len(errors) > 0

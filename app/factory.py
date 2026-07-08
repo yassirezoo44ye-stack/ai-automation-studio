@@ -35,6 +35,19 @@ from app.routers import (
 )
 from app.routers import auth_users
 from app.routers import orchestrator as orchestrator_router
+from app.routers import runtime_api as runtime_api_router
+from app.routers import commands_api as commands_api_router
+from app.routers import kernel_api as kernel_api_router
+from app.routers import agent_os_api as agent_os_api_router
+from app.routers import planning_api   as planning_api_router
+from app.routers import diagnostics_api as diagnostics_api_router
+from app.routers import marketplace      as marketplace_router
+from app.routers import arabic_api       as arabic_api_router
+from app.routers import workflow_api     as workflow_api_router
+from app.routers import jobs_api         as jobs_api_router
+from app.routers import api_keys_router  as api_keys_router_mod
+from app.routers import ws               as ws_router
+from app.routers import metrics          as metrics_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -60,7 +73,54 @@ async def lifespan(app: FastAPI):
     ai_platform.init(pool)
     maintenance_task = asyncio.create_task(maintenance_loop())
     cleanup_task     = asyncio.create_task(process_cleanup_loop())
+
+    # ── Redis cache adapter ─────────────────────────────────────────────────
+    from app.core.cache import get_redis
+    cache = await get_redis()
+
+    # ── Background job queue (Redis-backed when available) ──────────────────
+    from app.core.jobs import get_job_queue
+    get_job_queue(cache=cache)
+
+    # ── Autonomous background services ──────────────────────────────────────
+    from app.services.registry import get_service_registry
+    svc_registry = get_service_registry()
+    svc_registry.start_all()
+
+    # ── Semantic memory — initialize pgvector tier ──────────────────────────
+    from app.memory.semantic import get_semantic_memory
+    await get_semantic_memory(pool=pool)
+
+    # ── Arabic NLU — wire gateway if available ───────────────────────────────
+    from app.ai.arabic_nlu import get_arabic_nlu
+    try:
+        from app.ai.gateway import get_gateway
+        get_arabic_nlu(gateway=get_gateway())
+    except Exception:
+        get_arabic_nlu()  # heuristic-only mode
+
+    # ── Boot AgentKernel (registers health probes via observability layer) ──
+    from app.agents.kernel import get_agent_kernel
+    get_agent_kernel()   # ensures boot() is called once
+
+    # ── Register DB health probe ────────────────────────────────────────────
+    from app.core.observability.health import get_health_registry, HealthStatus, ProbeResult
+    async def probe_db() -> ProbeResult:
+        try:
+            p = get_pool()
+            async with p.acquire() as conn:
+                await conn.fetchval("SELECT 1")
+            return ProbeResult(name="database", status=HealthStatus.HEALTHY,
+                               message="PostgreSQL OK")
+        except Exception as exc:
+            return ProbeResult(name="database", status=HealthStatus.UNHEALTHY,
+                               message=str(exc))
+    get_health_registry().register("database", probe_db, critical=True, timeout_s=5.0)
+
     yield
+
+    # ── Shutdown ────────────────────────────────────────────────────────────
+    svc_registry.stop_all()
     maintenance_task.cancel()
     cleanup_task.cancel()
     await pool.close()
@@ -115,6 +175,26 @@ def create_app() -> FastAPI:
         record_error(category)
         print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+    # ── Prometheus metrics collection ───────────────────────────────────────
+    @app.middleware("http")
+    async def metrics_middleware(request: Request, call_next):
+        import time as _time
+        t0       = _time.perf_counter()
+        response = await call_next(request)
+        duration = _time.perf_counter() - t0
+        # Collapse dynamic path segments so cardinality stays low
+        path = request.url.path
+        for seg in path.split("/"):
+            if seg and (len(seg) > 20 or (seg.count("-") > 2)):
+                path = path.replace(seg, "{id}")
+                break
+        try:
+            from app.routers.metrics import record_http
+            record_http(request.method, path, response.status_code, duration)
+        except Exception:
+            pass
+        return response
 
     # ── Global rate limiting (before auth, protects public endpoints too) ──
     @app.middleware("http")
@@ -216,6 +296,19 @@ def create_app() -> FastAPI:
     # ── API Routers (must be registered BEFORE the SPA catch-all) ───────────
     app.include_router(auth_users.router)
     app.include_router(orchestrator_router.router)
+    app.include_router(runtime_api_router.router)
+    app.include_router(commands_api_router.router)
+    app.include_router(kernel_api_router.router)
+    app.include_router(agent_os_api_router.router)
+    app.include_router(planning_api_router.router)
+    app.include_router(diagnostics_api_router.router)
+    app.include_router(marketplace_router.router)
+    app.include_router(arabic_api_router.router)
+    app.include_router(workflow_api_router.router)
+    app.include_router(jobs_api_router.router)
+    app.include_router(api_keys_router_mod.router)
+    app.include_router(ws_router.router)
+    app.include_router(metrics_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

@@ -1,4 +1,4 @@
-export type Page = "home" | "ai" | "dev" | "design" | "automation" | "social" | "settings";
+export type Page = "home" | "ai" | "dev" | "design" | "automation" | "social" | "settings" | "agentos";
 
 export type Message = { id: string; role: "user" | "assistant"; content: string };
 export type Conv    = { id: string; title: string; updated_at: string };

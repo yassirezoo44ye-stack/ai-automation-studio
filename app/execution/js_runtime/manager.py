@@ -378,23 +378,21 @@ def _find_entry(ws: Path) -> str:
 
 def _npm_writable_env() -> dict:
     """
-    Return a full environment dict with npm cache/log dirs forced to /tmp.
+    Return a full environment dict with npm cache/log dirs forced to the
+    platform temp directory.  Uses tempfile.gettempdir() — never '/tmp' —
+    for Windows/macOS/Linux portability.
 
-    Uses direct assignment (not setdefault) so that broken values already
-    in os.environ are overridden.  On Render the home dir (/home/axon) is
-    read-only — npm tries to write logs to ~/.npm/_logs before downloading
-    any packages and fails immediately.
-
-    npm respects both the lowercase npm_config_* form and the uppercase
-    NPM_CONFIG_* form; we set both to be safe across npm versions.
+    Direct assignment (not setdefault) overrides any broken values already
+    in os.environ.  Sets both lowercase and uppercase forms for cross-version
+    npm compatibility.
     """
     import os as _os
+    import tempfile as _tf
+    _tmp = _tf.gettempdir()
     env = dict(_os.environ)
-    # Force /tmp for cache and logs — override whatever may be set
-    env["npm_config_cache"]     = "/tmp/npm-cache"
-    env["npm_config_logs_dir"]  = "/tmp/npm-logs"
-    env["NPM_CONFIG_CACHE"]     = "/tmp/npm-cache"
-    env["NPM_CONFIG_LOGS_DIR"]  = "/tmp/npm-logs"
-    # pnpm home
-    env["PNPM_HOME"] = "/tmp/pnpm-home"
+    env["npm_config_cache"]     = _os.path.join(_tmp, "npm-cache")
+    env["npm_config_logs_dir"]  = _os.path.join(_tmp, "npm-logs")
+    env["NPM_CONFIG_CACHE"]     = _os.path.join(_tmp, "npm-cache")
+    env["NPM_CONFIG_LOGS_DIR"]  = _os.path.join(_tmp, "npm-logs")
+    env["PNPM_HOME"]            = _os.path.join(_tmp, "pnpm-home")
     return env

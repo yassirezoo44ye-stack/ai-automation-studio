@@ -19,6 +19,7 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
     { id: "dev",        label: "Dev",        sub: "Build, run & package",  icon: Icons.dev(),        action: () => onNavigate("dev")        },
     { id: "design",     label: "Design",     sub: "Visual design studio",  icon: Icons.design(),     action: () => onNavigate("design")     },
     { id: "automation", label: "Automation", sub: "Tasks & workflows",     icon: Icons.automation(), action: () => onNavigate("automation") },
+    { id: "agentos",    label: "AgentOS",    sub: "Self-evolving AI OS",   icon: Icons.agentos(),    action: () => onNavigate("agentos")    },
     { id: "social",     label: "Social",     sub: "Social media content",  icon: Icons.social(),     action: () => onNavigate("social")     },
     { id: "settings",   label: "Settings",   sub: "App configuration",     icon: Icons.settings(),   action: () => onNavigate("settings")   },
   ];

@@ -526,7 +526,6 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@router.get("/api/package/download/{folder}/{filename}")
 async def _package_docker(ws, safe_name, app_name, app_version, log, done, err):
     """Package a Docker Compose / full-stack project into a deploy-ready ZIP."""
     import io
@@ -725,6 +724,7 @@ Built with AI Automation Studio
     ])
 
 
+@router.get("/api/package/download/{folder}/{filename}")
 async def download_package(folder: str, filename: str):
     safe_f = sanitize_name(folder)
     safe_n = sanitize_name(filename.rsplit(".", 1)[0]) + ("." + filename.rsplit(".", 1)[1] if "." in filename else "")

@@ -128,19 +128,24 @@ class PackageManagerDetector:
         if found_lockfiles:
             primary = found_lockfiles[0]
             cls = LOCKFILE_MAP[primary]
-            adapter = cls()
-            if _verify_adapter(cls):
-                return DetectionResult(
-                    adapter=adapter,
-                    method="lockfile",
-                    evidence=f"found {primary}",
-                    lockfile_conflicts=found_lockfiles[1:],
+            if not _verify_adapter(cls):
+                # Lockfile is the authoritative declaration of which PM was used
+                # to produce it.  Using a different PM on a foreign lockfile
+                # produces different node_modules and can break the build silently.
+                # Hard-stop here so the user gets a clear, actionable error
+                # rather than a mysterious runtime failure ten minutes later.
+                raise PackageManagerNotFound(
+                    message=(
+                        f"{primary} requires {cls.name} but it is not installed on this host. "
+                        f"Install {cls.name} or remove {primary} to let the runtime choose a PM."
+                    ),
+                    tried=[cls.name],
                 )
-            log.warning(
-                "lockfile %s points to %s but binary is missing/broken — "
-                "falling through to probe",
-                primary,
-                cls.name,
+            return DetectionResult(
+                adapter=cls(),
+                method="lockfile",
+                evidence=f"found {primary}",
+                lockfile_conflicts=found_lockfiles[1:],
             )
 
         # Step 2: package.json `packageManager` field

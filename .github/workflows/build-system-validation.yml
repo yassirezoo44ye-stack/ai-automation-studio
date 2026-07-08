@@ -1,0 +1,146 @@
+name: Build System Validation
+
+on:
+  push:
+    paths:
+      - "tools/**"
+      - "tests/test_build_system.js"
+      - "tests/test_integration.js"
+      - ".github/workflows/build-system-validation.yml"
+  pull_request:
+    paths:
+      - "tools/**"
+      - "tests/test_build_system.js"
+      - "tests/test_integration.js"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build System (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ["18", "20", "22"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # ── Install deps ──────────────────────────────────────────────────────
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ── Unit tests (existing 28 tests) ────────────────────────────────────
+      - name: Run build system unit tests
+        run: node --test tests/test_build_system.js
+
+      # ── Integration tests (production hardening) ──────────────────────────
+      - name: Run build system integration tests
+        run: node --test tests/test_integration.js
+
+      # ── Doctor diagnostic (must exit 0 or 1, never 2) ────────────────────
+      - name: Run doctor (health check)
+        run: |
+          node tools/doctor.cjs || {
+            EXIT=$?
+            if [ $EXIT -eq 2 ]; then
+              echo "::error::Doctor reports CRITICAL failures (exit 2)"
+              exit 1
+            fi
+            echo "::warning::Doctor reports warnings (exit $EXIT) — non-blocking"
+            exit 0
+          }
+
+      # ── Health check timing (must complete within 1 second) ───────────────
+      - name: Verify health check performance (<1s)
+        run: |
+          START=$(date +%s%N)
+          node -e "
+            const h = require('./tools/health-check.cjs');
+            h.run().then(r => {
+              const ms = Date.now();
+              console.log('Health score:', r.score);
+            });
+          "
+          END=$(date +%s%N)
+          ELAPSED_MS=$(( (END - START) / 1000000 ))
+          echo "Health check took ${ELAPSED_MS}ms"
+          if [ $ELAPSED_MS -gt 1000 ]; then
+            echo "::warning::Health check took ${ELAPSED_MS}ms (target <1000ms)"
+          fi
+
+      # ── Sandbox smoke test (must block source writes) ─────────────────────
+      - name: Sandbox write protection smoke test
+        run: |
+          node -e "
+            const sb = require('./tools/sandbox.cjs');
+            const blocked = ['src/App.tsx','app/factory.py','.git/config','../../etc/passwd'];
+            for (const p of blocked) {
+              const r = sb.check(p);
+              if (r.allowed) { console.error('FAIL: sandbox allowed write to', p); process.exit(1); }
+            }
+            console.log('Sandbox: all protected paths correctly blocked');
+          "
+
+      # ── Config profiles validation ─────────────────────────────────────────
+      - name: Config profiles validation
+        run: |
+          node -e "
+            const p = require('./tools/config-profiles.cjs');
+            const profiles = p.listProfiles();
+            if (!profiles.includes('production')) { console.error('Missing production profile'); process.exit(1); }
+            const prod = p.getConfig('production');
+            if (!prod.requireLockfile) { console.error('Production must require lockfile'); process.exit(1); }
+            console.log('Config profiles:', profiles.join(', '));
+          "
+
+      # ── PM abstraction validation ─────────────────────────────────────────
+      - name: Package manager abstraction validation
+        run: |
+          node -e "
+            const pm = require('./tools/pm-abstraction.cjs');
+            const detected = pm.detect();
+            console.log('Detected PM:', detected);
+            const facade = pm.createPM();
+            ['install','ci','add','remove','run','exec'].forEach(m => {
+              if (typeof facade[m] !== 'function') { console.error('Missing method:', m); process.exit(1); }
+            });
+            console.log('PM facade methods: OK');
+          "
+
+      # ── Concurrency guard validation ──────────────────────────────────────
+      - name: Concurrency guard validation
+        run: |
+          node -e "
+            const g = require('./tools/concurrency-guard.cjs');
+            const l1 = g.acquire('ci-test');
+            if (!l1.acquired) { console.error('First acquire failed'); process.exit(1); }
+            const l2 = g.acquire('ci-test');
+            if (l2.acquired)  { console.error('Second acquire should have failed'); process.exit(1); }
+            l1.release();
+            const l3 = g.acquire('ci-test');
+            if (!l3.acquired) { console.error('Post-release acquire failed'); process.exit(1); }
+            l3.release();
+            console.log('Concurrency guard: OK');
+          "
+
+      # ── Telemetry Prometheus output validation ────────────────────────────
+      - name: Telemetry metrics format validation
+        run: |
+          node -e "
+            const t = require('./tools/telemetry.cjs');
+            t.recordBuild({ durationMs: 1234, success: true });
+            const text = t.prometheusText();
+            const required = ['build_duration_seconds','repair_attempts_total','doctor_runs_total'];
+            for (const name of required) {
+              if (!text.includes(name)) { console.error('Missing metric:', name); process.exit(1); }
+            }
+            console.log('Prometheus metrics: OK');
+          "

@@ -12,7 +12,9 @@
     "lint:fix": "eslint src --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "doctor": "node tools/doctor.cjs",
+    "heal": "node tools/repair-engine.cjs"
   },
   "dependencies": {
     "fabric": "^7.4.0",

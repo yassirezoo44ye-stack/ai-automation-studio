@@ -130,3 +130,34 @@ def message_for(code: RuntimeErrorCode) -> str:
 
 def fixes_for(code: RuntimeErrorCode) -> list[str]:
     return _FIXES.get(code, ["Download the ZIP and run locally"])
+
+
+# ── JS-prefixed code aliases (JS001–JS010) ────────────────────────────────────
+# Maps the JS error codes from the production spec to the internal enum.
+
+_JS_CODE_MAP: dict[str, RuntimeErrorCode] = {
+    "JS001": RuntimeErrorCode.ENV_PM_MISSING,
+    "JS002": RuntimeErrorCode.DEP_PKG_JSON_INVALID,
+    "JS003": RuntimeErrorCode.DEP_INSTALL_FAILED,
+    "JS004": RuntimeErrorCode.EXEC_SCRIPT_MISSING,
+    "JS005": RuntimeErrorCode.EXEC_SERVER_CRASH,
+    "JS006": RuntimeErrorCode.EXEC_PORT_UNAVAILABLE,
+    "JS007": RuntimeErrorCode.EXEC_SERVER_TIMEOUT,
+    "JS008": RuntimeErrorCode.ENV_INVALID_WORKSPACE,
+    "JS009": RuntimeErrorCode.ENV_NODE_MISSING,
+    "JS010": RuntimeErrorCode.DEP_LOCKFILE_MISSING,
+}
+
+_INTERNAL_TO_JS: dict[RuntimeErrorCode, str] = {v: k for k, v in _JS_CODE_MAP.items()}
+
+
+def js_code_for(code: RuntimeErrorCode) -> str:
+    """Return the JS-prefixed alias (e.g. 'JS001') or the internal code string."""
+    return _INTERNAL_TO_JS.get(code, code.value)
+
+
+def from_js_code(js_code: str) -> RuntimeErrorCode:
+    """Resolve a JS-prefixed alias to the internal RuntimeErrorCode."""
+    if js_code in _JS_CODE_MAP:
+        return _JS_CODE_MAP[js_code]
+    return RuntimeErrorCode(js_code)

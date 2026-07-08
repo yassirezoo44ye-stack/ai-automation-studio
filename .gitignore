@@ -16,3 +16,7 @@ fly.toml
 workspaces/
 .DS_Store
 *.log
+
+.claude/worktrees/
+.backups/
+logs/

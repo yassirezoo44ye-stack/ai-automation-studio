@@ -227,25 +227,25 @@ class TestExecutableProbeDetection:
 
 
 class TestNpmCliFallback:
-    def test_fallback_used_when_npm_broken(self, tmp_path):
+    def test_lockfile_pm_missing_raises_not_falls_through(self, tmp_path):
+        """
+        When a lockfile exists but its required PM is not installed,
+        detection must hard-stop with PackageManagerNotFound.
+        Previously this fell through to probe/fallback; that allowed a
+        different PM to install against a foreign lockfile, which silently
+        produces a different node_modules.  The correct behaviour is to
+        surface the conflict immediately so the user can act on it.
+        """
         _pkg(tmp_path)
         _lockfile(tmp_path, "package-lock.json")
-        fake_cli = tmp_path / "npm-cli.js"
-        fake_cli.write_text("// fake")
 
-        with (
-            _mock_probe(set()),  # all PMs broken
-            patch(
-                "app.execution.js_runtime.adapters.NpmCliJsFallbackAdapter._SEARCH_PATHS",
-                (str(fake_cli),),
-            ),
-            patch("app.execution.js_runtime.adapters._probe_exe", return_value=False),
-            # node itself is available for the fallback verify()
-            patch.object(NpmCliJsFallbackAdapter, "verify", return_value=True),
-        ):
-            result = PackageManagerDetector().detect(tmp_path)
-        assert result.adapter.name == "npm-cli"
-        assert result.method == "fallback"
+        with _mock_probe(set()):  # npm (and all others) broken
+            with pytest.raises(PackageManagerNotFound) as exc_info:
+                PackageManagerDetector().detect(tmp_path)
+
+        err = exc_info.value
+        assert "npm" in str(err).lower()
+        assert "package-lock.json" in str(err).lower()
 
     def test_fallback_find_returns_none_when_no_cli(self):
         with patch(
@@ -582,16 +582,20 @@ class TestEnvironmentProbe:
 
 class TestNpmWritableEnv:
     def test_force_overrides_existing_bad_cache(self):
+        import os, tempfile
         from app.execution.js_runtime.manager import _npm_writable_env
+        _tmp = tempfile.gettempdir()
+        expected_cache = os.path.join(_tmp, "npm-cache")
+        expected_logs  = os.path.join(_tmp, "npm-logs")
         with patch.dict("os.environ", {
             "npm_config_cache": "/home/axon/.npm",
             "NPM_CONFIG_CACHE": "/home/axon/.npm",
         }):
             env = _npm_writable_env()
         # Must override, not keep the broken value
-        assert env["npm_config_cache"] == "/tmp/npm-cache"
-        assert env["NPM_CONFIG_CACHE"] == "/tmp/npm-cache"
-        assert env["npm_config_logs_dir"] == "/tmp/npm-logs"
+        assert env["npm_config_cache"] == expected_cache
+        assert env["NPM_CONFIG_CACHE"] == expected_cache
+        assert env["npm_config_logs_dir"] == expected_logs
 
     def test_env_contains_all_required_keys(self):
         from app.execution.js_runtime.manager import _npm_writable_env
