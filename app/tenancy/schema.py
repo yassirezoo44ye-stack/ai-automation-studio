@@ -86,10 +86,13 @@ CREATE TABLE IF NOT EXISTS team_members (
     team_id    UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_by UUID,
+    updated_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ,
     UNIQUE (team_id, user_id)
 );
+CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS role_permissions (
     role       VARCHAR(20)  NOT NULL,
@@ -121,6 +124,7 @@ DEFAULT_PERMISSIONS: dict[str, list[tuple[str, str]]] = {
     "admin": [
         ("*", "read"), ("*", "create"), ("*", "update"), ("*", "delete"),
         ("members", "manage"), ("billing", "manage"), ("api_keys", "manage"),
+        ("teams", "manage"),
     ],
     "manager": [
         ("*", "read"),
@@ -144,9 +148,19 @@ DEFAULT_PERMISSIONS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+_MIGRATIONS: tuple[str, ...] = (
+    # team_members originally shipped without updated_by/updated_at — backfill
+    # on deployments where the table already exists from an earlier boot.
+    "ALTER TABLE team_members ADD COLUMN IF NOT EXISTS updated_by UUID",
+    "ALTER TABLE team_members ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+)
+
+
 async def init_tenancy_schema(conn: asyncpg.Connection) -> None:
     """Create tenancy tables and seed the role-permission matrix (idempotent)."""
     await conn.execute(TENANCY_SCHEMA)
+    for stmt in _MIGRATIONS:
+        await conn.execute(stmt)
     for role, perms in DEFAULT_PERMISSIONS.items():
         for resource, action in perms:
             await conn.execute(

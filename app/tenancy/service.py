@@ -50,6 +50,7 @@ class TenancyService:
 
     async def create_organization(
         self, *, name: str, kind: str = "organization", creator_id: str,
+        ip_address: str | None = None,
     ) -> dict[str, Any]:
         """Create an org and add its creator as owner (single transaction)."""
         if kind not in ("personal", "organization", "enterprise"):
@@ -75,7 +76,7 @@ class TenancyService:
                     row["id"], uuid.UUID(creator_id),
                 )
         await self._log(str(row["id"]), creator_id, "organization.created",
-                        resource="organization", resource_id=str(row["id"]))
+                        resource="organization", resource_id=str(row["id"]), ip_address=ip_address)
         try:
             from app.core.events import get_event_bus
             await get_event_bus().publish(
@@ -106,6 +107,56 @@ class TenancyService:
                 uuid.UUID(user_id),
             )
         return [dict(r) for r in rows]
+
+    async def update_organization(
+        self, org_id: str, *, actor_id: str, name: str | None = None,
+        ip_address: str | None = None,
+    ) -> dict[str, Any]:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            row = await conn.fetchrow(
+                "UPDATE organizations SET name=COALESCE($2,name), updated_by=$3, updated_at=NOW() "
+                "WHERE id=$1 AND deleted_at IS NULL RETURNING *",
+                uuid.UUID(org_id), name, uuid.UUID(actor_id),
+            )
+        if row is None:
+            raise TenancyError("organization not found", 404)
+        await self._log(org_id, actor_id, "organization.updated",
+                        resource="organization", resource_id=org_id, ip_address=ip_address)
+        return dict(row)
+
+    async def get_settings(self, org_id: str) -> dict[str, Any]:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            row = await conn.fetchval(
+                "SELECT settings FROM organizations WHERE id=$1 AND deleted_at IS NULL",
+                uuid.UUID(org_id),
+            )
+        if row is None:
+            raise TenancyError("organization not found", 404)
+        return json.loads(row) if isinstance(row, str) else dict(row)
+
+    async def update_settings(
+        self, org_id: str, *, actor_id: str, patch: dict[str, Any],
+        ip_address: str | None = None,
+    ) -> dict[str, Any]:
+        """Merge-patch the organization's settings JSONB — partial updates
+        never clobber unrelated keys (uses `jsonb ||`, not overwrite)."""
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            row = await conn.fetchrow(
+                "UPDATE organizations SET settings = settings || $2::jsonb, "
+                "updated_by=$3, updated_at=NOW() "
+                "WHERE id=$1 AND deleted_at IS NULL RETURNING settings",
+                uuid.UUID(org_id), json.dumps(patch), uuid.UUID(actor_id),
+            )
+        if row is None:
+            raise TenancyError("organization not found", 404)
+        await self._log(org_id, actor_id, "organization.settings_updated",
+                        resource="organization", resource_id=org_id, details=patch,
+                        ip_address=ip_address)
+        settings = row["settings"]
+        return json.loads(settings) if isinstance(settings, str) else dict(settings)
 
     async def soft_delete_organization(self, org_id: str, actor_id: str) -> None:
         from app.core.db import acquire_scoped
@@ -147,6 +198,7 @@ class TenancyService:
 
     async def change_member_role(
         self, org_id: str, *, actor_id: str, member_user_id: str, new_role: str,
+        ip_address: str | None = None,
     ) -> None:
         if new_role not in ROLES:
             raise TenancyError(f"invalid role {new_role!r}")
@@ -168,9 +220,12 @@ class TenancyService:
             raise TenancyError("member not found", 404)
         await self._log(org_id, actor_id, "member.role_changed",
                         resource="member", resource_id=member_user_id,
-                        details={"new_role": new_role})
+                        details={"new_role": new_role}, ip_address=ip_address)
 
-    async def remove_member(self, org_id: str, *, actor_id: str, member_user_id: str) -> None:
+    async def remove_member(
+        self, org_id: str, *, actor_id: str, member_user_id: str,
+        ip_address: str | None = None,
+    ) -> None:
         actor_role = await self.get_member_role(org_id, actor_id)
         if actor_role not in ("owner", "admin"):
             raise TenancyError("insufficient permissions", 403)
@@ -185,7 +240,7 @@ class TenancyService:
                 uuid.UUID(org_id), uuid.UUID(member_user_id), uuid.UUID(actor_id),
             )
         await self._log(org_id, actor_id, "member.removed",
-                        resource="member", resource_id=member_user_id)
+                        resource="member", resource_id=member_user_id, ip_address=ip_address)
 
     # ── Seats ─────────────────────────────────────────────────────────────────
 
@@ -215,7 +270,7 @@ class TenancyService:
 
     async def create_invitation(
         self, org_id: str, *, actor_id: str, email: str, role: str = "viewer",
-        ttl_hours: int = 72,
+        ttl_hours: int = 72, ip_address: str | None = None,
     ) -> dict[str, Any]:
         if role not in ROLES or role == "owner":
             raise TenancyError(f"cannot invite with role {role!r}")
@@ -234,10 +289,12 @@ class TenancyService:
             )
         await self._log(org_id, actor_id, "invitation.created",
                         resource="invitation", resource_id=str(row["id"]),
-                        details={"email": email, "role": role})
+                        details={"email": email, "role": role}, ip_address=ip_address)
         return dict(row)
 
-    async def accept_invitation(self, *, token: str, user_id: str, user_email: str) -> dict[str, Any]:
+    async def accept_invitation(
+        self, *, token: str, user_id: str, user_email: str, ip_address: str | None = None,
+    ) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 inv = await conn.fetchrow(
@@ -293,7 +350,7 @@ class TenancyService:
                     inv["id"],
                 )
         await self._log(str(inv["organization_id"]), user_id, "invitation.accepted",
-                        resource="invitation", resource_id=str(inv["id"]))
+                        resource="invitation", resource_id=str(inv["id"]), ip_address=ip_address)
         try:
             from app.core.events import get_event_bus
             await get_event_bus().publish(
@@ -304,6 +361,162 @@ class TenancyService:
             log.warning("event publish failed for organization.member_added org=%s",
                        inv["organization_id"], exc_info=True)
         return {"organization_id": str(inv["organization_id"]), "role": inv["role"]}
+
+    async def list_invitations(self, org_id: str, *, status: str = "pending") -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM invitations WHERE organization_id=$1 AND status=$2 "
+                "AND deleted_at IS NULL ORDER BY created_at DESC",
+                uuid.UUID(org_id), status,
+            )
+        return [dict(r) for r in rows]
+
+    async def revoke_invitation(self, org_id: str, invitation_id: str, *, actor_id: str) -> None:
+        actor_role = await self.get_member_role(org_id, actor_id)
+        if actor_role not in ("owner", "admin", "manager"):
+            raise TenancyError("insufficient permissions to revoke invitations", 403)
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE invitations SET status='revoked', updated_by=$3, updated_at=NOW() "
+                "WHERE id=$1 AND organization_id=$2 AND status='pending' AND deleted_at IS NULL",
+                uuid.UUID(invitation_id), uuid.UUID(org_id), uuid.UUID(actor_id),
+            )
+        if result == "UPDATE 0":
+            raise TenancyError("pending invitation not found", 404)
+        await self._log(org_id, actor_id, "invitation.revoked",
+                        resource="invitation", resource_id=invitation_id)
+
+    # ── Teams ─────────────────────────────────────────────────────────────────
+
+    async def create_team(
+        self, org_id: str, *, actor_id: str, name: str, description: str | None = None,
+    ) -> dict[str, Any]:
+        if not await self.has_permission(org_id, actor_id, resource="teams", action="manage"):
+            raise TenancyError("insufficient permissions to manage teams", 403)
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            try:
+                row = await conn.fetchrow(
+                    "INSERT INTO teams (organization_id, name, description, created_by, updated_by) "
+                    "VALUES ($1,$2,$3,$4,$4) RETURNING *",
+                    uuid.UUID(org_id), name, description, uuid.UUID(actor_id),
+                )
+            except asyncpg.UniqueViolationError:
+                raise TenancyError(f"team {name!r} already exists", 409)
+        await self._log(org_id, actor_id, "team.created",
+                        resource="team", resource_id=str(row["id"]), details={"name": name})
+        return dict(row)
+
+    async def list_teams(self, org_id: str) -> list[dict[str, Any]]:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM teams WHERE organization_id=$1 AND deleted_at IS NULL "
+                "ORDER BY created_at",
+                uuid.UUID(org_id),
+            )
+        return [dict(r) for r in rows]
+
+    async def get_team(self, org_id: str, team_id: str) -> Optional[dict[str, Any]]:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM teams WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL",
+                uuid.UUID(team_id), uuid.UUID(org_id),
+            )
+        return dict(row) if row else None
+
+    async def update_team(
+        self, org_id: str, team_id: str, *, actor_id: str,
+        name: str | None = None, description: str | None = None,
+    ) -> dict[str, Any]:
+        if not await self.has_permission(org_id, actor_id, resource="teams", action="manage"):
+            raise TenancyError("insufficient permissions to manage teams", 403)
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            row = await conn.fetchrow(
+                "UPDATE teams SET name=COALESCE($3,name), description=COALESCE($4,description), "
+                "updated_by=$5, updated_at=NOW() "
+                "WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL RETURNING *",
+                uuid.UUID(team_id), uuid.UUID(org_id), name, description, uuid.UUID(actor_id),
+            )
+        if row is None:
+            raise TenancyError("team not found", 404)
+        await self._log(org_id, actor_id, "team.updated", resource="team", resource_id=team_id)
+        return dict(row)
+
+    async def delete_team(self, org_id: str, team_id: str, *, actor_id: str) -> None:
+        if not await self.has_permission(org_id, actor_id, resource="teams", action="manage"):
+            raise TenancyError("insufficient permissions to manage teams", 403)
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            result = await conn.execute(
+                "UPDATE teams SET deleted_at=NOW(), updated_by=$3 "
+                "WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL",
+                uuid.UUID(team_id), uuid.UUID(org_id), uuid.UUID(actor_id),
+            )
+        if result == "UPDATE 0":
+            raise TenancyError("team not found", 404)
+        await self._log(org_id, actor_id, "team.deleted", resource="team", resource_id=team_id)
+
+    async def add_team_member(
+        self, org_id: str, team_id: str, *, actor_id: str, member_user_id: str,
+    ) -> dict[str, Any]:
+        if not await self.has_permission(org_id, actor_id, resource="teams", action="manage"):
+            raise TenancyError("insufficient permissions to manage teams", 403)
+        if await self.get_member_role(org_id, member_user_id) is None:
+            raise TenancyError("user is not a member of this organization", 400)
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            team_exists = await conn.fetchval(
+                "SELECT 1 FROM teams WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL",
+                uuid.UUID(team_id), uuid.UUID(org_id),
+            )
+            if not team_exists:
+                raise TenancyError("team not found", 404)
+            row = await conn.fetchrow(
+                """INSERT INTO team_members (team_id, user_id, created_by, updated_by)
+                   VALUES ($1,$2,$3,$3)
+                   ON CONFLICT (team_id, user_id)
+                   DO UPDATE SET deleted_at=NULL, updated_by=$3, updated_at=NOW()
+                   RETURNING *""",
+                uuid.UUID(team_id), uuid.UUID(member_user_id), uuid.UUID(actor_id),
+            )
+        await self._log(org_id, actor_id, "team.member_added",
+                        resource="team", resource_id=team_id, details={"user_id": member_user_id})
+        return dict(row)
+
+    async def remove_team_member(
+        self, org_id: str, team_id: str, *, actor_id: str, member_user_id: str,
+    ) -> None:
+        if not await self.has_permission(org_id, actor_id, resource="teams", action="manage"):
+            raise TenancyError("insufficient permissions to manage teams", 403)
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            result = await conn.execute(
+                "UPDATE team_members SET deleted_at=NOW(), updated_by=$3 "
+                "WHERE team_id=$1 AND user_id=$2 AND deleted_at IS NULL",
+                uuid.UUID(team_id), uuid.UUID(member_user_id), uuid.UUID(actor_id),
+            )
+        if result == "UPDATE 0":
+            raise TenancyError("team member not found", 404)
+        await self._log(org_id, actor_id, "team.member_removed",
+                        resource="team", resource_id=team_id, details={"user_id": member_user_id})
+
+    async def list_team_members(self, org_id: str, team_id: str) -> list[dict[str, Any]]:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
+            rows = await conn.fetch(
+                """SELECT tm.id, tm.team_id, tm.user_id, tm.created_at,
+                          u.email, u.name, u.avatar_url
+                   FROM team_members tm
+                   JOIN teams t ON t.id = tm.team_id
+                   JOIN users u ON u.id = tm.user_id
+                   WHERE tm.team_id=$1 AND t.organization_id=$2 AND tm.deleted_at IS NULL
+                   ORDER BY tm.created_at""",
+                uuid.UUID(team_id), uuid.UUID(org_id),
+            )
+        return [dict(r) for r in rows]
 
     # ── RBAC ──────────────────────────────────────────────────────────────────
 
@@ -336,16 +549,17 @@ class TenancyService:
     async def _log(
         self, org_id: str, actor_id: str, action: str, *,
         resource: str | None = None, resource_id: str | None = None,
-        details: dict | None = None,
+        details: dict | None = None, ip_address: str | None = None,
     ) -> None:
         """Best-effort activity record — never breaks the calling path."""
         try:
             async with self._pool.acquire() as conn:
                 await conn.execute(
-                    "INSERT INTO activity_logs (organization_id, actor_id, action, resource, resource_id, details) "
-                    "VALUES ($1,$2,$3,$4,$5,$6)",
+                    "INSERT INTO activity_logs "
+                    "(organization_id, actor_id, action, resource, resource_id, details, ip_address) "
+                    "VALUES ($1,$2,$3,$4,$5,$6,$7)",
                     uuid.UUID(org_id), uuid.UUID(actor_id), action, resource, resource_id,
-                    json.dumps(details) if details else None,
+                    json.dumps(details) if details else None, ip_address,
                 )
         except Exception as exc:
             log.debug("activity log write failed: %s", exc)

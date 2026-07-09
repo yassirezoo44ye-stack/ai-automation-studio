@@ -84,10 +84,12 @@ async def lifespan(app: FastAPI):
     from app.tenancy import init_tenancy_schema
     from app.billing import init_usage_schema
     from app.billing.subscriptions import init_org_subscriptions_schema
+    from app.core.api_keys import init_api_keys_schema
     async with pool.acquire() as conn:
         await init_tenancy_schema(conn)
         await init_usage_schema(conn)
         await init_org_subscriptions_schema(conn)
+        await init_api_keys_schema(conn)
 
     # ── Marketplace store (PostgreSQL primary, JSON fallback) ──────────────
     from app.marketplace import init_marketplace_store
@@ -215,6 +217,17 @@ def create_app() -> FastAPI:
         print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
+    # ── Tenant context (single source of truth for X-Organization-Id) ──────
+    # Extracts the header once into request.state.org_id. This never grants
+    # or denies anything — real membership enforcement stays entirely in
+    # OrgContext/org_context (app/tenancy/context.py), which does its own DB
+    # check. This middleware only avoids re-parsing the same header in every
+    # place that wants the raw org id (e.g. metrics_middleware below).
+    @app.middleware("http")
+    async def tenant_context_middleware(request: Request, call_next):
+        request.state.org_id = request.headers.get("X-Organization-Id")
+        return await call_next(request)
+
     # ── Prometheus metrics collection ───────────────────────────────────────
     @app.middleware("http")
     async def metrics_middleware(request: Request, call_next):
@@ -235,7 +248,10 @@ def create_app() -> FastAPI:
             pass
         # Best-effort org-scoped API request metering — fire-and-forget so a
         # Redis/DB hiccup never adds latency or fails the actual request.
-        org_id = request.headers.get("X-Organization-Id")
+        # Falls back to a direct header read if tenant_context_middleware
+        # hasn't run yet on this request (Starlette middleware order isn't
+        # load-bearing here — both paths read the same header).
+        org_id = getattr(request.state, "org_id", None) or request.headers.get("X-Organization-Id")
         if org_id and path.startswith("/api/"):
             async def _meter():
                 try:

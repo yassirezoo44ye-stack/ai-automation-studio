@@ -1,9 +1,12 @@
 """
-API Key management endpoints.
+API Key management endpoints — personal (non-org) keys.
 
-POST /api/keys              create a new key (admin only via JWT)
-GET  /api/keys              list your keys
-DELETE /api/keys/{key_id}   revoke a key
+POST /api/keys              create a personal key owned by the caller
+GET  /api/keys              list your own keys
+DELETE /api/keys/{key_id}   revoke one of your own keys
+
+Org-scoped keys (organization_id set, managed by org admins) live under
+/api/orgs/{org_id}/api-keys — see app/routers/organizations.py.
 """
 from __future__ import annotations
 
@@ -15,6 +18,7 @@ from pydantic import BaseModel
 from app.core.api_keys import (
     create_api_key, revoke_api_key, list_api_keys, require_api_key,
 )
+from app.routers.auth_users import get_current_user
 
 router = APIRouter(prefix="/api/keys", tags=["api-keys"])
 
@@ -26,9 +30,10 @@ class CreateKeyRequest(BaseModel):
 
 
 @router.post("", status_code=201)
-async def create_key(body: CreateKeyRequest):
+async def create_key(body: CreateKeyRequest, user: dict = Depends(get_current_user)):
     """
-    Create a new API key. The raw key is returned ONCE — store it securely.
+    Create a new personal API key owned by the caller. The raw key is
+    returned ONCE — store it securely.
     """
     if not body.scopes:
         raise HTTPException(400, "At least one scope required")
@@ -37,10 +42,12 @@ async def create_key(body: CreateKeyRequest):
     if bad:
         raise HTTPException(400, f"Unknown scopes: {bad}. Valid: {valid_scopes}")
 
-    raw, rec = create_api_key(
+    raw, rec = await create_api_key(
         name            = body.name,
         scopes          = body.scopes,
+        owner_id        = user["id"],
         expires_in_days = body.expires_in_days,
+        actor_id        = user["id"],
     )
     return {
         "api_key" : raw,               # shown ONCE
@@ -53,11 +60,11 @@ async def create_key(body: CreateKeyRequest):
 
 
 @router.get("")
-async def list_keys():
-    return {"keys": [r.to_dict(redact=True) for r in list_api_keys()]}
+async def list_keys(user: dict = Depends(get_current_user)):
+    return {"keys": [r.to_dict(redact=True) for r in await list_api_keys(owner_id=user["id"])]}
 
 
 @router.delete("/{key_id}", status_code=204)
-async def revoke_key(key_id: str):
-    if not revoke_api_key(key_id):
+async def revoke_key(key_id: str, user: dict = Depends(get_current_user)):
+    if not await revoke_api_key(key_id, owner_id=user["id"]):
         raise HTTPException(404, f"Key {key_id!r} not found")

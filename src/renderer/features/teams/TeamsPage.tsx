@@ -1,6 +1,7 @@
 /**
- * TeamsPage — members and invitations for the current organization.
- * Data: GET/PATCH/DELETE /api/orgs/{id}/members*, POST .../invitations
+ * TeamsPage — teams, members, and invitations for the current organization.
+ * Data: GET/PATCH/DELETE /api/orgs/{id}/members*, POST .../invitations,
+ *       GET/POST/PATCH/DELETE /api/orgs/{id}/teams*
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
@@ -14,10 +15,22 @@ interface Member {
   user_id: string; email: string; name: string | null; role: Role; joined_at: string;
 }
 
+interface Team {
+  id: string; organization_id: string; name: string; description: string | null;
+  created_at: string; updated_at: string;
+}
+
+interface TeamMember { user_id: string; email: string; name: string | null; joined_at: string }
+
 const ROLES: Role[] = ["owner", "admin", "manager", "developer", "operator", "viewer"];
 const ROLE_COLOR: Record<Role, string> = {
   owner: "#f59e0b", admin: "#ef4444", manager: "#8b5cf6",
   developer: "#6c8ef7", operator: "#34d399", viewer: "#6b7280",
+};
+
+const sectionLabel: React.CSSProperties = {
+  fontSize: 11, fontWeight: 700, color: "var(--t3)",
+  textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8,
 };
 
 export function TeamsPage() {
@@ -30,6 +43,18 @@ export function TeamsPage() {
   const [inviteRole, setInviteRole] = useState<Role>("viewer");
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamDesc, setNewTeamDesc] = useState("");
+  const [teamSaving, setTeamSaving] = useState(false);
+  const [teamBusy, setTeamBusy] = useState<string | null>(null);
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<Record<string, TeamMember[]>>({});
+  const [teamMembersLoading, setTeamMembersLoading] = useState<string | null>(null);
+  const [addMemberUserId, setAddMemberUserId] = useState("");
 
   const load = useCallback(async () => {
     if (!currentOrgId) { setMembers([]); setLoading(false); return; }
@@ -46,6 +71,110 @@ export function TeamsPage() {
   }, [currentOrgId, toast]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const loadTeams = useCallback(async () => {
+    if (!currentOrgId) { setTeams([]); setTeamsLoading(false); return; }
+    setTeamsLoading(true);
+    try {
+      const r = await apiFetch(`/api/orgs/${currentOrgId}/teams`);
+      if (!r.ok) throw new Error();
+      const d = await parseJSON<{ teams: Team[] }>(r, "/api/orgs/{id}/teams");
+      setTeams(d.teams);
+    } catch {
+      toast("Could not load teams", "err");
+      setTeams([]);
+    } finally { setTeamsLoading(false); }
+  }, [currentOrgId, toast]);
+
+  useEffect(() => { void loadTeams(); setExpandedTeam(null); setTeamMembers({}); }, [loadTeams]);
+
+  const createTeam = async () => {
+    if (!currentOrgId || !newTeamName.trim()) return;
+    setTeamSaving(true);
+    try {
+      const r = await apiFetch(`/api/orgs/${currentOrgId}/teams`, {
+        method: "POST",
+        body: JSON.stringify({ name: newTeamName.trim(), description: newTeamDesc.trim() || undefined }),
+      });
+      if (!r.ok) {
+        const e = await parseJSON<{ detail?: string }>(r, "create team").catch(() => ({ detail: undefined }));
+        throw new Error(e.detail || "Failed to create team");
+      }
+      const team = await parseJSON<Team>(r, "create team");
+      setTeams(prev => [...prev, team]);
+      toast(`Created team ${team.name}`, "ok");
+      setNewTeamName(""); setNewTeamDesc(""); setCreatingTeam(false);
+    } catch (e) {
+      toast((e as Error).message || "Failed to create team", "err");
+    } finally { setTeamSaving(false); }
+  };
+
+  const deleteTeam = async (teamId: string) => {
+    if (!currentOrgId) return;
+    if (!confirm("Delete this team?")) return;
+    setTeamBusy(teamId);
+    try {
+      const r = await apiFetch(`/api/orgs/${currentOrgId}/teams/${teamId}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setTeams(prev => prev.filter(t => t.id !== teamId));
+      if (expandedTeam === teamId) setExpandedTeam(null);
+      toast("Team deleted", "ok");
+    } catch { toast("Failed to delete team", "err"); }
+    finally { setTeamBusy(null); }
+  };
+
+  const toggleTeam = async (teamId: string) => {
+    if (expandedTeam === teamId) { setExpandedTeam(null); return; }
+    setExpandedTeam(teamId);
+    if (teamMembers[teamId] || !currentOrgId) return;
+    setTeamMembersLoading(teamId);
+    try {
+      const r = await apiFetch(`/api/orgs/${currentOrgId}/teams/${teamId}/members`);
+      if (!r.ok) throw new Error();
+      const d = await parseJSON<{ members: TeamMember[] }>(r, "team members");
+      setTeamMembers(prev => ({ ...prev, [teamId]: d.members }));
+    } catch { toast("Could not load team members", "err"); }
+    finally { setTeamMembersLoading(null); }
+  };
+
+  const addTeamMember = async (teamId: string) => {
+    if (!currentOrgId || !addMemberUserId) return;
+    setTeamBusy(teamId);
+    try {
+      const r = await apiFetch(`/api/orgs/${currentOrgId}/teams/${teamId}/members`, {
+        method: "POST", body: JSON.stringify({ user_id: addMemberUserId }),
+      });
+      if (!r.ok) {
+        const e = await parseJSON<{ detail?: string }>(r, "add team member").catch(() => ({ detail: undefined }));
+        throw new Error(e.detail || "Failed to add member");
+      }
+      // Re-fetch from the server rather than synthesizing a row locally —
+      // the add endpoint only returns {team_id, user_id}, and the local
+      // `members` cache can be stale, which would otherwise show the raw
+      // user id in place of a name/email.
+      const mr = await apiFetch(`/api/orgs/${currentOrgId}/teams/${teamId}/members`);
+      if (mr.ok) {
+        const d = await parseJSON<{ members: TeamMember[] }>(mr, "team members");
+        setTeamMembers(prev => ({ ...prev, [teamId]: d.members }));
+      }
+      setAddMemberUserId("");
+      toast("Member added to team", "ok");
+    } catch (e) {
+      toast((e as Error).message || "Failed to add member", "err");
+    } finally { setTeamBusy(null); }
+  };
+
+  const removeTeamMember = async (teamId: string, userId: string) => {
+    if (!currentOrgId) return;
+    setTeamBusy(`${teamId}:${userId}`);
+    try {
+      const r = await apiFetch(`/api/orgs/${currentOrgId}/teams/${teamId}/members/${userId}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setTeamMembers(prev => ({ ...prev, [teamId]: (prev[teamId] || []).filter(m => m.user_id !== userId) }));
+      toast("Member removed from team", "ok");
+    } catch { toast("Failed to remove team member", "err"); }
+    finally { setTeamBusy(null); }
+  };
 
   const invite = async () => {
     if (!currentOrgId || !inviteEmail.trim()) return;
@@ -106,10 +235,119 @@ export function TeamsPage() {
     <>
       <header style={S.header}>
         <span style={S.headerTitle}>Teams — {currentOrg?.name ?? "…"}</span>
-        <button onClick={() => setInviting(v => !v)} style={S.btnPrimary}>+ Invite Member</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setCreatingTeam(v => !v)} style={S.btnSecondary}>+ New Team</button>
+          <button onClick={() => setInviting(v => !v)} style={S.btnPrimary}>+ Invite Member</button>
+        </div>
       </header>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        <div style={sectionLabel}>Teams</div>
+        {creatingTeam && (
+          <div style={{ ...S.card, marginBottom: 12 }}>
+            <div style={{ ...S.cardTitle, marginBottom: 12 }}>New Team</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input
+                value={newTeamName} onChange={e => setNewTeamName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && void createTeam()}
+                placeholder="Team name" style={{ ...S.textInput, flex: 1 }} autoFocus
+              />
+              <input
+                value={newTeamDesc} onChange={e => setNewTeamDesc(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && void createTeam()}
+                placeholder="Description (optional)" style={{ ...S.textInput, flex: 2 }}
+              />
+              <button onClick={() => void createTeam()} disabled={teamSaving || !newTeamName.trim()} style={S.btnPrimary}>
+                {teamSaving ? "Creating…" : "Create"}
+              </button>
+              <button onClick={() => { setCreatingTeam(false); setNewTeamName(""); setNewTeamDesc(""); }} style={S.btnSecondary}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {teamsLoading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+            {[1, 2].map(i => <div key={i} className="skeleton" style={{ height: 48, borderRadius: 12 }} />)}
+          </div>
+        ) : teams.length === 0 ? (
+          <div style={{ ...S.card, marginBottom: 20, textAlign: "center", color: "var(--t4)", fontSize: 12, padding: 20 }}>
+            No teams yet — create one to group members for project access.
+          </div>
+        ) : (
+          <div style={{ ...S.card, marginBottom: 20 }}>
+            {teams.map((t, i) => {
+              const isOpen = expandedTeam === t.id;
+              const tm = teamMembers[t.id] || [];
+              const availableToAdd = members.filter(m => !tm.some(x => x.user_id === m.user_id));
+              return (
+                <div key={t.id} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", padding: "12px 4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                      onClick={() => void toggleTeam(t.id)}
+                      style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{t.name}</div>
+                      {t.description && <div style={{ fontSize: 11, color: "var(--t4)" }}>{t.description}</div>}
+                    </div>
+                    <button
+                      onClick={() => void toggleTeam(t.id)}
+                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11 }}
+                    >{isOpen ? "Hide" : "Members"}</button>
+                    <button
+                      onClick={() => void deleteTeam(t.id)} disabled={teamBusy === t.id}
+                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: "#f87171" }}
+                    >Delete</button>
+                  </div>
+
+                  {isOpen && (
+                    <div style={{ marginTop: 10, marginLeft: 4, paddingLeft: 12, borderLeft: "2px solid var(--border)" }}>
+                      {teamMembersLoading === t.id ? (
+                        <div className="skeleton" style={{ height: 32, borderRadius: 8 }} />
+                      ) : (
+                        <>
+                          {tm.length === 0 && (
+                            <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 8 }}>No members in this team yet.</div>
+                          )}
+                          {tm.map(m => (
+                            <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
+                              <span style={{ fontSize: 12, color: "var(--t1)", flex: 1 }}>{m.name || m.email}</span>
+                              <button
+                                onClick={() => void removeTeamMember(t.id, m.user_id)}
+                                disabled={teamBusy === `${t.id}:${m.user_id}`}
+                                style={{ ...S.btnSecondary, padding: "3px 10px", fontSize: 10, color: "#f87171" }}
+                              >Remove</button>
+                            </div>
+                          ))}
+                          {availableToAdd.length > 0 && (
+                            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                              <select
+                                value={addMemberUserId}
+                                onChange={e => setAddMemberUserId(e.target.value)}
+                                style={{ ...S.textInput, flex: 1, fontSize: 11, padding: "5px 10px" }}
+                              >
+                                <option value="">Add member…</option>
+                                {availableToAdd.map(m => (
+                                  <option key={m.user_id} value={m.user_id}>{m.name || m.email}</option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={() => void addTeamMember(t.id)}
+                                disabled={!addMemberUserId || teamBusy === t.id}
+                                style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11 }}
+                              >Add</button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={sectionLabel}>Members</div>
         {inviting && (
           <div style={{ ...S.card, marginBottom: 20 }}>
             <div style={{ ...S.cardTitle, marginBottom: 12 }}>Invite by Email</div>

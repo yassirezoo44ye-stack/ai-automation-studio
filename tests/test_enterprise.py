@@ -310,6 +310,137 @@ class TestTenancyLogic(unittest.TestCase):
         # owner must have god-mode
         self.assertIn(("*", "*"), DEFAULT_PERMISSIONS["owner"])
 
+    def test_teams_manage_permission_seeded_for_admin_and_manager(self):
+        """Team CRUD/membership endpoints gate on require_permission("teams",
+        "manage") — without this exact tuple seeded, admins (who otherwise
+        rely on the (*, update) wildcard, which doesn't match action
+        "manage") would be locked out of managing teams."""
+        from app.tenancy.schema import DEFAULT_PERMISSIONS
+        self.assertIn(("teams", "manage"), DEFAULT_PERMISSIONS["admin"])
+        self.assertIn(("teams", "manage"), DEFAULT_PERMISSIONS["manager"])
+        for role in ("developer", "operator", "viewer"):
+            self.assertNotIn(("teams", "manage"), DEFAULT_PERMISSIONS[role])
+
+    def test_team_members_has_full_audit_columns(self):
+        """Every tenant-owned table must carry the 5-column audit contract
+        (organization_id/created_by/updated_by/created_at/updated_at) —
+        team_members originally shipped without updated_by/updated_at."""
+        from app.tenancy.schema import TENANCY_SCHEMA
+        start = TENANCY_SCHEMA.index("CREATE TABLE IF NOT EXISTS team_members")
+        end = TENANCY_SCHEMA.index(";", start)
+        ddl = TENANCY_SCHEMA[start:end]
+        for col in ("created_by", "updated_by", "created_at", "updated_at", "deleted_at"):
+            self.assertIn(col, ddl, f"team_members missing {col}")
+
+    def test_team_members_migration_backfills_existing_deployments(self):
+        """A deployment that already has team_members from before updated_by/
+        updated_at existed must get them via ALTER TABLE, not just fresh
+        installs via CREATE TABLE IF NOT EXISTS (which is a no-op on an
+        existing table)."""
+        from app.tenancy.schema import _MIGRATIONS
+        combined = " ".join(_MIGRATIONS)
+        self.assertIn("team_members", combined)
+        self.assertIn("updated_by", combined)
+        self.assertIn("updated_at", combined)
+        for stmt in _MIGRATIONS:
+            self.assertIn("IF NOT EXISTS", stmt, "migrations must be idempotent")
+
+    def test_settings_update_uses_merge_patch_not_overwrite(self):
+        """update_settings must use jsonb || (merge) so a partial PATCH can't
+        silently wipe unrelated keys already stored in organizations.settings."""
+        import inspect
+        from app.tenancy.service import TenancyService
+        source = inspect.getsource(TenancyService.update_settings)
+        self.assertIn("settings || $2::jsonb", source)
+
+    def test_organization_update_permission_requires_wildcard_update(self):
+        """PATCH /api/orgs/{id} and /settings gate on require_permission
+        ("organization", "update") — admin has no explicit tuple for this
+        resource, so it must fall through to the (*, update) wildcard."""
+        from app.tenancy.schema import DEFAULT_PERMISSIONS
+        self.assertIn(("*", "update"), DEFAULT_PERMISSIONS["admin"])
+        self.assertNotIn(("*", "update"), DEFAULT_PERMISSIONS["manager"])
+
+
+# ── API Keys — Postgres-backed, org-scoped ─────────────────────────────────────
+
+class TestApiKeys(unittest.TestCase):
+    def test_key_management_functions_are_async(self):
+        """Storage moved from an in-memory dict to Postgres — every call site
+        (routers) must await these now. A regression back to sync functions
+        would silently break every caller with a coroutine-never-awaited bug."""
+        import inspect
+        from app.core import api_keys as ak
+        for name in ("create_api_key", "revoke_api_key", "list_api_keys", "lookup_key"):
+            self.assertTrue(
+                inspect.iscoroutinefunction(getattr(ak, name)),
+                f"{name} must be async",
+            )
+
+    def test_dev_key_never_touches_the_database(self):
+        """AXON_DEV_API_KEY must keep working with zero DB dependency so
+        local dev/CI can authenticate as the seeded admin key without a
+        live Postgres pool — this is checked in-memory before any query."""
+        import app.core.api_keys as ak
+        from unittest.mock import patch
+
+        with patch.object(ak, "_DEV_KEY_RAW", "axon_devtestkey0000"):
+            rec = run(ak.lookup_key("axon_devtestkey0000"))
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec.owner_id, "system")
+        self.assertIsNone(rec.organization_id)
+        self.assertIn("admin", rec.scopes)
+
+    def test_epoch_datetime_round_trip(self):
+        import time
+        from app.core.api_keys import _dt, _epoch
+        now = time.time()
+        self.assertAlmostEqual(_epoch(_dt(now)), now, places=3)
+        self.assertIsNone(_dt(None))
+        self.assertIsNone(_epoch(None))
+
+    def test_api_keys_table_is_rls_scoped(self):
+        from app.tenancy.rls import _RLS_TABLES
+        table_cols = dict(_RLS_TABLES)
+        self.assertEqual(table_cols.get("api_keys"), "organization_id")
+
+    def test_organization_id_nullable_for_system_keys(self):
+        """organization_id must be nullable so the legacy AXON_DEV_API_KEY /
+        personal keys (organization_id=None) keep working unchanged."""
+        from app.core.api_keys import API_KEYS_SCHEMA
+        start = API_KEYS_SCHEMA.index("organization_id")
+        line = API_KEYS_SCHEMA[start:API_KEYS_SCHEMA.index("\n", start)]
+        self.assertNotIn("NOT NULL", line)
+
+    def test_personal_key_endpoints_never_touch_org_scoped_keys(self):
+        """Regression: the personal owner_id-only path in list_api_keys/
+        revoke_api_key must exclude organization_id IS NOT NULL rows — an
+        org admin's personal key listing/revoke must not accidentally
+        include or revoke a key that belongs to /api/orgs/{id}/api-keys."""
+        import inspect
+        from app.core import api_keys as ak
+        list_source = inspect.getsource(ak.list_api_keys)
+        self.assertIn("organization_id IS NULL", list_source)
+        revoke_source = inspect.getsource(ak.revoke_api_key)
+        self.assertIn("organization_id IS NULL", revoke_source)
+
+    def test_legacy_api_keys_router_requires_authentication(self):
+        """Regression: create_key/list_keys/revoke_key originally had zero
+        auth dependency — any caller could create, list, or revoke every API
+        key in the system. Every endpoint must now depend on get_current_user
+        and scope by the caller's own owner_id."""
+        import inspect
+        from app.routers import api_keys_router
+        from app.routers.auth_users import get_current_user
+        for name in ("create_key", "list_keys", "revoke_key"):
+            fn = getattr(api_keys_router, name)
+            sig = inspect.signature(fn)
+            depends_on_user = any(
+                getattr(p.default, "dependency", None) is get_current_user
+                for p in sig.parameters.values()
+            )
+            self.assertTrue(depends_on_user, f"{name} must Depends(get_current_user)")
+
 
 # ── MFA / TOTP pure logic ─────────────────────────────────────────────────────
 
