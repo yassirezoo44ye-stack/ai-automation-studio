@@ -165,6 +165,11 @@ async def _sync_org_subscription(
             stripe_subscription_id=stripe_subscription_id,
             current_period_end=current_period_end,
         )
+        from app.core.events import get_event_bus
+        await get_event_bus().publish(
+            "billing.updated", {"plan": plan_id, "status": status},
+            organization_id=organization_id,
+        )
     except Exception:
         import logging
         logging.getLogger(__name__).exception(

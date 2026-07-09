@@ -76,6 +76,14 @@ class TenancyService:
                 )
         await self._log(str(row["id"]), creator_id, "organization.created",
                         resource="organization", resource_id=str(row["id"]))
+        try:
+            from app.core.events import get_event_bus
+            await get_event_bus().publish(
+                "organization.created", {"name": name, "kind": kind},
+                organization_id=str(row["id"]),
+            )
+        except Exception:
+            log.warning("event publish failed for organization.created org=%s", row["id"], exc_info=True)
         return dict(row)
 
     async def get_organization(self, org_id: str) -> Optional[dict[str, Any]]:
@@ -179,6 +187,30 @@ class TenancyService:
         await self._log(org_id, actor_id, "member.removed",
                         resource="member", resource_id=member_user_id)
 
+    # ── Seats ─────────────────────────────────────────────────────────────────
+
+    async def _check_seat_capacity(self, org_id: str) -> None:
+        """Raise if the org is already at its plan's seat limit. Counts active
+        members plus pending invitations, so sending 5 invites on a 3-seat
+        plan fails at invite-time rather than letting all 5 accept later."""
+        from app.billing import get_usage_service
+        limit = await get_usage_service().get_limit(org_id, "seats")
+        if limit < 0:
+            return  # unlimited
+        async with self._pool.acquire() as conn:
+            used = await conn.fetchval(
+                """SELECT
+                     (SELECT COUNT(*) FROM organization_members
+                      WHERE organization_id=$1 AND deleted_at IS NULL) +
+                     (SELECT COUNT(*) FROM invitations
+                      WHERE organization_id=$1 AND status='pending' AND deleted_at IS NULL)""",
+                uuid.UUID(org_id),
+            )
+        if used >= limit:
+            raise TenancyError(
+                f"seat limit reached ({used}/{limit}) — upgrade your plan or remove a member", 409,
+            )
+
     # ── Invitations ───────────────────────────────────────────────────────────
 
     async def create_invitation(
@@ -190,6 +222,7 @@ class TenancyService:
         actor_role = await self.get_member_role(org_id, actor_id)
         if actor_role not in ("owner", "admin", "manager"):
             raise TenancyError("insufficient permissions to invite", 403)
+        await self._check_seat_capacity(org_id)
         token = secrets.token_urlsafe(32)
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -223,6 +256,31 @@ class TenancyService:
                     raise TenancyError("invitation expired", 410)
                 if inv["email"] != user_email.lower():
                     raise TenancyError("invitation was issued for a different email", 403)
+
+                # Seat check — skip if this user already holds a seat (accepting
+                # just changes their role, doesn't consume a new one). Reuses
+                # the same locked transaction for consistency, not a second
+                # connection.
+                already_member = await conn.fetchval(
+                    "SELECT 1 FROM organization_members "
+                    "WHERE organization_id=$1 AND user_id=$2 AND deleted_at IS NULL",
+                    inv["organization_id"], uuid.UUID(user_id),
+                )
+                if not already_member:
+                    from app.billing import get_usage_service
+                    limit = await get_usage_service().get_limit(str(inv["organization_id"]), "seats")
+                    if limit >= 0:
+                        used = await conn.fetchval(
+                            "SELECT COUNT(*) FROM organization_members "
+                            "WHERE organization_id=$1 AND deleted_at IS NULL",
+                            inv["organization_id"],
+                        )
+                        if used >= limit:
+                            raise TenancyError(
+                                f"seat limit reached ({used}/{limit}) — ask an admin to "
+                                "upgrade the plan or free a seat", 409,
+                            )
+
                 await conn.execute(
                     """INSERT INTO organization_members (organization_id, user_id, role, created_by)
                        VALUES ($1,$2,$3,$4)
@@ -236,6 +294,15 @@ class TenancyService:
                 )
         await self._log(str(inv["organization_id"]), user_id, "invitation.accepted",
                         resource="invitation", resource_id=str(inv["id"]))
+        try:
+            from app.core.events import get_event_bus
+            await get_event_bus().publish(
+                "organization.member_added", {"user_id": user_id, "role": inv["role"]},
+                organization_id=str(inv["organization_id"]),
+            )
+        except Exception:
+            log.warning("event publish failed for organization.member_added org=%s",
+                       inv["organization_id"], exc_info=True)
         return {"organization_id": str(inv["organization_id"]), "role": inv["role"]}
 
     # ── RBAC ──────────────────────────────────────────────────────────────────

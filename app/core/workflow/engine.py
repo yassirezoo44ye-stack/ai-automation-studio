@@ -366,6 +366,21 @@ async def _record_workflow_usage(run: WorkflowRun) -> None:
         log.warning("workflow usage record failed for org=%s", org_id, exc_info=True)
 
 
+async def _publish_workflow_event(run: WorkflowRun, event_type: str) -> None:
+    """Best-effort event bus publish — never affects run.status. org_id is
+    optional in the payload (event bus doesn't require org context)."""
+    try:
+        from app.core.events import get_event_bus
+        await get_event_bus().publish(
+            event_type,
+            {"run_id": run.run_id, "name": run.name, "status": run.status.value,
+             "error": run.error},
+            organization_id=run.context.get("organization_id"),
+        )
+    except Exception:
+        log.warning("event publish failed for wf[%s] %s", run.run_id[:8], event_type, exc_info=True)
+
+
 # ── Engine ────────────────────────────────────────────────────────────────────
 
 class WorkflowEngine:
@@ -394,12 +409,14 @@ class WorkflowEngine:
         run.status     = WorkflowStatus.RUNNING
         run.started_at = time.time()
         log.info("wf[%s] '%s' started", run.run_id[:8], run.name)
+        await _publish_workflow_event(run, "workflow.started")
 
         try:
             groups = _topo_sort(run.steps)
         except ValueError as exc:
             run.status = WorkflowStatus.FAILED
             run.error  = str(exc)
+            await _publish_workflow_event(run, "workflow.failed")
             return run
 
         try:
@@ -434,8 +451,11 @@ class WorkflowEngine:
                     run.status = WorkflowStatus.FAILED
                     if saga:
                         await _compensate(run)
-                    else:
+                        # _compensate() sets COMPENSATING as a transient
+                        # in-progress marker — the run must still land on a
+                        # terminal FAILED status once compensation finishes.
                         run.status = WorkflowStatus.FAILED
+                    await _publish_workflow_event(run, "workflow.failed")
                     return run
 
         except Exception as exc:
@@ -443,7 +463,9 @@ class WorkflowEngine:
             run.status = WorkflowStatus.FAILED
             if saga:
                 await _compensate(run)
+                run.status = WorkflowStatus.FAILED
             log.error("wf[%s] unexpected error: %s", run.run_id[:8], exc)
+            await _publish_workflow_event(run, "workflow.failed")
             return run
         finally:
             run.finished_at = time.time()
@@ -453,6 +475,7 @@ class WorkflowEngine:
         run.status = WorkflowStatus.COMPLETED
         log.info("wf[%s] completed in %.0fms", run.run_id[:8],
                  (run.finished_at - run.started_at) * 1000)  # type: ignore[operator]
+        await _publish_workflow_event(run, "workflow.completed")
         return run
 
     def active(self) -> list[dict]:

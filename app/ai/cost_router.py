@@ -67,17 +67,17 @@ _DEFAULT_MODELS: list[ModelSpec] = [
     # Google
     ModelSpec("gemini-2.0-flash",     Provider.GEMINI,    0.10,  0.40, 0.80, 0.96, 1_000_000),
     ModelSpec("gemini-2.0-pro",       Provider.GEMINI,    1.25,  5.00, 0.90, 0.70, 2_000_000),
-    # DeepSeek
-    ModelSpec("deepseek-chat",        Provider.DEEPSEEK,  0.14,  0.28, 0.80, 0.80, 64_000),
-    # Mistral
-    ModelSpec("mistral-large",        Provider.MISTRAL,   2.00,  6.00, 0.85, 0.72, 128_000),
-    ModelSpec("mistral-small",        Provider.MISTRAL,   0.20,  0.60, 0.72, 0.90, 32_000),
-    # Local
-    ModelSpec("ollama/llama3.1",      Provider.OLLAMA,    0.00,  0.00, 0.65, 0.60, 128_000),
-    # Azure mirrors OpenAI pricing
-    ModelSpec("azure/gpt-4o",         Provider.AZURE,     2.50, 10.00, 0.92, 0.70, 128_000),
-    # Bedrock (Anthropic hosted)
-    ModelSpec("bedrock/claude-sonnet", Provider.BEDROCK,  3.00, 15.00, 0.94, 0.65, 200_000),
+    # DeepSeek, Mistral, Ollama, Azure, Bedrock — catalogued for future work
+    # but NOT wired to a real app/ai/providers/*.py backend yet. available=False
+    # keeps them out of route() candidate selection so /api/ai/route never
+    # hands back a "decision" that fails at execution. Flip to True only once
+    # a matching provider file exists in app/ai/providers/.
+    ModelSpec("deepseek-chat",        Provider.DEEPSEEK,  0.14,  0.28, 0.80, 0.80, 64_000, available=False),
+    ModelSpec("mistral-large",        Provider.MISTRAL,   2.00,  6.00, 0.85, 0.72, 128_000, available=False),
+    ModelSpec("mistral-small",        Provider.MISTRAL,   0.20,  0.60, 0.72, 0.90, 32_000, available=False),
+    ModelSpec("ollama/llama3.1",      Provider.OLLAMA,    0.00,  0.00, 0.65, 0.60, 128_000, available=False),
+    ModelSpec("azure/gpt-4o",         Provider.AZURE,     2.50, 10.00, 0.92, 0.70, 128_000, available=False),
+    ModelSpec("bedrock/claude-sonnet", Provider.BEDROCK,  3.00, 15.00, 0.94, 0.65, 200_000, available=False),
 ]
 
 

@@ -51,11 +51,27 @@ class TestCostRouter(unittest.TestCase):
         from app.ai.cost_router import CostRouter
         self.router = CostRouter()
 
-    def test_cheapest_policy_prefers_free_local(self):
+    def test_cheapest_policy_picks_cheapest_available_model(self):
         from app.ai.cost_router import RouteRequest, Policy
         d = self.router.route(RouteRequest(policy=Policy.CHEAPEST))
-        # ollama is $0 — cheapest must pick it (or another near-zero model)
+        # ollama/llama3.1 is $0 but has no real provider backend (available=False
+        # by default — see cost_router.py) so it must never be selected, even
+        # though it would otherwise win on price alone.
+        self.assertNotEqual(d.model, "ollama/llama3.1")
         self.assertLessEqual(d.predicted_cost_usd, 0.001)
+
+    def test_unimplemented_providers_excluded_by_default(self):
+        """Regression guard: DeepSeek/Mistral/Ollama/Azure/Bedrock are
+        catalogued but have no app/ai/providers/*.py backend. route() must
+        never hand back a model that would fail at execution."""
+        from app.ai.cost_router import RouteRequest, Policy
+        unimplemented = {
+            "deepseek-chat", "mistral-large", "mistral-small",
+            "ollama/llama3.1", "azure/gpt-4o", "bedrock/claude-sonnet",
+        }
+        for policy in (Policy.CHEAPEST, Policy.FASTEST, Policy.QUALITY, Policy.BALANCED):
+            d = self.router.route(RouteRequest(policy=policy))
+            self.assertNotIn(d.model, unimplemented, f"policy={policy} selected unimplemented {d.model}")
 
     def test_quality_policy_prefers_top_model(self):
         from app.ai.cost_router import RouteRequest, Policy
@@ -111,6 +127,48 @@ class TestCostRouter(unittest.TestCase):
         self.router.set_availability("ollama/llama3.1", False)
         d = self.router.route(RouteRequest(policy=Policy.CHEAPEST))
         self.assertNotEqual(d.model, "ollama/llama3.1")
+
+
+# ── ModelRouter / catalog — the ACTUAL routing path InferenceEngine calls ──────
+# (distinct from app.ai.cost_router.CostRouter above, which is a separate,
+# standalone system not currently wired into real completion calls)
+
+class TestModelRouterCatalog(unittest.TestCase):
+    def test_openrouter_excluded_from_every_policy(self):
+        """Regression guard: openrouter/auto has no app/ai/providers/*.py
+        backend (ProviderRegistry only knows anthropic/openai/gemini) and its
+        $0.0 cost would otherwise make CHEAPEST policy always select it,
+        causing every completion to fail (failover_chain() returns empty for
+        an unknown provider id)."""
+        from app.core.ai.router.model_router import ModelRouter, SelectionPolicy
+        from app.ai.models import CompletionRequest, Message
+        router = ModelRouter()
+        req = CompletionRequest(messages=[Message(role="user", content="hi")], max_tokens=100)
+        for policy in (SelectionPolicy.CHEAPEST, SelectionPolicy.FASTEST,
+                      SelectionPolicy.BEST, SelectionPolicy.BALANCED):
+            sel = router.select(req, policy=policy)
+            self.assertNotEqual(sel.model_id, "openrouter/auto",
+                               f"policy={policy} selected the unimplemented openrouter model")
+
+    def test_openrouter_still_documented_but_deprecated(self):
+        from app.core.ai.models.catalog import catalog
+        info = catalog.get("openrouter/auto")
+        self.assertIsNotNone(info, "entry should stay documented, not deleted")
+        self.assertTrue(info.deprecated, "must be excluded from auto-selection via deprecated=True")
+
+    def test_all_non_deprecated_catalog_models_have_a_real_provider(self):
+        """Every selectable model must map to a provider ProviderRegistry
+        actually knows how to call — otherwise selection succeeds but
+        execution fails downstream. Mirrors app/ai/providers/registry.py's
+        _ALL dict (anthropic/openai/gemini) — update both if a new provider
+        backend is added."""
+        from app.core.ai.models.catalog import catalog
+        known_providers = {"anthropic", "openai", "gemini"}
+        for model in catalog.all():
+            if model.deprecated:
+                continue
+            self.assertIn(model.provider_id, known_providers,
+                         f"{model.id} selectable but provider {model.provider_id!r} has no backend")
 
 
 # ── Event bus ─────────────────────────────────────────────────────────────────

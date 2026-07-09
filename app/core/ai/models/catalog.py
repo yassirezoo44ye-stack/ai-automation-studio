@@ -190,6 +190,14 @@ _GEMINI: list[ModelInfo] = [
 ]
 
 # ── OpenRouter ────────────────────────────────────────────────────────────────
+# No app/ai/providers/openrouter.py backend exists yet — ProviderRegistry
+# (app/ai/providers/registry.py) only knows anthropic/openai/gemini, so
+# selecting this model would fail the whole completion (failover_chain()
+# returns empty since "openrouter" isn't in its provider map). deprecated=True
+# keeps it out of every ModelCatalog selection method (_candidates() filters
+# `not m.deprecated`) without deleting the documented entry. Its $0.0 cost
+# would otherwise make CHEAPEST-policy selection pick it automatically.
+# Flip deprecated=False once a real provider backend is built.
 
 _OPENROUTER: list[ModelInfo] = [
     ModelInfo(
@@ -201,6 +209,7 @@ _OPENROUTER: list[ModelInfo] = [
         input_cost_m=0.0,
         output_cost_m=0.0,
         latency_tier="medium",
+        deprecated=True,
     ),
 ]
 

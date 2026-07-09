@@ -21,6 +21,7 @@ from app.core.helpers import (
     get_ai_client, get_async_ai_client,
     resolve_project_id, anthropic_error_message, strip_fences,
 )
+from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 from app.execution import process_mgr
 from app.execution.runner import run_stream, run_sync
@@ -143,7 +144,8 @@ class FileSyncRequest(BaseModel):
 
 
 @router.post("/api/build")
-async def build_program(req: BuildRequest):
+async def build_program(req: BuildRequest, request: Request):
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
     try:
         msg = ai.messages.create(
@@ -157,6 +159,9 @@ async def build_program(req: BuildRequest):
     except Exception as e:
         raise HTTPException(502, str(e))
 
+    await record_org_tokens(
+        org_id, msg.usage.input_tokens + msg.usage.output_tokens, req.project_id,
+    )
     raw = strip_fences(msg.content[0].text)
     try:
         result = json.loads(raw)
@@ -201,6 +206,7 @@ async def build_stream(req: BuildRequest, request: Request):
       - Heartbeat every 15 s keeps the Render proxy alive.
     """
     ai_rate_limit(request, max_calls=10, window=60)
+    org_id = await check_org_quota(request)
 
     async def event_stream():
         try:
@@ -242,6 +248,13 @@ async def build_stream(req: BuildRequest, request: Request):
                             dest.parent.mkdir(parents=True, exist_ok=True)
                             await asyncio.to_thread(dest.write_text, content, "utf-8")
                             yield _sse("file", path=path, content=content)
+
+                try:
+                    final = await stream.get_final_message()
+                    total_tokens = final.usage.input_tokens + final.usage.output_tokens
+                    await record_org_tokens(org_id, total_tokens, req.project_id)
+                except Exception:
+                    pass  # metering must never turn a successful build into an error
 
             # Flush remaining buffer (last line without trailing newline)
             if buf.strip():
