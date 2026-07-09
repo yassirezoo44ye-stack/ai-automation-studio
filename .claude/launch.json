@@ -24,13 +24,6 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["app_main.py"],
       "port": 8000
-    },
-    {
-      "name": "axiom-ui-studio",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000,
-      "cwd": "../ui-component-studio"
     }
   ]
 }
