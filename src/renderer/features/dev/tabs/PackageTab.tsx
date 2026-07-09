@@ -14,6 +14,12 @@ type PackState  = "idle" | "building" | "done" | "error";
 
 interface LogEntry { text: string; kind: "info" | "ok" | "err" | "cmd" }
 
+interface ToolCheckDTO {
+  name: string; display: string; available: boolean;
+  version: string | null; required_for: string; fix_hint: string;
+}
+interface PreflightDTO { ok: boolean; checks: ToolCheckDTO[]; missing: string[] }
+
 const LANGS: { id: PackLang; label: string; icon: string; desc: string }[] = [
   { id: "python",   label: "Python",      icon: "🐍", desc: "PyInstaller / Briefcase"       },
   { id: "web",      label: "Web App",     icon: "🌐", desc: "Electron wrap (.exe) / Capacitor (.apk)" },
@@ -56,11 +62,25 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
   const [downloadUrl, setDownload] = useState("");
   const [files, setFiles]         = useState<{ path: string; size: number }[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [preflight, setPreflight] = useState<PreflightDTO | null>(null);
+  const [pfLoading, setPfLoading] = useState(false);
   const logsEndRef  = useRef<HTMLDivElement>(null);
   const abortRef    = useRef<AbortController | null>(null);
   const uploadRef   = useRef<HTMLInputElement>(null);
 
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
+
+  const checkPreflight = () => {
+    if (lang === "docker") { setPreflight(null); return; }
+    setPfLoading(true);
+    apiFetch(`/api/package/preflight?lang=${lang}&target=${target}`)
+      .then(r => parseJSON<PreflightDTO>(r, "/api/package/preflight"))
+      .then(setPreflight)
+      .catch(() => setPreflight(null))
+      .finally(() => setPfLoading(false));
+  };
+
+  useEffect(() => { checkPreflight(); }, [lang, target]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -222,6 +242,55 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
           </div>
         )}
 
+        {/* Pre-flight environment check — surfaced BEFORE the build attempt */}
+        {pfLoading && (
+          <div style={{ fontSize: 12, color: "var(--t4)", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ta)", animation: "fadeIn .6s ease-in-out infinite alternate" }} />
+            Checking build environment…
+          </div>
+        )}
+
+        {!pfLoading && preflight && preflight.checks.length > 0 && (
+          <div style={{
+            borderRadius: 8, border: `1px solid ${preflight.ok ? "rgba(52,211,153,.25)" : "rgba(248,113,113,.3)"}`,
+            background: preflight.ok ? "rgba(52,211,153,.05)" : "rgba(248,113,113,.06)",
+            padding: "10px 14px",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: preflight.checks.length ? 8 : 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: preflight.ok ? "#34d399" : "#f87171" }}>
+                {preflight.ok ? "✓ Build environment ready" : "⚠ Build environment not ready"}
+              </span>
+              <button
+                onClick={checkPreflight}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--t4)", padding: "2px 6px" }}
+                aria-label="Recheck environment"
+                title="Recheck"
+              >↻ Recheck</button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {preflight.checks.map(c => (
+                <span key={c.name} title={c.version ?? undefined} style={{
+                  fontSize: 11, padding: "2px 8px", borderRadius: 20,
+                  color: c.available ? "#34d399" : "#f87171",
+                  background: c.available ? "rgba(52,211,153,.1)" : "rgba(248,113,113,.1)",
+                  border: `1px solid ${c.available ? "rgba(52,211,153,.25)" : "rgba(248,113,113,.3)"}`,
+                }}>
+                  {c.available ? "✓" : "✗"} {c.display}
+                </span>
+              ))}
+            </div>
+            {!preflight.ok && (
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                {preflight.checks.filter(c => !c.available).map(c => (
+                  <div key={c.name} style={{ fontSize: 11, color: "var(--t3)", lineHeight: 1.5 }}>
+                    <strong style={{ color: "#f87171" }}>{c.display}</strong> — {c.fix_hint}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* App metadata */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 2 }}>
@@ -269,20 +338,34 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         </div>
 
         {/* Actions */}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={state === "building" ? () => abortRef.current?.abort() : () => void pack()}
-            style={{ ...S.btnPrimary, flex: 1 }}
-            aria-label={state === "building" ? "Stop packaging" : "Package app"}
-          >
-            {state === "building" ? "⏹ Stop" : "⚙ Package App"}
-          </button>
-          {downloadUrl && (
-            <a href={downloadUrl} download style={{ ...S.btnSecondary, padding: "0 18px", display: "flex", alignItems: "center", textDecoration: "none" }}>
-              ⬇ Download
-            </a>
-          )}
-        </div>
+        {(() => {
+          const envBlocked = state !== "building" && !!preflight && !preflight.ok;
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={state === "building" ? () => abortRef.current?.abort() : () => void pack()}
+                  disabled={envBlocked}
+                  style={{ ...S.btnPrimary, flex: 1, opacity: envBlocked ? 0.5 : 1, cursor: envBlocked ? "not-allowed" : "pointer" }}
+                  aria-label={state === "building" ? "Stop packaging" : "Package app"}
+                  title={envBlocked ? "Fix the missing tools above, or Recheck once installed" : undefined}
+                >
+                  {state === "building" ? "⏹ Stop" : envBlocked ? "⚠ Environment Not Ready" : "⚙ Package App"}
+                </button>
+                {downloadUrl && (
+                  <a href={downloadUrl} download style={{ ...S.btnSecondary, padding: "0 18px", display: "flex", alignItems: "center", textDecoration: "none" }}>
+                    ⬇ Download
+                  </a>
+                )}
+              </div>
+              {envBlocked && (
+                <span style={{ fontSize: 11, color: "var(--t4)" }}>
+                  Install the missing tools on the build server, then hit Recheck above.
+                </span>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Logs */}
         {logs.length > 0 && (

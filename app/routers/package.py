@@ -25,6 +25,32 @@ async def get_runtimes():
     return registry.to_dict()
 
 
+@router.get("/api/package/preflight")
+async def get_preflight(lang: str, target: str):
+    """
+    Check tool availability for a (lang, target) combination WITHOUT starting
+    a build. Lets the UI warn the user before they click Package.
+    """
+    if lang == "docker":
+        return {"ok": True, "lang": lang, "target": target, "checks": [], "missing": []}
+
+    pf = run_preflight(lang, target)
+    return {
+        "ok": pf.ok,
+        "lang": lang,
+        "target": target,
+        "severity": pf.severity,
+        "checks": [
+            {
+                "name": c.name, "display": c.display, "available": c.available,
+                "version": c.version, "required_for": c.required_for, "fix_hint": c.fix_hint,
+            }
+            for c in pf.checks
+        ],
+        "missing": [c.name for c in pf.missing],
+    }
+
+
 class PackageRequest(BaseModel):
     project_id: str
     target:      str  = "exe"

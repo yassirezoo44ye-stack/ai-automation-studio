@@ -141,6 +141,22 @@ _REQUIREMENTS: dict[tuple[str, str], list[dict]] = {
             "fix_hint": "npm ships with Node.js — reinstall Node.js.",
         },
     ],
+
+    # Web HTML → .EXE (wrapped in Electron — same pipeline as electron→exe)
+    ("web", "exe"): [
+        {
+            "name": "node",
+            "display": "Node.js",
+            "required_for": "Electron wrap build for the web app",
+            "fix_hint": "Install Node.js 18 LTS or 20 LTS from nodejs.org.",
+        },
+        {
+            "name": "npm",
+            "display": "npm",
+            "required_for": "Installing Electron and electron-builder",
+            "fix_hint": "npm ships with Node.js — reinstall Node.js.",
+        },
+    ],
 }
 
 
