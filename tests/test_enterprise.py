@@ -23,25 +23,78 @@ def run(coro):
 # ── Plans / quotas ────────────────────────────────────────────────────────────
 
 class TestPlans(unittest.TestCase):
+    """_SEED_PLANS is the idempotent seed data for the subscription_plans
+    table (app/billing/plan_service.py) — no longer the runtime source of
+    truth, but its shape is still pure-Python and DB-free to test here."""
+
     def test_all_plans_cover_all_metrics(self):
-        from app.billing.plans import PLANS, METRICS
-        for plan in PLANS.values():
+        from app.billing.plans import _SEED_PLANS, METRICS
+        for plan in _SEED_PLANS.values():
             for metric in METRICS:
                 self.assertIn(metric, plan.limits, f"{plan.id} missing {metric}")
 
-    def test_free_plan_is_default(self):
-        from app.billing.plans import get_plan
-        self.assertEqual(get_plan("nonexistent").id, "free")
-
     def test_enterprise_unlimited(self):
-        from app.billing.plans import get_plan
-        self.assertTrue(all(v == -1 for v in get_plan("enterprise").limits.values()))
+        from app.billing.plans import _SEED_PLANS
+        self.assertTrue(all(v == -1 for v in _SEED_PLANS["enterprise"].limits.values()))
+        self.assertEqual(_SEED_PLANS["enterprise"].max_agents, -1)
+        self.assertEqual(_SEED_PLANS["enterprise"].max_workflows, -1)
 
     def test_plan_ordering_by_limits(self):
-        from app.billing.plans import PLANS
-        self.assertLess(PLANS["free"].limits["tokens"], PLANS["starter"].limits["tokens"])
-        self.assertLess(PLANS["starter"].limits["tokens"], PLANS["pro"].limits["tokens"])
-        self.assertLess(PLANS["pro"].limits["tokens"], PLANS["team"].limits["tokens"])
+        from app.billing.plans import _SEED_PLANS
+        self.assertLess(_SEED_PLANS["free"].limits["tokens"], _SEED_PLANS["starter"].limits["tokens"])
+        self.assertLess(_SEED_PLANS["starter"].limits["tokens"], _SEED_PLANS["pro"].limits["tokens"])
+        self.assertLess(_SEED_PLANS["pro"].limits["tokens"], _SEED_PLANS["team"].limits["tokens"])
+
+    def test_pro_plan_id_unchanged_despite_display_name_change(self):
+        """Display name became "Professional" to match the spec, but the id
+        must stay "pro" — STRIPE_PRICE_ID_PRO / PLAN_TO_PRICE key off it."""
+        from app.billing.plans import _SEED_PLANS
+        self.assertEqual(_SEED_PLANS["pro"].id, "pro")
+        self.assertEqual(_SEED_PLANS["pro"].name, "Professional")
+
+    def test_free_and_enterprise_not_purchasable_by_default(self):
+        from app.billing.plans import _SEED_PLANS
+        self.assertFalse(_SEED_PLANS["free"].is_purchasable)
+        self.assertFalse(_SEED_PLANS["enterprise"].is_purchasable)
+        for plan_id in ("starter", "pro", "team"):
+            self.assertTrue(_SEED_PLANS[plan_id].is_purchasable)
+
+
+class TestPlanService(unittest.TestCase):
+    """PlanService itself is DB-backed; these tests cover the pure-logic
+    parts (row<->Plan conversion, update field mapping) with a stub
+    connection rather than a live pool."""
+
+    def test_row_to_plan_converts_cents_to_usd(self):
+        from app.billing.plan_service import _row_to_plan
+        row = {
+            "id": "pro", "name": "Professional", "price_monthly_cents": 4900,
+            "limits": '{"tokens": 10}', "features": ["sso"], "trial_days": 14,
+            "max_agents": 50, "max_workflows": 100, "stripe_price_id": None,
+            "is_purchasable": True, "active": True,
+        }
+        plan = _row_to_plan(row)
+        self.assertEqual(plan.price_monthly_usd, 49.0)
+        self.assertEqual(plan.limits, {"tokens": 10})
+
+    def test_refresh_cache_does_not_filter_by_active(self):
+        """Regression: get_plan() must keep returning a deactivated plan's
+        real limits for orgs already on it — refresh_cache() used to only
+        SELECT WHERE active=true, so get_plan() would miss the cache and
+        silently fall through to the free tier's limits instead, changing
+        an org's effective quota with zero billing-status change or signal."""
+        import inspect
+        from app.billing.plan_service import PlanService
+        source = inspect.getsource(PlanService.refresh_cache)
+        self.assertNotIn("WHERE active=true", source)
+
+    def test_list_plans_filters_to_active_for_display(self):
+        """The public /api/plans catalog must still hide deactivated plans
+        — only get_plan() (org lookups) needs to see them."""
+        import inspect
+        from app.billing.plan_service import PlanService
+        source = inspect.getsource(PlanService.list_plans)
+        self.assertIn("p.active", source)
 
 
 # ── AI cost router ────────────────────────────────────────────────────────────
@@ -501,6 +554,157 @@ class TestStripePlans(unittest.TestCase):
         self.assertNotIn("free", PURCHASABLE_PLANS)
 
 
+# ── Billing calculations ───────────────────────────────────────────────────────
+
+class TestBillingCalculations(unittest.TestCase):
+    def test_invoice_status_to_payment_status_mapping_is_total(self):
+        """Every Stripe invoice status this app's webhook handler passes
+        through must map to a valid payments.status value, or a webhook
+        payload with an unmapped status would silently default via .get()
+        — guard the mapping's coverage of Stripe's real invoice statuses."""
+        from app.billing.invoices import _STATUS_TO_PAYMENT_STATUS
+        for stripe_status in ("paid", "open", "draft", "uncollectible", "void"):
+            self.assertIn(stripe_status, _STATUS_TO_PAYMENT_STATUS)
+        valid_payment_statuses = {"pending", "succeeded", "failed", "refunded"}
+        for v in _STATUS_TO_PAYMENT_STATUS.values():
+            self.assertIn(v, valid_payment_statuses)
+
+    def test_invoice_upsert_derives_payments_keyed_by_invoice_not_duplicated(self):
+        """Regression: an earlier draft of upsert_from_stripe_invoice used a
+        ternary that inserted a fresh payments row per call when no
+        payment_intent_id existed yet, accumulating duplicates across
+        invoice.created -> invoice.finalized -> invoice.paid deliveries for
+        the same invoice. The fix deletes prior rows for the invoice_id
+        before inserting the current snapshot."""
+        import inspect
+        from app.billing.invoices import InvoiceService
+        source = inspect.getsource(InvoiceService.upsert_from_stripe_invoice)
+        self.assertIn("DELETE FROM payments WHERE invoice_id=$1", source)
+
+    def test_cents_to_usd_round_trip(self):
+        from app.billing.plan_service import _row_to_plan
+        for cents, usd in ((0, 0.0), (1900, 19.0), (4900, 49.0), (9900, 99.0)):
+            row = {
+                "id": "x", "name": "X", "price_monthly_cents": cents,
+                "limits": "{}", "features": [], "trial_days": 0,
+                "max_agents": -1, "max_workflows": -1, "stripe_price_id": None,
+                "is_purchasable": True, "active": True,
+            }
+            self.assertEqual(_row_to_plan(row).price_monthly_usd, usd)
+
+    def test_coupon_requires_a_discount_type(self):
+        import inspect
+        from app.billing.coupons import CouponService
+        source = inspect.getsource(CouponService.record_stripe_coupon)
+        self.assertIn("percent_off is None and amount_off_cents is None", source)
+
+
+# ── Webhook event routing ──────────────────────────────────────────────────────
+
+class TestWebhookEventRouting(unittest.TestCase):
+    """Full delivery (signature verification, DB writes) can only be
+    verified against a real Postgres + Stripe test payloads — verified via
+    the live-Postgres script this phase. Here we guard the event-type
+    routing surface via source inspection, matching TestRlsPolicyShape's
+    established technique for this codebase."""
+
+    def _webhook_source(self) -> str:
+        import inspect
+        from app.routers import subscriptions
+        return inspect.getsource(subscriptions)
+
+    def test_new_invoice_events_are_routed(self):
+        source = self._webhook_source()
+        for event_type in ("invoice.created", "invoice.finalized", "invoice.paid",
+                            "invoice.payment_failed", "invoice.voided"):
+            self.assertIn(event_type, source)
+
+    def test_new_payment_method_events_are_routed(self):
+        source = self._webhook_source()
+        for event_type in ("payment_method.attached", "payment_method.detached",
+                            "payment_method.updated", "customer.updated"):
+            self.assertIn(event_type, source)
+
+    def test_dedup_check_runs_before_dispatch(self):
+        """Regression: the webhook handler must record the event id and
+        bail out on a duplicate BEFORE calling _dispatch_webhook_event —
+        otherwise a replayed Stripe delivery re-runs every side effect."""
+        source = self._webhook_source()
+        record_pos = source.index("wh_svc.record(")
+        dispatch_pos = source.index("_dispatch_webhook_event(event)")
+        self.assertLess(record_pos, dispatch_pos)
+
+    def test_legacy_status_collapse_and_org_tier_status_are_computed_separately(self):
+        """Regression: the org-tiered system must receive the verbatim
+        Stripe status (so "trialing" isn't collapsed to inactive), while
+        the legacy flat-rate table keeps its own binary active/inactive
+        contract — these must not be the same variable."""
+        source = self._webhook_source()
+        self.assertIn("legacy_status = ", source)
+        self.assertIn('status=sub["status"]', source)
+
+    def test_subscription_created_event_is_routed(self):
+        """Regression: checkout.session.completed hardcodes status="active"
+        even when the subscription actually starts trialing — without also
+        handling customer.subscription.created, that inaccurate status could
+        persist far longer than the brief self-correcting window a reviewer
+        would otherwise assume."""
+        source = self._webhook_source()
+        self.assertIn("customer.subscription.created", source)
+
+    def test_failed_dispatch_raises_instead_of_swallowing(self):
+        """Regression: a caught-and-logged dispatch failure must re-raise
+        (as a non-2xx HTTPException) so Stripe actually retries — silently
+        returning {"received": True} on failure both stops Stripe from
+        retrying AND (combined with the dedup table) permanently prevents
+        any future redelivery of that event from being reprocessed."""
+        source = self._webhook_source()
+        self.assertIn("raise HTTPException(500,", source)
+
+    def test_critical_sync_helpers_do_not_swallow_the_core_write(self):
+        """Regression: _sync_org_subscription and _sync_invoice used to wrap
+        their entire body (including the core DB write) in a try/except
+        that only logged — meaning a failed plan/invoice write still let
+        mark_processed run, permanently losing that webhook's effect. Only
+        the non-critical event-bus publish should be separately isolated."""
+        import inspect
+        from app.routers import subscriptions
+        sync_org = inspect.getsource(subscriptions._sync_org_subscription)
+        sync_invoice = inspect.getsource(subscriptions._sync_invoice)
+        # apply_webhook_update / upsert_from_stripe_invoice must be awaited
+        # outside of any try block that only logs and returns normally.
+        for source, call in (
+            (sync_org, "await get_org_subscription_service().apply_webhook_update("),
+            (sync_invoice, "await get_invoice_service().upsert_from_stripe_invoice("),
+        ):
+            call_pos = source.index(call)
+            preceding = source[:call_pos]
+            # The only "try:" allowed before the critical call is none —
+            # it must be a top-level await, not inside a try/except.
+            self.assertNotIn("try:", preceding, f"{call!r} must not be inside a swallowing try/except")
+
+
+class TestWebhookEventDedup(unittest.TestCase):
+    """WebhookEventService.record()'s retry-vs-duplicate logic, pure-logic
+    parts only — the full round trip against a live table is covered by
+    the live-Postgres verification script."""
+
+    def test_mark_failed_clears_processed_at(self):
+        """Regression: mark_failed used to still set processed_at=NOW(),
+        making a failed event indistinguishable from a succeeded one to
+        record()'s dedup check on the next Stripe retry."""
+        import inspect
+        from app.billing.webhooks import WebhookEventService
+        source = inspect.getsource(WebhookEventService.mark_failed)
+        self.assertIn("processed_at=NULL", source)
+
+    def test_record_allows_reprocessing_of_previously_failed_events(self):
+        import inspect
+        from app.billing.webhooks import WebhookEventService
+        source = inspect.getsource(WebhookEventService.record)
+        self.assertIn('existing["error"] is not None', source)
+
+
 # ── Row Level Security policy shape ───────────────────────────────────────────
 
 class TestRlsPolicyShape(unittest.TestCase):
@@ -543,6 +747,45 @@ class TestRlsPolicyShape(unittest.TestCase):
         source = inspect.getsource(rls.enable_scoped_rls)
         self.assertIn("FORCE ROW LEVEL SECURITY", source,
                       "without FORCE, the app's own DB role (table owner) bypasses RLS entirely")
+
+    def test_billing_tables_are_rls_scoped(self):
+        from app.tenancy.rls import _RLS_TABLES
+        table_cols = dict(_RLS_TABLES)
+        for table in ("invoices", "payments", "payment_methods", "credits", "billing_events"):
+            self.assertEqual(table_cols.get(table), "organization_id", f"{table} missing from _RLS_TABLES")
+        # invoice_items (child of invoices, join-only access) and the global
+        # catalogs coupons/subscription_plans are deliberately excluded.
+        self.assertNotIn("invoice_items", table_cols)
+        self.assertNotIn("coupons", table_cols)
+        self.assertNotIn("subscription_plans", table_cols)
+
+
+# ── Trial support ───────────────────────────────────────────────────────────────
+
+class TestTrialSupport(unittest.TestCase):
+    def test_trialing_is_an_active_status(self):
+        """Regression: apply_webhook_update used to collapse every non-
+        "active" Stripe status to "free", which would revoke an org's
+        access during its own trial period."""
+        from app.billing.subscriptions import ACTIVE_STATUSES
+        self.assertIn("trialing", ACTIVE_STATUSES)
+        self.assertIn("active", ACTIVE_STATUSES)
+        self.assertNotIn("past_due", ACTIVE_STATUSES)
+        self.assertNotIn("canceled", ACTIVE_STATUSES)
+
+    def test_effective_plan_uses_active_statuses_not_literal_active(self):
+        import inspect
+        from app.billing.subscriptions import OrgSubscriptionService
+        source = inspect.getsource(OrgSubscriptionService.apply_webhook_update)
+        self.assertIn("status in ACTIVE_STATUSES", source)
+
+    def test_checkout_gates_trial_on_first_subscription_only(self):
+        """Regression guard: re-granting a Stripe trial on every upgrade/
+        downgrade cycle would be an abuse vector."""
+        import inspect
+        from app.routers import org_billing
+        source = inspect.getsource(org_billing.create_org_checkout)
+        self.assertIn("has_ever_had_active_subscription", source)
 
 
 if __name__ == "__main__":

@@ -186,6 +186,14 @@ class PgMarketplaceStore:
                     "VALUES ($1,$2,$3,$4)",
                     item_id, uuid.UUID(org_id) if org_id else None, user_email, row["version"],
                 )
+        if org_id:
+            try:
+                from app.billing import get_usage_service
+                await get_usage_service().record(
+                    org_id, "marketplace_purchases", 1, ref_type="marketplace_item", ref_id=item_id,
+                )
+            except Exception:
+                log.warning("marketplace usage record failed for org=%s", org_id, exc_info=True)
         return _row_to_item(row)
 
     # ── Reviews ───────────────────────────────────────────────────────────────

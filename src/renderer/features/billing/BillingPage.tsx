@@ -1,54 +1,39 @@
 /**
- * BillingPage — current plan, usage meters, and upgrade flow.
- * Data: GET /api/plans, GET /api/orgs/{id}/billing, POST .../billing/checkout
+ * BillingPage — tab shell for Subscription/Usage/Invoices/Payment Methods/
+ * Billing History. Data: GET /api/plans, GET /api/orgs/{id}/billing (both
+ * fetched here and passed down; each tab fetches its own history data).
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/ToastContext";
 import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
+import { SubscriptionTab } from "./tabs/SubscriptionTab";
+import { UsageTab, type BillingUsage } from "./tabs/UsageTab";
+import { InvoicesTab } from "./tabs/InvoicesTab";
+import { PaymentMethodsTab } from "./tabs/PaymentMethodsTab";
+import { BillingHistoryTab } from "./tabs/BillingHistoryTab";
 
 interface PlanDTO {
   id: string; name: string; price_monthly_usd: number;
   limits: Record<string, number>; features: string[]; trial_days: number;
 }
 
-interface UsageMetric { used: number; limit: number; pct: number | null }
-
 interface BillingDTO {
-  plan: string; status: string; current_period_end: string | null;
+  plan: string; status: string; has_access: boolean; current_period_end: string | null;
   purchasable_plans: string[];
-  usage: { period: string; metrics: Record<string, UsageMetric> };
+  usage: BillingUsage;
 }
 
-const METRIC_LABEL: Record<string, string> = {
-  tokens: "AI Tokens", workflow_executions: "Workflow Runs", api_requests: "API Requests",
-  storage_mb: "Storage (MB)", embeddings: "Embeddings", marketplace_purchases: "Marketplace Purchases",
-  seats: "Seats",
-};
+type Tab = "subscription" | "usage" | "invoices" | "payment_methods" | "history";
 
-function fmt(n: number): string {
-  if (n < 0) return "∞";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-function UsageBar({ metric, data }: { metric: string; data: UsageMetric }) {
-  const pct = data.pct ?? 0;
-  const color = pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#34d399";
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>{METRIC_LABEL[metric] ?? metric}</span>
-        <span style={{ fontSize: 11, color: "var(--t4)" }}>{fmt(data.used)} / {fmt(data.limit)}</span>
-      </div>
-      <div style={{ height: 6, background: "rgba(255,255,255,.05)", borderRadius: 99, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${Math.min(pct, 100)}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
-      </div>
-    </div>
-  );
-}
+const TABS: { id: Tab; label: string }[] = [
+  { id: "subscription", label: "Subscription" },
+  { id: "usage", label: "Usage" },
+  { id: "invoices", label: "Invoices" },
+  { id: "payment_methods", label: "Payment Methods" },
+  { id: "history", label: "Billing History" },
+];
 
 export function BillingPage() {
   const toast = useToast();
@@ -56,7 +41,7 @@ export function BillingPage() {
   const [billing, setBilling] = useState<BillingDTO | null>(null);
   const [plans, setPlans] = useState<PlanDTO[]>([]);
   const [loading, setLoading] = useState(true);
-  const [upgrading, setUpgrading] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("subscription");
 
   const load = useCallback(async () => {
     if (!currentOrgId) { setLoading(false); return; }
@@ -74,25 +59,7 @@ export function BillingPage() {
   }, [currentOrgId, toast]);
 
   useEffect(() => { void load(); }, [load]);
-
-  const upgrade = async (planId: string) => {
-    if (!currentOrgId) return;
-    setUpgrading(planId);
-    try {
-      const r = await apiFetch(`/api/orgs/${currentOrgId}/billing/checkout`, {
-        method: "POST", body: JSON.stringify({ plan: planId }),
-      });
-      if (!r.ok) {
-        const e = await parseJSON<{ detail?: string }>(r, "checkout").catch(() => ({ detail: undefined }));
-        throw new Error(e.detail || "Checkout failed");
-      }
-      const d = await parseJSON<{ url: string }>(r, "checkout");
-      window.location.href = d.url;
-    } catch (e) {
-      toast((e as Error).message, "err");
-      setUpgrading(null);
-    }
-  };
+  useEffect(() => { setTab("subscription"); }, [currentOrgId]);
 
   if (!currentOrgId) {
     return (
@@ -111,70 +78,43 @@ export function BillingPage() {
         {billing && (
           <span style={{
             fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-            color: billing.status === "active" ? "#34d399" : "#f59e0b",
-            background: billing.status === "active" ? "rgba(52,211,153,.12)" : "rgba(245,158,11,.12)",
-            border: `1px solid ${billing.status === "active" ? "rgba(52,211,153,.3)" : "rgba(245,158,11,.3)"}`,
+            color: billing.has_access ? "#34d399" : "#f59e0b",
+            background: billing.has_access ? "rgba(52,211,153,.12)" : "rgba(245,158,11,.12)",
+            border: `1px solid ${billing.has_access ? "rgba(52,211,153,.3)" : "rgba(245,158,11,.3)"}`,
           }}>
             {billing.plan.toUpperCase()} · {billing.status}
           </span>
         )}
       </header>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", gap: 6, padding: "12px 24px 0" }}>
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              ...(tab === t.id ? S.btnPrimary : S.btnSecondary),
+              padding: "7px 14px", fontSize: 12,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
         {loading ? (
           <div className="skeleton" style={{ height: 200, borderRadius: 16 }} />
+        ) : tab === "subscription" ? (
+          <SubscriptionTab currentOrgId={currentOrgId} billing={billing} plans={plans} />
+        ) : tab === "usage" ? (
+          <UsageTab usage={billing?.usage ?? null} />
+        ) : tab === "invoices" ? (
+          <InvoicesTab currentOrgId={currentOrgId} />
+        ) : tab === "payment_methods" ? (
+          <PaymentMethodsTab currentOrgId={currentOrgId} />
         ) : (
-          <>
-            {billing && (
-              <div style={S.card}>
-                <div style={{ ...S.cardTitle, marginBottom: 14 }}>Usage this period ({billing.usage.period})</div>
-                {Object.entries(billing.usage.metrics).map(([metric, data]) => (
-                  <UsageBar key={metric} metric={metric} data={data} />
-                ))}
-              </div>
-            )}
-
-            <div>
-              <div className="section-label" style={{ marginBottom: 12 }}>PLANS</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12 }}>
-                {plans.map(p => {
-                  const isCurrent = p.id === billing?.plan;
-                  const purchasable = billing?.purchasable_plans.includes(p.id);
-                  return (
-                    <div key={p.id} style={{
-                      ...S.card, padding: "18px 20px",
-                      border: isCurrent ? "1px solid var(--accent)" : S.card.border as string,
-                    }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>{p.name}</div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", marginBottom: 10 }}>
-                        {p.price_monthly_usd > 0 ? `$${p.price_monthly_usd}` : p.id === "enterprise" ? "Custom" : "Free"}
-                        {p.price_monthly_usd > 0 && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--t4)" }}>/mo</span>}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 14, lineHeight: 1.6 }}>
-                        {fmt(p.limits.tokens)} tokens · {fmt(p.limits.seats)} seats
-                      </div>
-                      {isCurrent ? (
-                        <div style={{ ...S.btnSecondary, textAlign: "center", opacity: 0.6, cursor: "default" }}>Current Plan</div>
-                      ) : purchasable ? (
-                        <button
-                          onClick={() => void upgrade(p.id)} disabled={!!upgrading}
-                          style={{ ...S.btnPrimary, width: "100%" }}
-                        >
-                          {upgrading === p.id ? "Redirecting…" : "Upgrade"}
-                        </button>
-                      ) : p.id === "enterprise" ? (
-                        <div style={{ ...S.btnSecondary, textAlign: "center" }}>Contact Sales</div>
-                      ) : (
-                        <div style={{ ...S.btnSecondary, textAlign: "center", opacity: 0.4, cursor: "not-allowed" }} title="Stripe price not configured">
-                          Unavailable
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </>
+          <BillingHistoryTab currentOrgId={currentOrgId} />
         )}
       </div>
     </>

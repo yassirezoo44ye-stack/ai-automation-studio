@@ -17,6 +17,12 @@ import asyncpg
 
 log = logging.getLogger(__name__)
 
+# Stripe statuses that grant the org access to its paid plan. "trialing" must
+# be included — a subscription in its trial period is exactly this status,
+# and treating it as inactive would revoke access during the org's own
+# trial (the bug this set was introduced to fix).
+ACTIVE_STATUSES = frozenset({"active", "trialing"})
+
 ORG_SUBSCRIPTIONS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS org_subscriptions (
     organization_id         UUID PRIMARY KEY,
@@ -89,8 +95,8 @@ class OrgSubscriptionService:
                     plan_id, status, current_period_end,
                 )
                 # An inactive/cancelled subscription drops the org back to free;
-                # an active one promotes it to the purchased tier.
-                effective_plan = plan_id if status == "active" else "free"
+                # an active-or-trialing one promotes it to the purchased tier.
+                effective_plan = plan_id if status in ACTIVE_STATUSES else "free"
                 await conn.execute(
                     "UPDATE organizations SET plan=$2, updated_at=NOW() WHERE id=$1",
                     uuid.UUID(organization_id), effective_plan,
@@ -103,6 +109,49 @@ class OrgSubscriptionService:
                 stripe_subscription_id,
             )
         return str(org_id) if org_id else None
+
+    async def find_org_by_customer_id(self, stripe_customer_id: str) -> Optional[str]:
+        async with self._pool.acquire() as conn:
+            org_id = await conn.fetchval(
+                "SELECT organization_id FROM org_subscriptions WHERE stripe_customer_id=$1",
+                stripe_customer_id,
+            )
+        return str(org_id) if org_id else None
+
+    async def has_ever_had_active_subscription(self, org_id: str) -> bool:
+        """True if this org's subscription row shows a real Stripe subscription
+        was ever attached — used to gate trial eligibility to first-time
+        subscribers only (never re-grant a trial on upgrade/downgrade)."""
+        row = await self.get(org_id)
+        return bool(row and row.get("stripe_subscription_id"))
+
+    async def sync_seat_quantity(self, org_id: str) -> None:
+        """Push the org's live member+pending-invite count to its Stripe
+        subscription's line-item quantity — seat-based billing. Best-effort:
+        no-ops silently if the org has no paid subscription, and never
+        raises (callers wrap this, but it's defensive here too since it's
+        also usable as a standalone maintenance/reconciliation entry point).
+        Counts the same way TenancyService._check_seat_capacity does (live
+        COUNT, not usage_records — seats aren't tracked as a period metric).
+        """
+        row = await self.get(org_id)
+        if not row or not row.get("stripe_subscription_id"):
+            return
+        try:
+            used = await self._pool.fetchval(
+                """SELECT
+                     (SELECT COUNT(*) FROM organization_members
+                      WHERE organization_id=$1 AND deleted_at IS NULL) +
+                     (SELECT COUNT(*) FROM invitations
+                      WHERE organization_id=$1 AND status='pending' AND deleted_at IS NULL)""",
+                uuid.UUID(org_id),
+            )
+            import stripe
+            sub = stripe.Subscription.retrieve(row["stripe_subscription_id"])
+            item_id = sub["items"]["data"][0]["id"]
+            stripe.SubscriptionItem.modify(item_id, quantity=max(1, int(used)))
+        except Exception:
+            log.warning("seat quantity sync failed for org=%s", org_id, exc_info=True)
 
 
 _service: Optional[OrgSubscriptionService] = None

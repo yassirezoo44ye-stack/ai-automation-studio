@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 import asyncpg
 
-from app.billing.plans import METRICS, get_plan
+from app.billing.plans import METRICS
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +103,25 @@ class UsageService:
                 )
         return int(total)
 
+    async def set_metric(self, org_id: str, metric: str, amount: int) -> int:
+        """Overwrite (not add to) the metric for the current period — for
+        gauge-style metrics reconciled periodically from live state (e.g.
+        active_users), as opposed to `record`'s counter/increment semantics."""
+        if metric not in METRICS:
+            raise ValueError(f"unknown metric {metric!r}")
+        from app.core.db import acquire_scoped
+        period = _current_period()
+        async with acquire_scoped(org_id) as conn:
+            total = await conn.fetchval(
+                """INSERT INTO usage_records (organization_id, metric, period, amount)
+                   VALUES ($1,$2,$3,$4)
+                   ON CONFLICT (organization_id, metric, period)
+                   DO UPDATE SET amount = EXCLUDED.amount, updated_at = NOW()
+                   RETURNING amount""",
+                uuid.UUID(org_id), metric, period, amount,
+            )
+        return int(total)
+
     async def get_usage(self, org_id: str, period: str | None = None) -> dict[str, int]:
         from app.core.db import acquire_scoped
         period = period or _current_period()
@@ -130,7 +149,9 @@ class UsageService:
             plan_id = await conn.fetchval(
                 "SELECT plan FROM organizations WHERE id=$1", uuid.UUID(org_id)
             )
-        return get_plan(plan_id or "free").limits.get(metric, 0)
+        from app.billing.plan_service import get_plan_service
+        plan = await get_plan_service().get_plan(plan_id or "free")
+        return plan.limits.get(metric, 0)
 
     async def check_quota(self, org_id: str, metric: str, amount: int = 1) -> None:
         """Raise QuotaExceeded if recording `amount` would breach the limit."""

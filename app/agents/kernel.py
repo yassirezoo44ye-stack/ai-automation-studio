@@ -133,6 +133,7 @@ class AgentKernel:
         workspace  : Optional[str] = None,
         project_id : Optional[str] = None,
         deliberate : bool = False,
+        organization_id: Optional[str] = None,
     ) -> AgentResult:
         """
         Full pipeline: parse → route → (vote) → execute → reflect.
@@ -189,6 +190,15 @@ class AgentKernel:
                 "agent.finished", intent_name, user_id=user_id,
                 success=result.success, duration_ms=result.duration_ms,
             )
+            if organization_id:
+                try:
+                    from app.billing import get_usage_service
+                    await get_usage_service().record(
+                        organization_id, "running_agents", 1,
+                        ref_type="agent", ref_id=intent_name,
+                    )
+                except Exception:
+                    log.warning("agent usage record failed for org=%s", organization_id, exc_info=True)
 
         # ── 5. Memory ────────────────────────────────────────────────────
         self._memory.add(ExecutionRecord(

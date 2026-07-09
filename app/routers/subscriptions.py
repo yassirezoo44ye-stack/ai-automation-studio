@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime
 
 import stripe
@@ -9,6 +10,8 @@ from app.core.auth import make_token, verify_token
 from app.core.config import STRIPE_PRICE_ID, APP_URL
 from app.core.db import get_pool
 from app.core.security import check_rate_limit
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["subscriptions"])
 
@@ -103,8 +106,34 @@ async def stripe_webhook(request: Request):
     except Exception:
         raise HTTPException(400, "Malformed webhook")
 
+    from app.billing import get_webhook_event_service
+    wh_svc = get_webhook_event_service()
+    is_new = await wh_svc.record(
+        stripe_event_id=event["id"], event_type=event["type"], payload=event,
+    )
+    if not is_new:
+        return {"received": True, "duplicate": True}
+
+    try:
+        await _dispatch_webhook_event(event)
+    except Exception as exc:
+        await wh_svc.mark_failed(event["id"], str(exc))
+        log.exception("webhook dispatch failed for event=%s type=%s", event["id"], event["type"])
+        # Non-2xx so Stripe retries this event — safe to re-run because
+        # every write inside _dispatch_webhook_event is an idempotent
+        # upsert, and record() above will treat this same event id as
+        # unfinished work (not a duplicate) on the retry.
+        raise HTTPException(500, "Webhook processing failed — will be retried")
+
+    await wh_svc.mark_processed(event["id"])
+    return {"received": True}
+
+
+async def _dispatch_webhook_event(event: dict) -> None:
+    event_type = event["type"]
+
     async with get_pool().acquire() as conn:
-        if event["type"] == "checkout.session.completed":
+        if event_type == "checkout.session.completed":
             s = event["data"]["object"]
             email = s.get("customer_email") or ""
             cust_id = s.get("customer", "")
@@ -128,26 +157,92 @@ async def stripe_webhook(request: Request):
                     current_period_end=None,
                 )
 
-        elif event["type"] in ("customer.subscription.updated", "customer.subscription.deleted"):
+        elif event_type in (
+            "customer.subscription.created", "customer.subscription.updated",
+            "customer.subscription.deleted",
+        ):
             sub = event["data"]["object"]
             sub_id = sub["id"]
-            status = "active" if sub["status"] == "active" else "inactive"
+            # Legacy flat-rate table keeps its existing binary active/inactive
+            # contract unchanged (it predates trials and its own status read
+            # at /api/subscription/status does a strict "active" check) — only
+            # the org-tiered system (below) gets the real Stripe status, since
+            # that's the system trials actually apply to.
+            legacy_status = "active" if sub["status"] == "active" else "inactive"
             period_end = datetime.utcfromtimestamp(sub.get("current_period_end", 0))
             await conn.execute('''
                 UPDATE subscriptions SET status=$1, current_period_end=$2, updated_at=NOW()
                 WHERE stripe_subscription_id=$3
-            ''', status, period_end, sub_id)
+            ''', legacy_status, period_end, sub_id)
 
             org_id = (sub.get("metadata") or {}).get("organization_id")
             plan_id = (sub.get("metadata") or {}).get("plan_id")
             if org_id and plan_id:
                 await _sync_org_subscription(
-                    organization_id=org_id, plan_id=plan_id, status=status,
+                    organization_id=org_id, plan_id=plan_id, status=sub["status"],
                     stripe_customer_id=sub.get("customer"), stripe_subscription_id=sub_id,
                     current_period_end=period_end,
                 )
 
-    return {"received": True}
+        elif event_type in (
+            "invoice.created", "invoice.finalized", "invoice.paid",
+            "invoice.payment_failed", "invoice.voided",
+        ):
+            await _sync_invoice(event["data"]["object"], event_type=event_type)
+
+        elif event_type in ("payment_method.attached", "payment_method.detached", "payment_method.updated"):
+            await _sync_payment_methods_for_customer(event["data"]["object"].get("customer"))
+
+        elif event_type == "customer.updated":
+            await _sync_payment_methods_for_customer(event["data"]["object"].get("id"))
+
+
+async def _sync_invoice(invoice_obj: dict, *, event_type: str) -> None:
+    """Critical path: the invoice/payment DB write must propagate on
+    failure so the webhook response is non-2xx and Stripe redelivers the
+    event — silently swallowing this would permanently lose the invoice
+    or payment record (record() treats a redelivery of a failed event as
+    unfinished work, so retrying here is safe). Only the event-bus
+    notification below is best-effort and isolated from that guarantee."""
+    from app.billing import get_invoice_service
+    from app.billing.subscriptions import get_org_subscription_service
+    org_id = await get_org_subscription_service().find_org_by_customer_id(
+        invoice_obj.get("customer") or ""
+    )
+    if not org_id:
+        return  # not one of our tracked customers — nothing to do, not an error
+    failure_message = None
+    if event_type == "invoice.payment_failed":
+        failure_message = (invoice_obj.get("last_finalization_error") or {}).get("message")
+    row = await get_invoice_service().upsert_from_stripe_invoice(
+        invoice_obj, organization_id=org_id, failure_message=failure_message,
+    )
+    if row is None:
+        return
+    if event_type in ("invoice.paid", "invoice.payment_failed"):
+        try:
+            from app.core.events import get_event_bus
+            topic = "billing.payment_failed" if event_type == "invoice.payment_failed" else "billing.invoice_paid"
+            await get_event_bus().publish(
+                topic, {"invoice_id": str(row["id"]), "status": row["status"]},
+                organization_id=org_id,
+            )
+        except Exception:
+            log.warning("event publish failed for %s org=%s", event_type, org_id, exc_info=True)
+
+
+async def _sync_payment_methods_for_customer(stripe_customer_id: str | None) -> None:
+    """Best-effort — never breaks the webhook response."""
+    if not stripe_customer_id:
+        return
+    try:
+        from app.billing import get_payment_method_service
+        from app.billing.subscriptions import get_org_subscription_service
+        org_id = await get_org_subscription_service().find_org_by_customer_id(stripe_customer_id)
+        if org_id:
+            await get_payment_method_service().sync_for_org(org_id)
+    except Exception:
+        log.warning("payment method sync failed for customer=%s", stripe_customer_id, exc_info=True)
 
 
 async def _sync_org_subscription(
@@ -155,23 +250,23 @@ async def _sync_org_subscription(
     stripe_customer_id: str | None, stripe_subscription_id: str | None,
     current_period_end,
 ) -> None:
-    """Best-effort: a Stripe webhook must never 500 because of the newer
-    org-billing system, so failures here are logged, not raised."""
+    """Critical path: the plan/access write must propagate on failure so
+    the webhook response is non-2xx and Stripe redelivers the event —
+    apply_webhook_update is an idempotent upsert, so re-running it on
+    retry is safe. Only the event-bus notification below is best-effort
+    and isolated from that guarantee."""
+    from app.billing.subscriptions import get_org_subscription_service
+    await get_org_subscription_service().apply_webhook_update(
+        organization_id=organization_id, plan_id=plan_id, status=status,
+        stripe_customer_id=stripe_customer_id,
+        stripe_subscription_id=stripe_subscription_id,
+        current_period_end=current_period_end,
+    )
     try:
-        from app.billing.subscriptions import get_org_subscription_service
-        await get_org_subscription_service().apply_webhook_update(
-            organization_id=organization_id, plan_id=plan_id, status=status,
-            stripe_customer_id=stripe_customer_id,
-            stripe_subscription_id=stripe_subscription_id,
-            current_period_end=current_period_end,
-        )
         from app.core.events import get_event_bus
         await get_event_bus().publish(
             "billing.updated", {"plan": plan_id, "status": status},
             organization_id=organization_id,
         )
     except Exception:
-        import logging
-        logging.getLogger(__name__).exception(
-            "org subscription sync failed for org=%s", organization_id
-        )
+        log.warning("event publish failed for billing.updated org=%s", organization_id, exc_info=True)

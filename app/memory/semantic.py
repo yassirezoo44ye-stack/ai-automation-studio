@@ -219,6 +219,14 @@ class SemanticMemory:
         meta = metadata or {}
         now  = time.time()
 
+        org_id = meta.get("organization_id")
+        if org_id and embedding:
+            try:
+                from app.billing import get_usage_service
+                await get_usage_service().record(org_id, "embeddings", 1, ref_type="semantic_memory", ref_id=item_id)
+            except Exception:
+                log.warning("embeddings usage record failed for org=%s", org_id, exc_info=True)
+
         if self._pgvector and self._pool:
             await self._pg_upsert(item_id, session_id, content, embedding, meta, now)
         else:

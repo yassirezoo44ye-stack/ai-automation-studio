@@ -25,6 +25,10 @@ import asyncpg
 log = logging.getLogger(__name__)
 
 # (table, org_id_column) — organizations uses its own `id` as the tenant key.
+# invoice_items and coupons/subscription_plans are deliberately excluded:
+# invoice_items is a child row always accessed by joining through
+# invoices.organization_id (which is RLS'd), and coupons/subscription_plans
+# are global catalogs, not tenant data.
 _RLS_TABLES: tuple[tuple[str, str], ...] = (
     ("organizations", "id"),
     ("organization_members", "organization_id"),
@@ -32,6 +36,11 @@ _RLS_TABLES: tuple[tuple[str, str], ...] = (
     ("usage_records", "organization_id"),
     ("marketplace_installs", "organization_id"),
     ("api_keys", "organization_id"),
+    ("invoices", "organization_id"),
+    ("payments", "organization_id"),
+    ("payment_methods", "organization_id"),
+    ("credits", "organization_id"),
+    ("billing_events", "organization_id"),
 )
 
 

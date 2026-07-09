@@ -241,8 +241,19 @@ class TenancyService:
             )
         await self._log(org_id, actor_id, "member.removed",
                         resource="member", resource_id=member_user_id, ip_address=ip_address)
+        await self._sync_seat_quantity_best_effort(org_id)
 
     # ── Seats ─────────────────────────────────────────────────────────────────
+
+    async def _sync_seat_quantity_best_effort(self, org_id: str) -> None:
+        """Push the current member+pending-invite count to the org's Stripe
+        subscription line-item quantity. Never raises — a Stripe hiccup
+        must never block a membership change."""
+        try:
+            from app.billing.subscriptions import get_org_subscription_service
+            await get_org_subscription_service().sync_seat_quantity(org_id)
+        except Exception:
+            log.debug("seat quantity sync failed for org=%s", org_id, exc_info=True)
 
     async def _check_seat_capacity(self, org_id: str) -> None:
         """Raise if the org is already at its plan's seat limit. Counts active
@@ -351,6 +362,7 @@ class TenancyService:
                 )
         await self._log(str(inv["organization_id"]), user_id, "invitation.accepted",
                         resource="invitation", resource_id=str(inv["id"]), ip_address=ip_address)
+        await self._sync_seat_quantity_best_effort(str(inv["organization_id"]))
         try:
             from app.core.events import get_event_bus
             await get_event_bus().publish(
@@ -563,6 +575,19 @@ class TenancyService:
                 )
         except Exception as exc:
             log.debug("activity log write failed: %s", exc)
+
+    async def log_activity(
+        self, org_id: str, actor_id: str, action: str, *,
+        resource: str | None = None, resource_id: str | None = None,
+        details: dict | None = None, ip_address: str | None = None,
+    ) -> None:
+        """Public entry point for activity_logs writes from outside
+        TenancyService (e.g. billing services) — same best-effort contract
+        as the internal `_log` it wraps."""
+        await self._log(
+            org_id, actor_id, action, resource=resource, resource_id=resource_id,
+            details=details, ip_address=ip_address,
+        )
 
     async def list_activity(self, org_id: str, limit: int = 100) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:

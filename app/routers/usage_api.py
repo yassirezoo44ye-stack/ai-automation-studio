@@ -2,16 +2,20 @@
 Usage & plans API — Layer 12 (billing foundation).
 
 GET  /api/plans                              public plan catalog
+POST /api/admin/plans/{plan_id}              edit a plan (platform-admin only)
 GET  /api/orgs/{org_id}/usage                current-period usage summary
 POST /api/orgs/{org_id}/usage/record         record usage (internal/admin)
 PUT  /api/orgs/{org_id}/usage/limits/{metric} set per-org override (admin)
 """
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.billing import METRICS, PLANS, QuotaExceeded, get_usage_service
+from app.billing import METRICS, QuotaExceeded, get_plan_service, get_usage_service
+from app.core.api_keys import ApiKeyRecord, require_api_key
 from app.tenancy import OrgContext, org_context, require_permission
 
 router = APIRouter(tags=["usage"])
@@ -28,13 +32,52 @@ class SetLimitRequest(BaseModel):
     limit: int = Field(ge=-1)
 
 
+class UpdatePlanRequest(BaseModel):
+    name: Optional[str] = None
+    price_monthly_usd: Optional[float] = Field(default=None, ge=0)
+    limits: Optional[dict[str, int]] = None
+    features: Optional[list[str]] = None
+    trial_days: Optional[int] = Field(default=None, ge=0)
+    max_agents: Optional[int] = Field(default=None, ge=-1)
+    max_workflows: Optional[int] = Field(default=None, ge=-1)
+    stripe_price_id: Optional[str] = None
+    is_purchasable: Optional[bool] = None
+    active: Optional[bool] = None
+
+
+def _plan_out(p) -> dict:
+    return {
+        "id": p.id, "name": p.name, "price_monthly_usd": p.price_monthly_usd,
+        "limits": p.limits, "features": list(p.features), "trial_days": p.trial_days,
+        "max_agents": p.max_agents, "max_workflows": p.max_workflows,
+        "is_purchasable": p.is_purchasable,
+    }
+
+
 @router.get("/api/plans")
 async def list_plans():
-    return {"plans": [
-        {"id": p.id, "name": p.name, "price_monthly_usd": p.price_monthly_usd,
-         "limits": p.limits, "features": list(p.features), "trial_days": p.trial_days}
-        for p in PLANS.values()
-    ]}
+    plans = await get_plan_service().list_plans()
+    return {"plans": [_plan_out(p) for p in plans]}
+
+
+@router.post("/api/admin/plans/{plan_id}")
+async def update_plan(
+    plan_id: str,
+    body: UpdatePlanRequest,
+    key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"])),
+):
+    """Edit the global plan catalog without a deploy. Not org-scoped — gated
+    by the existing cross-org admin API-key mechanism (require_api_key),
+    not require_permission (which needs an OrgContext this action has none
+    of)."""
+    fields = body.model_dump(exclude_none=True)
+    if not fields:
+        raise HTTPException(400, "No fields to update")
+    try:
+        plan = await get_plan_service().update_plan(plan_id, actor_id=None, **fields)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return _plan_out(plan)
 
 
 @router.get("/api/orgs/{org_id}/usage")

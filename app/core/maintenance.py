@@ -80,6 +80,9 @@ async def _maintenance_cycle() -> None:
                 "SELECT COUNT(*) FROM d"
             )
 
+        await _reconcile_active_users()
+        await _reconcile_seat_quantities()
+
         result = {
             "removed_files": removed_files,
             "deleted_logs": deleted_logs or 0,
@@ -91,6 +94,59 @@ async def _maintenance_cycle() -> None:
     except Exception as e:
         record_error("maintenance")
         print(f"MAINTENANCE: cycle failed: {e}", file=sys.stderr)
+
+
+async def _reconcile_active_users() -> None:
+    """Gauge-style reconciliation of the active_users usage metric — sets
+    (not increments) each org's count to its live member count. Best-effort:
+    a failure here must never break the rest of the maintenance cycle."""
+    try:
+        from app.core.db import get_pool
+        from app.billing import get_usage_service
+        usage = get_usage_service()
+        async with get_pool().acquire() as conn:
+            org_ids = await conn.fetch(
+                "SELECT id FROM organizations WHERE deleted_at IS NULL"
+            )
+            for row in org_ids:
+                org_id = str(row["id"])
+                count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM organization_members "
+                    "WHERE organization_id=$1 AND deleted_at IS NULL",
+                    row["id"],
+                )
+                try:
+                    await usage.set_metric(org_id, "active_users", int(count or 0))
+                except Exception:
+                    continue
+    except Exception:
+        record_error("usage_reconciliation")
+
+
+async def _reconcile_seat_quantities() -> None:
+    """Periodic recovery for the best-effort seat->Stripe quantity sync
+    (app/billing/subscriptions.py's sync_seat_quantity, normally triggered
+    on membership change). Without this, a single failed Stripe call at
+    invite/remove time would leave the subscription's billed seat count
+    silently stale forever — this re-syncs every org with a real Stripe
+    subscription on each maintenance cycle, matching _reconcile_active_users'
+    "best-effort, never break the cycle" shape."""
+    try:
+        from app.core.db import get_pool
+        from app.billing.subscriptions import get_org_subscription_service
+        sub_svc = get_org_subscription_service()
+        async with get_pool().acquire() as conn:
+            org_ids = await conn.fetch(
+                "SELECT organization_id FROM org_subscriptions WHERE stripe_subscription_id IS NOT NULL"
+            )
+        for row in org_ids:
+            org_id = str(row["organization_id"])
+            try:
+                await sub_svc.sync_seat_quantity(org_id)
+            except Exception:
+                continue
+    except Exception:
+        record_error("seat_quantity_reconciliation")
 
 
 async def maintenance_loop() -> None:

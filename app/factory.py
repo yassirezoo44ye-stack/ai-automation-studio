@@ -82,14 +82,25 @@ async def lifespan(app: FastAPI):
 
     # ── Enterprise multi-tenancy + usage + org-billing schemas ─────────────
     from app.tenancy import init_tenancy_schema
-    from app.billing import init_usage_schema
+    from app.billing import (
+        init_usage_schema, init_subscription_plans_schema, init_invoices_schema,
+        init_payment_methods_schema, init_billing_events_schema,
+        init_coupons_schema, init_credits_schema, get_plan_service,
+    )
     from app.billing.subscriptions import init_org_subscriptions_schema
     from app.core.api_keys import init_api_keys_schema
     async with pool.acquire() as conn:
         await init_tenancy_schema(conn)
+        await init_subscription_plans_schema(conn)
         await init_usage_schema(conn)
         await init_org_subscriptions_schema(conn)
         await init_api_keys_schema(conn)
+        await init_invoices_schema(conn)
+        await init_payment_methods_schema(conn)
+        await init_billing_events_schema(conn)
+        await init_coupons_schema(conn)
+        await init_credits_schema(conn)
+    await get_plan_service(pool).refresh_cache()
 
     # ── Marketplace store (PostgreSQL primary, JSON fallback) ──────────────
     from app.marketplace import init_marketplace_store
