@@ -27,6 +27,7 @@ from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
 from app.core.rate_limit import check_rate_limit
+from app.billing import QuotaExceeded
 from app.runtime import registry as runtime_registry
 from app.runtime import capabilities as runtime_capabilities
 from app.routers import (
@@ -50,6 +51,7 @@ from app.routers import ws               as ws_router
 from app.routers import metrics          as metrics_router
 from app.routers import organizations    as organizations_router
 from app.routers import usage_api        as usage_api_router
+from app.routers import org_billing      as org_billing_router
 from app.routers import ai_router_api    as ai_router_api_router
 from app.routers import events_api       as events_api_router
 
@@ -78,16 +80,23 @@ async def lifespan(app: FastAPI):
     maintenance_task = asyncio.create_task(maintenance_loop())
     cleanup_task     = asyncio.create_task(process_cleanup_loop())
 
-    # ── Enterprise multi-tenancy + usage schemas ───────────────────────────
+    # ── Enterprise multi-tenancy + usage + org-billing schemas ─────────────
     from app.tenancy import init_tenancy_schema
     from app.billing import init_usage_schema
+    from app.billing.subscriptions import init_org_subscriptions_schema
     async with pool.acquire() as conn:
         await init_tenancy_schema(conn)
         await init_usage_schema(conn)
+        await init_org_subscriptions_schema(conn)
 
     # ── Marketplace store (PostgreSQL primary, JSON fallback) ──────────────
     from app.marketplace import init_marketplace_store
     await init_marketplace_store(pool)
+
+    # ── Scoped Row Level Security (defense-in-depth on tenancy tables) ─────
+    from app.tenancy import enable_scoped_rls
+    async with pool.acquire() as conn:
+        await enable_scoped_rls(conn)
 
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
@@ -187,6 +196,17 @@ def create_app() -> FastAPI:
         )
         return JSONResponse(status_code=422, content={"detail": detail, "errors": errors})
 
+    @app.exception_handler(QuotaExceeded)
+    async def quota_exceeded_handler(request: Request, exc: QuotaExceeded):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": str(exc), "error": "quota_exceeded",
+                "metric": exc.metric, "used": exc.used, "limit": exc.limit,
+            },
+            headers={"Retry-After": "60"},
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception):
         import asyncpg as _asyncpg
@@ -213,6 +233,17 @@ def create_app() -> FastAPI:
             record_http(request.method, path, response.status_code, duration)
         except Exception:
             pass
+        # Best-effort org-scoped API request metering — fire-and-forget so a
+        # Redis/DB hiccup never adds latency or fails the actual request.
+        org_id = request.headers.get("X-Organization-Id")
+        if org_id and path.startswith("/api/"):
+            async def _meter():
+                try:
+                    from app.billing import get_usage_service
+                    await get_usage_service().record(org_id, "api_requests", 1)
+                except Exception:
+                    pass
+            asyncio.create_task(_meter())
         return response
 
     # ── Global rate limiting (before auth, protects public endpoints too) ──
@@ -330,6 +361,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router.router)
     app.include_router(organizations_router.router)
     app.include_router(usage_api_router.router)
+    app.include_router(org_billing_router.router)
     app.include_router(ai_router_api_router.router)
     app.include_router(events_api_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,

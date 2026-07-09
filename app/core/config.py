@@ -34,8 +34,13 @@ TOKEN_TTL: int = 3600 * 24 * 30  # 30 days
 # ── Stripe ────────────────────────────────────────────────────────────────────
 _stripe.api_key          = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRICE_ID: str       = os.getenv("STRIPE_PRICE_ID", "")
+STRIPE_PRICE_ID: str       = os.getenv("STRIPE_PRICE_ID", "")  # legacy flat $/mo trial gate
 APP_URL: str               = os.getenv("APP_URL", "http://localhost:8000")
+
+# Org-scoped tiered plans (Enterprise is contact-sales — no Stripe price).
+STRIPE_PRICE_ID_STARTER: str = os.getenv("STRIPE_PRICE_ID_STARTER", "")
+STRIPE_PRICE_ID_PRO: str     = os.getenv("STRIPE_PRICE_ID_PRO", "")
+STRIPE_PRICE_ID_TEAM: str    = os.getenv("STRIPE_PRICE_ID_TEAM", "")
 
 # ── Filesystem ────────────────────────────────────────────────────────────────
 # Root of the project (the directory that contains main.py).

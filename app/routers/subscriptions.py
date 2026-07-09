@@ -117,6 +117,17 @@ async def stripe_webhook(request: Request):
                     SET stripe_customer_id=$2, stripe_subscription_id=$3, status='active', updated_at=NOW()
                 ''', email, cust_id, sub_id)
 
+            # Org-scoped tiered plan (only present when checkout was started
+            # via POST /api/orgs/{org_id}/billing/checkout).
+            org_id = (s.get("metadata") or {}).get("organization_id")
+            plan_id = (s.get("metadata") or {}).get("plan_id")
+            if org_id and plan_id:
+                await _sync_org_subscription(
+                    organization_id=org_id, plan_id=plan_id, status="active",
+                    stripe_customer_id=cust_id, stripe_subscription_id=sub_id,
+                    current_period_end=None,
+                )
+
         elif event["type"] in ("customer.subscription.updated", "customer.subscription.deleted"):
             sub = event["data"]["object"]
             sub_id = sub["id"]
@@ -127,4 +138,35 @@ async def stripe_webhook(request: Request):
                 WHERE stripe_subscription_id=$3
             ''', status, period_end, sub_id)
 
+            org_id = (sub.get("metadata") or {}).get("organization_id")
+            plan_id = (sub.get("metadata") or {}).get("plan_id")
+            if org_id and plan_id:
+                await _sync_org_subscription(
+                    organization_id=org_id, plan_id=plan_id, status=status,
+                    stripe_customer_id=sub.get("customer"), stripe_subscription_id=sub_id,
+                    current_period_end=period_end,
+                )
+
     return {"received": True}
+
+
+async def _sync_org_subscription(
+    *, organization_id: str, plan_id: str, status: str,
+    stripe_customer_id: str | None, stripe_subscription_id: str | None,
+    current_period_end,
+) -> None:
+    """Best-effort: a Stripe webhook must never 500 because of the newer
+    org-billing system, so failures here are logged, not raised."""
+    try:
+        from app.billing.subscriptions import get_org_subscription_service
+        await get_org_subscription_service().apply_webhook_update(
+            organization_id=organization_id, plan_id=plan_id, status=status,
+            stripe_customer_id=stripe_customer_id,
+            stripe_subscription_id=stripe_subscription_id,
+            current_period_end=current_period_end,
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "org subscription sync failed for org=%s", organization_id
+        )

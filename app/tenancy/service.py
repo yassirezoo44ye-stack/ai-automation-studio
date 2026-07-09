@@ -79,7 +79,8 @@ class TenancyService:
         return dict(row)
 
     async def get_organization(self, org_id: str) -> Optional[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM organizations WHERE id=$1 AND deleted_at IS NULL",
                 uuid.UUID(org_id),
@@ -99,10 +100,11 @@ class TenancyService:
         return [dict(r) for r in rows]
 
     async def soft_delete_organization(self, org_id: str, actor_id: str) -> None:
+        from app.core.db import acquire_scoped
         role = await self.get_member_role(org_id, actor_id)
         if role != "owner":
             raise TenancyError("only the owner can delete an organization", 403)
-        async with self._pool.acquire() as conn:
+        async with acquire_scoped(org_id) as conn:
             await conn.execute(
                 "UPDATE organizations SET deleted_at=NOW(), updated_by=$2 WHERE id=$1",
                 uuid.UUID(org_id), uuid.UUID(actor_id),
@@ -113,7 +115,8 @@ class TenancyService:
     # ── Membership ────────────────────────────────────────────────────────────
 
     async def get_member_role(self, org_id: str, user_id: str) -> Optional[str]:
-        async with self._pool.acquire() as conn:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
             return await conn.fetchval(
                 "SELECT role FROM organization_members "
                 "WHERE organization_id=$1 AND user_id=$2 AND deleted_at IS NULL",
@@ -121,7 +124,8 @@ class TenancyService:
             )
 
     async def list_members(self, org_id: str) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
             rows = await conn.fetch(
                 """SELECT m.id, m.user_id, m.role, m.created_at,
                           u.email, u.name, u.avatar_url
@@ -145,7 +149,8 @@ class TenancyService:
             raise TenancyError("insufficient permissions to manage members", 403)
         if ROLE_RANK[new_role] < ROLE_RANK[actor_role]:
             raise TenancyError("cannot assign a role above your own", 403)
-        async with self._pool.acquire() as conn:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
             result = await conn.execute(
                 "UPDATE organization_members SET role=$3, updated_by=$4, updated_at=NOW() "
                 "WHERE organization_id=$1 AND user_id=$2 AND deleted_at IS NULL",
@@ -164,7 +169,8 @@ class TenancyService:
         target_role = await self.get_member_role(org_id, member_user_id)
         if target_role == "owner":
             raise TenancyError("the owner cannot be removed", 403)
-        async with self._pool.acquire() as conn:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
             await conn.execute(
                 "UPDATE organization_members SET deleted_at=NOW(), updated_by=$3 "
                 "WHERE organization_id=$1 AND user_id=$2 AND deleted_at IS NULL",

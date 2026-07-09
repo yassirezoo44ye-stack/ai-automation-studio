@@ -244,21 +244,13 @@ async def register(body: RegisterRequest, request: Request, _rl: None = _auth_rl
     return {"message": "Account created. Check your email to verify your account."}
 
 
-@router.post("/login")
-async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
-    async with get_pool().acquire() as conn:
-        user = await _get_user_by_email(conn, body.email)
-        if not user or not user["password_hash"]:
-            raise HTTPException(401, "Invalid email or password")
-        if not verify_password(body.password, user["password_hash"]):
-            raise HTTPException(401, "Invalid email or password")
-
-        ua = request.headers.get("User-Agent", "")
-        ip = _client_ip(request)
-        refresh_token = await _create_session(conn, str(user["id"]), body.remember, ip, ua)
-
+async def _finish_login(conn, user, *, remember: bool, ip: str, ua: str) -> dict:
+    """Shared tail of the login flow — creates the session and builds the
+    token response. Used by both the direct (no-MFA) and MFA-challenge paths
+    so they return byte-identical response shapes."""
+    refresh_token = await _create_session(conn, str(user["id"]), remember, ip, ua)
     access_token = make_access_token(str(user["id"]), user["email"])
-    await write_audit(body.email, "login", ip_address=ip)
+    await write_audit(user["email"], "login", ip_address=ip)
 
     from app.core.auth import make_token as _make_sub_token
     sub_token = _make_sub_token(user["email"], trial=True, days_remaining=30)
@@ -270,6 +262,83 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
         "sub_token": sub_token,
         "user": _user_response(user),
     }
+
+
+@router.post("/login")
+async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
+    ua = request.headers.get("User-Agent", "")
+    ip = _client_ip(request)
+    async with get_pool().acquire() as conn:
+        user = await _get_user_by_email(conn, body.email)
+        if not user or not user["password_hash"]:
+            raise HTTPException(401, "Invalid email or password")
+        if not verify_password(body.password, user["password_hash"]):
+            raise HTTPException(401, "Invalid email or password")
+
+        mfa = await conn.fetchrow(
+            "SELECT enabled FROM mfa_secrets WHERE user_id=$1", user["id"]
+        )
+        if mfa and mfa["enabled"]:
+            challenge_token = secrets.token_urlsafe(32)
+            await conn.execute(
+                "INSERT INTO mfa_challenges (token, user_id, expires_at) "
+                "VALUES ($1,$2,NOW() + INTERVAL '5 minutes')",
+                challenge_token, user["id"],
+            )
+            return {"mfa_required": True, "challenge_token": challenge_token}
+
+        return await _finish_login(conn, user, remember=body.remember, ip=ip, ua=ua)
+
+
+class LoginMfaRequest(BaseModel):
+    challenge_token: str
+    code: str
+    remember: bool = False
+
+
+@router.post("/login/mfa")
+async def login_mfa(body: LoginMfaRequest, request: Request, _rl: None = _auth_rl):
+    """Complete a login that was paused for MFA by POST /login."""
+    import pyotp
+
+    ua = request.headers.get("User-Agent", "")
+    ip = _client_ip(request)
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            challenge = await conn.fetchrow(
+                "SELECT * FROM mfa_challenges WHERE token=$1 FOR UPDATE",
+                body.challenge_token,
+            )
+            if not challenge:
+                raise HTTPException(401, "Invalid or already-used MFA challenge")
+            if challenge["expires_at"] < datetime.datetime.now(datetime.timezone.utc):
+                await conn.execute("DELETE FROM mfa_challenges WHERE token=$1", body.challenge_token)
+                raise HTTPException(401, "MFA challenge expired — log in again")
+
+            mfa = await conn.fetchrow(
+                "SELECT secret, backup_codes FROM mfa_secrets WHERE user_id=$1 AND enabled=true",
+                challenge["user_id"],
+            )
+            if not mfa:
+                raise HTTPException(401, "MFA is not enabled for this account")
+
+            code = body.code.strip().replace(" ", "")
+            valid = pyotp.TOTP(mfa["secret"]).verify(code, valid_window=1)
+            if not valid and code.upper() in (mfa["backup_codes"] or []):
+                valid = True
+                await conn.execute(
+                    "UPDATE mfa_secrets SET backup_codes=array_remove(backup_codes,$2), updated_at=NOW() "
+                    "WHERE user_id=$1",
+                    challenge["user_id"], code.upper(),
+                )
+            if not valid:
+                raise HTTPException(401, "Invalid authentication code")
+
+            # One-time challenge — consume it now that it verified.
+            await conn.execute("DELETE FROM mfa_challenges WHERE token=$1", body.challenge_token)
+            user = await _get_user_by_id(conn, str(challenge["user_id"]))
+
+        return await _finish_login(conn, user, remember=body.remember, ip=ip, ua=ua)
 
 
 @router.post("/refresh")
@@ -490,6 +559,89 @@ async def change_password(
     return {"message": "Password changed successfully"}
 
 
+# ── MFA / TOTP ──────────────────────────────────────────────────────────────
+
+class MfaEnableRequest(BaseModel):
+    code: str
+
+
+class MfaDisableRequest(BaseModel):
+    password: str
+
+
+def _generate_backup_codes(n: int = 10) -> list[str]:
+    return [secrets.token_hex(4).upper() for _ in range(n)]
+
+
+@router.post("/mfa/setup")
+async def mfa_setup(current: Annotated[dict, Depends(get_current_user)]):
+    """Generate (or regenerate) a TOTP secret. Not active until /mfa/enable
+    verifies one code — a user can safely re-run this if they lose the QR."""
+    import pyotp
+
+    secret = pyotp.random_base32()
+    uri = pyotp.TOTP(secret).provisioning_uri(name=current["email"], issuer_name="Axon")
+    async with get_pool().acquire() as conn:
+        await conn.execute(
+            """INSERT INTO mfa_secrets (user_id, secret, enabled, backup_codes)
+               VALUES ($1,$2,false,'{}')
+               ON CONFLICT (user_id) DO UPDATE
+               SET secret=EXCLUDED.secret, enabled=false, updated_at=NOW()""",
+            uuid.UUID(current["id"]), secret,
+        )
+    return {"secret": secret, "provisioning_uri": uri}
+
+
+@router.post("/mfa/enable")
+async def mfa_enable(body: MfaEnableRequest, current: Annotated[dict, Depends(get_current_user)]):
+    """Verify one TOTP code to activate MFA; returns one-time backup codes."""
+    import pyotp
+
+    async with get_pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT secret FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]),
+        )
+        if not row:
+            raise HTTPException(400, "Call /mfa/setup first")
+        if not pyotp.TOTP(row["secret"]).verify(body.code.strip(), valid_window=1):
+            raise HTTPException(400, "Invalid authentication code")
+
+        backup_codes = _generate_backup_codes()
+        await conn.execute(
+            "UPDATE mfa_secrets SET enabled=true, backup_codes=$2, updated_at=NOW() WHERE user_id=$1",
+            uuid.UUID(current["id"]), backup_codes,
+        )
+    await write_audit(current["email"], "mfa.enabled")
+    return {"enabled": True, "backup_codes": backup_codes}
+
+
+@router.post("/mfa/disable")
+async def mfa_disable(body: MfaDisableRequest, current: Annotated[dict, Depends(get_current_user)]):
+    async with get_pool().acquire() as conn:
+        user = await _get_user_by_id(conn, current["id"])
+        if not user or not user["password_hash"] or not verify_password(body.password, user["password_hash"]):
+            raise HTTPException(400, "Incorrect password")
+        await conn.execute("DELETE FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]))
+    await write_audit(current["email"], "mfa.disabled")
+    return {"enabled": False}
+
+
+@router.post("/mfa/backup-codes")
+async def mfa_regenerate_backup_codes(current: Annotated[dict, Depends(get_current_user)]):
+    async with get_pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT enabled FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]),
+        )
+        if not row or not row["enabled"]:
+            raise HTTPException(400, "MFA is not enabled")
+        backup_codes = _generate_backup_codes()
+        await conn.execute(
+            "UPDATE mfa_secrets SET backup_codes=$2, updated_at=NOW() WHERE user_id=$1",
+            uuid.UUID(current["id"]), backup_codes,
+        )
+    return {"backup_codes": backup_codes}
+
+
 @router.get("/sessions")
 async def list_sessions(current: Annotated[dict, Depends(get_current_user)]):
     async with get_pool().acquire() as conn:
@@ -549,17 +701,19 @@ async def delete_account(
     return {"message": "Account deleted"}
 
 
-# ── OAuth (Google + GitHub) ───────────────────────────────────────────────────
+# ── OAuth (Google + GitHub + Microsoft) ────────────────────────────────────────
 
 import os as _os
 import httpx as _httpx
 from fastapi.responses import RedirectResponse
 
-_GOOGLE_CLIENT_ID     = _os.getenv("GOOGLE_CLIENT_ID", "")
-_GOOGLE_CLIENT_SECRET = _os.getenv("GOOGLE_CLIENT_SECRET", "")
-_GITHUB_CLIENT_ID     = _os.getenv("GITHUB_CLIENT_ID", "")
-_GITHUB_CLIENT_SECRET = _os.getenv("GITHUB_CLIENT_SECRET", "")
-_APP_URL_BASE         = _os.getenv("APP_URL", "http://localhost:8000")
+_GOOGLE_CLIENT_ID        = _os.getenv("GOOGLE_CLIENT_ID", "")
+_GOOGLE_CLIENT_SECRET    = _os.getenv("GOOGLE_CLIENT_SECRET", "")
+_GITHUB_CLIENT_ID        = _os.getenv("GITHUB_CLIENT_ID", "")
+_GITHUB_CLIENT_SECRET    = _os.getenv("GITHUB_CLIENT_SECRET", "")
+_MICROSOFT_CLIENT_ID     = _os.getenv("MICROSOFT_CLIENT_ID", "")
+_MICROSOFT_CLIENT_SECRET = _os.getenv("MICROSOFT_CLIENT_SECRET", "")
+_APP_URL_BASE            = _os.getenv("APP_URL", "http://localhost:8000")
 
 
 def _oauth_not_configured(provider: str):
@@ -586,11 +740,20 @@ async def _upsert_oauth_user(conn, email: str, name: str, avatar_url: str, provi
     return await conn.fetchrow("SELECT * FROM users WHERE id=$1", new_id)
 
 
-def _make_oauth_session(user) -> dict:
+async def _make_oauth_session(conn, user, ip: str, ua: str) -> dict:
+    """Build an OAuth login session AND persist its refresh token to
+    user_sessions — the same table/shape _create_session() uses for
+    password login, so /api/auth/refresh, /sessions, and logout-all work
+    identically regardless of how the user signed in."""
     from app.core.auth import make_token as _make_sub_token
-    access  = make_access_token({"sub": str(user["id"]), "email": user["email"]})
+    access  = make_access_token(str(user["id"]), user["email"])
     refresh = make_refresh_token()
     sub_tok = _make_sub_token(user["email"], trial=True, days_remaining=30)
+    await conn.execute(
+        """INSERT INTO user_sessions (id, user_id, refresh_token, ip_address, user_agent, expires_at)
+           VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '30 days')""",
+        uuid.uuid4(), user["id"], refresh, ip, ua,
+    )
     return {"access_token": access, "refresh_token": refresh, "sub_token": sub_tok}
 
 
@@ -610,7 +773,7 @@ async def google_oauth_start():
 
 
 @router.get("/google/callback")
-async def google_oauth_callback(code: str):
+async def google_oauth_callback(code: str, request: Request):
     if not _GOOGLE_CLIENT_ID:
         _oauth_not_configured("Google")
     redirect_uri = f"{_APP_URL_BASE}/api/auth/google/callback"
@@ -637,14 +800,64 @@ async def google_oauth_callback(code: str):
 
     async with get_pool().acquire() as conn:
         user = await _upsert_oauth_user(conn, email, info.get("name", ""), info.get("picture", ""), "google")
-        session = _make_oauth_session(user)
-        await conn.execute(
-            """INSERT INTO refresh_tokens (token, user_id, expires_at)
-               VALUES ($1,$2,NOW()+INTERVAL '30 days')""",
-            session["refresh_token"], user["id"],
-        )
+        session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     # Redirect to frontend with tokens in query params (picked up by AuthPage)
+    p = (f"access_token={session['access_token']}"
+         f"&refresh_token={session['refresh_token']}"
+         f"&sub_token={session['sub_token']}")
+    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+
+
+@router.get("/microsoft")
+async def microsoft_oauth_start():
+    if not _MICROSOFT_CLIENT_ID:
+        _oauth_not_configured("Microsoft")
+    redirect_uri = f"{_APP_URL_BASE}/api/auth/microsoft/callback"
+    params = (
+        f"client_id={_MICROSOFT_CLIENT_ID}"
+        f"&redirect_uri={redirect_uri}"
+        f"&response_type=code"
+        f"&response_mode=query"
+        f"&scope=openid%20email%20profile"
+    )
+    return RedirectResponse(f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?{params}")
+
+
+@router.get("/microsoft/callback")
+async def microsoft_oauth_callback(code: str, request: Request):
+    if not _MICROSOFT_CLIENT_ID:
+        _oauth_not_configured("Microsoft")
+    redirect_uri = f"{_APP_URL_BASE}/api/auth/microsoft/callback"
+    async with _httpx.AsyncClient() as client:
+        token_res = await client.post(
+            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+            data={
+                "code": code, "client_id": _MICROSOFT_CLIENT_ID,
+                "client_secret": _MICROSOFT_CLIENT_SECRET,
+                "redirect_uri": redirect_uri, "grant_type": "authorization_code",
+                "scope": "openid email profile",
+            },
+        )
+        if token_res.status_code != 200:
+            raise HTTPException(400, "Microsoft OAuth token exchange failed")
+        tokens = token_res.json()
+        info_res = await client.get(
+            "https://graph.microsoft.com/v1.0/me",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        if info_res.status_code != 200:
+            raise HTTPException(400, "Failed to fetch Microsoft user info")
+        info = info_res.json()
+
+    email = info.get("mail") or info.get("userPrincipalName")
+    if not email:
+        raise HTTPException(400, "Microsoft did not return an email address")
+
+    async with get_pool().acquire() as conn:
+        user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft")
+        session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
+
     p = (f"access_token={session['access_token']}"
          f"&refresh_token={session['refresh_token']}"
          f"&sub_token={session['sub_token']}")
@@ -665,7 +878,7 @@ async def github_oauth_start():
 
 
 @router.get("/github/callback")
-async def github_oauth_callback(code: str):
+async def github_oauth_callback(code: str, request: Request):
     if not _GITHUB_CLIENT_ID:
         _oauth_not_configured("GitHub")
     redirect_uri = f"{_APP_URL_BASE}/api/auth/github/callback"
@@ -702,12 +915,7 @@ async def github_oauth_callback(code: str):
     async with get_pool().acquire() as conn:
         avatar = gh_user.get("avatar_url", "")
         user = await _upsert_oauth_user(conn, email, gh_user.get("name") or gh_user.get("login", ""), avatar, "github")
-        session = _make_oauth_session(user)
-        await conn.execute(
-            """INSERT INTO refresh_tokens (token, user_id, expires_at)
-               VALUES ($1,$2,NOW()+INTERVAL '30 days')""",
-            session["refresh_token"], user["id"],
-        )
+        session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     p = (f"access_token={session['access_token']}"
          f"&refresh_token={session['refresh_token']}"

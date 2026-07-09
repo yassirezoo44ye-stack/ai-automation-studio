@@ -46,7 +46,11 @@ class AIGateway:
         request: CompletionRequest,
         *,
         user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
     ) -> CompletionResponse:
+        if org_id:
+            await self._check_quota(org_id)
+
         request = await self._enrich(request, user_id=user_id)
 
         # Cache check
@@ -67,7 +71,7 @@ class AIGateway:
             timeout=request.timeout,
         )
 
-        await self._post_complete(request, response, user_id=user_id)
+        await self._post_complete(request, response, user_id=user_id, org_id=org_id)
 
         # Store in cache
         if request.cache_ttl:
@@ -82,7 +86,11 @@ class AIGateway:
         request: CompletionRequest,
         *,
         user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
     ) -> AsyncGenerator[StreamChunk, None]:
+        if org_id:
+            await self._check_quota(org_id)
+
         request = await self._enrich(request, user_id=user_id)
 
         # Emit conversation ID immediately if we have one
@@ -106,7 +114,7 @@ class AIGateway:
                 usage=last_usage or CompletionResponse().usage,
                 conversation_id=request.conversation_id,
             )
-            await self._post_complete(request, dummy_response, user_id=user_id)
+            await self._post_complete(request, dummy_response, user_id=user_id, org_id=org_id)
 
     # ── Enrichment ────────────────────────────────────────────────────────────
 
@@ -164,8 +172,9 @@ class AIGateway:
         response: CompletionResponse,
         *,
         user_id: Optional[str],
+        org_id: Optional[str] = None,
     ) -> None:
-        """Persist history, track cost. All failures are non-fatal."""
+        """Persist history, track cost, meter org usage. All failures are non-fatal."""
 
         # Persist assistant message
         if request.conversation_id and response.content:
@@ -198,3 +207,20 @@ class AIGateway:
                 stats=response.usage,
                 cached=response.cached,
             )
+
+        # Meter organization token quota (best-effort — never blocks the response)
+        if org_id and response.usage.total_tokens > 0:
+            try:
+                from app.billing import get_usage_service
+                await get_usage_service().record(
+                    org_id, "tokens", response.usage.total_tokens,
+                    ref_type="ai_gateway", ref_id=request.conversation_id,
+                )
+            except Exception:
+                log.warning("usage record failed for org=%s", org_id, exc_info=True)
+
+    async def _check_quota(self, org_id: str) -> None:
+        """Raise QuotaExceeded (mapped to HTTP 429 by the app's exception
+        handler) BEFORE spending money on a provider call."""
+        from app.billing import get_usage_service
+        await get_usage_service().check_quota(org_id, "tokens", 1)

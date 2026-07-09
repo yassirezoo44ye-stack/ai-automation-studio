@@ -6,19 +6,28 @@ function getJwt(): string {
   return (window as unknown as Record<string, string>).__axon_access_token ?? "";
 }
 
+/** Set by OrgContext when the user switches organizations — read by apiFetch/authH. */
+function getOrgId(): string {
+  return (window as unknown as Record<string, string>).__axon_org_id ?? "";
+}
+
 export function authH(extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json", "X-Sub-Token": getToken(), ...extra };
   const jwt = getJwt();
   if (jwt) h["Authorization"] = `Bearer ${jwt}`;
+  const orgId = getOrgId();
+  if (orgId) h["X-Organization-Id"] = orgId;
   return h;
 }
 
 /** Authenticated fetch — all /api/* calls must use this. */
 export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const jwt = getJwt();
+  const orgId = getOrgId();
   const headers: Record<string, string> = {
     "X-Sub-Token": getToken(),
     ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
+    ...(orgId ? { "X-Organization-Id": orgId } : {}),
     ...(init?.body != null ? { "Content-Type": "application/json" } : {}),
     ...(init?.headers as Record<string, string> ?? {}),
   };

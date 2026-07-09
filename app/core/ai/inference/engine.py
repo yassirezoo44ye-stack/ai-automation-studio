@@ -57,6 +57,7 @@ class InferenceEngine:
         request: CompletionRequest,
         *,
         user_id:     Optional[str] = None,
+        org_id:      Optional[str] = None,
         auto_tools:  bool          = True,
     ) -> CompletionResponse:
         """
@@ -64,6 +65,10 @@ class InferenceEngine:
 
         If auto_tools=True and the response contains tool_calls, runs the
         agentic tool loop until a final answer is produced.
+
+        When org_id is supplied, the request is metered and quota-checked
+        against that organization's plan (see app/billing/usage.py); omit
+        it for personal/legacy callers with no org context.
         """
         request_id = str(uuid.uuid4())
 
@@ -72,6 +77,8 @@ class InferenceEngine:
 
         # Enrich via legacy gateway (prompt templates, memory, history)
         gw = self._gateway()
+        if org_id:
+            await gw._check_quota(org_id)
         enriched = await gw._enrich(request, user_id=user_id)
 
         provider_id = platform_registry.resolve_chain(enriched)[0].provider_id if platform_registry.resolve_chain(enriched) else "unknown"
@@ -98,7 +105,7 @@ class InferenceEngine:
                     user_id=user_id,
                 )
 
-            await gw._post_complete(enriched, resp, user_id=user_id)
+            await gw._post_complete(enriched, resp, user_id=user_id, org_id=org_id)
 
             latency_ms = (time.perf_counter() - t0) * 1000
             await bus.emit(PromptCompleted(
@@ -125,6 +132,7 @@ class InferenceEngine:
         request: CompletionRequest,
         *,
         user_id:    Optional[str] = None,
+        org_id:     Optional[str] = None,
         auto_tools: bool          = True,
     ) -> AsyncGenerator[dict, None]:
         """
@@ -132,10 +140,15 @@ class InferenceEngine:
 
         Yields dicts suitable for JSON serialization in SSE responses.
         Includes tool execution between stream segments when auto_tools=True.
+
+        When org_id is supplied, the request is quota-checked up front and
+        metered on completion (see app/billing/usage.py).
         """
         request_id = str(uuid.uuid4())
         request    = self._apply_model_selection(request)
         gw         = self._gateway()
+        if org_id:
+            await gw._check_quota(org_id)
         enriched   = await gw._enrich(request, user_id=user_id)
 
         chain       = platform_registry.resolve_chain(enriched)
@@ -186,7 +199,7 @@ class InferenceEngine:
                     usage=UsageStats(**(last_usage or {})) if last_usage else UsageStats(),
                     conversation_id=enriched.conversation_id,
                 )
-                await gw._post_complete(enriched, dummy, user_id=user_id)
+                await gw._post_complete(enriched, dummy, user_id=user_id, org_id=org_id)
 
         finally:
             latency_ms = (time.perf_counter() - t0) * 1000

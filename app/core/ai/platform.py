@@ -144,10 +144,11 @@ class AIPlatform:
         request: CompletionRequest,
         *,
         user_id:    Optional[str] = None,
+        org_id:     Optional[str] = None,
         auto_tools: bool          = True,
     ) -> CompletionResponse:
         return await self._engine_or_raise().complete(
-            request, user_id=user_id, auto_tools=auto_tools
+            request, user_id=user_id, org_id=org_id, auto_tools=auto_tools
         )
 
     async def stream(
@@ -155,10 +156,11 @@ class AIPlatform:
         request: CompletionRequest,
         *,
         user_id:    Optional[str] = None,
+        org_id:     Optional[str] = None,
         auto_tools: bool          = True,
     ) -> AsyncGenerator[dict, None]:
         async for chunk in self._engine_or_raise().stream(
-            request, user_id=user_id, auto_tools=auto_tools
+            request, user_id=user_id, org_id=org_id, auto_tools=auto_tools
         ):
             yield chunk
 

@@ -1,4 +1,5 @@
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { OrgProvider }   from "./contexts/OrgContext";
 import { AppProvider }   from "./contexts/AppContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { AppLayout }     from "./components/layout/AppLayout";
@@ -45,9 +46,11 @@ function AppInner() {
 
   return (
     <ToastProvider>
-      <AppProvider>
-        <AppLayout />
-      </AppProvider>
+      <OrgProvider>
+        <AppProvider>
+          <AppLayout />
+        </AppProvider>
+      </OrgProvider>
     </ToastProvider>
   );
 }

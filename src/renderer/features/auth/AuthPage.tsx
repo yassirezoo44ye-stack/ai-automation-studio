@@ -95,6 +95,17 @@ function GitHubIcon() {
   );
 }
 
+function MicrosoftIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24">
+      <path fill="#F25022" d="M1 1h10v10H1z"/>
+      <path fill="#7FBA00" d="M13 1h10v10H13z"/>
+      <path fill="#00A4EF" d="M1 13h10v10H1z"/>
+      <path fill="#FFB900" d="M13 13h10v10H13z"/>
+    </svg>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function AuthPage() {
@@ -174,7 +185,7 @@ export function AuthPage() {
     } finally { setLoading(false); }
   }
 
-  function handleOAuth(provider: "google" | "github") {
+  function handleOAuth(provider: "google" | "github" | "microsoft") {
     window.location.href = `${API}/api/auth/${provider}`;
   }
 
@@ -212,6 +223,9 @@ export function AuthPage() {
               </button>
               <button style={S.oauthBtn("#24292e")} onClick={() => handleOAuth("github")} type="button">
                 <GitHubIcon /> GitHub
+              </button>
+              <button style={S.oauthBtn("#2f2f2f")} onClick={() => handleOAuth("microsoft")} type="button">
+                <MicrosoftIcon /> Microsoft
               </button>
             </div>
             <div style={S.divider}>
@@ -256,6 +270,9 @@ export function AuthPage() {
               </button>
               <button style={S.oauthBtn("#24292e")} onClick={() => handleOAuth("github")} type="button">
                 <GitHubIcon /> GitHub
+              </button>
+              <button style={S.oauthBtn("#2f2f2f")} onClick={() => handleOAuth("microsoft")} type="button">
+                <MicrosoftIcon /> Microsoft
               </button>
             </div>
             <div style={S.divider}>

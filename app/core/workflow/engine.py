@@ -351,6 +351,21 @@ async def _compensate(run: WorkflowRun) -> None:
                       run.run_id[:8], step.id, exc)
 
 
+async def _record_workflow_usage(run: WorkflowRun) -> None:
+    """Meter one workflow_executions unit against the run's organization,
+    when context carries one. Best-effort — never affects run.status."""
+    org_id = run.context.get("organization_id")
+    if not org_id:
+        return
+    try:
+        from app.billing import get_usage_service
+        await get_usage_service().record(
+            org_id, "workflow_executions", 1, ref_type="workflow", ref_id=run.run_id,
+        )
+    except Exception:
+        log.warning("workflow usage record failed for org=%s", org_id, exc_info=True)
+
+
 # ── Engine ────────────────────────────────────────────────────────────────────
 
 class WorkflowEngine:
@@ -433,6 +448,7 @@ class WorkflowEngine:
         finally:
             run.finished_at = time.time()
             self._active.pop(run.run_id, None)
+            await _record_workflow_usage(run)
 
         run.status = WorkflowStatus.COMPLETED
         log.info("wf[%s] completed in %.0fms", run.run_id[:8],

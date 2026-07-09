@@ -190,8 +190,15 @@ class TestLoginHappyPath:
         user_row.__getitem__ = MagicMock(side_effect=fake_user.__getitem__)
         user_row.get = MagicMock(side_effect=fake_user.get)
 
+        async def _fetchrow(query, *args):
+            # Login also checks mfa_secrets — simulate "no MFA configured"
+            # (a None row) for this user, distinct from the user lookup.
+            if "mfa_secrets" in query:
+                return None
+            return user_row
+
         conn = AsyncMock()
-        conn.fetchrow = AsyncMock(return_value=user_row)
+        conn.fetchrow = AsyncMock(side_effect=_fetchrow)
         conn.execute = AsyncMock(return_value=None)
 
         with _mock_pool(conn), \

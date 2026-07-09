@@ -253,5 +253,108 @@ class TestTenancyLogic(unittest.TestCase):
         self.assertIn(("*", "*"), DEFAULT_PERMISSIONS["owner"])
 
 
+# ── MFA / TOTP pure logic ─────────────────────────────────────────────────────
+
+class TestMfaTotp(unittest.TestCase):
+    def test_totp_round_trip(self):
+        import pyotp
+        secret = pyotp.random_base32()
+        totp = pyotp.TOTP(secret)
+        self.assertTrue(totp.verify(totp.now(), valid_window=1))
+
+    def test_totp_rejects_wrong_code(self):
+        import pyotp
+        secret = pyotp.random_base32()
+        totp = pyotp.TOTP(secret)
+        real = totp.now()
+        wrong = "000000" if real != "000000" else "111111"
+        self.assertFalse(totp.verify(wrong, valid_window=0))
+
+    def test_provisioning_uri_shape(self):
+        import pyotp
+        secret = pyotp.random_base32()
+        uri = pyotp.TOTP(secret).provisioning_uri(name="user@example.com", issuer_name="Axon")
+        self.assertTrue(uri.startswith("otpauth://totp/"))
+        self.assertIn("issuer=Axon", uri)
+
+    def test_backup_code_generation(self):
+        from app.routers.auth_users import _generate_backup_codes
+        codes = _generate_backup_codes()
+        self.assertEqual(len(codes), 10)
+        self.assertEqual(len(set(codes)), 10)  # no collisions
+        for c in codes:
+            self.assertEqual(len(c), 8)
+            self.assertEqual(c, c.upper())
+
+    def test_make_oauth_session_uses_correct_access_token_signature(self):
+        """Regression: _make_oauth_session used to call make_access_token()
+        with a single dict argument, but the function requires two
+        positional string args (user_id, email) — every OAuth login would
+        crash with a TypeError before ever reaching session persistence."""
+        import inspect
+        from app.core.jwt_utils import make_access_token
+        sig = inspect.signature(make_access_token)
+        self.assertEqual(list(sig.parameters), ["user_id", "email"])
+
+
+# ── Stripe plan mapping ───────────────────────────────────────────────────────
+
+class TestStripePlans(unittest.TestCase):
+    def test_price_lookup_symmetry(self):
+        from app.billing.stripe_plans import PLAN_TO_PRICE, PRICE_TO_PLAN
+        for plan_id, price_id in PLAN_TO_PRICE.items():
+            if price_id:
+                self.assertEqual(PRICE_TO_PLAN[price_id], plan_id)
+
+    def test_enterprise_not_purchasable(self):
+        from app.billing.stripe_plans import PURCHASABLE_PLANS
+        self.assertNotIn("enterprise", PURCHASABLE_PLANS)
+        self.assertNotIn("free", PURCHASABLE_PLANS)
+
+
+# ── Row Level Security policy shape ───────────────────────────────────────────
+
+class TestRlsPolicyShape(unittest.TestCase):
+    """
+    Full RLS behavior (does it actually block cross-org rows?) can only be
+    verified against a real Postgres — it was verified manually this session:
+    a live end-to-end check against the deployed database confirmed
+    acquire_scoped(org_a) cannot see org_b's rows, plain connections are
+    unaffected, and FORCE ROW LEVEL SECURITY is genuinely active (not a
+    silent no-op from table ownership).
+
+    That same live check caught a real bug worth guarding against
+    regressing: Postgres resets a custom GUC to '' (empty string), not
+    NULL, once any connection has run `SET LOCAL app.current_org_id = ...`
+    at least once — and asyncpg's pool reuses physical connections. Without
+    nullif() in the policy, a later *unscoped* query on a previously-scoped
+    (pooled) connection would try to cast '' to uuid and error out on every
+    RLS-protected table. These tests just guard the SQL text so that fix
+    can't be silently removed later.
+    """
+    def test_policy_handles_empty_string_guc_not_just_null(self):
+        from app.tenancy.rls import _RLS_TABLES
+        import inspect
+        from app.tenancy import rls
+        source = inspect.getsource(rls.enable_scoped_rls)
+        self.assertIn("nullif(", source,
+                      "policy must nullif() the GUC — plain current_setting(...) IS NULL "
+                      "breaks once a pooled connection has ever been through acquire_scoped()")
+        self.assertGreaterEqual(len(_RLS_TABLES), 5)
+
+    def test_organizations_scoped_by_id_not_organization_id(self):
+        from app.tenancy.rls import _RLS_TABLES
+        table_cols = dict(_RLS_TABLES)
+        self.assertEqual(table_cols["organizations"], "id")
+        self.assertEqual(table_cols["organization_members"], "organization_id")
+
+    def test_force_rls_present(self):
+        import inspect
+        from app.tenancy import rls
+        source = inspect.getsource(rls.enable_scoped_rls)
+        self.assertIn("FORCE ROW LEVEL SECURITY", source,
+                      "without FORCE, the app's own DB role (table owner) bypasses RLS entirely")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

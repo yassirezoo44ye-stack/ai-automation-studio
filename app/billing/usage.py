@@ -83,8 +83,9 @@ class UsageService:
         """Add `amount` to the metric for the current period; returns new total."""
         if metric not in METRICS:
             raise ValueError(f"unknown metric {metric!r}")
+        from app.core.db import acquire_scoped
         period = _current_period()
-        async with self._pool.acquire() as conn:
+        async with acquire_scoped(org_id) as conn:
             total = await conn.fetchval(
                 """INSERT INTO usage_records (organization_id, metric, period, amount)
                    VALUES ($1,$2,$3,$4)
@@ -103,8 +104,9 @@ class UsageService:
         return int(total)
 
     async def get_usage(self, org_id: str, period: str | None = None) -> dict[str, int]:
+        from app.core.db import acquire_scoped
         period = period or _current_period()
-        async with self._pool.acquire() as conn:
+        async with acquire_scoped(org_id) as conn:
             rows = await conn.fetch(
                 "SELECT metric, amount FROM usage_records "
                 "WHERE organization_id=$1 AND period=$2",
@@ -116,7 +118,8 @@ class UsageService:
 
     async def get_limit(self, org_id: str, metric: str) -> int:
         """Effective limit: per-org override wins over the plan default."""
-        async with self._pool.acquire() as conn:
+        from app.core.db import acquire_scoped
+        async with acquire_scoped(org_id) as conn:
             override = await conn.fetchval(
                 "SELECT override_limit FROM usage_limits "
                 "WHERE organization_id=$1 AND metric=$2",
@@ -131,11 +134,12 @@ class UsageService:
 
     async def check_quota(self, org_id: str, metric: str, amount: int = 1) -> None:
         """Raise QuotaExceeded if recording `amount` would breach the limit."""
+        from app.core.db import acquire_scoped
         limit = await self.get_limit(org_id, metric)
         if limit < 0:
             return  # unlimited
         period = _current_period()
-        async with self._pool.acquire() as conn:
+        async with acquire_scoped(org_id) as conn:
             used = await conn.fetchval(
                 "SELECT amount FROM usage_records "
                 "WHERE organization_id=$1 AND metric=$2 AND period=$3",

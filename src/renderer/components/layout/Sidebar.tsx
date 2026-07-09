@@ -1,5 +1,6 @@
 import { useAppContext } from "../../contexts/AppContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useOrg } from "../../contexts/OrgContext";
 import { Icons } from "../../icons";
 import type { Page } from "../../types";
 
@@ -9,8 +10,11 @@ const NAV: { id: Page; label: string; icon: keyof typeof Icons }[] = [
   { id: "dev",        label: "Dev",        icon: "dev"        },
   { id: "design",     label: "Design",     icon: "design"     },
   { id: "automation", label: "Automation", icon: "automation" },
-  { id: "agentos",     label: "AgentOS",     icon: "agentos"     },
-  { id: "marketplace", label: "Marketplace", icon: "marketplace" },
+  { id: "agentos",       label: "AgentOS",       icon: "agentos"       },
+  { id: "marketplace",   label: "Marketplace",   icon: "marketplace"   },
+  { id: "organizations", label: "Organizations", icon: "organizations" },
+  { id: "teams",         label: "Teams",         icon: "teams"         },
+  { id: "billing",       label: "Billing",       icon: "billing"       },
   { id: "social",      label: "Social",      icon: "social"      },
   { id: "settings",    label: "Settings",    icon: "settings"    },
 ];
@@ -39,6 +43,7 @@ interface SidebarProps {
 export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const { page, setPage, sidebarCollapsed, setSidebarCollapsed, theme, toggleTheme } = useAppContext();
   const { user, logout } = useAuth();
+  const { orgs, currentOrgId, setCurrentOrgId } = useOrg();
 
   const handleNav = (id: Page) => {
     setPage(id);
@@ -63,6 +68,26 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         >
           {sidebarCollapsed ? "›" : "‹"}
         </button>
+
+        {orgs.length > 0 && (
+          <div style={{ padding: sidebarCollapsed ? "0 8px 8px" : "0 12px 10px" }}>
+            <select
+              value={currentOrgId ?? ""}
+              onChange={e => setCurrentOrgId(e.target.value || null)}
+              aria-label="Current organization"
+              title={orgs.find(o => o.id === currentOrgId)?.name ?? "Select organization"}
+              style={{
+                width: "100%", fontSize: sidebarCollapsed ? 0 : 12,
+                background: "rgba(255,255,255,0.05)", color: "#e2e8f0",
+                border: "1px solid rgba(255,255,255,0.09)", borderRadius: 8,
+                padding: sidebarCollapsed ? "6px 2px" : "7px 10px",
+                cursor: "pointer", outline: "none",
+              }}
+            >
+              {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
+        )}
 
         <nav className="sidebar__nav">
           {NAV.map(item => {

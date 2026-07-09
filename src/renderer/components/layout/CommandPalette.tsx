@@ -21,6 +21,9 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
     { id: "automation", label: "Automation", sub: "Tasks & workflows",     icon: Icons.automation(), action: () => onNavigate("automation") },
     { id: "agentos",     label: "AgentOS",     sub: "Self-evolving AI OS",     icon: Icons.agentos(),     action: () => onNavigate("agentos")     },
     { id: "marketplace", label: "Marketplace", sub: "Browse agents & plugins", icon: Icons.marketplace(), action: () => onNavigate("marketplace") },
+    { id: "organizations", label: "Organizations", sub: "Create & switch orgs",  icon: Icons.organizations(), action: () => onNavigate("organizations") },
+    { id: "teams",          label: "Teams",         sub: "Members & invitations", icon: Icons.teams(),         action: () => onNavigate("teams")         },
+    { id: "billing",        label: "Billing",       sub: "Plan & usage",          icon: Icons.billing(),       action: () => onNavigate("billing")       },
     { id: "social",      label: "Social",      sub: "Social media content",    icon: Icons.social(),      action: () => onNavigate("social")      },
     { id: "settings",   label: "Settings",   sub: "App configuration",     icon: Icons.settings(),   action: () => onNavigate("settings")   },
   ];

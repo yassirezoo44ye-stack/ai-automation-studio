@@ -5,6 +5,7 @@ The pool is stored as a module-level variable so routers can call
 get_pool() without needing a FastAPI Depends chain. set_pool() is
 called once from the lifespan context manager in main.py.
 """
+from contextlib import asynccontextmanager
 from typing import Optional
 
 import asyncpg
@@ -23,6 +24,25 @@ def get_pool() -> asyncpg.Pool:
 def set_pool(p: asyncpg.Pool) -> None:
     global _pool
     _pool = p
+
+
+@asynccontextmanager
+async def acquire_scoped(org_id: str):
+    """
+    Acquire a connection with the Postgres session GUC `app.current_org_id`
+    set for the duration of one transaction — Row Level Security policies
+    (see app/tenancy/rls.py) read this to restrict visible rows to that
+    organization.
+
+    A plain `pool.acquire()` never sets this GUC, so RLS-protected tables
+    remain fully visible to ordinary queries elsewhere in the app — this is
+    additive defense-in-depth for the tenancy-critical services
+    (TenancyService, UsageService), not a blanket access-control rewrite.
+    """
+    async with get_pool().acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
+            yield conn
 
 
 # ── Schema initialisation ─────────────────────────────────────────────────────
@@ -218,6 +238,24 @@ async def ensure_tasks_table() -> None:
         ''')
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token      TEXT PRIMARY KEY,
+                user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS mfa_secrets (
+                user_id      UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                secret       TEXT NOT NULL,
+                enabled      BOOLEAN NOT NULL DEFAULT false,
+                backup_codes TEXT[] NOT NULL DEFAULT '{}',
+                created_at   TIMESTAMPTZ DEFAULT NOW(),
+                updated_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+        ''')
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS mfa_challenges (
                 token      TEXT PRIMARY KEY,
                 user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 expires_at TIMESTAMPTZ NOT NULL,
