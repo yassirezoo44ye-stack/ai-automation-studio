@@ -1,5 +1,6 @@
 {
   "version": "0.0.1",
+  "_note": "All cwd values are intentionally omitted so every config runs from this project's root (the preview tool requires cwd to stay within the project root). This repo uses npm exclusively (package-lock.json; no pnpm/yarn/bun lockfile) — do not add runtimeExecutable values for other package managers unless a matching lockfile is added. ui-component-studio is a separate sibling repository and must NOT be referenced here (its cwd would resolve outside this project root, which the preview tool rejects) — open and preview it independently from C:\\Users\\Dell\\ui-component-studio using its own .claude/launch.json.",
   "configurations": [
     {
       "name": "frontend-dev",
