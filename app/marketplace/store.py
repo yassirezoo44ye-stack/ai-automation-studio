@@ -80,9 +80,22 @@ CREATE TABLE IF NOT EXISTS marketplace_installs (
 CREATE INDEX IF NOT EXISTS idx_mkt_installs_item ON marketplace_installs(item_id);
 """
 
+# Org-visibility model, added on top of the original 4-table schema above.
+# 'public' + NULL owner_organization_id is today's global catalog — the
+# default preserves every existing row's behavior with zero migration of
+# existing data. 'private'/'internal' + an owner org scopes a listing to
+# just that org's members (enforced in list_items()/get_item() below).
+_MIGRATIONS: tuple[str, ...] = (
+    "ALTER TABLE marketplace_items ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'public'",
+    "ALTER TABLE marketplace_items ADD COLUMN IF NOT EXISTS owner_organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE",
+    "ALTER TABLE marketplace_items ADD COLUMN IF NOT EXISTS created_by UUID",
+    "ALTER TABLE marketplace_installs ADD COLUMN IF NOT EXISTS uninstalled_at TIMESTAMPTZ",
+)
+
 _ITEM_COLS = (
     "id, name, type, description, author, version, pricing, price_usd, tags, "
-    "metadata, installs, rating, rating_count, verified, created_at, updated_at"
+    "metadata, installs, rating, rating_count, verified, created_at, updated_at, "
+    "visibility, owner_organization_id, created_by"
 )
 
 
@@ -92,6 +105,10 @@ def _row_to_item(r: asyncpg.Record) -> dict[str, Any]:
     d["tags"] = list(d["tags"])
     if isinstance(d.get("metadata"), str):
         d["metadata"] = json.loads(d["metadata"])
+    if d.get("owner_organization_id") is not None:
+        d["owner_organization_id"] = str(d["owner_organization_id"])
+    if d.get("created_by") is not None:
+        d["created_by"] = str(d["created_by"])
     d.pop("deleted_at", None)
     return d
 
@@ -107,24 +124,46 @@ class PgMarketplaceStore:
     async def init(self) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(MARKETPLACE_SCHEMA)
+            for stmt in _MIGRATIONS:
+                await conn.execute(stmt)
 
     # ── Items ─────────────────────────────────────────────────────────────────
+    # `viewer_org_id`, when given, additionally reveals that org's own
+    # private/internal listings alongside the public catalog — it never
+    # restricts the public catalog. Anonymous/no-org callers see only
+    # visibility='public' rows, matching the pre-visibility-model behavior
+    # exactly (zero regression for the common case). A private item outside
+    # the viewer's org is treated as not-found (404, not 403) to avoid
+    # leaking existence, same pattern as org-membership checks elsewhere.
 
-    async def list_items(self) -> list[dict[str, Any]]:
+    async def list_items(self, *, viewer_org_id: str | None = None) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch(
-                f"SELECT {_ITEM_COLS} FROM marketplace_items WHERE deleted_at IS NULL"
-            )
+            if viewer_org_id:
+                rows = await conn.fetch(
+                    f"SELECT {_ITEM_COLS} FROM marketplace_items "
+                    "WHERE deleted_at IS NULL AND (visibility='public' OR owner_organization_id=$1)",
+                    uuid.UUID(str(viewer_org_id)),
+                )
+            else:
+                rows = await conn.fetch(
+                    f"SELECT {_ITEM_COLS} FROM marketplace_items "
+                    "WHERE deleted_at IS NULL AND visibility='public'"
+                )
         return [_row_to_item(r) for r in rows]
 
-    async def get_item(self, item_id: str) -> Optional[dict[str, Any]]:
+    async def get_item(self, item_id: str, *, viewer_org_id: str | None = None) -> Optional[dict[str, Any]]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 f"SELECT {_ITEM_COLS} FROM marketplace_items "
                 "WHERE id=$1 AND deleted_at IS NULL",
                 item_id,
             )
-        return _row_to_item(row) if row else None
+        if row is None:
+            return None
+        item = _row_to_item(row)
+        if item["visibility"] != "public" and item.get("owner_organization_id") != viewer_org_id:
+            return None
+        return item
 
     async def upsert_item(self, item: dict[str, Any]) -> None:
         async with self._pool.acquire() as conn:
@@ -133,8 +172,8 @@ class PgMarketplaceStore:
                     """INSERT INTO marketplace_items
                          (id, name, type, description, author, version, pricing,
                           price_usd, tags, metadata, installs, rating, rating_count,
-                          verified, created_at, updated_at)
-                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                          verified, created_at, updated_at, visibility, owner_organization_id, created_by)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
                        ON CONFLICT (id) DO UPDATE SET
                          name=EXCLUDED.name, description=EXCLUDED.description,
                          version=EXCLUDED.version, pricing=EXCLUDED.pricing,
@@ -142,7 +181,7 @@ class PgMarketplaceStore:
                          metadata=EXCLUDED.metadata, installs=EXCLUDED.installs,
                          rating=EXCLUDED.rating, rating_count=EXCLUDED.rating_count,
                          verified=EXCLUDED.verified, updated_at=EXCLUDED.updated_at,
-                         deleted_at=NULL""",
+                         visibility=EXCLUDED.visibility, deleted_at=NULL""",
                     item["id"], item["name"], item["type"], item["description"],
                     item.get("author", "anonymous"), item["version"], item["pricing"],
                     item.get("price_usd", 0.0), item.get("tags", []),
@@ -150,6 +189,9 @@ class PgMarketplaceStore:
                     item.get("installs", 0), item.get("rating", 0.0),
                     item.get("rating_count", 0), item.get("verified", False),
                     item.get("created_at", time.time()), item.get("updated_at", time.time()),
+                    item.get("visibility", "public"),
+                    uuid.UUID(str(item["owner_organization_id"])) if item.get("owner_organization_id") else None,
+                    uuid.UUID(str(item["created_by"])) if item.get("created_by") else None,
                 )
                 # Version history (semantic versioning trail)
                 await conn.execute(
@@ -170,8 +212,22 @@ class PgMarketplaceStore:
 
     async def record_install(
         self, item_id: str, *, org_id: str | None = None, user_email: str | None = None,
+        version: str | None = None,
     ) -> Optional[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
+        # Scoped when org_id is known — this is what actually activates the
+        # RLS policy already declared on marketplace_installs (previously a
+        # permanent no-op since nothing called acquire_scoped for it).
+        # `version`, when given, overrides the audit row's recorded version
+        # (used by InstallationPipeline.rollback_version — the item's
+        # current catalog version and the version actually being installed
+        # can differ during a rollback).
+        if org_id:
+            from app.core.db import acquire_scoped
+            conn_cm = acquire_scoped(org_id)
+        else:
+            conn_cm = self._pool.acquire()
+
+        async with conn_cm as conn:
             async with conn.transaction():
                 row = await conn.fetchrow(
                     "UPDATE marketplace_items SET installs = installs + 1, updated_at=$2 "
@@ -184,7 +240,7 @@ class PgMarketplaceStore:
                 await conn.execute(
                     "INSERT INTO marketplace_installs (item_id, organization_id, user_email, version) "
                     "VALUES ($1,$2,$3,$4)",
-                    item_id, uuid.UUID(org_id) if org_id else None, user_email, row["version"],
+                    item_id, uuid.UUID(str(org_id)) if org_id else None, user_email, version or row["version"],
                 )
         if org_id:
             try:
@@ -229,6 +285,28 @@ class PgMarketplaceStore:
             )
         return [dict(r) for r in rows]
 
+    # ── Version history ──────────────────────────────────────────────────────
+
+    async def list_versions(self, item_id: str) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, item_id, version, changelog, created_at "
+                "FROM marketplace_versions WHERE item_id=$1 ORDER BY created_at DESC",
+                item_id,
+            )
+        return [{**dict(r), "id": str(r["id"])} for r in rows]
+
+    async def get_version(self, item_id: str, version: str) -> Optional[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, item_id, version, changelog, created_at "
+                "FROM marketplace_versions WHERE item_id=$1 AND version=$2",
+                item_id, version,
+            )
+        if row is None:
+            return None
+        return {**dict(row), "id": str(row["id"])}
+
     async def count(self) -> int:
         async with self._pool.acquire() as conn:
             return await conn.fetchval(
@@ -266,11 +344,17 @@ class JsonMarketplaceStore:
     async def init(self) -> None:
         pass
 
-    async def list_items(self) -> list[dict[str, Any]]:
-        return list(self._store.values())
+    def _visible(self, item: dict[str, Any], viewer_org_id: str | None) -> bool:
+        return item.get("visibility", "public") == "public" or item.get("owner_organization_id") == viewer_org_id
 
-    async def get_item(self, item_id: str) -> Optional[dict[str, Any]]:
-        return self._store.get(item_id)
+    async def list_items(self, *, viewer_org_id: str | None = None) -> list[dict[str, Any]]:
+        return [i for i in self._store.values() if self._visible(i, viewer_org_id)]
+
+    async def get_item(self, item_id: str, *, viewer_org_id: str | None = None) -> Optional[dict[str, Any]]:
+        item = self._store.get(item_id)
+        if item is None or not self._visible(item, viewer_org_id):
+            return None
+        return item
 
     async def upsert_item(self, item: dict[str, Any]) -> None:
         self._store[item["id"]] = item
@@ -285,6 +369,7 @@ class JsonMarketplaceStore:
 
     async def record_install(
         self, item_id: str, *, org_id: str | None = None, user_email: str | None = None,
+        version: str | None = None,
     ) -> Optional[dict[str, Any]]:
         item = self._store.get(item_id)
         if item is None:
@@ -304,6 +389,19 @@ class JsonMarketplaceStore:
 
     async def list_reviews(self, item_id: str) -> list[dict[str, Any]]:
         return self._reviews.get(item_id, [])
+
+    async def list_versions(self, item_id: str) -> list[dict[str, Any]]:
+        item = self._store.get(item_id)
+        if item is None:
+            return []
+        return [{"id": item_id, "item_id": item_id, "version": item["version"],
+                  "changelog": item.get("metadata", {}).get("changelog"), "created_at": item.get("updated_at")}]
+
+    async def get_version(self, item_id: str, version: str) -> Optional[dict[str, Any]]:
+        for v in await self.list_versions(item_id):
+            if v["version"] == version:
+                return v
+        return None
 
     async def count(self) -> int:
         return len(self._store)

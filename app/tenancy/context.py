@@ -77,6 +77,28 @@ async def org_context(
     return OrgContext(org_id=org_id, user_id=user["id"], user_email=user["email"], role=role)
 
 
+async def optional_org_id(request: Request) -> str | None:
+    """Best-effort org resolution for endpoints that are public by default
+    but reveal additional org-scoped data (e.g. private marketplace
+    listings) when the caller is a verified member of the org named in
+    X-Organization-Id. Never raises — a missing header, missing/invalid
+    auth, or non-membership all just resolve to None (public-only view)."""
+    org_id = _extract_org_id(request)
+    if not org_id:
+        return None
+    try:
+        from fastapi.security import HTTPBearer
+        creds = await HTTPBearer(auto_error=False)(request)
+        if creds is None:
+            return None
+        user = await _get_current_user_dep()(creds)
+    except Exception:
+        return None
+    svc = get_tenancy_service()
+    role = await svc.get_member_role(org_id, user["id"])
+    return org_id if role is not None else None
+
+
 def require_permission(resource: str, action: str):
     """Dependency factory: org context + resource-based permission check."""
     async def _dep(ctx: OrgContext = Depends(org_context)) -> OrgContext:

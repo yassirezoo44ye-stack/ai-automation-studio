@@ -106,6 +106,22 @@ async def lifespan(app: FastAPI):
     from app.marketplace import init_marketplace_store
     await init_marketplace_store(pool)
 
+    # ── Production Marketplace: categories/publishers/dependencies/assets/
+    # changelog/downloads. Publishers must init after marketplace_items
+    # exists (it ALTERs that table to add publisher_id) — init_marketplace_
+    # store already ran above, so ordering is safe.
+    from app.marketplace import (
+        init_categories_schema, init_publishers_schema, init_dependencies_schema,
+        init_assets_schema, init_changelog_schema, init_downloads_schema,
+    )
+    async with pool.acquire() as conn:
+        await init_categories_schema(conn)
+        await init_publishers_schema(conn)
+        await init_dependencies_schema(conn)
+        await init_assets_schema(conn)
+        await init_changelog_schema(conn)
+        await init_downloads_schema(conn)
+
     # ── Scoped Row Level Security (defense-in-depth on tenancy tables) ─────
     from app.tenancy import enable_scoped_rls
     async with pool.acquire() as conn:
@@ -328,7 +344,7 @@ def create_app() -> FastAPI:
         allow_origins=_cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-Sub-Token", "X-Request-Id"],
+        allow_headers=["Content-Type", "Authorization", "X-Sub-Token", "X-Request-Id", "X-Organization-Id"],
     )
 
     # ── Static frontend (non-catch-all assets first) ────────────────────────
@@ -380,6 +396,7 @@ def create_app() -> FastAPI:
     app.include_router(planning_api_router.router)
     app.include_router(diagnostics_api_router.router)
     app.include_router(marketplace_router.router)
+    app.include_router(marketplace_router.admin_router)
     app.include_router(arabic_api_router.router)
     app.include_router(workflow_api_router.router)
     app.include_router(jobs_api_router.router)

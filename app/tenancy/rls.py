@@ -2,9 +2,8 @@
 Scoped PostgreSQL Row Level Security — defense-in-depth for the tables
 where a cross-tenant leak would matter most.
 
-Deliberately narrow: RLS is enabled on 5 tables (organizations,
-organization_members, teams, usage_records, marketplace_installs), and the
-policy only restricts queries that explicitly set the `app.current_org_id`
+Deliberately narrow: RLS is enabled only on the tables listed in
+_RLS_TABLES below, and the policy only restricts queries that explicitly set the `app.current_org_id`
 session GUC via `app.core.db.acquire_scoped()`. Every other connection in
 the app (the overwhelming majority of ~30 routers) never sets that GUC, so
 RLS is a no-op for them — this is intentional. It adds a real database-level
@@ -41,6 +40,7 @@ _RLS_TABLES: tuple[tuple[str, str], ...] = (
     ("payment_methods", "organization_id"),
     ("credits", "organization_id"),
     ("billing_events", "organization_id"),
+    ("marketplace_downloads", "organization_id"),
 )
 
 

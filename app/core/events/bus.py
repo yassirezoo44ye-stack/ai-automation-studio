@@ -26,6 +26,7 @@ EVENT_TYPES = frozenset({
     "agent.started", "agent.finished",
     "billing.updated",
     "marketplace.installed", "marketplace.published",
+    "marketplace.install_failed", "marketplace.uninstalled", "marketplace.publisher_verified",
     "deployment.completed",
     "memory.created",
     "organization.created", "organization.member_added",

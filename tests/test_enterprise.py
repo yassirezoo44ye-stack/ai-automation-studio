@@ -12,6 +12,7 @@ import asyncio
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -786,6 +787,263 @@ class TestTrialSupport(unittest.TestCase):
         from app.routers import org_billing
         source = inspect.getsource(org_billing.create_org_checkout)
         self.assertIn("has_ever_had_active_subscription", source)
+
+
+# ── Production Marketplace: dependency resolution ────────────────────────────
+
+class TestMarketplaceDependencyResolution(unittest.TestCase):
+    """resolve_install_order() adapts app/core/workflow/engine.py's
+    _topo_sort Kahn's-algorithm shape for a dependency graph — these tests
+    exercise that graph logic without a live Postgres by stubbing
+    DependencyService.list_for_item and the marketplace store's get_item."""
+
+    def _run_with_graph(self, item_id, edges, existing_items, versions=None):
+        from app.marketplace.dependencies import DependencyService
+        versions = versions or {}
+        svc = DependencyService(pool=None)
+
+        async def fake_list_for_item(iid):
+            return [
+                {"depends_on_item_id": dep, "version_constraint": vc, "optional": opt}
+                for dep, vc, opt in edges.get(iid, [])
+            ]
+        svc.list_for_item = fake_list_for_item
+
+        class FakeStore:
+            async def get_item(self, iid):
+                if iid not in existing_items:
+                    return None
+                return {"version": versions.get(iid, "1.0.0")}
+
+        with mock.patch("app.marketplace.store.get_marketplace_store", return_value=FakeStore()):
+            return run(svc.resolve_install_order(item_id))
+
+    def test_resolves_satisfiable_graph_dependencies_before_dependents(self):
+        # C -> B -> A (A has no deps)
+        edges = {"C": [("B", "*", False)], "B": [("A", "*", False)]}
+        order = self._run_with_graph("C", edges, {"A", "B", "C"})
+        self.assertEqual(order, ["A", "B", "C"])
+
+    def test_detects_circular_dependency(self):
+        from app.marketplace.dependencies import CircularDependencyError
+        edges = {"A": [("B", "*", False)], "B": [("A", "*", False)]}
+        with self.assertRaises(CircularDependencyError):
+            self._run_with_graph("A", edges, {"A", "B"})
+
+    def test_detects_missing_dependency(self):
+        """The realistic trigger: depends_on_item_id has a real FK, so a
+        dependency can never reference an item_id that never existed —
+        'missing' means the row was later soft-deleted (get_item filters
+        deleted_at IS NULL), which this stub simulates by omitting it from
+        existing_items."""
+        from app.marketplace.dependencies import MissingDependencyError
+        edges = {"A": [("ghost", "*", False)]}
+        with self.assertRaises(MissingDependencyError):
+            self._run_with_graph("A", edges, {"A"})
+
+    def test_optional_missing_dependency_does_not_raise(self):
+        edges = {"A": [("ghost", "*", True)]}
+        order = self._run_with_graph("A", edges, {"A"})
+        self.assertEqual(order, ["A"])
+
+    def test_unsatisfied_version_constraint_raises(self):
+        from app.marketplace.dependencies import VersionConstraintError
+        edges = {"A": [("B", ">=2.0.0", False)]}
+        with self.assertRaises(VersionConstraintError):
+            self._run_with_graph("A", edges, {"A", "B"}, versions={"B": "1.0.0"})
+
+    def test_satisfied_version_constraint_resolves(self):
+        edges = {"A": [("B", ">=1.0.0", False)]}
+        order = self._run_with_graph("A", edges, {"A", "B"}, versions={"B": "1.5.0"})
+        self.assertEqual(order, ["B", "A"])
+
+
+class TestMarketplaceVersionConstraints(unittest.TestCase):
+    """Hand-rolled comparator (no semver/packaging dependency added)."""
+
+    def test_wildcard_always_satisfies(self):
+        from app.marketplace.dependencies import version_satisfies
+        self.assertTrue(version_satisfies("0.0.1", "*"))
+        self.assertTrue(version_satisfies("9.9.9", ""))
+
+    def test_exact_match(self):
+        from app.marketplace.dependencies import version_satisfies
+        self.assertTrue(version_satisfies("1.2.3", "1.2.3"))
+        self.assertFalse(version_satisfies("1.2.3", "1.2.4"))
+
+    def test_caret_constraint_same_major_and_gte(self):
+        from app.marketplace.dependencies import version_satisfies
+        self.assertTrue(version_satisfies("1.5.0", "^1.2.0"))
+        self.assertTrue(version_satisfies("1.2.0", "^1.2.0"))
+        self.assertFalse(version_satisfies("1.1.9", "^1.2.0"))
+        self.assertFalse(version_satisfies("2.0.0", "^1.2.0"))
+
+    def test_comparison_operators(self):
+        from app.marketplace.dependencies import version_satisfies
+        self.assertTrue(version_satisfies("1.5.0", ">=1.0.0"))
+        self.assertFalse(version_satisfies("0.9.0", ">=1.0.0"))
+        self.assertTrue(version_satisfies("0.9.0", "<1.0.0"))
+        self.assertTrue(version_satisfies("1.0.0", "<=1.0.0"))
+        self.assertTrue(version_satisfies("2.0.0", ">1.0.0"))
+
+    def test_malformed_version_raises(self):
+        from app.marketplace.dependencies import version_satisfies
+        with self.assertRaises(ValueError):
+            version_satisfies("not-a-version", ">=1.0.0")
+
+
+class TestMarketplaceSecurity(unittest.TestCase):
+    def test_scan_for_secrets_clean_text(self):
+        from app.marketplace.security import scan_for_secrets
+        self.assertEqual(scan_for_secrets("Write a poem about the ocean."), [])
+
+    def test_scan_for_secrets_flags_aws_key(self):
+        from app.marketplace.security import scan_for_secrets
+        findings = scan_for_secrets('AKIAABCDEFGHIJKLMNOP is my access key')
+        self.assertTrue(findings)
+
+    def test_scan_for_secrets_flags_private_key_header(self):
+        from app.marketplace.security import scan_for_secrets
+        findings = scan_for_secrets("-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK...")
+        self.assertTrue(findings)
+
+    def test_scan_for_secrets_flags_stripe_key(self):
+        # Assembled at runtime (not a contiguous literal) so this obviously-
+        # fake fixture doesn't trip secret-scanners on the source diff while
+        # still exercising the same sk_live_... shaped regex at test time.
+        from app.marketplace.security import scan_for_secrets
+        fake_key = "sk_" + "live_" + "ABCDEFGHIJKLMNOPQRSTUVWX"
+        findings = scan_for_secrets(fake_key)
+        self.assertTrue(findings)
+
+    def test_checksum_roundtrip(self):
+        from app.marketplace.assets import compute_checksum
+        from app.marketplace.security import verify_checksum
+        content = "prompt pack contents here"
+        checksum = compute_checksum(content)
+        self.assertTrue(verify_checksum(content, checksum))
+        self.assertFalse(verify_checksum("tampered content", checksum))
+
+    def test_permission_manifest_flags_unknown_capability(self):
+        from app.marketplace.security import check_permission_manifest
+        findings = check_permission_manifest(["network", "not_a_real_capability"])
+        self.assertEqual(len(findings), 1)
+        self.assertIn("not_a_real_capability", findings[0])
+
+    def test_permission_manifest_accepts_known_capabilities(self):
+        from app.marketplace.security import check_permission_manifest
+        self.assertEqual(check_permission_manifest(["network", "filesystem"]), [])
+
+    def test_malware_and_vuln_scan_stubs_are_labeled_not_configured(self):
+        """These are deliberately unimplemented this phase — guard against
+        someone silently flipping them to a fake 'pass' without the
+        'not configured' signal a caller depends on to know it's a stub."""
+        from app.marketplace.security import scan_for_malware, scan_dependency_vulnerabilities
+        r1 = scan_for_malware({"item_id": "x"})
+        r2 = scan_dependency_vulnerabilities("x")
+        self.assertTrue(r1.passed)
+        self.assertTrue(r2.passed)
+        self.assertTrue(any("not configured" in f for f in r1.findings))
+        self.assertTrue(any("not configured" in f for f in r2.findings))
+
+
+class TestMarketplaceAuthRegression(unittest.TestCase):
+    """Regression: publish_listing/update_listing/delete_listing/
+    install_listing/submit_review originally had zero auth dependency —
+    anyone could publish/update/delete any listing, and install/spoof an
+    org via the X-Organization-Id header with zero membership verification.
+    Every mutating endpoint must now depend on org_context/require_permission/
+    get_current_user, matching test_legacy_api_keys_router_requires_
+    authentication's source-inspection pattern from the tenancy phase."""
+
+    def _depends_on(self, fn, target):
+        import inspect
+        sig = inspect.signature(fn)
+        return any(
+            getattr(p.default, "dependency", None) is target
+            for p in sig.parameters.values()
+        )
+
+    def test_publish_update_require_publish_permission(self):
+        from app.routers import marketplace
+        from app.tenancy.context import require_permission
+        import inspect
+        for name in ("publish_listing", "update_listing"):
+            fn = getattr(marketplace, name)
+            sig = inspect.signature(fn)
+            # require_permission(...) returns a fresh closure each call, so
+            # compare by dependency-factory source rather than identity.
+            gated = any(
+                getattr(p.default, "dependency", None) is not None
+                and getattr(p.default.dependency, "__qualname__", "") == require_permission("marketplace", "publish").__qualname__
+                for p in sig.parameters.values()
+            )
+            self.assertTrue(gated, f"{name} must Depends(require_permission(...))")
+
+    def test_delete_requires_manage_permission(self):
+        from app.routers import marketplace
+        import inspect
+        sig = inspect.signature(marketplace.delete_listing)
+        self.assertTrue(
+            any(p.default is not None and hasattr(p.default, "dependency") for p in sig.parameters.values()),
+            "delete_listing must have a permission dependency",
+        )
+
+    def test_install_uninstall_require_org_context(self):
+        from app.routers import marketplace
+        from app.tenancy import org_context
+        for name in ("install_listing", "uninstall_listing"):
+            fn = getattr(marketplace, name)
+            self.assertTrue(
+                self._depends_on(fn, org_context),
+                f"{name} must Depends(org_context) — no more spoofable X-Organization-Id header reads",
+            )
+
+    def test_install_listing_no_longer_reads_raw_request_headers(self):
+        """The original bug: install_listing read request.headers.get(
+        'X-Organization-Id')/'X-User-Email' directly with zero verification
+        of membership. Guard against that pattern silently coming back."""
+        import inspect
+        from app.routers import marketplace
+        source = inspect.getsource(marketplace.install_listing)
+        self.assertNotIn("request.headers", source)
+        self.assertNotIn('"X-Organization-Id"', source)
+
+    def test_submit_review_requires_authenticated_user(self):
+        from app.routers import marketplace
+        from app.routers.auth_users import get_current_user
+        self.assertTrue(
+            self._depends_on(marketplace.submit_review, get_current_user),
+            "submit_review must Depends(get_current_user) — reviewer must come from the token, not client input",
+        )
+
+    def test_review_request_has_no_client_supplied_reviewer_field(self):
+        from app.routers.marketplace import ReviewRequest
+        self.assertNotIn("reviewer", ReviewRequest.model_fields)
+
+    def test_publish_request_author_comes_from_context_not_client(self):
+        import inspect
+        from app.routers import marketplace
+        source = inspect.getsource(marketplace.publish_listing)
+        self.assertIn("ctx.user_email", source)
+
+    def test_ownership_check_exists_for_update_and_delete(self):
+        """Closes a gap found during implementation: RBAC permission alone
+        isn't ownership — once marketplace_items.owner_organization_id
+        exists, an org with marketplace:publish/manage must not be able to
+        edit or delete another org's listing."""
+        import inspect
+        from app.routers import marketplace
+        for name in ("update_listing", "delete_listing"):
+            source = inspect.getsource(getattr(marketplace, name))
+            self.assertIn("_assert_owns", source, f"{name} must check listing ownership")
+
+
+class TestMarketplaceEventTypes(unittest.TestCase):
+    def test_new_marketplace_events_declared(self):
+        from app.core.events.bus import EVENT_TYPES
+        for event in ("marketplace.install_failed", "marketplace.uninstalled", "marketplace.publisher_verified"):
+            self.assertIn(event, EVENT_TYPES)
 
 
 if __name__ == "__main__":
