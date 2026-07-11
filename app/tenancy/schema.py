@@ -125,7 +125,7 @@ DEFAULT_PERMISSIONS: dict[str, list[tuple[str, str]]] = {
         ("*", "read"), ("*", "create"), ("*", "update"), ("*", "delete"),
         ("members", "manage"), ("billing", "manage"), ("api_keys", "manage"),
         ("teams", "manage"), ("marketplace", "publish"), ("marketplace", "manage"),
-        ("marketplace", "install"),
+        ("marketplace", "install"), ("plugins", "manage"),
     ],
     "manager": [
         ("*", "read"),

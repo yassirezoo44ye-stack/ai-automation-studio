@@ -156,8 +156,17 @@ class InstallationPipeline:
         if result is None:
             raise ItemNotFoundError(item_id)
 
-        # 7. register — no runtime "activation" registry exists yet (that's
-        # Plugin SDK territory); the transaction committing IS the registration.
+        # 7. register — for a plugin listing, actually load and activate the
+        # code via the Plugin SDK's loader. Best-effort: a plugin failing to
+        # load must not undo the marketplace install that already committed
+        # in stage 6 (the failure is recorded in plugin_health_log; the
+        # caller can inspect it via GET /plugins/installed/{id}/health).
+        if item.get("type") == "plugin":
+            try:
+                from app.plugins import get_plugin_loader
+                await get_plugin_loader().load(item_id, org_id=org_id, actor_id=actor_id)
+            except Exception:
+                log.warning("plugin registration failed for %s org=%s", item_id, org_id, exc_info=True)
 
         # 8. emit event (best-effort, never breaks a successful install).
         try:
@@ -203,6 +212,23 @@ class InstallationPipeline:
             )
         except Exception:
             pass
+
+        # Mirror of stage 7's registration hook — deactivate the plugin's
+        # code if this was a plugin listing. Looked up directly against
+        # plugin_installations (not via store.get_item()) because a
+        # publisher may have soft-deleted or unlisted the listing after
+        # this org installed it — get_item() would return None in that
+        # case and silently skip the unload, leaving the installation
+        # stuck at its old status. Best-effort for the same reason as
+        # install: the marketplace uninstall above already committed.
+        try:
+            from app.plugins import get_plugin_loader
+            loader = get_plugin_loader()
+            installation = await loader.find_installation(org_id, item_id)
+            if installation:
+                await loader.unload(str(installation["id"]))
+        except Exception:
+            log.warning("plugin unload failed for %s org=%s", item_id, org_id, exc_info=True)
 
     async def rollback_version(
         self, item_id: str, *, org_id: str, actor_id: str,

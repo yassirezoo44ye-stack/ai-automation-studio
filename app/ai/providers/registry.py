@@ -28,6 +28,18 @@ _DEFAULT_ORDER = [ProviderID.anthropic, ProviderID.openai, ProviderID.gemini]
 class ProviderRegistry:
     """Single instance shared across the app."""
 
+    def register_provider(self, provider_id: str, provider: BaseProvider) -> None:
+        """Dynamic registration — for a Plugin SDK AI_PROVIDER-type plugin.
+        The built-in providers above are still wired at module load time;
+        this just lets a plugin add to the same `_ALL` dict at runtime."""
+        _ALL[provider_id] = provider
+        log.info("registered AI provider: %s", provider_id)
+
+    def unregister_provider(self, provider_id: str) -> bool:
+        if provider_id in _DEFAULT_ORDER:
+            raise ValueError(f"cannot unregister built-in provider {provider_id!r}")
+        return _ALL.pop(provider_id, None) is not None
+
     def get(self, provider_id: str) -> BaseProvider:
         p = _ALL.get(provider_id)
         if not p:

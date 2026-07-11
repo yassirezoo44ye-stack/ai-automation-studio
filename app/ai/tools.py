@@ -64,6 +64,19 @@ def tool(
     return decorator
 
 
+def register_tool(schema: ToolSchema, fn: Callable) -> None:
+    """Non-decorator registration — for callers that build a ToolSchema
+    dynamically (e.g. a Plugin SDK TOOL-type plugin loaded from a
+    marketplace asset, where there's no source-level `@tool(...)` to
+    decorate). Same _REGISTRY the decorator writes to."""
+    _REGISTRY[schema.name] = _ToolEntry(schema=schema, fn=fn)
+    log.debug("Registered tool (dynamic): %s", schema.name)
+
+
+def unregister_tool(tool_name: str) -> bool:
+    return _REGISTRY.pop(tool_name, None) is not None
+
+
 # ── Execution ─────────────────────────────────────────────────────────────────
 
 async def execute(tool_name: str, arguments: dict[str, Any]) -> str:

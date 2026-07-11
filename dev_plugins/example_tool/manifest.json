@@ -1,0 +1,14 @@
+{
+  "id": "example_tool",
+  "name": "Example Tool",
+  "version": "1.0.0",
+  "author": "Axon Team",
+  "description": "Example plugin: reverses a string. Demonstrates the Plugin SDK's TOOL type.",
+  "category": "tool",
+  "dependencies": [],
+  "required_permissions": [],
+  "min_platform_version": "1.0.0",
+  "max_platform_version": null,
+  "entry_point": "plugin:ExampleToolPlugin",
+  "configuration_schema": {}
+}

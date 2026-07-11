@@ -41,6 +41,7 @@ _RLS_TABLES: tuple[tuple[str, str], ...] = (
     ("credits", "organization_id"),
     ("billing_events", "organization_id"),
     ("marketplace_downloads", "organization_id"),
+    ("plugin_installations", "organization_id"),
 )
 
 
