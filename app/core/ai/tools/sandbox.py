@@ -23,13 +23,21 @@ class ToolPermissions:
     """
     Declares what a tool is allowed to do.
 
-    The sandbox only enforces timeout and result size here.
-    Future versions can add process/network/filesystem restrictions.
+    timeout_s/max_result_chars/allowed_for/requires_auth are enforced here,
+    unchanged from before. network_policy/capabilities are new (Agent
+    Sandbox) and default to the platform's most permissive prior behavior
+    ("full" network, no declared capabilities) so every existing built-in
+    tool call site keeps working identically — they're only meaningful for
+    a tool backed by a sandboxed plugin worker (app/sandbox/), which reads
+    them to decide the worker's actual network/filesystem/secret access;
+    this dataclass itself still only enforces timeout + result size.
     """
     timeout_s:       float = _DEFAULT_TIMEOUT_S
     max_result_chars: int   = _DEFAULT_MAX_RESULT_CHARS
     allowed_for:     Set[str] = field(default_factory=lambda: {"*"})  # user IDs or "*"
     requires_auth:   bool  = False  # If True, user_id must be provided
+    network_policy:  str   = "full"     # "none" | "internal" | "allowlist" | "full" — see app.sandbox.permissions
+    capabilities:    frozenset = field(default_factory=frozenset)  # subset of app.marketplace.security.ALL_KNOWN_CAPABILITIES
 
 
 @dataclass

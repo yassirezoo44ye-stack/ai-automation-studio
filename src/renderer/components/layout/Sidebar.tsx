@@ -13,6 +13,7 @@ const NAV: { id: Page; label: string; icon: keyof typeof Icons }[] = [
   { id: "agentos",       label: "AgentOS",       icon: "agentos"       },
   { id: "marketplace",   label: "Marketplace",   icon: "marketplace"   },
   { id: "plugins",       label: "Plugins",       icon: "plugins"       },
+  { id: "sandbox",       label: "Sandbox",       icon: "sandbox"       },
   { id: "organizations", label: "Organizations", icon: "organizations" },
   { id: "teams",         label: "Teams",         icon: "teams"         },
   { id: "billing",       label: "Billing",       icon: "billing"       },

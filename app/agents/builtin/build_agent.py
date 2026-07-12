@@ -6,7 +6,7 @@ import shlex
 import subprocess
 from pathlib import Path
 
-from app.agents.base import AgentContext, AgentResult, EvolvableAgent
+from app.agents.base import AgentContext, AgentPermissions, AgentResult, EvolvableAgent
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +22,15 @@ class BuildAgent(EvolvableAgent):
     name        = "build"
     description = "Build a project (auto-detects build tool)"
     group       = "execution"
+
+    @property
+    def permissions(self) -> AgentPermissions:
+        # execute() itself already enforces a 300s subprocess.run timeout
+        # (see below) — run()'s own asyncio.wait_for wrapper must not cut
+        # this off earlier at the generic 30s default, or every build
+        # would spuriously report "timed out" the instant the (already
+        # complete) subprocess call returns control to the event loop.
+        return AgentPermissions(can_execute_subprocess=True, max_execution_seconds=310.0)
 
     async def execute(self, ctx: AgentContext) -> AgentResult:
         parts    = shlex.split(ctx.args) if ctx.args else []

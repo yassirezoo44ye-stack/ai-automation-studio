@@ -15,6 +15,7 @@ to work; new methods have safe defaults.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -333,7 +334,13 @@ class EvolvableAgent(ABC):
 
         t0 = time.perf_counter()
         try:
-            result = await self.execute(ctx)
+            result = await asyncio.wait_for(self.execute(ctx), timeout=self.permissions.max_execution_seconds)
+        except asyncio.TimeoutError:
+            ms = (time.perf_counter() - t0) * 1000
+            result = AgentResult.fail(
+                self.name, f"execution exceeded max_execution_seconds={self.permissions.max_execution_seconds}",
+                duration_ms=ms,
+            )
         except Exception as exc:
             ms = (time.perf_counter() - t0) * 1000
             result = AgentResult.fail(self.name, str(exc), duration_ms=ms)

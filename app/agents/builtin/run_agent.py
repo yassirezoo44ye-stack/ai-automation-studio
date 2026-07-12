@@ -5,7 +5,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from app.agents.base import AgentContext, AgentResult, EvolvableAgent
+from app.agents.base import AgentContext, AgentPermissions, AgentResult, EvolvableAgent
 
 log = logging.getLogger(__name__)
 
@@ -14,6 +14,13 @@ class RunAgent(EvolvableAgent):
     name        = "run"
     description = "Execute a project (auto-detects Node, Python, Docker)"
     group       = "execution"
+
+    @property
+    def permissions(self) -> AgentPermissions:
+        # Matches performance_hint()'s own declared timeout_s=300 below —
+        # a real project execution via UnifiedExecutionEngine routinely
+        # exceeds the generic 30s default.
+        return AgentPermissions(can_execute_subprocess=True, max_execution_seconds=300.0)
 
     async def execute(self, ctx: AgentContext) -> AgentResult:
         workspace = ctx.args.strip() or ctx.workspace

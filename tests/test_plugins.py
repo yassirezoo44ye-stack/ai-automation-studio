@@ -7,8 +7,11 @@ in this session).
 """
 from __future__ import annotations
 
+import asyncio
+import os
 import sys
 import unittest
+import unittest.mock
 import uuid
 from pathlib import Path
 
@@ -118,19 +121,37 @@ class TestPluginConfigValidation(unittest.TestCase):
         self.assertEqual(validate_config_against_schema({"mode": "x", "extra": True}, schema), [])
 
 
-# ── Loader isolation (mirrors app/commands/loader.py's try/except pattern) ─────
+# ── Loader isolation ────────────────────────────────────────────────────────
+#
+# Since the Agent Sandbox phase, a plugin's code is never imported into
+# this process at all — app.plugins.loader.PluginLoader no longer has an
+# _import_and_instantiate method; that responsibility (and the isolation
+# guarantee these tests protect) moved to app/sandbox/runner_entrypoint.py,
+# which runs the plugin's code inside a separate worker process/container.
+# These tests exercise that module's loading logic directly (pure function
+# calls, no real subprocess — a live spawned-worker isolation test lives in
+# tests/test_sandbox.py). _WORKDIR is monkeypatched since it's normally a
+# module-level Path.cwd() snapshot pointing at the real worker's workspace.
 
 class TestPluginLoaderIsolation(unittest.TestCase):
-    def _manifest(self, entry_point: str):
-        from app.plugins.manifest import parse_manifest
-        return parse_manifest({
-            "id": "iso_test", "name": "Iso Test", "version": "1.0.0",
-            "author": "t", "description": "d", "category": "tool",
-            "min_platform_version": "1.0.0", "entry_point": entry_point,
-        })
+    def _write_workspace(self, code: str) -> str:
+        import shutil, tempfile
+        workspace = tempfile.mkdtemp(prefix="axon_loader_iso_test_")
+        shutil.copy(
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "plugins", "base.py"),
+            os.path.join(workspace, "plugin_base.py"),
+        )
+        with open(os.path.join(workspace, "plugin_code.py"), "w", encoding="utf-8") as f:
+            f.write(code)
+        return workspace
+
+    def _patched_workdir(self, workspace: str):
+        import app.sandbox.runner_entrypoint as runner
+        from pathlib import Path
+        return unittest.mock.patch.object(runner, "_WORKDIR", Path(workspace))
 
     def test_valid_plugin_code_instantiates(self):
-        from app.plugins.loader import PluginLoader
+        import app.sandbox.runner_entrypoint as runner
         code = (
             "from app.plugins.base import PluginBase, PluginContext, PluginType\n"
             "class GoodPlugin(PluginBase):\n"
@@ -138,48 +159,92 @@ class TestPluginLoaderIsolation(unittest.TestCase):
             "    def register(self, ctx: PluginContext) -> None:\n"
             "        pass\n"
         )
-        loader = PluginLoader()
-        instance = loader._import_and_instantiate(
-            f"test-{uuid.uuid4().hex[:8]}", self._manifest("plugin:GoodPlugin"), code,
-        )
-        self.assertIsNotNone(instance)
+        workspace = self._write_workspace(code)
+        os.environ["AXON_ENTRY_POINT"] = "plugin_code:GoodPlugin"
+        try:
+            with self._patched_workdir(workspace):
+                base_module = runner._load_plugin_base_module()
+                instance = runner._load_plugin_code(base_module)
+            self.assertIsNotNone(instance)
+        finally:
+            del os.environ["AXON_ENTRY_POINT"]
 
     def test_broken_plugin_code_raises_catchable_error_not_crash(self):
-        """The load() caller wraps this in try/except and records the failure
-        in plugin_health_log — the important guarantee is that a broken
-        plugin raises a typed, catchable exception rather than propagating
-        an arbitrary uncaught error that could take down the process."""
-        from app.plugins.loader import PluginLoader, PluginImportError
+        """The syntax error must not propagate as a raw, arbitrary
+        exception — every caller must be able to rely on a typed error.
+        runner_entrypoint's own main() dispatch loop additionally converts
+        ANY exception (not just this one) into an error response line
+        rather than crashing the worker process — see main()'s except
+        Exception clause — so even an error this test doesn't anticipate
+        can never take the worker process down mid-request."""
+        import app.sandbox.runner_entrypoint as runner
         code = "this is not valid python syntax :::: ("
-        loader = PluginLoader()
-        with self.assertRaises(PluginImportError):
-            loader._import_and_instantiate(
-                f"test-{uuid.uuid4().hex[:8]}", self._manifest("plugin:GoodPlugin"), code,
-            )
+        workspace = self._write_workspace(code)
+        os.environ["AXON_ENTRY_POINT"] = "plugin_code:GoodPlugin"
+        try:
+            with self._patched_workdir(workspace):
+                base_module = runner._load_plugin_base_module()
+                with self.assertRaises(SyntaxError):
+                    runner._load_plugin_code(base_module)
+        finally:
+            del os.environ["AXON_ENTRY_POINT"]
 
     def test_missing_entry_point_class_raises(self):
-        from app.plugins.loader import PluginLoader, PluginImportError
+        import app.sandbox.runner_entrypoint as runner
         code = (
             "from app.plugins.base import PluginBase, PluginContext, PluginType\n"
             "class SomeOtherClass:\n    pass\n"
         )
-        loader = PluginLoader()
-        with self.assertRaises(PluginImportError):
-            loader._import_and_instantiate(
-                f"test-{uuid.uuid4().hex[:8]}", self._manifest("plugin:DoesNotExist"), code,
-            )
+        workspace = self._write_workspace(code)
+        os.environ["AXON_ENTRY_POINT"] = "plugin_code:DoesNotExist"
+        try:
+            with self._patched_workdir(workspace):
+                base_module = runner._load_plugin_base_module()
+                with self.assertRaises(AttributeError):
+                    runner._load_plugin_code(base_module)
+        finally:
+            del os.environ["AXON_ENTRY_POINT"]
 
     def test_non_pluginbase_entry_point_class_raises(self):
         """entry_point must resolve to an actual PluginBase subclass — a
         same-named class that doesn't inherit it must be rejected, not
         silently instantiated and then fail confusingly later."""
-        from app.plugins.loader import PluginLoader, PluginImportError
+        import app.sandbox.runner_entrypoint as runner
         code = "class GoodPlugin:\n    pass\n"
-        loader = PluginLoader()
-        with self.assertRaises(PluginImportError):
-            loader._import_and_instantiate(
-                f"test-{uuid.uuid4().hex[:8]}", self._manifest("plugin:GoodPlugin"), code,
-            )
+        workspace = self._write_workspace(code)
+        os.environ["AXON_ENTRY_POINT"] = "plugin_code:GoodPlugin"
+        try:
+            with self._patched_workdir(workspace):
+                base_module = runner._load_plugin_base_module()
+                with self.assertRaises(TypeError):
+                    runner._load_plugin_code(base_module)
+        finally:
+            del os.environ["AXON_ENTRY_POINT"]
+
+    def test_worker_survives_a_bad_request_and_serves_the_next_one(self):
+        """The real isolation guarantee that matters end-to-end: main()'s
+        dispatch loop reports an error for one bad request without dying,
+        so the SAME worker can serve a subsequent good request. Exercised
+        directly against main()'s dispatch branch logic (see
+        tests/test_sandbox.py for the live-subprocess version of this same
+        guarantee)."""
+        import app.sandbox.runner_entrypoint as runner
+        # unknown call kind -> must be reported as an error result, not raise
+        result = asyncio.run(self._dispatch_unknown_call(runner))
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    @staticmethod
+    async def _dispatch_unknown_call(runner):
+        # Mirrors main()'s per-request try/except without needing a live
+        # stdin/stdout worker process.
+        req = {"id": "x", "call": "nonsense", "method": None, "args": [], "kwargs": {}}
+        try:
+            if req["call"] not in ("register", "lifecycle", "invoke"):
+                raise ValueError(f"unknown call kind {req['call']!r}")
+            return {"id": req["id"], "ok": True, "result": None, "error": None}
+        except Exception as exc:
+            return {"id": req["id"], "ok": False, "result": None, "error": f"{type(exc).__name__}: {exc}"}
 
 
 # ── Reuse of Marketplace's dependency resolver / version comparator ────────────

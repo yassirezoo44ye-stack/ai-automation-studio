@@ -2,26 +2,25 @@
 Plugin Loader — discovery, validation, dependency resolution, version
 compatibility, safe loading, hot reload (dev-only), graceful unloading.
 
-Directly generalizes app/commands/loader.py's proven mechanism:
-importlib.util.spec_from_file_location -> module_from_spec ->
-sys.modules[...] -> exec_module, wrapped in try/except so one broken
-plugin can never crash the loader or take down another plugin. Dependency
-resolution and version-constraint checking are NOT reimplemented here —
-they delegate straight to app.marketplace.dependencies (the same
+Execution is isolated by the Agent Sandbox (app/sandbox/): a plugin's own
+code never runs in this process anymore. load() asks SandboxManager for a
+live Worker (a Docker container or subprocess running
+app/sandbox/runner_entrypoint.py), drives its lifecycle hooks and
+register() over that Worker's IPC channel, and wires the JSON-safe
+registrations it returns into the real registries via
+app.plugins.adapters.adapt_registrations — which hands each registry a
+proxy that dispatches every actual call back into the Worker. Dependency
+resolution and version-constraint checking are still NOT reimplemented
+here — they delegate straight to app.marketplace.dependencies (the same
 Kahn's-algorithm resolver and version_satisfies comparator the Marketplace
 phase already shipped and tested).
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 import os
-import sys
-import tempfile
-import time
 import uuid
-from pathlib import Path
 from typing import Any, Optional
 
 log = logging.getLogger(__name__)
@@ -38,8 +37,6 @@ def normalize_installation_row(row: dict[str, Any]) -> dict[str, Any]:
         if isinstance(row.get(field), str):
             row[field] = json.loads(row[field])
     return row
-
-_TMP_DIR = Path(tempfile.gettempdir()) / "axon_plugins"
 
 
 class PluginLoadError(Exception):
@@ -72,7 +69,7 @@ _SENSITIVE_CAPABILITIES = frozenset({
 
 class PluginLoader:
     def __init__(self) -> None:
-        # installation_id -> live PluginBase instance, for enable/disable/unload
+        # installation_id -> live sandbox Worker handle, for enable/disable/unload
         self._instances: dict[str, Any] = {}
 
     async def load(self, marketplace_item_id: str, *, org_id: str, actor_id: Optional[str] = None) -> dict[str, Any]:
@@ -128,45 +125,57 @@ class PluginLoader:
             await self._log_health(installation_id, "error", "awaiting approval for sensitive capabilities")
             raise PluginNotApprovedError(manifest.id)
 
+        from app.sandbox import get_sandbox_manager
+        manager = get_sandbox_manager()
         try:
-            instance = self._import_and_instantiate(installation_id, manifest, bundle["code"])
+            worker = await manager.spawn_worker(
+                installation_id=installation_id, org_id=org_id, plugin_id=manifest.id,
+                entry_point=manifest.entry_point, code=bundle["code"], config=installation["config"],
+            )
         except Exception as exc:
             await self._log_health(installation_id, "error", str(exc))
             await self._set_status(installation_id, "failed")
             raise PluginImportError(manifest.id, str(exc)) from exc
 
-        ctx = self._make_context(installation_id, manifest.id, org_id, installation["config"])
+        from app.plugins.adapters import adapt_registrations
         try:
-            await instance.on_install(ctx)
-            await instance.on_enable(ctx)
-            instance.register(ctx)
+            await worker.call("lifecycle", method="on_install", timeout=15)
+            await worker.call("lifecycle", method="on_enable", timeout=15)
+            registrations = await worker.call("register", timeout=15)
+            # Reconstructing real registry objects (e.g. a pydantic
+            # ToolSchema) from the worker's JSON-safe records can itself
+            # raise (a plugin-declared tool name failing validation) —
+            # this must hit the same failure path as a worker.call()
+            # error, not propagate uncaught past load()'s documented
+            # "never raises into the marketplace install transaction"
+            # contract.
+            adapt_registrations(installation_id, worker, registrations)
         except Exception as exc:
-            self._cleanup_module(installation_id)
+            await manager.stop_worker(installation_id)
             await self._log_health(installation_id, "error", f"register() failed: {exc}")
             await self._set_status(installation_id, "failed")
             raise PluginImportError(manifest.id, str(exc)) from exc
 
-        self._instances[installation_id] = instance
+        self._instances[installation_id] = worker
         await self._set_status(installation_id, "enabled")
         await self._log_health(installation_id, "load", f"loaded {manifest.id}@{manifest.version}")
         return installation
 
     async def unload(self, installation_id: str) -> None:
-        instance = self._instances.pop(installation_id, None)
-        if instance is not None:
-            row = await self._get_installation(installation_id)
-            ctx = self._make_context(
-                installation_id, row["plugin_id"], str(row["organization_id"]) if row else None,
-                row["config"] if row else {},
-            )
+        worker = self._instances.pop(installation_id, None)
+        if worker is not None:
             try:
-                await instance.on_disable(ctx)
-                instance.unregister(ctx)
-                await instance.on_uninstall(ctx)
+                await worker.call("lifecycle", method="on_disable", timeout=10)
             except Exception as exc:
-                log.warning("plugin %s raised during unload: %s", installation_id, exc)
-        module_name = f"_axon_plugin_{installation_id}"
-        sys.modules.pop(module_name, None)
+                log.warning("plugin %s raised during on_disable (unload): %s", installation_id, exc)
+            from app.plugins.adapters import unadapt_registrations
+            unadapt_registrations(installation_id)
+            try:
+                await worker.call("lifecycle", method="on_uninstall", timeout=10)
+            except Exception as exc:
+                log.warning("plugin %s raised during on_uninstall: %s", installation_id, exc)
+            from app.sandbox import get_sandbox_manager
+            await get_sandbox_manager().stop_worker(installation_id)
         await self._set_status(installation_id, "uninstalled")
         await self._log_health(installation_id, "unload", "unloaded")
 
@@ -175,27 +184,30 @@ class PluginLoader:
 
     async def disable(self, installation_id: str) -> None:
         """Pause a plugin without uninstalling it — unlike unload(), the
-        plugin_installations row survives with status='disabled' so
-        enable() can bring it back without re-resolving dependencies."""
-        instance = self._instances.get(installation_id)
+        Worker process/container is kept alive (its lifetime matches the
+        original in-process design's "keep the instance resident, just
+        unregister it" semantics) so enable() can bring it back without
+        paying spawn latency again or re-resolving dependencies."""
+        worker = self._instances.get(installation_id)
         row = await self._get_installation(installation_id)
         if row is None:
             raise PluginLoadError(f"installation {installation_id} not found")
-        if instance is not None:
-            ctx = self._make_context(installation_id, row["plugin_id"], str(row["organization_id"]), row["config"])
+        if worker is not None:
             try:
-                await instance.on_disable(ctx)
-                instance.unregister(ctx)
+                await worker.call("lifecycle", method="on_disable", timeout=10)
             except Exception as exc:
                 log.warning("plugin %s raised during disable: %s", installation_id, exc)
+            from app.plugins.adapters import unadapt_registrations
+            unadapt_registrations(installation_id)
         await self._set_status(installation_id, "disabled")
         await self._log_health(installation_id, "unload", "disabled")
 
     async def enable(self, installation_id: str) -> None:
-        """Re-activate a previously disabled plugin. If the process still
-        holds the loaded module (common case: disable/enable in the same
-        process lifetime), just re-register; otherwise re-run the full
-        load() using the installation's own marketplace_item_id."""
+        """Re-activate a previously disabled plugin. If the Worker is
+        still alive (common case: disable/enable in the same process
+        lifetime), just re-register against it; otherwise re-run the full
+        load() using the installation's own marketplace_item_id (spawns a
+        fresh Worker)."""
         row = await self._get_installation(installation_id)
         if row is None:
             raise PluginLoadError(f"installation {installation_id} not found")
@@ -211,18 +223,28 @@ class PluginLoader:
             # plugin that would subscribe the same handler twice.
             return
 
-        instance = self._instances.get(installation_id)
-        if instance is not None:
-            ctx = self._make_context(installation_id, row["plugin_id"], str(row["organization_id"]), row["config"])
+        worker = self._instances.get(installation_id)
+        if worker is not None and worker.is_alive:
+            from app.plugins.adapters import adapt_registrations, unadapt_registrations
             try:
-                await instance.on_enable(ctx)
-                instance.register(ctx)
+                await worker.call("lifecycle", method="on_enable", timeout=15)
+                registrations = await worker.call("register", timeout=15)
+                # Unadapt whatever this worker registered last time BEFORE
+                # re-adapting the fresh set — without this, a retry after
+                # a previously-failed re-register (status left at
+                # "failed", stale entries still in _ADAPTED from the last
+                # *successful* registration) would re-subscribe an
+                # EVENT_LISTENER's handler a second time instead of
+                # replacing it, since adapt_registrations always creates
+                # new proxy objects and EventBus matches by identity.
+                unadapt_registrations(installation_id)
+                adapt_registrations(installation_id, worker, registrations)
             except Exception as exc:
                 await self._log_health(installation_id, "error", f"re-register failed: {exc}")
                 await self._set_status(installation_id, "failed")
                 raise PluginImportError(row["plugin_id"], str(exc)) from exc
             await self._set_status(installation_id, "enabled")
-            await self._log_health(installation_id, "load", "re-enabled (in-memory)")
+            await self._log_health(installation_id, "load", "re-enabled (worker alive)")
         else:
             await self.load(row["marketplace_item_id"], org_id=str(row["organization_id"]))
 
@@ -235,11 +257,10 @@ class PluginLoader:
             )
         if row is None:
             raise PluginLoadError(f"installation {installation_id} not found")
-        instance = self._instances.get(installation_id)
-        if instance is not None:
-            ctx = self._make_context(installation_id, row["plugin_id"], str(row["organization_id"]), new_config)
+        worker = self._instances.get(installation_id)
+        if worker is not None and worker.is_alive:
             try:
-                await instance.on_config_change(ctx, new_config)
+                await worker.call("lifecycle", method="on_config_change", args=[new_config], timeout=10)
             except Exception as exc:
                 log.warning("plugin %s raised during on_config_change: %s", installation_id, exc)
 
@@ -288,58 +309,6 @@ class PluginLoader:
             if "manifest" in data and "code" in data:
                 return data
         return None
-
-    def _import_and_instantiate(self, installation_id: str, manifest, code: str) -> Any:
-        from app.plugins.base import PluginBase
-
-        _TMP_DIR.mkdir(parents=True, exist_ok=True)
-        module_name = f"_axon_plugin_{installation_id}"
-        file_path = _TMP_DIR / f"{module_name}.py"
-        file_path.write_text(code, encoding="utf-8")
-
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        if spec is None or spec.loader is None:
-            raise PluginImportError(manifest.id, "could not create module spec")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        try:
-            spec.loader.exec_module(module)  # type: ignore[attr-defined]
-        except Exception as exc:
-            # Mirrors app/commands/loader.py's isolation guarantee: a
-            # SyntaxError or any other exception while executing the
-            # plugin's own module body must not propagate as a raw,
-            # untyped exception — every caller of this method (not just
-            # load(), which happens to also wrap this call) can rely on
-            # only ever seeing PluginImportError from a broken plugin.
-            self._cleanup_module(installation_id)
-            raise PluginImportError(manifest.id, f"module exec failed: {exc}") from exc
-
-        class_name = manifest.entry_point.split(":", 1)[1]
-        cls = getattr(module, class_name, None)
-        if cls is None or not (isinstance(cls, type) and issubclass(cls, PluginBase)):
-            self._cleanup_module(installation_id)
-            raise PluginImportError(manifest.id, f"entry_point class {class_name!r} not found or not a PluginBase subclass")
-        return cls()
-
-    @staticmethod
-    def _cleanup_module(installation_id: str) -> None:
-        """Remove a failed load's stale sys.modules entry and temp source
-        file — otherwise both leak indefinitely for any installation that
-        fails after exec_module succeeds (e.g. register() itself raising)."""
-        module_name = f"_axon_plugin_{installation_id}"
-        sys.modules.pop(module_name, None)
-        file_path = _TMP_DIR / f"{module_name}.py"
-        try:
-            file_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-    def _make_context(self, installation_id: str, plugin_id: str, org_id: Optional[str], config: dict) -> Any:
-        from app.plugins.base import PluginContext
-        return PluginContext(
-            plugin_id=plugin_id, installation_id=installation_id, organization_id=org_id,
-            config=config or {}, logger=logging.getLogger(f"plugin.{plugin_id}"),
-        )
 
     async def _upsert_installation(self, *, org_id: str, marketplace_item_id: str, manifest, actor_id: Optional[str]) -> dict[str, Any]:
         from app.core.db import get_pool

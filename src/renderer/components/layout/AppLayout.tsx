@@ -19,6 +19,7 @@ const OrganizationsPage = lazy(() => import("../../features/organizations").then
 const TeamsPage         = lazy(() => import("../../features/teams").then(m => ({ default: m.TeamsPage })));
 const BillingPage       = lazy(() => import("../../features/billing").then(m => ({ default: m.BillingPage })));
 const PluginsPage       = lazy(() => import("../../features/plugins").then(m => ({ default: m.PluginsPage })));
+const SandboxPage       = lazy(() => import("../../features/sandbox").then(m => ({ default: m.SandboxPage })));
 
 const FALLBACK = <LoadingSpinner fullPage label="Loading workspace…" />;
 
@@ -38,6 +39,7 @@ function WorkspaceContent() {
         {page === "teams"       && <TeamsPage />}
         {page === "billing"     && <BillingPage />}
         {page === "plugins"     && <PluginsPage />}
+        {page === "sandbox"     && <SandboxPage />}
         {page === "social"     && <SocialPage />}
         {page === "settings"   && <SettingsPage />}
       </Suspense>

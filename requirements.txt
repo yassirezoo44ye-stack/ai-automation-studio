@@ -20,3 +20,4 @@ websockets>=12.0
 pgvector>=0.3.0
 pyotp>=2.9.0
 cryptography>=42.0.0
+psutil>=5.9.0

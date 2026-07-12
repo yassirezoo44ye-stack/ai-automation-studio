@@ -55,6 +55,7 @@ from app.routers import org_billing      as org_billing_router
 from app.routers import ai_router_api    as ai_router_api_router
 from app.routers import events_api       as events_api_router
 from app.routers import plugins          as plugins_router
+from app.routers import sandbox          as sandbox_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -128,6 +129,12 @@ async def lifespan(app: FastAPI):
     from app.plugins import init_plugins_schema
     async with pool.acquire() as conn:
         await init_plugins_schema(conn)
+
+    # ── Agent Sandbox — references plugin_installations, so must init
+    # after the Plugin SDK block above.
+    from app.sandbox import init_sandbox_schema
+    async with pool.acquire() as conn:
+        await init_sandbox_schema(conn)
 
     # ── Scoped Row Level Security (defense-in-depth on tenancy tables) ─────
     from app.tenancy import enable_scoped_rls
@@ -416,6 +423,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_router_api_router.router)
     app.include_router(events_api_router.router)
     app.include_router(plugins_router.router)
+    app.include_router(sandbox_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

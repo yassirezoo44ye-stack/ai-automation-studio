@@ -3,10 +3,11 @@ Marketplace security checks — run during installation (see installer.py).
 
 Three checks are REAL: secret detection (regex pass over inline asset
 content), checksum verification (delegates to assets.py), and permission-
-manifest validation (declared capabilities vs. a known allowlist). This is
-a declaration/validation check, not sandboxed enforcement — there's no
-execution sandbox to enforce against (that's Agent Sandbox territory,
-explicitly out of scope for this phase).
+manifest validation (declared capabilities vs. a known allowlist).
+ALL_KNOWN_CAPABILITIES is validated here at declaration time and enforced
+at runtime by the Agent Sandbox (app/sandbox/) — a worker's network
+policy, filesystem mount mode, and secret injection are derived directly
+from an installation's already-approved plugin_permissions rows.
 
 Two hooks are STUBS, clearly labeled: malware scanning and dependency
 vulnerability scanning. Both return a passing result with a "not configured"
@@ -65,6 +66,10 @@ ALL_KNOWN_CAPABILITIES: frozenset[str] = frozenset({
     "network", "filesystem", "database", "shell_exec", "credentials_read",
     "clipboard", "camera", "microphone", "location", "notifications",
     "background_tasks", "third_party_api",
+    # Added for Agent Sandbox runtime enforcement — additive only, every
+    # capability above keeps validating exactly as before.
+    "terminal", "environment_variables", "git_access", "docker_access",
+    "browser_automation", "filesystem_write",
 })
 
 
@@ -72,10 +77,11 @@ def check_permission_manifest(
     declared_capabilities: list[str], allowed: frozenset[str] = ALL_KNOWN_CAPABILITIES,
 ) -> list[str]:
     """Validates an item's declared capability list against the known-
-    capability allowlist, flagging anything unrecognized. This does NOT
-    enforce what an installed item can actually do at runtime — there is no
-    execution sandbox yet (Agent Sandbox territory) — it only validates the
-    declaration itself."""
+    capability allowlist, flagging anything unrecognized. Declaration-time
+    validation only — runtime enforcement of an approved capability set
+    happens in app.sandbox (SandboxManager.spawn_worker derives a worker's
+    network policy / filesystem mount mode / secret injection from the
+    already-approved plugin_permissions rows for that installation)."""
     return [f"unknown declared capability: {cap!r}" for cap in declared_capabilities if cap not in allowed]
 
 
