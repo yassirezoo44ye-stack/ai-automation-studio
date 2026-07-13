@@ -22,6 +22,14 @@ class SystemMetricsService(BaseService):
     interval_s   = 15.0
     auto_restart = True
 
+    def __init__(self) -> None:
+        super().__init__()
+        # psutil.Process.cpu_percent(interval=None) reports usage as a delta
+        # since the LAST call on this same Process instance — a fresh
+        # Process() every tick has no prior baseline and always returns 0.0.
+        # Keep one instance alive across ticks so the delta is meaningful.
+        self._proc = None
+
     async def tick(self) -> None:
         from app.core.observability.metrics import get_metrics
         m = get_metrics()
@@ -35,11 +43,15 @@ class SystemMetricsService(BaseService):
             log.debug("system_metrics: psutil unavailable: %s", exc)
             return
 
+        if self._proc is None:
+            self._proc = psutil.Process()
+            self._proc.cpu_percent(interval=None)  # prime the baseline; first real reading comes next tick
+
         try:
             m.gauge("system_cpu_percent", "Process CPU utilisation percent").set(
-                psutil.Process().cpu_percent(interval=None)
+                self._proc.cpu_percent(interval=None)
             )
-            mem = psutil.Process().memory_info()
+            mem = self._proc.memory_info()
             m.gauge("system_memory_rss_mb", "Process resident memory in MB").set(
                 round(mem.rss / 1024 ** 2, 1)
             )
@@ -50,7 +62,7 @@ class SystemMetricsService(BaseService):
             m.gauge("system_network_bytes_recv", "Cumulative bytes received").set(net.bytes_recv)
             try:
                 m.gauge("system_open_fds", "Open file descriptors (process)").set(
-                    psutil.Process().num_fds()
+                    self._proc.num_fds()
                 )
             except AttributeError:
                 pass  # num_fds() is POSIX-only; skip on platforms without it (e.g. Windows)

@@ -127,14 +127,25 @@ class _RingBufferProcessor(SpanProcessor):
         error = None
         if s.status and s.status.status_code == StatusCode.ERROR:
             error = s.status.description
+        attrs = s.attributes or {}
+        # start_span() stores the caller's `service=` kwarg as a span
+        # attribute (not on the process-wide Resource, which is fixed to
+        # "axon") — read it from there. Falls back to the Resource's own
+        # service.name for auto-instrumented spans (e.g. FastAPIInstrumentor's
+        # HTTP spans) that don't set this attribute themselves.
+        service = (
+            attrs.get("service.name")
+            or (s.resource.attributes.get("service.name") if s.resource else None)
+            or "agentos"
+        )
         return {
             "trace_id"   : _fmt_trace_id(ctx.trace_id),
             "span_id"    : _fmt_span_id(ctx.span_id),
             "parent_id"  : _fmt_span_id(s.parent.span_id) if s.parent else None,
             "name"       : s.name,
-            "service"    : (s.resource.attributes.get("service.name") if s.resource else None) or "agentos",
+            "service"    : service,
             "duration_ms": round(duration_ms, 2),
-            "tags"       : {k: str(v) for k, v in (s.attributes or {}).items()},
+            "tags"       : {k: str(v) for k, v in attrs.items() if k != "service.name"},
             "events"     : [
                 {"name": e.name, "ts": e.timestamp / 1_000_000_000, **{k: str(v) for k, v in (e.attributes or {}).items()}}
                 for e in (s.events or [])

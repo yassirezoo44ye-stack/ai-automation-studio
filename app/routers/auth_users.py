@@ -535,7 +535,7 @@ async def get_my_audit_log(
             rows = await conn.fetch(
                 "SELECT id, action, resource, resource_id, details, ip_address, created_at "
                 "FROM audit_logs WHERE actor_email=$1 AND created_at < "
-                "(SELECT created_at FROM audit_logs WHERE id=$2) "
+                "(SELECT created_at FROM audit_logs WHERE id=$2 AND actor_email=$1) "
                 "ORDER BY created_at DESC LIMIT $3",
                 current["email"], before, limit,
             )

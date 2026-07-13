@@ -87,19 +87,25 @@ class AlertingService(BaseService):
 
     async def tick(self) -> None:
         from app.core.db import get_pool
+        from app.core.observability.metrics import get_metrics
         pool = get_pool()
         if pool is None:
             return
+        # One snapshot per tick, shared by every gauge_above/counter_rate_above
+        # rule this tick evaluates — MetricsRegistry.snapshot() takes a lock
+        # and copies every counter/gauge/histogram, so calling it once per
+        # rule instead of once per tick is redundant, lock-contending work
+        # for data that can't change within the same tick.
+        snapshot = get_metrics().snapshot()
         async with pool.acquire() as conn:
             rules = await conn.fetch("SELECT * FROM alert_rules WHERE enabled = true")
             for rule in rules:
                 try:
-                    await self._evaluate(conn, rule)
+                    await self._evaluate(conn, rule, snapshot)
                 except Exception:
                     log.warning("alert rule '%s' evaluation failed", rule["name"], exc_info=True)
 
-    async def _evaluate(self, conn, rule) -> None:
-        from app.core.observability.metrics import get_metrics
+    async def _evaluate(self, conn, rule, snapshot: dict) -> None:
         from app.core.observability.health import get_health_registry, HealthStatus
 
         breached = False
@@ -107,18 +113,21 @@ class AlertingService(BaseService):
         message = ""
 
         if rule["rule_type"] == "gauge_above":
-            snap  = get_metrics().snapshot()
-            value = snap["gauges"].get(rule["target"])
+            value = snapshot["gauges"].get(rule["target"])
             if value is not None and rule["threshold"] is not None and value > rule["threshold"]:
                 breached = True
                 message  = f"{rule['target']} = {value} > {rule['threshold']}"
 
         elif rule["rule_type"] == "counter_rate_above":
-            snap    = get_metrics().snapshot()
-            current = snap["counters"].get(rule["target"], 0.0)
-            prev    = self._prev_counters.get(rule["target"], current)
+            # Keyed by rule id (not target alone) — two enabled rules
+            # watching the same counter with different thresholds must not
+            # share one baseline, or the second rule evaluated in a tick
+            # would see delta=0 since the first rule already advanced the
+            # baseline to `current`.
+            current = snapshot["counters"].get(rule["target"], 0.0)
+            prev    = self._prev_counters.get(rule["id"], current)
             delta   = current - prev
-            self._prev_counters[rule["target"]] = current
+            self._prev_counters[rule["id"]] = current
             value = delta
             if rule["threshold"] is not None and delta > rule["threshold"]:
                 breached = True

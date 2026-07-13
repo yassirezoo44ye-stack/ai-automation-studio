@@ -4,10 +4,6 @@ import type { ReactNode } from "react";
 import { S } from "../../styles/theme";
 import type { HealthStatus, ProbeResult } from "./types";
 
-export const STATUS_COLOR: Record<HealthStatus, string> = {
-  healthy: "#34d399", degraded: "#f59e0b", unhealthy: "#f87171", unknown: "var(--t4)",
-};
-
 export function StatusBadge({ status }: { status: HealthStatus }) {
   const badgeStyle =
     status === "healthy" ? S.badgeSuccess :

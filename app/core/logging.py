@@ -73,6 +73,12 @@ class SensitiveDataFilter:
             if key.lower() in self._SENSITIVE_KEYS:
                 return self._REDACTED
             return self.scrub_text(value)
+        if isinstance(value, dict):
+            return {k: self.scrub_value(k, v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            # A list has no per-item key to check against _SENSITIVE_KEYS —
+            # scrub each element using its own type, same as a bare value.
+            return [self.scrub_value("", v) for v in value]
         return value
 
 

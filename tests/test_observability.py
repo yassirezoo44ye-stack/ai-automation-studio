@@ -294,7 +294,7 @@ class TestAlertRuleEvaluation(unittest.TestCase):
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(return_value=None)  # no open alert yet
         conn.execute = AsyncMock()
-        run(self.svc._evaluate(conn, self._rule()))
+        run(self.svc._evaluate(conn, self._rule(), get_metrics().snapshot()))
         insert_call = conn.execute.call_args
         self.assertIn("INSERT INTO alert_history", insert_call.args[0])
 
@@ -305,7 +305,7 @@ class TestAlertRuleEvaluation(unittest.TestCase):
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(return_value=None)
         conn.execute = AsyncMock()
-        run(self.svc._evaluate(conn, self._rule()))
+        run(self.svc._evaluate(conn, self._rule(), get_metrics().snapshot()))
         conn.execute.assert_not_called()
 
     def test_dedup_skips_second_fire_while_already_open(self):
@@ -315,7 +315,7 @@ class TestAlertRuleEvaluation(unittest.TestCase):
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(return_value={"id": "already-open"})
         conn.execute = AsyncMock()
-        run(self.svc._evaluate(conn, self._rule()))
+        run(self.svc._evaluate(conn, self._rule(), get_metrics().snapshot()))
         conn.execute.assert_not_called()  # no new INSERT while one is open
 
     def test_resolves_when_condition_clears(self):
@@ -325,7 +325,7 @@ class TestAlertRuleEvaluation(unittest.TestCase):
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(return_value={"id": "open-alert"})
         conn.execute = AsyncMock()
-        run(self.svc._evaluate(conn, self._rule()))
+        run(self.svc._evaluate(conn, self._rule(), get_metrics().snapshot()))
         update_call = conn.execute.call_args
         self.assertIn("UPDATE alert_history", update_call.args[0])
 

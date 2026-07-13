@@ -148,7 +148,13 @@ async def health_full():
                 "idle": pool.get_idle_size(),
             }
     except Exception as e:
-        checks["pg_version"] = f"error: {e}"
+        # Keep this under its own key, not checks["pg_version"] — that key
+        # means "a version string when present," and checks["database"]
+        # (set above from the registry probe) is already the authoritative
+        # up/down signal; overloading either with this supplementary
+        # detail query's own failure would make both keys lie about their
+        # own shape.
+        checks["pg_version_error"] = str(e)
 
     # Cache backend
     try:
