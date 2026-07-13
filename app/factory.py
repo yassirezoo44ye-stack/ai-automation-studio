@@ -234,8 +234,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # ── App factory ───────────────────────────────────────────────────────────────
 
 def create_app() -> FastAPI:
-    configure_logging()
+    configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
     app = FastAPI(title="Axon", version="1.0.0", lifespan=lifespan)
+
+    # ── OpenTelemetry — auto-instruments HTTP request/response spans.
+    # get_tracer() (app/core/observability/tracer.py) sets the global
+    # TracerProvider before this runs, so these auto-created spans land in
+    # the same ring buffer /api/diagnostics/traces* already reads from —
+    # one tracer, not a second parallel one. Gated by OBS_TRACING_ENABLED
+    # (default on) so it can be disabled without a code change.
+    if os.getenv("OBS_TRACING_ENABLED", "true").lower() != "false":
+        from app.core.observability.tracer import get_tracer
+        get_tracer()  # registers the global TracerProvider first
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        FastAPIInstrumentor.instrument_app(app)
 
     # ── Exception handlers ──────────────────────────────────────────────────
     @app.exception_handler(RequestValidationError)

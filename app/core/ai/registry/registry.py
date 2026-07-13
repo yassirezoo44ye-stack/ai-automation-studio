@@ -26,6 +26,8 @@ from app.core.ai.events.events import (
 )
 from app.core.ai.providers.openrouter import OpenRouterProvider
 from app.core.ai.providers.local import LocalProvider
+from app.core.observability.context import current_tags
+from app.core.observability.tracer import get_tracer
 
 log = logging.getLogger(__name__)
 
@@ -170,49 +172,69 @@ class PlatformProviderRegistry:
         if not chain:
             raise RuntimeError("No available AI providers.")
 
+        tracer = get_tracer()
         last_err: Exception = RuntimeError("No providers tried")
         tries = 0  # count of providers actually attempted, not chain position —
                    # a skipped circuit-open provider must not shift "preferred"/
                    # "failover" labeling or the attempt index of the next one.
-        for provider in chain:
-            if not circuit_breaker.allow(provider.provider_id):
-                log.debug("circuit open for %s — skipping without attempting", provider.provider_id)
-                continue
+        # `with` owns finishing each span exactly once (on normal exit or
+        # via a propagating exception) — never call span.finish() manually
+        # inside a `with` block, that double-finishes it.
+        with tracer.start_span("ai.complete", service="ai_gateway") as span:
+            for key, val in current_tags().items():
+                span.set_tag(key, val)
+            span.set_tag("request_id", request_id)
+            for provider in chain:
+                if not circuit_breaker.allow(provider.provider_id):
+                    log.debug("circuit open for %s — skipping without attempting", provider.provider_id)
+                    continue
 
-            attempt = tries
-            tries += 1
-            model = provider.resolve_model(request.model)
-            await bus.emit(ProviderSelected(
-                provider_id=provider.provider_id,
-                model=model,
-                reason="preferred" if attempt == 0 else "failover",
-            ))
-            try:
-                t0   = time.perf_counter()
-                resp = await with_retry(
-                    lambda: provider.complete(request),
-                    max_retries=1, base_delay=0.5, max_delay=2.0,
-                    timeout=request.timeout,
-                )
-                log.info(
-                    "complete via %s model=%s latency=%.0fms",
-                    provider.provider_id, model, (time.perf_counter() - t0) * 1000,
-                )
-                circuit_breaker.record_success(provider.provider_id)
-                return resp, provider.provider_id
-            except Exception as exc:
-                circuit_breaker.record_failure(provider.provider_id)
-                await bus.emit(ProviderFailed(
+                attempt = tries
+                tries += 1
+                model = provider.resolve_model(request.model)
+                await bus.emit(ProviderSelected(
                     provider_id=provider.provider_id,
-                    error=str(exc),
-                    attempt=attempt,
+                    model=model,
+                    reason="preferred" if attempt == 0 else "failover",
                 ))
-                log.warning("Provider %s failed (attempt %d): %s", provider.provider_id, attempt, exc)
-                last_err = exc
+                with tracer.start_span("ai.provider_call", service="ai_gateway") as pspan:
+                    pspan.set_tag("provider_id", provider.provider_id)
+                    pspan.set_tag("model", model)
+                    pspan.set_tag("attempt", attempt)
+                    try:
+                        t0   = time.perf_counter()
+                        resp = await with_retry(
+                            lambda: provider.complete(request),
+                            max_retries=1, base_delay=0.5, max_delay=2.0,
+                            timeout=request.timeout,
+                        )
+                        log.info(
+                            "complete via %s model=%s latency=%.0fms",
+                            provider.provider_id, model, (time.perf_counter() - t0) * 1000,
+                        )
+                        circuit_breaker.record_success(provider.provider_id)
+                        span.set_tag("provider_id", provider.provider_id)
+                        span.set_tag("model", model)
+                        return resp, provider.provider_id
+                    except Exception as exc:
+                        pspan.set_tag("error", str(exc))
+                        circuit_breaker.record_failure(provider.provider_id)
+                        await bus.emit(ProviderFailed(
+                            provider_id=provider.provider_id,
+                            error=str(exc),
+                            attempt=attempt,
+                        ))
+                        log.warning("Provider %s failed (attempt %d): %s", provider.provider_id, attempt, exc)
+                        last_err = exc
+                        # falls through — this `with` exits normally (the
+                        # exception was caught here, not left propagating),
+                        # so pspan finishes without an error status; the
+                        # "error" tag above still records what happened.
 
-        if tries == 0:
-            raise RuntimeError("No available AI providers — every provider's circuit is open.")
-        raise last_err
+            if tries == 0:
+                raise RuntimeError("No available AI providers — every provider's circuit is open.")
+            span.set_tag("error", str(last_err))
+            raise last_err
 
     async def stream_with_events(
         self,
@@ -230,46 +252,59 @@ class PlatformProviderRegistry:
         provider = chain[0]
         model    = provider.resolve_model(request.model)
 
-        await bus.emit(ProviderSelected(
-            provider_id=provider.provider_id,
-            model=model,
-            reason="preferred",
-        ))
-        await bus.emit(ModelSelected(
-            provider_id=provider.provider_id,
-            model=model,
-            selection_reason="registry_default",
-        ))
+        tracer = get_tracer()
+        # Spans nest across `yield`s here — fine, since the generator is
+        # driven to completion (or aclose()'d) by its caller either way,
+        # which is when this `with` block's __exit__ finishes the span.
+        with tracer.start_span("ai.stream", service="ai_gateway") as span:
+            for key, val in current_tags().items():
+                span.set_tag(key, val)
+            span.set_tag("request_id", request_id)
+            span.set_tag("provider_id", provider.provider_id)
+            span.set_tag("model", model)
 
-        try:
-            async for chunk in provider.stream(request):
-                yield chunk
-            circuit_breaker.record_success(provider.provider_id)
-        except Exception as exc:
-            circuit_breaker.record_failure(provider.provider_id)
-            await bus.emit(ProviderFailed(
+            await bus.emit(ProviderSelected(
                 provider_id=provider.provider_id,
-                error=str(exc),
-                attempt=0,
+                model=model,
+                reason="preferred",
             ))
-            log.warning("Stream failed on %s: %s — attempting fallback", provider.provider_id, exc)
+            await bus.emit(ModelSelected(
+                provider_id=provider.provider_id,
+                model=model,
+                selection_reason="registry_default",
+            ))
 
-            for fallback in chain[1:]:
-                try:
-                    resp = await fallback.complete(request)
-                    circuit_breaker.record_success(fallback.provider_id)
-                    yield StreamChunk(type="delta", text=resp.content)
-                    if resp.tool_calls:
-                        for tc in resp.tool_calls:
-                            yield StreamChunk(type="tool_call", tool_call=tc)
-                    yield StreamChunk(type="usage", usage=resp.usage)
-                    yield StreamChunk(type="done")
-                    return
-                except Exception as fb_exc:
-                    circuit_breaker.record_failure(fallback.provider_id)
-                    log.warning("Fallback %s also failed: %s", fallback.provider_id, fb_exc)
+            try:
+                async for chunk in provider.stream(request):
+                    yield chunk
+                circuit_breaker.record_success(provider.provider_id)
+            except Exception as exc:
+                span.set_tag("error", str(exc))
+                circuit_breaker.record_failure(provider.provider_id)
+                await bus.emit(ProviderFailed(
+                    provider_id=provider.provider_id,
+                    error=str(exc),
+                    attempt=0,
+                ))
+                log.warning("Stream failed on %s: %s — attempting fallback", provider.provider_id, exc)
 
-            yield StreamChunk(type="error", error=str(exc))
+                for fallback in chain[1:]:
+                    try:
+                        resp = await fallback.complete(request)
+                        circuit_breaker.record_success(fallback.provider_id)
+                        span.set_tag("provider_id", fallback.provider_id)
+                        yield StreamChunk(type="delta", text=resp.content)
+                        if resp.tool_calls:
+                            for tc in resp.tool_calls:
+                                yield StreamChunk(type="tool_call", tool_call=tc)
+                        yield StreamChunk(type="usage", usage=resp.usage)
+                        yield StreamChunk(type="done")
+                        return
+                    except Exception as fb_exc:
+                        circuit_breaker.record_failure(fallback.provider_id)
+                        log.warning("Fallback %s also failed: %s", fallback.provider_id, fb_exc)
+
+                yield StreamChunk(type="error", error=str(exc))
 
 
 # Module-level singleton for the platform

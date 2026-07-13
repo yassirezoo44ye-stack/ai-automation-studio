@@ -399,9 +399,12 @@ class TestObservabilityTracer(unittest.TestCase):
         self.assertFalse(any(s["span_id"] == span.span_id for s in active))
 
     def test_trace_id_groups_spans(self):
-        tid  = "trace-abc-123"
-        s1   = self.tracer.start_span("op1", trace_id=tid)
-        s2   = self.tracer.start_span("op2", trace_id=tid)
+        # Real OpenTelemetry trace_ids are W3C 128-bit hex, not arbitrary
+        # caller-supplied strings — group by an explicit real trace_id
+        # (the first span's own id) rather than a made-up label.
+        s1  = self.tracer.start_span("op1")
+        tid = s1.trace_id
+        s2  = self.tracer.start_span("op2", trace_id=tid, parent_id=s1.span_id)
         s1.finish()
         s2.finish()
         spans = self.tracer.trace(tid)
