@@ -39,6 +39,8 @@ _SECRET_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
     ("GitHub token",          re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}")),
     ("Stripe key",            re.compile(r"(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{16,}")),
     ("Generic bearer/JWT",    re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
+    ("Anthropic API key",     re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")),
+    ("OpenAI API key",        re.compile(r"sk-[A-Za-z0-9]{20,}")),
 )
 
 
