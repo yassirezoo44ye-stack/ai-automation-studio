@@ -235,9 +235,11 @@ def _register_defaults(reg: ServiceRegistry) -> None:
     from app.services.security_monitor     import SecurityMonitorService
     from app.services.performance_optimizer import PerformanceOptimizerService
     from app.services.memory_compactor     import MemoryCompactorService
+    from app.services.system_metrics       import SystemMetricsService
 
     reg.register(HealthMonitorService())
     reg.register(DependencyMonitorService())
     reg.register(SecurityMonitorService())
     reg.register(PerformanceOptimizerService())
     reg.register(MemoryCompactorService())
+    reg.register(SystemMetricsService())

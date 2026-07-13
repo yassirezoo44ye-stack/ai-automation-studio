@@ -45,6 +45,20 @@ def record_http(method: str, path: str, status: int, duration_s: float) -> None:
     if len(http_durations[(method, path)]) > 1000:
         http_durations[(method, path)] = http_durations[(method, path)][-500:]
 
+    # Also feed the coarse (unlabeled) MetricsRegistry counters that
+    # /api/diagnostics/metrics reads — these were pre-registered in
+    # _wire_defaults() but never incremented anywhere, which is worse than
+    # not having them (a scrape that always reads 0 looks like "no
+    # traffic" instead of "not wired"). This is the one call site that
+    # already has every request's method/path/status/duration, so it
+    # feeds both stores instead of adding a second middleware.
+    from app.core.observability.metrics import get_metrics
+    m = get_metrics()
+    m.counter("http_requests_total").inc()
+    m.histogram("http_request_duration_ms").observe(duration_s * 1000)
+    if status >= 500:
+        m.counter("http_errors_total").inc()
+
 
 def record_agent(agent: str, status: str) -> None:
     agent_executions_total[(agent, status)] += 1

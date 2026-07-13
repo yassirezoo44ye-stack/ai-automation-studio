@@ -200,3 +200,39 @@ def _wire_defaults(m: MetricsRegistry) -> None:
     m.counter  ("http_requests_total",         "Total HTTP requests")
     m.histogram("http_request_duration_ms",    "HTTP request latency in ms")
     m.counter  ("http_errors_total",           "Total HTTP 5xx errors")
+
+    # ── AI ────────────────────────────────────────────────────────────────
+    m.counter  ("ai_requests_total",           "Total completed AI requests")
+    m.counter  ("ai_tokens_input_total",       "Total input tokens consumed")
+    m.counter  ("ai_tokens_output_total",      "Total output tokens generated")
+    m.counter  ("ai_cost_usd_total",           "Total AI spend in USD")
+    m.histogram("ai_request_latency_ms",       "AI request latency in ms")
+    m.counter  ("ai_provider_failures_total",  "Total AI provider call failures")
+    m.gauge    ("ai_active_streams",           "Currently open AI streaming responses")
+
+    # ── Workflow ──────────────────────────────────────────────────────────
+    m.counter  ("workflow_runs_total",         "Total workflow runs started")
+    m.counter  ("workflow_runs_success",       "Total workflow runs completed successfully")
+    m.counter  ("workflow_runs_failed",        "Total workflow runs that failed")
+    m.gauge    ("workflow_active_runs",        "Currently executing workflow runs")
+
+    # ── Marketplace ───────────────────────────────────────────────────────
+    m.counter  ("marketplace_installs_total",  "Total marketplace listing installs")
+    m.counter  ("marketplace_publishes_total", "Total marketplace listing publishes")
+
+    # ── Billing ───────────────────────────────────────────────────────────
+    m.counter  ("billing_events_total",        "Total billing.updated events processed")
+
+    # ── System (sampled every ~15s by SystemMetricsService) ─────────────────
+    m.gauge    ("system_cpu_percent",          "Process CPU utilisation percent")
+    m.gauge    ("system_memory_rss_mb",        "Process resident memory in MB")
+    m.gauge    ("system_disk_used_percent",    "Disk utilisation percent")
+    m.gauge    ("system_network_bytes_sent",   "Cumulative bytes sent")
+    m.gauge    ("system_network_bytes_recv",   "Cumulative bytes received")
+    m.gauge    ("system_open_fds",             "Open file descriptors (process)")
+
+    # ── Sandbox (sampled every ~15s by SystemMetricsService) ─────────────────
+    m.gauge    ("sandbox_running_workers",     "Currently running sandbox workers")
+    m.gauge    ("sandbox_execution_failures",  "Sandbox workers in crashed state")
+    m.gauge    ("sandbox_cpu_seconds",         "Total CPU seconds used by running sandbox workers")
+    m.gauge    ("sandbox_memory_mb",           "Total memory MB used by running sandbox workers")

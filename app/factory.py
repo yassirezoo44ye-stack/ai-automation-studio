@@ -165,6 +165,10 @@ async def lifespan(app: FastAPI):
     svc_registry = get_service_registry()
     svc_registry.start_all()
 
+    # ── Observability metrics bridges (AI/workflow/marketplace/billing) ──────
+    from app.core.observability.bridges import wire_all as wire_metrics_bridges
+    wire_metrics_bridges()
+
     # ── Semantic memory — initialize pgvector tier ──────────────────────────
     from app.memory.semantic import get_semantic_memory
     await get_semantic_memory(pool=pool)
