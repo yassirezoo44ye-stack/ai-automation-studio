@@ -28,6 +28,7 @@ from app.core.ai.events.events import (
 )
 from app.core.ai.inference.tool_loop import run_tool_loop, stream_tool_loop
 from app.core.ai.registry.registry import platform_registry
+from app.core.logging import get_request_id
 from app.core.ai.router.model_router import model_router
 from app.core.ai.telemetry.service import telemetry
 
@@ -70,7 +71,7 @@ class InferenceEngine:
         against that organization's plan (see app/billing/usage.py); omit
         it for personal/legacy callers with no org context.
         """
-        request_id = str(uuid.uuid4())
+        request_id = get_request_id() or str(uuid.uuid4())
 
         # Auto-select model if not set
         request = self._apply_model_selection(request)
@@ -145,7 +146,7 @@ class InferenceEngine:
         When org_id is supplied, the request is quota-checked up front and
         metered on completion (see app/billing/usage.py).
         """
-        request_id = str(uuid.uuid4())
+        request_id = get_request_id() or str(uuid.uuid4())
         request    = self._apply_model_selection(request)
         gw         = self._gateway()
         if org_id:

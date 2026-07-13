@@ -50,6 +50,10 @@ class Event:
     organization_id: str | None = None
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     ts: float = field(default_factory=time.time)
+    trace_id: str | None = None  # populated from the active OTel span at
+                                  # publish() time, when tracing is enabled —
+                                  # correlates this event with the HTTP
+                                  # request / job / workflow run that caused it.
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -60,6 +64,7 @@ class Event:
             type=d["type"], data=d.get("data", {}),
             organization_id=d.get("organization_id"),
             id=d.get("id", uuid.uuid4().hex), ts=float(d.get("ts", time.time())),
+            trace_id=d.get("trace_id"),
         )
 
 
@@ -105,7 +110,10 @@ class EventBus:
 
             if type_ not in EVENT_TYPES:
                 raise ValueError(f"undeclared event type {type_!r} — add it to EVENT_TYPES")
-            event = Event(type=type_, data=data or {}, organization_id=organization_id)
+            event = Event(
+                type=type_, data=data or {}, organization_id=organization_id,
+                trace_id=span.trace_id,
+            )
 
             if self._redis is not None:
                 try:
