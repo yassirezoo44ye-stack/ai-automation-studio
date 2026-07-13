@@ -514,6 +514,52 @@ async def get_me(current: Annotated[dict, Depends(get_current_user)]):
         return _user_response(user)
 
 
+@router.get("/me/audit-log")
+async def get_my_audit_log(
+    current: Annotated[dict, Depends(get_current_user)],
+    limit: int = 50,
+    before: Optional[str] = None,
+):
+    """Paginated read access to the caller's own security events
+    (register/login/MFA enable-disable/account deletion) — the audit_logs
+    table's write side (write_audit()) has existed since the multi-tenant
+    phase; this is its first read API. Scoped to the caller's own email
+    rather than a global admin view, since this codebase has no
+    platform-admin role today. Org-scoped activity (settings/members/
+    billing/marketplace changes) lives in the separate activity_logs
+    table — see GET /api/orgs/{org_id}/activity — intentionally not
+    duplicated here."""
+    limit = max(1, min(limit, 200))
+    async with get_pool().acquire() as conn:
+        if before:
+            rows = await conn.fetch(
+                "SELECT id, action, resource, resource_id, details, ip_address, created_at "
+                "FROM audit_logs WHERE actor_email=$1 AND created_at < "
+                "(SELECT created_at FROM audit_logs WHERE id=$2) "
+                "ORDER BY created_at DESC LIMIT $3",
+                current["email"], before, limit,
+            )
+        else:
+            rows = await conn.fetch(
+                "SELECT id, action, resource, resource_id, details, ip_address, created_at "
+                "FROM audit_logs WHERE actor_email=$1 "
+                "ORDER BY created_at DESC LIMIT $2",
+                current["email"], limit,
+            )
+    return {
+        "entries": [
+            {
+                "id": str(r["id"]), "action": r["action"], "resource": r["resource"],
+                "resource_id": r["resource_id"], "details": r["details"],
+                "ip_address": r["ip_address"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ],
+        "next_before": str(rows[-1]["id"]) if len(rows) == limit else None,
+    }
+
+
 @router.put("/me")
 async def update_me(
     body: UpdateProfileRequest,

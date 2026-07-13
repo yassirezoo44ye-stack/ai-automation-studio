@@ -188,6 +188,16 @@ class InstallationPipeline:
             )
         except Exception:
             pass
+
+        try:
+            from app.tenancy.service import get_tenancy_service
+            await get_tenancy_service().log_activity(
+                org_id, actor_id, "marketplace.installed",
+                resource="marketplace_item", resource_id=item_id,
+                details={"name": result["name"], "version": target_version, "type": item.get("type")},
+            )
+        except Exception:
+            pass
         return result
 
     async def uninstall(self, item_id: str, *, org_id: str, actor_id: str) -> None:
@@ -219,6 +229,15 @@ class InstallationPipeline:
             from app.core.events import get_event_bus
             await get_event_bus().publish(
                 "marketplace.uninstalled", {"listing_id": item_id}, organization_id=org_id,
+            )
+        except Exception:
+            pass
+
+        try:
+            from app.tenancy.service import get_tenancy_service
+            await get_tenancy_service().log_activity(
+                org_id, actor_id, "marketplace.uninstalled",
+                resource="marketplace_item", resource_id=item_id,
             )
         except Exception:
             pass

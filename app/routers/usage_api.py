@@ -125,6 +125,20 @@ async def set_limit(
         ctx.org_id, metric, body.limit,
         project_id=body.project_id, workflow_id=body.workflow_id, agent_id=body.agent_id,
     )
+    try:
+        from app.tenancy import get_tenancy_service
+        await get_tenancy_service().log_activity(
+            ctx.org_id, ctx.user_id, "usage.limit_overridden",
+            resource="usage_limit", resource_id=metric,
+            details={
+                "metric": metric, "limit": body.limit,
+                "project_id": body.project_id or None,
+                "workflow_id": body.workflow_id or None,
+                "agent_id": body.agent_id or None,
+            },
+        )
+    except Exception:
+        pass
     return {
         "metric": metric, "limit": body.limit,
         "scope": {
