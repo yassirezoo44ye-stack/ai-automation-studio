@@ -143,6 +143,11 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await init_sandbox_schema(conn)
 
+    # ── Alerting — references organizations, so must init after tenancy ────
+    from app.services.alerting import init_alert_schema
+    async with pool.acquire() as conn:
+        await init_alert_schema(conn)
+
     # ── Scoped Row Level Security (defense-in-depth on tenancy tables) ─────
     from app.tenancy import enable_scoped_rls
     async with pool.acquire() as conn:

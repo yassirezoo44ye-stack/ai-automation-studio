@@ -100,6 +100,66 @@ async def service_stop(name: str):
     return {"stopped": name}
 
 
+# ── Alerting ──────────────────────────────────────────────────────────────────
+
+class AlertRuleCreate(BaseModel):
+    name: str
+    rule_type: str            # gauge_above | counter_rate_above | health_unhealthy
+    target: str
+    threshold: Optional[float] = None
+    notify_email: Optional[str] = None
+    notify_webhook_url: Optional[str] = None
+    enabled: bool = True
+
+
+@router.get("/alerts/rules")
+async def list_alert_rules():
+    from app.core.db import get_pool
+    async with get_pool().acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM alert_rules ORDER BY created_at")
+    return {"rules": [dict(r) for r in rows]}
+
+
+@router.post("/alerts/rules", status_code=201)
+async def create_alert_rule(body: AlertRuleCreate):
+    if body.rule_type not in ("gauge_above", "counter_rate_above", "health_unhealthy"):
+        raise HTTPException(400, "Invalid rule_type")
+    from app.core.db import get_pool
+    async with get_pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "INSERT INTO alert_rules (name, rule_type, target, threshold, notify_email, notify_webhook_url, enabled) "
+            "VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+            body.name, body.rule_type, body.target, body.threshold,
+            body.notify_email, body.notify_webhook_url, body.enabled,
+        )
+    return dict(row)
+
+
+@router.post("/alerts/rules/{rule_id}/toggle")
+async def toggle_alert_rule(rule_id: str, enabled: bool):
+    from app.core.db import get_pool
+    async with get_pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "UPDATE alert_rules SET enabled=$2, updated_at=NOW() WHERE id=$1 RETURNING *",
+            rule_id, enabled,
+        )
+    if row is None:
+        raise HTTPException(404, f"Alert rule {rule_id!r} not found")
+    return dict(row)
+
+
+@router.get("/alerts/history")
+async def alert_history(limit: int = 100, open_only: bool = False):
+    from app.core.db import get_pool
+    query = "SELECT h.*, r.name AS rule_name FROM alert_history h JOIN alert_rules r ON r.id = h.rule_id"
+    if open_only:
+        query += " WHERE h.resolved_at IS NULL"
+    query += " ORDER BY h.fired_at DESC LIMIT $1"
+    async with get_pool().acquire() as conn:
+        rows = await conn.fetch(query, min(limit, 500))
+    return {"history": [dict(r) for r in rows]}
+
+
 # ── Layered memory ────────────────────────────────────────────────────────────
 
 @router.get("/memory")

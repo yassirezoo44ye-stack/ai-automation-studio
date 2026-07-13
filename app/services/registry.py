@@ -230,6 +230,8 @@ def get_service_registry() -> ServiceRegistry:
 
 
 def _register_defaults(reg: ServiceRegistry) -> None:
+    import os
+
     from app.services.health_monitor       import HealthMonitorService
     from app.services.dependency_monitor   import DependencyMonitorService
     from app.services.security_monitor     import SecurityMonitorService
@@ -243,3 +245,7 @@ def _register_defaults(reg: ServiceRegistry) -> None:
     reg.register(PerformanceOptimizerService())
     reg.register(MemoryCompactorService())
     reg.register(SystemMetricsService())
+
+    if os.getenv("OBS_ALERTS_ENABLED", "true").lower() != "false":
+        from app.services.alerting import AlertingService
+        reg.register(AlertingService())
