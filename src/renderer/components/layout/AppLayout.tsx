@@ -21,6 +21,7 @@ const BillingPage       = lazy(() => import("../../features/billing").then(m => 
 const PluginsPage       = lazy(() => import("../../features/plugins").then(m => ({ default: m.PluginsPage })));
 const SandboxPage       = lazy(() => import("../../features/sandbox").then(m => ({ default: m.SandboxPage })));
 const AIRoutingPage     = lazy(() => import("../../features/ai-routing").then(m => ({ default: m.AIRoutingPage })));
+const ObservabilityPage = lazy(() => import("../../features/observability").then(m => ({ default: m.ObservabilityPage })));
 
 const FALLBACK = <LoadingSpinner fullPage label="Loading workspace…" />;
 
@@ -42,6 +43,7 @@ function WorkspaceContent() {
         {page === "plugins"     && <PluginsPage />}
         {page === "sandbox"     && <SandboxPage />}
         {page === "ai-routing"  && <AIRoutingPage />}
+        {page === "observability" && <ObservabilityPage />}
         {page === "social"     && <SocialPage />}
         {page === "settings"   && <SettingsPage />}
       </Suspense>
