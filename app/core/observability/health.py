@@ -214,6 +214,118 @@ def _register_defaults(hr: HealthRegistry) -> None:
             return ProbeResult(name="background_services",
                                status=HealthStatus.DEGRADED, message=str(exc))
 
+    async def probe_redis() -> ProbeResult:
+        try:
+            from app.core.cache import get_redis
+            cache = await get_redis()
+            if cache.backend != "redis":
+                return ProbeResult(
+                    name="redis", status=HealthStatus.DEGRADED,
+                    message="REDIS_URL not set — using in-process cache fallback",
+                    metadata={"backend": cache.backend},
+                )
+            await cache.set("_health_probe", "1", ttl=5)
+            return ProbeResult(name="redis", status=HealthStatus.HEALTHY,
+                               message="Redis OK", metadata={"backend": cache.backend})
+        except Exception as exc:
+            return ProbeResult(name="redis", status=HealthStatus.DEGRADED, message=str(exc))
+
+    async def probe_ai_providers() -> ProbeResult:
+        try:
+            from app.core.ai.registry.registry import platform_registry
+            snapshot  = platform_registry.health()
+            available = [pid for pid, info in snapshot.items() if info["available"]]
+            if not available:
+                return ProbeResult(name="ai_providers", status=HealthStatus.DEGRADED,
+                                   message="no AI provider configured", metadata=snapshot)
+            return ProbeResult(name="ai_providers", status=HealthStatus.HEALTHY,
+                               message=f"{len(available)} provider(s) available", metadata=snapshot)
+        except Exception as exc:
+            return ProbeResult(name="ai_providers", status=HealthStatus.DEGRADED, message=str(exc))
+
+    async def probe_event_bus() -> ProbeResult:
+        try:
+            from app.core.events import get_event_bus
+            stats = get_event_bus().stats()
+            return ProbeResult(name="event_bus", status=HealthStatus.HEALTHY,
+                               message=f"backend={stats['backend']}", metadata=stats)
+        except Exception as exc:
+            return ProbeResult(name="event_bus", status=HealthStatus.DEGRADED, message=str(exc))
+
+    async def probe_marketplace() -> ProbeResult:
+        try:
+            from app.marketplace.store import get_marketplace_store, JsonMarketplaceStore
+            store = get_marketplace_store()
+            count = await store.count()
+            if isinstance(store, JsonMarketplaceStore):
+                return ProbeResult(name="marketplace", status=HealthStatus.DEGRADED,
+                                   message="using JSON fallback store (no DB pool yet)",
+                                   metadata={"items": count})
+            return ProbeResult(name="marketplace", status=HealthStatus.HEALTHY,
+                               message=f"{count} listing(s)", metadata={"items": count})
+        except Exception as exc:
+            return ProbeResult(name="marketplace", status=HealthStatus.DEGRADED, message=str(exc))
+
+    async def probe_billing() -> ProbeResult:
+        try:
+            from app.billing import get_usage_service
+            import os as _os
+            svc = get_usage_service()
+            if svc._pool is None:
+                return ProbeResult(name="billing", status=HealthStatus.UNHEALTHY,
+                                   message="UsageService has no DB pool")
+            if not _os.getenv("STRIPE_SECRET_KEY"):
+                return ProbeResult(name="billing", status=HealthStatus.DEGRADED,
+                                   message="STRIPE_SECRET_KEY not set — checkout/portal disabled")
+            return ProbeResult(name="billing", status=HealthStatus.HEALTHY, message="billing OK")
+        except Exception as exc:
+            return ProbeResult(name="billing", status=HealthStatus.DEGRADED, message=str(exc))
+
+    async def probe_plugin_loader() -> ProbeResult:
+        try:
+            from app.plugins.loader import get_plugin_loader
+            loader = get_plugin_loader()
+            n = len(loader._instances)
+            return ProbeResult(name="plugin_loader", status=HealthStatus.HEALTHY,
+                               message=f"{n} active plugin instance(s)", metadata={"active": n})
+        except Exception as exc:
+            return ProbeResult(name="plugin_loader", status=HealthStatus.DEGRADED, message=str(exc))
+
+    async def probe_storage() -> ProbeResult:
+        try:
+            import shutil
+            from app.core.config import WORKSPACES
+            path  = WORKSPACES if WORKSPACES.exists() else WORKSPACES.parent
+            usage = shutil.disk_usage(path)
+            free_gb = usage.free / 1024 ** 3
+            if free_gb < 1.0:
+                return ProbeResult(name="storage", status=HealthStatus.DEGRADED,
+                                   message=f"low disk space: {free_gb:.2f}GB free",
+                                   metadata={"free_gb": round(free_gb, 2)})
+            return ProbeResult(name="storage", status=HealthStatus.HEALTHY,
+                               message=f"{free_gb:.2f}GB free", metadata={"free_gb": round(free_gb, 2)})
+        except Exception as exc:
+            return ProbeResult(name="storage", status=HealthStatus.DEGRADED, message=str(exc))
+
+    async def probe_vector_db() -> ProbeResult:
+        try:
+            from app.memory.semantic import get_semantic_memory
+            mem = await get_semantic_memory()
+            if not mem._pgvector:
+                return ProbeResult(name="vector_db", status=HealthStatus.DEGRADED,
+                                   message="pgvector unavailable — using TF-IDF fallback")
+            return ProbeResult(name="vector_db", status=HealthStatus.HEALTHY, message="pgvector OK")
+        except Exception as exc:
+            return ProbeResult(name="vector_db", status=HealthStatus.DEGRADED, message=str(exc))
+
     hr.register("agent_kernel",       probe_kernel,   critical=True,  timeout_s=3.0)
     hr.register("agent_memory",       probe_memory,   critical=False, timeout_s=2.0)
     hr.register("background_services",probe_services, critical=False, timeout_s=2.0)
+    hr.register("redis",              probe_redis,        critical=False, timeout_s=3.0)
+    hr.register("ai_providers",       probe_ai_providers, critical=False, timeout_s=3.0)
+    hr.register("event_bus",          probe_event_bus,    critical=False, timeout_s=2.0)
+    hr.register("marketplace",        probe_marketplace,  critical=False, timeout_s=3.0)
+    hr.register("billing",            probe_billing,      critical=False, timeout_s=3.0)
+    hr.register("plugin_loader",      probe_plugin_loader,critical=False, timeout_s=2.0)
+    hr.register("storage",            probe_storage,      critical=False, timeout_s=2.0)
+    hr.register("vector_db",          probe_vector_db,    critical=False, timeout_s=3.0)

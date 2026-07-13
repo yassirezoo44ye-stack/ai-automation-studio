@@ -2,7 +2,12 @@
 Health endpoints — Layer 13 surface.
 
 GET /health              liveness probe  — is the process alive?
+GET /health/live         alias for /health (Kubernetes-conventional name)
 GET /health/ready        readiness probe — is the server ready for traffic?
+GET /health/startup      startup probe   — has lifespan startup finished?
+GET /health/deep         full HealthRegistry sweep (same probes as
+                          /api/diagnostics/health) — every registered probe,
+                          not just DB + config.
 GET /api/health/full     detailed diagnostic snapshot
 GET /api/runtimes        runtime registry
 """
@@ -16,14 +21,21 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import WORKSPACES, DIST_DIR
 from app.core.maintenance import _error_counts, ERROR_WINDOW_SEC, _maintenance_state
+from app.core.observability.health import get_health_registry, HealthStatus
 
 router   = APIRouter(tags=["health"])
 _BOOT_AT = time.time()
+
+# Set True at the end of app.factory's lifespan startup — distinguishes
+# "process is alive" (liveness) from "startup work has finished" (startup
+# probe): DB pool created, schema initialised, background services started.
+startup_complete = False
 
 
 # ── Liveness — fast; never touches DB ────────────────────────────────────────
 
 @router.get("/health")
+@router.get("/health/live")
 async def liveness():
     """
     Kubernetes liveness probe.
@@ -34,6 +46,38 @@ async def liveness():
         "uptime_s"  : round(time.time() - _BOOT_AT, 1),
         "timestamp" : datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ── Startup — has lifespan startup finished? ─────────────────────────────────
+
+@router.get("/health/startup")
+async def startup():
+    """
+    Kubernetes startup probe. Returns 503 until app.factory's lifespan
+    startup has fully completed (DB pool, schema, background services),
+    then 200 for the rest of the process's life.
+    """
+    if not startup_complete:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "starting", "timestamp": datetime.now(timezone.utc).isoformat()},
+        )
+    return {"status": "started", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+# ── Deep — every registered HealthRegistry probe ─────────────────────────────
+
+@router.get("/health/deep")
+async def deep():
+    """
+    Full sweep of every probe registered in the shared HealthRegistry
+    (database, agent_kernel, agent_memory, background_services, and any
+    additive probes registered elsewhere) — same mechanism
+    /api/diagnostics/health already uses, not a second implementation.
+    """
+    report = await get_health_registry().check_all()
+    status_code = 200 if report["status"] != HealthStatus.UNHEALTHY.value else 503
+    return JSONResponse(status_code=status_code, content=report)
 
 
 # ── Readiness — checks critical dependencies ──────────────────────────────────
@@ -80,20 +124,31 @@ async def health_full():
     """Detailed self-diagnostic snapshot for ops dashboards."""
     checks: dict = {}
 
-    # Database
+    # Database, agent_kernel, agent_memory, background_services — via the
+    # shared HealthRegistry (the same probes /api/diagnostics/health and
+    # /health/deep use), not a second hand-rolled connectivity check.
+    registry_report = await get_health_registry().check_all()
+    for probe in registry_report["probes"]:
+        checks[probe["name"]] = (
+            "ok" if probe["status"] == HealthStatus.HEALTHY.value
+            else f"error: {probe['message']}" if probe["status"] == HealthStatus.UNHEALTHY.value
+            else f"degraded: {probe['message']}"
+        )
+
+    # Extra DB detail beyond the registry's up/down check — supplementary,
+    # not a duplicate connectivity check (the registry probe already did that).
     try:
         from app.core.db import get_pool
         pool = get_pool()
-        async with pool.acquire() as conn:
-            pg_version = await conn.fetchval("SELECT version()")
-        checks["database"] = "ok"
-        checks["db_pool"]  = {
-            "size": pool.get_size(),
-            "idle": pool.get_idle_size(),
-        }
-        checks["pg_version"] = pg_version
+        if pool is not None:
+            async with pool.acquire() as conn:
+                checks["pg_version"] = await conn.fetchval("SELECT version()")
+            checks["db_pool"] = {
+                "size": pool.get_size(),
+                "idle": pool.get_idle_size(),
+            }
     except Exception as e:
-        checks["database"] = f"error: {e}"
+        checks["pg_version"] = f"error: {e}"
 
     # Cache backend
     try:

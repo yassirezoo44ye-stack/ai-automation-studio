@@ -195,6 +195,7 @@ async def lifespan(app: FastAPI):
                                message=str(exc))
     get_health_registry().register("database", probe_db, critical=True, timeout_s=5.0)
 
+    health.startup_complete = True
     yield
 
     # ── Shutdown ────────────────────────────────────────────────────────────
