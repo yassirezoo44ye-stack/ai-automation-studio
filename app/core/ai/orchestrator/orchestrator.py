@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 class OrchestratorRequest:
     prompt:          str
     user_id:         Optional[str]       = None
+    organization_id: Optional[str]       = None    # AI Routing consolidation: quota/usage attribution
     conversation_id: Optional[str]       = None
     project_id:      Optional[str]       = None
     workspace_id:    Optional[str]       = None
@@ -110,6 +111,7 @@ class AIOrchestrator:
                 bus=self._bus,
                 request_id=request_id,
                 user_id=request.user_id,
+                org_id=request.organization_id,
             )
             task_results = await self._scheduler.run(
                 plan=plan,

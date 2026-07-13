@@ -76,6 +76,8 @@ class AutonomyEngine:
         self,
         description: str,
         agent_name : Optional[str] = None,
+        *,
+        org_id     : Optional[str] = None,
     ) -> dict:
         """
         Write a new agent file from a description using Claude.
@@ -91,7 +93,7 @@ class AutonomyEngine:
         if file_abs.exists():
             return {"status": "error", "error": f"Agent '{agent_name}' already exists"}
 
-        source = await self._generate_source(description, agent_name)
+        source = await self._generate_source(description, agent_name, org_id=org_id)
         if not source:
             return {"status": "error", "error": "LLM returned empty source"}
 
@@ -120,11 +122,16 @@ class AutonomyEngine:
             "source"    : source,
         }
 
-    async def suggest_improvements(self, n: int = 3) -> list[Suggestion]:
+    async def suggest_improvements(self, n: int = 3, *,
+                                   org_id: Optional[str] = None) -> list[Suggestion]:
         """
         Analyze current agents + memory → propose new agents / features.
         """
         if not self._api_key:
+            return []
+
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(org_id):
             return []
 
         existing_agents = [a.name for a in self._kernel.all_agents()]
@@ -148,6 +155,11 @@ class AutonomyEngine:
                 max_tokens=512,
                 messages=[{"role": "user", "content": prompt}],
             )
+            try:
+                total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+                await record_org_tokens(org_id, total_tokens, None, ref_type="agent_autonomy")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             text = msg.content[0].text.strip()
             # Extract JSON array
             start = text.find("[")
@@ -176,7 +188,8 @@ class AutonomyEngine:
             log.debug("suggest_improvements failed: %s", exc)
             return []
 
-    async def implement_suggestion(self, index: int) -> dict:
+    async def implement_suggestion(self, index: int, *,
+                                   org_id: Optional[str] = None) -> dict:
         """Implement a previously generated suggestion by index."""
         matches = [s for s in self._suggestions if s.index == index]
         if not matches:
@@ -185,12 +198,13 @@ class AutonomyEngine:
         if s.implemented:
             return {"status": "error", "error": "Already implemented"}
 
-        result = await self.generate_agent(s.description, s.agent_name)
+        result = await self.generate_agent(s.description, s.agent_name, org_id=org_id)
         if result.get("status") == "created":
             s.implemented = True
         return {**result, "suggestion": s.to_dict()}
 
-    async def continuous_loop(self, cycles: int = 3) -> list[dict]:
+    async def continuous_loop(self, cycles: int = 3, *,
+                              org_id: Optional[str] = None) -> list[dict]:
         """
         N autonomous improvement cycles:
           1. Suggest improvements
@@ -200,13 +214,13 @@ class AutonomyEngine:
         results = []
         for cycle in range(cycles):
             log.info("autonomy loop: cycle %d/%d", cycle + 1, cycles)
-            suggestions = await self.suggest_improvements(n=2)
+            suggestions = await self.suggest_improvements(n=2, org_id=org_id)
             if not suggestions:
                 results.append({"cycle": cycle + 1, "status": "no_suggestions"})
                 continue
 
             best = max(suggestions, key=lambda s: s.priority)
-            impl = await self.implement_suggestion(best.index)
+            impl = await self.implement_suggestion(best.index, org_id=org_id)
             results.append({
                 "cycle"     : cycle + 1,
                 "suggestion": best.to_dict(),
@@ -223,8 +237,12 @@ class AutonomyEngine:
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
-    async def _generate_source(self, description: str, agent_name: str) -> str:
+    async def _generate_source(self, description: str, agent_name: str, *,
+                               org_id: Optional[str] = None) -> str:
         existing_source = _example_agent_source()
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(org_id):
+            return ""
         try:
             import anthropic
             client = anthropic.AsyncAnthropic(api_key=self._api_key)
@@ -247,6 +265,11 @@ class AutonomyEngine:
                     ),
                 }],
             )
+            try:
+                total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+                await record_org_tokens(org_id, total_tokens, None, ref_type="agent_autonomy")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             source = msg.content[0].text.strip()
             if source.startswith("```"):
                 lines  = source.split("\n")

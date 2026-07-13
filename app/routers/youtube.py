@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.helpers import get_ai_client
+from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.rate_limit import make_rate_limit_dep
 from app.core.security import ai_rate_limit
 
@@ -91,6 +92,7 @@ async def youtube_transcript(req: YoutubeRequest, _rl: None = _yt_rl):
 @router.post("/api/youtube/analyze/stream")
 async def youtube_analyze_stream(req: YoutubeAskRequest, request: Request):
     ai_rate_limit(request)
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
 
     transcript = req.transcript or ""
@@ -110,6 +112,12 @@ async def youtube_analyze_stream(req: YoutubeAskRequest, request: Request):
             ) as stream:
                 for text in stream.text_stream:
                     yield f"data: {json.dumps({'type': 'delta', 'text': text})}\n\n"
+                try:
+                    final = stream.get_final_message()
+                    total_tokens = final.usage.input_tokens + final.usage.output_tokens
+                    await record_org_tokens(org_id, total_tokens, req.url, ref_type="youtube")
+                except Exception:
+                    pass  # metering must never turn a successful reply into an error
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

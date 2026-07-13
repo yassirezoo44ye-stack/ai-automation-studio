@@ -103,6 +103,7 @@ class InferenceEngine:
                     enriched, resp,
                     gateway=gw,
                     user_id=user_id,
+                    org_id=org_id,
                 )
 
             await gw._post_complete(enriched, resp, user_id=user_id, org_id=org_id)
@@ -175,31 +176,23 @@ class InferenceEngine:
                     enriched,
                     gateway=gw,
                     user_id=user_id,
+                    org_id=org_id,
                 )
             else:
-                gen = self._raw_stream(enriched, gw, user_id=user_id)
+                gen = self._raw_stream(enriched, gw, user_id=user_id, org_id=org_id)
 
-            full_text  = ""
-            last_usage = None
-
+            # No post-complete call here: `gen` is either _raw_stream() (a thin
+            # wrapper around gw.stream()) or stream_tool_loop() (which calls
+            # gw.stream() once per round) — AIGateway.stream() already calls
+            # _post_complete() itself when each stream finishes. Persisting
+            # again here after draining the generator double-wrote every
+            # streamed completion to ai_usage_log (and double-metered org
+            # quota) — the exact bug this phase's consolidation was meant to
+            # eliminate, just via a different path than the PromptCompleted
+            # event double-write already fixed.
             async for chunk_dict in gen:
                 yield chunk_dict
                 chunks_emitted += 1
-                if isinstance(chunk_dict, dict):
-                    if chunk_dict.get("type") == "delta":
-                        full_text += chunk_dict.get("text", "")
-                    if chunk_dict.get("type") == "usage":
-                        last_usage = chunk_dict.get("usage")
-
-            # Post-complete persistence
-            if full_text:
-                from app.ai.models import CompletionResponse, UsageStats
-                dummy = CompletionResponse(
-                    content=full_text,
-                    usage=UsageStats(**(last_usage or {})) if last_usage else UsageStats(),
-                    conversation_id=enriched.conversation_id,
-                )
-                await gw._post_complete(enriched, dummy, user_id=user_id, org_id=org_id)
 
         finally:
             latency_ms = (time.perf_counter() - t0) * 1000
@@ -223,10 +216,10 @@ class InferenceEngine:
         selection = model_router.select(request, available_providers=available)
         return request.model_copy(update={"model": selection.model_id})
 
-    async def _raw_stream(self, request, gw, user_id):
+    async def _raw_stream(self, request, gw, user_id, org_id=None):
         """Non-tool stream directly from gateway."""
         from app.ai.models import StreamChunk
-        async for chunk in gw.stream(request, user_id=user_id):
+        async for chunk in gw.stream(request, user_id=user_id, org_id=org_id):
             if isinstance(chunk, StreamChunk):
                 yield chunk.model_dump()
             else:

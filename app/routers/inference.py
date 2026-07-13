@@ -36,6 +36,14 @@ def _user_id(request: Request) -> Optional[str]:
     return getattr(request.state, "user_id", None)
 
 
+def _org_id(request: Request) -> Optional[str]:
+    # Set by the tenant middleware (app/factory.py) from the
+    # X-Organization-Id header — reused here, not re-extracted, so every AI
+    # completion is quota-checked and usage-recorded against the same org
+    # every other org-scoped endpoint already resolves.
+    return getattr(request.state, "org_id", None)
+
+
 def _pool():
     return get_pool()
 
@@ -98,6 +106,7 @@ async def complete(req: InferenceRequest, request: Request):
     resp = await p.complete(
         _to_gateway_request(req),
         user_id=_user_id(request),
+        org_id=_org_id(request),
         auto_tools=req.auto_execute_tools,
     )
     return {
@@ -123,6 +132,7 @@ async def stream(req: InferenceRequest, request: Request):
             async for chunk in p.stream(
                 _to_gateway_request(req),
                 user_id=_user_id(request),
+                org_id=_org_id(request),
                 auto_tools=req.auto_execute_tools,
             ):
                 if isinstance(chunk, dict):

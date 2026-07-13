@@ -119,6 +119,7 @@ class AgentContext:
     user_id    : Optional[str] = None
     workspace  : Optional[str] = None
     project_id : Optional[str] = None
+    organization_id: Optional[str] = None
     extra      : dict = field(default_factory=dict)
     # Tracing / observability
     trace_id   : Optional[str] = None

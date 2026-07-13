@@ -27,6 +27,7 @@ async def run_tool_loop(
     *,
     gateway,            # AIGateway or callable (request) → CompletionResponse
     user_id:     Optional[str] = None,
+    org_id:      Optional[str] = None,
     max_rounds:  int            = _MAX_ROUNDS,
     tool_executor=None,
 ) -> CompletionResponse:
@@ -74,7 +75,10 @@ async def run_tool_loop(
         if callable(gateway):
             current_resp = await gateway(current_req)
         else:
-            current_resp = await gateway.complete(current_req, user_id=user_id)
+            # Every round of the tool loop is a real completion call — must
+            # be quota-checked/usage-recorded like the first one, not just
+            # the outer call that triggered the loop.
+            current_resp = await gateway.complete(current_req, user_id=user_id, org_id=org_id)
 
     return current_resp
 
@@ -84,6 +88,7 @@ async def stream_tool_loop(
     *,
     gateway,             # AIGateway or callable
     user_id:    Optional[str] = None,
+    org_id:     Optional[str] = None,
     max_rounds: int            = _MAX_ROUNDS,
     tool_executor=None,
 ) -> AsyncGenerator[dict, None]:
@@ -103,7 +108,7 @@ async def stream_tool_loop(
     if callable(gateway):
         stream_gen = gateway(current_req)
     else:
-        stream_gen = gateway.stream(current_req, user_id=user_id)
+        stream_gen = gateway.stream(current_req, user_id=user_id, org_id=org_id)
 
     async for chunk in stream_gen:
         if isinstance(chunk, StreamChunk):
@@ -145,7 +150,7 @@ async def stream_tool_loop(
         if callable(gateway):
             follow_gen = gateway(current_req)
         else:
-            follow_gen = gateway.stream(current_req, user_id=user_id)
+            follow_gen = gateway.stream(current_req, user_id=user_id, org_id=org_id)
 
         async for chunk in follow_gen:
             if isinstance(chunk, StreamChunk):

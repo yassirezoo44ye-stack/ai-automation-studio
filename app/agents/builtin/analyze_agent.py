@@ -123,6 +123,10 @@ class AnalyzeAgent(EvolvableAgent):
 
         source = path.read_text(encoding="utf-8", errors="replace")
 
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(ctx.organization_id):
+            return AgentResult.fail(self.name, "Organization AI quota exceeded — code review unavailable")
+
         try:
             import anthropic
             client = anthropic.AsyncAnthropic(api_key=api_key)
@@ -137,6 +141,11 @@ class AnalyzeAgent(EvolvableAgent):
                     ),
                 }],
             )
+            try:
+                total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+                await record_org_tokens(ctx.organization_id, total_tokens, None, ref_type="agent_analyze")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             review = msg.content[0].text.strip()
             return AgentResult.ok(
                 self.name, f"Code review for {path.name}",

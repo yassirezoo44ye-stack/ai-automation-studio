@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.ai.models import UsageStats
 from app.core.ai.events.bus import bus
 from app.core.ai.events.events import (
     PromptCompleted, PromptStarted,
@@ -111,9 +110,13 @@ class TelemetryService:
 
         self._in_flight.pop(event.request_id, None)
 
-        # Persist to DB
-        if self._pool:
-            await self._persist(event)
+        # No DB persist here: AIGateway._post_complete() (app/ai/gateway.py)
+        # already writes this same completion to ai_usage_log — with the
+        # real user_id/org_id/conversation_id context this event lacks —
+        # right before PromptCompleted is emitted (see InferenceEngine.
+        # complete/stream). A second write here would double-count every
+        # request's cost in ai_usage_log. TelemetryService's job is the
+        # in-process counters above (used by summary()), not persistence.
 
     async def _on_stream_started(self, event: StreamStarted) -> None:
         self._active_streams.add(event.request_id)
@@ -125,33 +128,6 @@ class TelemetryService:
         self._counters["total_tool_calls"] += 1
         if event.latency_ms:
             self._tool_latencies[event.tool_name].append(event.latency_ms)
-
-    # ── Persistence ───────────────────────────────────────────────────────────
-
-    async def _persist(self, event: PromptCompleted) -> None:
-        """Write to ai_usage_log (delegates to cost_tracker for backward compat)."""
-        if not self._pool:
-            return
-        try:
-            from app.ai import cost_tracker
-            stats = UsageStats(
-                input_tokens=event.input_tokens,
-                output_tokens=event.output_tokens,
-                total_tokens=event.input_tokens + event.output_tokens,
-                cost_usd=event.cost_usd,
-                provider=event.provider_id,
-                model=event.model,
-                cached=event.cached,
-            )
-            await cost_tracker.record(
-                pool=self._pool,
-                user_id=None,
-                conversation_id=None,
-                stats=stats,
-                cached=event.cached,
-            )
-        except Exception as exc:
-            log.error("TelemetryService._persist failed: %s", exc)
 
     # ── Metrics API ───────────────────────────────────────────────────────────
 
@@ -179,13 +155,15 @@ class TelemetryService:
             by_provider=providers,
         )
 
-    async def db_totals(self, *, user_id: Optional[str] = None, since: Optional[datetime] = None) -> dict:
+    async def db_totals(self, *, user_id: Optional[str] = None, org_id: Optional[str] = None,
+                        since: Optional[datetime] = None) -> dict:
         from app.ai import cost_tracker
-        return await cost_tracker.totals(pool=self._pool, user_id=user_id, since=since)
+        return await cost_tracker.totals(pool=self._pool, user_id=user_id, org_id=org_id, since=since)
 
-    async def db_by_provider(self, *, user_id: Optional[str] = None, since: Optional[datetime] = None) -> list[dict]:
+    async def db_by_provider(self, *, user_id: Optional[str] = None, org_id: Optional[str] = None,
+                             since: Optional[datetime] = None) -> list[dict]:
         from app.ai import cost_tracker
-        return await cost_tracker.by_provider(pool=self._pool, user_id=user_id, since=since)
+        return await cost_tracker.by_provider(pool=self._pool, user_id=user_id, org_id=org_id, since=since)
 
     def tool_stats(self) -> dict[str, dict]:
         result = {}

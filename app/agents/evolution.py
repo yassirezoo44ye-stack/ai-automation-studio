@@ -123,7 +123,7 @@ class EvolutionEngine:
         report.status = "stable" if not candidates else "pending"
         return report
 
-    async def evolve(self) -> EvolutionReport:
+    async def evolve(self, *, org_id: Optional[str] = None) -> EvolutionReport:
         """
         Analyze + rewrite underperforming agents using Claude.
         Respects cooldown to prevent runaway self-modification.
@@ -145,7 +145,7 @@ class EvolutionEngine:
 
         for candidate in report.candidates:
             try:
-                evolved = await self._rewrite_agent(candidate)
+                evolved = await self._rewrite_agent(candidate, org_id=org_id)
                 if evolved:
                     report.evolved.append(candidate.name)
                 else:
@@ -163,7 +163,8 @@ class EvolutionEngine:
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
-    async def _rewrite_agent(self, candidate: EvolutionCandidate) -> bool:
+    async def _rewrite_agent(self, candidate: EvolutionCandidate, *,
+                             org_id: Optional[str] = None) -> bool:
         """
         Ask Claude to improve the agent source, then apply the patch.
         Returns True if the file was actually modified.
@@ -172,6 +173,12 @@ class EvolutionEngine:
         if not api_key:
             log.warning("ANTHROPIC_API_KEY not set — skipping LLM evolution for %s",
                         candidate.name)
+            return False
+
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(org_id):
+            log.warning("org %s over quota — skipping evolution rewrite for %s",
+                        org_id, candidate.name)
             return False
 
         # Read current source
@@ -215,6 +222,11 @@ Rules:
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}],
             )
+            try:
+                total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+                await record_org_tokens(org_id, total_tokens, None, ref_type="agent_evolution")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             new_source = msg.content[0].text.strip()
 
             # Strip markdown fences if Claude wrapped the code

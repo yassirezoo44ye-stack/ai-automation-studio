@@ -70,10 +70,15 @@ class ToolSchema(BaseModel):
 class CompletionRequest(BaseModel):
     messages: list[Message]
 
-    # Provider selection
-    provider: Optional[ProviderID] = None           # None = use default
+    # Provider selection — a plain string, not a closed enum: any provider_id
+    # registered with PlatformProviderRegistry (built-in or a Plugin SDK
+    # AI_PROVIDER-type plugin's) can be requested. ProviderID's 3 members
+    # remain available as string constants for internal call sites; every
+    # existing caller passing "anthropic"/"openai"/"gemini" is unaffected —
+    # this is a type-widening only, not a routing-behavior change.
+    provider: Optional[str] = None                  # None = use default
     model: Optional[str] = None                     # None = use provider default
-    fallback_providers: list[ProviderID] = []
+    fallback_providers: list[str] = []
 
     # Generation parameters
     max_tokens: int = Field(2048, ge=1, le=32000)

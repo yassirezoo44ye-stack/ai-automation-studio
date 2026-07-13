@@ -117,6 +117,8 @@ class Deliberation:
         raw_input     : str,
         kernel        : "AgentKernel",
         heuristic_intent: str = "",
+        *,
+        org_id        : Optional[str] = None,
     ) -> DeliberationResult:
         """
         Run deliberation and return the winner agent name + full vote record.
@@ -143,7 +145,7 @@ class Deliberation:
         if gap < 0.05 and os.getenv("ANTHROPIC_API_KEY"):
             # Tiebreak via LLM
             winner_name, reasoning = await self._llm_tiebreak(
-                raw_input, top, second, kernel
+                raw_input, top, second, kernel, org_id=org_id
             )
             return DeliberationResult(
                 winner       = winner_name,
@@ -200,7 +202,12 @@ class Deliberation:
         top      : AgentBid,
         second   : AgentBid,
         kernel   : "AgentKernel",
+        *,
+        org_id   : Optional[str] = None,
     ) -> tuple[str, str]:
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(org_id):
+            return top.agent_name, "org quota exceeded — defaulting to highest score"
         try:
             import anthropic
             client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
@@ -217,6 +224,11 @@ class Deliberation:
                     ),
                 }],
             )
+            try:
+                total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+                await record_org_tokens(org_id, total_tokens, None, ref_type="agent_deliberation")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             text = msg.content[0].text.strip()
             if "WINNER:" in text:
                 parts  = text.split("|")

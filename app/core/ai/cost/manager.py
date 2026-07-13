@@ -71,6 +71,9 @@ class CostManager:
     def add_limit(self, limit: SpendingLimit) -> None:
         self._limits.append(limit)
 
+    def list_limits(self) -> list[SpendingLimit]:
+        return list(self._limits)
+
     async def check_budget(
         self,
         user_id:        Optional[str],

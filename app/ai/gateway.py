@@ -20,7 +20,6 @@ from app.ai.cache import cache
 from app.ai.models import (
     CompletionRequest, CompletionResponse, StreamChunk, Message,
 )
-from app.ai.providers.registry import registry
 from app.ai.retries import with_retry
 
 log = logging.getLogger(__name__)
@@ -62,7 +61,14 @@ class AIGateway:
                 return hit
 
         async def _call() -> CompletionResponse:
-            resp, _ = await registry.complete_with_failover(request)
+            # AI Routing consolidation: PlatformProviderRegistry
+            # (app/core/ai/registry/registry.py) is the single provider
+            # registry every real completion path uses — including the
+            # Plugin SDK's dynamically-registered AI_PROVIDER plugins,
+            # which only ever reach this registry (see app/plugins/
+            # adapters.py's adapt_ai_provider).
+            from app.core.ai.registry.registry import platform_registry
+            resp, _ = await platform_registry.complete_with_events(request)
             return resp
 
         response = await with_retry(
@@ -100,7 +106,8 @@ class AIGateway:
         full_text = ""
         last_usage = None
 
-        async for chunk in registry.stream_with_failover(request):
+        from app.core.ai.registry.registry import platform_registry
+        async for chunk in platform_registry.stream_with_events(request):
             if chunk.type == "delta" and chunk.text:
                 full_text += chunk.text
             if chunk.type == "usage":
@@ -203,6 +210,7 @@ class AIGateway:
             await cost_tracker.record(
                 pool=self._pool,
                 user_id=user_id,
+                org_id=org_id,
                 conversation_id=request.conversation_id,
                 stats=response.usage,
                 cached=response.cached,

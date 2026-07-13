@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -48,10 +48,12 @@ class WorkflowResumeIn(BaseModel):
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
 @router.post("/orchestrate")
-async def orchestrate(body: OrchestrateIn):
+async def orchestrate(body: OrchestrateIn, request: Request):
     try:
         req = OrchestratorRequest(
             prompt=body.prompt,
+            user_id=getattr(request.state, "user_id", None),
+            organization_id=getattr(request.state, "org_id", None),
             mode=body.mode,
             conversation_id=body.conversation_id,
             project_id=body.project_id,
@@ -67,9 +69,11 @@ async def orchestrate(body: OrchestrateIn):
 
 
 @router.post("/orchestrate/stream")
-async def orchestrate_stream(body: OrchestrateIn):
+async def orchestrate_stream(body: OrchestrateIn, request: Request):
     req = OrchestratorRequest(
         prompt=body.prompt,
+        user_id=getattr(request.state, "user_id", None),
+        organization_id=getattr(request.state, "org_id", None),
         mode=body.mode,
         conversation_id=body.conversation_id,
         project_id=body.project_id,
@@ -133,8 +137,11 @@ async def stream_builtin_agent(body: AgentRunIn):
 # ── Workflows ─────────────────────────────────────────────────────────────────
 
 @router.post("/workflows/run")
-async def run_workflow(body: WorkflowRunIn):
+async def run_workflow(body: WorkflowRunIn, request: Request):
     from app.core.ai.workflow.engine import WorkflowDefinition, WorkflowNode
+
+    user_id = getattr(request.state, "user_id", None)
+    org_id  = getattr(request.state, "org_id", None)
 
     raw = body.definition
     nodes = {
@@ -160,7 +167,7 @@ async def run_workflow(body: WorkflowRunIn):
     async def _runner(node_id: str, context: dict) -> dict:
         node = definition.nodes[node_id]
         task_prompt = node.config.get("prompt", node.config.get("description", node_id))
-        req = OrchestratorRequest(prompt=str(task_prompt))
+        req = OrchestratorRequest(prompt=str(task_prompt), user_id=user_id, organization_id=org_id)
         result = await platform.orchestrate(req)
         return {"content": result.content, "success": result.success}
 
@@ -204,5 +211,29 @@ async def get_execution(execution_id: str):
 # ── Cost ──────────────────────────────────────────────────────────────────────
 
 @router.get("/cost/summary")
-async def cost_summary():
-    return platform.cost.summary()
+async def cost_summary(request: Request):
+    """Real numbers from ai_usage_log — the consolidated cost/token ledger
+    (AI Routing consolidation; see app/ai/cost_tracker.py). Org-scoped when
+    an X-Organization-Id header is present, platform-wide otherwise."""
+    from app.ai import cost_tracker
+    from app.core.db import get_pool
+
+    org_id = getattr(request.state, "org_id", None)
+    pool   = get_pool()
+    totals = await cost_tracker.totals(pool=pool, org_id=org_id)
+    by_provider_rows = await cost_tracker.by_provider(pool=pool, org_id=org_id)
+
+    by_provider: dict[str, float] = {}
+    for row in by_provider_rows:
+        provider = row.get("provider", "unknown")
+        by_provider[provider] = by_provider.get(provider, 0.0) + float(row.get("cost_usd") or 0)
+
+    return {
+        "total_usd":    round(float(totals.get("cost_usd") or 0), 6),
+        "record_count": int(totals.get("calls") or 0),
+        "by_provider":  by_provider,
+        "by_agent":     {},   # ai_usage_log has no per-agent breakdown yet
+        "limits":       [
+            {"scope": l.scope, "limit_usd": l.limit_usd} for l in platform.cost.list_limits()
+        ],
+    }

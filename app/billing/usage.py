@@ -53,6 +53,40 @@ CREATE TABLE IF NOT EXISTS usage_events (
 CREATE INDEX IF NOT EXISTS idx_usage_events_org ON usage_events(organization_id, created_at DESC);
 """
 
+# AI Routing consolidation — budget granularity below organization. Scope
+# columns default to '' (empty string), NOT NULL: unlike NULL, '' compares
+# equal to itself in a UNIQUE/PRIMARY KEY constraint, so upserts (ON
+# CONFLICT) keep matching correctly. '' in all three columns means
+# "organization-level" — the exact rows every pre-existing call already
+# writes, 100% unchanged in shape and behavior.
+_SCOPE_COLUMNS_SCHEMA = """
+ALTER TABLE usage_records ADD COLUMN IF NOT EXISTS project_id  TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_records ADD COLUMN IF NOT EXISTS workflow_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_records ADD COLUMN IF NOT EXISTS agent_id    TEXT NOT NULL DEFAULT '';
+
+DO $$
+BEGIN
+    ALTER TABLE usage_records DROP CONSTRAINT usage_records_organization_id_metric_period_key;
+    ALTER TABLE usage_records ADD CONSTRAINT usage_records_scope_key
+        UNIQUE (organization_id, metric, period, project_id, workflow_id, agent_id);
+EXCEPTION WHEN undefined_object THEN
+    NULL;  -- old constraint already replaced by a prior boot (idempotent re-run)
+END $$;
+
+ALTER TABLE usage_limits ADD COLUMN IF NOT EXISTS project_id  TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_limits ADD COLUMN IF NOT EXISTS workflow_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_limits ADD COLUMN IF NOT EXISTS agent_id    TEXT NOT NULL DEFAULT '';
+
+DO $$
+BEGIN
+    ALTER TABLE usage_limits DROP CONSTRAINT usage_limits_pkey;
+    ALTER TABLE usage_limits ADD CONSTRAINT usage_limits_scope_pkey
+        PRIMARY KEY (organization_id, metric, project_id, workflow_id, agent_id);
+EXCEPTION WHEN undefined_object THEN
+    NULL;
+END $$;
+"""
+
 
 class QuotaExceeded(Exception):
     def __init__(self, metric: str, used: int, limit: int):
@@ -67,6 +101,7 @@ def _current_period() -> str:
 
 async def init_usage_schema(conn: asyncpg.Connection) -> None:
     await conn.execute(USAGE_SCHEMA)
+    await conn.execute(_SCOPE_COLUMNS_SCHEMA)
     log.info("usage schema initialised")
 
 
@@ -79,22 +114,36 @@ class UsageService:
     async def record(
         self, org_id: str, metric: str, amount: int = 1, *,
         ref_type: str | None = None, ref_id: str | None = None,
+        project_id: str = "", workflow_id: str = "", agent_id: str = "",
     ) -> int:
-        """Add `amount` to the metric for the current period; returns new total."""
+        """Add `amount` to the metric for the current period; returns new
+        org-level total. When project_id/workflow_id/agent_id is given, ALSO
+        accumulates a finer-scoped row (additive, not a replacement) — a
+        workflow's spend counts toward both the workflow's own ceiling and
+        the org's overall ceiling."""
         if metric not in METRICS:
             raise ValueError(f"unknown metric {metric!r}")
         from app.core.db import acquire_scoped
         period = _current_period()
         async with acquire_scoped(org_id) as conn:
             total = await conn.fetchval(
-                """INSERT INTO usage_records (organization_id, metric, period, amount)
-                   VALUES ($1,$2,$3,$4)
-                   ON CONFLICT (organization_id, metric, period)
+                """INSERT INTO usage_records (organization_id, metric, period, amount, project_id, workflow_id, agent_id)
+                   VALUES ($1,$2,$3,$4,'','','')
+                   ON CONFLICT (organization_id, metric, period, project_id, workflow_id, agent_id)
                    DO UPDATE SET amount = usage_records.amount + EXCLUDED.amount,
                                  updated_at = NOW()
                    RETURNING amount""",
                 uuid.UUID(org_id), metric, period, amount,
             )
+            if project_id or workflow_id or agent_id:
+                await conn.execute(
+                    """INSERT INTO usage_records (organization_id, metric, period, amount, project_id, workflow_id, agent_id)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7)
+                       ON CONFLICT (organization_id, metric, period, project_id, workflow_id, agent_id)
+                       DO UPDATE SET amount = usage_records.amount + EXCLUDED.amount,
+                                     updated_at = NOW()""",
+                    uuid.UUID(org_id), metric, period, amount, project_id, workflow_id, agent_id,
+                )
             if ref_type or ref_id:
                 await conn.execute(
                     "INSERT INTO usage_events (organization_id, metric, amount, ref_type, ref_id) "
@@ -122,30 +171,45 @@ class UsageService:
             )
         return int(total)
 
-    async def get_usage(self, org_id: str, period: str | None = None) -> dict[str, int]:
+    async def get_usage(self, org_id: str, period: str | None = None, *,
+                        project_id: str = "", workflow_id: str = "", agent_id: str = "") -> dict[str, int]:
         from app.core.db import acquire_scoped
         period = period or _current_period()
         async with acquire_scoped(org_id) as conn:
             rows = await conn.fetch(
                 "SELECT metric, amount FROM usage_records "
-                "WHERE organization_id=$1 AND period=$2",
-                uuid.UUID(org_id), period,
+                "WHERE organization_id=$1 AND period=$2 "
+                "AND project_id=$3 AND workflow_id=$4 AND agent_id=$5",
+                uuid.UUID(org_id), period, project_id, workflow_id, agent_id,
             )
         usage = {m: 0 for m in METRICS}
         usage.update({r["metric"]: int(r["amount"]) for r in rows})
         return usage
 
-    async def get_limit(self, org_id: str, metric: str) -> int:
-        """Effective limit: per-org override wins over the plan default."""
+    async def get_limit(self, org_id: str, metric: str, *,
+                        project_id: str = "", workflow_id: str = "", agent_id: str = "") -> int:
+        """Effective limit at the given scope.
+
+        Org-level (project_id=workflow_id=agent_id=""): per-org override
+        wins over the plan default — unchanged existing behavior.
+        Finer scope: only an explicit set_override() at that exact scope
+        applies; with none set, the scope is unlimited (-1) — the org-level
+        ceiling, checked separately, is what actually bounds it. A
+        project/workflow/agent limit is an additional, tighter ceiling an
+        admin opts into, not a replacement for the plan's org limit.
+        """
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             override = await conn.fetchval(
                 "SELECT override_limit FROM usage_limits "
-                "WHERE organization_id=$1 AND metric=$2",
-                uuid.UUID(org_id), metric,
+                "WHERE organization_id=$1 AND metric=$2 "
+                "AND project_id=$3 AND workflow_id=$4 AND agent_id=$5",
+                uuid.UUID(org_id), metric, project_id, workflow_id, agent_id,
             )
             if override is not None:
                 return int(override)
+            if project_id or workflow_id or agent_id:
+                return -1  # no scoped override set — unlimited at this granularity
             plan_id = await conn.fetchval(
                 "SELECT plan FROM organizations WHERE id=$1", uuid.UUID(org_id)
             )
@@ -153,33 +217,53 @@ class UsageService:
         plan = await get_plan_service().get_plan(plan_id or "free")
         return plan.limits.get(metric, 0)
 
-    async def check_quota(self, org_id: str, metric: str, amount: int = 1) -> None:
-        """Raise QuotaExceeded if recording `amount` would breach the limit."""
+    async def check_quota(self, org_id: str, metric: str, amount: int = 1, *,
+                          project_id: str = "", workflow_id: str = "", agent_id: str = "") -> None:
+        """Raise QuotaExceeded if recording `amount` would breach the limit.
+
+        Always checks the org-level ceiling first (unchanged behavior for
+        every existing caller). When project_id/workflow_id/agent_id is
+        given, ALSO checks that finer scope's own ceiling — a workflow
+        budget doesn't replace the org budget, it's an additional, tighter
+        one; whichever is hit first raises.
+        """
+        await self._check_quota_scope(org_id, metric, amount, "", "", "")
+        if project_id or workflow_id or agent_id:
+            await self._check_quota_scope(org_id, metric, amount, project_id, workflow_id, agent_id)
+
+    async def _check_quota_scope(
+        self, org_id: str, metric: str, amount: int,
+        project_id: str, workflow_id: str, agent_id: str,
+    ) -> None:
         from app.core.db import acquire_scoped
-        limit = await self.get_limit(org_id, metric)
+        limit = await self.get_limit(org_id, metric, project_id=project_id,
+                                     workflow_id=workflow_id, agent_id=agent_id)
         if limit < 0:
             return  # unlimited
         period = _current_period()
         async with acquire_scoped(org_id) as conn:
             used = await conn.fetchval(
                 "SELECT amount FROM usage_records "
-                "WHERE organization_id=$1 AND metric=$2 AND period=$3",
-                uuid.UUID(org_id), metric, period,
+                "WHERE organization_id=$1 AND metric=$2 AND period=$3 "
+                "AND project_id=$4 AND workflow_id=$5 AND agent_id=$6",
+                uuid.UUID(org_id), metric, period, project_id, workflow_id, agent_id,
             ) or 0
         if used + amount > limit:
             raise QuotaExceeded(metric, int(used), limit)
 
-    async def set_override(self, org_id: str, metric: str, limit: int) -> None:
-        """Set a per-organization limit override (admin/enterprise negotiation)."""
+    async def set_override(self, org_id: str, metric: str, limit: int, *,
+                           project_id: str = "", workflow_id: str = "", agent_id: str = "") -> None:
+        """Set a limit override at the given scope (org-level by default;
+        pass project_id/workflow_id/agent_id for a finer-grained ceiling)."""
         if metric not in METRICS:
             raise ValueError(f"unknown metric {metric!r}")
         async with self._pool.acquire() as conn:
             await conn.execute(
-                """INSERT INTO usage_limits (organization_id, metric, override_limit)
-                   VALUES ($1,$2,$3)
-                   ON CONFLICT (organization_id, metric)
+                """INSERT INTO usage_limits (organization_id, metric, override_limit, project_id, workflow_id, agent_id)
+                   VALUES ($1,$2,$3,$4,$5,$6)
+                   ON CONFLICT (organization_id, metric, project_id, workflow_id, agent_id)
                    DO UPDATE SET override_limit = EXCLUDED.override_limit""",
-                uuid.UUID(org_id), metric, limit,
+                uuid.UUID(org_id), metric, limit, project_id, workflow_id, agent_id,
             )
 
     async def summary(self, org_id: str) -> dict[str, Any]:

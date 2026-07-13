@@ -62,12 +62,18 @@ class LLMRouter:
     def available(self) -> bool:
         return bool(self._api_key)
 
-    async def route(self, raw_input: str, known_agents: list[str]) -> Optional[RoutedIntent]:
+    async def route(
+        self, raw_input: str, known_agents: list[str], *, org_id: Optional[str] = None,
+    ) -> Optional[RoutedIntent]:
         """
         Route raw_input to an agent via Claude.
         Returns None if unavailable or if the call fails.
         """
         if not self._api_key:
+            return None
+
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(org_id):
             return None
 
         agent_list = ", ".join(known_agents)
@@ -82,6 +88,11 @@ class LLMRouter:
                 system=_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_msg}],
             )
+            try:
+                total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+                await record_org_tokens(org_id, total_tokens, None, ref_type="agent_router")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             text = msg.content[0].text.strip()
 
             # Extract JSON even if wrapped in markdown fences
@@ -110,12 +121,12 @@ class LLMRouter:
             return None
 
     async def understand(self, raw_input: str, known_agents: list[str],
-                         context: str = "") -> RoutedIntent:
+                         context: str = "", *, org_id: Optional[str] = None) -> RoutedIntent:
         """
         Full understanding: route + validate.
         Always returns a RoutedIntent (never raises).
         """
-        result = await self.route(raw_input, known_agents)
+        result = await self.route(raw_input, known_agents, org_id=org_id)
         if result:
             return result
 

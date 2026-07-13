@@ -35,13 +35,26 @@ def unadapt_agent(name: str) -> bool:
 
 
 def adapt_ai_provider(provider_id: str, provider: Any) -> None:
-    from app.ai.providers.registry import registry as provider_registry
-    provider_registry.register_provider(provider_id, provider)
+    # Routes into PlatformProviderRegistry (app/core/ai/registry/registry.py),
+    # the consolidated registry every real completion path uses — not the
+    # older app.ai.providers.registry.ProviderRegistry, which AIGateway no
+    # longer calls directly after the AI Routing consolidation phase.
+    # register() derives its dict key from provider.provider_id itself.
+    from app.core.ai.registry.registry import platform_registry
+    platform_registry.register(provider)
 
 
 def unadapt_ai_provider(provider_id: str) -> bool:
-    from app.ai.providers.registry import registry as provider_registry
-    return provider_registry.unregister_provider(provider_id)
+    from app.core.ai.registry.registry import platform_registry
+    try:
+        platform_registry.get(provider_id)
+        existed = True  # registered and available
+    except RuntimeError:
+        existed = True  # registered but not configured (e.g. no API key)
+    except ValueError:
+        existed = False  # never registered at all
+    platform_registry.unregister(provider_id)
+    return existed
 
 
 def adapt_event_listener(pattern: str, handler: Callable[[Any], Awaitable[None]]) -> None:

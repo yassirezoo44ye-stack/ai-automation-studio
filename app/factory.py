@@ -104,6 +104,13 @@ async def lifespan(app: FastAPI):
         await init_credits_schema(conn)
     await get_plan_service(pool).refresh_cache()
 
+    # ── AI usage ledger — references organizations (tenancy block above)
+    # and users/conversations (init_db above). AI Routing consolidation:
+    # this is the single persisted cost/token source of truth.
+    from app.ai import init_ai_usage_schema
+    async with pool.acquire() as conn:
+        await init_ai_usage_schema(conn)
+
     # ── Marketplace store (PostgreSQL primary, JSON fallback) ──────────────
     from app.marketplace import init_marketplace_store
     await init_marketplace_store(pool)

@@ -145,7 +145,7 @@ class AgentKernel:
 
         # ── 2. LLM router (when heuristic is uncertain) ───────────────────
         if ir.confidence < _LLM_THRESHOLD and self._router and self._router.available():
-            routed = await self._router.route(raw_input, known)
+            routed = await self._router.route(raw_input, known, org_id=organization_id)
             if routed and routed.intent in self._agents:
                 ir = _adapt_routed(routed)
 
@@ -153,7 +153,7 @@ class AgentKernel:
         intent_name = ir.intent
         if (deliberate or ir.confidence < _DELIBERATION_THRESH) and \
                 self._deliberation and len(self._agents) >= 2:
-            delib = await self._deliberation.vote(raw_input, self, ir.intent)
+            delib = await self._deliberation.vote(raw_input, self, ir.intent, org_id=organization_id)
             if delib.winner in self._agents:
                 intent_name = delib.winner
 
@@ -183,6 +183,7 @@ class AgentKernel:
                 user_id    = user_id,
                 workspace  = workspace,
                 project_id = project_id,
+                organization_id = organization_id,
             )
             await _publish_agent_event("agent.started", intent_name, user_id=user_id)
             result = await agent.run(ctx)
@@ -213,7 +214,7 @@ class AgentKernel:
 
         # ── 6. Self-reflection (non-blocking) ────────────────────────────
         if self._reflector:
-            self._reflector.reflect(result, self._memory, self._evolution)
+            self._reflector.reflect(result, self._memory, self._evolution, org_id=organization_id)
 
         return result
 
@@ -226,16 +227,19 @@ class AgentKernel:
         user_id   : Optional[str] = None,
         workspace : Optional[str] = None,
         parallel  : bool = False,
+        organization_id: Optional[str] = None,
     ) -> list[AgentResult]:
         if parallel:
             return list(await asyncio.gather(*[
-                self.run(t, caller=caller, user_id=user_id, workspace=workspace)
+                self.run(t, caller=caller, user_id=user_id, workspace=workspace,
+                         organization_id=organization_id)
                 for t in tasks
             ]))
 
         results: list[AgentResult] = []
         for task in tasks:
-            r = await self.run(task, caller=caller, user_id=user_id, workspace=workspace)
+            r = await self.run(task, caller=caller, user_id=user_id, workspace=workspace,
+                               organization_id=organization_id)
             results.append(r)
             if not r.success:
                 log.warning("pipeline stopped at: %s", task)
@@ -248,7 +252,7 @@ class AgentKernel:
         **kwargs,
     ) -> tuple[AgentResult, dict]:
         """Run with explicit deliberation — returns (result, vote_record)."""
-        delib = await self._deliberation.vote(raw_input, self)
+        delib = await self._deliberation.vote(raw_input, self, org_id=kwargs.get("organization_id"))
         result = await self.run(raw_input, deliberate=False, **kwargs)
         return result, delib.to_dict()
 
@@ -258,9 +262,11 @@ class AgentKernel:
         caller    : str = "system",
         user_id   : Optional[str] = None,
         workspace : Optional[str] = None,
+        organization_id: Optional[str] = None,
     ) -> dict:
         plan_result = await self.run(f"plan {goal}", caller=caller,
-                                     user_id=user_id, workspace=workspace)
+                                     user_id=user_id, workspace=workspace,
+                                     organization_id=organization_id)
         tasks = plan_result.data.get("tasks", [])
         if not tasks:
             return {
@@ -268,8 +274,8 @@ class AgentKernel:
                 "results": [plan_result.to_dict()],
                 "success": plan_result.success,
             }
-        results = await self.collaborate(tasks, caller=caller,
-                                         user_id=user_id, workspace=workspace)
+        results = await self.collaborate(tasks, caller=caller, user_id=user_id,
+                                         workspace=workspace, organization_id=organization_id)
         return {
             "plan"   : tasks,
             "results": [r.to_dict() for r in results],
@@ -279,33 +285,34 @@ class AgentKernel:
     # ── Autonomous development ────────────────────────────────────────────────
 
     async def generate_agent(self, description: str,
-                             agent_name: Optional[str] = None) -> dict:
+                             agent_name: Optional[str] = None,
+                             organization_id: Optional[str] = None) -> dict:
         if self._autonomy is None:
             return {"status": "error", "error": "autonomy engine not initialized"}
-        return await self._autonomy.generate_agent(description, agent_name)
+        return await self._autonomy.generate_agent(description, agent_name, org_id=organization_id)
 
-    async def suggest(self, n: int = 3) -> list[dict]:
+    async def suggest(self, n: int = 3, organization_id: Optional[str] = None) -> list[dict]:
         if self._autonomy is None:
             return []
-        suggestions = await self._autonomy.suggest_improvements(n)
+        suggestions = await self._autonomy.suggest_improvements(n, org_id=organization_id)
         return [s.to_dict() for s in suggestions]
 
-    async def implement(self, index: int) -> dict:
+    async def implement(self, index: int, organization_id: Optional[str] = None) -> dict:
         if self._autonomy is None:
             return {"status": "error"}
-        return await self._autonomy.implement_suggestion(index)
+        return await self._autonomy.implement_suggestion(index, org_id=organization_id)
 
-    async def autonomous_loop(self, cycles: int = 3) -> list[dict]:
+    async def autonomous_loop(self, cycles: int = 3, organization_id: Optional[str] = None) -> list[dict]:
         if self._autonomy is None:
             return []
-        return await self._autonomy.continuous_loop(cycles)
+        return await self._autonomy.continuous_loop(cycles, org_id=organization_id)
 
     # ── Evolution ─────────────────────────────────────────────────────────────
 
-    async def evolve(self) -> dict:
+    async def evolve(self, organization_id: Optional[str] = None) -> dict:
         if self._evolution is None:
             return {"status": "error", "error": "evolution engine not initialized"}
-        return (await self._evolution.evolve()).to_dict()
+        return (await self._evolution.evolve(org_id=organization_id)).to_dict()
 
     def evolution_analysis(self) -> dict:
         if self._evolution is None:

@@ -13,11 +13,13 @@ import logging
 import time
 from typing import Optional
 
+from app.ai.circuit_breaker import circuit_breaker
 from app.ai.models import CompletionRequest, CompletionResponse, ProviderID, StreamChunk
 from app.ai.providers.anthropic import AnthropicProvider
 from app.ai.providers.base import BaseProvider
 from app.ai.providers.gemini import GeminiProvider
 from app.ai.providers.openai import OpenAIProvider
+from app.ai.retries import with_retry
 from app.core.ai.events.bus import bus
 from app.core.ai.events.events import (
     ProviderFailed, ProviderSelected, ModelSelected,
@@ -100,12 +102,14 @@ class PlatformProviderRegistry:
         return [pid for pid, p in self._providers.items() if p.is_available]
 
     def health(self) -> dict[str, dict]:
-        """Return availability status for every known provider."""
+        """Return availability + circuit breaker status for every known provider."""
+        circuits = circuit_breaker.snapshot()
         return {
             pid: {
                 "available":    p.is_available,
                 "provider_id":  pid,
                 "default_model": p.default_model() if p.is_available else None,
+                "circuit_state": circuits.get(pid, {}).get("state", "closed"),
             }
             for pid, p in self._providers.items()
         }
@@ -153,13 +157,30 @@ class PlatformProviderRegistry:
         *,
         request_id: str = "",
     ) -> tuple[CompletionResponse, str]:
-        """Try each provider in chain; emit events on selection and failure."""
+        """Try each provider in chain; emit events on selection and failure.
+
+        Each provider gets its own bounded retry-with-backoff (via
+        app/ai/retries.py's with_retry) before failing over to the next —
+        a transient 429 on the preferred provider no longer immediately
+        burns the failover to a fallback. A provider whose circuit breaker
+        is open (too many recent consecutive failures) is skipped entirely
+        without being attempted.
+        """
         chain = self.resolve_chain(request)
         if not chain:
             raise RuntimeError("No available AI providers.")
 
         last_err: Exception = RuntimeError("No providers tried")
-        for attempt, provider in enumerate(chain):
+        tries = 0  # count of providers actually attempted, not chain position —
+                   # a skipped circuit-open provider must not shift "preferred"/
+                   # "failover" labeling or the attempt index of the next one.
+        for provider in chain:
+            if not circuit_breaker.allow(provider.provider_id):
+                log.debug("circuit open for %s — skipping without attempting", provider.provider_id)
+                continue
+
+            attempt = tries
+            tries += 1
             model = provider.resolve_model(request.model)
             await bus.emit(ProviderSelected(
                 provider_id=provider.provider_id,
@@ -168,13 +189,19 @@ class PlatformProviderRegistry:
             ))
             try:
                 t0   = time.perf_counter()
-                resp = await provider.complete(request)
+                resp = await with_retry(
+                    lambda: provider.complete(request),
+                    max_retries=1, base_delay=0.5, max_delay=2.0,
+                    timeout=request.timeout,
+                )
                 log.info(
                     "complete via %s model=%s latency=%.0fms",
                     provider.provider_id, model, (time.perf_counter() - t0) * 1000,
                 )
+                circuit_breaker.record_success(provider.provider_id)
                 return resp, provider.provider_id
             except Exception as exc:
+                circuit_breaker.record_failure(provider.provider_id)
                 await bus.emit(ProviderFailed(
                     provider_id=provider.provider_id,
                     error=str(exc),
@@ -183,6 +210,8 @@ class PlatformProviderRegistry:
                 log.warning("Provider %s failed (attempt %d): %s", provider.provider_id, attempt, exc)
                 last_err = exc
 
+        if tries == 0:
+            raise RuntimeError("No available AI providers — every provider's circuit is open.")
         raise last_err
 
     async def stream_with_events(
@@ -191,10 +220,11 @@ class PlatformProviderRegistry:
         *,
         request_id: str = "",
     ):
-        """Stream from primary provider; emit events; fall back on failure."""
-        chain = self.resolve_chain(request)
+        """Stream from primary provider; emit events; fall back on failure.
+        Skips any provider (primary or fallback) whose circuit is open."""
+        chain = [p for p in self.resolve_chain(request) if circuit_breaker.allow(p.provider_id)]
         if not chain:
-            yield StreamChunk(type="error", error="No available AI providers.")
+            yield StreamChunk(type="error", error="No available AI providers — circuits open or none configured.")
             return
 
         provider = chain[0]
@@ -214,7 +244,9 @@ class PlatformProviderRegistry:
         try:
             async for chunk in provider.stream(request):
                 yield chunk
+            circuit_breaker.record_success(provider.provider_id)
         except Exception as exc:
+            circuit_breaker.record_failure(provider.provider_id)
             await bus.emit(ProviderFailed(
                 provider_id=provider.provider_id,
                 error=str(exc),
@@ -225,6 +257,7 @@ class PlatformProviderRegistry:
             for fallback in chain[1:]:
                 try:
                     resp = await fallback.complete(request)
+                    circuit_breaker.record_success(fallback.provider_id)
                     yield StreamChunk(type="delta", text=resp.content)
                     if resp.tool_calls:
                         for tc in resp.tool_calls:
@@ -233,6 +266,7 @@ class PlatformProviderRegistry:
                     yield StreamChunk(type="done")
                     return
                 except Exception as fb_exc:
+                    circuit_breaker.record_failure(fallback.provider_id)
                     log.warning("Fallback %s also failed: %s", fallback.provider_id, fb_exc)
 
             yield StreamChunk(type="error", error=str(exc))

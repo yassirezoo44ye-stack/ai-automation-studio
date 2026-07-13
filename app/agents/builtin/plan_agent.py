@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from typing import Optional
 
 from app.agents.base import AgentContext, AgentResult, EvolvableAgent
 
@@ -44,7 +45,8 @@ class PlanAgent(EvolvableAgent):
                 data={"goal": goal, "tasks": tasks, "method": "rule_based"},
             )
 
-        tasks = await _llm_plan(goal, list(ctx.kernel._agents.keys()), api_key)
+        tasks = await _llm_plan(goal, list(ctx.kernel._agents.keys()), api_key,
+                                org_id=ctx.organization_id)
         return AgentResult.ok(
             self.name,
             f"Plan ({len(tasks)} steps): {' → '.join(tasks)}",
@@ -57,7 +59,11 @@ class PlanAgent(EvolvableAgent):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _llm_plan(goal: str, agents: list[str], api_key: str) -> list[str]:
+async def _llm_plan(goal: str, agents: list[str], api_key: str, *,
+                    org_id: Optional[str] = None) -> list[str]:
+    from app.core.org_quota import check_org_quota_id, record_org_tokens
+    if not await check_org_quota_id(org_id):
+        return _rule_based_plan(goal, agents)
     try:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=api_key)
@@ -76,6 +82,11 @@ async def _llm_plan(goal: str, agents: list[str], api_key: str) -> list[str]:
                 ),
             }],
         )
+        try:
+            total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+            await record_org_tokens(org_id, total_tokens, None, ref_type="agent_plan")
+        except Exception:
+            pass  # metering must never turn a successful reply into an error
         text  = msg.content[0].text.strip()
         tasks = [line.strip() for line in text.splitlines() if line.strip()]
         # Validate each task starts with a known agent

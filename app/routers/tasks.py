@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from app.core.auth import owner_email
 from app.core.db import get_pool, ensure_tasks_table
 from app.core.helpers import get_ai_client, anthropic_error_message
+from app.core.org_quota import check_org_quota, record_org_tokens
 
 router = APIRouter(tags=["tasks"])
 
@@ -221,6 +222,7 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
     await ensure_tasks_table()
     owner = owner_email(request)
     conv_id = _parse_uuid(conversation_id, "conversation_id")
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
 
     async with get_pool().acquire() as conn:
@@ -247,6 +249,12 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
         raise HTTPException(402, anthropic_error_message(e))
     except Exception as e:
         raise HTTPException(502, str(e))
+
+    try:
+        total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+        await record_org_tokens(org_id, total_tokens, str(conv_id), ref_type="tasks")
+    except Exception:
+        pass  # metering must never turn a successful reply into an error
 
     raw = msg.content[0].text.strip()
     if raw.startswith("```"):

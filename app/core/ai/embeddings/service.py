@@ -65,13 +65,14 @@ class EmbeddingsService:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    async def embed(self, text: str, *, model: Optional[str] = None) -> EmbeddingResult:
+    async def embed(self, text: str, *, model: Optional[str] = None,
+                    org_id: Optional[str] = None) -> EmbeddingResult:
         """Return an embedding vector for a single text."""
         if not self.is_available:
             return self._stub(text)
 
         if self._provider == "openai":
-            return await self._openai_embed(text, model=model or _OPENAI_EMBED_MODEL)
+            return await self._openai_embed(text, model=model or _OPENAI_EMBED_MODEL, org_id=org_id)
 
         return self._stub(text)
 
@@ -80,10 +81,11 @@ class EmbeddingsService:
         texts: list[str],
         *,
         model: Optional[str] = None,
+        org_id: Optional[str] = None,
     ) -> list[EmbeddingResult]:
         """Batch embed; falls back to sequential if provider doesn't support batching."""
         import asyncio
-        return await asyncio.gather(*[self.embed(t, model=model) for t in texts])
+        return await asyncio.gather(*[self.embed(t, model=model, org_id=org_id) for t in texts])
 
     async def search(
         self,
@@ -92,13 +94,14 @@ class EmbeddingsService:
         *,
         top_k: int = 5,
         model: Optional[str] = None,
+        org_id: Optional[str] = None,
     ) -> list[SearchHit]:
         """Embed query and all corpus items, return top_k by cosine similarity."""
         if not corpus:
             return []
 
-        query_result  = await self.embed(query, model=model)
-        corpus_results = await self.embed_many(corpus, model=model)
+        query_result  = await self.embed(query, model=model, org_id=org_id)
+        corpus_results = await self.embed_many(corpus, model=model, org_id=org_id)
 
         scored: list[tuple[int, float]] = []
         for idx, cr in enumerate(corpus_results):
@@ -130,11 +133,19 @@ class EmbeddingsService:
 
     # ── Provider implementations ──────────────────────────────────────────────
 
-    async def _openai_embed(self, text: str, *, model: str) -> EmbeddingResult:
+    async def _openai_embed(self, text: str, *, model: str,
+                            org_id: Optional[str] = None) -> EmbeddingResult:
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(org_id):
+            return self._stub(text)
         try:
             import openai
             client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             resp = await client.embeddings.create(input=text, model=model)
+            try:
+                await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="embeddings")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             return EmbeddingResult(
                 text=text,
                 embedding=resp.data[0].embedding,

@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.helpers import get_ai_client
+from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
 router = APIRouter(tags=["social"])
@@ -34,6 +35,7 @@ class SocialRequest(BaseModel):
 @router.post("/api/social/generate/stream")
 async def social_generate_stream(req: SocialRequest, request: Request):
     ai_rate_limit(request)
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
 
     lang_instruction = {
@@ -72,6 +74,12 @@ async def social_generate_stream(req: SocialRequest, request: Request):
             ) as stream:
                 for text in stream.text_stream:
                     chunks.append(text)
+                try:
+                    final = stream.get_final_message()
+                    total_tokens = final.usage.input_tokens + final.usage.output_tokens
+                    await record_org_tokens(org_id, total_tokens, None, ref_type="social")
+                except Exception:
+                    pass  # metering must never turn a successful reply into an error
             raw = "".join(chunks).strip()
             if raw.startswith("```"):
                 raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()

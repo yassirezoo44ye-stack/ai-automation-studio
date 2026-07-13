@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.core.config import USER_ID
 from app.core.db import get_pool, ensure_agents_table
 from app.core.helpers import get_ai_client, resolve_project_id
+from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
 router = APIRouter(tags=["agents"])
@@ -110,6 +111,7 @@ async def delete_agent(agent_id: str):
 @router.post("/api/agents/{agent_id}/chat/stream")
 async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Request):
     ai_rate_limit(request)
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
 
     await ensure_agents_table()
@@ -157,6 +159,12 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 for text in stream.text_stream:
                     full_text += text
                     yield f"data: {json.dumps({'type':'delta','text':text})}\n\n"
+                try:
+                    final = stream.get_final_message()
+                    total_tokens = final.usage.input_tokens + final.usage.output_tokens
+                    await record_org_tokens(org_id, total_tokens, str(conv_id), ref_type="agents")
+                except Exception:
+                    pass  # metering must never turn a successful reply into an error
 
             yield f"data: {json.dumps({'type':'done'})}\n\n"
 

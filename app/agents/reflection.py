@@ -61,7 +61,7 @@ class SelfReflector:
     # ── Public ────────────────────────────────────────────────────────────────
 
     def reflect(self, result: AgentResult, memory: AgentMemory,
-                evolution_engine=None) -> None:
+                evolution_engine=None, *, org_id: Optional[str] = None) -> None:
         """Fire-and-forget: schedule reflection without blocking."""
         self._count += 1
         if self._count % _REFLECT_EVERY != 0:
@@ -70,15 +70,15 @@ class SelfReflector:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 asyncio.ensure_future(
-                    self._reflect_async(result, memory, evolution_engine)
+                    self._reflect_async(result, memory, evolution_engine, org_id=org_id)
                 )
         except RuntimeError:
             pass   # no event loop — skip async reflection
 
     async def reflect_async(self, result: AgentResult, memory: AgentMemory,
-                            evolution_engine=None) -> ReflectionRecord:
+                            evolution_engine=None, *, org_id: Optional[str] = None) -> ReflectionRecord:
         """Awaitable version — use when you want the reflection result."""
-        return await self._reflect_async(result, memory, evolution_engine)
+        return await self._reflect_async(result, memory, evolution_engine, org_id=org_id)
 
     def recent(self, n: int = 10) -> list[ReflectionRecord]:
         return list(self._reflections[-n:])
@@ -89,7 +89,7 @@ class SelfReflector:
     # ── Internal ─────────────────────────────────────────────────────────────
 
     async def _reflect_async(self, result: AgentResult, memory: AgentMemory,
-                             evolution_engine=None) -> ReflectionRecord:
+                             evolution_engine=None, *, org_id: Optional[str] = None) -> ReflectionRecord:
         stats      = memory.global_stats()
         total      = memory.total_count()
         errors     = sum(s.fail_count for s in stats)
@@ -103,12 +103,12 @@ class SelfReflector:
         )
 
         # Generate LLM insight if available
-        rec.insight = await self._llm_insight(result, error_rate, flagged)
+        rec.insight = await self._llm_insight(result, error_rate, flagged, org_id=org_id)
 
         # Auto-trigger evolution if threshold exceeded and engine available
         if flagged and error_rate > _ERROR_THRESHOLD and evolution_engine:
             try:
-                report = await evolution_engine.evolve()
+                report = await evolution_engine.evolve(org_id=org_id)
                 rec.action_taken = "evolved"
                 rec.insight += f" Auto-evolved: {report.get('evolved', [])}"
             except Exception as exc:
@@ -129,9 +129,12 @@ class SelfReflector:
         return rec
 
     async def _llm_insight(self, result: AgentResult, error_rate: float,
-                           flagged: list[str]) -> str:
+                           flagged: list[str], *, org_id: Optional[str] = None) -> str:
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not api_key:
+            return ""
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(org_id):
             return ""
         try:
             import anthropic
@@ -150,6 +153,11 @@ class SelfReflector:
                     ),
                 }],
             )
+            try:
+                total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+                await record_org_tokens(org_id, total_tokens, None, ref_type="agent_reflection")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             return msg.content[0].text.strip()
         except Exception:
             return ""

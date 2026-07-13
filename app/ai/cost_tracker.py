@@ -23,21 +23,23 @@ async def record(
     conversation_id: Optional[str],
     stats: UsageStats,
     cached: bool = False,
+    org_id: Optional[str] = None,
 ) -> None:
     """Insert one row into ai_usage_log. Fails silently to never break AI calls."""
     try:
         uid  = uuid.UUID(user_id)  if user_id          else None
         cid  = uuid.UUID(conversation_id) if conversation_id else None
+        oid  = uuid.UUID(org_id)   if org_id           else None
         async with pool.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO ai_usage_log
-                  (user_id, conversation_id, provider, model,
+                  (user_id, organization_id, conversation_id, provider, model,
                    input_tokens, output_tokens, total_tokens, cost_usd,
                    cached, created_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
                 """,
-                uid, cid,
+                uid, oid, cid,
                 stats.provider, stats.model,
                 stats.input_tokens, stats.output_tokens, stats.total_tokens,
                 stats.cost_usd,
@@ -52,6 +54,7 @@ async def totals(
     *,
     pool,
     user_id: Optional[str] = None,
+    org_id: Optional[str] = None,
     since: Optional[datetime] = None,
 ) -> dict:
     """Return aggregate stats for a user (or all users if user_id is None)."""
@@ -62,6 +65,10 @@ async def totals(
         if user_id:
             clauses.append(f"user_id = ${i}")
             args.append(uuid.UUID(user_id))
+            i += 1
+        if org_id:
+            clauses.append(f"organization_id = ${i}")
+            args.append(uuid.UUID(org_id))
             i += 1
         if since:
             clauses.append(f"created_at >= ${i}")
@@ -91,6 +98,7 @@ async def by_provider(
     *,
     pool,
     user_id: Optional[str] = None,
+    org_id: Optional[str] = None,
     since: Optional[datetime] = None,
 ) -> list[dict]:
     """Breakdown by provider."""
@@ -101,6 +109,10 @@ async def by_provider(
         if user_id:
             clauses.append(f"user_id = ${i}")
             args.append(uuid.UUID(user_id))
+            i += 1
+        if org_id:
+            clauses.append(f"organization_id = ${i}")
+            args.append(uuid.UUID(org_id))
             i += 1
         if since:
             clauses.append(f"created_at >= ${i}")

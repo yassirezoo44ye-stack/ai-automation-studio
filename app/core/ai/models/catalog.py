@@ -27,6 +27,10 @@ class ModelInfo:
     reasoning:       bool = False  # chain-of-thought / extended thinking
     latency_tier:    str  = "medium"  # "fast" | "medium" | "slow"
     deprecated:      bool = False
+    # Relative scores (0..1) used by policy-driven selection (ModelRouter,
+    # CostRouter) — not provider-reported, hand-tuned per generation/tier.
+    quality:         float = 0.75
+    speed:           float = 0.70
 
     @property
     def input_cost_per_token(self) -> float:
@@ -58,6 +62,8 @@ _ANTHROPIC: list[ModelInfo] = [
         supports_vision=True,
         reasoning=True,
         latency_tier="slow",
+        quality=1.00,
+        speed=0.45,
     ),
     ModelInfo(
         id="claude-sonnet-5",
@@ -69,6 +75,8 @@ _ANTHROPIC: list[ModelInfo] = [
         output_cost_m=15.0,
         supports_vision=True,
         latency_tier="medium",
+        quality=0.96,
+        speed=0.68,
     ),
     ModelInfo(
         id="claude-sonnet-4-6",
@@ -80,6 +88,8 @@ _ANTHROPIC: list[ModelInfo] = [
         output_cost_m=15.0,
         supports_vision=True,
         latency_tier="medium",
+        quality=0.95,
+        speed=0.70,
     ),
     ModelInfo(
         id="claude-haiku-4-5-20251001",
@@ -90,6 +100,8 @@ _ANTHROPIC: list[ModelInfo] = [
         input_cost_m=0.25,
         output_cost_m=1.25,
         latency_tier="fast",
+        quality=0.82,
+        speed=0.92,
     ),
 ]
 
@@ -106,6 +118,8 @@ _OPENAI: list[ModelInfo] = [
         output_cost_m=15.0,
         supports_vision=True,
         latency_tier="medium",
+        quality=0.92,
+        speed=0.75,
     ),
     ModelInfo(
         id="gpt-4o-mini",
@@ -116,6 +130,8 @@ _OPENAI: list[ModelInfo] = [
         input_cost_m=0.15,
         output_cost_m=0.6,
         latency_tier="fast",
+        quality=0.78,
+        speed=0.95,
     ),
     ModelInfo(
         id="gpt-4-turbo",
@@ -127,6 +143,8 @@ _OPENAI: list[ModelInfo] = [
         output_cost_m=30.0,
         supports_vision=True,
         latency_tier="medium",
+        quality=0.90,
+        speed=0.65,
     ),
     ModelInfo(
         id="o3",
@@ -138,6 +156,8 @@ _OPENAI: list[ModelInfo] = [
         output_cost_m=40.0,
         reasoning=True,
         latency_tier="slow",
+        quality=0.97,
+        speed=0.35,
     ),
     ModelInfo(
         id="o4-mini",
@@ -149,6 +169,8 @@ _OPENAI: list[ModelInfo] = [
         output_cost_m=4.4,
         reasoning=True,
         latency_tier="medium",
+        quality=0.88,
+        speed=0.60,
     ),
 ]
 
@@ -166,6 +188,8 @@ _GEMINI: list[ModelInfo] = [
         supports_vision=True,
         reasoning=True,
         latency_tier="slow",
+        quality=0.93,
+        speed=0.55,
     ),
     ModelInfo(
         id="gemini-2.5-flash",
@@ -176,6 +200,8 @@ _GEMINI: list[ModelInfo] = [
         input_cost_m=0.075,
         output_cost_m=0.3,
         latency_tier="fast",
+        quality=0.83,
+        speed=0.90,
     ),
     ModelInfo(
         id="gemini-2.0-flash",
@@ -186,6 +212,8 @@ _GEMINI: list[ModelInfo] = [
         input_cost_m=0.1,
         output_cost_m=0.4,
         latency_tier="fast",
+        quality=0.80,
+        speed=0.96,
     ),
 ]
 
@@ -210,6 +238,100 @@ _OPENROUTER: list[ModelInfo] = [
         output_cost_m=0.0,
         latency_tier="medium",
         deprecated=True,
+    ),
+]
+
+# ── Deferred providers ───────────────────────────────────────────────────────
+# DeepSeek, Mistral, Ollama, Azure OpenAI, Amazon Bedrock — catalogued (per
+# the AI Routing phase's provider list) so cost/routing tooling can see and
+# price them, but NOT wired to a real app/ai/providers/*.py backend.
+# deprecated=True is the exact same "not really available" signal used for
+# openrouter/auto above — every non-deprecated-model test/guard already
+# excludes these. User-confirmed scope decision (this session): honest
+# catalog-only stubs, no untested provider implementations ship this phase.
+# Pricing/quality/speed carried over from the former app/ai/cost_router.py
+# _DEFAULT_MODELS table (now reconciled into this single catalog).
+
+_DEFERRED: list[ModelInfo] = [
+    ModelInfo(
+        id="deepseek-chat",
+        provider_id="deepseek",
+        display_name="DeepSeek Chat",
+        context_window=64_000,
+        output_limit=8_192,
+        input_cost_m=0.14,
+        output_cost_m=0.28,
+        latency_tier="fast",
+        deprecated=True,
+        quality=0.80,
+        speed=0.80,
+    ),
+    ModelInfo(
+        id="mistral-large",
+        provider_id="mistral",
+        display_name="Mistral Large",
+        context_window=128_000,
+        output_limit=8_192,
+        input_cost_m=2.00,
+        output_cost_m=6.00,
+        latency_tier="medium",
+        deprecated=True,
+        quality=0.85,
+        speed=0.72,
+    ),
+    ModelInfo(
+        id="mistral-small",
+        provider_id="mistral",
+        display_name="Mistral Small",
+        context_window=32_000,
+        output_limit=8_192,
+        input_cost_m=0.20,
+        output_cost_m=0.60,
+        latency_tier="fast",
+        deprecated=True,
+        quality=0.72,
+        speed=0.90,
+    ),
+    ModelInfo(
+        id="ollama/llama3.1",
+        provider_id="ollama",
+        display_name="Llama 3.1 (Ollama, local)",
+        context_window=128_000,
+        output_limit=4_096,
+        input_cost_m=0.0,
+        output_cost_m=0.0,
+        latency_tier="medium",
+        deprecated=True,
+        quality=0.65,
+        speed=0.60,
+    ),
+    ModelInfo(
+        id="azure/gpt-4o",
+        provider_id="azure_openai",
+        display_name="GPT-4o (Azure OpenAI)",
+        context_window=128_000,
+        output_limit=4_096,
+        input_cost_m=2.50,
+        output_cost_m=10.00,
+        supports_vision=True,
+        latency_tier="medium",
+        deprecated=True,
+        quality=0.92,
+        speed=0.70,
+    ),
+    ModelInfo(
+        id="bedrock/claude-sonnet",
+        provider_id="bedrock",
+        display_name="Claude Sonnet (Amazon Bedrock)",
+        context_window=200_000,
+        output_limit=8_096,
+        input_cost_m=3.00,
+        output_cost_m=15.00,
+        supports_vision=True,
+        latency_tier="medium",
+        deprecated=True,
+        quality=0.94,
+        speed=0.65,
     ),
 ]
 
@@ -298,4 +420,4 @@ class ModelCatalog:
         ]
 
 
-catalog = ModelCatalog(_ANTHROPIC + _OPENAI + _GEMINI + _OPENROUTER)
+catalog = ModelCatalog(_ANTHROPIC + _OPENAI + _GEMINI + _OPENROUTER + _DEFERRED)

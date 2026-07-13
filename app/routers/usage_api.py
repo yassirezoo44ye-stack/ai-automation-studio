@@ -30,6 +30,9 @@ class RecordUsageRequest(BaseModel):
 
 class SetLimitRequest(BaseModel):
     limit: int = Field(ge=-1)
+    project_id: str = ""
+    workflow_id: str = ""
+    agent_id: str = ""
 
 
 class UpdatePlanRequest(BaseModel):
@@ -111,8 +114,22 @@ async def set_limit(
     body: SetLimitRequest,
     ctx: OrgContext = Depends(require_permission("billing", "manage")),
 ):
+    """Org-level limit by default; pass project_id/workflow_id/agent_id in
+    the body for a finer-grained ceiling (AI Routing budget granularity —
+    see app/billing/usage.py). A scoped limit is additional to, not a
+    replacement for, the org-level one."""
     if metric not in METRICS:
         raise HTTPException(400, f"Unknown metric. Valid: {list(METRICS)}")
     svc = get_usage_service()
-    await svc.set_override(ctx.org_id, metric, body.limit)
-    return {"metric": metric, "limit": body.limit}
+    await svc.set_override(
+        ctx.org_id, metric, body.limit,
+        project_id=body.project_id, workflow_id=body.workflow_id, agent_id=body.agent_id,
+    )
+    return {
+        "metric": metric, "limit": body.limit,
+        "scope": {
+            "project_id":  body.project_id or None,
+            "workflow_id": body.workflow_id or None,
+            "agent_id":    body.agent_id or None,
+        },
+    }

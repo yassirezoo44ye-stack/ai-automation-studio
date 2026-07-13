@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.core.db import get_pool
 from app.core.helpers import get_ai_client, resolve_project_id
+from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
 router = APIRouter(tags=["design"])
@@ -43,6 +44,7 @@ class DesignSaveRequest(BaseModel):
 @router.post("/api/design/ai-generate")
 async def design_ai_generate(req: DesignAIRequest, request: Request):
     ai_rate_limit(request)
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
 
     w, h = DESIGN_SIZES.get(req.template or "", (1080, 1080))
@@ -82,6 +84,11 @@ Rules:
             system=system,
             messages=[{"role": "user", "content": f"Design brief: {req.prompt}\nTemplate: {req.template}"}],
         )
+        try:
+            total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+            await record_org_tokens(org_id, total_tokens, None, ref_type="design")
+        except Exception:
+            pass  # metering must never turn a successful reply into an error
         raw = msg.content[0].text.strip()
         if raw.startswith("```"):
             raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
@@ -201,12 +208,19 @@ class AssistantRequest(BaseModel):
     canvas_context: dict = {}
 
 
-def _call_claude(ai, system: str, user: str, max_tokens: int = 1200) -> str:
+async def _call_claude(
+    ai, system: str, user: str, max_tokens: int = 1200, *, org_id: Optional[str] = None,
+) -> str:
     msg = ai.messages.create(
         model="claude-haiku-4-5-20251001", max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+    try:
+        total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+        await record_org_tokens(org_id, total_tokens, None, ref_type="design")
+    except Exception:
+        pass  # metering must never turn a successful reply into an error
     raw = msg.content[0].text.strip()
     if raw.startswith("```"):
         raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
@@ -217,6 +231,7 @@ def _call_claude(ai, system: str, user: str, max_tokens: int = 1200) -> str:
 async def ai_palette(req: PaletteRequest, request: Request):
     """Claude generates a design color palette as JSON."""
     ai_rate_limit(request)
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
     system = (
         'You are a professional color designer. Return ONLY a JSON object: '
@@ -225,7 +240,7 @@ async def ai_palette(req: PaletteRequest, request: Request):
         ' No markdown, no explanation.'
     )
     try:
-        raw = _call_claude(ai, system, f"Design theme: {req.prompt}")
+        raw = await _call_claude(ai, system, f"Design theme: {req.prompt}", org_id=org_id)
         data = json.loads(raw)
         return data
     except (json.JSONDecodeError, Exception):
@@ -244,6 +259,7 @@ async def ai_palette(req: PaletteRequest, request: Request):
 async def ai_fonts(req: FontRequest, request: Request):
     """Claude suggests font pairings for the given style."""
     ai_rate_limit(request)
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
     system = (
         'You are a typography expert. Return ONLY a JSON object: '
@@ -252,7 +268,7 @@ async def ai_fonts(req: FontRequest, request: Request):
         ' with 3 pairs for the requested style. Only use Google Fonts. No markdown.'
     )
     try:
-        raw = _call_claude(ai, system, f"Style: {req.style}, Usage: {req.usage}")
+        raw = await _call_claude(ai, system, f"Style: {req.style}, Usage: {req.usage}", org_id=org_id)
         return json.loads(raw)
     except (json.JSONDecodeError, Exception):
         return {
@@ -268,6 +284,7 @@ async def ai_fonts(req: FontRequest, request: Request):
 async def ai_suggestions(req: SuggestionsRequest, request: Request):
     """Claude analyzes the canvas and suggests design improvements."""
     ai_rate_limit(request)
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
     obj_count = len(req.canvas.get("objects", []))
     system = (
@@ -277,8 +294,9 @@ async def ai_suggestions(req: SuggestionsRequest, request: Request):
         'with 3-5 actionable suggestions. Types: color, layout, typography, spacing. No markdown.'
     )
     try:
-        raw = _call_claude(ai, system,
-                           f"Canvas has {obj_count} objects. JSON: {json.dumps(req.canvas)[:800]}")
+        raw = await _call_claude(ai, system,
+                           f"Canvas has {obj_count} objects. JSON: {json.dumps(req.canvas)[:800]}",
+                           org_id=org_id)
         return json.loads(raw)
     except (json.JSONDecodeError, Exception):
         return {"suggestions": []}
@@ -288,6 +306,7 @@ async def ai_suggestions(req: SuggestionsRequest, request: Request):
 async def ai_assistant(req: AssistantRequest, request: Request):
     """Claude as a conversational design assistant."""
     ai_rate_limit(request)
+    org_id = await check_org_quota(request)
     ai = get_ai_client()
     system = (
         "You are an expert graphic designer and Fabric.js specialist. "
@@ -300,6 +319,11 @@ async def ai_assistant(req: AssistantRequest, request: Request):
             system=system,
             messages=[{"role": m["role"], "content": m["content"]} for m in req.messages],
         )
+        try:
+            total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+            await record_org_tokens(org_id, total_tokens, None, ref_type="design")
+        except Exception:
+            pass  # metering must never turn a successful reply into an error
         return {"message": msg.content[0].text, "actions": []}
     except Exception as e:
         raise HTTPException(502, str(e))

@@ -37,11 +37,13 @@ class ExecutionCoordinator:
         bus: EventBus,
         request_id: str,
         user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
     ) -> None:
         self._platform  = platform
         self._bus       = bus
         self._request_id = request_id
         self._user_id   = user_id
+        self._org_id    = org_id
 
     async def run_task(self, task: ScheduledTask) -> dict[str, Any]:
         t0 = time.perf_counter()
@@ -125,7 +127,7 @@ class ExecutionCoordinator:
             conversation_id=None,
         )
         engine = self._platform.inference_engine
-        resp = await engine.complete(req, user_id=self._user_id)
+        resp = await engine.complete(req, user_id=self._user_id, org_id=self._org_id)
         return {
             "content":     resp.content,
             "tool_calls":  [],

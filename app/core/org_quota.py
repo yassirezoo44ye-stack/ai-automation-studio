@@ -33,14 +33,36 @@ async def check_org_quota(request: Request) -> Optional[str]:
     return org_id
 
 
-async def record_org_tokens(org_id: Optional[str], total_tokens: int, ref_id: str | None) -> None:
+async def check_org_quota_id(org_id: Optional[str]) -> bool:
+    """Non-HTTP variant of check_org_quota — for internal callers (the agent
+    kernel, background self-reflection, evolution) that already hold an
+    org_id value rather than a Request to read the X-Organization-Id header
+    from. Returns False when the org is over quota (caller should skip the
+    LLM call and degrade gracefully); True otherwise. Never raises — these
+    callers have no HTTP response to attach a 429 to."""
+    if not org_id:
+        return True
+    from app.billing import get_usage_service, QuotaExceeded
+    try:
+        await get_usage_service().check_quota(org_id, "tokens", 1)
+    except QuotaExceeded:
+        log.warning("org %s over quota — skipping internal LLM call", org_id)
+        return False
+    except Exception:
+        log.warning("quota check failed for org=%s, allowing call", org_id, exc_info=True)
+    return True
+
+
+async def record_org_tokens(
+    org_id: Optional[str], total_tokens: int, ref_id: str | None, *, ref_type: str = "chat",
+) -> None:
     """Best-effort — never breaks the response path."""
     if not org_id or total_tokens <= 0:
         return
     try:
         from app.billing import get_usage_service
         await get_usage_service().record(
-            org_id, "tokens", total_tokens, ref_type="chat", ref_id=ref_id,
+            org_id, "tokens", total_tokens, ref_type=ref_type, ref_id=ref_id,
         )
     except Exception:
         log.warning("org token usage record failed for org=%s", org_id, exc_info=True)

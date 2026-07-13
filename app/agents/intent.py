@@ -141,8 +141,13 @@ class IntentParser:
             suggestions=sorted(set(_ALIASES.values()))[:8],
         )
 
-    async def parse_with_llm(self, raw: str, known_agents: list[str]) -> IntentResult:
+    async def parse_with_llm(self, raw: str, known_agents: list[str], *,
+                             org_id: Optional[str] = None) -> IntentResult:
         """LLM fallback — only called when confidence < 0.5."""
+        from app.core.org_quota import check_org_quota_id, record_org_tokens
+        if not await check_org_quota_id(org_id):
+            return IntentResult("unknown", raw, 0.0, "unknown", raw,
+                                suggestions=known_agents[:8])
         try:
             import anthropic
             import os
@@ -161,6 +166,11 @@ class IntentParser:
                     ),
                 }],
             )
+            try:
+                total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+                await record_org_tokens(org_id, total_tokens, None, ref_type="agent_intent")
+            except Exception:
+                pass  # metering must never turn a successful reply into an error
             text = msg.content[0].text.strip()
             if "|" in text:
                 intent, args = text.split("|", 1)
