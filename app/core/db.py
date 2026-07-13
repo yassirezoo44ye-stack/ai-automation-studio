@@ -298,6 +298,11 @@ async def write_audit(
 ) -> None:
     """Fire-and-forget audit record — errors are swallowed to never break the request path."""
     import json
+
+    from app.core.observability.config import get_observability_config
+    if not get_observability_config().audit_enabled:
+        return
+
     try:
         async with get_pool().acquire() as conn:
             await conn.execute(

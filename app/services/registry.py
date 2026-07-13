@@ -230,22 +230,25 @@ def get_service_registry() -> ServiceRegistry:
 
 
 def _register_defaults(reg: ServiceRegistry) -> None:
-    import os
-
+    from app.core.observability.config import get_observability_config
     from app.services.health_monitor       import HealthMonitorService
     from app.services.dependency_monitor   import DependencyMonitorService
     from app.services.security_monitor     import SecurityMonitorService
     from app.services.performance_optimizer import PerformanceOptimizerService
     from app.services.memory_compactor     import MemoryCompactorService
-    from app.services.system_metrics       import SystemMetricsService
 
     reg.register(HealthMonitorService())
     reg.register(DependencyMonitorService())
     reg.register(SecurityMonitorService())
     reg.register(PerformanceOptimizerService())
     reg.register(MemoryCompactorService())
-    reg.register(SystemMetricsService())
 
-    if os.getenv("OBS_ALERTS_ENABLED", "true").lower() != "false":
+    obs = get_observability_config()
+
+    if obs.metrics_enabled:
+        from app.services.system_metrics import SystemMetricsService
+        reg.register(SystemMetricsService())
+
+    if obs.alerts_enabled:
         from app.services.alerting import AlertingService
         reg.register(AlertingService())

@@ -3,6 +3,7 @@ Production middleware stack:
   - RequestIdMiddleware  — stamps every request/response with X-Request-Id
   - AccessLogMiddleware  — structured JSON access log (method, path, status, ms)
 """
+import random
 import time
 import uuid
 
@@ -40,13 +41,21 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
         start = time.monotonic()
         response = await call_next(request)
         duration_ms = round((time.monotonic() - start) * 1000, 1)
-        _log.info(
-            "request",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "ms": duration_ms,
-            },
-        )
+
+        # Optional sampling (OBS_SAMPLING_RATE, default 1.0 = log every
+        # request — never drop data unless explicitly configured to).
+        # Errors are always logged regardless of sampling: dropping error
+        # visibility to save log volume would defeat the point of sampling.
+        from app.core.observability.config import get_observability_config
+        rate = get_observability_config().sampling_rate
+        if response.status_code >= 500 or rate >= 1.0 or random.random() < rate:
+            _log.info(
+                "request",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": response.status_code,
+                    "ms": duration_ms,
+                },
+            )
         return response

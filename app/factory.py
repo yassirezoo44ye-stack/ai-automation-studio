@@ -171,8 +171,10 @@ async def lifespan(app: FastAPI):
     svc_registry.start_all()
 
     # ── Observability metrics bridges (AI/workflow/marketplace/billing) ──────
-    from app.core.observability.bridges import wire_all as wire_metrics_bridges
-    wire_metrics_bridges()
+    from app.core.observability.config import get_observability_config
+    if get_observability_config().metrics_enabled:
+        from app.core.observability.bridges import wire_all as wire_metrics_bridges
+        wire_metrics_bridges()
 
     # ── Semantic memory — initialize pgvector tier ──────────────────────────
     from app.memory.semantic import get_semantic_memory
@@ -251,9 +253,10 @@ def create_app() -> FastAPI:
     # get_tracer() (app/core/observability/tracer.py) sets the global
     # TracerProvider before this runs, so these auto-created spans land in
     # the same ring buffer /api/diagnostics/traces* already reads from —
-    # one tracer, not a second parallel one. Gated by OBS_TRACING_ENABLED
+    # one tracer, not a second parallel one. Gated by ObservabilityConfig
     # (default on) so it can be disabled without a code change.
-    if os.getenv("OBS_TRACING_ENABLED", "true").lower() != "false":
+    from app.core.observability.config import get_observability_config
+    if get_observability_config().tracing_enabled:
         from app.core.observability.tracer import get_tracer
         get_tracer()  # registers the global TracerProvider first
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor

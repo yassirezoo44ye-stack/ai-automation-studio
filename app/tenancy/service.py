@@ -564,6 +564,9 @@ class TenancyService:
         details: dict | None = None, ip_address: str | None = None,
     ) -> None:
         """Best-effort activity record — never breaks the calling path."""
+        from app.core.observability.config import get_observability_config
+        if not get_observability_config().audit_enabled:
+            return
         try:
             async with self._pool.acquire() as conn:
                 await conn.execute(
