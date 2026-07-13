@@ -18,6 +18,8 @@ from typing import Any, Optional
 import asyncpg
 
 from app.billing.plans import METRICS
+from app.core.observability.context import current_tags
+from app.core.observability.tracer import get_tracer
 
 log = logging.getLogger(__name__)
 
@@ -121,36 +123,43 @@ class UsageService:
         accumulates a finer-scoped row (additive, not a replacement) — a
         workflow's spend counts toward both the workflow's own ceiling and
         the org's overall ceiling."""
-        if metric not in METRICS:
-            raise ValueError(f"unknown metric {metric!r}")
-        from app.core.db import acquire_scoped
-        period = _current_period()
-        async with acquire_scoped(org_id) as conn:
-            total = await conn.fetchval(
-                """INSERT INTO usage_records (organization_id, metric, period, amount, project_id, workflow_id, agent_id)
-                   VALUES ($1,$2,$3,$4,'','','')
-                   ON CONFLICT (organization_id, metric, period, project_id, workflow_id, agent_id)
-                   DO UPDATE SET amount = usage_records.amount + EXCLUDED.amount,
-                                 updated_at = NOW()
-                   RETURNING amount""",
-                uuid.UUID(org_id), metric, period, amount,
-            )
-            if project_id or workflow_id or agent_id:
-                await conn.execute(
+        tracer = get_tracer()
+        with tracer.start_span("usage.record", service="billing") as span:
+            for key, val in current_tags().items():
+                span.set_tag(key, val)
+            span.set_tag("organization_id", org_id)
+            span.set_tag("metric", metric)
+
+            if metric not in METRICS:
+                raise ValueError(f"unknown metric {metric!r}")
+            from app.core.db import acquire_scoped
+            period = _current_period()
+            async with acquire_scoped(org_id) as conn:
+                total = await conn.fetchval(
                     """INSERT INTO usage_records (organization_id, metric, period, amount, project_id, workflow_id, agent_id)
-                       VALUES ($1,$2,$3,$4,$5,$6,$7)
+                       VALUES ($1,$2,$3,$4,'','','')
                        ON CONFLICT (organization_id, metric, period, project_id, workflow_id, agent_id)
                        DO UPDATE SET amount = usage_records.amount + EXCLUDED.amount,
-                                     updated_at = NOW()""",
-                    uuid.UUID(org_id), metric, period, amount, project_id, workflow_id, agent_id,
+                                     updated_at = NOW()
+                       RETURNING amount""",
+                    uuid.UUID(org_id), metric, period, amount,
                 )
-            if ref_type or ref_id:
-                await conn.execute(
-                    "INSERT INTO usage_events (organization_id, metric, amount, ref_type, ref_id) "
-                    "VALUES ($1,$2,$3,$4,$5)",
-                    uuid.UUID(org_id), metric, amount, ref_type, ref_id,
-                )
-        return int(total)
+                if project_id or workflow_id or agent_id:
+                    await conn.execute(
+                        """INSERT INTO usage_records (organization_id, metric, period, amount, project_id, workflow_id, agent_id)
+                           VALUES ($1,$2,$3,$4,$5,$6,$7)
+                           ON CONFLICT (organization_id, metric, period, project_id, workflow_id, agent_id)
+                           DO UPDATE SET amount = usage_records.amount + EXCLUDED.amount,
+                                         updated_at = NOW()""",
+                        uuid.UUID(org_id), metric, period, amount, project_id, workflow_id, agent_id,
+                    )
+                if ref_type or ref_id:
+                    await conn.execute(
+                        "INSERT INTO usage_events (organization_id, metric, amount, ref_type, ref_id) "
+                        "VALUES ($1,$2,$3,$4,$5)",
+                        uuid.UUID(org_id), metric, amount, ref_type, ref_id,
+                    )
+            return int(total)
 
     async def set_metric(self, org_id: str, metric: str, amount: int) -> int:
         """Overwrite (not add to) the metric for the current period — for
@@ -227,9 +236,19 @@ class UsageService:
         budget doesn't replace the org budget, it's an additional, tighter
         one; whichever is hit first raises.
         """
-        await self._check_quota_scope(org_id, metric, amount, "", "", "")
-        if project_id or workflow_id or agent_id:
-            await self._check_quota_scope(org_id, metric, amount, project_id, workflow_id, agent_id)
+        tracer = get_tracer()
+        with tracer.start_span("usage.check_quota", service="billing") as span:
+            for key, val in current_tags().items():
+                span.set_tag(key, val)
+            span.set_tag("organization_id", org_id)
+            span.set_tag("metric", metric)
+            try:
+                await self._check_quota_scope(org_id, metric, amount, "", "", "")
+                if project_id or workflow_id or agent_id:
+                    await self._check_quota_scope(org_id, metric, amount, project_id, workflow_id, agent_id)
+            except QuotaExceeded as exc:
+                span.set_tag("error", str(exc))
+                raise
 
     async def _check_quota_scope(
         self, org_id: str, metric: str, amount: int,

@@ -11,6 +11,7 @@ from typing import Optional
 import asyncpg
 
 from app.core.config import USER_ID, DEMO_PROJECT_ID
+from app.core.observability.tracer import get_tracer
 import uuid
 
 _pool: Optional[asyncpg.Pool] = None
@@ -39,10 +40,13 @@ async def acquire_scoped(org_id: str):
     additive defense-in-depth for the tenancy-critical services
     (TenancyService, UsageService), not a blanket access-control rewrite.
     """
-    async with get_pool().acquire() as conn:
-        async with conn.transaction():
-            await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
-            yield conn
+    tracer = get_tracer()
+    with tracer.start_span("db.acquire_scoped", service="database") as span:
+        span.set_tag("organization_id", org_id)
+        async with get_pool().acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
+                yield conn
 
 
 # ── Schema initialisation ─────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 from app.core.db import get_pool, write_audit
 from app.core.email import send_password_reset_email, send_verification_email
+from app.core.observability.tracer import get_tracer
 from app.core.rate_limit import make_rate_limit_dep
 from app.core.jwt_utils import (
     REFRESH_EXPIRE_DAYS_REMEMBER,
@@ -216,32 +217,36 @@ class ResendVerificationRequest(BaseModel):
 
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest, request: Request, _rl: None = _auth_rl):
-    user_id = uuid.uuid4()
-    pw_hash = hash_password(body.password)
-    ev_token = secrets.token_urlsafe(32)
-    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
+    tracer = get_tracer()
+    with tracer.start_span("auth.register", service="auth") as span:
+        user_id = uuid.uuid4()
+        span.set_tag("user_id", str(user_id))
+        pw_hash = hash_password(body.password)
+        ev_token = secrets.token_urlsafe(32)
+        expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
 
-    async with get_pool().acquire() as conn:
-        async with conn.transaction():
-            try:
+        async with get_pool().acquire() as conn:
+            async with conn.transaction():
+                try:
+                    await conn.execute(
+                        """INSERT INTO users (id, email, name, password_hash, email_verified)
+                           VALUES ($1, $2, $3, $4, false)""",
+                        user_id, body.email, body.name, pw_hash,
+                    )
+                except asyncpg.UniqueViolationError:
+                    span.set_tag("error", "email_already_registered")
+                    raise HTTPException(409, "Email already registered")
+
                 await conn.execute(
-                    """INSERT INTO users (id, email, name, password_hash, email_verified)
-                       VALUES ($1, $2, $3, $4, false)""",
-                    user_id, body.email, body.name, pw_hash,
+                    """INSERT INTO email_verification_tokens (token, user_id, expires_at)
+                       VALUES ($1, $2, $3)""",
+                    ev_token, user_id, expires,
                 )
-            except asyncpg.UniqueViolationError:
-                raise HTTPException(409, "Email already registered")
 
-            await conn.execute(
-                """INSERT INTO email_verification_tokens (token, user_id, expires_at)
-                   VALUES ($1, $2, $3)""",
-                ev_token, user_id, expires,
-            )
+        await send_verification_email(body.email, ev_token)
+        await write_audit(body.email, "register", ip_address=_client_ip(request))
 
-    await send_verification_email(body.email, ev_token)
-    await write_audit(body.email, "register", ip_address=_client_ip(request))
-
-    return {"message": "Account created. Check your email to verify your account."}
+        return {"message": "Account created. Check your email to verify your account."}
 
 
 async def _finish_login(conn, user, *, remember: bool, ip: str, ua: str) -> dict:
@@ -266,28 +271,34 @@ async def _finish_login(conn, user, *, remember: bool, ip: str, ua: str) -> dict
 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
-    ua = request.headers.get("User-Agent", "")
-    ip = _client_ip(request)
-    async with get_pool().acquire() as conn:
-        user = await _get_user_by_email(conn, body.email)
-        if not user or not user["password_hash"]:
-            raise HTTPException(401, "Invalid email or password")
-        if not verify_password(body.password, user["password_hash"]):
-            raise HTTPException(401, "Invalid email or password")
+    tracer = get_tracer()
+    with tracer.start_span("auth.login", service="auth") as span:
+        ua = request.headers.get("User-Agent", "")
+        ip = _client_ip(request)
+        async with get_pool().acquire() as conn:
+            user = await _get_user_by_email(conn, body.email)
+            if not user or not user["password_hash"]:
+                span.set_tag("error", "invalid_credentials")
+                raise HTTPException(401, "Invalid email or password")
+            if not verify_password(body.password, user["password_hash"]):
+                span.set_tag("error", "invalid_credentials")
+                raise HTTPException(401, "Invalid email or password")
+            span.set_tag("user_id", str(user["id"]))
 
-        mfa = await conn.fetchrow(
-            "SELECT enabled FROM mfa_secrets WHERE user_id=$1", user["id"]
-        )
-        if mfa and mfa["enabled"]:
-            challenge_token = secrets.token_urlsafe(32)
-            await conn.execute(
-                "INSERT INTO mfa_challenges (token, user_id, expires_at) "
-                "VALUES ($1,$2,NOW() + INTERVAL '5 minutes')",
-                challenge_token, user["id"],
+            mfa = await conn.fetchrow(
+                "SELECT enabled FROM mfa_secrets WHERE user_id=$1", user["id"]
             )
-            return {"mfa_required": True, "challenge_token": challenge_token}
+            if mfa and mfa["enabled"]:
+                span.set_tag("mfa_required", True)
+                challenge_token = secrets.token_urlsafe(32)
+                await conn.execute(
+                    "INSERT INTO mfa_challenges (token, user_id, expires_at) "
+                    "VALUES ($1,$2,NOW() + INTERVAL '5 minutes')",
+                    challenge_token, user["id"],
+                )
+                return {"mfa_required": True, "challenge_token": challenge_token}
 
-        return await _finish_login(conn, user, remember=body.remember, ip=ip, ua=ua)
+            return await _finish_login(conn, user, remember=body.remember, ip=ip, ua=ua)
 
 
 class LoginMfaRequest(BaseModel):

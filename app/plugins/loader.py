@@ -23,6 +23,9 @@ import os
 import uuid
 from typing import Any, Optional
 
+from app.core.observability.context import current_tags
+from app.core.observability.tracer import get_tracer
+
 log = logging.getLogger(__name__)
 
 PLATFORM_VERSION = "1.0.0"
@@ -81,85 +84,96 @@ class PluginLoader:
         from app.marketplace.store import get_marketplace_store
         from app.plugins.manifest import parse_manifest, validate_permissions, ManifestValidationError
 
-        item = await get_marketplace_store().get_item(marketplace_item_id, viewer_org_id=org_id)
-        if item is None:
-            raise PluginLoadError(f"listing {marketplace_item_id} not found")
+        tracer = get_tracer()
+        with tracer.start_span("plugin.load", service="plugin_loader") as span:
+            for key, val in current_tags().items():
+                span.set_tag(key, val)
+            span.set_tag("organization_id", org_id)
+            span.set_tag("marketplace_item_id", marketplace_item_id)
 
-        assets = await get_asset_service().get_assets(marketplace_item_id, item["version"])
-        bundle = self._extract_bundle(assets)
-        if bundle is None:
-            raise PluginLoadError(f"listing {marketplace_item_id} has no inline plugin bundle asset")
+            item = await get_marketplace_store().get_item(marketplace_item_id, viewer_org_id=org_id)
+            if item is None:
+                raise PluginLoadError(f"listing {marketplace_item_id} not found")
 
-        try:
-            manifest = parse_manifest(bundle["manifest"])
-        except ManifestValidationError as exc:
-            raise PluginLoadError(f"manifest invalid: {exc}") from exc
+            assets = await get_asset_service().get_assets(marketplace_item_id, item["version"])
+            bundle = self._extract_bundle(assets)
+            if bundle is None:
+                raise PluginLoadError(f"listing {marketplace_item_id} has no inline plugin bundle asset")
 
-        # Version compatibility (reuses the same comparator Marketplace already ships)
-        from app.marketplace.dependencies import version_satisfies
-        if not version_satisfies(PLATFORM_VERSION, f">={manifest.min_platform_version}"):
-            raise PlatformVersionError(manifest.id, f"requires platform >= {manifest.min_platform_version}")
-        if manifest.max_platform_version and not version_satisfies(
-            PLATFORM_VERSION, f"<={manifest.max_platform_version}"
-        ):
-            raise PlatformVersionError(manifest.id, f"requires platform <= {manifest.max_platform_version}")
+            try:
+                manifest = parse_manifest(bundle["manifest"])
+            except ManifestValidationError as exc:
+                raise PluginLoadError(f"manifest invalid: {exc}") from exc
 
-        # Permission declaration validation (reuses Marketplace's allowlist check, not reimplemented)
-        unknown = validate_permissions(manifest)
-        if unknown:
-            raise PluginLoadError(f"manifest declares unknown capabilities: {unknown}")
+            span.set_tag("plugin_id", manifest.id)
+            span.set_tag("plugin_version", manifest.version)
 
-        # Dependency resolution — same graph, same table, same cycle/missing/
-        # version logic the Marketplace phase already shipped and tested.
-        from app.marketplace.dependencies import get_dependency_service
-        await get_dependency_service().resolve_install_order(marketplace_item_id)
+            # Version compatibility (reuses the same comparator Marketplace already ships)
+            from app.marketplace.dependencies import version_satisfies
+            if not version_satisfies(PLATFORM_VERSION, f">={manifest.min_platform_version}"):
+                raise PlatformVersionError(manifest.id, f"requires platform >= {manifest.min_platform_version}")
+            if manifest.max_platform_version and not version_satisfies(
+                PLATFORM_VERSION, f"<={manifest.max_platform_version}"
+            ):
+                raise PlatformVersionError(manifest.id, f"requires platform <= {manifest.max_platform_version}")
 
-        installation = await self._upsert_installation(
-            org_id=org_id, marketplace_item_id=marketplace_item_id,
-            manifest=manifest, actor_id=actor_id,
-        )
-        installation_id = str(installation["id"])
+            # Permission declaration validation (reuses Marketplace's allowlist check, not reimplemented)
+            unknown = validate_permissions(manifest)
+            if unknown:
+                raise PluginLoadError(f"manifest declares unknown capabilities: {unknown}")
 
-        sensitive = [c for c in manifest.required_permissions if c in _SENSITIVE_CAPABILITIES]
-        if sensitive and not installation["approved"]:
-            await self._log_health(installation_id, "error", "awaiting approval for sensitive capabilities")
-            raise PluginNotApprovedError(manifest.id)
+            # Dependency resolution — same graph, same table, same cycle/missing/
+            # version logic the Marketplace phase already shipped and tested.
+            from app.marketplace.dependencies import get_dependency_service
+            await get_dependency_service().resolve_install_order(marketplace_item_id)
 
-        from app.sandbox import get_sandbox_manager
-        manager = get_sandbox_manager()
-        try:
-            worker = await manager.spawn_worker(
-                installation_id=installation_id, org_id=org_id, plugin_id=manifest.id,
-                entry_point=manifest.entry_point, code=bundle["code"], config=installation["config"],
+            installation = await self._upsert_installation(
+                org_id=org_id, marketplace_item_id=marketplace_item_id,
+                manifest=manifest, actor_id=actor_id,
             )
-        except Exception as exc:
-            await self._log_health(installation_id, "error", str(exc))
-            await self._set_status(installation_id, "failed")
-            raise PluginImportError(manifest.id, str(exc)) from exc
+            installation_id = str(installation["id"])
+            span.set_tag("installation_id", installation_id)
 
-        from app.plugins.adapters import adapt_registrations
-        try:
-            await worker.call("lifecycle", method="on_install", timeout=15)
-            await worker.call("lifecycle", method="on_enable", timeout=15)
-            registrations = await worker.call("register", timeout=15)
-            # Reconstructing real registry objects (e.g. a pydantic
-            # ToolSchema) from the worker's JSON-safe records can itself
-            # raise (a plugin-declared tool name failing validation) —
-            # this must hit the same failure path as a worker.call()
-            # error, not propagate uncaught past load()'s documented
-            # "never raises into the marketplace install transaction"
-            # contract.
-            adapt_registrations(installation_id, worker, registrations)
-        except Exception as exc:
-            await manager.stop_worker(installation_id)
-            await self._log_health(installation_id, "error", f"register() failed: {exc}")
-            await self._set_status(installation_id, "failed")
-            raise PluginImportError(manifest.id, str(exc)) from exc
+            sensitive = [c for c in manifest.required_permissions if c in _SENSITIVE_CAPABILITIES]
+            if sensitive and not installation["approved"]:
+                await self._log_health(installation_id, "error", "awaiting approval for sensitive capabilities")
+                raise PluginNotApprovedError(manifest.id)
 
-        self._instances[installation_id] = worker
-        await self._set_status(installation_id, "enabled")
-        await self._log_health(installation_id, "load", f"loaded {manifest.id}@{manifest.version}")
-        return installation
+            from app.sandbox import get_sandbox_manager
+            manager = get_sandbox_manager()
+            try:
+                worker = await manager.spawn_worker(
+                    installation_id=installation_id, org_id=org_id, plugin_id=manifest.id,
+                    entry_point=manifest.entry_point, code=bundle["code"], config=installation["config"],
+                )
+            except Exception as exc:
+                await self._log_health(installation_id, "error", str(exc))
+                await self._set_status(installation_id, "failed")
+                raise PluginImportError(manifest.id, str(exc)) from exc
+
+            from app.plugins.adapters import adapt_registrations
+            try:
+                await worker.call("lifecycle", method="on_install", timeout=15)
+                await worker.call("lifecycle", method="on_enable", timeout=15)
+                registrations = await worker.call("register", timeout=15)
+                # Reconstructing real registry objects (e.g. a pydantic
+                # ToolSchema) from the worker's JSON-safe records can itself
+                # raise (a plugin-declared tool name failing validation) —
+                # this must hit the same failure path as a worker.call()
+                # error, not propagate uncaught past load()'s documented
+                # "never raises into the marketplace install transaction"
+                # contract.
+                adapt_registrations(installation_id, worker, registrations)
+            except Exception as exc:
+                await manager.stop_worker(installation_id)
+                await self._log_health(installation_id, "error", f"register() failed: {exc}")
+                await self._set_status(installation_id, "failed")
+                raise PluginImportError(manifest.id, str(exc)) from exc
+
+            self._instances[installation_id] = worker
+            await self._set_status(installation_id, "enabled")
+            await self._log_health(installation_id, "load", f"loaded {manifest.id}@{manifest.version}")
+            return installation
 
     async def unload(self, installation_id: str) -> None:
         worker = self._instances.pop(installation_id, None)

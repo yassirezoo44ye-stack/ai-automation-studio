@@ -19,6 +19,9 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Any, Awaitable, Callable, Optional
 
+from app.core.observability.context import current_tags
+from app.core.observability.tracer import get_tracer
+
 log = logging.getLogger(__name__)
 
 EVENT_TYPES = frozenset({
@@ -92,25 +95,33 @@ class EventBus:
 
     async def publish(self, type_: str, data: dict[str, Any] | None = None, *,
                       organization_id: str | None = None) -> Event:
-        if type_ not in EVENT_TYPES:
-            raise ValueError(f"undeclared event type {type_!r} — add it to EVENT_TYPES")
-        event = Event(type=type_, data=data or {}, organization_id=organization_id)
+        tracer = get_tracer()
+        with tracer.start_span("event_bus.publish", service="event_bus") as span:
+            for key, val in current_tags().items():
+                span.set_tag(key, val)
+            span.set_tag("event_type", type_)
+            if organization_id:
+                span.set_tag("organization_id", organization_id)
 
-        if self._redis is not None:
-            try:
-                await self._redis.xadd(
-                    _STREAM, {"payload": json.dumps(event.to_dict())},
-                    maxlen=_MAXLEN, approximate=True,
-                )
-            except Exception as exc:
-                log.warning("event bus: xadd failed (%s)", exc)
+            if type_ not in EVENT_TYPES:
+                raise ValueError(f"undeclared event type {type_!r} — add it to EVENT_TYPES")
+            event = Event(type=type_, data=data or {}, organization_id=organization_id)
 
-        self._history.append(event)
-        if len(self._history) > _MAXLEN:
-            self._history = self._history[-_MAXLEN // 2:]
+            if self._redis is not None:
+                try:
+                    await self._redis.xadd(
+                        _STREAM, {"payload": json.dumps(event.to_dict())},
+                        maxlen=_MAXLEN, approximate=True,
+                    )
+                except Exception as exc:
+                    log.warning("event bus: xadd failed (%s)", exc)
 
-        await self._dispatch(event)
-        return event
+            self._history.append(event)
+            if len(self._history) > _MAXLEN:
+                self._history = self._history[-_MAXLEN // 2:]
+
+            await self._dispatch(event)
+            return event
 
     async def _dispatch(self, event: Event) -> None:
         for pattern, handlers in self._handlers.items():

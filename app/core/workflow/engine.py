@@ -25,6 +25,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional
 
+from app.core.observability.context import current_tags
+from app.core.observability.tracer import get_tracer
+
 log = logging.getLogger(__name__)
 
 # ── Types ──────────────────────────────────────────────────────────────────────
@@ -260,74 +263,83 @@ async def _execute_step(step: WorkflowStep, run: WorkflowRun) -> None:
     Execute a single step with retry, timeout, approval gate, and condition check.
     Populates step.status / step.result / step.error.
     """
-    # 1. Condition check
-    if step.condition and not step.condition(run.context):
-        step.status = StepStatus.SKIPPED
-        log.debug("wf[%s] step %s skipped by condition", run.run_id[:8], step.id)
-        return
+    tracer = get_tracer()
+    with tracer.start_span("workflow.step", service="workflow_engine") as span:
+        span.set_tag("run_id", run.run_id)
+        span.set_tag("step_id", step.id)
 
-    # 2. Human approval gate
-    if step.requires_approval:
-        approval_id = f"{run.run_id}:{step.id}"
-        ev = _approval_registry.register(approval_id)
-        step.status = StepStatus.WAITING
-        log.info("wf[%s] step %s awaiting approval %s", run.run_id[:8], step.id, approval_id)
-        try:
-            await asyncio.wait_for(ev.wait(), timeout=step.timeout_s or 3600)
-        except asyncio.TimeoutError:
-            step.status = StepStatus.FAILED
-            step.error  = "Approval timeout"
-            return
-        if not _approval_registry.was_approved(approval_id):
+        # 1. Condition check
+        if step.condition and not step.condition(run.context):
             step.status = StepStatus.SKIPPED
-            step.error  = "Rejected by approver"
+            log.debug("wf[%s] step %s skipped by condition", run.run_id[:8], step.id)
             return
 
-    # 3. Execute with retry
-    step.status   = StepStatus.RUNNING
-    step.started_at = time.time()
-    policy = step.retry_policy
+        # 2. Human approval gate
+        if step.requires_approval:
+            approval_id = f"{run.run_id}:{step.id}"
+            ev = _approval_registry.register(approval_id)
+            step.status = StepStatus.WAITING
+            log.info("wf[%s] step %s awaiting approval %s", run.run_id[:8], step.id, approval_id)
+            try:
+                await asyncio.wait_for(ev.wait(), timeout=step.timeout_s or 3600)
+            except asyncio.TimeoutError:
+                step.status = StepStatus.FAILED
+                step.error  = "Approval timeout"
+                span.set_tag("error", step.error)
+                return
+            if not _approval_registry.was_approved(approval_id):
+                step.status = StepStatus.SKIPPED
+                step.error  = "Rejected by approver"
+                return
 
-    for attempt in range(1, policy.max_attempts + 1):
-        step.attempt = attempt
-        try:
-            # Inject framework kwargs separately — they never collide with step.args
-            # because step.args are user-defined domain params, not framework keys.
-            safe_args = {k: v for k, v in step.args.items()
-                         if k not in ("_context", "_run_id")}
-            coro = step.fn(**safe_args, _context=run.context, _run_id=run.run_id)
-            if step.timeout_s:
-                result = await asyncio.wait_for(coro, timeout=step.timeout_s)
-            else:
-                result = await coro
+        # 3. Execute with retry
+        step.status   = StepStatus.RUNNING
+        step.started_at = time.time()
+        policy = step.retry_policy
 
-            # Success
-            step.result     = result
-            step.status     = StepStatus.COMPLETED
-            step.finished_at = time.time()
-            # Merge result into shared context
-            if isinstance(result, dict):
-                run.context.update({f"{step.id}.{k}": v for k, v in result.items()})
-            run.context[f"{step.id}.result"] = result
-            log.debug("wf[%s] step %s done in %.0fms",
-                      run.run_id[:8], step.id, step.duration_ms)
-            return
+        for attempt in range(1, policy.max_attempts + 1):
+            step.attempt = attempt
+            try:
+                # Inject framework kwargs separately — they never collide with step.args
+                # because step.args are user-defined domain params, not framework keys.
+                safe_args = {k: v for k, v in step.args.items()
+                             if k not in ("_context", "_run_id")}
+                coro = step.fn(**safe_args, _context=run.context, _run_id=run.run_id)
+                if step.timeout_s:
+                    result = await asyncio.wait_for(coro, timeout=step.timeout_s)
+                else:
+                    result = await coro
 
-        except asyncio.CancelledError:
-            step.status = StepStatus.FAILED
-            step.error  = "Cancelled"
-            step.finished_at = time.time()
-            return
+                # Success
+                step.result     = result
+                step.status     = StepStatus.COMPLETED
+                step.finished_at = time.time()
+                # Merge result into shared context
+                if isinstance(result, dict):
+                    run.context.update({f"{step.id}.{k}": v for k, v in result.items()})
+                run.context[f"{step.id}.result"] = result
+                span.set_tag("attempt", attempt)
+                log.debug("wf[%s] step %s done in %.0fms",
+                          run.run_id[:8], step.id, step.duration_ms)
+                return
 
-        except Exception as exc:
-            step.error = str(exc)
-            log.warning("wf[%s] step %s attempt %d failed: %s",
-                        run.run_id[:8], step.id, attempt, exc)
-            if attempt < policy.max_attempts:
-                await asyncio.sleep(policy.delay(attempt))
+            except asyncio.CancelledError:
+                step.status = StepStatus.FAILED
+                step.error  = "Cancelled"
+                step.finished_at = time.time()
+                span.set_tag("error", "Cancelled")
+                return
 
-    step.status     = StepStatus.FAILED
-    step.finished_at = time.time()
+            except Exception as exc:
+                step.error = str(exc)
+                log.warning("wf[%s] step %s attempt %d failed: %s",
+                            run.run_id[:8], step.id, attempt, exc)
+                if attempt < policy.max_attempts:
+                    await asyncio.sleep(policy.delay(attempt))
+
+        step.status     = StepStatus.FAILED
+        step.finished_at = time.time()
+        span.set_tag("error", step.error or "max retries exceeded")
 
 
 # ── Saga compensation ─────────────────────────────────────────────────────────
@@ -411,72 +423,84 @@ class WorkflowEngine:
         log.info("wf[%s] '%s' started", run.run_id[:8], run.name)
         await _publish_workflow_event(run, "workflow.started")
 
-        try:
-            groups = _topo_sort(run.steps)
-        except ValueError as exc:
-            run.status = WorkflowStatus.FAILED
-            run.error  = str(exc)
-            await _publish_workflow_event(run, "workflow.failed")
-            return run
+        tracer = get_tracer()
+        with tracer.start_span("workflow.execute", service="workflow_engine") as span:
+            for key, val in current_tags().items():
+                span.set_tag(key, val)
+            span.set_tag("run_id", run.run_id)
+            span.set_tag("workflow_name", run.name)
+            if org_id := run.context.get("organization_id"):
+                span.set_tag("organization_id", org_id)
 
-        try:
-            for group in groups:
-                # Check if any required predecessor failed
-                runnable = [
-                    sid for sid in group
-                    if all(
-                        run.steps[dep].status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
-                        for dep in run.steps[sid].depends_on
-                    )
-                ]
-                if not runnable:
-                    continue
-
-                if len(runnable) == 1:
-                    await _execute_step(run.steps[runnable[0]], run)
-                else:
-                    async with asyncio.TaskGroup() as tg:
-                        for sid in runnable:
-                            tg.create_task(_execute_step(run.steps[sid], run))
-
-                # Check for failures
-                failed = [
-                    sid for sid in group
-                    if run.steps[sid].status == StepStatus.FAILED
-                ]
-                if failed:
-                    err = "; ".join(run.steps[sid].error or "unknown"
-                                   for sid in failed)
-                    run.error  = f"Steps failed: {failed} — {err}"
-                    run.status = WorkflowStatus.FAILED
-                    if saga:
-                        await _compensate(run)
-                        # _compensate() sets COMPENSATING as a transient
-                        # in-progress marker — the run must still land on a
-                        # terminal FAILED status once compensation finishes.
-                        run.status = WorkflowStatus.FAILED
-                    await _publish_workflow_event(run, "workflow.failed")
-                    return run
-
-        except Exception as exc:
-            run.error  = str(exc)
-            run.status = WorkflowStatus.FAILED
-            if saga:
-                await _compensate(run)
+            try:
+                groups = _topo_sort(run.steps)
+            except ValueError as exc:
                 run.status = WorkflowStatus.FAILED
-            log.error("wf[%s] unexpected error: %s", run.run_id[:8], exc)
-            await _publish_workflow_event(run, "workflow.failed")
-            return run
-        finally:
-            run.finished_at = time.time()
-            self._active.pop(run.run_id, None)
-            await _record_workflow_usage(run)
+                run.error  = str(exc)
+                span.set_tag("error", str(exc))
+                await _publish_workflow_event(run, "workflow.failed")
+                return run
 
-        run.status = WorkflowStatus.COMPLETED
-        log.info("wf[%s] completed in %.0fms", run.run_id[:8],
-                 (run.finished_at - run.started_at) * 1000)  # type: ignore[operator]
-        await _publish_workflow_event(run, "workflow.completed")
-        return run
+            try:
+                for group in groups:
+                    # Check if any required predecessor failed
+                    runnable = [
+                        sid for sid in group
+                        if all(
+                            run.steps[dep].status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
+                            for dep in run.steps[sid].depends_on
+                        )
+                    ]
+                    if not runnable:
+                        continue
+
+                    if len(runnable) == 1:
+                        await _execute_step(run.steps[runnable[0]], run)
+                    else:
+                        async with asyncio.TaskGroup() as tg:
+                            for sid in runnable:
+                                tg.create_task(_execute_step(run.steps[sid], run))
+
+                    # Check for failures
+                    failed = [
+                        sid for sid in group
+                        if run.steps[sid].status == StepStatus.FAILED
+                    ]
+                    if failed:
+                        err = "; ".join(run.steps[sid].error or "unknown"
+                                       for sid in failed)
+                        run.error  = f"Steps failed: {failed} — {err}"
+                        run.status = WorkflowStatus.FAILED
+                        span.set_tag("error", run.error)
+                        if saga:
+                            await _compensate(run)
+                            # _compensate() sets COMPENSATING as a transient
+                            # in-progress marker — the run must still land on a
+                            # terminal FAILED status once compensation finishes.
+                            run.status = WorkflowStatus.FAILED
+                        await _publish_workflow_event(run, "workflow.failed")
+                        return run
+
+            except Exception as exc:
+                run.error  = str(exc)
+                run.status = WorkflowStatus.FAILED
+                span.set_tag("error", str(exc))
+                if saga:
+                    await _compensate(run)
+                    run.status = WorkflowStatus.FAILED
+                log.error("wf[%s] unexpected error: %s", run.run_id[:8], exc)
+                await _publish_workflow_event(run, "workflow.failed")
+                return run
+            finally:
+                run.finished_at = time.time()
+                self._active.pop(run.run_id, None)
+                await _record_workflow_usage(run)
+
+            run.status = WorkflowStatus.COMPLETED
+            log.info("wf[%s] completed in %.0fms", run.run_id[:8],
+                     (run.finished_at - run.started_at) * 1000)  # type: ignore[operator]
+            await _publish_workflow_event(run, "workflow.completed")
+            return run
 
     def active(self) -> list[dict]:
         return [r.to_dict() for r in self._active.values()]

@@ -24,6 +24,8 @@ from collections import defaultdict
 from typing import Callable, Awaitable, Type, TypeVar
 
 from .events import AIEvent
+from app.core.observability.context import current_tags
+from app.core.observability.tracer import get_tracer
 
 log = logging.getLogger(__name__)
 
@@ -74,16 +76,27 @@ class EventBus:
         if not handlers:
             return
 
-        results = await asyncio.gather(
-            *(h(event) for h in handlers),
-            return_exceptions=True,
-        )
-        for h, result in zip(handlers, results):
-            if isinstance(result, Exception):
-                log.error(
-                    "EventBus handler %s raised %s: %s",
-                    h.__qualname__, type(result).__name__, result,
-                )
+        tracer = get_tracer()
+        with tracer.start_span("ai_event_bus.emit", service="ai_gateway") as span:
+            for tk, tv in current_tags().items():
+                span.set_tag(tk, tv)
+            span.set_tag("event_type", key)
+            span.set_tag("handler_count", len(handlers))
+
+            results = await asyncio.gather(
+                *(h(event) for h in handlers),
+                return_exceptions=True,
+            )
+            errors = []
+            for h, result in zip(handlers, results):
+                if isinstance(result, Exception):
+                    errors.append(f"{h.__qualname__}: {result}")
+                    log.error(
+                        "EventBus handler %s raised %s: %s",
+                        h.__qualname__, type(result).__name__, result,
+                    )
+            if errors:
+                span.set_tag("error", "; ".join(errors))
 
     def emit_sync(self, event: AIEvent) -> None:
         """

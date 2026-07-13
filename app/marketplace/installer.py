@@ -18,6 +18,9 @@ import time
 import uuid
 from typing import Any, Optional
 
+from app.core.observability.context import current_tags
+from app.core.observability.tracer import get_tracer
+
 log = logging.getLogger(__name__)
 
 
@@ -66,23 +69,30 @@ class InstallationPipeline:
         self, item_id: str, *, org_id: str, actor_id: str,
         actor_email: Optional[str] = None, requested_version: Optional[str] = None,
     ) -> dict[str, Any]:
-        try:
-            result = await self._install_inner(
-                item_id, org_id=org_id, actor_id=actor_id,
-                actor_email=actor_email, requested_version=requested_version,
-            )
-        except Exception as exc:
+        tracer = get_tracer()
+        with tracer.start_span("marketplace.install", service="marketplace") as span:
+            for key, val in current_tags().items():
+                span.set_tag(key, val)
+            span.set_tag("organization_id", org_id)
+            span.set_tag("item_id", item_id)
             try:
-                from app.core.events import get_event_bus
-                await get_event_bus().publish(
-                    "marketplace.install_failed",
-                    {"listing_id": item_id, "reason": str(exc)},
-                    organization_id=org_id,
+                result = await self._install_inner(
+                    item_id, org_id=org_id, actor_id=actor_id,
+                    actor_email=actor_email, requested_version=requested_version,
                 )
-            except Exception:
-                pass
-            raise
-        return result
+            except Exception as exc:
+                span.set_tag("error", str(exc))
+                try:
+                    from app.core.events import get_event_bus
+                    await get_event_bus().publish(
+                        "marketplace.install_failed",
+                        {"listing_id": item_id, "reason": str(exc)},
+                        organization_id=org_id,
+                    )
+                except Exception:
+                    pass
+                raise
+            return result
 
     async def _install_inner(
         self, item_id: str, *, org_id: str, actor_id: str,

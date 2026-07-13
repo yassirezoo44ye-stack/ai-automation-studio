@@ -25,6 +25,9 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional
 
+from app.core.observability.context import current_tags
+from app.core.observability.tracer import get_tracer
+
 log = logging.getLogger(__name__)
 
 _JOB_TTL = 3600          # default 1 hour retention
@@ -194,24 +197,31 @@ class JobQueue:
         await self._store.save(job)
 
         async def _run():
-            try:
-                result      = await fn(job)
-                job.result  = result
-                job.status  = JobStatus.COMPLETED
-                job.progress = 100
-                job.append_log("Completed successfully")
-            except asyncio.CancelledError:
-                job.status = JobStatus.CANCELLED
-                job.append_log("Cancelled")
-            except Exception as exc:
-                job.status = JobStatus.FAILED
-                job.error  = str(exc)
-                job.append_log(f"Error: {exc}")
-                log.warning("job[%s] failed: %s", job_id[:8], exc)
-            finally:
-                job.finished_at = time.time()
-                self._active.pop(job_id, None)
-                await self._store.save(job)
+            tracer = get_tracer()
+            with tracer.start_span("job.run", service="job_queue") as span:
+                for key, val in current_tags().items():
+                    span.set_tag(key, val)
+                span.set_tag("job_id", job_id)
+                span.set_tag("kind", job.kind)
+                try:
+                    result      = await fn(job)
+                    job.result  = result
+                    job.status  = JobStatus.COMPLETED
+                    job.progress = 100
+                    job.append_log("Completed successfully")
+                except asyncio.CancelledError:
+                    job.status = JobStatus.CANCELLED
+                    job.append_log("Cancelled")
+                except Exception as exc:
+                    job.status = JobStatus.FAILED
+                    job.error  = str(exc)
+                    job.append_log(f"Error: {exc}")
+                    span.set_tag("error", str(exc))
+                    log.warning("job[%s] failed: %s", job_id[:8], exc)
+                finally:
+                    job.finished_at = time.time()
+                    self._active.pop(job_id, None)
+                    await self._store.save(job)
 
         task = asyncio.create_task(_run())
         self._active[job_id] = task
