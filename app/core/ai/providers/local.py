@@ -12,14 +12,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import uuid
-from typing import AsyncGenerator, Any, Optional
+from typing import AsyncGenerator, Any
 
 import httpx
 
 from app.ai.models import (
     CompletionRequest, CompletionResponse, StreamChunk,
-    ToolCall, UsageStats, Message,
+    UsageStats,
 )
 from app.ai.providers.base import BaseProvider
 

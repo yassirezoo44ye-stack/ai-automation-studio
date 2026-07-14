@@ -72,7 +72,6 @@ class ModifyAgent(EvolvableAgent):
                     data=result)
 
             if sub == "list":
-                from app.kernel.state import KernelState
                 state = modifier._state
                 mods  = state.modifications
                 return AgentResult.ok(

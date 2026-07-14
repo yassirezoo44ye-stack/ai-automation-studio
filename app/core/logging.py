@@ -9,8 +9,6 @@ Usage:
 import json
 import logging
 import sys
-import time
-import uuid
 from contextvars import ContextVar
 from typing import Any
 

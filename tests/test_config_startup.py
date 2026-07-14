@@ -25,7 +25,7 @@ def _reload_config(env: dict):
             import app.core.config as cfg
             importlib.reload(cfg)
             return cfg
-        except SystemExit as e:
+        except SystemExit:
             raise
 
 

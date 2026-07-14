@@ -9,7 +9,6 @@ All AI calls go through AIGateway.complete() or AIGateway.stream().
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import AsyncGenerator, Optional
 

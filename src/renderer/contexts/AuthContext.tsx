@@ -66,6 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref lets scheduleRefresh call doRefresh without creating a circular dep
   const doRefreshRef = useRef<() => Promise<{ token: string | null; networkError?: string }>>(async () => ({ token: null }));
+  // Ref lets scheduleRefresh call itself (from within its own setTimeout) without a self-referential closure
+  const scheduleRefreshRef = useRef<(delayMs?: number) => void>(() => {});
 
   const scheduleRefresh = useCallback((delayMs = 13 * 60 * 1000) => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -74,15 +76,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshTimerRef.current = setTimeout(async () => {
       const { token, networkError } = await doRefreshRef.current();
       if (token) {
-        scheduleRefresh();
+        scheduleRefreshRef.current();
       } else if (networkError) {
         const backoff = Math.min(delayMs * 2, 5 * 60 * 1000);
-        scheduleRefresh(backoff);
+        scheduleRefreshRef.current(backoff);
       }
       // If token is null and no networkError, the session was legitimately
       // expired — doRefresh already called logout(); do not reschedule.
     }, delayMs);
   }, []);
+
+  useEffect(() => {
+    scheduleRefreshRef.current = scheduleRefresh;
+  }, [scheduleRefresh]);
 
   const doRefresh = useCallback(async (): Promise<{ token: string | null; networkError?: string }> => {
     const stored = localStorage.getItem(REFRESH_KEY);
@@ -116,8 +122,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [scheduleRefresh]);
 
   // Keep ref in sync so scheduleRefresh always calls the latest version
-  // eslint-disable-next-line react-hooks/refs
-  doRefreshRef.current = doRefresh;
+  useEffect(() => {
+    doRefreshRef.current = doRefresh;
+  }, [doRefresh]);
 
   const fetchMe = useCallback(async (token: string) => {
     const res = await apiFetch("/api/auth/me", {}, token);

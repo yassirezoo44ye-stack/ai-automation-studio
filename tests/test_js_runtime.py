@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -483,7 +482,6 @@ class TestRuntimeManager:
         """install() must yield the diagnostic header before any subprocess output."""
         _pkg(tmp_path)
         _lockfile(tmp_path, "package-lock.json")
-        from app.execution.js_runtime.manager import InstallResult
         m = RuntimeManager()
         header_lines: list[str] = []
         with (
@@ -507,7 +505,6 @@ class TestRuntimeManager:
         """stderr lines must be tagged 'stderr', stdout lines tagged 'stdout'."""
         _pkg(tmp_path)
         _lockfile(tmp_path, "package-lock.json")
-        from app.execution.js_runtime.manager import InstallResult
         m = RuntimeManager()
         stderr_seen = []
         stdout_seen = []
@@ -582,7 +579,7 @@ class TestEnvironmentProbe:
 
 class TestNpmWritableEnv:
     def test_force_overrides_existing_bad_cache(self):
-        import os, tempfile
+        import tempfile
         from app.execution.js_runtime.manager import _npm_writable_env
         _tmp = tempfile.gettempdir()
         expected_cache = os.path.join(_tmp, "npm-cache")
@@ -613,7 +610,7 @@ class TestErrorHierarchy:
     def test_all_errors_are_js_runtime_error(self):
         from app.execution.js_runtime.errors import (
             ExecutionFailed, ExecutionTimeout, JsRuntimeError,
-            LockfileConflict, NodeModulesMissing, PackageJsonMissing,
+            NodeModulesMissing, PackageJsonMissing,
             PackageManagerBroken, PackageManagerNotFound, RuntimeUnavailable,
             ScriptNotFound,
         )

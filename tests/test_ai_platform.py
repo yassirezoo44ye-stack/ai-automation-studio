@@ -7,19 +7,16 @@ Providers and DB are mocked.
 from __future__ import annotations
 
 import asyncio
-import json
-import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.ai.models import (
-    CompletionRequest, CompletionResponse, Message,
-    StreamChunk, UsageStats,
+    CompletionRequest, Message,
 )
 from app.core.ai.events.bus import EventBus
 from app.core.ai.events.events import PromptCompleted, ToolCalled
-from app.core.ai.models.catalog import catalog, ModelInfo
+from app.core.ai.models.catalog import catalog
 from app.core.ai.router.model_router import ModelRouter, SelectionPolicy
 from app.core.ai.tools.sandbox import ToolSandbox, ToolPermissions
 from app.core.ai.tools.executor import ToolExecutor
@@ -352,9 +349,7 @@ class TestPlatformProviderRegistry:
 # ║  PHASE 3: Enterprise AI Orchestration & Multi-Agent Runtime     ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
-import time
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 
 def _run(coro):
@@ -403,7 +398,7 @@ class TestPhase3Events:
             assert "workflow" in obj.event_type
 
     def test_agent_events(self):
-        from app.core.ai.events.events import AgentStarted, AgentCompleted, AgentMessage
+        from app.core.ai.events.events import AgentMessage
         m = AgentMessage(from_agent="backend", to_agent="frontend", message_type="review", payload={"x": 1})
         assert m.payload == {"x": 1}
 
@@ -804,7 +799,6 @@ class TestKnowledgeEngine:
 class TestToolMarketplace:
     def _mp(self):
         from app.core.ai.tools.marketplace import ToolMarketplace, ToolManifest
-        from app.core.ai.tools.executor    import ToolExecutor
         return ToolMarketplace(executor=ToolExecutor()), ToolManifest
 
     def test_register_and_list(self):

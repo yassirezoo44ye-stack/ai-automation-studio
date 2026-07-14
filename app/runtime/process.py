@@ -112,7 +112,7 @@ async def stream_process(
             cwd=cwd_str,
             env=merged_env,
         )
-    except FileNotFoundError as exc:
+    except FileNotFoundError:
         log.error("stream_process: executable not found: %s", cmd[0])
         yield f"[runtime] ERROR: executable not found: {cmd[0]}", None
         yield "", 127

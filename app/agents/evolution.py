@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from app.agents.memory import AgentMemory, AgentStats
+    from app.agents.memory import AgentMemory
     from app.kernel.self_modify import SelfModifyingEngine
     from app.kernel.reloader import HotReloader
 

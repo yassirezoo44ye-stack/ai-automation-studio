@@ -2,7 +2,7 @@
  * OrchestratorClient — frontend client for the AIOrchestrator.
  * Sends requests through the enterprise orchestration pipeline.
  */
-import { apiJSON, apiFetch, parseJSON, API } from "../../../shared/utils/api";
+import { apiJSON, apiFetch, parseJSON } from "../../../shared/utils/api";
 
 export interface OrchestratorRequest {
   prompt:           string;

@@ -6,11 +6,10 @@ requests a function call. Never expose internal tool logic to the frontend.
 """
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
 import logging
-from typing import Any, Callable, Awaitable
+from typing import Any, Callable
 
 from app.ai.models import ToolSchema
 
@@ -131,7 +130,8 @@ async def _get_current_time() -> str:
     name="calculate",
 )
 async def _calculate(expression: str) -> str:
-    import ast, operator as op
+    import ast
+    import operator as op
 
     _OPERATORS = {
         ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul,

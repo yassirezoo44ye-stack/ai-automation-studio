@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 import asyncpg
 
-from app.billing.plans import METRICS, Plan, _SEED_PLANS
+from app.billing.plans import Plan, _SEED_PLANS
 
 log = logging.getLogger(__name__)
 

@@ -45,7 +45,6 @@ from app.execution.js_runtime.phases import (
     _NPM_LOGS,
 )
 from app.execution.js_runtime.report import (
-    BuildPlanReport,
     DependencyReport,
     EnvironmentReport,
     LaunchReport,
@@ -1065,7 +1064,6 @@ class TestNoUndefinedCommand:
         assert plan.run_cmd_str == ""
 
     def test_server_ready_event_has_defined_command(self):
-        import socket as _socket
         # The server_ready event is yielded by _launch_server.
         # It uses plan.run_cmd_str which is always a string.
         plan = BuildPlan(

@@ -13,7 +13,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.ai.arabic_nlu import (
-    ArabicNLUPipeline, ArabicNLUResult, INTENTS, DIALECT_LABELS,
+    ArabicNLUResult, INTENTS, DIALECT_LABELS,
     detect_language, normalize_arabic, get_arabic_nlu,
 )
 

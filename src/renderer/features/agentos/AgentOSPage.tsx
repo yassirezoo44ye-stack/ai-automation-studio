@@ -126,7 +126,6 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [mode, setMode]             = useState<"run" | "deliberate" | "plan">("run");
-  const [tasks, setTasks]           = useState("");
   const [delib, setDelib]           = useState<{ bids: DeliberationBid[]; winner: string } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -619,6 +618,12 @@ function JobsMonitor() {
   const [jobs, setJobs]       = useState<Job[]>([]);
   const [stats, setStats]     = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [now, setNow]         = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -647,9 +652,9 @@ function JobsMonitor() {
     cancelled: "#6b7280",
   };
 
-  const elapsed = (job: Job) => {
+  const elapsed = (job: Job, now: number) => {
     const start = job.started_at ? new Date(job.started_at).getTime() : new Date(job.created_at).getTime();
-    const end   = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
+    const end   = job.finished_at ? new Date(job.finished_at).getTime() : now;
     const s     = Math.round((end - start) / 1000);
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`;
   };
@@ -689,7 +694,7 @@ function JobsMonitor() {
                   <span style={{ fontSize: 10, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 7px", borderRadius: 99 }}>
                     {job.status}
                   </span>
-                  <span style={{ fontSize: 10, color: "var(--t4)" }}>{elapsed(job)}</span>
+                  <span style={{ fontSize: 10, color: "var(--t4)" }}>{elapsed(job, now)}</span>
                 </div>
                 {job.status === "running" && (
                   <div style={{ height: 3, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
@@ -698,7 +703,7 @@ function JobsMonitor() {
                 )}
                 {job.error && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 2 }}>{job.error}</div>}
               </div>
-              <span style={{ fontSize: 10, ...S.mono, color: "var(--t5)", flexShrink: 0 }}>{job.job_id.slice(0, 8)}…</span>
+              <span style={{ ...S.mono, fontSize: 10, color: "var(--t5)", flexShrink: 0 }}>{job.job_id.slice(0, 8)}…</span>
               {(job.status === "pending" || job.status === "running") && (
                 <button onClick={() => cancel(job.job_id)} style={{ ...S.btn("danger"), padding: "3px 10px", fontSize: 11 }}>
                   Cancel

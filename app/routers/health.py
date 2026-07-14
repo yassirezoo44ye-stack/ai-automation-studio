@@ -16,7 +16,7 @@ import shutil
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.core.config import WORKSPACES, DIST_DIR
@@ -40,10 +40,18 @@ async def liveness():
     """
     Kubernetes liveness probe.
     Returns 200 as long as the process is alive and the event loop is running.
+
+    "commit" is the git SHA of the running build (Render sets
+    RENDER_GIT_COMMIT on every deploy; empty locally). CI's post-deploy
+    smoke test polls this until it matches the SHA it deployed — the only
+    reliable way to tell the new instance from the old one during Render's
+    zero-downtime swap, where the previous build keeps serving 200 for the
+    entire duration of the new build.
     """
     return {
         "status"    : "alive",
         "uptime_s"  : round(time.time() - _BOOT_AT, 1),
+        "commit"    : os.getenv("RENDER_GIT_COMMIT", ""),
         "timestamp" : datetime.now(timezone.utc).isoformat(),
     }
 

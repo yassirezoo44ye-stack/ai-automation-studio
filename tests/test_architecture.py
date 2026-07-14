@@ -21,9 +21,7 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
-import sys
 import time
-import types
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -211,7 +209,7 @@ class TestPlanningEngine(unittest.TestCase):
         json.dumps(d)   # must not raise
 
     def test_permission_errors_with_agents(self):
-        from app.agents.base import EvolvableAgent, AgentContext, AgentResult, AgentPermissions
+        from app.agents.base import EvolvableAgent, AgentResult, AgentPermissions
 
         class RestrictedAgent(EvolvableAgent):
             name        = "restricted"
@@ -431,7 +429,8 @@ class TestLayeredMemory(unittest.TestCase):
 
     def _item(self, content: str, kind: str = "execution",
                agent: str = "test", success: bool = True):
-        import uuid, time
+        import uuid
+        import time
         from app.memory.layered import MemoryItem
         return MemoryItem(
             id=str(uuid.uuid4()), layer="", kind=kind,
@@ -771,7 +770,9 @@ class TestConcurrency(unittest.TestCase):
 
     def test_parallel_memory_writes(self):
         """LayeredMemory must be thread-safe."""
-        import threading, uuid, time as _time
+        import threading
+        import uuid
+        import time as _time
         from app.memory.layered import LayeredMemory, MemoryItem
 
         mem = LayeredMemory()

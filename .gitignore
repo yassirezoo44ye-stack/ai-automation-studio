@@ -20,3 +20,4 @@ workspaces/
 .claude/worktrees/
 .backups/
 logs/
+.release-notes.md

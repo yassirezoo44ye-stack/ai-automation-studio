@@ -4,7 +4,6 @@ Runs without a live database.
 """
 import time as _time
 
-import pytest
 
 from app.core.auth import make_token, verify_token, owner_email
 
@@ -29,7 +28,10 @@ class TestMakeVerify:
         assert verify_token(data + ".badsig") is None
 
     def test_expired_token_rejected(self):
-        import base64, json, hashlib, hmac
+        import base64
+        import json
+        import hashlib
+        import hmac
         from app.core.config import SESSION_SECRET
         payload = {"e": "x@x.com", "exp": int(_time.time()) - 1, "trial": False, "dr": 0}
         data = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")

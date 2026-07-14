@@ -56,7 +56,8 @@ class DeployAgent(EvolvableAgent):
                                     data={"steps": steps, "workspace": str(ws)})
 
     async def _zip_deploy(self, ws: Path, steps: list) -> AgentResult:
-        import shutil, uuid
+        import shutil
+        import uuid
         out_dir = Path(os.getenv("WORKSPACES", "/tmp")) / "deploys"
         out_dir.mkdir(parents=True, exist_ok=True)
         zip_path = out_dir / f"{ws.name}_{uuid.uuid4().hex[:8]}.zip"

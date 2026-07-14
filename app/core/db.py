@@ -12,7 +12,6 @@ import asyncpg
 
 from app.core.config import USER_ID, DEMO_PROJECT_ID
 from app.core.observability.tracer import get_tracer
-import uuid
 
 _pool: Optional[asyncpg.Pool] = None
 

@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter
 
 from app.core.workflow import (
     WorkflowBuilder, RetryPolicy, get_workflow_engine,

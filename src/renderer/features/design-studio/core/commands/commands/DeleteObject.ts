@@ -1,4 +1,4 @@
-import type { Canvas as FabricCanvas, FabricObject } from "fabric";
+import type { Canvas as FabricCanvas } from "fabric";
 import { BaseCommand } from "../Command";
 import { getMeta, attachMeta } from "../../../utils/fabricUtils";
 import { designBus } from "../../events/DesignEventBus";

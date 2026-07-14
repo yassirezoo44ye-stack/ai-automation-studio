@@ -7,7 +7,6 @@ events, and records costs.
 from __future__ import annotations
 
 import time
-import uuid
 from typing import Any, Optional, TYPE_CHECKING
 
 from ..events.bus import EventBus
@@ -119,7 +118,6 @@ class ExecutionCoordinator:
                 }
 
         # Fallback: direct inference
-        from ..inference.engine import InferenceEngine
         from app.ai.models import CompletionRequest, Message
 
         req = CompletionRequest(

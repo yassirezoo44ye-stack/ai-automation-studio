@@ -7,7 +7,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "../../contexts/ToastContext";
-import { apiFetch, parseJSON, authH } from "../../utils/api";
+import { apiFetch, parseJSON } from "../../utils/api";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { S } from "../../styles/theme";
 import type { Project, BuildFile, BuildState } from "../../types";

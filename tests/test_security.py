@@ -5,7 +5,6 @@ No database or network required.
 import time as _t
 import uuid
 
-import pytest
 
 from app.core.security import check_rate_limit, _rl_store
 

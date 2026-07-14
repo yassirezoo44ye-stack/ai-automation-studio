@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
 
 from app.ai.circuit_breaker import circuit_breaker
 from app.ai.models import CompletionRequest, CompletionResponse, ProviderID, StreamChunk

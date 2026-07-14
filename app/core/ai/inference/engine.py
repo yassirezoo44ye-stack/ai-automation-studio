@@ -30,7 +30,6 @@ from app.core.ai.inference.tool_loop import run_tool_loop, stream_tool_loop
 from app.core.ai.registry.registry import platform_registry
 from app.core.logging import get_request_id
 from app.core.ai.router.model_router import model_router
-from app.core.ai.telemetry.service import telemetry
 
 log = logging.getLogger(__name__)
 
@@ -219,7 +218,6 @@ class InferenceEngine:
 
     async def _raw_stream(self, request, gw, user_id, org_id=None):
         """Non-tool stream directly from gateway."""
-        from app.ai.models import StreamChunk
         async for chunk in gw.stream(request, user_id=user_id, org_id=org_id):
             if isinstance(chunk, StreamChunk):
                 yield chunk.model_dump()

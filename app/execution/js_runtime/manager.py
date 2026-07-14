@@ -36,11 +36,8 @@ from app.runtime import process as rt_process
 
 from .detector import DetectionResult, PackageManagerDetector
 from .errors import (
-    ExecutionFailed,
     ExecutionTimeout,
     JsRuntimeError,
-    PackageJsonMissing,
-    ScriptNotFound,
 )
 from .probe import EnvironmentProbe, ProbeResult
 from .resolver import ScriptResolver

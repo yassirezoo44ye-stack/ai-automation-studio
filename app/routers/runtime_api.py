@@ -15,20 +15,17 @@ Endpoints:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import os
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.execution.platform import (
     ArtifactSystem,
-    ExecutionReport,
     UnifiedExecutionEngine,
     get_cache,
     get_registry,

@@ -29,7 +29,7 @@ async def test_spa_fallback_does_not_intercept_api_get(app):
         )
         ct = r.headers.get("content-type", "")
         assert "text/html" not in ct, (
-            f"GET /api/health returned HTML — spa_fallback is intercepting API routes."
+            "GET /api/health returned HTML — spa_fallback is intercepting API routes."
         )
 
 
@@ -47,7 +47,7 @@ async def test_package_stream_endpoint_exists(app):
         # The correct URL must not return 405.
         correct = await client.post("/api/package/stream", json={})
         assert correct.status_code != 405, (
-            f"POST /api/package/stream returned 405 — endpoint is missing or method not registered"
+            "POST /api/package/stream returned 405 — endpoint is missing or method not registered"
         )
 
 

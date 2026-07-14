@@ -17,7 +17,6 @@ import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import ClassVar, Optional
 
 log = logging.getLogger(__name__)

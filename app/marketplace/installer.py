@@ -100,8 +100,7 @@ class InstallationPipeline:
     ) -> dict[str, Any]:
         from app.marketplace.store import get_marketplace_store
         from app.marketplace.dependencies import (
-            get_dependency_service, MissingDependencyError,
-            CircularDependencyError, VersionConstraintError,
+            get_dependency_service,
         )
         from app.marketplace.assets import get_asset_service
         from app.marketplace.security import (

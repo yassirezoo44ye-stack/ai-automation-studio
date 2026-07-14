@@ -53,7 +53,7 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
         from app.execution.runner import _validate_command
         args = _validate_command(command_override)
         if not args:
-            yield _ev("status", message=f"⚠ Unsafe override ignored, using auto-detect.")
+            yield _ev("status", message="⚠ Unsafe override ignored, using auto-detect.")
             args = _default_args(info, python, port)
     else:
         args = _default_args(info, python, port)
@@ -93,7 +93,7 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
             project_type=info.project_type,
         )
         return
-    except Exception as e:
+    except Exception:
         process_mgr._used_ports.discard(port)
         yield sse_error(
             category="execution",
@@ -180,6 +180,10 @@ async def _wait_ready(rp, port: int, timeout: float) -> bool:
             return False
         await asyncio.sleep(0.25)
     return False
+
+
+def _ev(type_: str, **kw) -> str:
+    return f"data: {json.dumps({'type': type_, **kw})}\n\n"
 
 
 def _hint(project_type: str) -> str:

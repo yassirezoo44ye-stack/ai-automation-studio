@@ -1,7 +1,6 @@
 """
 Unit tests for app.runtime modules (no network, no DB).
 """
-import pytest
 
 
 class TestCapabilitiesCompute:

@@ -23,7 +23,7 @@ actually creates the plugin_installations row this router then manages.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field

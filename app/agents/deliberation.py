@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from app.agents.base   import EvolvableAgent, AgentContext
+    from app.agents.base   import EvolvableAgent
     from app.agents.kernel import AgentKernel
 
 log = logging.getLogger(__name__)

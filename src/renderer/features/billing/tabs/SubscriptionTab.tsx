@@ -44,7 +44,7 @@ export function SubscriptionTab({
         throw new Error(e.detail || "Checkout failed");
       }
       const d = await parseJSON<{ url: string }>(r, "checkout");
-      window.location.href = d.url;
+      window.location.assign(d.url);
     } catch (e) {
       toast((e as Error).message, "err");
       setUpgrading(null);

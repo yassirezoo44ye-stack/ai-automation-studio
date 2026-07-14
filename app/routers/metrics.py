@@ -21,7 +21,7 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
 router = APIRouter(tags=["metrics"])
@@ -138,7 +138,6 @@ def _build_metrics() -> str:
     lines.append("# HELP axon_jobs_total Background jobs by kind and status")
     lines.append("# TYPE axon_jobs_total counter")
     try:
-        import asyncio
         from app.core.jobs import get_job_queue
         # Sync approximation — use stored counts
         queue = get_job_queue()

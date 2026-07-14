@@ -48,7 +48,6 @@ from typing import AsyncIterator, Optional
 from app.execution import process_mgr
 from app.runtime import process as rt_process
 
-from .adapters import ADAPTER_REGISTRY, NpmAdapter, NpmCliJsFallbackAdapter
 from .build_plan import BuildPlan
 from .detector import PackageManagerDetector
 from .error_codes import (
@@ -57,7 +56,7 @@ from .error_codes import (
     fixes_for,
     message_for,
 )
-from .errors import JsRuntimeError, PackageManagerNotFound
+from .errors import JsRuntimeError
 from .probe import SystemProbe, SystemProbeResult
 from .report import (
     BuildPlanReport,

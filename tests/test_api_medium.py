@@ -185,11 +185,9 @@ class TestDatetimeGuard:
 class TestSecurityHeaders:
     @pytest.fixture()
     def client(self):
-        from app.factory import create_app
         # create_app needs lifespan; use TestClient with lifespan disabled
         from fastapi import FastAPI
         from app.factory import SecurityHeadersMiddleware
-        from starlette.middleware.base import BaseHTTPMiddleware
         app = FastAPI()
         app.add_middleware(SecurityHeadersMiddleware)
 

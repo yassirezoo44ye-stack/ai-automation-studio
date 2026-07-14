@@ -23,7 +23,7 @@ from typing import Optional
 
 from app.core.ai.events.bus import bus
 from app.core.ai.events.events import MemoryUpdated
-from app.core.ai.memory.types import MemoryItem, MemoryScope, MemoryType, MEMORY_SCOPES
+from app.core.ai.memory.types import MemoryItem, MemoryType, MEMORY_SCOPES
 
 log = logging.getLogger(__name__)
 

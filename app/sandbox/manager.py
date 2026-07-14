@@ -11,7 +11,7 @@ import uuid
 from typing import Any, Optional
 
 from app.sandbox.backends import Worker, get_sandbox_backend
-from app.sandbox.permissions import SandboxLimits, limits_from_granted_capabilities
+from app.sandbox.permissions import limits_from_granted_capabilities
 from app.sandbox.workspace import WorkerWorkspace
 
 log = logging.getLogger(__name__)

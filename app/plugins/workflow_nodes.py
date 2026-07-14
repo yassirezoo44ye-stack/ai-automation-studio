@@ -10,7 +10,6 @@ by name and pass it straight into WorkflowBuilder.step(fn=get_node(name)).
 from __future__ import annotations
 
 import logging
-from typing import Callable
 
 from app.core.workflow.engine import StepFn
 

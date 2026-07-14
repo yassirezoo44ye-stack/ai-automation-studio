@@ -5,6 +5,7 @@ services:
     dockerfilePath: ./Dockerfile
     plan: starter
     healthCheckPath: /health
+    autoDeploy: false
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false

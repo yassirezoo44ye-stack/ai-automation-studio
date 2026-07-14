@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback } from "react";
 import type { Canvas as FabricCanvas } from "fabric";
 import { commandManager } from "../../../core/commands/CommandManager";
 import { ChangeColorCommand } from "../../../core/commands/commands/ChangeColor";
-import { getMeta } from "../../../utils/fabricUtils";
 
 interface Props {
   getCanvas:   () => FabricCanvas | null;

@@ -42,19 +42,18 @@ from app.core.ai.events.bus import EventBus, bus
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.ai.knowledge.engine import KnowledgeEngine
 from app.core.ai.memory.manager import MemoryManager
-from app.core.ai.memory.types import MemoryType
 from app.core.ai.orchestrator.orchestrator import AIOrchestrator, OrchestratorRequest, OrchestratorResult
 from app.core.ai.policy.engine import PolicyEngine, PolicyConfig
 from app.core.ai.prompts.engine import PromptEngine
 from app.core.ai.registry.registry import PlatformProviderRegistry, platform_registry
 from app.core.ai.router.model_router import ModelRouter, model_router
 from app.core.ai.services.conversation import ConversationService
-from app.core.ai.services.diagnostics import AIDiagnostics, diagnostics
+from app.core.ai.services.diagnostics import diagnostics
 from app.core.ai.streaming.engine import StreamingEngine
 from app.core.ai.telemetry.service import TelemetryService, telemetry
 from app.core.ai.tools.executor import ToolExecutor, executor as tool_executor
-from app.core.ai.tools.marketplace import ToolMarketplace, ToolManifest
-from app.core.ai.workflow.engine import WorkflowEngine, WorkflowDefinition, WorkflowExecution
+from app.core.ai.tools.marketplace import ToolMarketplace
+from app.core.ai.workflow.engine import WorkflowEngine
 
 log = logging.getLogger(__name__)
 

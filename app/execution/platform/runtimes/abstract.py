@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Callable
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from app.execution.platform.artifacts import ArtifactSystem

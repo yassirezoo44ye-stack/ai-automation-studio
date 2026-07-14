@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.api_keys import (
-    create_api_key, revoke_api_key, list_api_keys, require_api_key,
+    create_api_key, revoke_api_key, list_api_keys,
 )
 from app.routers.auth_users import get_current_user
 

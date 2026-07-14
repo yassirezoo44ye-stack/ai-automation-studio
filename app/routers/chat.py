@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.core.auth import owner_email
 from app.core.config import USER_ID
 from app.core.db import get_pool
 from app.core.helpers import get_ai_client, resolve_project_id, anthropic_error_message

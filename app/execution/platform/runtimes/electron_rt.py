@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 
 from app.execution.platform.errors import unsupported_runtime
-from app.execution.platform.events import LogLine, UnsupportedRuntime
+from app.execution.platform.events import UnsupportedRuntime
 from app.execution.platform.runtimes.abstract import AbstractRuntime, ExecutionContext
 
 log = logging.getLogger(__name__)

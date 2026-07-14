@@ -50,7 +50,7 @@ async def with_retry(
     for attempt in range(max_retries + 1):
         try:
             return await asyncio.wait_for(fn(), timeout=timeout)
-        except asyncio.TimeoutError as exc:
+        except asyncio.TimeoutError:
             last_exc = TimeoutError(f"AI request timed out after {timeout}s")
             log.warning("Attempt %d/%d timed out", attempt + 1, max_retries + 1)
         except Exception as exc:

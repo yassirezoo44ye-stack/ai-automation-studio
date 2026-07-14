@@ -187,7 +187,7 @@ class TestNextDueDate:
     from datetime import datetime, timezone
 
     def _dt(self, iso: str):
-        from datetime import datetime, timezone
+        from datetime import datetime
         return datetime.fromisoformat(iso.replace("Z", "+00:00"))
 
     def test_daily_adds_one_day(self):

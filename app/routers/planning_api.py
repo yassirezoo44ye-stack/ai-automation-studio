@@ -11,7 +11,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 log    = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["planning"])

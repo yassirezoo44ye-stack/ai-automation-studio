@@ -210,7 +210,8 @@ def _register_kernel_commands(registry: CommandRegistry, kernel: AIKernel) -> No
 
     # ── status ────────────────────────────────────────────────────────────────
     async def _status(ctx: CommandContext) -> CommandResult:
-        import os, sys
+        import os
+        import sys
         s = kernel.status()
         state_dict = kernel.state.to_dict()
         lines = [

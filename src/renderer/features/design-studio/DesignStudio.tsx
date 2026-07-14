@@ -59,7 +59,6 @@ function DesignStudioInner() {
     onSave:  useCallback(async (proj) => {
       const page = proj.pages.find(p => p.id === proj.currentPageId);
       if (!page) return;
-      const thumbnail = getThumbnail();
       try {
         const r = await apiFetch("/api/design/canvases", {
           method: "POST",

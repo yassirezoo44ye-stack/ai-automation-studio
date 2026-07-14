@@ -18,14 +18,9 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from app.execution.platform.errors import (
-    EnvironmentError as EnvErr,
-    LaunchError,
-    build_failed,
-    execution_timeout,
     install_failed,
     internal,
     python_missing,

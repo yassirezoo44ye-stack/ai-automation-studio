@@ -135,7 +135,8 @@ class TestPluginConfigValidation(unittest.TestCase):
 
 class TestPluginLoaderIsolation(unittest.TestCase):
     def _write_workspace(self, code: str) -> str:
-        import shutil, tempfile
+        import shutil
+        import tempfile
         workspace = tempfile.mkdtemp(prefix="axon_loader_iso_test_")
         shutil.copy(
             os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "plugins", "base.py"),

@@ -2,7 +2,6 @@ import base64
 import json
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, StreamingResponse
@@ -201,10 +200,10 @@ EXE_B64   = {repr(exe_b64)}
 def create_shortcut(target, shortcut_path, work_dir):
     import subprocess
     ps = f'''$ws=New-Object -COM WScript.Shell
-$s=$ws.CreateShortcut("{shortcut_path}")
-$s.TargetPath="{target}"
-$s.WorkingDirectory="{work_dir}"
-$s.Description="{APP_NAME}"
+$s=$ws.CreateShortcut("{{shortcut_path}}")
+$s.TargetPath="{{target}}"
+$s.WorkingDirectory="{{work_dir}}"
+$s.Description="{{APP_NAME}}"
 $s.Save()'''
     subprocess.run(["powershell","-NoProfile","-Command",ps], capture_output=True)
 
@@ -559,7 +558,6 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
 
 async def _package_docker(ws, safe_name, app_name, app_version, log, done, err):
     """Package a Docker Compose / full-stack project into a deploy-ready ZIP."""
-    import io
     import re
     import zipfile as _zip
 

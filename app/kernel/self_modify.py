@@ -22,13 +22,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import shutil
 import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.kernel.policy import PolicyEngine, PolicyViolation
+from app.kernel.policy import PolicyEngine
 
 if TYPE_CHECKING:
     from app.kernel.state import KernelState

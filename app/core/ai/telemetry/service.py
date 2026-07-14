@@ -13,12 +13,11 @@ The service subscribes to EventBus events so nothing needs to call it directly.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from app.core.ai.events.bus import bus

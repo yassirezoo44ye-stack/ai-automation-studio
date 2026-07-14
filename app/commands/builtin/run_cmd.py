@@ -10,8 +10,6 @@ arrive.  In API mode, the REST layer handles streaming separately.
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
 
 from app.commands.context import CommandContext
 from app.commands.result import CommandResult

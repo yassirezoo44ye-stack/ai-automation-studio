@@ -1,7 +1,6 @@
 """Run agent — executes a project using the UnifiedExecutionEngine."""
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 

@@ -155,7 +155,7 @@ def _detect(ws: Path) -> ProjectInfo:
                 project_type="fastapi", run_strategy="server",
                 entry_point=entry, confidence="high",
                 detected_by=_triggers(fset, "requirements.txt", entry),
-                notes=[f"FastAPI server — will run on an internal port and be proxied."],
+                notes=["FastAPI server — will run on an internal port and be proxied."],
             )
 
     # aiohttp / other async frameworks
@@ -192,7 +192,7 @@ def _detect(ws: Path) -> ProjectInfo:
         if re.search(r"from\s+django\b|import\s+django\b", src, re.I):
             return _unsupported("django", fset,
                                 "Django is not installed in this sandbox.",
-                                f"python manage.py runserver",
+                                "python manage.py runserver",
                                 entry=py_entry)
 
         return ProjectInfo(

@@ -14,7 +14,6 @@ import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")

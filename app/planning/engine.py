@@ -257,7 +257,6 @@ class PlanningEngine:
     def _estimate(self, agent_name: Optional[str], goal: str,
                   agents: Optional[dict]) -> tuple[int, float, float]:
         if agents and agent_name and agent_name in agents:
-            from app.agents.base import AgentContext
             # Minimal context for estimation
             try:
                 # Lazy import to avoid circular dependency

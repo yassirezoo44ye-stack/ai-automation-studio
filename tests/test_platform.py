@@ -21,14 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import sys
-import tempfile
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -545,7 +540,7 @@ class TestRuntimeRegistry:
 
     def test_custom_runtime_registers(self):
         from app.execution.platform.runtimes.registry import RuntimeRegistry
-        from app.execution.platform.runtimes.abstract import AbstractRuntime, ExecutionContext
+        from app.execution.platform.runtimes.abstract import AbstractRuntime
 
         class CustomRuntime(AbstractRuntime):
             name     = "custom"
@@ -658,7 +653,7 @@ class TestUnifiedExecutionEngine:
 
     def test_successful_run_emits_report(self, tmp_path):
         from app.execution.platform.engine import UnifiedExecutionEngine
-        from app.execution.platform.runtimes.abstract import AbstractRuntime, ExecutionContext
+        from app.execution.platform.runtimes.abstract import AbstractRuntime
         from app.execution.platform.runtimes.registry import RuntimeRegistry
         from app.execution.platform.events import ServerReady
 
@@ -695,7 +690,7 @@ class TestUnifiedExecutionEngine:
 
     def test_failed_runtime_emits_failed_and_report(self, tmp_path):
         from app.execution.platform.engine import UnifiedExecutionEngine
-        from app.execution.platform.runtimes.abstract import AbstractRuntime, ExecutionContext
+        from app.execution.platform.runtimes.abstract import AbstractRuntime
         from app.execution.platform.runtimes.registry import RuntimeRegistry
         from app.execution.platform.errors import node_missing
 
@@ -726,7 +721,7 @@ class TestUnifiedExecutionEngine:
 
     def test_cleanup_always_called_even_on_failure(self, tmp_path):
         from app.execution.platform.engine import UnifiedExecutionEngine
-        from app.execution.platform.runtimes.abstract import AbstractRuntime, ExecutionContext
+        from app.execution.platform.runtimes.abstract import AbstractRuntime
         from app.execution.platform.runtimes.registry import RuntimeRegistry
         from app.execution.platform.errors import node_missing
 
@@ -754,7 +749,7 @@ class TestUnifiedExecutionEngine:
 
     def test_all_events_have_execution_id(self, tmp_path):
         from app.execution.platform.engine import UnifiedExecutionEngine
-        from app.execution.platform.runtimes.abstract import AbstractRuntime, ExecutionContext
+        from app.execution.platform.runtimes.abstract import AbstractRuntime
         from app.execution.platform.runtimes.registry import RuntimeRegistry
 
         class QuickRuntime(AbstractRuntime):

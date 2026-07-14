@@ -93,7 +93,7 @@ export function AutomationPage() {
   const toast = useToast();
   const [tab, setTab]         = useState<AutoTab>("tasks");
   const [tasks, setTasks]     = useState<Task[]>([]);
-  const [agents, setAgents]   = useState<Agent[]>([]);
+  const [, setAgents]         = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState<TaskStatus | "all">("all");
   const [search, setSearch]   = useState("");

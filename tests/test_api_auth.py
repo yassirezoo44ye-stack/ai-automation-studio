@@ -8,7 +8,6 @@ rate-limit headers, and input validation.
 from __future__ import annotations
 
 import os
-import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -281,7 +280,6 @@ class TestRateLimitXFFSpoofing:
 
     def test_different_real_ips_are_not_conflated(self):
         """Two real IPs each get their own counter; changing real IP resets budget."""
-        from fastapi import HTTPException
         from app.core.rate_limit import require_rate_limit, rl_store
 
         rl_store.clear()

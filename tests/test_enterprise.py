@@ -303,7 +303,8 @@ class TestEventBus(unittest.TestCase):
 
 class TestMarketplaceJsonStore(unittest.TestCase):
     def setUp(self):
-        import os, tempfile
+        import os
+        import tempfile
         self._tmp = tempfile.mkdtemp()
         os.environ["WORKSPACES"] = self._tmp
         from app.marketplace.store import JsonMarketplaceStore

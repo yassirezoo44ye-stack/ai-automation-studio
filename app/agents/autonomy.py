@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from app.agents.memory  import AgentMemory
     from app.agents.kernel  import AgentKernel
 
 log = logging.getLogger(__name__)

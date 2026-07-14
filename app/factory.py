@@ -368,7 +368,6 @@ def create_app() -> FastAPI:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.
                 from app.core.jwt_utils import decode_access_token
-                import jwt as _jwt
                 try:
                     if not bearer:
                         raise ValueError("no bearer")

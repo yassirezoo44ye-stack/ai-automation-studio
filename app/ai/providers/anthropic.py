@@ -4,7 +4,6 @@ All Anthropic-specific API calls are isolated to this file.
 """
 from __future__ import annotations
 
-import uuid
 from typing import AsyncGenerator, Any
 
 import anthropic as sdk

@@ -34,7 +34,7 @@ from .adapters import (
     AbstractRuntimeAdapter,
     NpmCliJsFallbackAdapter,
 )
-from .errors import LockfileConflict, PackageManagerNotFound
+from .errors import PackageManagerNotFound
 
 log = logging.getLogger(__name__)
 

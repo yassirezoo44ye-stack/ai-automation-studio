@@ -12,14 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from app.agents.base    import AgentContext, AgentResult, EvolvableAgent
 from app.agents.intent  import IntentParser
-from app.agents.memory  import AgentMemory, ExecutionRecord, _compute_stats
+from app.agents.memory  import AgentMemory, ExecutionRecord
 from app.agents.evolution import EvolutionEngine, EvolutionReport
 
 
