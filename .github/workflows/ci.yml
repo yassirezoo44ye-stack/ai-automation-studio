@@ -135,7 +135,14 @@ jobs:
         run: npm run typecheck
 
       - name: ESLint (zero errors)
-        run: npx eslint src --format json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf-8');const r=JSON.parse(d);const e=r.flatMap(f=>f.messages.filter(m=>m.severity===2));if(e.length){e.forEach(m=>console.error(m.ruleId,m.message));process.exit(1);}console.log('ESLint: 0 errors,',r.flatMap(f=>f.messages.filter(m=>m.severity===1)).length,'warnings')"
+        # Block scalar (|) is load-bearing: as a single-line plain scalar,
+        # the "ESLint: 0 errors," string inside the JS contains a
+        # colon-space, which is ILLEGAL in an unquoted YAML scalar — this
+        # exact line made the entire workflow file invalid, which is why
+        # every run of this workflow failed in <1s with zero jobs ever
+        # dispatched, from the day it was created.
+        run: |
+          npx eslint src --format json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf-8');const r=JSON.parse(d);const e=r.flatMap(f=>f.messages.filter(m=>m.severity===2));if(e.length){e.forEach(m=>console.error(m.ruleId,m.message));process.exit(1);}console.log('ESLint: 0 errors,',r.flatMap(f=>f.messages.filter(m=>m.severity===1)).length,'warnings')"
 
       - name: Vitest unit tests
         run: npm test
@@ -145,12 +152,11 @@ jobs:
 
   # ── Docker: build the multi-stage image ────────────────────────────────────
   # Uses the plain Docker CLI (preinstalled on ubuntu-latest) instead of the
-  # docker/setup-buildx-action / docker/build-push-action actions. Those are
-  # not GitHub-authored, and every prior run of this workflow failed 100% of
-  # the time in under 1 second (no job ever dispatched) — strong evidence
-  # this repo's Actions permissions restrict to GitHub-authored actions
-  # only, and the whole run was rejected at admission before any job,
-  # including this one's siblings, could start.
+  # docker/setup-buildx-action / docker/build-push-action actions — simpler,
+  # no third-party dependency. Note: the historical 100%-instant-failure of
+  # this workflow was caused by invalid YAML in the ESLint step (see its
+  # comment), not by these actions. Restoring buildx + gha layer caching is
+  # a reasonable follow-up if image build time becomes a problem.
   docker:
     name: Docker build
     runs-on: ubuntu-latest

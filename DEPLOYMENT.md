@@ -32,14 +32,15 @@ frontend ┘
 ## Two things that were broken before this phase, and what fixed them
 
 1. **`ci.yml` had failed 100% of its 39 runs since it was created, every
-   one in under 1 second** — no job ever actually dispatched. The `docker`
-   job was the only one referencing non-GitHub-authored actions
-   (`docker/setup-buildx-action`, `docker/build-push-action`); the
-   `docker` job now uses a plain `docker build` shell step instead (the
-   Docker CLI is preinstalled on `ubuntu-latest`), which needs no
-   third-party action at all. If a future run still fails to dispatch,
-   check **Settings → Actions → General → Actions permissions** — it may
-   be restricted to GitHub-authored actions only.
+   one in under 1 second** — no job ever actually dispatched, because the
+   workflow file was **invalid YAML** the whole time: the ESLint step's
+   single-line `run:` value contained `'ESLint: 0 errors,'`, and a
+   colon-space inside an unquoted YAML scalar is illegal, so GitHub
+   rejected the entire file on every push. Fixed by moving that command
+   into a block scalar (`run: |`). (The `docker` job was also switched
+   from third-party Docker actions to a plain `docker build` step —
+   simpler, though it drops buildx layer caching; restoring caching is a
+   documented follow-up, not a requirement.)
 2. **Render was auto-deploying every push with zero gate.** `render.yaml`
    now has `autoDeploy: false`; deploys only happen via the `deploy` job
    above.
