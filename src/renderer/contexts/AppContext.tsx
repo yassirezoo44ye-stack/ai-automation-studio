@@ -29,8 +29,8 @@ function getStoredTheme(): Theme {
   try {
     const stored = localStorage.getItem("axon-theme");
     if (stored === "light" || stored === "dark") return stored;
-    // Respect OS preference on first visit
-    if (window.matchMedia?.("(prefers-color-scheme: light)").matches) return "light";
+    // The luxury black-and-gold identity is dark-first: default to dark on
+    // first visit; light stays available as an explicit user choice.
   } catch {
     // localStorage unavailable (e.g. private browsing with storage blocked)
   }

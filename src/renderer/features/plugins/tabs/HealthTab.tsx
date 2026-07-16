@@ -8,7 +8,7 @@ import { apiFetch, parseJSON } from "../../../shared/utils/api";
 interface LogEntry { event: string; message: string | null; created_at: string }
 
 const EVENT_COLOR: Record<string, string> = {
-  load: "#34d399", unload: "var(--t4)", reload: "#6c8ef7", error: "#f87171", tick: "var(--t4)",
+  load: "#00C853", unload: "var(--t4)", reload: "#E8C87D", error: "#FF5252", tick: "var(--t4)",
 };
 
 export function HealthTab({ installationId, status }: { installationId: string; status: string }) {
@@ -34,7 +34,7 @@ export function HealthTab({ installationId, status }: { installationId: string; 
         <span style={{ fontSize: 12, color: "var(--t4)" }}>Status:</span>
         <span style={{
           fontSize: 12, fontWeight: 700, textTransform: "uppercase",
-          color: status === "enabled" ? "#34d399" : status === "failed" ? "#f87171" : "var(--t3)",
+          color: status === "enabled" ? "#00C853" : status === "failed" ? "#FF5252" : "var(--t3)",
         }}>
           {status}
         </span>

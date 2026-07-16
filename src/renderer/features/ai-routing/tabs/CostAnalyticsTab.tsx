@@ -61,7 +61,7 @@ export function CostAnalyticsTab() {
                   <span style={{ fontSize: 11, color: "var(--t4)" }}>${usd.toFixed(4)}</span>
                 </div>
                 <div style={{ height: 6, background: "rgba(255,255,255,.05)", borderRadius: 99, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${Math.min(pct, 100)}%`, background: "#6c8ef7", borderRadius: 99 }} />
+                  <div style={{ height: "100%", width: `${Math.min(pct, 100)}%`, background: "#E8C87D", borderRadius: 99 }} />
                 </div>
               </div>
             );

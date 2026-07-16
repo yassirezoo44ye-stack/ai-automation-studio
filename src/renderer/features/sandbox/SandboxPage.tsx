@@ -50,7 +50,7 @@ type TopTab = "workers" | "permission-requests" | "security-events";
 type DetailTab = "logs" | "resource-usage";
 
 const STATUS_COLOR: Record<string, string> = {
-  running: "#34d399", starting: "#6c8ef7", stopped: "var(--t4)", crashed: "#f87171",
+  running: "#00C853", starting: "#E8C87D", stopped: "var(--t4)", crashed: "#FF5252",
 };
 
 export function SandboxPage() {
@@ -165,8 +165,8 @@ export function SandboxPage() {
           ] as [TopTab, string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTopTab(t)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: topTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-              color: topTab === t ? "#6c8ef7" : "var(--t4)",
+              background: topTab === t ? "rgba(232,200,125,.18)" : "rgba(255,255,255,.04)",
+              color: topTab === t ? "#E8C87D" : "var(--t4)",
             }}>
               {label} {t === "workers" ? `(${workers.length})` : t === "permission-requests" ? `(${permissionRequests.length})` : ""}
             </button>
@@ -214,7 +214,7 @@ export function SandboxPage() {
                         disabled={busy === w.id || w.status === "stopped" || w.status === "crashed"}
                         style={{
                           padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                          background: "rgba(248,113,113,.08)", color: "#f87171", fontSize: 12,
+                          background: "rgba(255,82,82,.08)", color: "#FF5252", fontSize: 12,
                           cursor: busy === w.id ? "wait" : "pointer",
                           opacity: (w.status === "stopped" || w.status === "crashed") ? 0.5 : 1,
                         }}
@@ -230,8 +230,8 @@ export function SandboxPage() {
                         {(["logs", "resource-usage"] as DetailTab[]).map(t => (
                           <button key={t} onClick={() => setDetailTab(t)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            background: detailTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-                            color: detailTab === t ? "#6c8ef7" : "var(--t4)",
+                            background: detailTab === t ? "rgba(232,200,125,.18)" : "rgba(255,255,255,.04)",
+                            color: detailTab === t ? "#E8C87D" : "var(--t4)",
                           }}>
                             {t === "logs" ? "Logs" : "Resource Usage"}
                           </button>
@@ -256,7 +256,7 @@ export function SandboxPage() {
               {permissionRequests.map(req => (
                 <div key={req.installation_id} style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
-                  background: "var(--bg-surface)", border: "1px solid rgba(245,158,11,.3)",
+                  background: "var(--bg-surface)", border: "1px solid rgba(255,179,0,.3)",
                   borderRadius: 14, padding: "16px 20px",
                 }}>
                   <div>
@@ -265,7 +265,7 @@ export function SandboxPage() {
                       {req.pending_capabilities.map(c => (
                         <span key={c} style={{
                           fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 99,
-                          background: "rgba(245,158,11,.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,.3)",
+                          background: "rgba(255,179,0,.12)", color: "#FFB300", border: "1px solid rgba(255,179,0,.3)",
                         }}>
                           {c}
                         </span>
@@ -276,7 +276,7 @@ export function SandboxPage() {
                     onClick={() => void approveRequest(req)} disabled={busy === req.installation_id}
                     style={{
                       padding: "6px 16px", borderRadius: 8, border: "none", cursor: busy === req.installation_id ? "wait" : "pointer",
-                      background: "#f59e0b", color: "#000", fontSize: 12, fontWeight: 700,
+                      background: "#FFB300", color: "#000", fontSize: 12, fontWeight: 700,
                     }}
                   >
                     {busy === req.installation_id ? "…" : "Approve"}
@@ -300,7 +300,7 @@ export function SandboxPage() {
                 }}>
                   <span style={{
                     fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 60,
-                    color: e.severity === "error" ? "#f87171" : e.severity === "warning" ? "#f59e0b" : "var(--t4)",
+                    color: e.severity === "error" ? "#FF5252" : e.severity === "warning" ? "#FFB300" : "var(--t4)",
                   }}>
                     {e.severity}
                   </span>

@@ -50,20 +50,20 @@ interface Category { slug: string; label: string; icon: string; description: str
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const TYPE_META: Record<ItemType, { label: string; icon: string; color: string }> = {
-  agent:       { label: "Agent",       icon: "🤖", color: "#6c8ef7" },
-  plugin:      { label: "Plugin",      icon: "🔌", color: "#a78bfa" },
-  theme:       { label: "Theme",       icon: "🎨", color: "#f472b6" },
-  template:    { label: "Template",    icon: "📄", color: "#34d399" },
-  prompt_pack: { label: "Prompts",     icon: "💬", color: "#f59e0b" },
-  workflow:    { label: "Workflow",    icon: "⚡", color: "#22d3ee" },
-  dataset:     { label: "Dataset",     icon: "📊", color: "#fb923c" },
-  model:       { label: "Model",       icon: "🧠", color: "#e879f9" },
+  agent:       { label: "Agent",       icon: "🤖", color: "#E8C87D" },
+  plugin:      { label: "Plugin",      icon: "🔌", color: "#FFD700" },
+  theme:       { label: "Theme",       icon: "🎨", color: "#E0A899" },
+  template:    { label: "Template",    icon: "📄", color: "#00C853" },
+  prompt_pack: { label: "Prompts",     icon: "💬", color: "#FFB300" },
+  workflow:    { label: "Workflow",    icon: "⚡", color: "#FFE066" },
+  dataset:     { label: "Dataset",     icon: "📊", color: "#FFB300" },
+  model:       { label: "Model",       icon: "🧠", color: "#F5E7C1" },
 };
 
 function Stars({ rating, count }: { rating: number; count: number }) {
   const filled = Math.round(rating);
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#f59e0b" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#FFB300" }}>
       {"★".repeat(filled)}{"☆".repeat(5 - filled)}
       <span style={{ color: "var(--t4)", fontSize: 11 }}>({count})</span>
     </span>
@@ -72,7 +72,7 @@ function Stars({ rating, count }: { rating: number; count: number }) {
 
 function PriceBadge({ priceUsd }: { priceUsd: number }) {
   if (priceUsd === 0) return (
-    <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399", background: "rgba(52,211,153,.12)", padding: "2px 8px", borderRadius: 99, border: "1px solid rgba(52,211,153,.25)" }}>
+    <span style={{ fontSize: 12, fontWeight: 700, color: "#00C853", background: "rgba(0,200,83,.12)", padding: "2px 8px", borderRadius: 99, border: "1px solid rgba(0,200,83,.25)" }}>
       Free
     </span>
   );
@@ -214,8 +214,8 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
               style={{
                 padding: "7px 16px", borderRadius: 8, border: "none", cursor: installing ? "wait" : "pointer",
                 fontSize: 13, fontWeight: 600,
-                background: installing ? "rgba(108,142,247,.4)" : "linear-gradient(135deg,#6c8ef7,#818cf8)",
-                color: "#fff", opacity: installing ? 0.7 : 1, transition: "opacity .18s",
+                background: installing ? "rgba(255,215,0,.4)" : "linear-gradient(135deg,#FFD700,#D4AF37)",
+                color: "#0a0a0a", opacity: installing ? 0.7 : 1, transition: "opacity .18s",
               }}
             >
               {installing ? "…" : item.price_usd === 0 ? "Install" : "Buy"}
@@ -255,8 +255,8 @@ function DetailPanel({ item, onClose, canManage, onRolledBack }: {
         {DETAIL_TABS.map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-            background: tab === id ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-            color: tab === id ? "#6c8ef7" : "var(--t4)",
+            background: tab === id ? "rgba(232,200,125,.18)" : "rgba(255,255,255,.04)",
+            color: tab === id ? "#E8C87D" : "var(--t4)",
           }}>
             {label}
           </button>
@@ -286,10 +286,10 @@ function CategoryBar({ categories, active, onChange }: {
         style={{
           padding: "7px 14px", borderRadius: 99, cursor: "pointer",
           fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
-          background: active === "all" ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-          color: active === "all" ? "#6c8ef7" : "var(--t4)",
+          background: active === "all" ? "rgba(232,200,125,.18)" : "rgba(255,255,255,.04)",
+          color: active === "all" ? "#E8C87D" : "var(--t4)",
           outline: "none",
-          border: active === "all" ? "1px solid rgba(108,142,247,.4)" : "1px solid transparent",
+          border: active === "all" ? "1px solid rgba(232,200,125,.4)" : "1px solid transparent",
         }}
       >
         All
@@ -297,7 +297,7 @@ function CategoryBar({ categories, active, onChange }: {
       {categories.map(c => {
         const isActive = active === c.slug;
         const meta = TYPE_META[c.slug as ItemType];
-        const color = meta?.color ?? "#6c8ef7";
+        const color = meta?.color ?? "#E8C87D";
         return (
           <button
             key={c.slug}
@@ -466,15 +466,15 @@ export function MarketplacePage() {
             Marketplace
           </span>
           <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
-                         background: "rgba(108,142,247,.15)", color: "#6c8ef7", border: "1px solid rgba(108,142,247,.3)" }}>
+                         background: "rgba(232,200,125,.15)", color: "#E8C87D", border: "1px solid rgba(232,200,125,.3)" }}>
             {listings.length} items
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             {SORT_OPTIONS.map(([id, label]) => (
               <button key={id} onClick={() => setSortBy(id)} style={{
                 padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-                background: sortBy === id ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-                color: sortBy === id ? "#6c8ef7" : "var(--t4)",
+                background: sortBy === id ? "rgba(232,200,125,.18)" : "rgba(255,255,255,.04)",
+                color: sortBy === id ? "#E8C87D" : "var(--t4)",
                 transition: "all .15s",
               }}>{label}</button>
             ))}

@@ -38,7 +38,7 @@ type TopTab = "installed" | "available";
 type DetailTab = "config" | "permissions" | "health" | "versions";
 
 const STATUS_COLOR: Record<string, string> = {
-  enabled: "#34d399", disabled: "var(--t4)", failed: "#f87171", installed: "#6c8ef7", uninstalled: "var(--t5)",
+  enabled: "#00C853", disabled: "var(--t4)", failed: "#FF5252", installed: "#E8C87D", uninstalled: "var(--t5)",
 };
 
 export function PluginsPage() {
@@ -161,8 +161,8 @@ export function PluginsPage() {
           {(["installed", "available"] as TopTab[]).map(t => (
             <button key={t} onClick={() => setTopTab(t)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: topTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-              color: topTab === t ? "#6c8ef7" : "var(--t4)", textTransform: "capitalize",
+              background: topTab === t ? "rgba(232,200,125,.18)" : "rgba(255,255,255,.04)",
+              color: topTab === t ? "#E8C87D" : "var(--t4)", textTransform: "capitalize",
             }}>
               {t} {t === "installed" ? `(${installed.length})` : ""}
             </button>
@@ -217,7 +217,7 @@ export function PluginsPage() {
                         onClick={() => void uninstall(inst)} disabled={busy === inst.id}
                         style={{
                           padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                          background: "rgba(248,113,113,.08)", color: "#f87171", fontSize: 12,
+                          background: "rgba(255,82,82,.08)", color: "#FF5252", fontSize: 12,
                           cursor: busy === inst.id ? "wait" : "pointer",
                         }}
                       >
@@ -232,8 +232,8 @@ export function PluginsPage() {
                         {(["config", "permissions", "health", "versions"] as DetailTab[]).map(t => (
                           <button key={t} onClick={() => setDetailTab(t)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            background: detailTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-                            color: detailTab === t ? "#6c8ef7" : "var(--t4)", textTransform: "capitalize",
+                            background: detailTab === t ? "rgba(232,200,125,.18)" : "rgba(255,255,255,.04)",
+                            color: detailTab === t ? "#E8C87D" : "var(--t4)", textTransform: "capitalize",
                           }}>
                             {t}
                           </button>
@@ -287,8 +287,8 @@ export function PluginsPage() {
                       disabled={busy === p.id}
                       style={{
                         padding: "6px 16px", borderRadius: 8, border: "none", cursor: busy === p.id ? "wait" : "pointer",
-                        background: alreadyInstalled ? "rgba(255,255,255,.06)" : "linear-gradient(135deg,#6c8ef7,#818cf8)",
-                        color: alreadyInstalled ? "var(--t3)" : "#fff", fontSize: 12, fontWeight: 600,
+                        background: alreadyInstalled ? "rgba(255,255,255,.06)" : "linear-gradient(135deg,#FFD700,#D4AF37)",
+                        color: alreadyInstalled ? "var(--t3)" : "#0a0a0a", fontSize: 12, fontWeight: 700,
                       }}
                     >
                       {busy === p.id ? "…" : alreadyInstalled ? "Installed" : "Install"}

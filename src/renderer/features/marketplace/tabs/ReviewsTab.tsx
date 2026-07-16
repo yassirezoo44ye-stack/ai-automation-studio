@@ -86,7 +86,7 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
           disabled={submitting}
           style={{
             padding: "6px 14px", borderRadius: 6, border: "none", cursor: submitting ? "wait" : "pointer",
-            background: "linear-gradient(135deg,#6c8ef7,#818cf8)", color: "#fff", fontSize: 12, fontWeight: 600,
+            background: "linear-gradient(135deg,#FFD700,#D4AF37)", color: "#0a0a0a", fontSize: 12, fontWeight: 700,
           }}
         >
           {submitting ? "…" : "Submit"}
@@ -101,7 +101,7 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
         reviews.map(rv => (
           <div key={rv.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "#f59e0b" }}>
+              <span style={{ fontSize: 12, color: "#FFB300" }}>
                 {"★".repeat(Math.round(rv.rating))}{"☆".repeat(5 - Math.round(rv.rating))}
               </span>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>{rv.reviewer}</span>

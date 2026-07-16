@@ -41,7 +41,7 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
   const [saving, setSaving] = useState(false);
 
   const pct = data.pct ?? 0;
-  const color = pct >= 90 ? "#f87171" : pct >= 70 ? "#f59e0b" : "#34d399";
+  const color = pct >= 90 ? "#FF5252" : pct >= 70 ? "#FFB300" : "#00C853";
 
   const save = async () => {
     const trimmed = value.trim();

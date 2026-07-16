@@ -1,6 +1,6 @@
 export const AGENT_COLORS = [
-  ["#6c8ef7","#1a2040"], ["#a78bfa","#2a1a40"], ["#34d399","#0a2a1e"],
-  ["#f472b6","#2a0a1e"], ["#fb923c","#2a1500"], ["#38bdf8","#0a1e2a"],
+  ["#FFD700","#26200a"], ["#E8C87D","#241d0e"], ["#00C853","#0a2a1e"],
+  ["#E0A899","#2a1510"], ["#FFB300","#2a1c00"], ["#D6D6D6","#222222"],
 ];
 
 export function AgentAvatar({ name, size = 44 }: { name: string; size?: number }) {

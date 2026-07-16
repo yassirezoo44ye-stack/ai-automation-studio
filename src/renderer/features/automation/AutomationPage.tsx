@@ -15,15 +15,15 @@ type TaskStatus = Task["status"];
 type TaskPriority = Task["priority"];
 
 const STATUS_COLOR: Record<TaskStatus, string> = {
-  pending:     "#6b7280",
-  in_progress: "#6c8ef7",
-  done:        "#34d399",
+  pending:     "#8F8F8F",
+  in_progress: "#E8C87D",
+  done:        "#00C853",
 };
 
 const PRIORITY_DOT: Record<TaskPriority, string> = {
-  low:    "#6b7280",
-  medium: "#f59e0b",
-  high:   "#ef4444",
+  low:    "#8F8F8F",
+  medium: "#FFB300",
+  high:   "#FF5252",
 };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -41,7 +41,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
     <div style={{ ...S.card, padding: "14px 18px", display: "flex", gap: 12, alignItems: "flex-start" }}>
       <button
         onClick={() => onStatusChange(task.id, task.status === "done" ? "pending" : "done")}
-        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 2, color: task.status === "done" ? "#34d399" : "rgba(255,255,255,0.2)", flexShrink: 0 }}
+        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 2, color: task.status === "done" ? "#00C853" : "rgba(255,255,255,0.2)", flexShrink: 0 }}
         aria-label={task.status === "done" ? "Mark pending" : "Mark done"}
       >
         {task.status === "done"
@@ -67,7 +67,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
             <span style={{ fontSize: 11, color: "var(--t5)" }}>Due {relTime(task.due_date)}</span>
           )}
           {task.category && (
-            <span style={{ fontSize: 11, color: "var(--ta)", background: "rgba(108,142,247,.08)", padding: "1px 7px", borderRadius: 99 }}>{task.category}</span>
+            <span style={{ fontSize: 11, color: "var(--ta)", background: "rgba(232,200,125,.08)", padding: "1px 7px", borderRadius: 99 }}>{task.category}</span>
           )}
         </div>
       </div>
@@ -81,7 +81,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </button>
         )}
-        <button onClick={() => onDelete(task.id)} className="btn-icon" title="Delete" style={{ width: 28, height: 28, color: "#f87171" }}>
+        <button onClick={() => onDelete(task.id)} className="btn-icon" title="Delete" style={{ width: 28, height: 28, color: "#FF5252" }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
         </button>
       </div>
@@ -207,9 +207,9 @@ export function AutomationPage() {
               <button key={id} onClick={() => setTab(id)} role="tab" aria-selected={tab === id} style={{
                 padding: "6px 16px", borderRadius: 9, border: "none", cursor: "pointer",
                 fontSize: 13, fontWeight: 500, transition: "all .18s",
-                background: tab === id ? "linear-gradient(135deg,#8b5cf6,#6366f1)" : "transparent",
-                color:      tab === id ? "#fff" : "rgba(148,163,184,.6)",
-                boxShadow:  tab === id ? "0 2px 12px rgba(139,92,246,.35)" : "none",
+                background: tab === id ? "linear-gradient(135deg,#FFD700,#D4AF37)" : "transparent",
+                color:      tab === id ? "#fff" : "rgba(189,189,189,.6)",
+                boxShadow:  tab === id ? "0 2px 12px rgba(255,215,0,.35)" : "none",
               }}>{label}</button>
             ))}
           </div>
@@ -251,8 +251,8 @@ export function AutomationPage() {
               {FILTERS.map(([id, label]) => (
                 <button key={id} onClick={() => setFilter(id)} style={{
                   padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-                  background: filter === id ? "rgba(108,142,247,0.2)" : "rgba(255,255,255,0.04)",
-                  color: filter === id ? "#6c8ef7" : "var(--t4)",
+                  background: filter === id ? "rgba(232,200,125,0.2)" : "rgba(255,255,255,0.04)",
+                  color: filter === id ? "#E8C87D" : "var(--t4)",
                   transition: "all .15s",
                 }}>{label}</button>
               ))}
@@ -306,7 +306,7 @@ export function AutomationPage() {
                 <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>No active runs — start a workflow below.</div>
               ) : wfRuns.map(run => {
                 const pct = run.steps_total > 0 ? Math.round((run.steps_done / run.steps_total) * 100) : 0;
-                const statusColor: Record<string, string> = { running: "#6c8ef7", completed: "#34d399", failed: "#ef4444", pending: "#f59e0b" };
+                const statusColor: Record<string, string> = { running: "#E8C87D", completed: "#00C853", failed: "#FF5252", pending: "#FFB300" };
                 const color = statusColor[run.status] ?? "var(--t4)";
                 return (
                   <div key={run.run_id} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -324,7 +324,7 @@ export function AutomationPage() {
                     <div style={{ height: 4, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
                     </div>
-                    {run.error && <div style={{ fontSize: 11, color: "#ef4444" }}>{run.error}</div>}
+                    {run.error && <div style={{ fontSize: 11, color: "#FF5252" }}>{run.error}</div>}
                   </div>
                 );
               })}
@@ -354,7 +354,7 @@ export function AutomationPage() {
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 10, color: "var(--ta)", fontWeight: 500, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 20, padding: "2px 8px" }}>
+                    <span style={{ fontSize: 10, color: "var(--ta)", fontWeight: 500, background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.2)", borderRadius: 20, padding: "2px 8px" }}>
                       {wf.trigger}
                     </span>
                     <button
@@ -422,12 +422,12 @@ function ApprovalsList() {
           <button
             onClick={() => decide(a.run_id, a.step_id, "approve")}
             disabled={!!busy}
-            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#22c55e", color: "#fff" }}
+            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#00C853", color: "#fff" }}
           >Approve</button>
           <button
             onClick={() => decide(a.run_id, a.step_id, "reject")}
             disabled={!!busy}
-            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#ef4444", color: "#fff" }}
+            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#FF5252", color: "#fff" }}
           >Reject</button>
         </div>
       ))}

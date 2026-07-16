@@ -102,7 +102,7 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
               {m.is_default && (
                 <span style={{
                   fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-                  color: "#34d399", background: "rgba(52,211,153,.12)", border: "1px solid rgba(52,211,153,.3)",
+                  color: "#00C853", background: "rgba(0,200,83,.12)", border: "1px solid rgba(0,200,83,.3)",
                 }}>Default</span>
               )}
             </div>

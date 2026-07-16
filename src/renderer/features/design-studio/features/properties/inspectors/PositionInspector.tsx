@@ -77,17 +77,17 @@ export function PositionInspector({ getCanvas, selectedIds }: Props) {
 
   if (!props) {
     return (
-      <div style={{ padding: "12px", color: "#9ca3af", fontSize: "12px", textAlign: "center" }}>
+      <div style={{ padding: "12px", color: "#BDBDBD", fontSize: "12px", textAlign: "center" }}>
         No object selected
       </div>
     );
   }
 
   const row: React.CSSProperties = { display: "flex", gap: "8px", marginBottom: "8px" };
-  const label: React.CSSProperties = { fontSize: "11px", color: "#9ca3af", marginBottom: "2px" };
+  const label: React.CSSProperties = { fontSize: "11px", color: "#BDBDBD", marginBottom: "2px" };
   const input: React.CSSProperties = {
-    width: "100%", padding: "4px 6px", fontSize: "12px", border: "1px solid #374151",
-    borderRadius: "4px", background: "#1f2937", color: "#f9fafb", outline: "none",
+    width: "100%", padding: "4px 6px", fontSize: "12px", border: "1px solid #2A2A2A",
+    borderRadius: "4px", background: "#1A1A1A", color: "#F2F2F2", outline: "none",
   };
   const group = (lbl: string, field: keyof ObjectProps) => (
     <div style={{ flex: 1 }}>
@@ -107,7 +107,7 @@ export function PositionInspector({ getCanvas, selectedIds }: Props) {
 
   return (
     <div style={{ padding: "12px" }}>
-      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Position</div>
+      <div style={{ fontSize: "11px", fontWeight: 600, color: "#8F8F8F", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Position</div>
       <div style={row}>{group("X", "x")}{group("Y", "y")}</div>
       <div style={row}>{group("W", "width")}{group("H", "height")}</div>
       <div style={row}>{group("°", "angle")}{group("%", "opacity")}</div>

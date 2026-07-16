@@ -48,7 +48,7 @@ export function PublisherTab({ ownerOrganizationId, author }: {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
       <div style={{
-        width: 40, height: 40, borderRadius: 10, background: "rgba(108,142,247,.12)",
+        width: 40, height: 40, borderRadius: 10, background: "rgba(232,200,125,.12)",
         display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0,
       }}>
         🏢
@@ -57,7 +57,7 @@ export function PublisherTab({ ownerOrganizationId, author }: {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{publisher.display_name}</span>
           {publisher.verified && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#34d399", background: "rgba(52,211,153,.12)", padding: "1px 6px", borderRadius: 99 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853", background: "rgba(0,200,83,.12)", padding: "1px 6px", borderRadius: 99 }}>
               VERIFIED
             </span>
           )}

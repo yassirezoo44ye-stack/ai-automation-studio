@@ -8,8 +8,8 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: 'Segoe UI', system-ui, sans-serif;
-    background: #0d0f14;
-    color: #e2e8f0;
+    background: #0d0d0d;
+    color: #F2F2F2;
     min-height: 100vh;
     padding: 24px;
   }
@@ -21,22 +21,22 @@
     align-items: center;
     margin-bottom: 28px;
   }
-  .topbar-title { font-size: 20px; font-weight: 700; color: #f0f4ff; letter-spacing: -0.3px; }
-  .topbar-title span { color: #6c8ef7; }
+  .topbar-title { font-size: 20px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.3px; }
+  .topbar-title span { color: #E8C87D; }
   .topbar-right { display: flex; gap: 12px; align-items: center; }
   .badge {
-    background: #1a1f2e;
-    border: 1px solid #2a3050;
+    background: #181818;
+    border: 1px solid #2E2E2E;
     border-radius: 8px;
     padding: 6px 14px;
     font-size: 12px;
-    color: #8896b3;
+    color: #9E9E9E;
   }
   .avatar {
     width: 34px; height: 34px; border-radius: 50%;
-    background: linear-gradient(135deg, #6c8ef7, #a78bfa);
+    background: linear-gradient(135deg, #FFD700, #D4AF37);
     display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 600; color: #fff;
+    font-size: 13px; font-weight: 600; color: #0a0a0a;
   }
 
   /* Stat cards */
@@ -48,7 +48,7 @@
   }
   .card {
     background: #13172080;
-    border: 1px solid #1e2438;
+    border: 1px solid #242424;
     border-radius: 14px;
     padding: 20px;
     position: relative;
@@ -60,15 +60,15 @@
     top: 0; left: 0; right: 0;
     height: 2px;
   }
-  .card.blue::before  { background: #6c8ef7; }
-  .card.green::before { background: #34d399; }
-  .card.purple::before { background: #a78bfa; }
+  .card.blue::before  { background: #E8C87D; }
+  .card.green::before { background: #00C853; }
+  .card.purple::before { background: #FFD700; }
   .card.orange::before { background: #fb923c; }
-  .card-label { font-size: 11px; color: #6b7a99; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
-  .card-value { font-size: 28px; font-weight: 700; color: #f0f4ff; letter-spacing: -1px; }
+  .card-label { font-size: 11px; color: #9E9E9E; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+  .card-value { font-size: 28px; font-weight: 700; color: #FFFFFF; letter-spacing: -1px; }
   .card-change { font-size: 12px; margin-top: 6px; }
-  .card-change.up   { color: #34d399; }
-  .card-change.down { color: #f87171; }
+  .card-change.up   { color: #00C853; }
+  .card-change.down { color: #FF5252; }
 
   /* Main grid */
   .main-grid {
@@ -79,7 +79,7 @@
 
   .panel {
     background: #13172080;
-    border: 1px solid #1e2438;
+    border: 1px solid #242424;
     border-radius: 14px;
     padding: 20px;
   }
@@ -88,7 +88,7 @@
     margin-bottom: 18px;
   }
   .panel-title { font-size: 14px; font-weight: 600; color: #c8d3f0; }
-  .panel-sub   { font-size: 12px; color: #4b5980; }
+  .panel-sub   { font-size: 12px; color: #8A8A8A; }
 
   /* Bar chart */
   .bar-chart {
@@ -114,7 +114,7 @@
     cursor: pointer;
   }
   .bar:hover { opacity: 0.75; }
-  .bar-label { font-size: 10px; color: #4b5980; }
+  .bar-label { font-size: 10px; color: #8A8A8A; }
 
   /* Activity list */
   .activity-list { display: flex; flex-direction: column; gap: 12px; }
@@ -125,14 +125,14 @@
     padding: 10px 12px;
     background: #0d0f1480;
     border-radius: 10px;
-    border: 1px solid #1a1f2e;
+    border: 1px solid #181818;
   }
   .activity-dot {
     width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   }
-  .activity-text { flex: 1; font-size: 12px; color: #8896b3; }
+  .activity-text { flex: 1; font-size: 12px; color: #9E9E9E; }
   .activity-text strong { color: #c8d3f0; font-weight: 500; }
-  .activity-time { font-size: 11px; color: #4b5980; }
+  .activity-time { font-size: 11px; color: #8A8A8A; }
 
   /* Bottom grid */
   .bottom-grid {
@@ -149,7 +149,7 @@
     align-items: center;
   }
   .donut-legend { display: flex; flex-direction: column; gap: 10px; }
-  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8896b3; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9E9E9E; }
   .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 
   /* Progress list */
@@ -157,11 +157,11 @@
   .progress-item {}
   .progress-row {
     display: flex; justify-content: space-between;
-    font-size: 12px; color: #8896b3; margin-bottom: 6px;
+    font-size: 12px; color: #9E9E9E; margin-bottom: 6px;
   }
   .progress-row span:last-child { color: #c8d3f0; font-weight: 500; }
   .progress-track {
-    height: 5px; background: #1a1f2e; border-radius: 99px; overflow: hidden;
+    height: 5px; background: #181818; border-radius: 99px; overflow: hidden;
   }
   .progress-fill {
     height: 100%; border-radius: 99px;
@@ -171,8 +171,8 @@
   /* Tooltip */
   #tooltip {
     position: fixed;
-    background: #1e2438;
-    border: 1px solid #2a3050;
+    background: #242424;
+    border: 1px solid #2E2E2E;
     border-radius: 8px;
     padding: 6px 10px;
     font-size: 12px;
@@ -238,17 +238,17 @@
     </div>
     <div class="activity-list">
       <div class="activity-item">
-        <div class="activity-dot" style="background:#6c8ef7"></div>
+        <div class="activity-dot" style="background:#E8C87D"></div>
         <div class="activity-text"><strong>New signup</strong> — alex@mail.com</div>
         <div class="activity-time">2m ago</div>
       </div>
       <div class="activity-item">
-        <div class="activity-dot" style="background:#34d399"></div>
+        <div class="activity-dot" style="background:#00C853"></div>
         <div class="activity-text"><strong>Payment received</strong> — $249 Pro plan</div>
         <div class="activity-time">14m ago</div>
       </div>
       <div class="activity-item">
-        <div class="activity-dot" style="background:#a78bfa"></div>
+        <div class="activity-dot" style="background:#FFD700"></div>
         <div class="activity-text"><strong>Report exported</strong> — Q2 summary</div>
         <div class="activity-time">1h ago</div>
       </div>
@@ -258,7 +258,7 @@
         <div class="activity-time">2h ago</div>
       </div>
       <div class="activity-item">
-        <div class="activity-dot" style="background:#34d399"></div>
+        <div class="activity-dot" style="background:#00C853"></div>
         <div class="activity-text"><strong>Deploy successful</strong> — v2.4.1 live</div>
         <div class="activity-time">3h ago</div>
       </div>
@@ -276,21 +276,21 @@
     </div>
     <div class="donut-wrap">
       <svg width="120" height="120" viewBox="0 0 42 42">
-        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#1a1f2e" stroke-width="6"/>
-        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#6c8ef7" stroke-width="6"
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#181818" stroke-width="6"/>
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#E8C87D" stroke-width="6"
           stroke-dasharray="40 60" stroke-dashoffset="25"/>
-        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#34d399" stroke-width="6"
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#00C853" stroke-width="6"
           stroke-dasharray="25 75" stroke-dashoffset="-15"/>
-        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#a78bfa" stroke-width="6"
+        <circle cx="21" cy="21" r="15.9" fill="none" stroke="#FFD700" stroke-width="6"
           stroke-dasharray="20 80" stroke-dashoffset="-40"/>
         <circle cx="21" cy="21" r="15.9" fill="none" stroke="#fb923c" stroke-width="6"
           stroke-dasharray="15 85" stroke-dashoffset="-60"/>
-        <text x="21" y="23" text-anchor="middle" fill="#f0f4ff" font-size="5" font-weight="700">100%</text>
+        <text x="21" y="23" text-anchor="middle" fill="#FFFFFF" font-size="5" font-weight="700">100%</text>
       </svg>
       <div class="donut-legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#6c8ef7"></div>Organic — 40%</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#34d399"></div>Direct — 25%</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#a78bfa"></div>Referral — 20%</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#E8C87D"></div>Organic — 40%</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#00C853"></div>Direct — 25%</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#FFD700"></div>Referral — 20%</div>
         <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div>Paid — 15%</div>
       </div>
     </div>
@@ -305,15 +305,15 @@
     <div class="progress-list">
       <div class="progress-item">
         <div class="progress-row"><span>Revenue</span><span>84%</span></div>
-        <div class="progress-track"><div class="progress-fill" style="width:84%;background:#6c8ef7"></div></div>
+        <div class="progress-track"><div class="progress-fill" style="width:84%;background:#E8C87D"></div></div>
       </div>
       <div class="progress-item">
         <div class="progress-row"><span>New Users</span><span>61%</span></div>
-        <div class="progress-track"><div class="progress-fill" style="width:61%;background:#34d399"></div></div>
+        <div class="progress-track"><div class="progress-fill" style="width:61%;background:#00C853"></div></div>
       </div>
       <div class="progress-item">
         <div class="progress-row"><span>Retention</span><span>92%</span></div>
-        <div class="progress-track"><div class="progress-fill" style="width:92%;background:#a78bfa"></div></div>
+        <div class="progress-track"><div class="progress-fill" style="width:92%;background:#FFD700"></div></div>
       </div>
       <div class="progress-item">
         <div class="progress-row"><span>Support SLA</span><span>78%</span></div>
@@ -361,7 +361,7 @@
       if (s.recent_activity && s.recent_activity.length > 0) {
         const list = document.querySelector('.activity-list');
         list.innerHTML = '';
-        const colors = ['#6c8ef7','#34d399','#a78bfa','#fb923c','#f87171'];
+        const colors = ['#E8C87D','#00C853','#FFD700','#fb923c','#FF5252'];
         s.recent_activity.slice(0, 5).forEach((item, i) => {
           const el = document.createElement('div');
           el.className = 'activity-item';
@@ -390,13 +390,13 @@
 
   // Bar chart
   const data = [
-    { label: 'Mon', value: 62, color: '#6c8ef7' },
-    { label: 'Tue', value: 78, color: '#6c8ef7' },
-    { label: 'Wed', value: 54, color: '#6c8ef7' },
-    { label: 'Thu', value: 91, color: '#a78bfa' },
-    { label: 'Fri', value: 84, color: '#6c8ef7' },
-    { label: 'Sat', value: 47, color: '#6c8ef7' },
-    { label: 'Sun', value: 69, color: '#6c8ef7' },
+    { label: 'Mon', value: 62, color: '#E8C87D' },
+    { label: 'Tue', value: 78, color: '#E8C87D' },
+    { label: 'Wed', value: 54, color: '#E8C87D' },
+    { label: 'Thu', value: 91, color: '#FFD700' },
+    { label: 'Fri', value: 84, color: '#E8C87D' },
+    { label: 'Sat', value: 47, color: '#E8C87D' },
+    { label: 'Sun', value: 69, color: '#E8C87D' },
   ];
   const maxVal = Math.max(...data.map(d => d.value));
   const chart = document.getElementById('bar-chart');

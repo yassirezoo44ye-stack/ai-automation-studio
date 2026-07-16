@@ -90,15 +90,15 @@ export function makeDefaultBrandKit(): FullBrandKit {
     name:        "Default Brand",
     description: "Axon Studio default brand kit",
     colors: [
-      { id: uid(), name: "Primary",   value: "#4f46e5" },
-      { id: uid(), name: "Secondary", value: "#06b6d4" },
-      { id: uid(), name: "Accent",    value: "#f59e0b" },
-      { id: uid(), name: "Dark",      value: "#111827" },
-      { id: uid(), name: "Light",     value: "#f9fafb" },
+      { id: uid(), name: "Primary",   value: "#D4AF37" },
+      { id: uid(), name: "Secondary", value: "#E8C87D" },
+      { id: uid(), name: "Accent",    value: "#FFB300" },
+      { id: uid(), name: "Dark",      value: "#111111" },
+      { id: uid(), name: "Light",     value: "#F2F2F2" },
       { id: uid(), name: "White",     value: "#ffffff" },
     ],
     gradients: [
-      { id: uid(), name: "Brand Gradient", type: "linear", angle: 135, css: "linear-gradient(135deg,#4f46e5,#06b6d4)", stops: [{ color: "#4f46e5", position: 0 }, { color: "#06b6d4", position: 1 }] },
+      { id: uid(), name: "Brand Gradient", type: "linear", angle: 135, css: "linear-gradient(135deg,#D4AF37,#E8C87D)", stops: [{ color: "#D4AF37", position: 0 }, { color: "#E8C87D", position: 1 }] },
     ],
     fonts: [
       { id: uid(), name: "Inter",     family: "Inter, sans-serif",     weights: [300, 400, 500, 600, 700] },

@@ -35,7 +35,7 @@ const TARGETS_FOR: Record<PackLang, { id: PackTarget; label: string }[]> = {
   docker:   [{ id: "zip", label: "Deploy ZIP" }],
 };
 
-const LOG_COLOR: Record<string, string> = { ok: "#34d399", err: "#f87171", cmd: "#a78bfa", info: "#94a3b8" };
+const LOG_COLOR: Record<string, string> = { ok: "#00C853", err: "#FF5252", cmd: "#FFD700", info: "#BDBDBD" };
 
 interface PackageTabProps {
   projects:  Project[];
@@ -201,8 +201,8 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
                   style={{
                     ...S.btnSecondary, flex: 1, fontSize: 12,
                     borderColor: lang === l.id ? "var(--accent)" : undefined,
-                    background:  lang === l.id ? "rgba(124,58,237,.2)" : undefined,
-                    color:       lang === l.id ? "#c4b5fd" : undefined,
+                    background:  lang === l.id ? "rgba(212,175,55,.2)" : undefined,
+                    color:       lang === l.id ? "#FFE58A" : undefined,
                   }}
                   title={l.desc}
                 >{l.icon} {l.label}</button>
@@ -227,8 +227,8 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         </div>
 
         {lang === "web" && target === "exe" && (
-          <div style={{ padding: "10px 14px", background: "rgba(139,92,246,.08)", borderRadius: 8,
-                        border: "1px solid rgba(139,92,246,.2)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
+          <div style={{ padding: "10px 14px", background: "rgba(255,215,0,.08)", borderRadius: 8,
+                        border: "1px solid rgba(255,215,0,.2)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
             ⚡ <strong>Web → Windows .exe</strong> — يتم تغليف تطبيق الويب داخل Electron
             ثم بناؤه كمثبِّت NSIS قابل للتوزيع.
           </div>
@@ -252,12 +252,12 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
 
         {!pfLoading && preflight && preflight.checks.length > 0 && (
           <div style={{
-            borderRadius: 8, border: `1px solid ${preflight.ok ? "rgba(52,211,153,.25)" : "rgba(248,113,113,.3)"}`,
-            background: preflight.ok ? "rgba(52,211,153,.05)" : "rgba(248,113,113,.06)",
+            borderRadius: 8, border: `1px solid ${preflight.ok ? "rgba(0,200,83,.25)" : "rgba(255,82,82,.3)"}`,
+            background: preflight.ok ? "rgba(0,200,83,.05)" : "rgba(255,82,82,.06)",
             padding: "10px 14px",
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: preflight.checks.length ? 8 : 0 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: preflight.ok ? "#34d399" : "#f87171" }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: preflight.ok ? "#00C853" : "#FF5252" }}>
                 {preflight.ok ? "✓ Build environment ready" : "⚠ Build environment not ready"}
               </span>
               <button
@@ -271,9 +271,9 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
               {preflight.checks.map(c => (
                 <span key={c.name} title={c.version ?? undefined} style={{
                   fontSize: 11, padding: "2px 8px", borderRadius: 20,
-                  color: c.available ? "#34d399" : "#f87171",
-                  background: c.available ? "rgba(52,211,153,.1)" : "rgba(248,113,113,.1)",
-                  border: `1px solid ${c.available ? "rgba(52,211,153,.25)" : "rgba(248,113,113,.3)"}`,
+                  color: c.available ? "#00C853" : "#FF5252",
+                  background: c.available ? "rgba(0,200,83,.1)" : "rgba(255,82,82,.1)",
+                  border: `1px solid ${c.available ? "rgba(0,200,83,.25)" : "rgba(255,82,82,.3)"}`,
                 }}>
                   {c.available ? "✓" : "✗"} {c.display}
                 </span>
@@ -283,7 +283,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
               <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                 {preflight.checks.filter(c => !c.available).map(c => (
                   <div key={c.name} style={{ fontSize: 11, color: "var(--t3)", lineHeight: 1.5 }}>
-                    <strong style={{ color: "#f87171" }}>{c.display}</strong> — {c.fix_hint}
+                    <strong style={{ color: "#FF5252" }}>{c.display}</strong> — {c.fix_hint}
                   </div>
                 ))}
               </div>

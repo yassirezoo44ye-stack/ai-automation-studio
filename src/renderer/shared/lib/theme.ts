@@ -4,87 +4,87 @@ export const S: Record<string, React.CSSProperties> = {
   // Layout
   root: {
     display: "flex", height: "100vh", overflow: "hidden",
-    background: "linear-gradient(150deg,#05070f 0%,#080c1a 55%,#05070f 100%)",
-    color: "#e2e8f0",
+    background: "linear-gradient(150deg,#090909 0%,#111111 55%,#090909 100%)",
+    color: "#F2F2F2",
   },
 
   // Sidebar
   sidebar: {
     flexShrink: 0, display: "flex", flexDirection: "column",
-    background: "rgba(7,9,18,0.92)", backdropFilter: "blur(24px)",
-    borderRight: "1px solid rgba(139,92,246,0.14)",
+    background: "rgba(9,9,9,0.92)", backdropFilter: "blur(24px)",
+    borderRight: "1px solid rgba(255,215,0,0.12)",
     transition: "width 220ms cubic-bezier(.4,0,.2,1), min-width 220ms cubic-bezier(.4,0,.2,1)",
     overflow: "hidden",
   },
   sidebarLogo: {
-    borderBottom: "1px solid rgba(139,92,246,0.10)",
+    borderBottom: "1px solid rgba(255,215,0,0.10)",
     marginBottom: 8, display: "flex", alignItems: "center",
   },
   nav:           { display: "flex", flexDirection: "column", gap: 1 },
   navItem: {
     borderRadius: 9, fontSize: 13, fontWeight: 500,
-    color: "rgba(148,163,184,0.65)", cursor: "pointer",
+    color: "rgba(189,189,189,0.65)", cursor: "pointer",
     display: "flex", alignItems: "center", gap: 10,
     whiteSpace: "nowrap", overflow: "hidden",
     userSelect: "none",
   },
   navItemActive: {
-    background: "linear-gradient(135deg,rgba(139,92,246,0.22),rgba(99,102,241,0.16))",
-    color: "#e2e8f0",
-    boxShadow: "inset 0 0 0 1px rgba(139,92,246,0.28)",
+    background: "linear-gradient(135deg,rgba(255,215,0,0.16),rgba(212,175,55,0.10))",
+    color: "#FFD700",
+    boxShadow: "inset 0 0 0 1px rgba(255,215,0,0.25)",
   },
   main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
 
   // Header
   header: {
     padding: "0 28px", height: 57, minHeight: 57,
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    borderBottom: "1px solid rgba(255,215,0,0.08)",
     display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0,
-    background: "rgba(7,9,18,0.7)", backdropFilter: "blur(16px)",
+    background: "rgba(9,9,9,0.7)", backdropFilter: "blur(16px)",
   },
-  headerTitle: { fontSize: 15, fontWeight: 600, color: "#f1f5f9", letterSpacing: "-0.2px" },
-  headerSub:   { fontSize: 12, color: "rgba(148,163,184,0.45)", fontWeight: 400 },
+  headerTitle: { fontSize: 15, fontWeight: 600, color: "#FFFFFF", letterSpacing: "-0.2px" },
+  headerSub:   { fontSize: 12, color: "rgba(189,189,189,0.45)", fontWeight: 400 },
 
   // Cards
   card: {
-    background: "rgba(255,255,255,0.032)",
-    border: "1px solid rgba(255,255,255,0.075)",
+    background: "rgba(255,255,255,0.028)",
+    border: "1px solid rgba(255,215,0,0.12)",
     borderRadius: 16, padding: "20px 22px",
     backdropFilter: "blur(10px)",
   },
-  cardTitle: { fontSize: 14, fontWeight: 600, color: "#f1f5f9", letterSpacing: "-0.1px" },
-  muted:     { fontSize: 13, color: "rgba(148,163,184,0.6)", lineHeight: 1.5 },
-  emptyState:{ textAlign: "center", padding: "60px 20px", color: "rgba(148,163,184,0.35)" },
+  cardTitle: { fontSize: 14, fontWeight: 600, color: "#FFFFFF", letterSpacing: "-0.1px" },
+  muted:     { fontSize: 13, color: "rgba(189,189,189,0.6)", lineHeight: 1.5 },
+  emptyState:{ textAlign: "center", padding: "60px 20px", color: "rgba(189,189,189,0.35)" },
 
   // Chat sidebar
   chatSidebar: {
     width: 230, flexShrink: 0, display: "flex", flexDirection: "column",
-    background: "rgba(7,9,18,0.72)", backdropFilter: "blur(16px)",
-    borderRight: "1px solid rgba(255,255,255,0.05)",
+    background: "rgba(9,9,9,0.72)", backdropFilter: "blur(16px)",
+    borderRight: "1px solid rgba(255,215,0,0.08)",
   },
   projectSelect: {
     width: "100%", background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)", borderRadius: 9,
-    padding: "8px 12px", color: "#e2e8f0", fontSize: 12,
+    border: "1px solid rgba(255,215,0,0.12)", borderRadius: 9,
+    padding: "8px 12px", color: "#F2F2F2", fontSize: 12,
     cursor: "pointer",
   },
   newChatBtn: {
-    width: "100%", background: "rgba(139,92,246,0.10)",
-    border: "1px solid rgba(139,92,246,0.20)", borderRadius: 9,
-    padding: "9px 12px", color: "rgba(167,139,250,0.85)", fontSize: 12,
+    width: "100%", background: "rgba(255,215,0,0.08)",
+    border: "1px solid rgba(255,215,0,0.20)", borderRadius: 9,
+    padding: "9px 12px", color: "rgba(255,215,0,0.85)", fontSize: 12,
     cursor: "pointer", textAlign: "left",
   },
   convItem:      { padding: "10px 14px", cursor: "pointer", transition: "background .15s" },
-  convItemActive:{ background: "rgba(139,92,246,0.11)", borderRight: "2px solid #8b5cf6" },
-  convTitle:     { fontSize: 12, fontWeight: 500, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  convTime:      { fontSize: 10, color: "rgba(148,163,184,0.4)" },
+  convItemActive:{ background: "rgba(255,215,0,0.09)", borderRight: "2px solid #FFD700" },
+  convTitle:     { fontSize: 12, fontWeight: 500, color: "#F2F2F2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  convTime:      { fontSize: 10, color: "rgba(189,189,189,0.4)" },
 
   // Messages
   messages: {
     flex: 1, overflowY: "auto", padding: "32px 0",
     display: "flex", flexDirection: "column", gap: 0,
   },
-  empty: { margin: "auto", textAlign: "center", color: "rgba(148,163,184,0.35)", paddingBottom: 80 },
+  empty: { margin: "auto", textAlign: "center", color: "rgba(189,189,189,0.35)", paddingBottom: 80 },
 
   msgRowAssist: {
     display: "flex", gap: 14, alignItems: "flex-start",
@@ -99,92 +99,92 @@ export const S: Record<string, React.CSSProperties> = {
   },
   avatar: {
     width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-    background: "linear-gradient(135deg,rgba(139,92,246,0.30),rgba(99,102,241,0.22))",
-    border: "1px solid rgba(139,92,246,0.28)",
+    background: "linear-gradient(135deg,rgba(255,215,0,0.28),rgba(212,175,55,0.20))",
+    border: "1px solid rgba(255,215,0,0.25)",
     display: "flex", alignItems: "center", justifyContent: "center",
     marginTop: 2,
   },
   avatarUser: {
     width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+    background: "linear-gradient(135deg,#FFD700,#D4AF37)",
     display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: 13, fontWeight: 700, color: "#fff", marginTop: 2,
+    fontSize: 13, fontWeight: 700, color: "#0a0a0a", marginTop: 2,
   },
   msgLabelAssist: {
-    fontSize: 11, fontWeight: 600, color: "rgba(167,139,250,0.75)",
+    fontSize: 11, fontWeight: 600, color: "rgba(255,215,0,0.75)",
     marginBottom: 7, display: "flex", alignItems: "center", gap: 8,
     letterSpacing: "0.04em", textTransform: "uppercase",
   },
   msgLabelUser: {
-    fontSize: 11, fontWeight: 600, color: "rgba(148,163,184,0.45)",
+    fontSize: 11, fontWeight: 600, color: "rgba(189,189,189,0.45)",
     marginBottom: 7, display: "flex", alignItems: "center", gap: 8,
     justifyContent: "flex-end", letterSpacing: "0.04em", textTransform: "uppercase",
   },
-  msgTime: { fontSize: 10, color: "rgba(148,163,184,0.28)", fontWeight: 400 },
-  msgBubbleAssist: { fontSize: 15, color: "#e2e8f0", lineHeight: 1.8 },
+  msgTime: { fontSize: 10, color: "rgba(189,189,189,0.28)", fontWeight: 400 },
+  msgBubbleAssist: { fontSize: 15, color: "#F2F2F2", lineHeight: 1.8 },
   msgBubbleUser: {
-    fontSize: 15, color: "#e2e8f0", lineHeight: 1.75,
-    background: "linear-gradient(135deg,rgba(99,102,241,0.22),rgba(139,92,246,0.17))",
-    border: "1px solid rgba(139,92,246,0.28)",
+    fontSize: 15, color: "#F2F2F2", lineHeight: 1.75,
+    background: "linear-gradient(135deg,rgba(255,215,0,0.14),rgba(212,175,55,0.10))",
+    border: "1px solid rgba(255,215,0,0.25)",
     borderRadius: 16, borderTopRightRadius: 4,
     padding: "12px 18px",
-    boxShadow: "0 2px 16px rgba(99,102,241,0.10)",
+    boxShadow: "0 2px 16px rgba(255,215,0,0.06)",
     display: "inline-block",
   },
 
   // Input row
   inputRow: {
     padding: "14px 22px", gap: 10,
-    borderTop: "1px solid rgba(255,255,255,0.06)",
+    borderTop: "1px solid rgba(255,215,0,0.08)",
     display: "flex", alignItems: "flex-end",
-    background: "rgba(7,9,18,0.65)", backdropFilter: "blur(16px)",
+    background: "rgba(9,9,9,0.65)", backdropFilter: "blur(16px)",
   },
   input: {
     flex: 1, fontSize: 14, lineHeight: 1.6,
     background: "rgba(255,255,255,0.045)",
-    border: "1px solid rgba(255,255,255,0.09)",
+    border: "1px solid rgba(255,215,0,0.12)",
     borderRadius: 13, padding: "11px 16px",
-    color: "#e2e8f0", maxHeight: 160, overflowY: "auto",
+    color: "#F2F2F2", maxHeight: 160, overflowY: "auto",
     transition: "border-color .18s, box-shadow .18s",
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 11, flexShrink: 0,
-    background: "linear-gradient(135deg,#8b5cf6,#6366f1)",
-    color: "#fff", border: "none", fontSize: 18, cursor: "pointer",
+    background: "linear-gradient(135deg,#FFD700,#D4AF37)",
+    color: "#0a0a0a", border: "none", fontSize: 18, cursor: "pointer",
     display: "flex", alignItems: "center", justifyContent: "center",
-    boxShadow: "0 4px 14px rgba(139,92,246,0.40)",
+    boxShadow: "0 4px 14px rgba(255,215,0,0.30)",
   },
 
   // Forms
   textInput: {
     width: "100%", fontSize: 13,
     background: "rgba(255,255,255,0.040)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,215,0,0.12)",
     borderRadius: 9, padding: "10px 14px",
-    color: "#e2e8f0", transition: "border-color .18s, box-shadow .18s",
+    color: "#F2F2F2", transition: "border-color .18s, box-shadow .18s",
   },
-  label: { fontSize: 12, color: "rgba(148,163,184,0.6)", display: "block", marginBottom: 6, fontWeight: 500 },
+  label: { fontSize: 12, color: "rgba(189,189,189,0.6)", display: "block", marginBottom: 6, fontWeight: 500 },
 
   // Buttons
   btnPrimary: {
-    background: "linear-gradient(135deg,#8b5cf6,#6366f1)",
-    color: "#fff", border: "none", borderRadius: 9,
-    padding: "9px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-    boxShadow: "0 3px 12px rgba(139,92,246,0.32)",
+    background: "linear-gradient(135deg,#FFD700,#D4AF37)",
+    color: "#0a0a0a", border: "none", borderRadius: 9,
+    padding: "9px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+    boxShadow: "0 3px 12px rgba(255,215,0,0.25)",
     transition: "filter .15s, transform .15s, box-shadow .15s",
   },
   btnSecondary: {
     background: "rgba(255,255,255,0.05)",
-    color: "rgba(148,163,184,0.8)",
-    border: "1px solid rgba(255,255,255,0.09)",
+    color: "rgba(189,189,189,0.8)",
+    border: "1px solid rgba(255,215,0,0.12)",
     borderRadius: 9, padding: "9px 20px", fontSize: 13, cursor: "pointer",
     transition: "background .15s, border-color .15s",
   },
 
   // Misc
   code: {
-    background: "rgba(139,92,246,0.15)", padding: "2px 8px",
-    borderRadius: 6, fontSize: 12, color: "#c4b5fd",
+    background: "rgba(255,215,0,0.10)", padding: "2px 8px",
+    borderRadius: 6, fontSize: 12, color: "#FFE58A",
     fontFamily: "'Consolas','Courier New',monospace",
   },
 
@@ -197,23 +197,23 @@ export const S: Record<string, React.CSSProperties> = {
     fontSize: 11, fontWeight: 600, letterSpacing: "0.01em",
     whiteSpace: "nowrap",
   },
-  badgeNeutral: { background: "rgba(148,163,184,.1)",  color: "rgba(148,163,184,.75)", border: "1px solid rgba(148,163,184,.18)" },
-  badgeInfo:    { background: "rgba(99,102,241,.15)",  color: "#a5b4fc",               border: "1px solid rgba(99,102,241,.3)" },
-  badgeSuccess: { background: "rgba(52,211,153,.12)",  color: "#34d399",               border: "1px solid rgba(52,211,153,.3)" },
-  badgeWarning: { background: "rgba(251,191,36,.12)",  color: "#fbbf24",               border: "1px solid rgba(251,191,36,.3)" },
-  badgeError:   { background: "rgba(248,113,113,.12)", color: "#f87171",               border: "1px solid rgba(248,113,113,.3)" },
+  badgeNeutral: { background: "rgba(189,189,189,.1)",  color: "rgba(189,189,189,.75)", border: "1px solid rgba(189,189,189,.18)" },
+  badgeInfo:    { background: "rgba(232,200,125,.12)", color: "#E8C87D",               border: "1px solid rgba(232,200,125,.3)" },
+  badgeSuccess: { background: "rgba(0,200,83,.12)",    color: "#00C853",               border: "1px solid rgba(0,200,83,.3)" },
+  badgeWarning: { background: "rgba(255,179,0,.12)",   color: "#FFB300",               border: "1px solid rgba(255,179,0,.3)" },
+  badgeError:   { background: "rgba(255,82,82,.12)",   color: "#FF5252",               border: "1px solid rgba(255,82,82,.3)" },
   dot:          { width: 6, height: 6, borderRadius: "50%", background: "currentColor" },
 
   // Panels — dark glass surfaces used by Build/Run so the workspace UI shares
   // the same palette as the rest of the app instead of its own blue-gray set.
-  panelDark:     { background: "rgba(5,7,15,.6)", borderRight: "1px solid rgba(255,255,255,.06)" },
-  panelDivider:  { borderBottom: "1px solid rgba(255,255,255,.06)" },
+  panelDark:     { background: "rgba(9,9,9,.6)", borderRight: "1px solid rgba(255,215,0,.08)" },
+  panelDivider:  { borderBottom: "1px solid rgba(255,215,0,.08)" },
   errorPanel: {
     margin: "10px 12px", padding: "12px 14px", borderRadius: 12,
-    background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.25)",
-    fontSize: 12, color: "#fca5a5", lineHeight: 1.6,
+    background: "rgba(255,82,82,.08)", border: "1px solid rgba(255,82,82,.25)",
+    fontSize: 12, color: "#FF8A80", lineHeight: 1.6,
   },
-  errorPanelTitle: { display: "flex", alignItems: "center", gap: 6, fontWeight: 600, color: "#f87171", marginBottom: 6, fontSize: 12 },
+  errorPanelTitle: { display: "flex", alignItems: "center", gap: 6, fontWeight: 600, color: "#FF5252", marginBottom: 6, fontSize: 12 },
 };
 
 export type StatusBadgeKind = "neutral" | "info" | "success" | "warning" | "error";

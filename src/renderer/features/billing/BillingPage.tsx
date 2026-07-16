@@ -78,9 +78,9 @@ export function BillingPage() {
         {billing && (
           <span style={{
             fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-            color: billing.has_access ? "#34d399" : "#f59e0b",
-            background: billing.has_access ? "rgba(52,211,153,.12)" : "rgba(245,158,11,.12)",
-            border: `1px solid ${billing.has_access ? "rgba(52,211,153,.3)" : "rgba(245,158,11,.3)"}`,
+            color: billing.has_access ? "#00C853" : "#FFB300",
+            background: billing.has_access ? "rgba(0,200,83,.12)" : "rgba(255,179,0,.12)",
+            border: `1px solid ${billing.has_access ? "rgba(0,200,83,.3)" : "rgba(255,179,0,.3)"}`,
           }}>
             {billing.plan.toUpperCase()} · {billing.status}
           </span>

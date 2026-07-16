@@ -22,7 +22,7 @@ export function PropertiesPanel({ getCanvas, selectedIds }: Props) {
     return (
       <div style={{
         padding: "16px 12px",
-        color: "#6b7280",
+        color: "#8F8F8F",
         fontSize: "12px",
         textAlign: "center",
         lineHeight: 1.5,

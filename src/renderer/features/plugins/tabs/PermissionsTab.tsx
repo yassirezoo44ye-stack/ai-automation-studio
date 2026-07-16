@@ -42,10 +42,10 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
       {hasSensitive && !approved && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          border: "1px solid rgba(245,158,11,.3)", background: "rgba(245,158,11,.08)",
+          border: "1px solid rgba(255,179,0,.3)", background: "rgba(255,179,0,.08)",
           borderRadius: 10, padding: "10px 14px",
         }}>
-          <span style={{ fontSize: 12, color: "#f59e0b" }}>
+          <span style={{ fontSize: 12, color: "#FFB300" }}>
             This plugin declares sensitive capabilities and is disabled until approved.
           </span>
           <button
@@ -53,7 +53,7 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
             disabled={approving}
             style={{
               padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
-              background: "#f59e0b", color: "#000", fontSize: 12, fontWeight: 700,
+              background: "#FFB300", color: "#000", fontSize: 12, fontWeight: 700,
             }}
           >
             {approving ? "…" : "Approve"}
@@ -64,9 +64,9 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
         {permissions.map(p => (
           <span key={p} style={{
             fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 99,
-            background: SENSITIVE.has(p) ? "rgba(245,158,11,.12)" : "rgba(108,142,247,.12)",
-            color: SENSITIVE.has(p) ? "#f59e0b" : "#6c8ef7",
-            border: `1px solid ${SENSITIVE.has(p) ? "rgba(245,158,11,.3)" : "rgba(108,142,247,.3)"}`,
+            background: SENSITIVE.has(p) ? "rgba(255,179,0,.12)" : "rgba(232,200,125,.12)",
+            color: SENSITIVE.has(p) ? "#FFB300" : "#E8C87D",
+            border: `1px solid ${SENSITIVE.has(p) ? "rgba(255,179,0,.3)" : "rgba(232,200,125,.3)"}`,
           }}>
             {p}
           </span>

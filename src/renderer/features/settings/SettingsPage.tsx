@@ -87,7 +87,7 @@ export function SettingsPage() {
   ] as const;
 
   const THEME_OPTIONS = [
-    { id: "dark"  as const, label: "Dark",  bg: "#05070f" },
+    { id: "dark"  as const, label: "Dark",  bg: "#090909" },
     { id: "light" as const, label: "Light", bg: "#f8f9fb" },
   ];
 
@@ -125,8 +125,8 @@ export function SettingsPage() {
                   {health ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#34d399", flexShrink: 0, boxShadow: "0 0 8px #34d399" }} />
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#34d399" }}>Backend online</span>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#00C853", flexShrink: 0, boxShadow: "0 0 8px #00C853" }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#00C853" }}>Backend online</span>
                       </div>
                       <hr className="divider" />
                       <Row label="Status"     value={health.status} />
@@ -135,8 +135,8 @@ export function SettingsPage() {
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f87171", flexShrink: 0 }} />
-                      <span style={{ fontSize: 13, color: "#f87171" }}>Backend offline — run <code style={S.code}>python main.py</code></span>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#FF5252", flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: "#FF5252" }}>Backend offline — run <code style={S.code}>python main.py</code></span>
                     </div>
                   )}
                 </div>
@@ -167,7 +167,7 @@ export function SettingsPage() {
                       <Row label="Conversations" value={String(stats.conversations ?? 0)} />
                       <Row label="Messages"      value={String(stats.messages ?? 0)} />
                       <Row label="Agent Runs"    value={String(stats.agent_runs ?? 0)} />
-                      <Row label="Success Rate"  value={<span style={{ color: "#34d399", fontWeight: 600 }}>{stats.success_rate ?? 0}%</span>} />
+                      <Row label="Success Rate"  value={<span style={{ color: "#00C853", fontWeight: 600 }}>{stats.success_rate ?? 0}%</span>} />
                     </div>
                   </div>
                 </div>
@@ -221,14 +221,14 @@ export function SettingsPage() {
                 <div className="section-label" style={{ marginBottom: 12 }}>Anthropic API</div>
                 <div style={S.card}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.2)" }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#D4AF37" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                       <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.6 }}>
                         Set <code style={S.code}>ANTHROPIC_API_KEY</code> in your <code style={S.code}>.env</code> file and restart the backend. Keys are never stored in the browser.
                       </div>
                     </div>
                     <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener noreferrer"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6c8ef7" }}>
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#E8C87D" }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                       Manage billing at console.anthropic.com
                     </a>
@@ -280,13 +280,13 @@ export function SettingsPage() {
                           key={t.id}
                           onClick={() => setTheme(t.id)}
                           style={{
-                            flex: 1, border: `2px solid ${theme === t.id ? "#8b5cf6" : "rgba(255,255,255,0.08)"}`,
+                            flex: 1, border: `2px solid ${theme === t.id ? "#FFD700" : "rgba(255,255,255,0.08)"}`,
                             borderRadius: 12, padding: 12, cursor: "pointer",
                             textAlign: "center" as const, background: "transparent",
                           }}
                         >
                           <div style={{ width: "100%", height: 50, borderRadius: 8, background: t.bg, marginBottom: 8, border: "1px solid rgba(128,128,128,0.15)" }} />
-                          <div style={{ fontSize: 12, fontWeight: 500, color: theme === t.id ? "#a78bfa" : "var(--t3)" }}>{t.label}</div>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: theme === t.id ? "#FFD700" : "var(--t3)" }}>{t.label}</div>
                         </button>
                       ))}
                     </div>

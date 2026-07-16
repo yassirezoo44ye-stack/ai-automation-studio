@@ -59,8 +59,8 @@ export function ConfigTab({ installationId, config }: { installationId: string; 
         disabled={saving}
         style={{
           alignSelf: "flex-start", padding: "6px 16px", borderRadius: 6, border: "none",
-          cursor: saving ? "wait" : "pointer", background: "linear-gradient(135deg,#6c8ef7,#818cf8)",
-          color: "#fff", fontSize: 12, fontWeight: 600,
+          cursor: saving ? "wait" : "pointer", background: "linear-gradient(135deg,#FFD700,#D4AF37)",
+          color: "#0a0a0a", fontSize: 12, fontWeight: 700,
         }}
       >
         {saving ? "…" : "Save Configuration"}

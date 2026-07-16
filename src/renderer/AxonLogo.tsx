@@ -16,8 +16,8 @@ export default function AxonLogo({ size = 48, style }: Props) {
     >
       <defs>
         <radialGradient id="axbg" cx="40%" cy="35%" r="70%">
-          <stop offset="0%" stopColor="#2d1060" />
-          <stop offset="100%" stopColor="#0a0518" />
+          <stop offset="0%" stopColor="#3a2f0a" />
+          <stop offset="100%" stopColor="#0d0a02" />
         </radialGradient>
         <filter id="axglow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="14" result="blur" />
@@ -33,7 +33,7 @@ export default function AxonLogo({ size = 48, style }: Props) {
       <rect x="0" y="0" width="512" height="512" rx="128" ry="128" fill="url(#axbg)" />
 
       {/* S strokes — glow layer */}
-      <g filter="url(#axglow)" stroke="#7850ff" strokeWidth="52" fill="none" strokeLinecap="round" opacity="0.55">
+      <g filter="url(#axglow)" stroke="#D4AF37" strokeWidth="52" fill="none" strokeLinecap="round" opacity="0.55">
         {/* top cap */}
         <line x1="165" y1="85" x2="347" y2="85" />
         {/* upper arc (left side, ⊂ bowl) — 60° CW arc from (165,85) through left to (165,255) */}
@@ -47,7 +47,7 @@ export default function AxonLogo({ size = 48, style }: Props) {
       </g>
 
       {/* S strokes — crisp layer */}
-      <g stroke="#a07aff" strokeWidth="18" fill="none" strokeLinecap="round" opacity="0.9">
+      <g stroke="#FFD700" strokeWidth="18" fill="none" strokeLinecap="round" opacity="0.9">
         <line x1="165" y1="85" x2="347" y2="85" />
         <path d="M347,85 A170,170 0 0,0 347,255" />
         <line x1="347" y1="255" x2="165" y2="257" />
@@ -65,9 +65,9 @@ export default function AxonLogo({ size = 48, style }: Props) {
         [347, 427],
       ] as [number, number][]).map(([cx, cy], i) => (
         <g key={i}>
-          <circle cx={cx} cy={cy} r="36" fill="#b464ff" opacity="0.35" filter="url(#axnode)" />
-          <circle cx={cx} cy={cy} r="24" fill="#d2afff" opacity="0.9" />
-          <circle cx={cx} cy={cy} r="12" fill="#f8f0ff" />
+          <circle cx={cx} cy={cy} r="36" fill="#FFD700" opacity="0.35" filter="url(#axnode)" />
+          <circle cx={cx} cy={cy} r="24" fill="#FFE066" opacity="0.9" />
+          <circle cx={cx} cy={cy} r="12" fill="#FFFBEB" />
         </g>
       ))}
     </svg>

@@ -31,7 +31,7 @@ function AppInner() {
           <p style={{ fontSize: 13, marginBottom: 20 }}>{bootstrapError}</p>
           <button
             onClick={() => window.location.reload()}
-            style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer", fontSize: 14 }}
+            style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "var(--on-accent)", cursor: "pointer", fontSize: 14 }}
           >
             Retry
           </button>

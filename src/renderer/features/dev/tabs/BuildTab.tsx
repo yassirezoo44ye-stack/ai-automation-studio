@@ -148,7 +148,7 @@ export function BuildTab({
         {buildState === "building" && status && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <StatusBadge kind="info" label="Building" />
-            <span style={{ fontSize: 12, color: "#34d399" }}>{status}</span>
+            <span style={{ fontSize: 12, color: "#00C853" }}>{status}</span>
           </div>
         )}
 

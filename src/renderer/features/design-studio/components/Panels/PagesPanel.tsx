@@ -8,17 +8,17 @@ import { useDesign } from "../../stores/designStore";
 const s: Record<string, React.CSSProperties> = {
   root:    { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
   header:  { padding: "10px 12px 6px", display: "flex", alignItems: "center", justifyContent: "space-between" },
-  title:   { fontSize: "11px", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" },
-  addBtn:  { padding: "3px 8px", fontSize: "18px", lineHeight: 1, background: "#4f46e5", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" },
+  title:   { fontSize: "11px", fontWeight: 600, color: "#8F8F8F", textTransform: "uppercase", letterSpacing: "0.05em" },
+  addBtn:  { padding: "3px 8px", fontSize: "18px", lineHeight: 1, background: "#D4AF37", color: "#0a0a0a", border: "none", borderRadius: "4px", cursor: "pointer" },
   list:    { flex: 1, overflowY: "auto", padding: "4px 8px" },
   item:    { display: "flex", alignItems: "center", gap: "8px", padding: "6px 8px", borderRadius: "6px", marginBottom: "4px", cursor: "pointer", userSelect: "none" as const },
-  thumb:   { width: "56px", height: "32px", borderRadius: "3px", border: "1px solid #374151", background: "#1f2937", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", color: "#6b7280" },
+  thumb:   { width: "56px", height: "32px", borderRadius: "3px", border: "1px solid #2A2A2A", background: "#1A1A1A", flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", color: "#8F8F8F" },
   thumbImg:{ width: "100%", height: "100%", objectFit: "cover" as const },
   meta:    { flex: 1, minWidth: 0 },
-  name:    { fontSize: "12px", color: "#f9fafb", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
-  nameInput: { fontSize: "12px", color: "#f9fafb", background: "transparent", border: "none", borderBottom: "1px solid #4f46e5", outline: "none", width: "100%" },
+  name:    { fontSize: "12px", color: "#F2F2F2", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
+  nameInput: { fontSize: "12px", color: "#F2F2F2", background: "transparent", border: "none", borderBottom: "1px solid #D4AF37", outline: "none", width: "100%" },
   actions: { display: "flex", gap: "2px", flexShrink: 0 },
-  btn:     { padding: "2px 5px", fontSize: "11px", background: "transparent", color: "#6b7280", border: "none", borderRadius: "3px", cursor: "pointer" },
+  btn:     { padding: "2px 5px", fontSize: "11px", background: "transparent", color: "#8F8F8F", border: "none", borderRadius: "3px", cursor: "pointer" },
 };
 
 export function PagesPanel() {
@@ -69,8 +69,8 @@ export function PagesPanel() {
               key={page.id}
               style={{
                 ...s.item,
-                background: active ? "#312e81" : "transparent",
-                border: `1px solid ${active ? "#4f46e5" : "transparent"}`,
+                background: active ? "#8A6D1F" : "transparent",
+                border: `1px solid ${active ? "#D4AF37" : "transparent"}`,
               }}
               onClick={() => setPage(page.id)}
               onDoubleClick={() => startRename(page.id, page.name)}
@@ -128,7 +128,7 @@ export function PagesPanel() {
                   aria-label="Duplicate page"
                 >⧉</button>
                 <button
-                  style={{ ...s.btn, color: pages.length <= 1 ? "#374151" : "#ef4444" }}
+                  style={{ ...s.btn, color: pages.length <= 1 ? "#2A2A2A" : "#FF5252" }}
                   title="Delete"
                   disabled={pages.length <= 1}
                   onClick={() => removePage(page.id)}

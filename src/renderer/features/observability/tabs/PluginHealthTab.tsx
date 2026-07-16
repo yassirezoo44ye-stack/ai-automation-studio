@@ -13,7 +13,7 @@ import { CardGrid, ErrorNote, ProbeCard, Skeletons } from "../components";
 import type { HealthReport, ServiceStatus } from "../types";
 
 const SERVICE_COLOR: Record<string, string> = {
-  running: "#34d399", starting: "#6c8ef7", stopped: "var(--t4)", stopping: "#f59e0b", failed: "#f87171",
+  running: "#00C853", starting: "#E8C87D", stopped: "var(--t4)", stopping: "#FFB300", failed: "#FF5252",
 };
 
 export function PluginHealthTab() {
@@ -53,7 +53,7 @@ export function PluginHealthTab() {
           <div style={{ ...S.cardTitle, marginBottom: 12 }}>Plugin loader</div>
           <CardGrid><ProbeCard probe={pluginProbe} /></CardGrid>
           <div style={{ ...S.muted, marginTop: 10 }}>
-            For per-plugin install detail, see the <span style={{ color: "#a5b4fc" }}>Plugins</span> page.
+            For per-plugin install detail, see the <span style={{ color: "#FFE58A" }}>Plugins</span> page.
           </div>
         </div>
       )}
@@ -72,7 +72,7 @@ export function PluginHealthTab() {
               <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", flex: 1 }}>{s.name}</span>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>uptime {(s.uptime_s / 60).toFixed(0)}m</span>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>restarts {s.restarts}</span>
-              {s.error && <span style={{ fontSize: 11, color: "#f87171" }}>{s.error}</span>}
+              {s.error && <span style={{ fontSize: 11, color: "#FF5252" }}>{s.error}</span>}
             </div>
           ))}
         </div>

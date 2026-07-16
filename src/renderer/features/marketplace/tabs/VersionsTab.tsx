@@ -13,7 +13,7 @@ interface VersionEntry { id: string; version: string; changelog: string | null; 
 interface ChangelogEntry { id: string; change_type: string; description: string; sort_order: number }
 
 const CHANGE_COLOR: Record<string, string> = {
-  added: "#34d399", changed: "#6c8ef7", fixed: "#f59e0b", removed: "#f87171", security: "#e879f9",
+  added: "#00C853", changed: "#E8C87D", fixed: "#FFB300", removed: "#FF5252", security: "#E0A899",
 };
 
 export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack }: {
@@ -79,7 +79,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>v{v.version}</span>
               {v.version === currentVersion && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#34d399", background: "rgba(52,211,153,.12)", padding: "1px 6px", borderRadius: 99 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#00C853", background: "rgba(0,200,83,.12)", padding: "1px 6px", borderRadius: 99 }}>
                   CURRENT
                 </span>
               )}
@@ -101,7 +101,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
           {v.changelog && <p style={{ fontSize: 12, color: "var(--t3)", margin: "6px 0 0" }}>{v.changelog}</p>}
           <button
             onClick={() => void loadChangelog(v.version)}
-            style={{ marginTop: 6, background: "none", border: "none", color: "#6c8ef7", fontSize: 11, cursor: "pointer", padding: 0 }}
+            style={{ marginTop: 6, background: "none", border: "none", color: "#E8C87D", fontSize: 11, cursor: "pointer", padding: 0 }}
           >
             {changelogs[v.version] ? null : "Show structured changelog"}
           </button>

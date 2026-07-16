@@ -53,7 +53,7 @@ export function BillingAnalyticsTab() {
       )}
       <div style={S.muted}>
         For org-scoped revenue, invoices, and subscriptions, see the{" "}
-        <span style={{ color: "#a5b4fc" }}>Billing</span> page.
+        <span style={{ color: "#FFE58A" }}>Billing</span> page.
       </div>
       <CardGrid>
         <MetricCard label="Billing events processed" value={metrics.counters.billing_events_total ?? 0} />

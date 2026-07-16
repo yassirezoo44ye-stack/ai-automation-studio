@@ -82,7 +82,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               title={orgs.find(o => o.id === currentOrgId)?.name ?? "Select organization"}
               style={{
                 width: "100%", fontSize: sidebarCollapsed ? 0 : 12,
-                background: "rgba(255,255,255,0.05)", color: "#e2e8f0",
+                background: "rgba(255,255,255,0.05)", color: "#F2F2F2",
                 border: "1px solid rgba(255,255,255,0.09)", borderRadius: 8,
                 padding: sidebarCollapsed ? "6px 2px" : "7px 10px",
                 cursor: "pointer", outline: "none",

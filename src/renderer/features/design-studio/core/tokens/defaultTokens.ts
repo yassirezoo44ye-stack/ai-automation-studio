@@ -13,24 +13,24 @@ const now = () => new Date().toISOString();
 // ── Colors ────────────────────────────────────────────────────────────────────
 
 export const DEFAULT_COLOR_TOKENS = [
-  createColorToken("primary",      "#4f46e5"),
-  createColorToken("primary-light","#818cf8"),
+  createColorToken("primary",      "#D4AF37"),
+  createColorToken("primary-light","#D4AF37"),
   createColorToken("primary-dark", "#3730a3"),
-  createColorToken("secondary",    "#06b6d4"),
-  createColorToken("accent",       "#f59e0b"),
-  createColorToken("success",      "#10b981"),
-  createColorToken("warning",      "#f59e0b"),
-  createColorToken("error",        "#ef4444"),
-  createColorToken("neutral-50",   "#f9fafb"),
+  createColorToken("secondary",    "#E8C87D"),
+  createColorToken("accent",       "#FFB300"),
+  createColorToken("success",      "#00C853"),
+  createColorToken("warning",      "#FFB300"),
+  createColorToken("error",        "#FF5252"),
+  createColorToken("neutral-50",   "#F2F2F2"),
   createColorToken("neutral-100",  "#f3f4f6"),
-  createColorToken("neutral-200",  "#e5e7eb"),
-  createColorToken("neutral-300",  "#d1d5db"),
-  createColorToken("neutral-400",  "#9ca3af"),
-  createColorToken("neutral-500",  "#6b7280"),
+  createColorToken("neutral-200",  "#E0E0E0"),
+  createColorToken("neutral-300",  "#D6D6D6"),
+  createColorToken("neutral-400",  "#BDBDBD"),
+  createColorToken("neutral-500",  "#8F8F8F"),
   createColorToken("neutral-600",  "#4b5563"),
-  createColorToken("neutral-700",  "#374151"),
-  createColorToken("neutral-800",  "#1f2937"),
-  createColorToken("neutral-900",  "#111827"),
+  createColorToken("neutral-700",  "#2A2A2A"),
+  createColorToken("neutral-800",  "#1A1A1A"),
+  createColorToken("neutral-900",  "#111111"),
   createColorToken("white",        "#ffffff"),
   createColorToken("black",        "#000000"),
 ];
@@ -87,9 +87,9 @@ export const DEFAULT_SHADOW_TOKENS: ShadowToken[] = [
 // ── Gradients ─────────────────────────────────────────────────────────────────
 
 export const DEFAULT_GRADIENT_TOKENS: GradientToken[] = [
-  { id: uid(), name: "brand-gradient", category: "gradient", type: "linear", angle: 135, value: "linear-gradient(135deg, #4f46e5, #06b6d4)", createdAt: now(), updatedAt: now(), stops: [{ color: "#4f46e5", position: 0 }, { color: "#06b6d4", position: 1 }] },
-  { id: uid(), name: "warm-gradient",  category: "gradient", type: "linear", angle: 135, value: "linear-gradient(135deg, #f59e0b, #ef4444)", createdAt: now(), updatedAt: now(), stops: [{ color: "#f59e0b", position: 0 }, { color: "#ef4444", position: 1 }] },
-  { id: uid(), name: "cool-gradient",  category: "gradient", type: "linear", angle: 135, value: "linear-gradient(135deg, #06b6d4, #10b981)", createdAt: now(), updatedAt: now(), stops: [{ color: "#06b6d4", position: 0 }, { color: "#10b981", position: 1 }] },
+  { id: uid(), name: "brand-gradient", category: "gradient", type: "linear", angle: 135, value: "linear-gradient(135deg, #D4AF37, #E8C87D)", createdAt: now(), updatedAt: now(), stops: [{ color: "#D4AF37", position: 0 }, { color: "#E8C87D", position: 1 }] },
+  { id: uid(), name: "warm-gradient",  category: "gradient", type: "linear", angle: 135, value: "linear-gradient(135deg, #FFB300, #FF5252)", createdAt: now(), updatedAt: now(), stops: [{ color: "#FFB300", position: 0 }, { color: "#FF5252", position: 1 }] },
+  { id: uid(), name: "cool-gradient",  category: "gradient", type: "linear", angle: 135, value: "linear-gradient(135deg, #E8C87D, #00C853)", createdAt: now(), updatedAt: now(), stops: [{ color: "#E8C87D", position: 0 }, { color: "#00C853", position: 1 }] },
 ];
 
 // ── All combined ──────────────────────────────────────────────────────────────

@@ -131,11 +131,11 @@ export function withAlpha(hex: string, alpha: number): string {
 
 // ── Palettes ──────────────────────────────────────────────────────────────────
 export const PALETTE_BASIC = [
-  "#000000","#ffffff","#f87171","#fb923c","#fbbf24","#a3e635",
-  "#34d399","#22d3ee","#60a5fa","#a78bfa","#f472b6","#94a3b8",
+  "#000000","#ffffff","#FF5252","#fb923c","#FFB300","#a3e635",
+  "#00C853","#22d3ee","#60a5fa","#FFD700","#f472b6","#BDBDBD",
 ];
 
 export const PALETTE_PASTEL = [
   "#fecaca","#fed7aa","#fef08a","#d9f99d","#bbf7d0","#a5f3fc",
-  "#bfdbfe","#ddd6fe","#fbcfe8","#e2e8f0","#f1f5f9","#ffffff",
+  "#bfdbfe","#ddd6fe","#fbcfe8","#F2F2F2","#FFFFFF","#ffffff",
 ];

@@ -20,17 +20,17 @@ const CATEGORIES: { id: TokenCategory; label: string; emoji: string }[] = [
 const s: Record<string, React.CSSProperties> = {
   root:      { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
   cats:      { display: "flex", flexWrap: "wrap" as const, gap: "4px", padding: "8px 10px 6px" },
-  catBtn:    { padding: "3px 8px", fontSize: "11px", borderRadius: "10px", border: "1px solid #374151", background: "transparent", cursor: "pointer" },
+  catBtn:    { padding: "3px 8px", fontSize: "11px", borderRadius: "10px", border: "1px solid #2A2A2A", background: "transparent", cursor: "pointer" },
   list:      { flex: 1, overflowY: "auto", padding: "0 10px 8px" },
   row:       { display: "flex", alignItems: "center", gap: "8px", padding: "5px 6px", borderRadius: "4px", marginBottom: "2px" },
-  preview:   { width: "20px", height: "20px", borderRadius: "3px", border: "1px solid #374151", flexShrink: 0 },
-  tokenName: { flex: 1, fontSize: "12px", color: "#d1d5db", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
-  tokenVal:  { fontSize: "11px", color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, maxWidth: "80px" },
-  delBtn:    { background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: "13px", lineHeight: 1 },
-  addBar:    { padding: "6px 10px", borderTop: "1px solid #1f2937", display: "flex", gap: "6px" },
-  addIn:     { flex: 1, padding: "4px 6px", fontSize: "12px", border: "1px solid #374151", borderRadius: "4px", background: "#1f2937", color: "#f9fafb", outline: "none" },
-  addBtn:    { padding: "4px 10px", fontSize: "12px", background: "#4f46e5", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" },
-  empty:     { color: "#6b7280", fontSize: "12px", textAlign: "center" as const, padding: "16px 0" },
+  preview:   { width: "20px", height: "20px", borderRadius: "3px", border: "1px solid #2A2A2A", flexShrink: 0 },
+  tokenName: { flex: 1, fontSize: "12px", color: "#D6D6D6", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
+  tokenVal:  { fontSize: "11px", color: "#8F8F8F", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, maxWidth: "80px" },
+  delBtn:    { background: "none", border: "none", color: "#8F8F8F", cursor: "pointer", fontSize: "13px", lineHeight: 1 },
+  addBar:    { padding: "6px 10px", borderTop: "1px solid #1A1A1A", display: "flex", gap: "6px" },
+  addIn:     { flex: 1, padding: "4px 6px", fontSize: "12px", border: "1px solid #2A2A2A", borderRadius: "4px", background: "#1A1A1A", color: "#F2F2F2", outline: "none" },
+  addBtn:    { padding: "4px 10px", fontSize: "12px", background: "#D4AF37", color: "#0a0a0a", border: "none", borderRadius: "4px", cursor: "pointer" },
+  empty:     { color: "#8F8F8F", fontSize: "12px", textAlign: "center" as const, padding: "16px 0" },
 };
 
 function tokenPreview(token: DesignToken): string | undefined {
@@ -47,7 +47,7 @@ export function TokensPanel() {
   const [category, setCategory] = useState<TokenCategory>("color");
   const [tokens, setTokens]     = useState<DesignToken[]>([]);
   const [newName, setNewName]   = useState("");
-  const [newValue, setNewValue] = useState("#4f46e5");
+  const [newValue, setNewValue] = useState("#D4AF37");
 
   const refresh = useCallback(() => {
     setTokens(tokenRegistry.byCategory(category));
@@ -86,9 +86,9 @@ export function TokensPanel() {
             aria-selected={category === cat.id}
             style={{
               ...s.catBtn,
-              background:  category === cat.id ? "#4f46e5" : "transparent",
-              color:       category === cat.id ? "#fff"    : "#9ca3af",
-              borderColor: category === cat.id ? "#4f46e5" : "#374151",
+              background:  category === cat.id ? "#D4AF37" : "transparent",
+              color:       category === cat.id ? "#fff"    : "#BDBDBD",
+              borderColor: category === cat.id ? "#D4AF37" : "#2A2A2A",
             }}
             onClick={() => setCategory(cat.id)}
           >{cat.emoji} {cat.label}</button>
@@ -104,7 +104,7 @@ export function TokensPanel() {
             <div key={token.name} style={s.row} role="listitem">
               {preview
                 ? <div style={{ ...s.preview, background: preview }} />
-                : <div style={{ ...s.preview, background: "#1f2937", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", color: "#6b7280" }}>{category[0].toUpperCase()}</div>
+                : <div style={{ ...s.preview, background: "#1A1A1A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", color: "#8F8F8F" }}>{category[0].toUpperCase()}</div>
               }
               <span style={s.tokenName}>{token.name}</span>
               <span style={s.tokenVal}>{tokenValueLabel(token)}</span>

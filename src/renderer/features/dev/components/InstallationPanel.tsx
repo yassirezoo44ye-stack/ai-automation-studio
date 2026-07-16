@@ -88,9 +88,9 @@ function CopyBtn({ text }: { text: string }) {
         display: "inline-flex", alignItems: "center", gap: 6,
         padding: "6px 14px", borderRadius: 8, cursor: "pointer",
         fontSize: 12, fontWeight: 600, border: "1px solid",
-        borderColor: copied ? "rgba(52,211,153,.45)" : "var(--border)",
-        background: copied ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.05)",
-        color: copied ? "#34d399" : "var(--t2)",
+        borderColor: copied ? "rgba(0,200,83,.45)" : "var(--border)",
+        background: copied ? "rgba(0,200,83,.12)" : "rgba(255,255,255,.05)",
+        color: copied ? "#00C853" : "var(--t2)",
         transition: "all .2s",
         flexShrink: 0,
       }}
@@ -192,8 +192,8 @@ export function InstallationPanel({
       ref={panelRef}
       style={{
         borderRadius: 16,
-        border: "1px solid rgba(52,211,153,.28)",
-        background: "linear-gradient(160deg, rgba(52,211,153,.06), rgba(108,142,247,.05) 55%, rgba(255,255,255,.02))",
+        border: "1px solid rgba(0,200,83,.28)",
+        background: "linear-gradient(160deg, rgba(0,200,83,.06), rgba(232,200,125,.05) 55%, rgba(255,255,255,.02))",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
         boxShadow: "0 8px 32px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.06)",
@@ -215,8 +215,8 @@ export function InstallationPanel({
         <span style={{
           display: "inline-flex", alignItems: "center", gap: 6,
           fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-          background: "rgba(52,211,153,.14)", color: "#34d399",
-          border: "1px solid rgba(52,211,153,.35)",
+          background: "rgba(0,200,83,.14)", color: "#00C853",
+          border: "1px solid rgba(0,200,83,.35)",
           animation: entered ? "pulseOnce .9s ease" : undefined,
         }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
@@ -225,8 +225,8 @@ export function InstallationPanel({
         <span style={{
           marginLeft: "auto", fontSize: 11, fontWeight: 600,
           padding: "3px 10px", borderRadius: 99,
-          background: "rgba(108,142,247,.12)", color: "#8fa8f8",
-          border: "1px solid rgba(108,142,247,.28)",
+          background: "rgba(232,200,125,.12)", color: "#8fa8f8",
+          border: "1px solid rgba(232,200,125,.28)",
         }}>
           {project.icon} {project.label}
         </span>
@@ -250,9 +250,9 @@ export function InstallationPanel({
                   display: "inline-flex", alignItems: "center", gap: 6,
                   padding: "7px 16px", borderRadius: 9, border: "none", cursor: "pointer",
                   fontSize: 13, fontWeight: 600, transition: "all .18s",
-                  background: pm === p ? "linear-gradient(135deg,#34d399,#22c55e)" : "transparent",
+                  background: pm === p ? "linear-gradient(135deg,#00C853,#00C853)" : "transparent",
                   color: pm === p ? "#052e1b" : "var(--t4)",
-                  boxShadow: pm === p ? "0 2px 12px rgba(52,211,153,.3)" : "none",
+                  boxShadow: pm === p ? "0 2px 12px rgba(0,200,83,.3)" : "none",
                 }}
               >
                 {PM_ICONS[p]} {p}
@@ -282,7 +282,7 @@ export function InstallationPanel({
           }}>
             {commands.map((c, i) => (
               <div key={i} style={{ color: c.startsWith("#") ? "var(--t5)" : undefined }}>
-                {!c.startsWith("#") && <span style={{ color: "#34d399", userSelect: "none" }}>$ </span>}
+                {!c.startsWith("#") && <span style={{ color: "#00C853", userSelect: "none" }}>$ </span>}
                 {c}
               </div>
             ))}

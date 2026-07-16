@@ -114,11 +114,11 @@ export class AIDesignEngine {
       // Fallback: return a static palette
       return {
         colors: [
-          { name: "Primary",   hex: "#4f46e5", role: "primary"   },
-          { name: "Secondary", hex: "#06b6d4", role: "secondary" },
-          { name: "Accent",    hex: "#f59e0b", role: "accent"    },
-          { name: "Dark",      hex: "#111827", role: "dark"      },
-          { name: "Light",     hex: "#f9fafb", role: "light"     },
+          { name: "Primary",   hex: "#D4AF37", role: "primary"   },
+          { name: "Secondary", hex: "#E8C87D", role: "secondary" },
+          { name: "Accent",    hex: "#FFB300", role: "accent"    },
+          { name: "Dark",      hex: "#111111", role: "dark"      },
+          { name: "Light",     hex: "#F2F2F2", role: "light"     },
         ],
       };
     }

@@ -45,7 +45,7 @@ export function AIAnalyticsTab() {
       <div style={{ ...S.muted }}>
         Aggregate totals across every provider since the process started. For
         per-provider/per-model cost breakdown, see the{" "}
-        <span style={{ color: "#a5b4fc" }}>AI Routing → Cost Analytics</span> tab.
+        <span style={{ color: "#FFE58A" }}>AI Routing → Cost Analytics</span> tab.
       </div>
       <CardGrid>
         <MetricCard label="Total requests" value={c.ai_requests_total ?? 0} />

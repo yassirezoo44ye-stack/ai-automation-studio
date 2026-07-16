@@ -48,8 +48,8 @@ export function DependenciesTab({ listingId }: { listingId: string }) {
             <span style={{ fontSize: 11, color: "var(--t4)" }}>{d.version_constraint}</span>
             <span style={{
               fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
-              background: d.optional ? "rgba(255,255,255,.06)" : "rgba(108,142,247,.15)",
-              color: d.optional ? "var(--t4)" : "#6c8ef7",
+              background: d.optional ? "rgba(255,255,255,.06)" : "rgba(232,200,125,.15)",
+              color: d.optional ? "var(--t4)" : "#E8C87D",
             }}>
               {d.optional ? "OPTIONAL" : "REQUIRED"}
             </span>

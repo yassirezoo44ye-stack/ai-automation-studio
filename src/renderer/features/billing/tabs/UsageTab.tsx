@@ -23,7 +23,7 @@ function fmt(n: number): string {
 
 function UsageBar({ metric, data }: { metric: string; data: UsageMetric }) {
   const pct = data.pct ?? 0;
-  const color = pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#34d399";
+  const color = pct >= 90 ? "#FF5252" : pct >= 70 ? "#FFB300" : "#00C853";
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>

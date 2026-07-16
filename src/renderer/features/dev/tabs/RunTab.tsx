@@ -32,9 +32,9 @@ interface RunTabProps {
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
-  high:   "#ef4444",
-  medium: "#f59e0b",
-  low:    "#6b7280",
+  high:   "#FF5252",
+  medium: "#FFB300",
+  low:    "#8F8F8F",
 };
 
 export function RunTab({
@@ -220,7 +220,7 @@ export function RunTab({
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <pre style={{
           flex: 1, margin: 0, padding: "14px 18px", overflowY: "auto",
-          fontSize: 12, color: "#34d399", fontFamily: "var(--font-mono)",
+          fontSize: 12, color: "#00C853", fontFamily: "var(--font-mono)",
           lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-all",
           background: "#040506",
         }}>
@@ -229,7 +229,7 @@ export function RunTab({
 
         {runError && (
           <div style={{
-            borderTop: `2px solid ${SEVERITY_COLOR[runError.severity] ?? "#6b7280"}`,
+            borderTop: `2px solid ${SEVERITY_COLOR[runError.severity] ?? "#8F8F8F"}`,
             background: "#0f0a0a", padding: "14px 18px", flexShrink: 0,
           }}>
             <div style={{ color: SEVERITY_COLOR[runError.severity], fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
@@ -237,11 +237,11 @@ export function RunTab({
             </div>
             {runError.fix.length > 0 && (
               <div>
-                <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                <div style={{ color: "#BDBDBD", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
                   Fix Suggestions
                 </div>
                 {runError.fix.map((step, i) => (
-                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4, fontSize: 12, color: "#cbd5e1" }}>
+                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4, fontSize: 12, color: "#D6D6D6" }}>
                     <span style={{ color: "#60a5fa", minWidth: 18 }}>{i + 1}.</span>
                     <span>{step}</span>
                   </div>

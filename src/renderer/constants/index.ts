@@ -28,4 +28,4 @@ export const BUILD_TEMPLATES = [
   { label: "🤖 Chatbot",    prompt: "Build a Python chatbot using the anthropic library that reads ANTHROPIC_API_KEY from environment. Include requirements.txt and README." },
 ];
 
-export const PRIORITY_COLOR: Record<string, string> = { low: "#64748b", medium: "#f59e0b", high: "#f87171" };
+export const PRIORITY_COLOR: Record<string, string> = { low: "#8F8F8F", medium: "#FFB300", high: "#FF5252" };

@@ -14,8 +14,8 @@ interface Invoice {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  paid: "#34d399", open: "#f59e0b", draft: "#6b7280",
-  uncollectible: "#ef4444", void: "#6b7280",
+  paid: "#00C853", open: "#FFB300", draft: "#8F8F8F",
+  uncollectible: "#FF5252", void: "#8F8F8F",
 };
 
 function money(cents: number, currency: string): string {
@@ -77,8 +77,8 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
           </div>
           <span style={{
             fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-            color: STATUS_COLOR[inv.status] ?? "#6b7280", background: (STATUS_COLOR[inv.status] ?? "#6b7280") + "18",
-            border: `1px solid ${STATUS_COLOR[inv.status] ?? "#6b7280"}33`,
+            color: STATUS_COLOR[inv.status] ?? "#8F8F8F", background: (STATUS_COLOR[inv.status] ?? "#8F8F8F") + "18",
+            border: `1px solid ${STATUS_COLOR[inv.status] ?? "#8F8F8F"}33`,
           }}>
             {inv.status}
           </span>

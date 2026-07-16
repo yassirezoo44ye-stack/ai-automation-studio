@@ -99,16 +99,16 @@ export function useFabricCanvas(
     let obj: FabricObject;
     switch (tool) {
       case "rect":
-        obj = new Rect({ left: cx - 60, top: cy - 40, width: 120, height: 80, fill: "#4f46e5" });
+        obj = new Rect({ left: cx - 60, top: cy - 40, width: 120, height: 80, fill: "#D4AF37" });
         break;
       case "circle":
-        obj = new Circle({ left: cx - 50, top: cy - 50, radius: 50, fill: "#4f46e5" });
+        obj = new Circle({ left: cx - 50, top: cy - 50, radius: 50, fill: "#D4AF37" });
         break;
       case "triangle":
-        obj = new Triangle({ left: cx - 60, top: cy - 50, width: 120, height: 100, fill: "#4f46e5" });
+        obj = new Triangle({ left: cx - 60, top: cy - 50, width: 120, height: 100, fill: "#D4AF37" });
         break;
       default:
-        obj = new Rect({ left: cx - 60, top: cy - 40, width: 120, height: 80, fill: "#4f46e5" });
+        obj = new Rect({ left: cx - 60, top: cy - 40, width: 120, height: 80, fill: "#D4AF37" });
     }
 
     attachMeta(obj, { id: uid(), type: "shape" });
@@ -128,7 +128,7 @@ export function useFabricCanvas(
       left: cx - 100, top: cy - 20,
       fontFamily: "Inter, sans-serif",
       fontSize: 24,
-      fill: "#111827",
+      fill: "#111111",
     });
     attachMeta(txt, { id: uid(), type: "text" });
     fc.add(txt);
@@ -221,7 +221,7 @@ export function useFabricCanvas(
       fc.isDrawingMode = true;
       fc.freeDrawingBrush = new PencilBrush(fc);
       fc.freeDrawingBrush.width = 3;
-      fc.freeDrawingBrush.color = "#111827";
+      fc.freeDrawingBrush.color = "#111111";
     } else {
       fc.isDrawingMode = false;
       fc.selection     = true;

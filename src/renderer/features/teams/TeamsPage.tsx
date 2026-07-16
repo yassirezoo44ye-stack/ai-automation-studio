@@ -24,8 +24,8 @@ interface TeamMember { user_id: string; email: string; name: string | null; join
 
 const ROLES: Role[] = ["owner", "admin", "manager", "developer", "operator", "viewer"];
 const ROLE_COLOR: Record<Role, string> = {
-  owner: "#f59e0b", admin: "#ef4444", manager: "#8b5cf6",
-  developer: "#6c8ef7", operator: "#34d399", viewer: "#6b7280",
+  owner: "#FFB300", admin: "#FF5252", manager: "#FFD700",
+  developer: "#E8C87D", operator: "#00C853", viewer: "#8F8F8F",
 };
 
 const sectionLabel: React.CSSProperties = {
@@ -295,7 +295,7 @@ export function TeamsPage() {
                     >{isOpen ? "Hide" : "Members"}</button>
                     <button
                       onClick={() => void deleteTeam(t.id)} disabled={teamBusy === t.id}
-                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: "#f87171" }}
+                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: "#FF5252" }}
                     >Delete</button>
                   </div>
 
@@ -314,7 +314,7 @@ export function TeamsPage() {
                               <button
                                 onClick={() => void removeTeamMember(t.id, m.user_id)}
                                 disabled={teamBusy === `${t.id}:${m.user_id}`}
-                                style={{ ...S.btnSecondary, padding: "3px 10px", fontSize: 10, color: "#f87171" }}
+                                style={{ ...S.btnSecondary, padding: "3px 10px", fontSize: 10, color: "#FF5252" }}
                               >Remove</button>
                             </div>
                           ))}
@@ -386,9 +386,9 @@ export function TeamsPage() {
               }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                  background: "rgba(139,92,246,.14)", border: "1px solid rgba(139,92,246,.25)",
+                  background: "rgba(255,215,0,.14)", border: "1px solid rgba(255,215,0,.25)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 13, fontWeight: 700, color: "#c4b5fd",
+                  fontSize: 13, fontWeight: 700, color: "#FFE58A",
                 }}>
                   {(m.name || m.email)[0]?.toUpperCase()}
                 </div>
@@ -414,7 +414,7 @@ export function TeamsPage() {
                     </select>
                     <button
                       onClick={() => void removeMember(m.user_id)} disabled={busy === m.user_id}
-                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: "#f87171" }}
+                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: "#FF5252" }}
                     >Remove</button>
                   </>
                 )}

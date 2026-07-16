@@ -200,7 +200,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
           {filteredConvs.length === 0 && (
-            <div style={{ padding: "12px 16px", fontSize: 12, color: "#4b5980" }}>No conversations</div>
+            <div style={{ padding: "12px 16px", fontSize: 12, color: "#8A8A8A" }}>No conversations</div>
           )}
           {filteredConvs.map(c => (
             <div
@@ -211,7 +211,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               <div style={S.convTitle}>{c.title}</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                 <span style={S.convTime}>{relTime(c.updated_at)}</span>
-                <span onClick={e => deleteConv(e, c.id)} style={{ color: "#4b5980", fontSize: 11, cursor: "pointer" }}>✕</span>
+                <span onClick={e => deleteConv(e, c.id)} style={{ color: "#8A8A8A", fontSize: 11, cursor: "pointer" }}>✕</span>
               </div>
             </div>
           ))}
@@ -222,13 +222,13 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {/* Inline tasks strip */}
         {showTasks && inlineTasks.length > 0 && (
-          <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(108,142,247,0.04)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(232,200,125,0.04)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ta)", flexShrink: 0 }}>TASKS</span>
             {inlineTasks.map(t => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12 }}>
                 <button
                   onClick={() => setTaskStatus(t, t.status === "done" ? "pending" : "done")}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: t.status === "done" ? "#34d399" : "var(--t5)", display: "flex" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: t.status === "done" ? "#00C853" : "var(--t5)", display: "flex" }}
                 >
                   {t.status === "done"
                     ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -246,7 +246,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         <div style={{ ...S.messages, position: "relative" }}>
           {messages.length === 0 && (
             <div style={{ ...S.empty, animation: "fadeIn .4s ease" }}>
-              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "linear-gradient(135deg,rgba(139,92,246,.22),rgba(99,102,241,.17))", border: "1px solid rgba(139,92,246,.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "linear-gradient(135deg,rgba(255,215,0,.22),rgba(212,175,55,.17))", border: "1px solid rgba(255,215,0,.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>{activeAgent ? activeAgent.name : "Axon AI"}</div>
@@ -296,7 +296,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             style={S.input} rows={1}
           />
           {streaming
-            ? <button onClick={() => abortRef.current?.abort()} style={{ ...S.sendBtn, background: "#f87171" }}>■</button>
+            ? <button onClick={() => abortRef.current?.abort()} style={{ ...S.sendBtn, background: "#FF5252" }}>■</button>
             : <button onClick={() => void sendMessage()} disabled={!prompt.trim()} style={S.sendBtn}>↑</button>}
         </div>
       </div>

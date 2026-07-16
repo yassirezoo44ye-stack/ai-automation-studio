@@ -40,9 +40,9 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
               onKeyDown={e => e.key === "Enter" && onSelect(f)}
               style={{
                 ...TREE_ITEM,
-                color:       active ? "#e2e8f0" : "rgba(148,163,184,.7)",
-                background:  active ? "rgba(139,92,246,.12)" : "transparent",
-                borderLeft:  active ? "2px solid #8b5cf6" : "2px solid transparent",
+                color:       active ? "#F2F2F2" : "rgba(189,189,189,.7)",
+                background:  active ? "rgba(255,215,0,.12)" : "transparent",
+                borderLeft:  active ? "2px solid #FFD700" : "2px solid transparent",
               }}
               aria-current={active ? "true" : undefined}
               title={f.path}
@@ -57,21 +57,21 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
       </nav>
 
       {/* Code viewer */}
-      <div style={{ flex: 1, overflow: "auto", background: "#080a0f" }}>
+      <div style={{ flex: 1, overflow: "auto", background: "#0B0B0B" }}>
         {activeFile ? (
           <>
             <div style={{
-              padding: "10px 20px", borderBottom: "1px solid #1e2438",
-              fontSize: 12, color: "#6b7a99",
+              padding: "10px 20px", borderBottom: "1px solid #242424",
+              fontSize: 12, color: "#9E9E9E",
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              position: "sticky", top: 0, background: "#080a0f", zIndex: 1,
+              position: "sticky", top: 0, background: "#0B0B0B", zIndex: 1,
             }}>
               <span>{fileIcon(activeFile.path)} {activeFile.path}</span>
               <span>{activeFile.content.split("\n").length} lines</span>
             </div>
             <pre style={{
               margin: 0, padding: "16px 20px", fontSize: 13,
-              color: "#c8d3f0", lineHeight: 1.6,
+              color: "#DDDDDD", lineHeight: 1.6,
               fontFamily: "var(--font-mono)", overflowX: "auto",
             }}>
               <code>{activeFile.content}</code>

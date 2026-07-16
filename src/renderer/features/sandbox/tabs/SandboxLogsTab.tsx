@@ -16,7 +16,7 @@ interface SandboxEvent {
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
-  info: "var(--t4)", warning: "#f59e0b", error: "#f87171",
+  info: "var(--t4)", warning: "#FFB300", error: "#FF5252",
 };
 
 export function SandboxLogsTab({ workerId }: { workerId: string }) {

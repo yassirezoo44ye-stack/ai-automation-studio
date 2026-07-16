@@ -11,7 +11,7 @@ const S = {
   wrap: {
     display: "flex", alignItems: "center", justifyContent: "center",
     minHeight: "100vh",
-    background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(139,92,246,0.12) 0%, var(--bg-base) 70%)",
+    background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,215,0,0.12) 0%, var(--bg-base) 70%)",
     fontFamily: "var(--font-sans)",
     padding: "24px",
   } as React.CSSProperties,
@@ -28,7 +28,7 @@ const S = {
     flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer",
     fontSize: 13, fontWeight: 600, transition: "all .15s",
     background: active ? "var(--accent)" : "transparent",
-    color: active ? "#fff" : "var(--t3)",
+    color: active ? "var(--on-accent)" : "var(--t3)",
   }),
   divider: {
     display: "flex", alignItems: "center", gap: 10,
@@ -52,7 +52,7 @@ const S = {
   btn: (loading: boolean): React.CSSProperties => ({
     width: "100%", padding: "11px", borderRadius: 10, border: "none",
     background: loading ? "var(--bg-card-h)" : "linear-gradient(135deg, var(--accent-light), var(--accent))",
-    color: loading ? "var(--t4)" : "#fff",
+    color: loading ? "var(--t4)" : "var(--on-accent)",
     fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
     marginTop: 4, boxShadow: loading ? "none" : "var(--shadow-btn)",
     transition: "filter 0.15s, box-shadow 0.15s",
@@ -67,8 +67,8 @@ const S = {
     border: "none", background: "transparent",
     color: "var(--accent)", fontSize: 13, cursor: "pointer", textDecoration: "underline",
   } as React.CSSProperties,
-  error:   { color: "#f87171", fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
-  success: { color: "#34d399", fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
+  error:   { color: "#FF5252", fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
+  success: { color: "#00C853", fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
   row:     { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } as React.CSSProperties,
   check:   { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--t3)", cursor: "pointer" } as React.CSSProperties,
   link:    { fontSize: 13, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 } as React.CSSProperties,

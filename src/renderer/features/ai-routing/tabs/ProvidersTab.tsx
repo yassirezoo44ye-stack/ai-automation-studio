@@ -15,7 +15,7 @@ interface ProviderHealth {
 }
 
 const CIRCUIT_COLOR: Record<string, string> = {
-  closed: "#34d399", half_open: "#f59e0b", open: "#f87171",
+  closed: "#00C853", half_open: "#FFB300", open: "#FF5252",
 };
 
 export function ProvidersTab() {

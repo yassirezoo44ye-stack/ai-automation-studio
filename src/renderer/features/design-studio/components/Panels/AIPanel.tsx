@@ -16,25 +16,25 @@ type Tool = "image" | "palette" | "fonts" | "suggestions";
 
 const s: Record<string, React.CSSProperties> = {
   root:     { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  tabs:     { display: "flex", borderBottom: "1px solid #1f2937" },
+  tabs:     { display: "flex", borderBottom: "1px solid #1A1A1A" },
   tab:      { flex: 1, padding: "8px 4px", fontSize: "11px", border: "none", background: "transparent", cursor: "pointer", borderBottom: "2px solid transparent" },
   body:     { flex: 1, overflowY: "auto", padding: "12px 10px" },
-  label:    { fontSize: "11px", color: "#9ca3af", marginBottom: "4px" },
-  input:    { width: "100%", padding: "6px 8px", fontSize: "12px", border: "1px solid #374151", borderRadius: "4px", background: "#1f2937", color: "#f9fafb", outline: "none", boxSizing: "border-box" as const, resize: "vertical" as const },
-  btn:      { width: "100%", padding: "7px 12px", fontSize: "12px", background: "#4f46e5", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer", marginTop: "8px" },
+  label:    { fontSize: "11px", color: "#BDBDBD", marginBottom: "4px" },
+  input:    { width: "100%", padding: "6px 8px", fontSize: "12px", border: "1px solid #2A2A2A", borderRadius: "4px", background: "#1A1A1A", color: "#F2F2F2", outline: "none", boxSizing: "border-box" as const, resize: "vertical" as const },
+  btn:      { width: "100%", padding: "7px 12px", fontSize: "12px", background: "#D4AF37", color: "#0a0a0a", border: "none", borderRadius: "5px", cursor: "pointer", marginTop: "8px" },
   result:   { marginTop: "10px" },
   imgGrid:  { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "8px" },
-  genImg:   { width: "100%", aspectRatio: "1", objectFit: "cover" as const, borderRadius: "4px", border: "1px solid #374151", cursor: "pointer" },
+  genImg:   { width: "100%", aspectRatio: "1", objectFit: "cover" as const, borderRadius: "4px", border: "1px solid #2A2A2A", cursor: "pointer" },
   colorRow: { display: "flex", gap: "6px", flexWrap: "wrap" as const, marginTop: "8px" },
-  swatch:   { width: "36px", height: "36px", borderRadius: "6px", border: "1px solid #374151", cursor: "pointer", position: "relative" as const },
-  fontItem: { padding: "8px", borderRadius: "6px", border: "1px solid #374151", marginTop: "6px", background: "#1f2937" },
-  fontH:    { fontSize: "14px", fontWeight: 700, color: "#f9fafb" },
-  fontSub:  { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
-  suggItem: { padding: "8px 10px", borderRadius: "6px", border: "1px solid #374151", marginTop: "6px", background: "#1f2937", cursor: "pointer" },
+  swatch:   { width: "36px", height: "36px", borderRadius: "6px", border: "1px solid #2A2A2A", cursor: "pointer", position: "relative" as const },
+  fontItem: { padding: "8px", borderRadius: "6px", border: "1px solid #2A2A2A", marginTop: "6px", background: "#1A1A1A" },
+  fontH:    { fontSize: "14px", fontWeight: 700, color: "#F2F2F2" },
+  fontSub:  { fontSize: "11px", color: "#BDBDBD", marginTop: "2px" },
+  suggItem: { padding: "8px 10px", borderRadius: "6px", border: "1px solid #2A2A2A", marginTop: "6px", background: "#1A1A1A", cursor: "pointer" },
   suggTitle:{ fontSize: "12px", fontWeight: 600, color: "#c7d2fe" },
-  suggDesc: { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
-  error:    { color: "#f87171", fontSize: "11px", marginTop: "6px" },
-  loading:  { color: "#6b7280", fontSize: "12px", textAlign: "center" as const, padding: "16px 0" },
+  suggDesc: { fontSize: "11px", color: "#BDBDBD", marginTop: "2px" },
+  error:    { color: "#FF5252", fontSize: "11px", marginTop: "6px" },
+  loading:  { color: "#8F8F8F", fontSize: "12px", textAlign: "center" as const, padding: "16px 0" },
 };
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
@@ -117,8 +117,8 @@ export function AIPanel({ getCanvas }: Props) {
             aria-selected={tool === t.id}
             style={{
               ...s.tab,
-              color: tool === t.id ? "#818cf8" : "#6b7280",
-              borderBottomColor: tool === t.id ? "#4f46e5" : "transparent",
+              color: tool === t.id ? "#D4AF37" : "#8F8F8F",
+              borderBottomColor: tool === t.id ? "#D4AF37" : "transparent",
             }}
             onClick={() => { setTool(t.id); setError(""); }}
           >{t.label}</button>
@@ -212,7 +212,7 @@ export function AIPanel({ getCanvas }: Props) {
 
         {tool === "suggestions" && (
           <>
-            <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: 0 }}>
+            <p style={{ fontSize: "12px", color: "#BDBDBD", marginTop: 0 }}>
               Analyzes your current canvas and suggests improvements.
             </p>
             <button style={s.btn} onClick={run} disabled={busy}>

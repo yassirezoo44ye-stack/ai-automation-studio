@@ -28,9 +28,9 @@ export function SocialPage() {
           {([["youtube","▶ YouTube"],["facebook","📘 Social"]] as [SocialTab,string][]).map(([id,label]) => (
             <button key={id} onClick={() => setTab(id)}
               style={{ padding: "7px 18px", borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, transition: "all .18s",
-                background: tab === id ? "linear-gradient(135deg,#8b5cf6,#6366f1)" : "transparent",
-                color: tab === id ? "#fff" : "rgba(148,163,184,.6)",
-                boxShadow: tab === id ? "0 2px 12px rgba(139,92,246,.35)" : "none" }}>
+                background: tab === id ? "linear-gradient(135deg,#FFD700,#D4AF37)" : "transparent",
+                color: tab === id ? "#fff" : "rgba(189,189,189,.6)",
+                boxShadow: tab === id ? "0 2px 12px rgba(255,215,0,.35)" : "none" }}>
               {label}
             </button>
           ))}
@@ -115,7 +115,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
       {/* Left panel */}
       <div style={{ width: 340, borderRight: "1px solid rgba(255,255,255,.05)", display: "flex", flexDirection: "column", background: "rgba(8,10,20,.6)", flexShrink: 0 }}>
         <div style={{ padding: 16, borderBottom: "1px solid rgba(255,255,255,.05)" }}>
-          <div style={{ fontSize: 12, color: "rgba(148,163,184,.5)", marginBottom: 8, fontWeight: 500 }}>رابط الفيديو</div>
+          <div style={{ fontSize: 12, color: "rgba(189,189,189,.5)", marginBottom: 8, fontWeight: 500 }}>رابط الفيديو</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input value={url} onChange={e => setUrl(e.target.value)}
               onKeyDown={e => e.key === "Enter" && fetchInfo()}
@@ -136,16 +136,16 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
                 </div>
               </div>
             )}
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", lineHeight: 1.4, marginBottom: 6 }}>{info.title}</div>
-            <div style={{ fontSize: 12, color: "rgba(148,163,184,.6)", marginBottom: 10 }}>{info.channel}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#FFFFFF", lineHeight: 1.4, marginBottom: 6 }}>{info.title}</div>
+            <div style={{ fontSize: 12, color: "rgba(189,189,189,.6)", marginBottom: 10 }}>{info.channel}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               {[["👁", fmtNum(info.view_count), "مشاهدة"], ["👍", fmtNum(info.like_count || 0), "إعجاب"]].map(([icon,val,label]) => (
-                <div key={label} style={{ background: "rgba(255,255,255,.05)", borderRadius: 8, padding: "5px 10px", fontSize: 12, color: "#e2e8f0", display: "flex", gap: 4, alignItems: "center" }}>
-                  {icon} {val} <span style={{ color: "rgba(148,163,184,.4)" }}>{label}</span>
+                <div key={label} style={{ background: "rgba(255,255,255,.05)", borderRadius: 8, padding: "5px 10px", fontSize: 12, color: "#F2F2F2", display: "flex", gap: 4, alignItems: "center" }}>
+                  {icon} {val} <span style={{ color: "rgba(189,189,189,.4)" }}>{label}</span>
                 </div>
               ))}
             </div>
-            {info.description && <div style={{ fontSize: 12, color: "rgba(148,163,184,.5)", lineHeight: 1.6 }}>{info.description}</div>}
+            {info.description && <div style={{ fontSize: 12, color: "rgba(189,189,189,.5)", lineHeight: 1.6 }}>{info.description}</div>}
             <button onClick={fetchTranscript} disabled={transcriptLoading}
               style={{ ...S.btnSecondary, width: "100%", marginTop: 12, fontSize: 12 }}>
               {transcriptLoading ? "⏳ جاري استخراج النص…" : transcript ? "✅ النص مُحمَّل" : "📄 استخرج النص"}
@@ -155,7 +155,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
 
         {info && (
           <div style={{ padding: 12 }}>
-            <div style={{ fontSize: 11, color: "rgba(148,163,184,.4)", marginBottom: 8, fontWeight: 600 }}>أسئلة سريعة</div>
+            <div style={{ fontSize: 11, color: "rgba(189,189,189,.4)", marginBottom: 8, fontWeight: 600 }}>أسئلة سريعة</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {quickQ.map(q => (
                 <button key={q} onClick={() => askQuestion(q)}
@@ -171,16 +171,16 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
       {/* Right panel — chat */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {!info ? (
-          <div style={{ margin: "auto", textAlign: "center", color: "rgba(148,163,184,.3)" }}>
+          <div style={{ margin: "auto", textAlign: "center", color: "rgba(189,189,189,.3)" }}>
             <div style={{ fontSize: 64, marginBottom: 16 }}>▶</div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: "rgba(148,163,184,.5)", marginBottom: 8 }}>YouTube Analyzer</div>
+            <div style={{ fontSize: 18, fontWeight: 600, color: "rgba(189,189,189,.5)", marginBottom: 8 }}>YouTube Analyzer</div>
             <div style={{ fontSize: 14 }}>الصق رابط فيديو وابدأ التحليل بالذكاء الاصطناعي</div>
           </div>
         ) : (
           <>
             <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
               {!answer && !answering && (
-                <div style={{ textAlign: "center", color: "rgba(148,163,184,.3)", padding: "40px 0" }}>
+                <div style={{ textAlign: "center", color: "rgba(189,189,189,.3)", padding: "40px 0" }}>
                   <div style={{ fontSize: 32, marginBottom: 10 }}>💬</div>
                   <div>اسأل Claude عن محتوى الفيديو</div>
                 </div>
@@ -193,7 +193,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
                     {answering && !answer ? (
                       <div className="typing"><span /><span /><span /></div>
                     ) : (
-                      <div style={{ fontSize: 15, color: "#e2e8f0", lineHeight: 1.8 }} className="md-body">
+                      <div style={{ fontSize: 15, color: "#F2F2F2", lineHeight: 1.8 }} className="md-body">
                         <ReactMarkdown components={MD_COMPONENTS}>{answer}</ReactMarkdown>
                       </div>
                     )}
@@ -274,9 +274,9 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
             {(["facebook","instagram","twitter","linkedin"] as const).map(p => (
               <button key={p} onClick={() => setPlatform(p)}
                 style={{ padding: "9px 6px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, transition: "all .18s",
-                  background: platform === p ? "linear-gradient(135deg,#8b5cf6,#6366f1)" : "rgba(255,255,255,.05)",
-                  color: platform === p ? "#fff" : "rgba(148,163,184,.6)",
-                  boxShadow: platform === p ? "0 2px 12px rgba(139,92,246,.3)" : "none" }}>
+                  background: platform === p ? "linear-gradient(135deg,#FFD700,#D4AF37)" : "rgba(255,255,255,.05)",
+                  color: platform === p ? "#fff" : "rgba(189,189,189,.6)",
+                  boxShadow: platform === p ? "0 2px 12px rgba(255,215,0,.3)" : "none" }}>
                 {platformIcon[p]} {p.charAt(0).toUpperCase()+p.slice(1)}
               </button>
             ))}
@@ -311,15 +311,15 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
         <button onClick={generate} disabled={generating || !topic.trim()} style={{ ...S.btnPrimary, width: "100%", padding: "12px" }}>
           {generating ? "⏳ جاري التوليد…" : "✨ ولّد المحتوى"}
         </button>
-        {status && <div style={{ fontSize: 12, color: "#a78bfa", textAlign: "center" }}>{status}</div>}
+        {status && <div style={{ fontSize: 12, color: "#FFD700", textAlign: "center" }}>{status}</div>}
       </div>
 
       {/* Results panel */}
       <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
         {variations.length === 0 && !generating && (
-          <div style={{ margin: "auto", textAlign: "center", color: "rgba(148,163,184,.3)" }}>
+          <div style={{ margin: "auto", textAlign: "center", color: "rgba(189,189,189,.3)" }}>
             <div style={{ fontSize: 56, marginBottom: 14 }}>{platformIcon[platform]}</div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: "rgba(148,163,184,.5)", marginBottom: 8 }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: "rgba(189,189,189,.5)", marginBottom: 8 }}>
               منشئ محتوى السوشيال ميديا
             </div>
             <div style={{ fontSize: 14, maxWidth: 340, lineHeight: 1.7 }}>
@@ -331,8 +331,8 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
           <div key={i} style={{ ...S.card, display: "flex", flexDirection: "column", gap: 14, animation: "slideIn .25s ease" }} className="card-hover">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#8b5cf6,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>{i + 1}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>النسخة {i + 1}</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#FFD700,#D4AF37)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>{i + 1}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#FFFFFF" }}>النسخة {i + 1}</span>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => copy(v.text + (v.hashtags?.length ? "\n\n" + v.hashtags.join(" ") : ""), i)}
@@ -341,20 +341,20 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
                 </button>
               </div>
             </div>
-            <div style={{ fontSize: 15, color: "#e2e8f0", lineHeight: 1.85, whiteSpace: "pre-wrap", direction: language === "english" ? "ltr" : "rtl", textAlign: language === "english" ? "left" : "right" }}>
+            <div style={{ fontSize: 15, color: "#F2F2F2", lineHeight: 1.85, whiteSpace: "pre-wrap", direction: language === "english" ? "ltr" : "rtl", textAlign: language === "english" ? "left" : "right" }}>
               {v.text}
             </div>
             {v.hashtags && v.hashtags.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {v.hashtags.map((h: string) => (
-                  <span key={h} style={{ background: "rgba(139,92,246,.15)", border: "1px solid rgba(139,92,246,.25)", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#c4b5fd" }}>
+                  <span key={h} style={{ background: "rgba(255,215,0,.15)", border: "1px solid rgba(255,215,0,.25)", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#FFE58A" }}>
                     {h.startsWith("#") ? h : `#${h}`}
                   </span>
                 ))}
               </div>
             )}
             {v.tip && (
-              <div style={{ fontSize: 12, color: "rgba(148,163,184,.5)", borderTop: "1px solid rgba(255,255,255,.05)", paddingTop: 10, fontStyle: "italic" }}>
+              <div style={{ fontSize: 12, color: "rgba(189,189,189,.5)", borderTop: "1px solid rgba(255,255,255,.05)", paddingTop: 10, fontStyle: "italic" }}>
                 💡 {v.tip}
               </div>
             )}

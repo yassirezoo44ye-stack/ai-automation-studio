@@ -21,12 +21,12 @@ const S = {
   },
   title: {
     fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px",
-    background: "linear-gradient(135deg, var(--accent), #a78bfa)",
+    background: "linear-gradient(135deg, var(--accent), #FFD700)",
     WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
   },
   badge: {
     fontSize: 11, fontWeight: 600, padding: "2px 8px",
-    borderRadius: 99, background: "var(--accent)", color: "#fff",
+    borderRadius: 99, background: "var(--accent)", color: "var(--on-accent)",
     letterSpacing: "0.5px",
   },
   tabs: {
@@ -66,9 +66,9 @@ const S = {
     border: variant === "ghost" ? "1px solid var(--border)" : "none",
     cursor: "pointer",
     background: variant === "primary" ? "var(--accent)"
-              : variant === "danger"  ? "#ef4444"
+              : variant === "danger"  ? "#FF5252"
               : "var(--bg-base)",
-    color: variant === "ghost" ? "var(--t2)" : "#fff",
+    color: variant === "ghost" ? "var(--t2)" : variant === "danger" ? "#fff" : "var(--on-accent)",
     transition: "opacity .15s",
     whiteSpace: "nowrap" as const,
     flexShrink: 0,
@@ -99,7 +99,7 @@ function StatPill({ label, value, color = "var(--accent)" }: { label: string; va
 }
 
 function SuccessBar({ rate, height = 6 }: { rate: number; height?: number }) {
-  const color = rate >= 0.8 ? "#22c55e" : rate >= 0.5 ? "#f59e0b" : "#ef4444";
+  const color = rate >= 0.8 ? "#00C853" : rate >= 0.5 ? "#FFB300" : "#FF5252";
   return (
     <div style={{ background: "var(--bg-base)", borderRadius: 99, height, overflow: "hidden", flex: 1 }}>
       <div style={{ height: "100%", width: `${rate * 100}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
@@ -108,7 +108,7 @@ function SuccessBar({ rate, height = 6 }: { rate: number; height?: number }) {
 }
 
 function ResultBox({ result }: { result: AgentResult }) {
-  const color = result.success ? "#22c55e" : "#ef4444";
+  const color = result.success ? "#00C853" : "#FF5252";
   return (
     <div style={{ marginTop: 12, borderRadius: 8, border: `1px solid ${color}33`, background: color + "0a", padding: 12 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
@@ -248,7 +248,7 @@ function AgentGrid({ agents }: { agents: AgentInfo[] }) {
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</span>
                     {a.stats.call_count > 0 && (
-                      <span style={S.tag(a.stats.success_rate >= 0.8 ? "#22c55e" : a.stats.success_rate >= 0.5 ? "#f59e0b" : "#ef4444")}>
+                      <span style={S.tag(a.stats.success_rate >= 0.8 ? "#00C853" : a.stats.success_rate >= 0.5 ? "#FFB300" : "#FF5252")}>
                         {(a.stats.success_rate * 100).toFixed(0)}%
                       </span>
                     )}
@@ -292,7 +292,7 @@ function ExecutionLog({ records }: { records: MemoryRecord[] }) {
             display: "flex", gap: 10, alignItems: "flex-start",
             padding: "7px 0", borderBottom: i < records.length - 1 ? "1px solid var(--border)" : "none",
           }}>
-            <span style={{ color: r.success ? "#22c55e" : "#ef4444", fontSize: 14, flexShrink: 0, marginTop: 1 }}>
+            <span style={{ color: r.success ? "#00C853" : "#FF5252", fontSize: 14, flexShrink: 0, marginTop: 1 }}>
               {r.success ? "✓" : "✗"}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -306,7 +306,7 @@ function ExecutionLog({ records }: { records: MemoryRecord[] }) {
               <div style={{ fontSize: 12, color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
                 {r.input}
               </div>
-              {r.error && <div style={{ fontSize: 11, color: "#ef4444" }}>{r.error}</div>}
+              {r.error && <div style={{ fontSize: 11, color: "#FF5252" }}>{r.error}</div>}
             </div>
           </div>
         ))}
@@ -352,10 +352,10 @@ function EvolutionPanel({
           <div style={{ display: "flex", gap: 24, marginBottom: 16, flexWrap: "wrap" as const }}>
             <StatPill label="Agents"     value={status.agents} />
             <StatPill label="Executions" value={status.memory_count} />
-            <StatPill label="Loop ticks" value={status.loop_stats?.tick_count ?? 0} color="#a78bfa" />
-            <StatPill label="Evolutions" value={status.loop_stats?.evolution_cycles ?? 0} color="#f59e0b" />
+            <StatPill label="Loop ticks" value={status.loop_stats?.tick_count ?? 0} color="#FFD700" />
+            <StatPill label="Evolutions" value={status.loop_stats?.evolution_cycles ?? 0} color="#FFB300" />
             <StatPill label="LLM" value={status.llm_available ? "✓" : "✗"}
-                      color={status.llm_available ? "#22c55e" : "#ef4444"} />
+                      color={status.llm_available ? "#00C853" : "#FF5252"} />
           </div>
         )}
 
@@ -372,14 +372,14 @@ function EvolutionPanel({
                 background: "var(--bg-base)", borderRadius: 8,
                 border: `1px solid ${s.implemented ? "#22c55e33" : "var(--border)"}`,
               }}>
-                <span style={{ fontSize: 11, color: s.implemented ? "#22c55e" : "var(--accent)", fontWeight: 700 }}>
+                <span style={{ fontSize: 11, color: s.implemented ? "#00C853" : "var(--accent)", fontWeight: 700 }}>
                   [{s.index}]
                 </span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{s.title}</div>
                   <div style={{ fontSize: 11, color: "var(--t3)" }}>{s.description}</div>
                 </div>
-                <span style={S.tag(s.priority >= 0.7 ? "#ef4444" : s.priority >= 0.4 ? "#f59e0b" : "#22c55e")}>
+                <span style={S.tag(s.priority >= 0.7 ? "#FF5252" : s.priority >= 0.4 ? "#FFB300" : "#00C853")}>
                   {(s.priority * 100).toFixed(0)}%
                 </span>
                 {!s.implemented && (
@@ -439,15 +439,15 @@ function PerformancePanel({ stats }: { stats: { agent_stats: ReturnType<typeof a
     <div style={S.card}>
       <div style={S.cardHeader}>
         <span>📊 Performance</span>
-        <span style={S.tag(errorRate > 0.3 ? "#ef4444" : errorRate > 0.1 ? "#f59e0b" : "#22c55e")}>
+        <span style={S.tag(errorRate > 0.3 ? "#FF5252" : errorRate > 0.1 ? "#FFB300" : "#00C853")}>
           {(errorRate * 100).toFixed(0)}% error rate
         </span>
       </div>
       <div style={S.cardBody}>
         {underperf.length > 0 && (
           <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 8,
-                        background: "#ef444411", border: "1px solid #ef444433" }}>
-            <span style={{ fontSize: 12, color: "#ef4444", fontWeight: 600 }}>
+                        background: "#FF525211", border: "1px solid #FF525233" }}>
+            <span style={{ fontSize: 12, color: "#FF5252", fontWeight: 600 }}>
               ⚠ Underperforming: {underperf.join(", ")} — run "Evolve" to fix
             </span>
           </div>
@@ -557,7 +557,7 @@ export function AgentOSPage() {
         <div style={{
           position: "fixed", top: 16, right: 16, zIndex: 9999,
           padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500,
-          background: toast.ok ? "#22c55e" : "#ef4444", color: "#fff",
+          background: toast.ok ? "#00C853" : "#FF5252", color: "#fff",
           boxShadow: "0 4px 20px rgba(0,0,0,.3)",
           animation: "fadeIn .2s ease",
         }}>{toast.msg}</div>
@@ -640,11 +640,11 @@ function JobsMonitor() {
   };
 
   const STATUS_COLOR: Record<string, string> = {
-    pending:   "#f59e0b",
-    running:   "#6c8ef7",
-    completed: "#34d399",
-    failed:    "#ef4444",
-    cancelled: "#6b7280",
+    pending:   "#FFB300",
+    running:   "#E8C87D",
+    completed: "#00C853",
+    failed:    "#FF5252",
+    cancelled: "#8F8F8F",
   };
 
   const elapsed = (job: Job) => {
@@ -668,7 +668,7 @@ function JobsMonitor() {
           <div style={{ display: "flex", gap: 20, marginBottom: 16, flexWrap: "wrap" as const }}>
             {Object.entries(stats).map(([k, v]) => (
               <StatPill key={k} label={k} value={v}
-                color={k === "failed" ? "#ef4444" : k === "running" ? "#6c8ef7" : k === "completed" ? "#34d399" : "var(--accent)"} />
+                color={k === "failed" ? "#FF5252" : k === "running" ? "#E8C87D" : k === "completed" ? "#00C853" : "var(--accent)"} />
             ))}
           </div>
         )}
@@ -693,12 +693,12 @@ function JobsMonitor() {
                 </div>
                 {job.status === "running" && (
                   <div style={{ height: 3, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${job.progress}%`, background: "#6c8ef7", borderRadius: 99, transition: "width .4s" }} />
+                    <div style={{ height: "100%", width: `${job.progress}%`, background: "#E8C87D", borderRadius: 99, transition: "width .4s" }} />
                   </div>
                 )}
-                {job.error && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 2 }}>{job.error}</div>}
+                {job.error && <div style={{ fontSize: 11, color: "#FF5252", marginTop: 2 }}>{job.error}</div>}
               </div>
-              <span style={{ fontSize: 10, ...S.mono, color: "var(--t5)", flexShrink: 0 }}>{job.job_id.slice(0, 8)}…</span>
+              <span style={{ ...S.mono, fontSize: 10, color: "var(--t5)", flexShrink: 0 }}>{job.job_id.slice(0, 8)}…</span>
               {(job.status === "pending" || job.status === "running") && (
                 <button onClick={() => cancel(job.job_id)} style={{ ...S.btn("danger"), padding: "3px 10px", fontSize: 11 }}>
                   Cancel

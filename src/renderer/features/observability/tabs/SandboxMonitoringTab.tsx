@@ -40,7 +40,7 @@ export function SandboxMonitoringTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={S.muted}>
         For per-worker logs and permission requests, see the{" "}
-        <span style={{ color: "#a5b4fc" }}>Sandbox</span> page.
+        <span style={{ color: "#FFE58A" }}>Sandbox</span> page.
       </div>
       <CardGrid>
         <MetricCard label="Running workers" value={g.sandbox_running_workers ?? 0} />
