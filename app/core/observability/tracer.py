@@ -31,7 +31,11 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, ReadableSpan, SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.trace import SpanContext, TraceFlags, NonRecordingSpan, Status, StatusCode
+from opentelemetry.trace import (
+    INVALID_SPAN_CONTEXT, SpanContext, TraceFlags, NonRecordingSpan, Status, StatusCode,
+)
+
+from app.core.observability.config import get_observability_config
 
 log = logging.getLogger(__name__)
 
@@ -206,6 +210,15 @@ class Tracer:
         trace_id : Optional[str] = None,
         parent_id: Optional[str] = None,
     ) -> SpanHandle:
+        # OBS_TRACING_ENABLED=false must disable ALL instrumentation, not
+        # just FastAPIInstrumentor's HTTP auto-spans (which app.factory
+        # already gates) — without this, the manual chokepoint spans
+        # (AI/workflow/DB/background services) kept recording into the
+        # ring buffer with the flag off. A NonRecordingSpan keeps the
+        # exact same SpanHandle API at near-zero cost: set_tag/add_event/
+        # end are no-ops and no SpanProcessor ever sees it.
+        if not get_observability_config().tracing_enabled:
+            return SpanHandle(NonRecordingSpan(INVALID_SPAN_CONTEXT))
         parent_ctx = None
         if trace_id:
             # Explicit trace linkage (e.g. an id carried across a durable
