@@ -19,7 +19,7 @@ export function useUsage(since?: string): UseUsageReturn {
 
   useEffect(() => {
     let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setLoading(true);
     Promise.all([getUsageTotals(since), getUsageByProvider(since)])
       .then(([t, bp]) => {

@@ -28,7 +28,7 @@ export function AssetsPanel({ onInsert }: Props) {
 
   useEffect(() => {
     let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setLoading(true);
     listAssets(tab === "all" ? undefined : tab)
       .then(all => { if (active) setAssets(all); })

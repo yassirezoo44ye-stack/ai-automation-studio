@@ -39,8 +39,10 @@ export default ts.config(
       // These react-hooks rules fire on patterns that work correctly in React 19
       "react-hooks/rules-of-hooks": "warn",
       "react-hooks/exhaustive-deps": "warn",
-      // set-state-in-effect: valid for initialisation guards (if !data return early + setState)
-      "react-hooks/set-state-in-effect": "warn",
+      // set-state-in-effect flags every fetch-on-mount loader (`useEffect(() => { void load(); })`)
+      // because the loader sets a loading flag synchronously. That is the intended data-fetching
+      // pattern here; revisit when data fetching moves to a query library (e.g. TanStack Query).
+      "react-hooks/set-state-in-effect": "off",
       // refs-in-effect: valid for the useRef stable-callback pattern
       "react-hooks/refs": "warn",
 

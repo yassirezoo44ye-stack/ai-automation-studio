@@ -8,7 +8,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { apiFetch, parseJSON, authH } from "../../utils/api";
 import { relTime } from "../../utils/time";
 import { S } from "../../styles/theme";
-import type { Task, Agent } from "../../types";
+import type { Task } from "../../types";
 
 type AutoTab = "tasks" | "workflows";
 type TaskStatus = Task["status"];
@@ -93,7 +93,6 @@ export function AutomationPage() {
   const toast = useToast();
   const [tab, setTab]         = useState<AutoTab>("tasks");
   const [tasks, setTasks]     = useState<Task[]>([]);
-  const [agents, setAgents]   = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState<TaskStatus | "all">("all");
   const [search, setSearch]   = useState("");
@@ -116,7 +115,7 @@ export function AutomationPage() {
       setTasks(d.tasks ?? []);
     } catch { toast("Could not load tasks", "err"); }
     finally { setLoading(false); }
-  }, []);
+  }, [toast]);
 
   const loadWorkflows = useCallback(async () => {
     setWfLoading(true);
@@ -142,10 +141,6 @@ export function AutomationPage() {
   useEffect(() => {
     loadTasks();
     loadWorkflows();
-    apiFetch("/api/agents")
-      .then(r => parseJSON<Agent[]>(r, "/api/agents"))
-      .then(setAgents)
-      .catch(() => {});
   }, [loadTasks, loadWorkflows]);
 
   async function createTask() {

@@ -19,7 +19,7 @@ export interface DetectedProject {
   hasDocker: boolean;
 }
 
-export function detectProject(files: BuildFile[]): DetectedProject {
+function detectProject(files: BuildFile[]): DetectedProject {
   const paths   = files.map(f => f.path.toLowerCase());
   const has     = (p: string) => paths.some(x => x === p || x.endsWith(`/${p}`));
   const content = (p: string) =>

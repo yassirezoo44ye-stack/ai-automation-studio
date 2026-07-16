@@ -5,7 +5,7 @@
  */
 import { useRef } from "react";
 import { authH, API, parseJSON } from "../../../shared/utils/api";
-import { StatusBadge } from "../../../components/ui/StatusBadge";
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
 import { S } from "../../../styles/theme";
 import { BUILD_TEMPLATES } from "../../../constants";
 import { InstallationPanel } from "../components/InstallationPanel";

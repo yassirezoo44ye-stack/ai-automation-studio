@@ -8,7 +8,7 @@ import ReactMarkdown from "react-markdown";
 import { useToast } from "../../../contexts/ToastContext";
 import { apiFetch, parseJSON, authH, API } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
-import { MD_COMPONENTS } from "../../../components/ui/CopyButton";
+import { MD_COMPONENTS } from "../../../shared/ui/markdown";
 import { S } from "../../../styles/theme";
 import AxonLogo from "../../../AxonLogo";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";

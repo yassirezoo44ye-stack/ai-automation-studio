@@ -3,7 +3,7 @@
  * Replaces the legacy AppPackager.tsx with a clean, service-backed implementation.
  * Uses /api/package/* endpoints and renders streaming build logs.
  */
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON, authH, API } from "../../../shared/utils/api";
 import { S } from "../../../styles/theme";
 import type { Project } from "../../../shared/types";
@@ -70,7 +70,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
 
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
 
-  const checkPreflight = () => {
+  const checkPreflight = useCallback(() => {
     if (lang === "docker") { setPreflight(null); return; }
     setPfLoading(true);
     apiFetch(`/api/package/preflight?lang=${lang}&target=${target}`)
@@ -78,9 +78,9 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
       .then(setPreflight)
       .catch(() => setPreflight(null))
       .finally(() => setPfLoading(false));
-  };
+  }, [lang, target]);
 
-  useEffect(() => { checkPreflight(); }, [lang, target]);
+  useEffect(() => { checkPreflight(); }, [checkPreflight]);
 
   useEffect(() => {
     if (!projectId) return;

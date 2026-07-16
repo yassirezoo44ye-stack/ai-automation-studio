@@ -126,7 +126,6 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [mode, setMode]             = useState<"run" | "deliberate" | "plan">("run");
-  const [tasks, setTasks]           = useState("");
   const [delib, setDelib]           = useState<{ bids: DeliberationBid[]; winner: string } | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -419,10 +418,12 @@ function EvolutionPanel({
 
 // ── Performance Panel ─────────────────────────────────────────────────────────
 
-function PerformancePanel({ stats }: { stats: { agent_stats: ReturnType<typeof agentOsApi.performance extends Promise<infer T> ? () => T : never> extends null ? never : any } }) {
-  const agentStats = (stats as any)?.agent_stats ?? [];
-  const errorRate  = (stats as any)?.global_error_rate ?? 0;
-  const underperf  = (stats as any)?.underperforming_agents ?? [];
+type PerformanceStats = Awaited<ReturnType<typeof agentOsApi.performance>>;
+
+function PerformancePanel({ stats }: { stats: PerformanceStats | null }) {
+  const agentStats = stats?.agent_stats ?? [];
+  const errorRate  = stats?.global_error_rate ?? 0;
+  const underperf  = stats?.underperforming_agents ?? [];
 
   if (!agentStats.length) return (
     <div style={S.card}>
@@ -452,7 +453,7 @@ function PerformancePanel({ stats }: { stats: { agent_stats: ReturnType<typeof a
             </span>
           </div>
         )}
-        {agentStats.map((s: any) => (
+        {agentStats.map(s => (
           <div key={s.name} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
             <span style={{ width: 80, fontSize: 12, fontWeight: 500, flexShrink: 0 }}>{s.name}</span>
             <SuccessBar rate={s.success_rate} />
@@ -482,7 +483,7 @@ export function AgentOSPage() {
   const [agents, setAgents]         = useState<AgentInfo[]>([]);
   const [records, setRecords]       = useState<MemoryRecord[]>([]);
   const [status, setStatus]         = useState<SystemStatus | null>(null);
-  const [perfData, setPerfData]     = useState<any>(null);
+  const [perfData, setPerfData]     = useState<PerformanceStats | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
 
@@ -520,7 +521,7 @@ export function AgentOSPage() {
 
   const handleEvolve = async () => {
     const res = await agentOsApi.evolve();
-    const evolved = (res as any).evolved ?? [];
+    const evolved = (res.evolved as string[] | undefined) ?? [];
     showToast(evolved.length ? `Evolved: ${evolved.join(", ")}` : "All agents stable", true);
     refresh();
   };
@@ -619,6 +620,7 @@ function JobsMonitor() {
   const [jobs, setJobs]       = useState<Job[]>([]);
   const [stats, setStats]     = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [now, setNow]         = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -629,6 +631,7 @@ function JobsMonitor() {
       ]);
       setJobs(jr.jobs ?? []);
       setStats(sr);
+      setNow(Date.now());
     } finally { setLoading(false); }
   }, []);
 
@@ -649,7 +652,7 @@ function JobsMonitor() {
 
   const elapsed = (job: Job) => {
     const start = job.started_at ? new Date(job.started_at).getTime() : new Date(job.created_at).getTime();
-    const end   = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
+    const end   = job.finished_at ? new Date(job.finished_at).getTime() : now;
     const s     = Math.round((end - start) / 1000);
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`;
   };

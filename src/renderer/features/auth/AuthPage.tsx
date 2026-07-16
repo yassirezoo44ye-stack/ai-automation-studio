@@ -36,7 +36,7 @@ const S = {
   } as React.CSSProperties,
   divLine: { flex: 1, height: 1, background: "var(--b1)" } as React.CSSProperties,
   oauthRow: { display: "flex", gap: 8, marginBottom: 0 } as React.CSSProperties,
-  oauthBtn: (color: string): React.CSSProperties => ({
+  oauthBtn: (_color: string): React.CSSProperties => ({
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
     padding: "10px 12px", borderRadius: 10, border: "1px solid var(--b1)",
     background: "var(--bg-input)", color: "var(--t1)", fontSize: 13, fontWeight: 600,

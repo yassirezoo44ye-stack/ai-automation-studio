@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useToast } from "../../../contexts/ToastContext";
 import { apiFetch, authH } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
-import { AgentAvatar } from "../../../components/ui/AgentAvatar";
+import { AgentAvatar } from "../../../shared/ui/AgentAvatar";
 import { S } from "../../../styles/theme";
 import type { Agent } from "../../../types";
 import { AGENT_TEMPLATES } from "../../../constants";

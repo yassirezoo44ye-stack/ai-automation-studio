@@ -39,7 +39,6 @@ export function EffectsInspector({ getCanvas, selectedIds }: Props) {
   if (!selectedIds.length) return null;
 
   const sel: React.CSSProperties = { flex: 1, padding: "4px 6px", fontSize: "12px", border: "1px solid #2A2A2A", borderRadius: "4px", background: "#1A1A1A", color: "#F2F2F2" };
-  const inp: React.CSSProperties = { ...sel };
 
   return (
     <div style={{ padding: "12px", borderTop: "1px solid #1A1A1A" }}>

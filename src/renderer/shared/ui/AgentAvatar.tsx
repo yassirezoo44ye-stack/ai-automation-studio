@@ -1,4 +1,4 @@
-export const AGENT_COLORS = [
+const AGENT_COLORS = [
   ["#FFD700","#26200a"], ["#E8C87D","#241d0e"], ["#00C853","#0a2a1e"],
   ["#E0A899","#2a1510"], ["#FFB300","#2a1c00"], ["#D6D6D6","#222222"],
 ];

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import { apiFetch, parseJSON, authH, API } from "../../utils/api";
-import { MD_COMPONENTS } from "../../components/ui/CopyButton";
+import { MD_COMPONENTS } from "../../shared/ui/markdown";
 import { S } from "../../styles/theme";
 import ReactMarkdown from "react-markdown";
 
@@ -61,7 +61,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     try {
       const r = await apiFetch("/api/youtube/info", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
       setInfo(await parseJSON<YTInfo>(r, "/api/youtube/info")); toast("Video info loaded");
-    } catch (e: any) { toast(e.message, "err"); }
+    } catch (e) { toast((e as Error).message, "err"); }
     finally { setLoading(false); }
   }
 
@@ -72,7 +72,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
       const r = await apiFetch("/api/youtube/transcript", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
       const d = await parseJSON<{ transcript: string; language: string }>(r, "/api/youtube/transcript");
       setTranscript(d.transcript); toast(`Transcript loaded (${d.language})`);
-    } catch (e: any) { toast(e.message, "err"); }
+    } catch (e) { toast((e as Error).message, "err"); }
     finally { setTL(false); }
   }
 
@@ -102,7 +102,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
           } catch {}
         }
       }
-    } catch (e: any) { if (e.name !== "AbortError") toast(e.message, "err"); }
+    } catch (e) { if ((e as Error).name !== "AbortError") toast((e as Error).message, "err"); }
     finally { setAnswering(false); }
   }
 
@@ -253,7 +253,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
           } catch {}
         }
       }
-    } catch (e: any) { toast(e.message, "err"); setStatus(""); }
+    } catch (e) { toast((e as Error).message, "err"); setStatus(""); }
     finally { setGen(false); }
   }
 

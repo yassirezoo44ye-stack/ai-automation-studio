@@ -35,12 +35,11 @@ function loadPrefs(): UserPrefs {
   } catch { return { ...DEFAULT_PREFS }; }
 }
 
+type RuntimeInfo = { available?: boolean; version?: string };
+
 function savePrefs(p: UserPrefs) {
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
 }
-
-// Export so other components can read the preferred model
-export function getPrefs(): UserPrefs { return loadPrefs(); }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -56,14 +55,14 @@ export function SettingsPage() {
   const [tab, setTab]         = useState<SettingsTab>("system");
   const [health, setHealth]   = useState<Record<string, string> | null>(null);
   const [stats, setStats]     = useState<Record<string, number> | null>(null);
-  const [runtimes, setRuntimes] = useState<Record<string, any> | null>(null);
+  const [runtimes, setRuntimes] = useState<Record<string, RuntimeInfo> | null>(null);
   const [prefs, setPrefs]     = useState<UserPrefs>(loadPrefs);
   const [saved, setSaved]     = useState(false);
 
   useEffect(() => {
     fetch(`${API}/health`).then(r => parseJSON<Record<string, string>>(r, "/health")).then(setHealth).catch(() => {});
     apiFetch(`/api/stats`).then(r => parseJSON<Record<string, number>>(r, "/api/stats")).then(setStats).catch(() => {});
-    apiFetch(`/api/runtimes`).then(r => parseJSON<{ runtimes?: Record<string, unknown> }>(r, "/api/runtimes")).then(d => setRuntimes(d.runtimes ?? {})).catch(() => {});
+    apiFetch(`/api/runtimes`).then(r => parseJSON<{ runtimes?: Record<string, RuntimeInfo> }>(r, "/api/runtimes")).then(d => setRuntimes(d.runtimes ?? {})).catch(() => {});
   }, []);
 
   function updatePref<K extends keyof UserPrefs>(key: K, val: UserPrefs[K]) {
@@ -147,7 +146,7 @@ export function SettingsPage() {
                   <div className="section-label" style={{ marginBottom: 12 }}>Runtimes</div>
                   <div style={S.card}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {Object.entries(runtimes).map(([name, info]: [string, any]) => (
+                      {Object.entries(runtimes).map(([name, info]) => (
                         <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
                           <span style={{ color: "var(--t3)", fontFamily: "var(--font-mono)", fontSize: 12 }}>{name}</span>
                           <span className={`badge badge-${info?.available ? "green" : "muted"}`}>{info?.available ? (info.version ?? "available") : "not found"}</span>

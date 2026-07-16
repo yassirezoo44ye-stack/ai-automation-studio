@@ -1,7 +1,7 @@
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OrgProvider }   from "./contexts/OrgContext";
-import { AppProvider }   from "./contexts/AppContext";
-import { ToastProvider } from "./contexts/ToastContext";
+import { AppProvider }   from "./contexts/AppProvider";
+import { ToastProvider } from "./contexts/ToastProvider";
 import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";

@@ -145,7 +145,6 @@ export function PluginsPage() {
     );
   }
 
-  const expanded = installed.find(i => i.id === expandedId) ?? null;
   const installedItemIds = new Set(installed.filter(i => i.status !== "uninstalled").map(i => i.marketplace_item_id));
 
   return (

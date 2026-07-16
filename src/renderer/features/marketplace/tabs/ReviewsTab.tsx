@@ -4,7 +4,7 @@
  * `reviewer` from the signed-in user — no client-supplied name).
  * Data: GET /marketplace/listings/{id}/reviews, POST /marketplace/reviews
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/ToastContext";
 
@@ -24,7 +24,7 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const r = await apiFetch(`/marketplace/listings/${listingId}/reviews`);
       if (!r.ok) throw new Error();
@@ -33,9 +33,9 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
     } catch {
       setReviews([]);
     }
-  };
+  }, [listingId]);
 
-  useEffect(() => { setReviews(null); void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [listingId]);
+  useEffect(() => { setReviews(null); void load(); }, [load]);
 
   const submit = async () => {
     setSubmitting(true);

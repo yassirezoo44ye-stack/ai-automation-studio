@@ -30,7 +30,7 @@ export function AIWorkspace() {
       setAgents(await parseJSON<Agent[]>(r, "/api/agents"));
     } catch { toast("Could not load agents", "err"); }
     finally { setLoadingAgents(false); }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     apiFetch("/api/projects")

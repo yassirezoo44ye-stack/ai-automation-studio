@@ -15,7 +15,7 @@ export const AGENT_TEMPLATES = [
   { name: "Security Auditor", avatar: "🛡️", description: "Security analysis and best practices", system_prompt: "You are a cybersecurity expert. Analyze code and systems for vulnerabilities (OWASP Top 10, injection, auth issues), suggest hardening measures, and explain security concepts clearly." },
 ];
 
-// Note: the agent-avatar color palette lives in components/ui/AgentAvatar.tsx
+// Note: the agent-avatar color palette lives in shared/ui/AgentAvatar.tsx
 // (colocated with its one consumer) rather than here — keeping it here too
 // would itself be the duplicate this file exists to avoid.
 

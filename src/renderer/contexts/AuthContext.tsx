@@ -68,20 +68,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const doRefreshRef = useRef<() => Promise<{ token: string | null; networkError?: string }>>(async () => ({ token: null }));
 
   const scheduleRefresh = useCallback((delayMs = 13 * 60 * 1000) => {
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     // Refresh 2 min before expiry (access tokens last 15 min).
     // On network error, retry with exponential backoff capped at 5 min.
-    refreshTimerRef.current = setTimeout(async () => {
-      const { token, networkError } = await doRefreshRef.current();
-      if (token) {
-        scheduleRefresh();
-      } else if (networkError) {
-        const backoff = Math.min(delayMs * 2, 5 * 60 * 1000);
-        scheduleRefresh(backoff);
-      }
-      // If token is null and no networkError, the session was legitimately
-      // expired — doRefresh already called logout(); do not reschedule.
-    }, delayMs);
+    function schedule(ms: number) {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(async () => {
+        const { token, networkError } = await doRefreshRef.current();
+        if (token) {
+          schedule(13 * 60 * 1000);
+        } else if (networkError) {
+          schedule(Math.min(ms * 2, 5 * 60 * 1000));
+        }
+        // If token is null and no networkError, the session was legitimately
+        // expired — doRefresh already called logout(); do not reschedule.
+      }, ms);
+    }
+    schedule(delayMs);
   }, []);
 
   const doRefresh = useCallback(async (): Promise<{ token: string | null; networkError?: string }> => {

@@ -50,8 +50,8 @@ export class PluginRegistry {
     this._plugins.set(plugin.id, plugin);
     this._cleanup.set(plugin.id, unsubscribes);
 
+    // Registration is observable via the PluginRegistered event on designBus.
     designBus.emit("PluginRegistered", { pluginId: plugin.id, name: plugin.name });
-    console.info(`[PluginRegistry] Registered plugin "${plugin.name}" v${plugin.version}`);
   }
 
   unregister(pluginId: string): void {

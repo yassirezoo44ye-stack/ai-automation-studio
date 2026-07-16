@@ -3,7 +3,7 @@ import { useAppContext } from "../../contexts/AppContext";
 import { useToast } from "../../contexts/ToastContext";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { relTime } from "../../utils/time";
-import { ProjectAvatar } from "../../components/ui/ProjectAvatar";
+import { ProjectAvatar } from "../../shared/ui/ProjectAvatar";
 import { S } from "../../styles/theme";
 import type { Project } from "../../types";
 
@@ -46,7 +46,7 @@ export function HomePage() {
     try { const r = await apiFetch("/api/projects"); setProjects(await parseJSON<Project[]>(r, "/api/projects")); }
     catch { toast("Could not load projects", "err"); }
     finally { setLoadingProj(false); }
-  }, []);
+  }, [toast]);
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
   // ── Canvas chart ──────────────────────────────────────────────────────────
@@ -298,7 +298,7 @@ export function HomePage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ position: "absolute", left: 10, color: "var(--t4)", pointerEvents: "none" }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects…" style={{ ...S.textInput, paddingLeft: 32, fontSize: 12 }} />
             </div>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} style={{ ...S.projectSelect, width: "auto", fontSize: 12, padding: "8px 10px" }}>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value as "name" | "date")} style={{ ...S.projectSelect, width: "auto", fontSize: 12, padding: "8px 10px" }}>
               <option value="date">Latest</option>
               <option value="name">A → Z</option>
             </select>

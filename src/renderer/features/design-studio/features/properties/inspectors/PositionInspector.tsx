@@ -3,10 +3,9 @@
  * Reads selection from Fabric canvas; applies changes through Commands.
  */
 import { useState, useEffect, useCallback } from "react";
-import type { Canvas as FabricCanvas, FabricObject } from "fabric";
+import type { Canvas as FabricCanvas } from "fabric";
 import { commandManager } from "../../../core/commands/CommandManager";
 import { MoveObjectCommand } from "../../../core/commands/commands/MoveObject";
-import { ResizeObjectCommand } from "../../../core/commands/commands/ResizeObject";
 import { RotateObjectCommand } from "../../../core/commands/commands/RotateObject";
 import { getMeta } from "../../../utils/fabricUtils";
 
