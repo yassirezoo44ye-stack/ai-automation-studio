@@ -602,6 +602,125 @@ class TestDockerRuntimeDetect:
         assert DockerRuntime().detect(tmp_path) is True
 
 
+class TestDockerRuntimeHelpers:
+    def test_image_tag_sanitized(self):
+        from app.execution.platform.runtimes.docker_rt import _image_tag
+        assert _image_tag("Exec 42/Wüt") == "studio-exec-exec-42-w-t"
+
+    def test_image_tag_never_empty(self):
+        from app.execution.platform.runtimes.docker_rt import _image_tag
+        assert _image_tag("///") == "studio-exec-exec"
+
+    def test_exposed_port_parsed(self, tmp_path):
+        from app.execution.platform.runtimes.docker_rt import _exposed_port
+        (tmp_path / "Dockerfile").write_text("FROM node:18\nEXPOSE 8080\nCMD node index.js\n")
+        assert _exposed_port(tmp_path) == 8080
+
+    def test_exposed_port_missing(self, tmp_path):
+        from app.execution.platform.runtimes.docker_rt import _exposed_port
+        (tmp_path / "Dockerfile").write_text("FROM node:18\nCMD node index.js\n")
+        assert _exposed_port(tmp_path) is None
+
+
+class TestDockerRuntimePhases:
+    """docker build / run / rm behaviour with the docker CLI stubbed out."""
+
+    @staticmethod
+    def _make_ctx(tmp_path, events):
+        from types import SimpleNamespace
+        from app.execution.platform.runtimes.abstract import ExecutionContext
+        return ExecutionContext(
+            execution_id="exec-1",
+            project_id="proj-1",
+            workspace=tmp_path,
+            sandbox=SimpleNamespace(paths=None),
+            metrics=None,
+            report=SimpleNamespace(port=0, preview_url=""),
+            artifacts=None,
+            emit=events.append,
+        )
+
+    async def test_install_builds_image(self, tmp_path, monkeypatch):
+        from app.execution.platform.runtimes import docker_rt
+        _make_docker_project(tmp_path)
+        events, calls = [], []
+
+        async def fake_run(cmd, cwd, timeout):
+            calls.append(cmd)
+            return 0, ["Step 1/3 : FROM node:18"], []
+
+        monkeypatch.setattr(docker_rt, "_run_docker", fake_run)
+        ctx = self._make_ctx(tmp_path, events)
+        await docker_rt.DockerRuntime().install(ctx)
+
+        assert calls == [["docker", "build", "-t", "studio-exec-exec-1", "."]]
+        types = [e.event_type for e in events]
+        assert types == ["install_started", "install_progress", "install_completed"]
+
+    async def test_install_failure_raises(self, tmp_path, monkeypatch):
+        import pytest
+        from app.execution.platform.errors import DependencyError
+        from app.execution.platform.runtimes import docker_rt
+        _make_docker_project(tmp_path)
+        events = []
+
+        async def fake_run(cmd, cwd, timeout):
+            return 1, [], ["error: missing base image"]
+
+        monkeypatch.setattr(docker_rt, "_run_docker", fake_run)
+        ctx = self._make_ctx(tmp_path, events)
+        with pytest.raises(DependencyError):
+            await docker_rt.DockerRuntime().install(ctx)
+        assert events[-1].event_type == "install_failed"
+
+    async def test_launch_run_failure_emits_execution_failed(self, tmp_path, monkeypatch):
+        from app.execution.platform.runtimes import docker_rt
+        _make_docker_project(tmp_path)
+        events = []
+
+        async def fake_run(cmd, cwd, timeout):
+            return 125, [], ["docker: port already allocated"]
+
+        monkeypatch.setattr(docker_rt, "_run_docker", fake_run)
+        ctx = self._make_ctx(tmp_path, events)
+        await docker_rt.DockerRuntime().launch(ctx)
+
+        assert events[0].event_type == "server_starting"
+        assert events[-1].event_type == "execution_failed"
+        assert events[-1].error_code == "LAUNCH_CRASH"
+
+    async def test_cleanup_removes_container_and_image(self, tmp_path, monkeypatch):
+        from app.execution.platform.runtimes import docker_rt
+        calls = []
+
+        async def fake_run(cmd, cwd, timeout):
+            calls.append(cmd)
+            return 0, [], []
+
+        monkeypatch.setattr(docker_rt, "_DOCKER_ENABLED", True)
+        monkeypatch.setattr(docker_rt.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_rt, "_run_docker", fake_run)
+        ctx = self._make_ctx(tmp_path, [])
+        await docker_rt.DockerRuntime().cleanup(ctx)
+
+        assert calls == [
+            ["docker", "rm", "-f", "studio-exec-exec-1"],
+            ["docker", "rmi", "-f", "studio-exec-exec-1"],
+        ]
+
+    async def test_cleanup_never_raises(self, tmp_path, monkeypatch):
+        from app.execution.platform.runtimes import docker_rt
+
+        async def fake_run(cmd, cwd, timeout):
+            raise RuntimeError("docker daemon unreachable")
+
+        monkeypatch.setattr(docker_rt, "_DOCKER_ENABLED", True)
+        monkeypatch.setattr(docker_rt.shutil, "which", lambda _: "/usr/bin/docker")
+        monkeypatch.setattr(docker_rt, "_run_docker", fake_run)
+        ctx = self._make_ctx(tmp_path, [])
+        await docker_rt.DockerRuntime().cleanup(ctx)  # must not raise
+
+
 class TestElectronRuntimeDetect:
     def test_detects_electron_dep(self, tmp_path):
         from app.execution.platform.runtimes.electron_rt import ElectronRuntime
