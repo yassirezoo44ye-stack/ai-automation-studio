@@ -49,22 +49,26 @@ export function TypographyInspector({ getCanvas, selectedIds }: Props) {
   const [underline,    setUnderline]    = useState(false);
 
   useEffect(() => {
-    const fc = getCanvas();
-    if (!fc || !selectedIds.length) { setTextObjs([]); return; }
-    const texts = fc.getActiveObjects().filter(o => {
-      const t = o.type ?? "";
-      return t === "i-text" || t === "text" || t === "textbox";
-    }) as IText[];
-    setTextObjs(texts);
-    if (texts[0]) {
-      setFontFamily(texts[0].fontFamily ?? "Inter, sans-serif");
-      setFontSize(texts[0].fontSize ?? 16);
-      setFontWeight(typeof texts[0].fontWeight === "number" ? texts[0].fontWeight : 400);
-      setFontStyle(texts[0].fontStyle === "italic" ? "italic" : "normal");
-      setTextAlign((texts[0].textAlign as "left" | "center" | "right" | "justify") ?? "left");
-      setLineHeight(texts[0].lineHeight ?? 1.4);
-      setUnderline(texts[0].underline ?? false);
-    }
+    // Deferred to a microtask: canvas reads + setState happen in an
+    // async callback, not synchronously inside the effect body.
+    queueMicrotask(() => {
+      const fc = getCanvas();
+      if (!fc || !selectedIds.length) { setTextObjs([]); return; }
+      const texts = fc.getActiveObjects().filter(o => {
+        const t = o.type ?? "";
+        return t === "i-text" || t === "text" || t === "textbox";
+      }) as IText[];
+      setTextObjs(texts);
+      if (texts[0]) {
+        setFontFamily(texts[0].fontFamily ?? "Inter, sans-serif");
+        setFontSize(texts[0].fontSize ?? 16);
+        setFontWeight(typeof texts[0].fontWeight === "number" ? texts[0].fontWeight : 400);
+        setFontStyle(texts[0].fontStyle === "italic" ? "italic" : "normal");
+        setTextAlign((texts[0].textAlign as "left" | "center" | "right" | "justify") ?? "left");
+        setLineHeight(texts[0].lineHeight ?? 1.4);
+        setUnderline(texts[0].underline ?? false);
+      }
+    });
   }, [getCanvas, selectedIds]);
 
   const applyFont = useCallback(async (patch: ConstructorParameters<typeof ChangeFontCommand>[1]) => {

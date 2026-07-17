@@ -2,7 +2,7 @@
  * UsageTab — usage meters for the current billing period.
  * Data comes from the parent BillingPage's already-fetched `billing.usage`.
  */
-import { S } from "../../../styles/theme";
+import { S, C } from "../../../styles/theme";
 
 interface UsageMetric { used: number; limit: number; pct: number | null }
 
@@ -23,7 +23,7 @@ function fmt(n: number): string {
 
 function UsageBar({ metric, data }: { metric: string; data: UsageMetric }) {
   const pct = data.pct ?? 0;
-  const color = pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#34d399";
+  const color = pct >= 90 ? C.red : pct >= 70 ? C.amber : C.green;
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>

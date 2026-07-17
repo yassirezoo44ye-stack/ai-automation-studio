@@ -1,3 +1,4 @@
+import { C } from "../../shared/lib/theme";
 import { Component } from "react";
 import type { ReactNode } from "react";
 
@@ -25,10 +26,10 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback;
       return (
         <div className="empty-state" style={{ flex: 1, direction: "ltr" }}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={C.redSoft} strokeWidth="1.5" strokeLinecap="round">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <h3 style={{ color: "#f87171" }}>
+          <h3 style={{ color: C.redSoft }}>
             {this.props.name ? `Error in ${this.props.name}` : "Something went wrong"}
           </h3>
           <p style={{ color: "var(--t4)", fontSize: 13 }}>{this.state.error}</p>

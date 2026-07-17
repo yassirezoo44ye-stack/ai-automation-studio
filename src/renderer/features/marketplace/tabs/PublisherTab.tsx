@@ -1,3 +1,4 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * PublisherTab — publisher profile (display name, verified badge, item
  * count). Legacy listings with no owner org fall back to the free-text
@@ -20,10 +21,16 @@ export function PublisherTab({ ownerOrganizationId, author }: {
 }) {
   const [publisher, setPublisher] = useState<Publisher | null | undefined>(undefined);
 
+  // Reset while switching listings/owners — render-time adjustment.
+  const [prevOwner, setPrevOwner] = useState(ownerOrganizationId);
+  if (prevOwner !== ownerOrganizationId) {
+    setPrevOwner(ownerOrganizationId);
+    setPublisher(ownerOrganizationId ? undefined : null);
+  }
+
   useEffect(() => {
-    if (!ownerOrganizationId) { setPublisher(null); return; }
+    if (!ownerOrganizationId) return;
     let alive = true;
-    setPublisher(undefined);
     (async () => {
       try {
         const r = await apiFetch(`/marketplace/publishers/${ownerOrganizationId}`);
@@ -57,7 +64,7 @@ export function PublisherTab({ ownerOrganizationId, author }: {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{publisher.display_name}</span>
           {publisher.verified && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#34d399", background: "rgba(52,211,153,.12)", padding: "1px 6px", borderRadius: 99 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: "rgba(52,211,153,.12)", padding: "1px 6px", borderRadius: 99 }}>
               VERIFIED
             </span>
           )}

@@ -1,3 +1,4 @@
+import { C } from "../../shared/lib/theme";
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import AxonLogo from "../../AxonLogo";
@@ -67,8 +68,8 @@ const S = {
     border: "none", background: "transparent",
     color: "var(--accent)", fontSize: 13, cursor: "pointer", textDecoration: "underline",
   } as React.CSSProperties,
-  error:   { color: "#f87171", fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
-  success: { color: "#34d399", fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
+  error:   { color: C.redSoft, fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
+  success: { color: C.green, fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
   row:     { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } as React.CSSProperties,
   check:   { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--t3)", cursor: "pointer" } as React.CSSProperties,
   link:    { fontSize: 13, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 } as React.CSSProperties,

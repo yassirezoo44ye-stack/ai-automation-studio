@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
+import { S, C } from "../../../styles/theme";
 
 interface ProviderHealth {
   available: boolean;
@@ -15,7 +15,7 @@ interface ProviderHealth {
 }
 
 const CIRCUIT_COLOR: Record<string, string> = {
-  closed: "#34d399", half_open: "#f59e0b", open: "#f87171",
+  closed: C.green, half_open: C.amber, open: C.redSoft,
 };
 
 export function ProvidersTab() {

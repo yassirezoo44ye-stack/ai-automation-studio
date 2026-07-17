@@ -88,7 +88,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     // Set the global accessor immediately from localStorage so the very
     // first request after a page refresh already carries the org header.
     setGlobalOrgId(currentOrgId);
-    void refreshOrgs();
+    void Promise.resolve().then(refreshOrgs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 

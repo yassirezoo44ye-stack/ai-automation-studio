@@ -1,3 +1,4 @@
+import { C } from "../../shared/lib/theme";
 /**
  * MarketplacePage — browse, search, and install agents, plugins, workflows,
  * themes, and datasets from the Axon marketplace.
@@ -14,7 +15,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
 import { VersionsTab } from "./tabs/VersionsTab";
 import { DependenciesTab } from "./tabs/DependenciesTab";
@@ -50,20 +51,20 @@ interface Category { slug: string; label: string; icon: string; description: str
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const TYPE_META: Record<ItemType, { label: string; icon: string; color: string }> = {
-  agent:       { label: "Agent",       icon: "🤖", color: "#6c8ef7" },
-  plugin:      { label: "Plugin",      icon: "🔌", color: "#a78bfa" },
-  theme:       { label: "Theme",       icon: "🎨", color: "#f472b6" },
-  template:    { label: "Template",    icon: "📄", color: "#34d399" },
-  prompt_pack: { label: "Prompts",     icon: "💬", color: "#f59e0b" },
+  agent:       { label: "Agent",       icon: "🤖", color: C.blue },
+  plugin:      { label: "Plugin",      icon: "🔌", color: C.purple },
+  theme:       { label: "Theme",       icon: "🎨", color: C.pink },
+  template:    { label: "Template",    icon: "📄", color: C.green },
+  prompt_pack: { label: "Prompts",     icon: "💬", color: C.amber },
   workflow:    { label: "Workflow",    icon: "⚡", color: "#22d3ee" },
-  dataset:     { label: "Dataset",     icon: "📊", color: "#fb923c" },
+  dataset:     { label: "Dataset",     icon: "📊", color: C.orange },
   model:       { label: "Model",       icon: "🧠", color: "#e879f9" },
 };
 
 function Stars({ rating, count }: { rating: number; count: number }) {
   const filled = Math.round(rating);
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#f59e0b" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: C.amber }}>
       {"★".repeat(filled)}{"☆".repeat(5 - filled)}
       <span style={{ color: "var(--t4)", fontSize: 11 }}>({count})</span>
     </span>
@@ -72,7 +73,7 @@ function Stars({ rating, count }: { rating: number; count: number }) {
 
 function PriceBadge({ priceUsd }: { priceUsd: number }) {
   if (priceUsd === 0) return (
-    <span style={{ fontSize: 12, fontWeight: 700, color: "#34d399", background: "rgba(52,211,153,.12)", padding: "2px 8px", borderRadius: 99, border: "1px solid rgba(52,211,153,.25)" }}>
+    <span style={{ fontSize: 12, fontWeight: 700, color: C.green, background: "rgba(52,211,153,.12)", padding: "2px 8px", borderRadius: 99, border: "1px solid rgba(52,211,153,.25)" }}>
       Free
     </span>
   );
@@ -256,7 +257,7 @@ function DetailPanel({ item, onClose, canManage, onRolledBack }: {
           <button key={id} onClick={() => setTab(id)} style={{
             padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
             background: tab === id ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-            color: tab === id ? "#6c8ef7" : "var(--t4)",
+            color: tab === id ? C.blue : "var(--t4)",
           }}>
             {label}
           </button>
@@ -287,7 +288,7 @@ function CategoryBar({ categories, active, onChange }: {
           padding: "7px 14px", borderRadius: 99, cursor: "pointer",
           fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
           background: active === "all" ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-          color: active === "all" ? "#6c8ef7" : "var(--t4)",
+          color: active === "all" ? C.blue : "var(--t4)",
           outline: "none",
           border: active === "all" ? "1px solid rgba(108,142,247,.4)" : "1px solid transparent",
         }}
@@ -297,7 +298,7 @@ function CategoryBar({ categories, active, onChange }: {
       {categories.map(c => {
         const isActive = active === c.slug;
         const meta = TYPE_META[c.slug as ItemType];
-        const color = meta?.color ?? "#6c8ef7";
+        const color = meta?.color ?? C.blue;
         return (
           <button
             key={c.slug}
@@ -387,7 +388,7 @@ export function MarketplacePage() {
     } catch { /* best-effort */ }
   }, []);
 
-  useEffect(() => { void load(); void loadCategories(); }, [load, loadCategories]);
+  useEffect(() => { void Promise.resolve().then(() => { void load(); void loadCategories(); }); }, [load, loadCategories]);
 
   const handleSearch = (q: string) => {
     setSearch(q);
@@ -466,7 +467,7 @@ export function MarketplacePage() {
             Marketplace
           </span>
           <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
-                         background: "rgba(108,142,247,.15)", color: "#6c8ef7", border: "1px solid rgba(108,142,247,.3)" }}>
+                         background: "rgba(108,142,247,.15)", color: C.blue, border: "1px solid rgba(108,142,247,.3)" }}>
             {listings.length} items
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
@@ -474,7 +475,7 @@ export function MarketplacePage() {
               <button key={id} onClick={() => setSortBy(id)} style={{
                 padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
                 background: sortBy === id ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-                color: sortBy === id ? "#6c8ef7" : "var(--t4)",
+                color: sortBy === id ? C.blue : "var(--t4)",
                 transition: "all .15s",
               }}>{label}</button>
             ))}

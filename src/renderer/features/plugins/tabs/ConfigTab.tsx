@@ -8,7 +8,7 @@
  */
 import { useState } from "react";
 import { apiFetch } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
+import { useToast } from "../../../contexts/toast";
 
 export function ConfigTab({ installationId, config }: { installationId: string; config: Record<string, unknown> }) {
   const toast = useToast();

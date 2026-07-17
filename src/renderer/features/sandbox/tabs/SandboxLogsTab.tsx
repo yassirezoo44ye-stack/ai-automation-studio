@@ -1,3 +1,4 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * SandboxLogsTab — a worker's sandbox_events history (log/network/security/
  * resource/lifecycle events), mirrors plugins/tabs/HealthTab.tsx's list
@@ -16,15 +17,18 @@ interface SandboxEvent {
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
-  info: "var(--t4)", warning: "#f59e0b", error: "#f87171",
+  info: "var(--t4)", warning: C.amber, error: C.redSoft,
 };
 
 export function SandboxLogsTab({ workerId }: { workerId: string }) {
   const [logs, setLogs] = useState<SandboxEvent[] | null>(null);
 
+  // Reset while switching workers — render-time state adjustment.
+  const [prevWorkerId, setPrevWorkerId] = useState(workerId);
+  if (prevWorkerId !== workerId) { setPrevWorkerId(workerId); setLogs(null); }
+
   useEffect(() => {
     let alive = true;
-    setLogs(null);
     (async () => {
       try {
         const r = await apiFetch(`/sandbox/workers/${workerId}/logs`);

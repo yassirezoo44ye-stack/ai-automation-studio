@@ -4,7 +4,7 @@
  */
 import { useState } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
+import { useToast } from "../../../contexts/toast";
 import { S } from "../../../styles/theme";
 
 interface PlanDTO {

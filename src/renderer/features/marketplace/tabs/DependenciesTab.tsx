@@ -1,3 +1,4 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * DependenciesTab — required/optional dependency list with version
  * constraints. Data: GET /marketplace/listings/{id}/dependencies
@@ -15,10 +16,12 @@ interface Dependency {
 
 export function DependenciesTab({ listingId }: { listingId: string }) {
   const [deps, setDeps] = useState<Dependency[] | null>(null);
+  // Reset while switching listings — render-time state adjustment.
+  const [prevListingId, setPrevListingId] = useState(listingId);
+  if (prevListingId !== listingId) { setPrevListingId(listingId); setDeps(null); }
 
   useEffect(() => {
     let alive = true;
-    setDeps(null);
     (async () => {
       try {
         const r = await apiFetch(`/marketplace/listings/${listingId}/dependencies`);
@@ -49,7 +52,7 @@ export function DependenciesTab({ listingId }: { listingId: string }) {
             <span style={{
               fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
               background: d.optional ? "rgba(255,255,255,.06)" : "rgba(108,142,247,.15)",
-              color: d.optional ? "var(--t4)" : "#6c8ef7",
+              color: d.optional ? "var(--t4)" : C.blue,
             }}>
               {d.optional ? "OPTIONAL" : "REQUIRED"}
             </span>

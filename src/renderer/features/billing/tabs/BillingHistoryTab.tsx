@@ -4,8 +4,8 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
-import { S } from "../../../styles/theme";
+import { useToast } from "../../../contexts/toast";
+import { S, C } from "../../../styles/theme";
 
 interface Payment {
   id: string; status: string; amount_cents: number; currency: string;
@@ -18,7 +18,7 @@ type HistoryRow =
   | { kind: "credit"; at: string; data: CreditEntry };
 
 const STATUS_COLOR: Record<string, string> = {
-  succeeded: "#34d399", pending: "#f59e0b", failed: "#ef4444", refunded: "#6b7280",
+  succeeded: C.green, pending: C.amber, failed: C.red, refunded: C.gray,
 };
 
 export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
@@ -50,7 +50,7 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   if (loading) {
     return (
@@ -65,7 +65,7 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
       {balance !== null && balance > 0 && (
         <div style={{ ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 13, color: "var(--t2)" }}>Account credit balance</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: "#34d399" }}>${balance.toFixed(2)}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: C.green }}>${balance.toFixed(2)}</span>
         </div>
       )}
 
@@ -95,9 +95,9 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
               {row.kind === "payment" && (
                 <span style={{
                   fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-                  color: STATUS_COLOR[row.data.status] ?? "#6b7280",
-                  background: (STATUS_COLOR[row.data.status] ?? "#6b7280") + "18",
-                  border: `1px solid ${STATUS_COLOR[row.data.status] ?? "#6b7280"}33`,
+                  color: STATUS_COLOR[row.data.status] ?? C.gray,
+                  background: (STATUS_COLOR[row.data.status] ?? C.gray) + "18",
+                  border: `1px solid ${STATUS_COLOR[row.data.status] ?? C.gray}33`,
                 }}>{row.data.status}</span>
               )}
             </div>

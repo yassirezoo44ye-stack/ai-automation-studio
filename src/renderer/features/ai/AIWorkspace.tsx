@@ -4,7 +4,7 @@
  * All tab logic lives in ./tabs/*.
  */
 import { useState, useEffect, useCallback } from "react";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { S } from "../../styles/theme";
 import type { Project, Agent } from "../../types";
@@ -30,14 +30,14 @@ export function AIWorkspace() {
       setAgents(await parseJSON<Agent[]>(r, "/api/agents"));
     } catch { toast("Could not load agents", "err"); }
     finally { setLoadingAgents(false); }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     apiFetch("/api/projects")
       .then(r => parseJSON<Project[]>(r, "/api/projects"))
       .then(setProjects)
       .catch(() => {});
-    loadAgents();
+    void Promise.resolve().then(loadAgents);
   }, [loadAgents]);
 
   const handleChatWith = (agentId: string) => {

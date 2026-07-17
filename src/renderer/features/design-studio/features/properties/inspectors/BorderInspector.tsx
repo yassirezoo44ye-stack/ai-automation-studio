@@ -14,12 +14,16 @@ export function BorderInspector({ getCanvas, selectedIds }: Props) {
   const [hasRadius, setHasRadius] = useState(false);
 
   useEffect(() => {
-    const fc = getCanvas();
-    if (!fc || !selectedIds.length) return;
-    const obj = fc.getActiveObjects()[0];
-    const r = (obj as Rect)?.rx ?? 0;
-    setHasRadius("rx" in (obj ?? {}));
-    setRadius(r);
+    // Deferred to a microtask: canvas reads + setState happen in an
+    // async callback, not synchronously inside the effect body.
+    queueMicrotask(() => {
+      const fc = getCanvas();
+      if (!fc || !selectedIds.length) return;
+      const obj = fc.getActiveObjects()[0];
+      const r = (obj as Rect)?.rx ?? 0;
+      setHasRadius("rx" in (obj ?? {}));
+      setRadius(r);
+    });
   }, [getCanvas, selectedIds]);
 
   const apply = useCallback((r: number) => {

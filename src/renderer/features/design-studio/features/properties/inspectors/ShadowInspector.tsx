@@ -17,20 +17,24 @@ export function ShadowInspector({ getCanvas, selectedIds }: Props) {
   const [shadow,  setShadow]    = useState<ShadowProps>({ color: "rgba(0,0,0,0.2)", offsetX: 4, offsetY: 4, blur: 8 });
 
   useEffect(() => {
-    const fc = getCanvas();
-    if (!fc || !selectedIds.length) return;
-    const obj = fc.getActiveObjects()[0];
-    if (!obj) return;
-    const s = obj.shadow as Shadow | null;
-    setEnabled(!!s);
-    if (s) {
-      setShadow({
-        color:   s.color    ?? "rgba(0,0,0,0.2)",
-        offsetX: s.offsetX  ?? 4,
-        offsetY: s.offsetY  ?? 4,
-        blur:    s.blur     ?? 8,
-      });
-    }
+    // Deferred to a microtask: canvas reads + setState happen in an
+    // async callback, not synchronously inside the effect body.
+    queueMicrotask(() => {
+      const fc = getCanvas();
+      if (!fc || !selectedIds.length) return;
+      const obj = fc.getActiveObjects()[0];
+      if (!obj) return;
+      const s = obj.shadow as Shadow | null;
+      setEnabled(!!s);
+      if (s) {
+        setShadow({
+          color:   s.color    ?? "rgba(0,0,0,0.2)",
+          offsetX: s.offsetX  ?? 4,
+          offsetY: s.offsetY  ?? 4,
+          blur:    s.blur     ?? 8,
+        });
+      }
+    });
   }, [getCanvas, selectedIds]);
 
   const apply = useCallback((sh: ShadowProps | null) => {

@@ -1,10 +1,8 @@
-import { useState, useRef, useEffect, createContext, useContext } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Icons } from "../../icons";
 import type { Page } from "../../types";
 
 type CmdItem = { id: string; label: string; sub?: string; icon: React.JSX.Element; action: () => void; kbd?: string };
-export const CmdCtx = createContext<{ open: () => void; close: () => void }>({ open: () => {}, close: () => {} });
-export function useCmdPalette() { return useContext(CmdCtx); }
 
 export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) => void; onClose: () => void }) {
   const [q, setQ] = useState("");

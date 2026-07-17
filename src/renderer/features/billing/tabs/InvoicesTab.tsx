@@ -4,8 +4,8 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
-import { S } from "../../../styles/theme";
+import { useToast } from "../../../contexts/toast";
+import { S, C } from "../../../styles/theme";
 
 interface Invoice {
   id: string; status: string; amount_due_cents: number; amount_paid_cents: number;
@@ -14,8 +14,8 @@ interface Invoice {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  paid: "#34d399", open: "#f59e0b", draft: "#6b7280",
-  uncollectible: "#ef4444", void: "#6b7280",
+  paid: C.green, open: C.amber, draft: C.gray,
+  uncollectible: C.red, void: C.gray,
 };
 
 function money(cents: number, currency: string): string {
@@ -40,7 +40,7 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   if (loading) {
     return (
@@ -77,8 +77,8 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
           </div>
           <span style={{
             fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-            color: STATUS_COLOR[inv.status] ?? "#6b7280", background: (STATUS_COLOR[inv.status] ?? "#6b7280") + "18",
-            border: `1px solid ${STATUS_COLOR[inv.status] ?? "#6b7280"}33`,
+            color: STATUS_COLOR[inv.status] ?? C.gray, background: (STATUS_COLOR[inv.status] ?? C.gray) + "18",
+            border: `1px solid ${STATUS_COLOR[inv.status] ?? C.gray}33`,
           }}>
             {inv.status}
           </span>

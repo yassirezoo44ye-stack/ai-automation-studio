@@ -29,7 +29,7 @@ export function SystemOverviewTab() {
   }, []);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(load);
     const id = setInterval(() => void load(), 15000);
     return () => clearInterval(id);
   }, [load]);

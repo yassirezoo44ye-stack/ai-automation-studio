@@ -1,3 +1,4 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * InstallationPanel — the first actionable section after a successful Generate.
  *
@@ -19,7 +20,7 @@ export interface DetectedProject {
   hasDocker: boolean;
 }
 
-export function detectProject(files: BuildFile[]): DetectedProject {
+function detectProject(files: BuildFile[]): DetectedProject {
   const paths   = files.map(f => f.path.toLowerCase());
   const has     = (p: string) => paths.some(x => x === p || x.endsWith(`/${p}`));
   const content = (p: string) =>
@@ -90,7 +91,7 @@ function CopyBtn({ text }: { text: string }) {
         fontSize: 12, fontWeight: 600, border: "1px solid",
         borderColor: copied ? "rgba(52,211,153,.45)" : "var(--border)",
         background: copied ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.05)",
-        color: copied ? "#34d399" : "var(--t2)",
+        color: copied ? C.green : "var(--t2)",
         transition: "all .2s",
         flexShrink: 0,
       }}
@@ -215,7 +216,7 @@ export function InstallationPanel({
         <span style={{
           display: "inline-flex", alignItems: "center", gap: 6,
           fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-          background: "rgba(52,211,153,.14)", color: "#34d399",
+          background: "rgba(52,211,153,.14)", color: C.green,
           border: "1px solid rgba(52,211,153,.35)",
           animation: entered ? "pulseOnce .9s ease" : undefined,
         }}>
@@ -282,7 +283,7 @@ export function InstallationPanel({
           }}>
             {commands.map((c, i) => (
               <div key={i} style={{ color: c.startsWith("#") ? "var(--t5)" : undefined }}>
-                {!c.startsWith("#") && <span style={{ color: "#34d399", userSelect: "none" }}>$ </span>}
+                {!c.startsWith("#") && <span style={{ color: C.green, userSelect: "none" }}>$ </span>}
                 {c}
               </div>
             ))}

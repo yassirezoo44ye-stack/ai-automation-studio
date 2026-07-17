@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { apiFetch, parseJSON, API } from "../../utils/api";
-import { useAppContext } from "../../contexts/AppContext";
-import { S } from "../../styles/theme";
+import { useAppContext } from "../../contexts/app";
+import { S, C } from "../../styles/theme";
 import AxonLogo from "../../AxonLogo";
 
 type SettingsTab = "system" | "ai" | "appearance" | "about";
+
+interface RuntimeInfo { available?: boolean; version?: string | null }
 
 const SETTINGS_NAV: { id: SettingsTab; label: string; icon: React.JSX.Element }[] = [
   { id: "system",     label: "System",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> },
@@ -39,9 +41,6 @@ function savePrefs(p: UserPrefs) {
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
 }
 
-// Export so other components can read the preferred model
-export function getPrefs(): UserPrefs { return loadPrefs(); }
-
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "3px 0" }}>
@@ -56,14 +55,14 @@ export function SettingsPage() {
   const [tab, setTab]         = useState<SettingsTab>("system");
   const [health, setHealth]   = useState<Record<string, string> | null>(null);
   const [stats, setStats]     = useState<Record<string, number> | null>(null);
-  const [runtimes, setRuntimes] = useState<Record<string, any> | null>(null);
+  const [runtimes, setRuntimes] = useState<Record<string, RuntimeInfo> | null>(null);
   const [prefs, setPrefs]     = useState<UserPrefs>(loadPrefs);
   const [saved, setSaved]     = useState(false);
 
   useEffect(() => {
     fetch(`${API}/health`).then(r => parseJSON<Record<string, string>>(r, "/health")).then(setHealth).catch(() => {});
     apiFetch(`/api/stats`).then(r => parseJSON<Record<string, number>>(r, "/api/stats")).then(setStats).catch(() => {});
-    apiFetch(`/api/runtimes`).then(r => parseJSON<{ runtimes?: Record<string, unknown> }>(r, "/api/runtimes")).then(d => setRuntimes(d.runtimes ?? {})).catch(() => {});
+    apiFetch(`/api/runtimes`).then(r => parseJSON<{ runtimes?: Record<string, RuntimeInfo> }>(r, "/api/runtimes")).then(d => setRuntimes(d.runtimes ?? {})).catch(() => {});
   }, []);
 
   function updatePref<K extends keyof UserPrefs>(key: K, val: UserPrefs[K]) {
@@ -125,8 +124,8 @@ export function SettingsPage() {
                   {health ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#34d399", flexShrink: 0, boxShadow: "0 0 8px #34d399" }} />
-                        <span style={{ fontSize: 13, fontWeight: 600, color: "#34d399" }}>Backend online</span>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.green, flexShrink: 0, boxShadow: "0 0 8px #34d399" }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: C.green }}>Backend online</span>
                       </div>
                       <hr className="divider" />
                       <Row label="Status"     value={health.status} />
@@ -135,8 +134,8 @@ export function SettingsPage() {
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f87171", flexShrink: 0 }} />
-                      <span style={{ fontSize: 13, color: "#f87171" }}>Backend offline — run <code style={S.code}>python main.py</code></span>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.redSoft, flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: C.redSoft }}>Backend offline — run <code style={S.code}>python main.py</code></span>
                     </div>
                   )}
                 </div>
@@ -147,7 +146,7 @@ export function SettingsPage() {
                   <div className="section-label" style={{ marginBottom: 12 }}>Runtimes</div>
                   <div style={S.card}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {Object.entries(runtimes).map(([name, info]: [string, any]) => (
+                      {Object.entries(runtimes).map(([name, info]) => (
                         <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
                           <span style={{ color: "var(--t3)", fontFamily: "var(--font-mono)", fontSize: 12 }}>{name}</span>
                           <span className={`badge badge-${info?.available ? "green" : "muted"}`}>{info?.available ? (info.version ?? "available") : "not found"}</span>
@@ -167,7 +166,7 @@ export function SettingsPage() {
                       <Row label="Conversations" value={String(stats.conversations ?? 0)} />
                       <Row label="Messages"      value={String(stats.messages ?? 0)} />
                       <Row label="Agent Runs"    value={String(stats.agent_runs ?? 0)} />
-                      <Row label="Success Rate"  value={<span style={{ color: "#34d399", fontWeight: 600 }}>{stats.success_rate ?? 0}%</span>} />
+                      <Row label="Success Rate"  value={<span style={{ color: C.green, fontWeight: 600 }}>{stats.success_rate ?? 0}%</span>} />
                     </div>
                   </div>
                 </div>
@@ -228,7 +227,7 @@ export function SettingsPage() {
                       </div>
                     </div>
                     <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener noreferrer"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6c8ef7" }}>
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: C.blue }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                       Manage billing at console.anthropic.com
                     </a>
@@ -286,7 +285,7 @@ export function SettingsPage() {
                           }}
                         >
                           <div style={{ width: "100%", height: 50, borderRadius: 8, background: t.bg, marginBottom: 8, border: "1px solid rgba(128,128,128,0.15)" }} />
-                          <div style={{ fontSize: 12, fontWeight: 500, color: theme === t.id ? "#a78bfa" : "var(--t3)" }}>{t.label}</div>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: theme === t.id ? C.purple : "var(--t3)" }}>{t.label}</div>
                         </button>
                       ))}
                     </div>

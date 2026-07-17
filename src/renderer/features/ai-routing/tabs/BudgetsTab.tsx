@@ -7,8 +7,8 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
-import { S } from "../../../styles/theme";
+import { useToast } from "../../../contexts/toast";
+import { S, C } from "../../../styles/theme";
 
 interface BudgetMetric { used: number; limit: number; pct: number | null }
 interface BudgetsResponse {
@@ -41,7 +41,7 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
   const [saving, setSaving] = useState(false);
 
   const pct = data.pct ?? 0;
-  const color = pct >= 90 ? "#f87171" : pct >= 70 ? "#f59e0b" : "#34d399";
+  const color = pct >= 90 ? C.redSoft : pct >= 70 ? C.amber : C.green;
 
   const save = async () => {
     const trimmed = value.trim();
@@ -122,7 +122,7 @@ export function BudgetsTab({ orgId }: { orgId: string }) {
     }
   }, [projectId, workflowId, agentId, toast]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   return (
     <div>

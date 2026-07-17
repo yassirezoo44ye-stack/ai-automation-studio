@@ -6,7 +6,7 @@
 import { useRef } from "react";
 import { authH, API, parseJSON } from "../../../shared/utils/api";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
-import { S } from "../../../styles/theme";
+import { S, C } from "../../../styles/theme";
 import { BUILD_TEMPLATES } from "../../../constants";
 import { InstallationPanel } from "../components/InstallationPanel";
 import type { BuildFile, BuildState, Project } from "../../../shared/types";
@@ -148,7 +148,7 @@ export function BuildTab({
         {buildState === "building" && status && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <StatusBadge kind="info" label="Building" />
-            <span style={{ fontSize: 12, color: "#34d399" }}>{status}</span>
+            <span style={{ fontSize: 12, color: C.green }}>{status}</span>
           </div>
         )}
 

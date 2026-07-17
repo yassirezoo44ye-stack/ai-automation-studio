@@ -1,4 +1,4 @@
-import { useAppContext } from "../../contexts/AppContext";
+import { useAppContext } from "../../contexts/app";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOrg } from "../../contexts/OrgContext";
 import { Icons } from "../../icons";

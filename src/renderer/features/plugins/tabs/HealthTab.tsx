@@ -1,3 +1,4 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * HealthTab — current status + recent event log.
  * Data: GET /plugins/installed/{id}/health, GET /plugins/installed/{id}/logs
@@ -8,15 +9,18 @@ import { apiFetch, parseJSON } from "../../../shared/utils/api";
 interface LogEntry { event: string; message: string | null; created_at: string }
 
 const EVENT_COLOR: Record<string, string> = {
-  load: "#34d399", unload: "var(--t4)", reload: "#6c8ef7", error: "#f87171", tick: "var(--t4)",
+  load: C.green, unload: "var(--t4)", reload: C.blue, error: C.redSoft, tick: "var(--t4)",
 };
 
 export function HealthTab({ installationId, status }: { installationId: string; status: string }) {
   const [logs, setLogs] = useState<LogEntry[] | null>(null);
 
+  // Reset while switching installations — render-time state adjustment.
+  const [prevId, setPrevId] = useState(installationId);
+  if (prevId !== installationId) { setPrevId(installationId); setLogs(null); }
+
   useEffect(() => {
     let alive = true;
-    setLogs(null);
     (async () => {
       try {
         const r = await apiFetch(`/plugins/installed/${installationId}/logs`);
@@ -34,7 +38,7 @@ export function HealthTab({ installationId, status }: { installationId: string; 
         <span style={{ fontSize: 12, color: "var(--t4)" }}>Status:</span>
         <span style={{
           fontSize: 12, fontWeight: 700, textTransform: "uppercase",
-          color: status === "enabled" ? "#34d399" : status === "failed" ? "#f87171" : "var(--t3)",
+          color: status === "enabled" ? C.green : status === "failed" ? C.redSoft : "var(--t3)",
         }}>
           {status}
         </span>

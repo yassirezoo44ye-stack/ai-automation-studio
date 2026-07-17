@@ -17,14 +17,18 @@ export function AppearanceInspector({ getCanvas, selectedIds }: Props) {
   const [strokeWidth, setStrokeWidth] = useState(0);
 
   useEffect(() => {
-    const fc = getCanvas();
-    if (!fc || !selectedIds.length) return;
-    const obj = fc.getActiveObjects()[0];
-    if (!obj) return;
-    const rawFill = obj.fill;
-    setFill(typeof rawFill === "string" ? rawFill : "#4f46e5");
-    setStroke(typeof obj.stroke === "string" ? obj.stroke : "#000000");
-    setStrokeWidth(obj.strokeWidth ?? 0);
+    // Deferred to a microtask: canvas reads + setState happen in an
+    // async callback, not synchronously inside the effect body.
+    queueMicrotask(() => {
+      const fc = getCanvas();
+      if (!fc || !selectedIds.length) return;
+      const obj = fc.getActiveObjects()[0];
+      if (!obj) return;
+      const rawFill = obj.fill;
+      setFill(typeof rawFill === "string" ? rawFill : "#4f46e5");
+      setStroke(typeof obj.stroke === "string" ? obj.stroke : "#000000");
+      setStrokeWidth(obj.strokeWidth ?? 0);
+    });
   }, [getCanvas, selectedIds]);
 
   const applyColor = useCallback(async (prop: "fill" | "stroke", color: string) => {

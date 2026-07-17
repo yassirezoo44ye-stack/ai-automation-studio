@@ -1,3 +1,4 @@
+import { C } from "../../shared/lib/theme";
 /**
  * SandboxPage — Agent Sandbox & Secure Execution Runtime monitoring.
  * Mirrors PluginsPage.tsx's tab-shell + expand-to-detail pattern (same
@@ -11,7 +12,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
 import { SandboxLogsTab } from "./tabs/SandboxLogsTab";
 import { ResourceUsageTab } from "./tabs/ResourceUsageTab";
@@ -50,7 +51,7 @@ type TopTab = "workers" | "permission-requests" | "security-events";
 type DetailTab = "logs" | "resource-usage";
 
 const STATUS_COLOR: Record<string, string> = {
-  running: "#34d399", starting: "#6c8ef7", stopped: "var(--t4)", crashed: "#f87171",
+  running: C.green, starting: C.blue, stopped: "var(--t4)", crashed: C.redSoft,
 };
 
 export function SandboxPage() {
@@ -99,8 +100,10 @@ export function SandboxPage() {
   }, [currentOrgId, toast]);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([loadWorkers(), loadSecurityEvents(), loadPermissionRequests()]).finally(() => setLoading(false));
+    void Promise.resolve().then(() => {
+      setLoading(true);
+      Promise.all([loadWorkers(), loadSecurityEvents(), loadPermissionRequests()]).finally(() => setLoading(false));
+    });
   }, [loadWorkers, loadSecurityEvents, loadPermissionRequests]);
 
   const refresh = () => {
@@ -166,7 +169,7 @@ export function SandboxPage() {
             <button key={t} onClick={() => setTopTab(t)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
               background: topTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-              color: topTab === t ? "#6c8ef7" : "var(--t4)",
+              color: topTab === t ? C.blue : "var(--t4)",
             }}>
               {label} {t === "workers" ? `(${workers.length})` : t === "permission-requests" ? `(${permissionRequests.length})` : ""}
             </button>
@@ -214,7 +217,7 @@ export function SandboxPage() {
                         disabled={busy === w.id || w.status === "stopped" || w.status === "crashed"}
                         style={{
                           padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                          background: "rgba(248,113,113,.08)", color: "#f87171", fontSize: 12,
+                          background: "rgba(248,113,113,.08)", color: C.redSoft, fontSize: 12,
                           cursor: busy === w.id ? "wait" : "pointer",
                           opacity: (w.status === "stopped" || w.status === "crashed") ? 0.5 : 1,
                         }}
@@ -231,7 +234,7 @@ export function SandboxPage() {
                           <button key={t} onClick={() => setDetailTab(t)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
                             background: detailTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-                            color: detailTab === t ? "#6c8ef7" : "var(--t4)",
+                            color: detailTab === t ? C.blue : "var(--t4)",
                           }}>
                             {t === "logs" ? "Logs" : "Resource Usage"}
                           </button>
@@ -265,7 +268,7 @@ export function SandboxPage() {
                       {req.pending_capabilities.map(c => (
                         <span key={c} style={{
                           fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 99,
-                          background: "rgba(245,158,11,.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,.3)",
+                          background: "rgba(245,158,11,.12)", color: C.amber, border: "1px solid rgba(245,158,11,.3)",
                         }}>
                           {c}
                         </span>
@@ -276,7 +279,7 @@ export function SandboxPage() {
                     onClick={() => void approveRequest(req)} disabled={busy === req.installation_id}
                     style={{
                       padding: "6px 16px", borderRadius: 8, border: "none", cursor: busy === req.installation_id ? "wait" : "pointer",
-                      background: "#f59e0b", color: "#000", fontSize: 12, fontWeight: 700,
+                      background: C.amber, color: "#000", fontSize: 12, fontWeight: 700,
                     }}
                   >
                     {busy === req.installation_id ? "…" : "Approve"}
@@ -300,7 +303,7 @@ export function SandboxPage() {
                 }}>
                   <span style={{
                     fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 60,
-                    color: e.severity === "error" ? "#f87171" : e.severity === "warning" ? "#f59e0b" : "var(--t4)",
+                    color: e.severity === "error" ? C.redSoft : e.severity === "warning" ? C.amber : "var(--t4)",
                   }}>
                     {e.severity}
                   </span>

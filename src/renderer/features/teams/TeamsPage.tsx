@@ -5,9 +5,9 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
-import { S } from "../../styles/theme";
+import { S, C } from "../../styles/theme";
 
 type Role = "owner" | "admin" | "manager" | "developer" | "operator" | "viewer";
 
@@ -24,8 +24,8 @@ interface TeamMember { user_id: string; email: string; name: string | null; join
 
 const ROLES: Role[] = ["owner", "admin", "manager", "developer", "operator", "viewer"];
 const ROLE_COLOR: Record<Role, string> = {
-  owner: "#f59e0b", admin: "#ef4444", manager: "#8b5cf6",
-  developer: "#6c8ef7", operator: "#34d399", viewer: "#6b7280",
+  owner: C.amber, admin: C.red, manager: "#8b5cf6",
+  developer: C.blue, operator: C.green, viewer: C.gray,
 };
 
 const sectionLabel: React.CSSProperties = {
@@ -70,7 +70,7 @@ export function TeamsPage() {
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   const loadTeams = useCallback(async () => {
     if (!currentOrgId) { setTeams([]); setTeamsLoading(false); return; }
@@ -86,7 +86,10 @@ export function TeamsPage() {
     } finally { setTeamsLoading(false); }
   }, [currentOrgId, toast]);
 
-  useEffect(() => { void loadTeams(); setExpandedTeam(null); setTeamMembers({}); }, [loadTeams]);
+  useEffect(() => { void Promise.resolve().then(loadTeams); }, [loadTeams]);
+  // Collapse expanded team state when the org changes — render-time adjustment.
+  const [prevTeamsOrg, setPrevTeamsOrg] = useState(currentOrgId);
+  if (prevTeamsOrg !== currentOrgId) { setPrevTeamsOrg(currentOrgId); setExpandedTeam(null); setTeamMembers({}); }
 
   const createTeam = async () => {
     if (!currentOrgId || !newTeamName.trim()) return;
@@ -295,7 +298,7 @@ export function TeamsPage() {
                     >{isOpen ? "Hide" : "Members"}</button>
                     <button
                       onClick={() => void deleteTeam(t.id)} disabled={teamBusy === t.id}
-                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: "#f87171" }}
+                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: C.redSoft }}
                     >Delete</button>
                   </div>
 
@@ -314,7 +317,7 @@ export function TeamsPage() {
                               <button
                                 onClick={() => void removeTeamMember(t.id, m.user_id)}
                                 disabled={teamBusy === `${t.id}:${m.user_id}`}
-                                style={{ ...S.btnSecondary, padding: "3px 10px", fontSize: 10, color: "#f87171" }}
+                                style={{ ...S.btnSecondary, padding: "3px 10px", fontSize: 10, color: C.redSoft }}
                               >Remove</button>
                             </div>
                           ))}
@@ -414,7 +417,7 @@ export function TeamsPage() {
                     </select>
                     <button
                       onClick={() => void removeMember(m.user_id)} disabled={busy === m.user_id}
-                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: "#f87171" }}
+                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: C.redSoft }}
                     >Remove</button>
                   </>
                 )}

@@ -1,2 +1,2 @@
 // Re-export shim — canonical location is shared/ui/PageBoundary.tsx
-export * from "../../shared/ui/PageBoundary";
+export { PageBoundary } from "../../shared/ui/PageBoundary";

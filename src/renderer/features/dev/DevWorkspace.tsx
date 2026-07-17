@@ -6,7 +6,7 @@
  * The "design" tab has been removed — Design Studio is a first-class nav destination.
  */
 import { useState, useEffect, useCallback } from "react";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { S } from "../../styles/theme";

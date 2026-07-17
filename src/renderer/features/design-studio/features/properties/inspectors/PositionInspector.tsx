@@ -43,9 +43,13 @@ export function PositionInspector({ getCanvas, selectedIds }: Props) {
   const [props, setProps] = useState<ObjectProps | null>(null);
 
   useEffect(() => {
-    const fc = getCanvas();
-    if (!fc || !selectedIds.length) { setProps(null); return; }
-    setProps(getActiveProps(fc));
+    // Deferred to a microtask: canvas reads + setState happen in an
+    // async callback, not synchronously inside the effect body.
+    queueMicrotask(() => {
+      const fc = getCanvas();
+      if (!fc || !selectedIds.length) { setProps(null); return; }
+      setProps(getActiveProps(fc));
+    });
   }, [getCanvas, selectedIds]);
 
   const applyChange = useCallback(async (field: keyof ObjectProps, value: number) => {

@@ -220,3 +220,27 @@ export type StatusBadgeKind = "neutral" | "info" | "success" | "warning" | "erro
 export const BADGE_STYLE: Record<StatusBadgeKind, React.CSSProperties> = {
   neutral: S.badgeNeutral, info: S.badgeInfo, success: S.badgeSuccess, warning: S.badgeWarning, error: S.badgeError,
 };
+
+// ── Semantic color tokens ─────────────────────────────────────────────────────
+// Single source for the status/accent colors that were previously hardcoded
+// per-file (values unchanged — this is centralization, not a redesign).
+export const C = {
+  green:       "#34d399",   // success
+  greenBright: "#22c55e",   // success (AgentOS variant)
+  red:         "#ef4444",   // danger
+  redSoft:     "#f87171",   // danger (soft)
+  amber:       "#f59e0b",   // warning
+  blue:        "#6c8ef7",   // info / running
+  purple:      "#a78bfa",
+  sky:         "#38bdf8",
+  pink:        "#f472b6",
+  orange:      "#fb923c",
+  gray:        "#6b7280",   // muted / pending
+  grayBlue:    "#6b7a99",   // muted text on dark
+  slate:       "#4b5980",
+} as const;
+
+/** `withAlpha(C.red, "22")` — replaces the `color + "22"` literal-suffix pattern. */
+export function withAlpha(hex: string, alpha: string): string {
+  return hex + alpha;
+}

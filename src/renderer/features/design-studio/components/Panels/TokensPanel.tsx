@@ -53,7 +53,7 @@ export function TokensPanel() {
     setTokens(tokenRegistry.byCategory(category));
   }, [category]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { void Promise.resolve().then(refresh); }, [refresh]);
 
   const addToken = () => {
     if (!newName.trim()) return;

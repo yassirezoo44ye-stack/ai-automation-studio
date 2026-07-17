@@ -20,9 +20,12 @@ interface ResourceUsage {
 export function ResourceUsageTab({ workerId }: { workerId: string }) {
   const [usage, setUsage] = useState<ResourceUsage | null>(null);
 
+  // Reset while switching workers — render-time state adjustment.
+  const [prevWorkerId, setPrevWorkerId] = useState(workerId);
+  if (prevWorkerId !== workerId) { setPrevWorkerId(workerId); setUsage(null); }
+
   useEffect(() => {
     let alive = true;
-    setUsage(null);
     (async () => {
       try {
         const r = await apiFetch(`/sandbox/workers/${workerId}/resource-usage`);

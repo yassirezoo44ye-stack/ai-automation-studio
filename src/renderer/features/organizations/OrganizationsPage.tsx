@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
 
@@ -39,9 +39,12 @@ export function OrganizationsPage() {
     finally { setActivityLoading(false); }
   }, []);
 
+  // Clear the feed when no org is selected — render-time adjustment.
+  const [prevOrgId, setPrevOrgId] = useState(currentOrgId);
+  if (prevOrgId !== currentOrgId) { setPrevOrgId(currentOrgId); if (!currentOrgId) setActivity([]); }
+
   useEffect(() => {
-    if (currentOrgId) void loadActivity(currentOrgId);
-    else setActivity([]);
+    if (currentOrgId) void Promise.resolve().then(() => loadActivity(currentOrgId));
   }, [currentOrgId, loadActivity]);
 
   const handleCreate = async () => {

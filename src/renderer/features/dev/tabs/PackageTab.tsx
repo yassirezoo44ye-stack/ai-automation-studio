@@ -3,9 +3,9 @@
  * Replaces the legacy AppPackager.tsx with a clean, service-backed implementation.
  * Uses /api/package/* endpoints and renders streaming build logs.
  */
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON, authH, API } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
+import { S, C } from "../../../styles/theme";
 import type { Project } from "../../../shared/types";
 
 type PackTarget = "exe" | "apk" | "zip";
@@ -35,7 +35,7 @@ const TARGETS_FOR: Record<PackLang, { id: PackTarget; label: string }[]> = {
   docker:   [{ id: "zip", label: "Deploy ZIP" }],
 };
 
-const LOG_COLOR: Record<string, string> = { ok: "#34d399", err: "#f87171", cmd: "#a78bfa", info: "#94a3b8" };
+const LOG_COLOR: Record<string, string> = { ok: C.green, err: C.redSoft, cmd: C.purple, info: "#94a3b8" };
 
 interface PackageTabProps {
   projects:  Project[];
@@ -70,7 +70,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
 
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
 
-  const checkPreflight = () => {
+  const checkPreflight = useCallback(() => {
     if (lang === "docker") { setPreflight(null); return; }
     setPfLoading(true);
     apiFetch(`/api/package/preflight?lang=${lang}&target=${target}`)
@@ -78,9 +78,9 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
       .then(setPreflight)
       .catch(() => setPreflight(null))
       .finally(() => setPfLoading(false));
-  };
+  }, [lang, target]);
 
-  useEffect(() => { checkPreflight(); }, [lang, target]);
+  useEffect(() => { void Promise.resolve().then(checkPreflight); }, [checkPreflight]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -257,7 +257,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
             padding: "10px 14px",
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: preflight.checks.length ? 8 : 0 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: preflight.ok ? "#34d399" : "#f87171" }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: preflight.ok ? C.green : C.redSoft }}>
                 {preflight.ok ? "✓ Build environment ready" : "⚠ Build environment not ready"}
               </span>
               <button
@@ -271,7 +271,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
               {preflight.checks.map(c => (
                 <span key={c.name} title={c.version ?? undefined} style={{
                   fontSize: 11, padding: "2px 8px", borderRadius: 20,
-                  color: c.available ? "#34d399" : "#f87171",
+                  color: c.available ? C.green : C.redSoft,
                   background: c.available ? "rgba(52,211,153,.1)" : "rgba(248,113,113,.1)",
                   border: `1px solid ${c.available ? "rgba(52,211,153,.25)" : "rgba(248,113,113,.3)"}`,
                 }}>
@@ -283,7 +283,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
               <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                 {preflight.checks.filter(c => !c.available).map(c => (
                   <div key={c.name} style={{ fontSize: 11, color: "var(--t3)", lineHeight: 1.5 }}>
-                    <strong style={{ color: "#f87171" }}>{c.display}</strong> — {c.fix_hint}
+                    <strong style={{ color: C.redSoft }}>{c.display}</strong> — {c.fix_hint}
                   </div>
                 ))}
               </div>

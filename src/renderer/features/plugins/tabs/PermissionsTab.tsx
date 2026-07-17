@@ -1,3 +1,4 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * PermissionsTab — the plugin's declared capabilities (from its manifest,
  * already embedded on the installation row — no separate fetch needed) and
@@ -5,7 +6,7 @@
  */
 import { useState } from "react";
 import { apiFetch } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
+import { useToast } from "../../../contexts/toast";
 
 const SENSITIVE = new Set(["network", "filesystem", "shell_exec", "credentials_read", "third_party_api"]);
 
@@ -45,7 +46,7 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
           border: "1px solid rgba(245,158,11,.3)", background: "rgba(245,158,11,.08)",
           borderRadius: 10, padding: "10px 14px",
         }}>
-          <span style={{ fontSize: 12, color: "#f59e0b" }}>
+          <span style={{ fontSize: 12, color: C.amber }}>
             This plugin declares sensitive capabilities and is disabled until approved.
           </span>
           <button
@@ -53,7 +54,7 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
             disabled={approving}
             style={{
               padding: "5px 14px", borderRadius: 6, border: "none", cursor: "pointer",
-              background: "#f59e0b", color: "#000", fontSize: 12, fontWeight: 700,
+              background: C.amber, color: "#000", fontSize: 12, fontWeight: 700,
             }}
           >
             {approving ? "…" : "Approve"}
@@ -65,7 +66,7 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
           <span key={p} style={{
             fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 99,
             background: SENSITIVE.has(p) ? "rgba(245,158,11,.12)" : "rgba(108,142,247,.12)",
-            color: SENSITIVE.has(p) ? "#f59e0b" : "#6c8ef7",
+            color: SENSITIVE.has(p) ? C.amber : C.blue,
             border: `1px solid ${SENSITIVE.has(p) ? "rgba(245,158,11,.3)" : "rgba(108,142,247,.3)"}`,
           }}>
             {p}

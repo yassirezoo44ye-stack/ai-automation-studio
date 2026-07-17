@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
-import { useAppContext } from "../../contexts/AppContext";
+import { useAppContext } from "../../contexts/app";
 import { ErrorBoundary } from "../../shared/ui/ErrorBoundary";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { Sidebar } from "./Sidebar";

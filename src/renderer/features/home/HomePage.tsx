@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useAppContext } from "../../contexts/AppContext";
-import { useToast } from "../../contexts/ToastContext";
+import { useAppContext } from "../../contexts/app";
+import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { relTime } from "../../utils/time";
 import { ProjectAvatar } from "../../components/ui/ProjectAvatar";
-import { S } from "../../styles/theme";
+import { S, C, withAlpha } from "../../styles/theme";
 import type { Project } from "../../types";
 
 type HomeTab = "overview" | "projects";
@@ -46,8 +46,8 @@ export function HomePage() {
     try { const r = await apiFetch("/api/projects"); setProjects(await parseJSON<Project[]>(r, "/api/projects")); }
     catch { toast("Could not load projects", "err"); }
     finally { setLoadingProj(false); }
-  }, []);
-  useEffect(() => { loadProjects(); }, [loadProjects]);
+  }, [toast]);
+  useEffect(() => { void Promise.resolve().then(loadProjects); }, [loadProjects]);
 
   // ── Canvas chart ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -68,7 +68,7 @@ export function HomePage() {
     for (let i = 0; i <= 4; i++) {
       const yy = pad.top + (i / 4) * gH;
       ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + gW, yy); ctx.stroke();
-      ctx.fillStyle = "#4b5980"; ctx.font = "11px Segoe UI";
+      ctx.fillStyle = C.slate; ctx.font = "11px Segoe UI";
       ctx.fillText(String(Math.round(maxVal * (1 - i / 4))), 4, yy + 4);
     }
 
@@ -84,37 +84,37 @@ export function HomePage() {
       vals.forEach((v, i) => i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v)));
       ctx.stroke();
     };
-    drawArea(series.messages, "#6c8ef740", "#6c8ef7", 2.5);
-    drawArea(series.builds,   "#34d39930", "#34d399", 2);
+    drawArea(series.messages, withAlpha(C.blue, "40"), C.blue, 2.5);
+    drawArea(series.builds,   withAlpha(C.green, "30"), C.green, 2);
 
-    ctx.fillStyle = "#4b5980"; ctx.font = "11px Segoe UI"; ctx.textAlign = "center";
+    ctx.fillStyle = C.slate; ctx.font = "11px Segoe UI"; ctx.textAlign = "center";
     series.labels.forEach((l, i) => { if (i % 2 === 0) ctx.fillText(l, x(i), H - 8); });
     ctx.textAlign = "start";
   }, [series]);
 
   const statCards: StatCardDef[] = [
-    { label: "Conversations", value: stats?.conversations ?? "—", color: "#6c8ef7", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
-    { label: "Messages",      value: stats?.messages      ?? "—", color: "#a78bfa", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
-    { label: "Builds",        value: stats?.agent_runs    ?? "—", color: "#34d399", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
-    { label: "Projects",      value: stats?.projects      ?? "—", color: "#f59e0b", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
+    { label: "Conversations", value: stats?.conversations ?? "—", color: C.blue, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+    { label: "Messages",      value: stats?.messages      ?? "—", color: C.purple, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
+    { label: "Builds",        value: stats?.agent_runs    ?? "—", color: C.green, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
+    { label: "Projects",      value: stats?.projects      ?? "—", color: C.amber, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
     { label: "Success Rate",  value: stats ? `${stats.success_rate}%` : "—", color: "#10b981", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> },
-    { label: "Agent Runs",    value: stats?.agent_runs    ?? "—", color: "#f87171", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg> },
+    { label: "Agent Runs",    value: stats?.agent_runs    ?? "—", color: C.redSoft, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg> },
   ];
 
   const actionMeta: Record<string, { label: string; color: string }> = {
-    agent_run:       { label: "Chat",    color: "#6c8ef7" },
-    build:           { label: "Build",   color: "#34d399" },
-    project_created: { label: "Project", color: "#f59e0b" },
+    agent_run:       { label: "Chat",    color: C.blue },
+    build:           { label: "Build",   color: C.green },
+    project_created: { label: "Project", color: C.amber },
   };
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const quickActions = [
-    { label: "New Chat",    sub: "Start an AI conversation", page: "ai"  as const, color: "#6c8ef7", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
-    { label: "Build App",   sub: "Generate code with AI",    page: "dev" as const, color: "#34d399", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
-    { label: "New Agent",   sub: "Create an AI agent",       page: "ai"  as const, color: "#a78bfa", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a5 5 0 0 1 5 5v2a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5z"/><path d="M2 20c0-3 3.5-5 10-5s10 2 10 5"/></svg> },
-    { label: "New Project", sub: "Organize your work",       page: "home" as const, color: "#f59e0b", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
+    { label: "New Chat",    sub: "Start an AI conversation", page: "ai"  as const, color: C.blue, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+    { label: "Build App",   sub: "Generate code with AI",    page: "dev" as const, color: C.green, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
+    { label: "New Agent",   sub: "Create an AI agent",       page: "ai"  as const, color: C.purple, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a5 5 0 0 1 5 5v2a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5z"/><path d="M2 20c0-3 3.5-5 10-5s10 2 10 5"/></svg> },
+    { label: "New Project", sub: "Organize your work",       page: "home" as const, color: C.amber, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
   ];
 
   // ── Projects helpers ──────────────────────────────────────────────────────
@@ -234,8 +234,8 @@ export function HomePage() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <span style={S.cardTitle}>Activity — last 14 days</span>
                 <div style={{ display: "flex", gap: 14, fontSize: 12 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#6c8ef7" }}><span style={{ width: 10, height: 3, borderRadius: 2, background: "#6c8ef7", display: "inline-block" }} />Messages</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#34d399" }}><span style={{ width: 10, height: 3, borderRadius: 2, background: "#34d399", display: "inline-block" }} />Builds</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, color: C.blue }}><span style={{ width: 10, height: 3, borderRadius: 2, background: C.blue, display: "inline-block" }} />Messages</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, color: C.green }}><span style={{ width: 10, height: 3, borderRadius: 2, background: C.green, display: "inline-block" }} />Builds</span>
                 </div>
               </div>
               {series ? <canvas ref={canvasRef} width={800} height={180} style={{ width: "100%", height: 180 }} />
@@ -298,7 +298,7 @@ export function HomePage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ position: "absolute", left: 10, color: "var(--t4)", pointerEvents: "none" }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects…" style={{ ...S.textInput, paddingLeft: 32, fontSize: 12 }} />
             </div>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} style={{ ...S.projectSelect, width: "auto", fontSize: 12, padding: "8px 10px" }}>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value as "date" | "name")} style={{ ...S.projectSelect, width: "auto", fontSize: 12, padding: "8px 10px" }}>
               <option value="date">Latest</option>
               <option value="name">A → Z</option>
             </select>
@@ -350,7 +350,7 @@ export function HomePage() {
                       <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 2 }}>{relTime(p.created_at)}</div>
                     </div>
                     <button onClick={() => deleteProject(p.id, p.name)} title="Delete" style={{ background: "none", border: "none", color: "var(--t5)", cursor: "pointer", padding: 4, borderRadius: 6, flexShrink: 0 }}
-                      onMouseEnter={e => (e.currentTarget.style.color = "#f87171")} onMouseLeave={e => (e.currentTarget.style.color = "var(--t5)")}>
+                      onMouseEnter={e => (e.currentTarget.style.color = C.redSoft)} onMouseLeave={e => (e.currentTarget.style.color = "var(--t5)")}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
                     </button>
                   </div>
@@ -369,7 +369,7 @@ export function HomePage() {
                   </div>
                   <span style={{ fontSize: 11, color: "var(--t5)", flexShrink: 0 }}>{relTime(p.created_at)}</span>
                   <button onClick={() => deleteProject(p.id, p.name)} title="Delete" style={{ background: "none", border: "none", color: "var(--t5)", cursor: "pointer", padding: 4, borderRadius: 6 }}
-                    onMouseEnter={e => (e.currentTarget.style.color = "#f87171")} onMouseLeave={e => (e.currentTarget.style.color = "var(--t5)")}>
+                    onMouseEnter={e => (e.currentTarget.style.color = C.redSoft)} onMouseLeave={e => (e.currentTarget.style.color = "var(--t5)")}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                   </button>
                 </div>

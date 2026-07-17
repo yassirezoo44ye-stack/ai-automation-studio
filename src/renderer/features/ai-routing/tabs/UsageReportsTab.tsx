@@ -36,7 +36,7 @@ export function UsageReportsTab() {
     }
   }, [windowIdx]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   return (
     <div style={{ display: "grid", gap: 16 }}>

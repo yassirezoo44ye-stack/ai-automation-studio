@@ -5,9 +5,9 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
-import { S } from "../../styles/theme";
+import { S, C } from "../../styles/theme";
 import { SubscriptionTab } from "./tabs/SubscriptionTab";
 import { UsageTab, type BillingUsage } from "./tabs/UsageTab";
 import { InvoicesTab } from "./tabs/InvoicesTab";
@@ -58,8 +58,11 @@ export function BillingPage() {
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => { setTab("subscription"); }, [currentOrgId]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+  // Reset the tab when the org changes — during render, per React's
+  // "adjusting state when a prop changes" pattern (no extra effect pass).
+  const [prevOrgId, setPrevOrgId] = useState(currentOrgId);
+  if (prevOrgId !== currentOrgId) { setPrevOrgId(currentOrgId); setTab("subscription"); }
 
   if (!currentOrgId) {
     return (
@@ -78,7 +81,7 @@ export function BillingPage() {
         {billing && (
           <span style={{
             fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-            color: billing.has_access ? "#34d399" : "#f59e0b",
+            color: billing.has_access ? C.green : C.amber,
             background: billing.has_access ? "rgba(52,211,153,.12)" : "rgba(245,158,11,.12)",
             border: `1px solid ${billing.has_access ? "rgba(52,211,153,.3)" : "rgba(245,158,11,.3)"}`,
           }}>

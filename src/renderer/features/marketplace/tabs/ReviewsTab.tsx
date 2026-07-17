@@ -1,12 +1,13 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * ReviewsTab — existing review list plus a submit-review form (rating +
  * comment). Submitting requires authentication (the server derives
  * `reviewer` from the signed-in user — no client-supplied name).
  * Data: GET /marketplace/listings/{id}/reviews, POST /marketplace/reviews
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
+import { useToast } from "../../../contexts/toast";
 
 interface Review {
   id: string;
@@ -24,7 +25,7 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const r = await apiFetch(`/marketplace/listings/${listingId}/reviews`);
       if (!r.ok) throw new Error();
@@ -33,9 +34,13 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
     } catch {
       setReviews([]);
     }
-  };
+  }, [listingId]);
 
-  useEffect(() => { setReviews(null); void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [listingId]);
+  // Reset while switching listings — render-time state adjustment.
+  const [prevListingId, setPrevListingId] = useState(listingId);
+  if (prevListingId !== listingId) { setPrevListingId(listingId); setReviews(null); }
+
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   const submit = async () => {
     setSubmitting(true);
@@ -101,7 +106,7 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
         reviews.map(rv => (
           <div key={rv.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "#f59e0b" }}>
+              <span style={{ fontSize: 12, color: C.amber }}>
                 {"★".repeat(Math.round(rv.rating))}{"☆".repeat(5 - Math.round(rv.rating))}
               </span>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>{rv.reviewer}</span>

@@ -8,12 +8,12 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
+import { S, C } from "../../../styles/theme";
 import { CardGrid, ErrorNote, ProbeCard, Skeletons } from "../components";
 import type { HealthReport, ServiceStatus } from "../types";
 
 const SERVICE_COLOR: Record<string, string> = {
-  running: "#34d399", starting: "#6c8ef7", stopped: "var(--t4)", stopping: "#f59e0b", failed: "#f87171",
+  running: C.green, starting: C.blue, stopped: "var(--t4)", stopping: C.amber, failed: C.redSoft,
 };
 
 export function PluginHealthTab() {
@@ -36,7 +36,7 @@ export function PluginHealthTab() {
   }, []);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(load);
     const id = setInterval(() => void load(), 20000);
     return () => clearInterval(id);
   }, [load]);
@@ -72,7 +72,7 @@ export function PluginHealthTab() {
               <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", flex: 1 }}>{s.name}</span>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>uptime {(s.uptime_s / 60).toFixed(0)}m</span>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>restarts {s.restarts}</span>
-              {s.error && <span style={{ fontSize: 11, color: "#f87171" }}>{s.error}</span>}
+              {s.error && <span style={{ fontSize: 11, color: C.redSoft }}>{s.error}</span>}
             </div>
           ))}
         </div>

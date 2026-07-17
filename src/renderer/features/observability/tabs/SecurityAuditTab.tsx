@@ -54,7 +54,7 @@ export function SecurityAuditTab() {
     }
   }, [currentOrgId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   if (error && !audit) return <ErrorNote>Could not load audit/activity logs.</ErrorNote>;
   if (!audit || !activity) return <Skeletons n={3} />;

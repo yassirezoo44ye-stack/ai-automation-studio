@@ -1,3 +1,4 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * VersionsTab — version history, release notes, structured changelog, and
  * (for orgs with marketplace:install permission) a rollback action.
@@ -7,13 +8,13 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
+import { useToast } from "../../../contexts/toast";
 
 interface VersionEntry { id: string; version: string; changelog: string | null; created_at: string | number }
 interface ChangelogEntry { id: string; change_type: string; description: string; sort_order: number }
 
 const CHANGE_COLOR: Record<string, string> = {
-  added: "#34d399", changed: "#6c8ef7", fixed: "#f59e0b", removed: "#f87171", security: "#e879f9",
+  added: C.green, changed: C.blue, fixed: C.amber, removed: C.redSoft, security: "#e879f9",
 };
 
 export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack }: {
@@ -27,9 +28,12 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
   const [changelogs, setChangelogs] = useState<Record<string, ChangelogEntry[]>>({});
   const [rollingBack, setRollingBack] = useState<string | null>(null);
 
+  // Reset while switching listings — render-time state adjustment.
+  const [prevListingId, setPrevListingId] = useState(listingId);
+  if (prevListingId !== listingId) { setPrevListingId(listingId); setVersions(null); }
+
   useEffect(() => {
     let alive = true;
-    setVersions(null);
     (async () => {
       try {
         const r = await apiFetch(`/marketplace/listings/${listingId}/versions`);
@@ -79,7 +83,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>v{v.version}</span>
               {v.version === currentVersion && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#34d399", background: "rgba(52,211,153,.12)", padding: "1px 6px", borderRadius: 99 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: "rgba(52,211,153,.12)", padding: "1px 6px", borderRadius: 99 }}>
                   CURRENT
                 </span>
               )}
@@ -101,7 +105,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
           {v.changelog && <p style={{ fontSize: 12, color: "var(--t3)", margin: "6px 0 0" }}>{v.changelog}</p>}
           <button
             onClick={() => void loadChangelog(v.version)}
-            style={{ marginTop: 6, background: "none", border: "none", color: "#6c8ef7", fontSize: 11, cursor: "pointer", padding: 0 }}
+            style={{ marginTop: 6, background: "none", border: "none", color: C.blue, fontSize: 11, cursor: "pointer", padding: 0 }}
           >
             {changelogs[v.version] ? null : "Show structured changelog"}
           </button>

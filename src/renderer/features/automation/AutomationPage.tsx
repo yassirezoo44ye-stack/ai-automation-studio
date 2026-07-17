@@ -4,10 +4,10 @@
  * Data: /api/tasks, /api/agents, /workflows/*
  */
 import { useState, useEffect, useCallback } from "react";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON, authH } from "../../utils/api";
 import { relTime } from "../../utils/time";
-import { S } from "../../styles/theme";
+import { S, C } from "../../styles/theme";
 import type { Task, Agent } from "../../types";
 
 type AutoTab = "tasks" | "workflows";
@@ -15,15 +15,15 @@ type TaskStatus = Task["status"];
 type TaskPriority = Task["priority"];
 
 const STATUS_COLOR: Record<TaskStatus, string> = {
-  pending:     "#6b7280",
-  in_progress: "#6c8ef7",
-  done:        "#34d399",
+  pending:     C.gray,
+  in_progress: C.blue,
+  done:        C.green,
 };
 
 const PRIORITY_DOT: Record<TaskPriority, string> = {
-  low:    "#6b7280",
-  medium: "#f59e0b",
-  high:   "#ef4444",
+  low:    C.gray,
+  medium: C.amber,
+  high:   C.red,
 };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -41,7 +41,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
     <div style={{ ...S.card, padding: "14px 18px", display: "flex", gap: 12, alignItems: "flex-start" }}>
       <button
         onClick={() => onStatusChange(task.id, task.status === "done" ? "pending" : "done")}
-        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 2, color: task.status === "done" ? "#34d399" : "rgba(255,255,255,0.2)", flexShrink: 0 }}
+        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 2, color: task.status === "done" ? C.green : "rgba(255,255,255,0.2)", flexShrink: 0 }}
         aria-label={task.status === "done" ? "Mark pending" : "Mark done"}
       >
         {task.status === "done"
@@ -81,7 +81,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </button>
         )}
-        <button onClick={() => onDelete(task.id)} className="btn-icon" title="Delete" style={{ width: 28, height: 28, color: "#f87171" }}>
+        <button onClick={() => onDelete(task.id)} className="btn-icon" title="Delete" style={{ width: 28, height: 28, color: C.redSoft }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
         </button>
       </div>
@@ -116,7 +116,7 @@ export function AutomationPage() {
       setTasks(d.tasks ?? []);
     } catch { toast("Could not load tasks", "err"); }
     finally { setLoading(false); }
-  }, []);
+  }, [toast]);
 
   const loadWorkflows = useCallback(async () => {
     setWfLoading(true);
@@ -140,8 +140,8 @@ export function AutomationPage() {
   };
 
   useEffect(() => {
-    loadTasks();
-    loadWorkflows();
+    void Promise.resolve().then(loadTasks);
+    void Promise.resolve().then(loadWorkflows);
     apiFetch("/api/agents")
       .then(r => parseJSON<Agent[]>(r, "/api/agents"))
       .then(setAgents)
@@ -252,7 +252,7 @@ export function AutomationPage() {
                 <button key={id} onClick={() => setFilter(id)} style={{
                   padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
                   background: filter === id ? "rgba(108,142,247,0.2)" : "rgba(255,255,255,0.04)",
-                  color: filter === id ? "#6c8ef7" : "var(--t4)",
+                  color: filter === id ? C.blue : "var(--t4)",
                   transition: "all .15s",
                 }}>{label}</button>
               ))}
@@ -306,7 +306,7 @@ export function AutomationPage() {
                 <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>No active runs — start a workflow below.</div>
               ) : wfRuns.map(run => {
                 const pct = run.steps_total > 0 ? Math.round((run.steps_done / run.steps_total) * 100) : 0;
-                const statusColor: Record<string, string> = { running: "#6c8ef7", completed: "#34d399", failed: "#ef4444", pending: "#f59e0b" };
+                const statusColor: Record<string, string> = { running: C.blue, completed: C.green, failed: C.red, pending: C.amber };
                 const color = statusColor[run.status] ?? "var(--t4)";
                 return (
                   <div key={run.run_id} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -324,7 +324,7 @@ export function AutomationPage() {
                     <div style={{ height: 4, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
                     </div>
-                    {run.error && <div style={{ fontSize: 11, color: "#ef4444" }}>{run.error}</div>}
+                    {run.error && <div style={{ fontSize: 11, color: C.red }}>{run.error}</div>}
                   </div>
                 );
               })}
@@ -394,7 +394,7 @@ function ApprovalsList() {
     } catch {}
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   const decide = async (run_id: string, step_id: string, action: "approve" | "reject") => {
     setBusy(`${run_id}:${step_id}`);
@@ -422,12 +422,12 @@ function ApprovalsList() {
           <button
             onClick={() => decide(a.run_id, a.step_id, "approve")}
             disabled={!!busy}
-            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#22c55e", color: "#fff" }}
+            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: C.greenBright, color: "#fff" }}
           >Approve</button>
           <button
             onClick={() => decide(a.run_id, a.step_id, "reject")}
             disabled={!!busy}
-            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#ef4444", color: "#fff" }}
+            style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: C.red, color: "#fff" }}
           >Reject</button>
         </div>
       ))}

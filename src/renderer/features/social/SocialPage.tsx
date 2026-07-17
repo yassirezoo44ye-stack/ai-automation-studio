@@ -1,8 +1,8 @@
 import { useState, useRef } from "react";
-import { useToast } from "../../contexts/ToastContext";
+import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON, authH, API } from "../../utils/api";
-import { MD_COMPONENTS } from "../../components/ui/CopyButton";
-import { S } from "../../styles/theme";
+import { MD_COMPONENTS } from "../../shared/ui/md-components";
+import { S, C } from "../../styles/theme";
 import ReactMarkdown from "react-markdown";
 
 type SocialTab = "youtube" | "facebook";
@@ -61,7 +61,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     try {
       const r = await apiFetch("/api/youtube/info", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
       setInfo(await parseJSON<YTInfo>(r, "/api/youtube/info")); toast("Video info loaded");
-    } catch (e: any) { toast(e.message, "err"); }
+    } catch (e) { toast((e as Error).message, "err"); }
     finally { setLoading(false); }
   }
 
@@ -72,7 +72,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
       const r = await apiFetch("/api/youtube/transcript", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
       const d = await parseJSON<{ transcript: string; language: string }>(r, "/api/youtube/transcript");
       setTranscript(d.transcript); toast(`Transcript loaded (${d.language})`);
-    } catch (e: any) { toast(e.message, "err"); }
+    } catch (e) { toast((e as Error).message, "err"); }
     finally { setTL(false); }
   }
 
@@ -102,7 +102,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
           } catch {}
         }
       }
-    } catch (e: any) { if (e.name !== "AbortError") toast(e.message, "err"); }
+    } catch (e) { if ((e as Error).name !== "AbortError") toast((e as Error).message, "err"); }
     finally { setAnswering(false); }
   }
 
@@ -253,7 +253,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
           } catch {}
         }
       }
-    } catch (e: any) { toast(e.message, "err"); setStatus(""); }
+    } catch (e) { toast((e as Error).message, "err"); setStatus(""); }
     finally { setGen(false); }
   }
 
@@ -311,7 +311,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
         <button onClick={generate} disabled={generating || !topic.trim()} style={{ ...S.btnPrimary, width: "100%", padding: "12px" }}>
           {generating ? "⏳ جاري التوليد…" : "✨ ولّد المحتوى"}
         </button>
-        {status && <div style={{ fontSize: 12, color: "#a78bfa", textAlign: "center" }}>{status}</div>}
+        {status && <div style={{ fontSize: 12, color: C.purple, textAlign: "center" }}>{status}</div>}
       </div>
 
       {/* Results panel */}

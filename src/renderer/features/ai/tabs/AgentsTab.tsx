@@ -3,11 +3,11 @@
  * CRUD operations against /api/agents. Uses shared S styles.
  */
 import { useState } from "react";
-import { useToast } from "../../../contexts/ToastContext";
+import { useToast } from "../../../contexts/toast";
 import { apiFetch, authH } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { AgentAvatar } from "../../../components/ui/AgentAvatar";
-import { S } from "../../../styles/theme";
+import { S, C } from "../../../styles/theme";
 import type { Agent } from "../../../types";
 import { AGENT_TEMPLATES } from "../../../constants";
 
@@ -124,7 +124,7 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
             <path d="M2 20c0-3 3.5-5 10-5s10 2 10 5"/>
           </svg>
           <div style={{ fontWeight: 600, color: "#c8d3f0", marginBottom: 6 }}>No agents yet</div>
-          <div style={{ color: "#4b5980", fontSize: 13, marginBottom: 16 }}>Create your first agent or start from a template below</div>
+          <div style={{ color: C.slate, fontSize: 13, marginBottom: 16 }}>Create your first agent or start from a template below</div>
           <button onClick={() => openForm()} style={S.btnPrimary}>+ New Agent</button>
         </div>
       )}
@@ -135,7 +135,7 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 12 }}>
             {agents.map(a => {
               const modelLabel = a.model?.includes("opus") ? "Opus" : a.model?.includes("haiku") ? "Haiku" : "Sonnet";
-              const modelColor = a.model?.includes("opus") ? "#a78bfa" : a.model?.includes("haiku") ? "#34d399" : "#6c8ef7";
+              const modelColor = a.model?.includes("opus") ? C.purple : a.model?.includes("haiku") ? C.green : C.blue;
               return (
                 <div key={a.id} style={{ ...S.card, cursor: "default", position: "relative", overflow: "hidden" }}>
                   <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${modelColor}66, transparent)` }} />
@@ -147,7 +147,7 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
                           <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 20, background: `${modelColor}1a`, color: modelColor, border: `1px solid ${modelColor}33` }}>{modelLabel}</span>
                         </div>
-                        {a.description && <div style={{ fontSize: 12, color: "#6b7a99", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.description}</div>}
+                        {a.description && <div style={{ fontSize: 12, color: C.grayBlue, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.description}</div>}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
@@ -157,17 +157,17 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
                       <button onClick={() => openForm(a)} className="btn-icon" title="Edit" style={{ width: 30, height: 30 }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       </button>
-                      <button onClick={() => void deleteAgent(a.id, a.name)} className="btn-icon" title="Delete" style={{ width: 30, height: 30, color: "#f87171" }}>
+                      <button onClick={() => void deleteAgent(a.id, a.name)} className="btn-icon" title="Delete" style={{ width: 30, height: 30, color: C.redSoft }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                       </button>
                     </div>
                   </div>
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #1e2438", display: "flex", gap: 16, alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: "#4b5980" }}>{a.message_count ?? 0} messages</span>
-                    <span style={{ fontSize: 11, color: "#4b5980" }}>{relTime(a.created_at)}</span>
+                    <span style={{ fontSize: 11, color: C.slate }}>{a.message_count ?? 0} messages</span>
+                    <span style={{ fontSize: 11, color: C.slate }}>{relTime(a.created_at)}</span>
                     <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399" }} />
-                      <span style={{ fontSize: 11, color: "#34d399" }}>Ready</span>
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.green }} />
+                      <span style={{ fontSize: 11, color: C.green }}>Ready</span>
                     </div>
                   </div>
                 </div>
@@ -187,19 +187,19 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
               className="project-card"
               style={{ ...S.card, cursor: "pointer" }}
               onClick={() => openForm({ name: t.name, avatar: t.avatar, description: t.description, system_prompt: t.system_prompt, model: "claude-sonnet-4-6", temperature: 1 })}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = "#6c8ef7")}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = C.blue)}
               onMouseLeave={e => (e.currentTarget.style.borderColor = "")}
             >
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ width: 44, height: 44, borderRadius: 12, background: "#1a1f2e", border: "1px solid #2a3050", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>{t.avatar}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ ...S.cardTitle, marginBottom: 4 }}>{t.name}</div>
-                  <div style={{ fontSize: 12, color: "#6b7a99", lineHeight: 1.5 }}>{t.description}</div>
+                  <div style={{ fontSize: 12, color: C.grayBlue, lineHeight: 1.5 }}>{t.description}</div>
                 </div>
               </div>
               <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #1e2438", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 11, color: "#4b5980" }}>Template</span>
-                <span style={{ fontSize: 11, color: "#6c8ef7", display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 11, color: C.slate }}>Template</span>
+                <span style={{ fontSize: 11, color: C.blue, display: "flex", alignItems: "center", gap: 4 }}>
                   Use template
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                 </span>

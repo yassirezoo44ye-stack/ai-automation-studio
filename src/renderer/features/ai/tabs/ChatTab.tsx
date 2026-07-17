@@ -3,13 +3,13 @@
  * Handles conversation list, message rendering, streaming, task extraction.
  * All data access goes through apiFetch; no direct provider imports.
  */
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, memo } from "react";
 import ReactMarkdown from "react-markdown";
-import { useToast } from "../../../contexts/ToastContext";
+import { useToast } from "../../../contexts/toast";
 import { apiFetch, parseJSON, authH, API } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
-import { MD_COMPONENTS } from "../../../components/ui/CopyButton";
-import { S } from "../../../styles/theme";
+import { MD_COMPONENTS } from "../../../shared/ui/md-components";
+import { S, C } from "../../../styles/theme";
 import AxonLogo from "../../../AxonLogo";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";
 import { PRIORITY_COLOR } from "../../../constants";
@@ -43,7 +43,11 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     try { const r = await apiFetch(path); setConvs(await parseJSON<Conv[]>(r, path)); } catch {}
   }, [projectId]);
 
-  useEffect(() => { loadConvs(); setActiveConv(null); setMessages([]); }, [loadConvs]);
+  useEffect(() => { void Promise.resolve().then(loadConvs); }, [loadConvs]);
+  // Reset conversation state when the project changes — during render,
+  // per React's "adjusting state when a prop changes" pattern.
+  const [prevProjectId, setPrevProjectId] = useState(projectId);
+  if (prevProjectId !== projectId) { setPrevProjectId(projectId); setActiveConv(null); setMessages([]); }
 
   const loadInlineTasks = useCallback(async () => {
     if (!activeConv) return;
@@ -54,7 +58,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     } catch {}
   }, [activeConv]);
 
-  useEffect(() => { if (showTasks) loadInlineTasks(); }, [showTasks, loadInlineTasks]);
+  useEffect(() => { if (showTasks) void Promise.resolve().then(loadInlineTasks); }, [showTasks, loadInlineTasks]);
 
   async function loadMessages(cid: string) {
     const path = `/api/conversations/${cid}/messages`;
@@ -200,7 +204,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
           {filteredConvs.length === 0 && (
-            <div style={{ padding: "12px 16px", fontSize: 12, color: "#4b5980" }}>No conversations</div>
+            <div style={{ padding: "12px 16px", fontSize: 12, color: C.slate }}>No conversations</div>
           )}
           {filteredConvs.map(c => (
             <div
@@ -211,7 +215,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               <div style={S.convTitle}>{c.title}</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                 <span style={S.convTime}>{relTime(c.updated_at)}</span>
-                <span onClick={e => deleteConv(e, c.id)} style={{ color: "#4b5980", fontSize: 11, cursor: "pointer" }}>✕</span>
+                <span onClick={e => deleteConv(e, c.id)} style={{ color: C.slate, fontSize: 11, cursor: "pointer" }}>✕</span>
               </div>
             </div>
           ))}
@@ -228,7 +232,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12 }}>
                 <button
                   onClick={() => setTaskStatus(t, t.status === "done" ? "pending" : "done")}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: t.status === "done" ? "#34d399" : "var(--t5)", display: "flex" }}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: t.status === "done" ? C.green : "var(--t5)", display: "flex" }}
                 >
                   {t.status === "done"
                     ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -261,27 +265,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             </div>
           )}
           {messages.map((m, idx) => (
-            <div key={m.id} style={m.role === "user" ? S.msgRowUser : S.msgRowAssist} className="msg-row">
-              {m.role === "assistant" && (
-                <div style={S.avatar}><span style={{ fontSize: 18 }}>{activeAgent ? activeAgent.avatar : "◈"}</span></div>
-              )}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={m.role === "user" ? S.msgLabelUser : S.msgLabelAssist}>
-                  {m.role === "user" ? "You" : (activeAgent?.name ?? "Claude")}
-                  <span style={S.msgTime}>{idx === messages.length - 1 ? "now" : ""}</span>
-                </div>
-                {m.role === "user" ? (
-                  <div style={S.msgBubbleUser}>{m.content}</div>
-                ) : m.content === "" ? (
-                  <div style={{ padding: "8px 0" }} className="typing"><span /><span /><span /></div>
-                ) : (
-                  <div style={S.msgBubbleAssist} className="md-body">
-                    <ReactMarkdown components={MD_COMPONENTS}>{m.content}</ReactMarkdown>
-                  </div>
-                )}
-              </div>
-              {m.role === "user" && <div style={S.avatarUser}>Y</div>}
-            </div>
+            <MessageRow key={m.id} msg={m} isLast={idx === messages.length - 1}
+                        agentName={activeAgent?.name ?? null} agentAvatar={activeAgent?.avatar ?? null} />
           ))}
           <div ref={bottomRef} />
         </div>
@@ -296,10 +281,42 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             style={S.input} rows={1}
           />
           {streaming
-            ? <button onClick={() => abortRef.current?.abort()} style={{ ...S.sendBtn, background: "#f87171" }}>■</button>
+            ? <button onClick={() => abortRef.current?.abort()} style={{ ...S.sendBtn, background: C.redSoft }}>■</button>
             : <button onClick={() => void sendMessage()} disabled={!prompt.trim()} style={S.sendBtn}>↑</button>}
         </div>
       </div>
     </div>
   );
 }
+
+// Memoized row: during streaming, only the last message's content changes —
+// memo stops React re-rendering (and re-parsing markdown for) every earlier
+// message on each streamed token.
+const MessageRow = memo(function MessageRow({ msg, isLast, agentName, agentAvatar }: {
+  msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
+}) {
+  return (
+    <div style={msg.role === "user" ? S.msgRowUser : S.msgRowAssist} className="msg-row">
+      {msg.role === "assistant" && (
+        <div style={S.avatar}><span style={{ fontSize: 18 }}>{agentAvatar ?? "◈"}</span></div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={msg.role === "user" ? S.msgLabelUser : S.msgLabelAssist}>
+          {msg.role === "user" ? "You" : (agentName ?? "Claude")}
+          <span style={S.msgTime}>{isLast ? "now" : ""}</span>
+        </div>
+        {msg.role === "user" ? (
+          <div style={S.msgBubbleUser}>{msg.content}</div>
+        ) : msg.content === "" ? (
+          <div style={{ padding: "8px 0" }} className="typing"><span /><span /><span /></div>
+        ) : (
+          <div style={S.msgBubbleAssist} className="md-body">
+            <ReactMarkdown components={MD_COMPONENTS}>{msg.content}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+      {msg.role === "user" && <div style={S.avatarUser}>Y</div>}
+    </div>
+  );
+});
+

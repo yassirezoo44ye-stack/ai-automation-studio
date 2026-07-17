@@ -21,12 +21,16 @@ export function EffectsInspector({ getCanvas, selectedIds }: Props) {
   const [blendMode,  setBlendMode]  = useState("normal");
 
   useEffect(() => {
-    const fc = getCanvas();
-    if (!fc || !selectedIds.length) return;
-    const obj = fc.getActiveObjects()[0];
-    if (!obj) return;
-    setOpacity(Math.round((obj.opacity ?? 1) * 100));
-    setBlendMode(obj.globalCompositeOperation ?? "normal");
+    // Deferred to a microtask: canvas reads + setState happen in an
+    // async callback, not synchronously inside the effect body.
+    queueMicrotask(() => {
+      const fc = getCanvas();
+      if (!fc || !selectedIds.length) return;
+      const obj = fc.getActiveObjects()[0];
+      if (!obj) return;
+      setOpacity(Math.round((obj.opacity ?? 1) * 100));
+      setBlendMode(obj.globalCompositeOperation ?? "normal");
+    });
   }, [getCanvas, selectedIds]);
 
   const apply = useCallback((op: number, bm: string) => {

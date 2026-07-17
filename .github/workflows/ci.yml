@@ -134,15 +134,10 @@ jobs:
       - name: TypeScript type check
         run: npm run typecheck
 
-      - name: ESLint (zero errors)
-        # Block scalar (|) is load-bearing: as a single-line plain scalar,
-        # the "ESLint: 0 errors," string inside the JS contains a
-        # colon-space, which is ILLEGAL in an unquoted YAML scalar — this
-        # exact line made the entire workflow file invalid, which is why
-        # every run of this workflow failed in <1s with zero jobs ever
-        # dispatched, from the day it was created.
-        run: |
-          npx eslint src --format json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf-8');const r=JSON.parse(d);const e=r.flatMap(f=>f.messages.filter(m=>m.severity===2));if(e.length){e.forEach(m=>console.error(m.ruleId,m.message));process.exit(1);}console.log('ESLint: 0 errors,',r.flatMap(f=>f.messages.filter(m=>m.severity===1)).length,'warnings')"
+      - name: ESLint (strict — zero errors, zero warnings)
+        # The Frontend Performance Cleanup phase drove warnings 87 → 0;
+        # --max-warnings 0 keeps it there.
+        run: npm run lint:strict
 
       - name: Vitest unit tests
         run: npm test

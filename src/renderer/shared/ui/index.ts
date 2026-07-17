@@ -1,5 +1,6 @@
 export { AgentAvatar }               from "./AgentAvatar";
-export { MD_COMPONENTS, CopyButton } from "./CopyButton";
+export { CopyButton } from "./CopyButton";
+export { MD_COMPONENTS } from "./md-components";
 export { EmptyState }                from "./EmptyState";
 export { ErrorBoundary }             from "./ErrorBoundary";
 export { LoadingSpinner }            from "./LoadingSpinner";

@@ -4,7 +4,7 @@
  */
 import { useRef } from "react";
 import { apiFetch, authH } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
+import { S, C } from "../../../styles/theme";
 import type { BuildFile } from "../../../shared/types";
 
 interface RunError {
@@ -32,9 +32,9 @@ interface RunTabProps {
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
-  high:   "#ef4444",
-  medium: "#f59e0b",
-  low:    "#6b7280",
+  high:   C.red,
+  medium: C.amber,
+  low:    C.gray,
 };
 
 export function RunTab({
@@ -220,7 +220,7 @@ export function RunTab({
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <pre style={{
           flex: 1, margin: 0, padding: "14px 18px", overflowY: "auto",
-          fontSize: 12, color: "#34d399", fontFamily: "var(--font-mono)",
+          fontSize: 12, color: C.green, fontFamily: "var(--font-mono)",
           lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-all",
           background: "#040506",
         }}>
@@ -229,7 +229,7 @@ export function RunTab({
 
         {runError && (
           <div style={{
-            borderTop: `2px solid ${SEVERITY_COLOR[runError.severity] ?? "#6b7280"}`,
+            borderTop: `2px solid ${SEVERITY_COLOR[runError.severity] ?? C.gray}`,
             background: "#0f0a0a", padding: "14px 18px", flexShrink: 0,
           }}>
             <div style={{ color: SEVERITY_COLOR[runError.severity], fontWeight: 600, fontSize: 13, marginBottom: 6 }}>

@@ -1,29 +1,6 @@
-import { useState, useEffect, createContext, useContext, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Page } from "../types";
-
-export type Theme = "dark" | "light";
-
-interface AppContextType {
-  page: Page;
-  setPage: (p: Page) => void;
-  sidebarCollapsed: boolean;
-  setSidebarCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
-  theme: Theme;
-  setTheme: (t: Theme) => void;
-  toggleTheme: () => void;
-}
-
-export const AppContext = createContext<AppContextType>({
-  page: "home",
-  setPage: () => {},
-  sidebarCollapsed: false,
-  setSidebarCollapsed: () => {},
-  theme: "dark",
-  setTheme: () => {},
-  toggleTheme: () => {},
-});
-
-export function useAppContext() { return useContext(AppContext); }
+import { AppContext, type Theme } from "./app";
 
 function getStoredTheme(): Theme {
   try {

@@ -1,3 +1,4 @@
+import { C } from "../../../shared/lib/theme";
 /**
  * FilesTab — dual-pane file tree + code viewer.
  */
@@ -62,7 +63,7 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
           <>
             <div style={{
               padding: "10px 20px", borderBottom: "1px solid #1e2438",
-              fontSize: 12, color: "#6b7a99",
+              fontSize: 12, color: C.grayBlue,
               display: "flex", justifyContent: "space-between", alignItems: "center",
               position: "sticky", top: 0, background: "#080a0f", zIndex: 1,
             }}>

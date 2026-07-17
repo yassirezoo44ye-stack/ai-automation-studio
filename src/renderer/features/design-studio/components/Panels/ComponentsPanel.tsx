@@ -2,7 +2,7 @@
  * ComponentsPanel — browse and insert reusable design components.
  * Reads from componentLibrary singleton; inserts instances to canvas.
  */
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { Canvas as FabricCanvas } from "fabric";
 import { componentLibrary } from "../../features/components/ComponentLibrary";
 
@@ -29,11 +29,7 @@ const s: Record<string, React.CSSProperties> = {
 export function ComponentsPanel({ getCanvas }: Props) {
   const [query, setQuery]       = useState("");
   const [category, setCategory] = useState("All");
-  const [components, setComponents] = useState<ReturnType<typeof componentLibrary.all>>([]);
-
-  useEffect(() => {
-    setComponents(componentLibrary.all());
-  }, []);
+  const [components] = useState<ReturnType<typeof componentLibrary.all>>(() => componentLibrary.all());
 
   const filtered = components.filter(c => {
     const matchesQ   = !query || c.name.toLowerCase().includes(query.toLowerCase());

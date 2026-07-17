@@ -51,7 +51,6 @@ export class PluginRegistry {
     this._cleanup.set(plugin.id, unsubscribes);
 
     designBus.emit("PluginRegistered", { pluginId: plugin.id, name: plugin.name });
-    console.info(`[PluginRegistry] Registered plugin "${plugin.name}" v${plugin.version}`);
   }
 
   unregister(pluginId: string): void {

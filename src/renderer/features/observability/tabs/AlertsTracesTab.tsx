@@ -6,8 +6,8 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
-import { S } from "../../../styles/theme";
+import { useToast } from "../../../contexts/toast";
+import { S, C } from "../../../styles/theme";
 import { EmptyNote, ErrorNote, Skeletons } from "../components";
 import type { AlertHistoryEntry, AlertRule, TraceSpan } from "../types";
 
@@ -39,7 +39,7 @@ export function AlertsTracesTab() {
   }, []);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(load);
     const id = setInterval(() => void load(), 20000);
     return () => clearInterval(id);
   }, [load]);
@@ -94,7 +94,7 @@ export function AlertsTracesTab() {
                     padding: "4px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 11, fontWeight: 600,
                     cursor: busy === rule.id ? "wait" : "pointer",
                     background: rule.enabled ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.04)",
-                    color: rule.enabled ? "#34d399" : "var(--t4)",
+                    color: rule.enabled ? C.green : "var(--t4)",
                   }}
                 >
                   {busy === rule.id ? "…" : rule.enabled ? "Enabled" : "Disabled"}
@@ -116,7 +116,7 @@ export function AlertsTracesTab() {
               }}>
                 <span style={{
                   fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 60,
-                  color: h.resolved_at ? "var(--t4)" : "#f87171",
+                  color: h.resolved_at ? "var(--t4)" : C.redSoft,
                 }}>
                   {h.resolved_at ? "resolved" : "open"}
                 </span>
@@ -141,7 +141,7 @@ export function AlertsTracesTab() {
                 <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", minWidth: 160 }}>{t.name}</span>
                 <span style={{ fontSize: 11, color: "var(--t4)" }}>{t.service}</span>
                 <span style={{ fontSize: 11, color: "var(--t4)", marginLeft: "auto" }}>{t.duration_ms.toFixed(1)}ms</span>
-                {t.error && <span style={{ fontSize: 11, color: "#f87171" }}>{t.error}</span>}
+                {t.error && <span style={{ fontSize: 11, color: C.redSoft }}>{t.error}</span>}
               </div>
             ))}
           </div>

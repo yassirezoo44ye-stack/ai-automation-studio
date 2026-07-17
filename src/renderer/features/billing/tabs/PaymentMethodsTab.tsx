@@ -6,8 +6,8 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { useToast } from "../../../contexts/ToastContext";
-import { S } from "../../../styles/theme";
+import { useToast } from "../../../contexts/toast";
+import { S, C } from "../../../styles/theme";
 
 interface PaymentMethod {
   id: string; brand: string | null; last4: string | null;
@@ -34,7 +34,7 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   const sync = async () => {
     setSyncing(true);
@@ -102,7 +102,7 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
               {m.is_default && (
                 <span style={{
                   fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-                  color: "#34d399", background: "rgba(52,211,153,.12)", border: "1px solid rgba(52,211,153,.3)",
+                  color: C.green, background: "rgba(52,211,153,.12)", border: "1px solid rgba(52,211,153,.3)",
                 }}>Default</span>
               )}
             </div>
