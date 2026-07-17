@@ -97,7 +97,23 @@ jobs:
         run: python scripts/ci_schema_check.py
 
       - name: Unit tests
-        run: pytest tests/ -v --tb=short
+        # On failure, surface pytest's own output as workflow annotations
+        # (::error::) so it's readable from the public Checks API without
+        # needing log-download permissions (which requires repo admin
+        # rights, even on public repos). Batched a few lines per annotation
+        # to stay well under GitHub's per-run annotation cap. `set +e`
+        # because we need the exit code AFTER tee, not an early abort from
+        # the `pipefail`-tripped pipeline.
+        run: |
+          set +e
+          pytest tests/ -v --tb=short 2>&1 | tee /tmp/pytest_output.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            tail -n 200 /tmp/pytest_output.log | awk 'BEGIN{n=0} {buf=buf $0 "%0A"; n++} n==10{print buf; buf=""; n=0} END{if(n>0) print buf}' | while IFS= read -r chunk; do
+              echo "::error::${chunk}"
+            done
+          fi
+          exit "$rc"
 
       - name: Dependency vulnerability scan (pip-audit)
         # Informational for now: this is the first time it's run in CI at
