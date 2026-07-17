@@ -55,12 +55,16 @@ def owner_email(request: Request) -> str:
         request.headers.get("X-Sub-Token")
         or request.cookies.get("sub_token", "")
     )
+    bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     payload = verify_token(sub_token) if sub_token else None
+    if not payload and bearer:
+        # A subscription token is also accepted via Authorization: Bearer,
+        # not just X-Sub-Token/cookie.
+        payload = verify_token(bearer)
     if payload:
         return payload["e"]
 
     # Fall back to JWT
-    bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if bearer:
         try:
             from app.core.jwt_utils import decode_access_token

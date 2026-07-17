@@ -60,6 +60,16 @@ async def check_rate_limit_async(
     return check_rate_limit(key, max_calls, window)
 
 
+def _real_ip(request: Request) -> str:
+    """The rightmost X-Forwarded-For entry — appended by the nearest (trusted)
+    proxy. Any earlier entries are client-supplied and spoofable, so using
+    them as the rate-limit key would let an attacker evade or conflate limits
+    by varying a fake leftmost IP (M-13)."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    ips = [x.strip() for x in xff.split(",") if x.strip()]
+    return ips[-1] if ips else (request.client.host if request.client else "unknown")
+
+
 def require_rate_limit(
     request   : Request,
     *,
@@ -69,11 +79,7 @@ def require_rate_limit(
     error_detail: Optional[str] = None,
 ) -> None:
     """FastAPI sync dependency: raise HTTP 429 when the limit is exceeded."""
-    ip  = (
-        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        or (request.client.host if request.client else "unknown")
-    )
-    key = f"{key_prefix}:{ip}"
+    key = f"{key_prefix}:{_real_ip(request)}"
     if not check_rate_limit(key, max_calls, window):
         raise HTTPException(
             status_code = 429,
@@ -86,10 +92,7 @@ def ai_rate_limit(request: Request, max_calls: int = 20, window: int = 60) -> No
     """Stricter limit for AI inference endpoints (cost-exposure protection)."""
     from app.core.auth import owner_email as _owner_email
     owner = _owner_email(request)
-    xff = request.headers.get("X-Forwarded-For", "")
-    ips = [x.strip() for x in xff.split(",") if x.strip()]
-    ip = ips[-1] if ips else (request.client.host if request.client else "unknown")
-    key = f"ai:{owner}:{ip}"
+    key = f"ai:{owner}:{_real_ip(request)}"
     if not check_rate_limit(key, max_calls=max_calls, window=window):
         raise HTTPException(429, "Too many AI requests — please wait a moment.")
 
@@ -124,11 +127,7 @@ async def require_rate_limit_async(
     error_detail: Optional[str] = None,
 ) -> None:
     """FastAPI async dependency — uses Redis when available."""
-    ip  = (
-        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        or (request.client.host if request.client else "unknown")
-    )
-    key = f"{key_prefix}:{ip}"
+    key = f"{key_prefix}:{_real_ip(request)}"
     if not await check_rate_limit_async(key, max_calls, window):
         raise HTTPException(
             status_code = 429,

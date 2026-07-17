@@ -26,7 +26,7 @@ from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
-from app.core.rate_limit import check_rate_limit
+from app.core.rate_limit import _real_ip, check_rate_limit
 from app.billing import QuotaExceeded
 from app.runtime import registry as runtime_registry
 from app.runtime import capabilities as runtime_capabilities
@@ -377,11 +377,7 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def global_rate_limit_middleware(request: Request, call_next):
         if request.url.path.startswith("/api/"):
-            ip = (
-                request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                or (request.client.host if request.client else "unknown")
-            )
-            if not check_rate_limit(f"global:{ip}", max_calls=300, window=60):
+            if not check_rate_limit(f"global:{_real_ip(request)}", max_calls=300, window=60):
                 return JSONResponse(
                     status_code=429,
                     content={"detail": "Too many requests — please slow down."},
@@ -400,8 +396,8 @@ def create_app() -> FastAPI:
             )
             bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
 
-            if sub_token and verify_token(sub_token):
-                pass  # valid subscription token
+            if (sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer)):
+                pass  # valid subscription token (X-Sub-Token/cookie, or Authorization: Bearer)
             else:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.
