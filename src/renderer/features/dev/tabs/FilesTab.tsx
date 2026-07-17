@@ -42,8 +42,8 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
               style={{
                 ...TREE_ITEM,
                 color:       active ? "#e2e8f0" : "rgba(148,163,184,.7)",
-                background:  active ? "rgba(139,92,246,.12)" : "transparent",
-                borderLeft:  active ? "2px solid #8b5cf6" : "2px solid transparent",
+                background:  active ? "rgba(255,215,0,.12)" : "transparent",
+                borderLeft:  active ? "2px solid #D4AF37" : "2px solid transparent",
               }}
               aria-current={active ? "true" : undefined}
               title={f.path}

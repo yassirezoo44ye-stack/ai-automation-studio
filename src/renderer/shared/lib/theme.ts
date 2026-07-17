@@ -12,12 +12,12 @@ export const S: Record<string, React.CSSProperties> = {
   sidebar: {
     flexShrink: 0, display: "flex", flexDirection: "column",
     background: "rgba(7,9,18,0.92)", backdropFilter: "blur(24px)",
-    borderRight: "1px solid rgba(139,92,246,0.14)",
+    borderRight: "1px solid rgba(255,215,0,0.14)",
     transition: "width 220ms cubic-bezier(.4,0,.2,1), min-width 220ms cubic-bezier(.4,0,.2,1)",
     overflow: "hidden",
   },
   sidebarLogo: {
-    borderBottom: "1px solid rgba(139,92,246,0.10)",
+    borderBottom: "1px solid rgba(255,215,0,0.10)",
     marginBottom: 8, display: "flex", alignItems: "center",
   },
   nav:           { display: "flex", flexDirection: "column", gap: 1 },
@@ -29,9 +29,9 @@ export const S: Record<string, React.CSSProperties> = {
     userSelect: "none",
   },
   navItemActive: {
-    background: "linear-gradient(135deg,rgba(139,92,246,0.22),rgba(99,102,241,0.16))",
+    background: "linear-gradient(135deg,rgba(255,215,0,0.22),rgba(212,175,55,0.16))",
     color: "#e2e8f0",
-    boxShadow: "inset 0 0 0 1px rgba(139,92,246,0.28)",
+    boxShadow: "inset 0 0 0 1px rgba(255,215,0,0.28)",
   },
   main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
 
@@ -69,13 +69,13 @@ export const S: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   newChatBtn: {
-    width: "100%", background: "rgba(139,92,246,0.10)",
-    border: "1px solid rgba(139,92,246,0.20)", borderRadius: 9,
+    width: "100%", background: "rgba(255,215,0,0.10)",
+    border: "1px solid rgba(255,215,0,0.20)", borderRadius: 9,
     padding: "9px 12px", color: "rgba(167,139,250,0.85)", fontSize: 12,
     cursor: "pointer", textAlign: "left",
   },
   convItem:      { padding: "10px 14px", cursor: "pointer", transition: "background .15s" },
-  convItemActive:{ background: "rgba(139,92,246,0.11)", borderRight: "2px solid #8b5cf6" },
+  convItemActive:{ background: "rgba(255,215,0,0.11)", borderRight: "2px solid #D4AF37" },
   convTitle:     { fontSize: 12, fontWeight: 500, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   convTime:      { fontSize: 10, color: "rgba(148,163,184,0.4)" },
 
@@ -99,14 +99,14 @@ export const S: Record<string, React.CSSProperties> = {
   },
   avatar: {
     width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-    background: "linear-gradient(135deg,rgba(139,92,246,0.30),rgba(99,102,241,0.22))",
-    border: "1px solid rgba(139,92,246,0.28)",
+    background: "linear-gradient(135deg,rgba(255,215,0,0.30),rgba(212,175,55,0.22))",
+    border: "1px solid rgba(255,215,0,0.28)",
     display: "flex", alignItems: "center", justifyContent: "center",
     marginTop: 2,
   },
   avatarUser: {
     width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+    background: "linear-gradient(135deg,#D4AF37,#FFD700)",
     display: "flex", alignItems: "center", justifyContent: "center",
     fontSize: 13, fontWeight: 700, color: "#fff", marginTop: 2,
   },
@@ -124,11 +124,11 @@ export const S: Record<string, React.CSSProperties> = {
   msgBubbleAssist: { fontSize: 15, color: "#e2e8f0", lineHeight: 1.8 },
   msgBubbleUser: {
     fontSize: 15, color: "#e2e8f0", lineHeight: 1.75,
-    background: "linear-gradient(135deg,rgba(99,102,241,0.22),rgba(139,92,246,0.17))",
-    border: "1px solid rgba(139,92,246,0.28)",
+    background: "linear-gradient(135deg,rgba(212,175,55,0.22),rgba(255,215,0,0.17))",
+    border: "1px solid rgba(255,215,0,0.28)",
     borderRadius: 16, borderTopRightRadius: 4,
     padding: "12px 18px",
-    boxShadow: "0 2px 16px rgba(99,102,241,0.10)",
+    boxShadow: "0 2px 16px rgba(212,175,55,0.10)",
     display: "inline-block",
   },
 
@@ -149,10 +149,10 @@ export const S: Record<string, React.CSSProperties> = {
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 11, flexShrink: 0,
-    background: "linear-gradient(135deg,#8b5cf6,#6366f1)",
+    background: "linear-gradient(135deg,#D4AF37,#FFD700)",
     color: "#fff", border: "none", fontSize: 18, cursor: "pointer",
     display: "flex", alignItems: "center", justifyContent: "center",
-    boxShadow: "0 4px 14px rgba(139,92,246,0.40)",
+    boxShadow: "0 4px 14px rgba(255,215,0,0.40)",
   },
 
   // Forms
@@ -167,10 +167,10 @@ export const S: Record<string, React.CSSProperties> = {
 
   // Buttons
   btnPrimary: {
-    background: "linear-gradient(135deg,#8b5cf6,#6366f1)",
+    background: "linear-gradient(135deg,#D4AF37,#FFD700)",
     color: "#fff", border: "none", borderRadius: 9,
     padding: "9px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-    boxShadow: "0 3px 12px rgba(139,92,246,0.32)",
+    boxShadow: "0 3px 12px rgba(255,215,0,0.32)",
     transition: "filter .15s, transform .15s, box-shadow .15s",
   },
   btnSecondary: {
@@ -183,7 +183,7 @@ export const S: Record<string, React.CSSProperties> = {
 
   // Misc
   code: {
-    background: "rgba(139,92,246,0.15)", padding: "2px 8px",
+    background: "rgba(255,215,0,0.15)", padding: "2px 8px",
     borderRadius: 6, fontSize: 12, color: "#c4b5fd",
     fontFamily: "'Consolas','Courier New',monospace",
   },
@@ -198,7 +198,7 @@ export const S: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
   },
   badgeNeutral: { background: "rgba(148,163,184,.1)",  color: "rgba(148,163,184,.75)", border: "1px solid rgba(148,163,184,.18)" },
-  badgeInfo:    { background: "rgba(99,102,241,.15)",  color: "#a5b4fc",               border: "1px solid rgba(99,102,241,.3)" },
+  badgeInfo:    { background: "rgba(212,175,55,.15)",  color: "#a5b4fc",               border: "1px solid rgba(212,175,55,.3)" },
   badgeSuccess: { background: "rgba(52,211,153,.12)",  color: "#34d399",               border: "1px solid rgba(52,211,153,.3)" },
   badgeWarning: { background: "rgba(251,191,36,.12)",  color: "#fbbf24",               border: "1px solid rgba(251,191,36,.3)" },
   badgeError:   { background: "rgba(248,113,113,.12)", color: "#f87171",               border: "1px solid rgba(248,113,113,.3)" },
@@ -225,13 +225,13 @@ export const BADGE_STYLE: Record<StatusBadgeKind, React.CSSProperties> = {
 // Single source for the status/accent colors that were previously hardcoded
 // per-file (values unchanged — this is centralization, not a redesign).
 export const C = {
-  green:       "#34d399",   // success
-  greenBright: "#22c55e",   // success (AgentOS variant)
-  red:         "#ef4444",   // danger
-  redSoft:     "#f87171",   // danger (soft)
-  amber:       "#f59e0b",   // warning
+  green:       "#00C853",   // success
+  greenBright: "#00E676",   // success (bright variant)
+  red:         "#FF5252",   // danger
+  redSoft:     "#FF6E6E",   // danger (soft)
+  amber:       "#FFB300",   // warning
   blue:        "#6c8ef7",   // info / running
-  purple:      "#a78bfa",
+  purple:      "#E6C558",
   sky:         "#38bdf8",
   pink:        "#f472b6",
   orange:      "#fb923c",

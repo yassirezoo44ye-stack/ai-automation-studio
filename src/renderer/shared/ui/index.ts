@@ -8,3 +8,4 @@ export { PageBoundary }              from "./PageBoundary";
 export { ProjectAvatar }             from "./ProjectAvatar";
 export { SkeletonLoader, SkeletonCard } from "./SkeletonLoader";
 export { StatusBadge }               from "./StatusBadge";
+export { GoldButton, GlassCard, Dialog, KpiCard, PageTransition, SectionHeader } from "./gold";

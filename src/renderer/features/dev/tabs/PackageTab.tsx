@@ -227,8 +227,8 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         </div>
 
         {lang === "web" && target === "exe" && (
-          <div style={{ padding: "10px 14px", background: "rgba(139,92,246,.08)", borderRadius: 8,
-                        border: "1px solid rgba(139,92,246,.2)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
+          <div style={{ padding: "10px 14px", background: "rgba(255,215,0,.08)", borderRadius: 8,
+                        border: "1px solid rgba(255,215,0,.2)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
             ⚡ <strong>Web → Windows .exe</strong> — يتم تغليف تطبيق الويب داخل Electron
             ثم بناؤه كمثبِّت NSIS قابل للتوزيع.
           </div>

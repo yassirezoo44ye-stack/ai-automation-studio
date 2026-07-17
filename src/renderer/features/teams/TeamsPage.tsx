@@ -24,7 +24,7 @@ interface TeamMember { user_id: string; email: string; name: string | null; join
 
 const ROLES: Role[] = ["owner", "admin", "manager", "developer", "operator", "viewer"];
 const ROLE_COLOR: Record<Role, string> = {
-  owner: C.amber, admin: C.red, manager: "#8b5cf6",
+  owner: C.amber, admin: C.red, manager: "#D4AF37",
   developer: C.blue, operator: C.green, viewer: C.gray,
 };
 
@@ -389,7 +389,7 @@ export function TeamsPage() {
               }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                  background: "rgba(139,92,246,.14)", border: "1px solid rgba(139,92,246,.25)",
+                  background: "rgba(255,215,0,.14)", border: "1px solid rgba(255,215,0,.25)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 13, fontWeight: 700, color: "#c4b5fd",
                 }}>

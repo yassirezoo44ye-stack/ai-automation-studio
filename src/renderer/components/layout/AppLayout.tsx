@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { useAppContext } from "../../contexts/app";
+import { PageTransition } from "../../shared/ui/gold";
 import { ErrorBoundary } from "../../shared/ui/ErrorBoundary";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { Sidebar } from "./Sidebar";
@@ -30,6 +31,7 @@ function WorkspaceContent() {
   return (
     <ErrorBoundary name={page}>
       <Suspense fallback={FALLBACK}>
+        <PageTransition pageKey={page}>
         {page === "home"       && <HomePage />}
         {page === "ai"         && <AIWorkspace />}
         {page === "dev"        && <DevWorkspace />}
@@ -46,6 +48,7 @@ function WorkspaceContent() {
         {page === "observability" && <ObservabilityPage />}
         {page === "social"     && <SocialPage />}
         {page === "settings"   && <SettingsPage />}
+        </PageTransition>
       </Suspense>
     </ErrorBoundary>
   );

@@ -221,7 +221,7 @@ export function SettingsPage() {
                 <div style={S.card}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFD700" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                       <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.6 }}>
                         Set <code style={S.code}>ANTHROPIC_API_KEY</code> in your <code style={S.code}>.env</code> file and restart the backend. Keys are never stored in the browser.
                       </div>
@@ -279,7 +279,7 @@ export function SettingsPage() {
                           key={t.id}
                           onClick={() => setTheme(t.id)}
                           style={{
-                            flex: 1, border: `2px solid ${theme === t.id ? "#8b5cf6" : "rgba(255,255,255,0.08)"}`,
+                            flex: 1, border: `2px solid ${theme === t.id ? "#D4AF37" : "rgba(255,255,255,0.08)"}`,
                             borderRadius: 12, padding: 12, cursor: "pointer",
                             textAlign: "center" as const, background: "transparent",
                           }}

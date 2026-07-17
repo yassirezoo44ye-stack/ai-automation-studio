@@ -22,7 +22,7 @@ const S = {
   },
   title: {
     fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px",
-    background: "linear-gradient(135deg, var(--accent), #a78bfa)",
+    background: "linear-gradient(135deg, var(--accent), #E6C558)",
     WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
   },
   badge: {

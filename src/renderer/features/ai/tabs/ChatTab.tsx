@@ -250,7 +250,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         <div style={{ ...S.messages, position: "relative" }}>
           {messages.length === 0 && (
             <div style={{ ...S.empty, animation: "fadeIn .4s ease" }}>
-              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "linear-gradient(135deg,rgba(139,92,246,.22),rgba(99,102,241,.17))", border: "1px solid rgba(139,92,246,.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "linear-gradient(135deg,rgba(255,215,0,.22),rgba(99,102,241,.17))", border: "1px solid rgba(255,215,0,.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>{activeAgent ? activeAgent.name : "Axon AI"}</div>

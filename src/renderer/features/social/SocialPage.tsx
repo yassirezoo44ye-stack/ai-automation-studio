@@ -28,9 +28,9 @@ export function SocialPage() {
           {([["youtube","▶ YouTube"],["facebook","📘 Social"]] as [SocialTab,string][]).map(([id,label]) => (
             <button key={id} onClick={() => setTab(id)}
               style={{ padding: "7px 18px", borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, transition: "all .18s",
-                background: tab === id ? "linear-gradient(135deg,#8b5cf6,#6366f1)" : "transparent",
+                background: tab === id ? "linear-gradient(135deg,#D4AF37,#FFD700)" : "transparent",
                 color: tab === id ? "#fff" : "rgba(148,163,184,.6)",
-                boxShadow: tab === id ? "0 2px 12px rgba(139,92,246,.35)" : "none" }}>
+                boxShadow: tab === id ? "0 2px 12px rgba(255,215,0,.35)" : "none" }}>
               {label}
             </button>
           ))}
@@ -274,9 +274,9 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
             {(["facebook","instagram","twitter","linkedin"] as const).map(p => (
               <button key={p} onClick={() => setPlatform(p)}
                 style={{ padding: "9px 6px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, transition: "all .18s",
-                  background: platform === p ? "linear-gradient(135deg,#8b5cf6,#6366f1)" : "rgba(255,255,255,.05)",
+                  background: platform === p ? "linear-gradient(135deg,#D4AF37,#FFD700)" : "rgba(255,255,255,.05)",
                   color: platform === p ? "#fff" : "rgba(148,163,184,.6)",
-                  boxShadow: platform === p ? "0 2px 12px rgba(139,92,246,.3)" : "none" }}>
+                  boxShadow: platform === p ? "0 2px 12px rgba(255,215,0,.3)" : "none" }}>
                 {platformIcon[p]} {p.charAt(0).toUpperCase()+p.slice(1)}
               </button>
             ))}
@@ -331,7 +331,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
           <div key={i} style={{ ...S.card, display: "flex", flexDirection: "column", gap: 14, animation: "slideIn .25s ease" }} className="card-hover">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#8b5cf6,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>{i + 1}</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#D4AF37,#FFD700)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>{i + 1}</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>النسخة {i + 1}</span>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
@@ -347,7 +347,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
             {v.hashtags && v.hashtags.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {v.hashtags.map((h: string) => (
-                  <span key={h} style={{ background: "rgba(139,92,246,.15)", border: "1px solid rgba(139,92,246,.25)", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#c4b5fd" }}>
+                  <span key={h} style={{ background: "rgba(255,215,0,.15)", border: "1px solid rgba(255,215,0,.25)", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#c4b5fd" }}>
                     {h.startsWith("#") ? h : `#${h}`}
                   </span>
                 ))}

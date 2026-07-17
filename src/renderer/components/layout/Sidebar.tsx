@@ -1,26 +1,36 @@
 import { useAppContext } from "../../contexts/app";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOrg } from "../../contexts/OrgContext";
+import { motion } from "framer-motion";
 import { Icons } from "../../icons";
 import type { Page } from "../../types";
 
-const NAV: { id: Page; label: string; icon: keyof typeof Icons }[] = [
-  { id: "home",       label: "Home",       icon: "home"       },
-  { id: "ai",         label: "AI",         icon: "ai"         },
-  { id: "dev",        label: "Dev",        icon: "dev"        },
-  { id: "design",     label: "Design",     icon: "design"     },
-  { id: "automation", label: "Automation", icon: "automation" },
-  { id: "agentos",       label: "AgentOS",       icon: "agentos"       },
-  { id: "marketplace",   label: "Marketplace",   icon: "marketplace"   },
-  { id: "plugins",       label: "Plugins",       icon: "plugins"       },
-  { id: "sandbox",       label: "Sandbox",       icon: "sandbox"       },
-  { id: "ai-routing",    label: "AI Routing",    icon: "ai-routing"    },
-  { id: "observability", label: "Observability", icon: "observability" },
-  { id: "organizations", label: "Organizations", icon: "organizations" },
-  { id: "teams",         label: "Teams",         icon: "teams"         },
-  { id: "billing",       label: "Billing",       icon: "billing"       },
-  { id: "social",      label: "Social",      icon: "social"      },
-  { id: "settings",    label: "Settings",    icon: "settings"    },
+type NavItem = { id: Page; label: string; icon: keyof typeof Icons };
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+  { label: "Workspace", items: [
+    { id: "home",   label: "Home",   icon: "home"   },
+    { id: "ai",     label: "AI",     icon: "ai"     },
+    { id: "dev",    label: "Dev",    icon: "dev"    },
+    { id: "design", label: "Design", icon: "design" },
+  ]},
+  { label: "Automation", items: [
+    { id: "automation",  label: "Workflows",   icon: "automation"  },
+    { id: "agentos",     label: "AgentOS",     icon: "agentos"     },
+    { id: "marketplace", label: "Marketplace", icon: "marketplace" },
+    { id: "plugins",     label: "Plugins",     icon: "plugins"     },
+    { id: "sandbox",     label: "Sandbox",     icon: "sandbox"     },
+  ]},
+  { label: "Platform", items: [
+    { id: "ai-routing",    label: "AI Routing",    icon: "ai-routing"    },
+    { id: "observability", label: "Observability", icon: "observability" },
+  ]},
+  { label: "Organization", items: [
+    { id: "organizations", label: "Organizations", icon: "organizations" },
+    { id: "teams",         label: "Teams",         icon: "teams"         },
+    { id: "billing",       label: "Billing",       icon: "billing"       },
+    { id: "social",        label: "Social",        icon: "social"        },
+    { id: "settings",      label: "Settings",      icon: "settings"      },
+  ]},
 ];
 
 function SunIcon() {
@@ -82,8 +92,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               title={orgs.find(o => o.id === currentOrgId)?.name ?? "Select organization"}
               style={{
                 width: "100%", fontSize: sidebarCollapsed ? 0 : 12,
-                background: "rgba(255,255,255,0.05)", color: "#e2e8f0",
-                border: "1px solid rgba(255,255,255,0.09)", borderRadius: 8,
+                background: "var(--bg-input)", color: "var(--t2)",
+                border: "1px solid var(--b1)", borderRadius: 8,
                 padding: sidebarCollapsed ? "6px 2px" : "7px 10px",
                 cursor: "pointer", outline: "none",
               }}
@@ -94,22 +104,31 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         )}
 
         <nav className="sidebar__nav">
-          {NAV.map(item => {
-            const Icon = Icons[item.icon];
-            const active = page === item.id;
-            return (
-              <button
-                key={item.id}
-                className={`sidebar__item ${active ? "sidebar__item--active" : ""}`}
-                onClick={() => handleNav(item.id)}
-                aria-current={active ? "page" : undefined}
-                title={item.label}
-              >
-                <span className="sidebar__icon" aria-hidden="true"><Icon /></span>
-                {!sidebarCollapsed && <span className="sidebar__label">{item.label}</span>}
-              </button>
-            );
-          })}
+          {NAV_GROUPS.map(group => (
+            <div key={group.label} className="sidebar__group">
+              {!sidebarCollapsed && <div className="sidebar__group-label">{group.label}</div>}
+              {group.items.map(item => {
+                const Icon = Icons[item.icon];
+                const active = page === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    className={`sidebar__item ${active ? "sidebar__item--active" : ""}`}
+                    onClick={() => handleNav(item.id)}
+                    aria-current={active ? "page" : undefined}
+                    title={item.label}
+                  >
+                    {active && (
+                      <motion.span layoutId="sidebar-active-pill" className="sidebar__pill"
+                                   transition={{ type: "spring", stiffness: 420, damping: 32 }} />
+                    )}
+                    <span className="sidebar__icon" aria-hidden="true"><Icon /></span>
+                    {!sidebarCollapsed && <span className="sidebar__label">{item.label}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 2 }}>

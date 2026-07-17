@@ -12,7 +12,7 @@ const S = {
   wrap: {
     display: "flex", alignItems: "center", justifyContent: "center",
     minHeight: "100vh",
-    background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(139,92,246,0.12) 0%, var(--bg-base) 70%)",
+    background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,215,0,0.12) 0%, var(--bg-base) 70%)",
     fontFamily: "var(--font-sans)",
     padding: "24px",
   } as React.CSSProperties,

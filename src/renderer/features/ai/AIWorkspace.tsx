@@ -62,9 +62,9 @@ export function AIWorkspace() {
                 style={{
                   padding: "6px 16px", borderRadius: 9, border: "none", cursor: "pointer",
                   fontSize: 13, fontWeight: 500, transition: "all .18s",
-                  background: tab === id ? "linear-gradient(135deg,#8b5cf6,#6366f1)" : "transparent",
+                  background: tab === id ? "linear-gradient(135deg,#D4AF37,#FFD700)" : "transparent",
                   color:      tab === id ? "#fff" : "rgba(148,163,184,.6)",
-                  boxShadow:  tab === id ? "0 2px 12px rgba(139,92,246,.35)" : "none",
+                  boxShadow:  tab === id ? "0 2px 12px rgba(255,215,0,.35)" : "none",
                 }}
               >{label}</button>
             ))}
