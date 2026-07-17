@@ -3,14 +3,13 @@ import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { relTime } from "../../utils/time";
+import { motion } from "framer-motion";
 import { ProjectAvatar } from "../../components/ui/ProjectAvatar";
+import { KpiCard } from "../../shared/ui/gold";
 import { S, C, withAlpha } from "../../styles/theme";
 import type { Project } from "../../types";
 
 type HomeTab = "overview" | "projects";
-
-// ── Stat card data type ───────────────────────────────────────────────────────
-type StatCardDef = { label: string; value: string | number; color: string; icon: React.JSX.Element };
 
 export function HomePage() {
   const { setPage } = useAppContext();
@@ -64,7 +63,7 @@ export function HomePage() {
     const x = (i: number) => n <= 1 ? pad.left + gW / 2 : pad.left + (i / (n - 1)) * gW;
     const y = (v: number) => pad.top + gH - (v / maxVal) * gH;
 
-    ctx.strokeStyle = "#1e2438"; ctx.lineWidth = 1;
+    ctx.strokeStyle = "#242424"; ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
       const yy = pad.top + (i / 4) * gH;
       ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + gW, yy); ctx.stroke();
@@ -84,7 +83,7 @@ export function HomePage() {
       vals.forEach((v, i) => i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v)));
       ctx.stroke();
     };
-    drawArea(series.messages, withAlpha(C.blue, "40"), C.blue, 2.5);
+    drawArea(series.messages, withAlpha("#FFD700", "33"), "#FFD700", 2.5);
     drawArea(series.builds,   withAlpha(C.green, "30"), C.green, 2);
 
     ctx.fillStyle = C.slate; ctx.font = "11px Segoe UI"; ctx.textAlign = "center";
@@ -92,13 +91,12 @@ export function HomePage() {
     ctx.textAlign = "start";
   }, [series]);
 
-  const statCards: StatCardDef[] = [
-    { label: "Conversations", value: stats?.conversations ?? "—", color: C.blue, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
-    { label: "Messages",      value: stats?.messages      ?? "—", color: C.purple, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
-    { label: "Builds",        value: stats?.agent_runs    ?? "—", color: C.green, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
-    { label: "Projects",      value: stats?.projects      ?? "—", color: C.amber, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
-    { label: "Success Rate",  value: stats ? `${stats.success_rate}%` : "—", color: "#10b981", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> },
-    { label: "Agent Runs",    value: stats?.agent_runs    ?? "—", color: C.redSoft, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg> },
+  const kpis = [
+    { label: "Conversations", value: stats?.conversations ?? 0, suffix: "", accent: true,  icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+    { label: "Messages",      value: stats?.messages ?? 0,      suffix: "", accent: false, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
+    { label: "Builds",        value: stats?.agent_runs ?? 0,    suffix: "", accent: false, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
+    { label: "Projects",      value: stats?.projects ?? 0,      suffix: "", accent: false, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
+    { label: "Success Rate",  value: stats?.success_rate ?? 0,  suffix: "%", accent: true, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> },
   ];
 
   const actionMeta: Record<string, { label: string; color: string }> = {
@@ -211,21 +209,26 @@ export function HomePage() {
             </div>
           </div>
 
-          {/* Stat cards */}
+          {/* KPI cards — animated count-up */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Overview</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 12 }}>
-              {statCards.map(c => (
-                <div key={c.label} className="stat-card" style={{ ...S.card, display: "flex", alignItems: "center", gap: 14, padding: "18px 20px" }}>
-                  <div style={{ width: 46, height: 46, borderRadius: 13, background: c.color + "1e", border: `1px solid ${c.color}30`, display: "flex", alignItems: "center", justifyContent: "center", color: c.color, flexShrink: 0 }}>{c.icon}</div>
-                  <div style={{ minWidth: 0 }}>
-                    {stats ? <div style={{ fontSize: 24, fontWeight: 700, color: c.color, lineHeight: 1, letterSpacing: "-0.5px" }}>{String(c.value)}</div>
-                      : <div className="skeleton" style={{ width: 48, height: 24, marginBottom: 4 }} />}
-                    <div style={{ fontSize: 12, color: "rgba(148,163,184,0.55)", marginTop: 4, whiteSpace: "nowrap" }}>{c.label}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {stats ? (
+              <motion.div
+                style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 12 }}
+                initial="hidden" animate="show"
+                variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+              >
+                {kpis.map(k => (
+                  <motion.div key={k.label} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
+                    <KpiCard label={k.label} value={k.value} suffix={k.suffix} icon={k.icon} accent={k.accent} />
+                  </motion.div>
+                ))}
+              </motion.div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 12 }}>
+                {[1,2,3,4,5].map(i => <div key={i} className="skeleton" style={{ height: 92, borderRadius: 18 }} />)}
+              </div>
+            )}
           </div>
 
           {/* Chart + activity */}
@@ -234,7 +237,7 @@ export function HomePage() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <span style={S.cardTitle}>Activity — last 14 days</span>
                 <div style={{ display: "flex", gap: 14, fontSize: 12 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 6, color: C.blue }}><span style={{ width: 10, height: 3, borderRadius: 2, background: C.blue, display: "inline-block" }} />Messages</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--accent-2)" }}><span style={{ width: 10, height: 3, borderRadius: 2, background: "var(--accent-2)", display: "inline-block" }} />Messages</span>
                   <span style={{ display: "flex", alignItems: "center", gap: 6, color: C.green }}><span style={{ width: 10, height: 3, borderRadius: 2, background: C.green, display: "inline-block" }} />Builds</span>
                 </div>
               </div>
