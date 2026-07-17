@@ -5,6 +5,7 @@ The pool is stored as a module-level variable so routers can call
 get_pool() without needing a FastAPI Depends chain. set_pool() is
 called once from the lifespan context manager in main.py.
 """
+import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -14,6 +15,11 @@ from app.core.config import USER_ID, DEMO_PROJECT_ID
 from app.core.observability.tracer import get_tracer
 
 _pool: Optional[asyncpg.Pool] = None
+
+# When the pool is saturated, waiting forever turns one slow spot into a
+# platform-wide stall — fail fast instead so callers surface a clear error
+# (and the request-level bulkheads shed load upstream).
+_ACQUIRE_TIMEOUT_S = float(os.getenv("DB_ACQUIRE_TIMEOUT_S", "10"))
 
 
 def get_pool() -> asyncpg.Pool:
@@ -42,7 +48,7 @@ async def acquire_scoped(org_id: str):
     tracer = get_tracer()
     with tracer.start_span("db.acquire_scoped", service="database") as span:
         span.set_tag("organization_id", org_id)
-        async with get_pool().acquire() as conn:
+        async with get_pool().acquire(timeout=_ACQUIRE_TIMEOUT_S) as conn:
             async with conn.transaction():
                 await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
                 yield conn

@@ -137,19 +137,26 @@ class PgMarketplaceStore:
     # leaking existence, same pattern as org-membership checks elsewhere.
 
     async def list_items(self, *, viewer_org_id: str | None = None) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
-            if viewer_org_id:
-                rows = await conn.fetch(
-                    f"SELECT {_ITEM_COLS} FROM marketplace_items "
-                    "WHERE deleted_at IS NULL AND (visibility='public' OR owner_organization_id=$1)",
-                    uuid.UUID(str(viewer_org_id)),
-                )
-            else:
-                rows = await conn.fetch(
-                    f"SELECT {_ITEM_COLS} FROM marketplace_items "
-                    "WHERE deleted_at IS NULL AND visibility='public'"
-                )
-        return [_row_to_item(r) for r in rows]
+        from app.core.cache import cached
+
+        async def _load() -> list[dict[str, Any]]:
+            async with self._pool.acquire() as conn:
+                if viewer_org_id:
+                    rows = await conn.fetch(
+                        f"SELECT {_ITEM_COLS} FROM marketplace_items "
+                        "WHERE deleted_at IS NULL AND (visibility='public' OR owner_organization_id=$1)",
+                        uuid.UUID(str(viewer_org_id)),
+                    )
+                else:
+                    rows = await conn.fetch(
+                        f"SELECT {_ITEM_COLS} FROM marketplace_items "
+                        "WHERE deleted_at IS NULL AND visibility='public'"
+                    )
+            return [_row_to_item(r) for r in rows]
+
+        # High-read, low-write catalog — 60s cache per viewer scope,
+        # dropped by every mutating method via invalidate_prefix("mkt:list").
+        return await cached(f"mkt:list:{viewer_org_id or 'public'}", _load, ttl=60)
 
     async def get_item(self, item_id: str, *, viewer_org_id: str | None = None) -> Optional[dict[str, Any]]:
         async with self._pool.acquire() as conn:
@@ -200,6 +207,8 @@ class PgMarketplaceStore:
                     item["id"], item["version"],
                     item.get("metadata", {}).get("changelog"),
                 )
+        from app.core.cache import invalidate_prefix
+        await invalidate_prefix("mkt:list")
 
     async def delete_item(self, item_id: str) -> bool:
         async with self._pool.acquire() as conn:
@@ -208,7 +217,11 @@ class PgMarketplaceStore:
                 "WHERE id=$1 AND deleted_at IS NULL",
                 item_id,
             )
-        return result != "UPDATE 0"
+        if result != "UPDATE 0":
+            from app.core.cache import invalidate_prefix
+            await invalidate_prefix("mkt:list")
+            return True
+        return False
 
     async def record_install(
         self, item_id: str, *, org_id: str | None = None, user_email: str | None = None,
@@ -250,6 +263,8 @@ class PgMarketplaceStore:
                 )
             except Exception:
                 log.warning("marketplace usage record failed for org=%s", org_id, exc_info=True)
+        from app.core.cache import invalidate_prefix
+        await invalidate_prefix("mkt:list")
         return _row_to_item(row)
 
     # ── Reviews ───────────────────────────────────────────────────────────────
@@ -274,6 +289,8 @@ class PgMarketplaceStore:
                     "WHERE id=$1",
                     review["listing_id"], float(stats["avg"]), int(stats["n"]), time.time(),
                 )
+        from app.core.cache import invalidate_prefix
+        await invalidate_prefix("mkt:list")
         return review
 
     async def list_reviews(self, item_id: str) -> list[dict[str, Any]]:

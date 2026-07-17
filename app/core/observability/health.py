@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -71,6 +72,9 @@ class HealthRegistry:
 
     def __init__(self) -> None:
         self._probes: dict[str, _ProbeEntry] = {}
+        # (report, taken_at) — see check_all()'s snapshot comment.
+        self._snapshot: Optional[tuple[dict, float]] = None
+        self._snapshot_ttl_s = float(os.getenv("HEALTH_SNAPSHOT_TTL_S", "5"))
 
     def register(
         self,
@@ -109,7 +113,18 @@ class HealthRegistry:
                 duration_ms=(time.perf_counter() - t0) * 1000,
             )
 
-    async def check_all(self) -> dict:
+    async def check_all(self, *, force: bool = False) -> dict:
+        # Short TTL snapshot: load balancers, the Observability page, and
+        # CI smoke tests all poll the deep endpoints — re-running every
+        # probe (DB round-trips, disk stats) on each poll made /health/deep
+        # many times the cost of /health under concurrent load. A few
+        # seconds of staleness is inherent to health reporting anyway.
+        now = time.time()
+        if not force and self._snapshot is not None:
+            report, taken_at = self._snapshot
+            if now - taken_at < self._snapshot_ttl_s:
+                return report
+
         if not self._probes:
             return {
                 "status" : HealthStatus.HEALTHY.value,

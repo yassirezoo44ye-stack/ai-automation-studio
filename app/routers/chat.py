@@ -30,6 +30,8 @@ class ConversationCreate(BaseModel):
 
 @router.post("/run/stream")
 async def run_stream(req: RunRequest, request: Request):
+    from app.core.reliability import get_bulkhead
+    bulkhead = get_bulkhead("ai", 32)
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
     ai = get_ai_client()
@@ -64,6 +66,15 @@ async def run_stream(req: RunRequest, request: Request):
     history.append({"role": "user", "content": req.prompt})
 
     async def event_stream():
+        # The bulkhead slot is held for the whole stream — a StreamingResponse
+        # returns from the handler immediately, so guarding only the handler
+        # body would release the slot before any tokens flow.
+        try:
+            bulkhead_cm = bulkhead.acquire()
+            await bulkhead_cm.__aenter__()
+        except Exception:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Server is at capacity — please retry shortly.'})}\n\n"
+            return
         full_text = ""
         try:
             with ai.messages.stream(
@@ -108,6 +119,8 @@ async def run_stream(req: RunRequest, request: Request):
             yield f"data: {json.dumps({'type': 'error', 'message': anthropic_error_message(e)})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            await bulkhead_cm.__aexit__(None, None, None)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -115,19 +128,21 @@ async def run_stream(req: RunRequest, request: Request):
 
 @router.post("/run")
 async def run_agent(req: RunRequest, request: Request):
+    from app.core.reliability import get_bulkhead
     org_id = await check_org_quota(request)
     ai = get_ai_client()
-    try:
-        message = ai.messages.create(
-            model="claude-sonnet-4-6", max_tokens=1024,
-            messages=[{"role": "user", "content": req.prompt}],
-        )
-    except anthropic.AuthenticationError:
-        raise HTTPException(401, "Invalid Anthropic API key.")
-    except anthropic.BadRequestError as e:
-        raise HTTPException(402, anthropic_error_message(e))
-    except Exception as e:
-        raise HTTPException(502, str(e))
+    async with get_bulkhead("ai", 32).acquire():
+        try:
+            message = ai.messages.create(
+                model="claude-sonnet-4-6", max_tokens=1024,
+                messages=[{"role": "user", "content": req.prompt}],
+            )
+        except anthropic.AuthenticationError:
+            raise HTTPException(401, "Invalid Anthropic API key.")
+        except anthropic.BadRequestError as e:
+            raise HTTPException(402, anthropic_error_message(e))
+        except Exception as e:
+            raise HTTPException(502, str(e))
 
     await record_org_tokens(
         org_id, message.usage.input_tokens + message.usage.output_tokens, req.project_id,

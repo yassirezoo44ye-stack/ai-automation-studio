@@ -145,19 +145,21 @@ class FileSyncRequest(BaseModel):
 
 @router.post("/api/build")
 async def build_program(req: BuildRequest, request: Request):
+    from app.core.reliability import get_bulkhead
     org_id = await check_org_quota(request)
     ai = get_ai_client()
-    try:
-        msg = ai.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=16000,
-            system=BUILD_SYSTEM,
-            messages=[{"role": "user", "content": req.prompt}],
-        )
-    except anthropic.BadRequestError as e:
-        raise HTTPException(402, anthropic_error_message(e))
-    except Exception as e:
-        raise HTTPException(502, str(e))
+    async with get_bulkhead("build", 8).acquire():
+        try:
+            msg = ai.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=16000,
+                system=BUILD_SYSTEM,
+                messages=[{"role": "user", "content": req.prompt}],
+            )
+        except anthropic.BadRequestError as e:
+            raise HTTPException(402, anthropic_error_message(e))
+        except Exception as e:
+            raise HTTPException(502, str(e))
 
     await record_org_tokens(
         org_id, msg.usage.input_tokens + msg.usage.output_tokens, req.project_id,
@@ -205,10 +207,19 @@ async def build_stream(req: BuildRequest, request: Request):
       - Writes each file and emits its SSE event the moment <<<ENDFILE>>> arrives.
       - Heartbeat every 15 s keeps the Render proxy alive.
     """
+    from app.core.reliability import get_bulkhead
+    bulkhead = get_bulkhead("build", 8)
     ai_rate_limit(request, max_calls=10, window=60)
     org_id = await check_org_quota(request)
 
     async def event_stream():
+        # Slot held for the whole stream (handler returns before tokens flow).
+        try:
+            bulkhead_cm = bulkhead.acquire()
+            await bulkhead_cm.__aenter__()
+        except Exception:
+            yield _sse("error", message="Server is at capacity — please retry shortly.")
+            return
         try:
             yield _sse("status", message="🤖 Connecting to Claude…")
 
@@ -299,6 +310,8 @@ async def build_stream(req: BuildRequest, request: Request):
         except Exception as e:
             log.exception("build_stream error")
             yield _sse("error", message=str(e))
+        finally:
+            await bulkhead_cm.__aexit__(None, None, None)
 
     return StreamingResponse(
         event_stream(),

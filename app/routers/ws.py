@@ -47,18 +47,20 @@ class _ConnectionManager:
         log.debug("ws disconnected topic=%s remaining=%d", topic, len(subs))
 
     async def broadcast(self, topic: str, payload: dict) -> None:
-        """Send to all subscribers of a topic. Dead connections are pruned."""
+        """Send to all subscribers of a topic in parallel — a sequential
+        loop lets one slow client's TCP backpressure delay every later
+        subscriber (head-of-line blocking). Dead connections are pruned."""
         subs  = list(self._subs.get(topic, []))
-        dead  : list[WebSocket] = []
+        if not subs:
+            return
         frame = json.dumps({"type": "event", "topic": topic,
                             "data": payload, "ts": round(time.time(), 3)})
-        for ws in subs:
-            try:
-                await ws.send_text(frame)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect(ws, topic)
+        results = await asyncio.gather(
+            *(ws.send_text(frame) for ws in subs), return_exceptions=True,
+        )
+        for ws, result in zip(subs, results):
+            if isinstance(result, BaseException):
+                self.disconnect(ws, topic)
 
     async def send(self, ws: WebSocket, payload: dict) -> bool:
         try:

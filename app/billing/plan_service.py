@@ -141,6 +141,10 @@ class PlanService:
         if row is None:
             raise ValueError(f"unknown plan {plan_id!r}")
         await self.refresh_cache()
+        # Other instances hold their own in-process plan cache — tell them
+        # to refresh too (no-op extra hop on a single instance).
+        from app.core.cache import invalidate
+        await invalidate("plans:catalog")
         return _row_to_plan(row)
 
 

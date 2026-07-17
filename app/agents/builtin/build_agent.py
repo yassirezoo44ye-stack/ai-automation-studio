@@ -1,9 +1,9 @@
 """Build agent — runs the build phase for a project."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import shlex
-import subprocess
 from pathlib import Path
 
 from app.agents.base import AgentContext, AgentPermissions, AgentResult, EvolvableAgent
@@ -52,11 +52,26 @@ class BuildAgent(EvolvableAgent):
             )
 
         try:
-            proc = subprocess.run(
-                cmd, cwd=ws, capture_output=True, text=True, timeout=300,
+            # asyncio subprocess, not subprocess.run — a sync call here
+            # blocks the entire event loop (every request on this server)
+            # for up to 300 seconds while a build runs.
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, cwd=ws,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
+            try:
+                stdout_b, stderr_b = await asyncio.wait_for(
+                    proc.communicate(), timeout=300,
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return AgentResult.fail(self.name, "Build timed out after 300s",
+                                        data={"workspace": str(ws), "command": cmd})
+            stdout  = (stdout_b or b"").decode("utf-8", errors="replace")
+            stderr  = (stderr_b or b"").decode("utf-8", errors="replace")
             success = proc.returncode == 0
-            output  = (proc.stdout or "") + (proc.stderr or "")
+            output  = stdout + stderr
             return AgentResult(
                 agent   = self.name,
                 success = success,
@@ -65,14 +80,11 @@ class BuildAgent(EvolvableAgent):
                     "workspace"  : str(ws),
                     "command"    : cmd,
                     "exit_code"  : proc.returncode,
-                    "stdout_tail": proc.stdout[-1000:] if proc.stdout else "",
-                    "stderr_tail": proc.stderr[-500:]  if proc.stderr else "",
+                    "stdout_tail": stdout[-1000:],
+                    "stderr_tail": stderr[-500:],
                 },
                 error = f"Build exited {proc.returncode}" if not success else None,
             )
-        except subprocess.TimeoutExpired:
-            return AgentResult.fail(self.name, "Build timed out after 300s",
-                                    data={"workspace": str(ws), "command": cmd})
         except Exception as exc:
             return AgentResult.fail(self.name, str(exc))
 

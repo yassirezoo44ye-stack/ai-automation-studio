@@ -126,15 +126,25 @@ class TenancyService:
         return dict(row)
 
     async def get_settings(self, org_id: str) -> dict[str, Any]:
-        from app.core.db import acquire_scoped
-        async with acquire_scoped(org_id) as conn:
-            row = await conn.fetchval(
-                "SELECT settings FROM organizations WHERE id=$1 AND deleted_at IS NULL",
-                uuid.UUID(org_id),
-            )
-        if row is None:
+        from app.core.cache import cached
+
+        async def _load() -> dict[str, Any] | None:
+            from app.core.db import acquire_scoped
+            async with acquire_scoped(org_id) as conn:
+                row = await conn.fetchval(
+                    "SELECT settings FROM organizations WHERE id=$1 AND deleted_at IS NULL",
+                    uuid.UUID(org_id),
+                )
+            if row is None:
+                return None
+            return json.loads(row) if isinstance(row, str) else dict(row)
+
+        # Hot read on the org-scoped request path — cached 5 min, invalidated
+        # by update_settings below (across instances via the pub/sub channel).
+        settings = await cached(f"org:settings:{org_id}", _load, ttl=300)
+        if settings is None:
             raise TenancyError("organization not found", 404)
-        return json.loads(row) if isinstance(row, str) else dict(row)
+        return settings
 
     async def update_settings(
         self, org_id: str, *, actor_id: str, patch: dict[str, Any],
@@ -152,6 +162,8 @@ class TenancyService:
             )
         if row is None:
             raise TenancyError("organization not found", 404)
+        from app.core.cache import invalidate
+        await invalidate(f"org:settings:{org_id}")
         await self._log(org_id, actor_id, "organization.settings_updated",
                         resource="organization", resource_id=org_id, details=patch,
                         ip_address=ip_address)

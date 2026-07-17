@@ -64,7 +64,18 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    # Pool sizing is env-tunable so multiple instances can share a Postgres
+    # connection budget (e.g. Render starter Postgres allows ~97 connections:
+    # DB_POOL_MAX per instance × instance count must stay below that).
+    # command_timeout bounds every query — a runaway query fails loudly
+    # instead of holding a connection forever. asyncpg also caches prepared
+    # statements per connection automatically; no extra layer needed.
+    pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=int(os.getenv("DB_POOL_MIN", "2")),
+        max_size=int(os.getenv("DB_POOL_MAX", "10")),
+        command_timeout=float(os.getenv("DB_COMMAND_TIMEOUT_S", "60")),
+    )
     set_pool(pool)
     async with pool.acquire() as conn:
         await init_db(conn)
@@ -103,6 +114,17 @@ async def lifespan(app: FastAPI):
         await init_coupons_schema(conn)
         await init_credits_schema(conn)
     await get_plan_service(pool).refresh_cache()
+
+    # Cross-instance cache coherence: when any instance edits the plan
+    # catalog (PlanService.update_plan publishes "plans:catalog"), every
+    # instance reloads its in-process plan cache. role_permissions needs no
+    # equivalent — it's seeded at startup and never mutated at runtime.
+    from app.core.cache import on_invalidate
+
+    async def _refresh_plans(_key: str) -> None:
+        await get_plan_service(pool).refresh_cache()
+
+    await on_invalidate("plans:", _refresh_plans)
 
     # ── AI usage ledger — references organizations (tenancy block above)
     # and users/conversations (init_db above). AI Routing consolidation:
@@ -280,6 +302,22 @@ def create_app() -> FastAPI:
                 "metric": exc.metric, "used": exc.used, "limit": exc.limit,
             },
             headers={"Retry-After": "60"},
+        )
+
+    from app.core.reliability import BulkheadFull
+
+    @app.exception_handler(BulkheadFull)
+    async def bulkhead_full_handler(request: Request, exc: BulkheadFull):
+        # Load shed, not failure: the endpoint's concurrency ceiling is
+        # reached — tell the client to retry instead of queueing behind a
+        # possibly-stalled dependency.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": f"Server is at capacity for this operation ({exc.name}) — retry shortly.",
+                "error": "bulkhead_saturated",
+            },
+            headers={"Retry-After": str(exc.retry_after_s)},
         )
 
     @app.exception_handler(Exception)

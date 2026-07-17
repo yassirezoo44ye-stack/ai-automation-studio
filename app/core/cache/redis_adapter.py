@@ -69,6 +69,9 @@ class CacheBackend(ABC):
     @abstractmethod
     async def publish(self, channel: str, message: str) -> None: ...
 
+    @abstractmethod
+    async def subscribe(self, channel: str, callback) -> None: ...
+
     @property
     @abstractmethod
     def backend_name(self) -> str: ...
@@ -165,6 +168,9 @@ class LocalCacheBackend(CacheBackend):
             except Exception:
                 pass
 
+    async def subscribe(self, channel: str, callback) -> None:
+        self._pubsub.setdefault(channel, []).append(callback)
+
     @property
     def backend_name(self) -> str:
         return "local"
@@ -180,6 +186,9 @@ class RedisCacheBackend(CacheBackend):
 
     def __init__(self, client) -> None:
         self._r = client
+        self._subs: dict[str, list] = {}       # channel → [callbacks]
+        self._pubsub_conn = None               # created lazily on first subscribe
+        self._listener_task: Optional[asyncio.Task] = None
 
     async def get(self, key: str) -> Optional[str]:
         val = await self._r.get(key)
@@ -233,6 +242,39 @@ class RedisCacheBackend(CacheBackend):
     async def publish(self, channel: str, message: str) -> None:
         await self._r.publish(channel, message)
 
+    async def subscribe(self, channel: str, callback) -> None:
+        self._subs.setdefault(channel, []).append(callback)
+        if self._pubsub_conn is None:
+            self._pubsub_conn = self._r.pubsub()
+        await self._pubsub_conn.subscribe(channel)
+        if self._listener_task is None or self._listener_task.done():
+            self._listener_task = asyncio.create_task(self._listen())
+
+    async def _listen(self) -> None:
+        try:
+            async for msg in self._pubsub_conn.listen():
+                if msg.get("type") != "message":
+                    continue
+                ch = msg["channel"]
+                ch = ch.decode() if isinstance(ch, bytes) else ch
+                data = msg["data"]
+                data = data.decode() if isinstance(data, bytes) else str(data)
+                for cb in self._subs.get(ch, []):
+                    try:
+                        if asyncio.iscoroutinefunction(cb):
+                            asyncio.create_task(cb(data))
+                        else:
+                            cb(data)
+                    except Exception:
+                        log.exception("pubsub callback failed for channel %s", ch)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Listener death must never take the app down — log and stop;
+            # the next subscribe() call restarts it.
+            log.warning("pubsub listener stopped: %s", exc)
+            self._listener_task = None
+
     @property
     def backend_name(self) -> str:
         return "redis"
@@ -262,6 +304,13 @@ class RedisAdapter:
 
     async def delete(self, key: str) -> None:
         await self._b.delete(self._k(key))
+
+    async def delete_prefix(self, prefix: str) -> int:
+        """Delete every key under `prefix` (namespaced). Returns the count."""
+        keys = await self._b.keys(self._k(prefix) + "*")
+        for k in keys:
+            await self._b.delete(k)
+        return len(keys)
 
     async def incr(self, key: str, ttl: Optional[int] = None) -> int:
         n = await self._b.incr(self._k(key))
@@ -293,6 +342,14 @@ class RedisAdapter:
 
     async def publish(self, channel: str, message: str) -> None:
         await self._b.publish(f"{self._ns}:{channel}", message)
+
+    async def subscribe(self, channel: str, callback) -> None:
+        """Register a callback for messages on `channel` (namespaced the same
+        way publish() namespaces, so publish/subscribe pairs line up). Works
+        on both backends: Redis uses a real pub/sub listener; local dispatches
+        in-process — which makes cross-instance invalidation a no-op extra
+        hop on single-instance deployments, not a behavior change."""
+        await self._b.subscribe(f"{self._ns}:{channel}", callback)
 
     @property
     def backend(self) -> str:
