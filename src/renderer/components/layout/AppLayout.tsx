@@ -29,7 +29,12 @@ const FALLBACK = <LoadingSpinner fullPage label="Loading workspace…" />;
 function WorkspaceContent() {
   const { page } = useAppContext();
   return (
-    <ErrorBoundary name={page}>
+    // Keyed by page: an error on one page must never leak into the next
+    // page's fallback UI. Without a key, ErrorBoundary is the same instance
+    // across navigations and its `hasError` state only ever clears via the
+    // manual Retry button — so a crash on "ai" would keep showing "Error in
+    // ai" chrome after navigating away to "home".
+    <ErrorBoundary key={page} name={page}>
       <Suspense fallback={FALLBACK}>
         <PageTransition pageKey={page}>
         {page === "home"       && <HomePage />}
@@ -55,7 +60,7 @@ function WorkspaceContent() {
 }
 
 export function AppLayout() {
-  const { setPage } = useAppContext();
+  const { setPage, isPageTransitioning } = useAppContext();
   const [mobileOpen, setMobileOpen]   = useState(false);
   const [cmdOpen,    setCmdOpen]       = useState(false);
   const closeMobile = useCallback(() => setMobileOpen(false), []);
@@ -98,6 +103,10 @@ export function AppLayout() {
       <div className="app-layout">
         <Sidebar mobileOpen={mobileOpen} onMobileClose={closeMobile} />
         <main id="main-content" className="app-main">
+          {/* Only visible while a not-yet-cached page's chunk is loading —
+              near-instant (no visible flash) once every route has been
+              visited once in this session. */}
+          {isPageTransitioning && <div className="page-nav-progress" aria-hidden="true" />}
           <WorkspaceContent />
         </main>
       </div>

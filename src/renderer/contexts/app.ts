@@ -8,6 +8,8 @@ export type Theme = "dark" | "light";
 export interface AppContextType {
   page: Page;
   setPage: (p: Page) => void;
+  /** True while a page switch that suspended on an uncached lazy chunk is still resolving. */
+  isPageTransitioning: boolean;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
   theme: Theme;
@@ -18,6 +20,7 @@ export interface AppContextType {
 export const AppContext = createContext<AppContextType>({
   page: "home",
   setPage: () => {},
+  isPageTransitioning: false,
   sidebarCollapsed: false,
   setSidebarCollapsed: () => {},
   theme: "dark",

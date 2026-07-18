@@ -693,10 +693,35 @@ input:focus, textarea:focus, select:focus {
 }
 
 .app-main {
+  position: relative;
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* Indeterminate bar shown while a page switch is waiting on an uncached
+   lazy chunk — see AppLayout's isPageTransitioning. prefers-reduced-motion
+   is handled by the global rule above, which freezes this animation too. */
+.page-nav-progress {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  z-index: 5;
+  overflow: hidden;
+  background: transparent;
+}
+.page-nav-progress::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: -30%;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
+  animation: page-nav-progress-sweep 900ms ease-in-out infinite;
+}
+@keyframes page-nav-progress-sweep {
+  0%   { left: -30%; }
+  100% { left: 100%; }
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────── */
