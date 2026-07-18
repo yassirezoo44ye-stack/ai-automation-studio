@@ -14,9 +14,11 @@ import { C } from "../../shared/lib/theme";
  * not `item_type`/`price`/`rating_avg`/`install_count`).
  */
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
+import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import { VersionsTab } from "./tabs/VersionsTab";
 import { DependenciesTab } from "./tabs/DependenciesTab";
 import { ReviewsTab } from "./tabs/ReviewsTab";
@@ -98,14 +100,12 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
   const meta = TYPE_META[item.type] ?? { label: item.type, icon: "📦", color: "var(--ta)" };
 
   return (
-    <div
+    <GlassCard
+      className="g-listing-card"
       style={{
-        background: "var(--bg-surface)", border: `1px solid ${expanded ? meta.color + "60" : "var(--border)"}`, borderRadius: 14,
-        padding: "18px 20px", display: "flex", flexDirection: "column", gap: 12,
-        transition: "border-color .18s, transform .18s",
-        position: "relative",
+        display: "flex", flexDirection: "column", gap: 12, position: "relative",
+        ...(expanded ? { borderColor: `${meta.color}60`, boxShadow: "var(--shadow-glow)" } : {}),
       }}
-      className="card-hover"
     >
       {item.visibility !== "public" && (
         <span style={{
@@ -186,45 +186,22 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            onClick={() => onToggleDetails(item.id)}
-            style={{
-              padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)", cursor: "pointer",
-              fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,.04)", color: "var(--t3)",
-            }}
-          >
+          <GoldButton variant="ghost" onClick={() => onToggleDetails(item.id)}>
             {expanded ? "Hide" : "Details"}
-          </button>
+          </GoldButton>
           <PriceBadge priceUsd={item.price_usd} />
           {installed ? (
-            <button
-              onClick={() => onUninstall(item.id)}
-              disabled={installing}
-              style={{
-                padding: "7px 16px", borderRadius: 8, border: "1px solid var(--border)", cursor: installing ? "wait" : "pointer",
-                fontSize: 13, fontWeight: 600, background: "rgba(255,255,255,.04)", color: "var(--t3)",
-                opacity: installing ? 0.7 : 1,
-              }}
-            >
+            <GoldButton variant="ghost" disabled={installing} onClick={() => onUninstall(item.id)}>
               {installing ? "…" : "Uninstall"}
-            </button>
+            </GoldButton>
           ) : (
-            <button
-              onClick={() => onInstall(item.id)}
-              disabled={installing}
-              style={{
-                padding: "7px 16px", borderRadius: 8, border: "none", cursor: installing ? "wait" : "pointer",
-                fontSize: 13, fontWeight: 600,
-                background: installing ? "rgba(108,142,247,.4)" : "linear-gradient(135deg,#6c8ef7,#818cf8)",
-                color: "#fff", opacity: installing ? 0.7 : 1, transition: "opacity .18s",
-              }}
-            >
+            <GoldButton variant="primary" disabled={installing} onClick={() => onInstall(item.id)}>
               {installing ? "…" : item.price_usd === 0 ? "Install" : "Buy"}
-            </button>
+            </GoldButton>
           )}
         </div>
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -256,8 +233,8 @@ function DetailPanel({ item, onClose, canManage, onRolledBack }: {
         {DETAIL_TABS.map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-            background: tab === id ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-            color: tab === id ? C.blue : "var(--t4)",
+            background: tab === id ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+            color: tab === id ? "var(--accent-2)" : "var(--t4)",
           }}>
             {label}
           </button>
@@ -287,10 +264,10 @@ function CategoryBar({ categories, active, onChange }: {
         style={{
           padding: "7px 14px", borderRadius: 99, cursor: "pointer",
           fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
-          background: active === "all" ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-          color: active === "all" ? C.blue : "var(--t4)",
+          background: active === "all" ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+          color: active === "all" ? "var(--accent-2)" : "var(--t4)",
           outline: "none",
-          border: active === "all" ? "1px solid rgba(108,142,247,.4)" : "1px solid transparent",
+          border: active === "all" ? "1px solid var(--accent-border)" : "1px solid transparent",
         }}
       >
         All
@@ -298,7 +275,7 @@ function CategoryBar({ categories, active, onChange }: {
       {categories.map(c => {
         const isActive = active === c.slug;
         const meta = TYPE_META[c.slug as ItemType];
-        const color = meta?.color ?? C.blue;
+        const color = meta?.color ?? "var(--accent-2)";
         return (
           <button
             key={c.slug}
@@ -467,15 +444,15 @@ export function MarketplacePage() {
             Marketplace
           </span>
           <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
-                         background: "rgba(108,142,247,.15)", color: C.blue, border: "1px solid rgba(108,142,247,.3)" }}>
+                         background: "var(--accent-dim)", color: "var(--accent-2)", border: "1px solid var(--accent-border)" }}>
             {listings.length} items
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             {SORT_OPTIONS.map(([id, label]) => (
               <button key={id} onClick={() => setSortBy(id)} style={{
                 padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-                background: sortBy === id ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-                color: sortBy === id ? C.blue : "var(--t4)",
+                background: sortBy === id ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+                color: sortBy === id ? "var(--accent-2)" : "var(--t4)",
                 transition: "all .15s",
               }}>{label}</button>
             ))}
@@ -530,20 +507,25 @@ export function MarketplacePage() {
         ) : sorted.length === 0 ? (
           <EmptyState query={search} />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          <motion.div
+            style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}
+            initial="hidden" animate="show"
+            variants={{ show: { transition: { staggerChildren: 0.04 } } }}
+          >
             {sorted.map(item => (
-              <ListingCard
-                key={item.id}
-                item={item}
-                onInstall={id => void handleInstall(id)}
-                onUninstall={id => void handleUninstall(id)}
-                onToggleDetails={toggleDetails}
-                installing={!!installing[item.id]}
-                installed={installedIds.has(item.id)}
-                expanded={expandedId === item.id}
-              />
+              <motion.div key={item.id} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
+                <ListingCard
+                  item={item}
+                  onInstall={id => void handleInstall(id)}
+                  onUninstall={id => void handleUninstall(id)}
+                  onToggleDetails={toggleDetails}
+                  installing={!!installing[item.id]}
+                  installed={installedIds.has(item.id)}
+                  expanded={expandedId === item.id}
+                />
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
       </div>
     </>

@@ -4,7 +4,7 @@
  * (g-btn*, g-card, g-dialog*, g-kpi) — not inline styles — and animated
  * with framer-motion, honoring prefers-reduced-motion throughout.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
@@ -39,12 +39,13 @@ export function GoldButton({
 /* ── Card ───────────────────────────────────────────────────────────────── */
 
 export function GlassCard({
-  children, onClick, className = "", lift = true,
+  children, onClick, className = "", lift = true, style,
 }: {
   children: ReactNode;
   onClick?: () => void;
   className?: string;
   lift?: boolean;
+  style?: CSSProperties;
 }) {
   const reduce = useReducedMotion();
   return (
@@ -53,7 +54,7 @@ export function GlassCard({
       onClick={onClick}
       whileHover={reduce || !lift ? undefined : { y: -3 }}
       transition={{ type: "spring", stiffness: 380, damping: 26 }}
-      style={onClick ? { cursor: "pointer" } : undefined}
+      style={onClick ? { cursor: "pointer", ...style } : style}
     >
       {children}
     </motion.div>
