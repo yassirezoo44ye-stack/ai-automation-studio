@@ -97,6 +97,16 @@ jobs:
         run: python scripts/ci_schema_check.py
 
       - name: Unit tests
+        # `python -m pytest`, NOT the bare `pytest` console script: the
+        # console-script entry point does not prepend the CWD to sys.path,
+        # so `tests/test_agent_os.py` and `tests/test_ai_platform.py` (the
+        # first two files alphabetically) hit `ModuleNotFoundError: No
+        # module named 'app'` during collection and abort the whole run —
+        # reproduced locally and confirmed as the root cause of every
+        # "Unit tests" failure since this pipeline started dispatching
+        # jobs. `python -m pytest` inserts CWD into sys.path[0], which
+        # makes the repo-root `app` package importable.
+        #
         # On failure, surface pytest's own output as workflow annotations
         # (::error::) so it's readable from the public Checks API without
         # needing log-download permissions (which requires repo admin
@@ -106,7 +116,7 @@ jobs:
         # the `pipefail`-tripped pipeline.
         run: |
           set +e
-          pytest tests/ -v --tb=short 2>&1 | tee /tmp/pytest_output.log
+          python -m pytest tests/ -v --tb=short 2>&1 | tee /tmp/pytest_output.log
           rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then
             tail -n 200 /tmp/pytest_output.log | awk 'BEGIN{n=0} {buf=buf $0 "%0A"; n++} n==10{print buf; buf=""; n=0} END{if(n>0) print buf}' | while IFS= read -r chunk; do
