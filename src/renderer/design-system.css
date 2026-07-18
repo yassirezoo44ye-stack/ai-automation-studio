@@ -128,6 +128,15 @@
   --t5: rgba(71,85,105,0.30);
   --ta: #9A7B1E;
 
+  /* Dark, WCAG-safe gold — the dark-theme --accent/--accent-2 (#D4AF37/
+     #FFD700) read fine on near-black but drop to ~1.5:1 on this light
+     background. Darkened equivalents (~4-5:1) so every G1-G7 usage that
+     reads --accent-2 as a text color (tab labels, badges, links) stays
+     legible in light mode too. --accent-dim/--accent-border keep the
+     bright-gold rgba wash from :root — fine as a background tint. */
+  --accent:   #8A6D1A;
+  --accent-2: #9A7B1E;
+
   --b1:  rgba(0,0,0,0.08);
   --b2:  rgba(0,0,0,0.14);
   --ba:  rgba(154,123,30,0.30);
@@ -754,8 +763,8 @@ input:focus, textarea:focus, select:focus {
   transition: background var(--t-fast), color var(--t-fast);
 }
 .sidebar__item:hover { background: rgba(255,255,255,0.05); color: var(--t2); }
-.sidebar__item--active { background: rgba(108,142,247,0.12); color: var(--accent); }
-.sidebar__item--active:hover { background: rgba(108,142,247,0.16); }
+.sidebar__item--active { color: var(--accent-2); }
+.sidebar__item--active:hover { background: rgba(255,255,255,0.05); }
 
 .sidebar__icon {
   display: flex;
@@ -1039,6 +1048,5 @@ kbd {
   border: 1px solid var(--accent-border);
   border-radius: var(--r-md);
 }
-.sidebar__item--active { color: var(--accent-2); }
 .sidebar__item--active .sidebar__icon { color: var(--accent-2); }
 

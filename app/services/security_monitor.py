@@ -1,6 +1,7 @@
 """Security Monitor — scans for config drift, exposed secrets, and rate anomalies."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -20,7 +21,14 @@ _SECRET_PATTERNS = [
 ]
 
 _SCANNED_GLOBS = ["*.py", "*.ts", "*.tsx", "*.js", "*.json"]
-_SKIP_DIRS     = {".git", "node_modules", "dist", ".backups", "__pycache__"}
+_SKIP_DIRS     = {
+    ".git", "node_modules", "dist", ".backups", "__pycache__",
+    # Vendored/installed dependencies — never our source, and scanning them
+    # both floods the log with false positives (third-party libraries
+    # legitimately contain strings matching these patterns) and turns this
+    # into a many-thousand-file walk every tick.
+    "venv", ".venv", "env", "site-packages",
+}
 
 
 class SecurityMonitorService(BaseService):
@@ -33,25 +41,10 @@ class SecurityMonitorService(BaseService):
         from app.core.observability.metrics import get_metrics
         m = get_metrics()
 
-        hits: list[str] = []
-        for pattern in _SCANNED_GLOBS:
-            for fpath in _ROOT.rglob(pattern):
-                # Skip protected dirs
-                if any(p in fpath.parts for p in _SKIP_DIRS):
-                    continue
-                # Skip files > 500 KB
-                try:
-                    if fpath.stat().st_size > 500_000:
-                        continue
-                    text = fpath.read_text(errors="ignore")
-                except (OSError, PermissionError):
-                    continue
-                for rx in _SECRET_PATTERNS:
-                    if rx.search(text):
-                        rel = str(fpath.relative_to(_ROOT))
-                        hits.append(rel)
-                        log.critical("SECURITY: possible secret found in %s", rel)
-                        break
+        # The filesystem walk + per-file read is synchronous I/O; run it off
+        # the event loop so a large tree doesn't stall every other request
+        # for the scan's duration.
+        hits = await asyncio.get_event_loop().run_in_executor(None, _scan)
 
         m.gauge("security_secret_leaks_detected",
                 "Files with possible secret patterns").set(len(hits))
@@ -61,3 +54,26 @@ class SecurityMonitorService(BaseService):
                          len(hits), hits[:10])
         else:
             log.debug("Security monitor: no secret leaks detected")
+
+
+def _scan() -> list[str]:
+    hits: list[str] = []
+    for pattern in _SCANNED_GLOBS:
+        for fpath in _ROOT.rglob(pattern):
+            # Skip protected dirs
+            if any(p in fpath.parts for p in _SKIP_DIRS):
+                continue
+            # Skip files > 500 KB
+            try:
+                if fpath.stat().st_size > 500_000:
+                    continue
+                text = fpath.read_text(errors="ignore")
+            except (OSError, PermissionError):
+                continue
+            for rx in _SECRET_PATTERNS:
+                if rx.search(text):
+                    rel = str(fpath.relative_to(_ROOT))
+                    hits.append(rel)
+                    log.critical("SECURITY: possible secret found in %s", rel)
+                    break
+    return hits
