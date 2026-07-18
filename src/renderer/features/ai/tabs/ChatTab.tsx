@@ -6,9 +6,12 @@
 import { useState, useRef, useEffect, useCallback, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "../../../contexts/toast";
-import { apiFetch, parseJSON, authH, API } from "../../../utils/api";
+import { apiFetch, apiJSON, parseJSON, authH, API } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
+import { useAsyncData } from "../../../shared/hooks/useAsyncData";
+import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
+import { ErrorState, EmptyState } from "../../../shared/ui/StateViews";
 import { S, C } from "../../../styles/theme";
 import AxonLogo from "../../../AxonLogo";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";
@@ -24,7 +27,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const toast = useToast();
   const [projectId, setProjectId] = useState("demo");
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
-  const [convs, setConvs]         = useState<Conv[]>([]);
+  const {
+    data: convs = [], status: convsStatus, error: convsError, suggestedFix: convsFix, refetch: loadConvs,
+  } = useAsyncData(() => apiJSON<Conv[]>(`/api/conversations?project_id=${projectId}`), [projectId]);
   const [activeConv, setActiveConv] = useState<string | null>(null);
   const [messages, setMessages]   = useState<Message[]>([]);
   const [prompt, setPrompt]       = useState("");
@@ -38,12 +43,6 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  const loadConvs = useCallback(async () => {
-    const path = `/api/conversations?project_id=${projectId}`;
-    try { const r = await apiFetch(path); setConvs(await parseJSON<Conv[]>(r, path)); } catch {}
-  }, [projectId]);
-
-  useEffect(() => { void Promise.resolve().then(loadConvs); }, [loadConvs]);
   // Reset conversation state when the project changes — during render,
   // per React's "adjusting state when a prop changes" pattern.
   const [prevProjectId, setPrevProjectId] = useState(projectId);
@@ -202,9 +201,21 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         <div style={{ padding: "0 8px 6px" }}>
           <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search…" style={{ ...S.textInput, fontSize: 12, padding: "6px 10px" }} />
         </div>
-        <div style={{ flex: 1, overflowY: "auto" }}>
-          {filteredConvs.length === 0 && (
-            <div style={{ padding: "12px 16px", fontSize: 12, color: C.slate }}>No conversations</div>
+        <div style={{ flex: 1, overflowY: "auto", position: "relative" }}>
+          {convsStatus === "refreshing" && (
+            <div style={{ position: "absolute", top: 6, right: 8, opacity: 0.6, zIndex: 1 }}>
+              <LoadingSpinner size={14} label="" />
+            </div>
+          )}
+          {convsStatus === "loading" && <LoadingSpinner label="Loading conversations…" />}
+          {convsStatus === "error" && (
+            <ErrorState compact message={convsError ?? "Failed to load conversations."} suggestedFix={convsFix} onRetry={loadConvs} />
+          )}
+          {convsStatus === "empty" && (
+            <EmptyState compact title="No conversations yet" description="Start a new chat to see it here." />
+          )}
+          {(convsStatus === "success" || convsStatus === "refreshing") && filteredConvs.length === 0 && (
+            <EmptyState compact title="No matches" description={`Nothing found for "${searchQ}".`} />
           )}
           {filteredConvs.map(c => (
             <div
