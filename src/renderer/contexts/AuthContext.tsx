@@ -68,6 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const doRefreshRef = useRef<() => Promise<{ token: string | null; networkError?: string }>>(async () => ({ token: null }));
   // Ref lets scheduleRefresh call itself (from within its own setTimeout) without a self-referential closure
   const scheduleRefreshRef = useRef<(delayMs?: number) => void>(() => {});
+  // Dedupes concurrent doRefresh() calls (StrictMode double-invoking the
+  // bootstrap effect, or a scheduled refresh racing a manual one) onto a
+  // single in-flight request. Without this, two /api/auth/refresh calls
+  // race with the same stored token; the backend rotates it on the first
+  // and 401s the second, whose "legitimately expired" handling then clears
+  // the session the first call just established.
+  const refreshInFlightRef = useRef<Promise<{ token: string | null; networkError?: string }> | null>(null);
 
   const scheduleRefresh = useCallback((delayMs = 13 * 60 * 1000) => {
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -90,35 +97,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     scheduleRefreshRef.current = scheduleRefresh;
   }, [scheduleRefresh]);
 
-  const doRefresh = useCallback(async (): Promise<{ token: string | null; networkError?: string }> => {
-    const stored = localStorage.getItem(REFRESH_KEY);
-    if (!stored) return { token: null };
-    try {
-      const res = await apiFetch("/api/auth/refresh", {
-        method: "POST",
-        body: JSON.stringify({ refresh_token: stored }),
-      });
-      if (res.status === 401) {
-        // Token is legitimately expired/revoked — clear session, not an error
-        localStorage.removeItem(REFRESH_KEY);
-        setGlobalToken(null);
-        setUser(null);
-        setAccessToken(null);
-        return { token: null };
+  const doRefresh = useCallback((): Promise<{ token: string | null; networkError?: string }> => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+
+    const run = async (): Promise<{ token: string | null; networkError?: string }> => {
+      const stored = localStorage.getItem(REFRESH_KEY);
+      if (!stored) return { token: null };
+      try {
+        const res = await apiFetch("/api/auth/refresh", {
+          method: "POST",
+          body: JSON.stringify({ refresh_token: stored }),
+        });
+        if (res.status === 401) {
+          // Token is legitimately expired/revoked — clear session, not an error
+          localStorage.removeItem(REFRESH_KEY);
+          setGlobalToken(null);
+          setUser(null);
+          setAccessToken(null);
+          return { token: null };
+        }
+        if (!res.ok) {
+          // 5xx or unexpected — backend problem, keep the stored token for retry
+          return { token: null, networkError: `Server error (${res.status}). Please try again.` };
+        }
+        const data = await parseJSON<{ access_token: string; refresh_token: string }>(res, "/api/auth/refresh");
+        localStorage.setItem(REFRESH_KEY, data.refresh_token);
+        setGlobalToken(data.access_token);
+        setAccessToken(data.access_token);
+        scheduleRefresh();
+        return { token: data.access_token };
+      } catch {
+        return { token: null, networkError: "Cannot reach the server. Check your connection." };
       }
-      if (!res.ok) {
-        // 5xx or unexpected — backend problem, keep the stored token for retry
-        return { token: null, networkError: `Server error (${res.status}). Please try again.` };
-      }
-      const data = await parseJSON<{ access_token: string; refresh_token: string }>(res, "/api/auth/refresh");
-      localStorage.setItem(REFRESH_KEY, data.refresh_token);
-      setGlobalToken(data.access_token);
-      setAccessToken(data.access_token);
-      scheduleRefresh();
-      return { token: data.access_token };
-    } catch {
-      return { token: null, networkError: "Cannot reach the server. Check your connection." };
-    }
+    };
+
+    const promise = run().finally(() => { refreshInFlightRef.current = null; });
+    refreshInFlightRef.current = promise;
+    return promise;
   }, [scheduleRefresh]);
 
   // Keep ref in sync so scheduleRefresh always calls the latest version
