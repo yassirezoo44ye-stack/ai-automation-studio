@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.core.config import USER_ID
+from app.core.auth import owner_user_id
 from app.core.db import get_pool
 from app.core.helpers import get_ai_client, resolve_project_id, anthropic_error_message
 from app.core.org_quota import check_org_quota, record_org_tokens
@@ -40,18 +40,26 @@ async def run_stream(req: RunRequest, request: Request):
     conv_id: Optional[uuid.UUID] = None
 
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
         if req.conversation_id:
             try:
                 conv_id = uuid.UUID(req.conversation_id)
-                rows = await conn.fetch(
-                    "SELECT role, content FROM messages WHERE conversation_id=$1 ORDER BY created_at",
-                    conv_id,
-                )
-                history = [{"role": r["role"], "content": r["content"]} for r in rows]
-            except Exception:
-                pass
+            except ValueError:
+                raise HTTPException(400, "Invalid conversation_id")
+            owned = await conn.fetchval(
+                "SELECT 1 FROM conversations c JOIN projects p ON c.project_id=p.id "
+                "WHERE c.id=$1 AND p.user_id=$2",
+                conv_id, uid,
+            )
+            if not owned:
+                raise HTTPException(404, "Conversation not found")
+            rows = await conn.fetch(
+                "SELECT role, content FROM messages WHERE conversation_id=$1 ORDER BY created_at",
+                conv_id,
+            )
+            history = [{"role": r["role"], "content": r["content"]} for r in rows]
         else:
-            pid = resolve_project_id(req.project_id)
+            pid = await resolve_project_id(conn, req.project_id, uid)
             conv_id = await conn.fetchval(
                 "INSERT INTO conversations (project_id, title) VALUES ($1, $2) RETURNING id",
                 pid, req.prompt[:60] + ("…" if len(req.prompt) > 60 else ""),
@@ -102,7 +110,7 @@ async def run_stream(req: RunRequest, request: Request):
                         conv_id, full_text,
                     )
                     await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
-                    pid2 = resolve_project_id(req.project_id)
+                    pid2 = await resolve_project_id(conn, req.project_id, uid)
                     run_id = await conn.fetchval(
                         "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
                         "VALUES ($1,'claude',$2,$3,'completed',NOW()) RETURNING id",
@@ -110,7 +118,7 @@ async def run_stream(req: RunRequest, request: Request):
                     )
                     await conn.execute(
                         "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
-                        USER_ID, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
+                        uid, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
                     )
             except Exception:
                 pass
@@ -148,8 +156,9 @@ async def run_agent(req: RunRequest, request: Request):
         org_id, message.usage.input_tokens + message.usage.output_tokens, req.project_id,
     )
     summary = message.content[0].text
-    pid = resolve_project_id(req.project_id)
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+        pid = await resolve_project_id(conn, req.project_id, uid)
         run_id = await conn.fetchval(
             "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
             "VALUES ($1,'claude',$2,$3,'completed',NOW()) RETURNING id",
@@ -157,15 +166,16 @@ async def run_agent(req: RunRequest, request: Request):
         )
         await conn.execute(
             "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
-            USER_ID, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
+            uid, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
         )
     return {"result": {"summary": summary}}
 
 
 @router.post("/api/conversations")
-async def create_conversation(body: ConversationCreate):
-    pid = resolve_project_id(body.project_id)
+async def create_conversation(body: ConversationCreate, request: Request):
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+        pid = await resolve_project_id(conn, body.project_id, uid)
         cid = await conn.fetchval(
             "INSERT INTO conversations (project_id, title) VALUES ($1,$2) RETURNING id",
             pid, body.title,
@@ -174,17 +184,21 @@ async def create_conversation(body: ConversationCreate):
 
 
 @router.get("/api/conversations")
-async def list_conversations(project_id: Optional[str] = None):
+async def list_conversations(request: Request, project_id: Optional[str] = None):
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
         if project_id:
-            pid = resolve_project_id(project_id)
+            pid = await resolve_project_id(conn, project_id, uid)
             rows = await conn.fetch(
                 "SELECT id, title, created_at, updated_at FROM conversations WHERE project_id=$1 ORDER BY updated_at DESC",
                 pid,
             )
         else:
             rows = await conn.fetch(
-                "SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT 50"
+                "SELECT c.id, c.title, c.created_at, c.updated_at FROM conversations c "
+                "JOIN projects p ON c.project_id=p.id WHERE p.user_id=$1 "
+                "ORDER BY c.updated_at DESC LIMIT 50",
+                uid,
             )
     return [{"id": str(r["id"]), "title": r["title"],
              "created_at": r["created_at"].isoformat(), "updated_at": r["updated_at"].isoformat()}
@@ -192,8 +206,16 @@ async def list_conversations(project_id: Optional[str] = None):
 
 
 @router.get("/api/conversations/{conv_id}/messages")
-async def get_messages(conv_id: str):
+async def get_messages(conv_id: str, request: Request):
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+        owned = await conn.fetchval(
+            "SELECT 1 FROM conversations c JOIN projects p ON c.project_id=p.id "
+            "WHERE c.id=$1 AND p.user_id=$2",
+            uuid.UUID(conv_id), uid,
+        )
+        if not owned:
+            raise HTTPException(404, "Conversation not found")
         rows = await conn.fetch(
             "SELECT id, role, content, created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at",
             uuid.UUID(conv_id),
@@ -203,26 +225,37 @@ async def get_messages(conv_id: str):
 
 
 @router.delete("/api/conversations/{conv_id}")
-async def delete_conversation(conv_id: str):
+async def delete_conversation(conv_id: str, request: Request):
     async with get_pool().acquire() as conn:
-        await conn.execute("DELETE FROM conversations WHERE id=$1", uuid.UUID(conv_id))
+        uid = await owner_user_id(conn, request)
+        result = await conn.execute(
+            "DELETE FROM conversations c USING projects p "
+            "WHERE c.project_id=p.id AND c.id=$1 AND p.user_id=$2",
+            uuid.UUID(conv_id), uid,
+        )
+    if result == "DELETE 0":
+        raise HTTPException(404, "Conversation not found")
     return {"message": "Deleted"}
 
 
 @router.get("/api/search")
-async def search(q: str, project_id: Optional[str] = None):
+async def search(q: str, request: Request, project_id: Optional[str] = None):
     if not q or len(q) < 2:
         return {"conversations": [], "messages": []}
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
         conv_rows = await conn.fetch(
-            "SELECT id, title, updated_at FROM conversations WHERE title ILIKE $1 ORDER BY updated_at DESC LIMIT 10",
-            f"%{q}%",
+            "SELECT c.id, c.title, c.updated_at FROM conversations c "
+            "JOIN projects p ON c.project_id=p.id "
+            "WHERE p.user_id=$1 AND c.title ILIKE $2 ORDER BY c.updated_at DESC LIMIT 10",
+            uid, f"%{q}%",
         )
         msg_rows = await conn.fetch(
             "SELECT m.id, m.content, m.role, m.conversation_id, c.title "
             "FROM messages m JOIN conversations c ON m.conversation_id=c.id "
-            "WHERE m.content ILIKE $1 ORDER BY m.created_at DESC LIMIT 20",
-            f"%{q}%",
+            "JOIN projects p ON c.project_id=p.id "
+            "WHERE p.user_id=$1 AND m.content ILIKE $2 ORDER BY m.created_at DESC LIMIT 20",
+            uid, f"%{q}%",
         )
     return {
         "conversations": [{"id": str(r["id"]), "title": r["title"],
@@ -234,9 +267,14 @@ async def search(q: str, project_id: Optional[str] = None):
 
 
 @router.get("/api/export/conversations/{conv_id}")
-async def export_conversation(conv_id: str):
+async def export_conversation(conv_id: str, request: Request):
     async with get_pool().acquire() as conn:
-        conv = await conn.fetchrow("SELECT title, created_at FROM conversations WHERE id=$1", uuid.UUID(conv_id))
+        uid = await owner_user_id(conn, request)
+        conv = await conn.fetchrow(
+            "SELECT c.title, c.created_at FROM conversations c "
+            "JOIN projects p ON c.project_id=p.id WHERE c.id=$1 AND p.user_id=$2",
+            uuid.UUID(conv_id), uid,
+        )
         if not conv:
             raise HTTPException(404, "Not found")
         msgs = await conn.fetch(

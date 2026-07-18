@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from app.core.auth import owner_user_id
 from app.core.db import get_pool
 from app.core.helpers import get_ai_client, resolve_project_id
 from app.core.org_quota import check_org_quota, record_org_tokens
@@ -103,12 +104,13 @@ Rules:
 # ── Canvas persistence ────────────────────────────────────────────────────────
 
 @router.post("/api/design/canvases", status_code=201)
-async def save_canvas(req: DesignSaveRequest):
+async def save_canvas(req: DesignSaveRequest, request: Request):
     """Create or upsert a design canvas. Returns the design_id."""
     pool = get_pool()
-    pid  = resolve_project_id(req.project_id)
 
     async with pool.acquire() as conn:
+        uid = await owner_user_id(conn, request)
+        pid = await resolve_project_id(conn, req.project_id, uid)
         if req.design_id:
             row = await conn.fetchrow(
                 """UPDATE design_canvases
@@ -133,10 +135,11 @@ async def save_canvas(req: DesignSaveRequest):
 
 
 @router.get("/api/design/canvases")
-async def list_canvases(project_id: Optional[str] = None, limit: int = 50):
+async def list_canvases(request: Request, project_id: Optional[str] = None, limit: int = 50):
     pool = get_pool()
-    pid  = resolve_project_id(project_id)
     async with pool.acquire() as conn:
+        uid = await owner_user_id(conn, request)
+        pid = await resolve_project_id(conn, project_id, uid)
         rows = await conn.fetch(
             """SELECT id, name, thumbnail, width, height, updated_at
                FROM design_canvases WHERE project_id=($1)::uuid

@@ -8,7 +8,6 @@ from typing import Optional
 import anthropic
 from fastapi import HTTPException
 
-from app.core.config import DEMO_PROJECT_ID
 import os
 
 
@@ -30,13 +29,32 @@ def get_async_ai_client() -> anthropic.AsyncAnthropic:
 
 # ── Project ID resolution ─────────────────────────────────────────────────────
 
-def resolve_project_id(project_id: Optional[str]) -> uuid.UUID:
-    """Map the frontend's "demo" pseudo-project to a fixed seeded UUID.
-    Anything else must be a valid UUID string.
+async def resolve_project_id(conn, project_id: Optional[str], user_id: uuid.UUID) -> uuid.UUID:
+    """Resolve a frontend project_id to a UUID the caller actually owns.
+
+    "demo"/None resolves to the caller's own personal demo project
+    (found-or-created), never a shared global row — the previous fixed
+    DEMO_PROJECT_ID sentinel made every user's default chat/build/design
+    project the same database row, so anyone's "New Chat" surfaced every
+    other user's conversation history. An explicit UUID is verified against
+    projects.user_id and rejected with 404 if the caller doesn't own it.
     """
     if not project_id or project_id == "demo":
-        return DEMO_PROJECT_ID
-    return uuid.UUID(project_id)
+        pid = await conn.fetchval(
+            "SELECT id FROM projects WHERE user_id=$1 AND name=$2 ORDER BY created_at LIMIT 1",
+            user_id, "Demo Project",
+        )
+        if pid:
+            return pid
+        return await conn.fetchval(
+            "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) RETURNING id",
+            user_id, "Demo Project", "Default project for the chat UI",
+        )
+    pid = uuid.UUID(project_id)
+    owned = await conn.fetchval("SELECT 1 FROM projects WHERE id=$1 AND user_id=$2", pid, user_id)
+    if not owned:
+        raise HTTPException(404, "Project not found")
+    return pid
 
 
 # ── Anthropic error normalisation ─────────────────────────────────────────────

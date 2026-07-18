@@ -9,8 +9,10 @@ import hmac
 import json
 import time as _t
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 
 import main  # safe after conftest.py sets DATABASE_URL
 
@@ -72,24 +74,75 @@ class TestTokenRoundtrip:
 # ── Project ID resolution ──────────────────────────────────────────────────────
 
 class TestResolveProjectId:
-    DEMO_ID = "00000000-0000-0000-0000-000000000001"
+    """
+    resolve_project_id used to map "demo"/None to a single fixed UUID shared
+    by every user — any account's default chat/build/design project was the
+    same database row, so one user's "New Chat" surfaced every other user's
+    conversation history. It now finds-or-creates the CALLER's own demo
+    project and verifies ownership of any explicit project_id (H-03).
+    """
+    USER_A = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000001")
+    USER_B = uuid.UUID("bbbbbbbb-0000-0000-0000-000000000002")
 
-    def test_demo_string_maps_to_fixed_uuid(self):
-        assert str(main._resolve_project_id("demo")) == self.DEMO_ID
+    async def test_demo_string_creates_a_project_owned_by_the_caller(self):
+        conn = AsyncMock()
+        new_id = uuid.uuid4()
+        conn.fetchval = AsyncMock(side_effect=[None, new_id])  # no existing row, then INSERT RETURNING id
+        result = await main._resolve_project_id(conn, "demo", self.USER_A)
+        assert result == new_id
+        insert_sql = conn.fetchval.call_args_list[1].args[0]
+        assert "INSERT INTO projects" in insert_sql
+        assert self.USER_A in conn.fetchval.call_args_list[1].args
 
-    def test_none_maps_to_demo_uuid(self):
-        assert str(main._resolve_project_id(None)) == self.DEMO_ID
+    async def test_demo_string_reuses_the_callers_existing_demo_project(self):
+        conn = AsyncMock()
+        existing_id = uuid.uuid4()
+        conn.fetchval = AsyncMock(return_value=existing_id)
+        result = await main._resolve_project_id(conn, "demo", self.USER_A)
+        assert result == existing_id
+        assert conn.fetchval.call_count == 1  # found on first lookup, no INSERT
 
-    def test_empty_string_maps_to_demo_uuid(self):
-        assert str(main._resolve_project_id("")) == self.DEMO_ID
+    async def test_none_behaves_like_demo(self):
+        conn = AsyncMock()
+        existing_id = uuid.uuid4()
+        conn.fetchval = AsyncMock(return_value=existing_id)
+        assert await main._resolve_project_id(conn, None, self.USER_A) == existing_id
 
-    def test_real_uuid_preserved(self):
+    async def test_two_different_users_get_different_demo_projects(self):
+        """The old bug: 'demo' resolved to ONE global UUID for everyone."""
+        conn_a = AsyncMock()
+        id_a = uuid.uuid4()
+        conn_a.fetchval = AsyncMock(return_value=id_a)
+        conn_b = AsyncMock()
+        id_b = uuid.uuid4()
+        conn_b.fetchval = AsyncMock(return_value=id_b)
+
+        result_a = await main._resolve_project_id(conn_a, "demo", self.USER_A)
+        result_b = await main._resolve_project_id(conn_b, "demo", self.USER_B)
+        assert result_a != result_b
+        # and each lookup was scoped to its own caller
+        assert self.USER_A in conn_a.fetchval.call_args_list[0].args
+        assert self.USER_B in conn_b.fetchval.call_args_list[0].args
+
+    async def test_real_uuid_owned_by_caller_is_preserved(self):
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=True)  # ownership check passes
         real = "12345678-1234-1234-1234-123456789abc"
-        assert str(main._resolve_project_id(real)) == real
+        result = await main._resolve_project_id(conn, real, self.USER_A)
+        assert str(result) == real
 
-    def test_invalid_uuid_raises(self):
+    async def test_real_uuid_not_owned_by_caller_raises_404(self):
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=None)  # ownership check fails
+        real = "12345678-1234-1234-1234-123456789abc"
+        with pytest.raises(HTTPException) as exc_info:
+            await main._resolve_project_id(conn, real, self.USER_A)
+        assert exc_info.value.status_code == 404
+
+    async def test_invalid_uuid_raises(self):
+        conn = AsyncMock()
         with pytest.raises((ValueError, Exception)):
-            main._resolve_project_id("not-a-uuid")
+            await main._resolve_project_id(conn, "not-a-uuid", self.USER_A)
 
 
 # ── Rate limiter ───────────────────────────────────────────────────────────────

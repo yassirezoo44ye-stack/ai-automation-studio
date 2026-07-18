@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.core.config import USER_ID
+from app.core.auth import owner_user_id
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
 from app.core.helpers import (
@@ -179,10 +179,11 @@ async def build_program(req: BuildRequest, request: Request):
         written.append(f["path"])
 
     async with get_pool().acquire() as conn:
-        pid = resolve_project_id(req.project_id)
+        uid = await owner_user_id(conn, request)
+        await resolve_project_id(conn, req.project_id, uid)
         await conn.execute(
             "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
-            USER_ID, json.dumps({"prompt": req.prompt[:80], "files": written, "project_id": req.project_id}),
+            uid, json.dumps({"prompt": req.prompt[:80], "files": written, "project_id": req.project_id}),
         )
 
     return {
@@ -211,6 +212,8 @@ async def build_stream(req: BuildRequest, request: Request):
     bulkhead = get_bulkhead("build", 8)
     ai_rate_limit(request, max_calls=10, window=60)
     org_id = await check_org_quota(request)
+    async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
 
     async def event_stream():
         # Slot held for the whole stream (handler returns before tokens flow).
@@ -299,7 +302,7 @@ async def build_stream(req: BuildRequest, request: Request):
                 async with get_pool().acquire() as conn:
                     await conn.execute(
                         "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
-                        USER_ID,
+                        uid,
                         json.dumps({"prompt": req.prompt[:80], "files": parser.completed_files}),
                     )
             except Exception:

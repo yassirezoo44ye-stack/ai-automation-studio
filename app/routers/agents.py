@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.core.config import USER_ID
+from app.core.auth import owner_user_id
 from app.core.db import get_pool, ensure_agents_table
 from app.core.helpers import get_ai_client, resolve_project_id
 from app.core.org_quota import check_org_quota, record_org_tokens
@@ -42,32 +42,31 @@ class AgentChatRequest(BaseModel):
 
 
 @router.post("/api/agents")
-async def create_agent(body: AgentCreate):
+async def create_agent(body: AgentCreate, request: Request):
     await ensure_agents_table()
-    pid = None
-    if body.project_id and body.project_id != "demo":
-        try:
-            pid = uuid.UUID(body.project_id)
-        except ValueError:
-            pass
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+        pid = None
+        if body.project_id and body.project_id != "demo":
+            pid = await resolve_project_id(conn, body.project_id, uid)
         aid = await conn.fetchval(
             "INSERT INTO ai_agents (user_id,project_id,name,avatar,description,system_prompt,model,temperature) "
             "VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
-            USER_ID, pid, body.name, body.avatar or "🤖",
+            uid, pid, body.name, body.avatar or "🤖",
             body.description, body.system_prompt, body.model or "claude-sonnet-4-6", body.temperature or 1.0,
         )
     return {"id": str(aid), "message": "Agent created"}
 
 
 @router.get("/api/agents")
-async def list_agents():
+async def list_agents(request: Request):
     await ensure_agents_table()
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
         rows = await conn.fetch(
             "SELECT id,name,avatar,description,system_prompt,model,temperature,message_count,created_at "
             "FROM ai_agents WHERE user_id=$1 ORDER BY created_at DESC",
-            USER_ID,
+            uid,
         )
     return [{"id": str(r["id"]), "name": r["name"], "avatar": r["avatar"],
              "description": r["description"], "system_prompt": r["system_prompt"],
@@ -77,34 +76,42 @@ async def list_agents():
 
 
 @router.get("/api/agents/{agent_id}")
-async def get_agent(agent_id: str):
+async def get_agent(agent_id: str, request: Request):
     await ensure_agents_table()
     async with get_pool().acquire() as conn:
-        r = await conn.fetchrow("SELECT * FROM ai_agents WHERE id=$1", uuid.UUID(agent_id))
+        uid = await owner_user_id(conn, request)
+        r = await conn.fetchrow("SELECT * FROM ai_agents WHERE id=$1 AND user_id=$2", uuid.UUID(agent_id), uid)
     if not r:
         raise HTTPException(404, "Agent not found")
     return dict(r)
 
 
 @router.put("/api/agents/{agent_id}")
-async def update_agent(agent_id: str, body: AgentUpdate):
+async def update_agent(agent_id: str, body: AgentUpdate, request: Request):
     await ensure_agents_table()
     async with get_pool().acquire() as conn:
-        await conn.execute(
+        uid = await owner_user_id(conn, request)
+        result = await conn.execute(
             "UPDATE ai_agents SET name=COALESCE($1,name), avatar=COALESCE($2,avatar), "
             "description=COALESCE($3,description), system_prompt=COALESCE($4,system_prompt), "
-            "model=COALESCE($5,model), temperature=COALESCE($6,temperature), updated_at=NOW() WHERE id=$7",
+            "model=COALESCE($5,model), temperature=COALESCE($6,temperature), updated_at=NOW() "
+            "WHERE id=$7 AND user_id=$8",
             body.name, body.avatar, body.description, body.system_prompt,
-            body.model, body.temperature, uuid.UUID(agent_id),
+            body.model, body.temperature, uuid.UUID(agent_id), uid,
         )
+    if result == "UPDATE 0":
+        raise HTTPException(404, "Agent not found")
     return {"message": "Updated"}
 
 
 @router.delete("/api/agents/{agent_id}")
-async def delete_agent(agent_id: str):
+async def delete_agent(agent_id: str, request: Request):
     await ensure_agents_table()
     async with get_pool().acquire() as conn:
-        await conn.execute("DELETE FROM ai_agents WHERE id=$1", uuid.UUID(agent_id))
+        uid = await owner_user_id(conn, request)
+        result = await conn.execute("DELETE FROM ai_agents WHERE id=$1 AND user_id=$2", uuid.UUID(agent_id), uid)
+    if result == "DELETE 0":
+        raise HTTPException(404, "Agent not found")
     return {"message": "Deleted"}
 
 
@@ -115,25 +122,35 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
     ai = get_ai_client()
 
     await ensure_agents_table()
-    async with get_pool().acquire() as conn:
-        agent = await conn.fetchrow("SELECT * FROM ai_agents WHERE id=$1", uuid.UUID(agent_id))
-    if not agent:
-        raise HTTPException(404, "Agent not found")
 
     history: list[dict] = []
     conv_id: Optional[uuid.UUID] = None
 
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+        agent = await conn.fetchrow(
+            "SELECT * FROM ai_agents WHERE id=$1 AND user_id=$2", uuid.UUID(agent_id), uid,
+        )
+        if not agent:
+            raise HTTPException(404, "Agent not found")
+
         if req.conversation_id:
             try:
                 conv_id = uuid.UUID(req.conversation_id)
-                rows = await conn.fetch(
-                    "SELECT role, content FROM messages WHERE conversation_id=$1 ORDER BY created_at", conv_id)
-                history = [{"role": r["role"], "content": r["content"]} for r in rows]
-            except Exception:
-                pass
+            except ValueError:
+                raise HTTPException(400, "Invalid conversation_id")
+            owned = await conn.fetchval(
+                "SELECT 1 FROM conversations c JOIN projects p ON c.project_id=p.id "
+                "WHERE c.id=$1 AND p.user_id=$2",
+                conv_id, uid,
+            )
+            if not owned:
+                raise HTTPException(404, "Conversation not found")
+            rows = await conn.fetch(
+                "SELECT role, content FROM messages WHERE conversation_id=$1 ORDER BY created_at", conv_id)
+            history = [{"role": r["role"], "content": r["content"]} for r in rows]
         else:
-            pid = resolve_project_id(req.project_id)
+            pid = await resolve_project_id(conn, req.project_id, uid)
             conv_id = await conn.fetchval(
                 "INSERT INTO conversations (project_id, title) VALUES ($1,$2) RETURNING id",
                 pid, req.prompt[:60],
