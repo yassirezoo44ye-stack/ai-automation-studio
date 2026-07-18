@@ -105,7 +105,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
           {v.changelog && <p style={{ fontSize: 12, color: "var(--t3)", margin: "6px 0 0" }}>{v.changelog}</p>}
           <button
             onClick={() => void loadChangelog(v.version)}
-            style={{ marginTop: 6, background: "none", border: "none", color: C.blue, fontSize: 11, cursor: "pointer", padding: 0 }}
+            style={{ marginTop: 6, background: "none", border: "none", color: "var(--accent-2)", fontSize: 11, cursor: "pointer", padding: 0 }}
           >
             {changelogs[v.version] ? null : "Show structured changelog"}
           </button>

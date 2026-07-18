@@ -117,8 +117,8 @@ export function AIPanel({ getCanvas }: Props) {
             aria-selected={tool === t.id}
             style={{
               ...s.tab,
-              color: tool === t.id ? "#818cf8" : "#6b7280",
-              borderBottomColor: tool === t.id ? "#4f46e5" : "transparent",
+              color: tool === t.id ? "var(--accent-2)" : "#6b7280",
+              borderBottomColor: tool === t.id ? "var(--accent-2)" : "transparent",
             }}
             onClick={() => { setTool(t.id); setError(""); }}
           >{t.label}</button>

@@ -163,8 +163,8 @@ export function PluginsPage() {
           {(["installed", "available"] as TopTab[]).map(t => (
             <button key={t} onClick={() => setTopTab(t)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: topTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-              color: topTab === t ? C.blue : "var(--t4)", textTransform: "capitalize",
+              background: topTab === t ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+              color: topTab === t ? "var(--accent-2)" : "var(--t4)", textTransform: "capitalize",
             }}>
               {t} {t === "installed" ? `(${installed.length})` : ""}
             </button>
@@ -234,8 +234,8 @@ export function PluginsPage() {
                         {(["config", "permissions", "health", "versions"] as DetailTab[]).map(t => (
                           <button key={t} onClick={() => setDetailTab(t)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            background: detailTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-                            color: detailTab === t ? C.blue : "var(--t4)", textTransform: "capitalize",
+                            background: detailTab === t ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+                            color: detailTab === t ? "var(--accent-2)" : "var(--t4)", textTransform: "capitalize",
                           }}>
                             {t}
                           </button>
@@ -289,8 +289,8 @@ export function PluginsPage() {
                       disabled={busy === p.id}
                       style={{
                         padding: "6px 16px", borderRadius: 8, border: "none", cursor: busy === p.id ? "wait" : "pointer",
-                        background: alreadyInstalled ? "rgba(255,255,255,.06)" : "linear-gradient(135deg,#6c8ef7,#818cf8)",
-                        color: alreadyInstalled ? "var(--t3)" : "#fff", fontSize: 12, fontWeight: 600,
+                        background: alreadyInstalled ? "rgba(255,255,255,.06)" : "linear-gradient(135deg,#D4AF37,#FFD700)",
+                        color: alreadyInstalled ? "var(--t3)" : "#121008", fontSize: 12, fontWeight: 600,
                       }}
                     >
                       {busy === p.id ? "…" : alreadyInstalled ? "Installed" : "Install"}

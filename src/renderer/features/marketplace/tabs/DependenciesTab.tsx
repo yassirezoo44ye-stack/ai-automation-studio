@@ -1,4 +1,3 @@
-import { C } from "../../../shared/lib/theme";
 /**
  * DependenciesTab — required/optional dependency list with version
  * constraints. Data: GET /marketplace/listings/{id}/dependencies
@@ -51,8 +50,8 @@ export function DependenciesTab({ listingId }: { listingId: string }) {
             <span style={{ fontSize: 11, color: "var(--t4)" }}>{d.version_constraint}</span>
             <span style={{
               fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
-              background: d.optional ? "rgba(255,255,255,.06)" : "rgba(108,142,247,.15)",
-              color: d.optional ? "var(--t4)" : C.blue,
+              background: d.optional ? "rgba(255,255,255,.06)" : "var(--accent-dim)",
+              color: d.optional ? "var(--t4)" : "var(--accent-2)",
             }}>
               {d.optional ? "OPTIONAL" : "REQUIRED"}
             </span>

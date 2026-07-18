@@ -168,8 +168,8 @@ export function SandboxPage() {
           ] as [TopTab, string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTopTab(t)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: topTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-              color: topTab === t ? C.blue : "var(--t4)",
+              background: topTab === t ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+              color: topTab === t ? "var(--accent-2)" : "var(--t4)",
             }}>
               {label} {t === "workers" ? `(${workers.length})` : t === "permission-requests" ? `(${permissionRequests.length})` : ""}
             </button>
@@ -233,8 +233,8 @@ export function SandboxPage() {
                         {(["logs", "resource-usage"] as DetailTab[]).map(t => (
                           <button key={t} onClick={() => setDetailTab(t)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            background: detailTab === t ? "rgba(108,142,247,.18)" : "rgba(255,255,255,.04)",
-                            color: detailTab === t ? C.blue : "var(--t4)",
+                            background: detailTab === t ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+                            color: detailTab === t ? "var(--accent-2)" : "var(--t4)",
                           }}>
                             {t === "logs" ? "Logs" : "Resource Usage"}
                           </button>

@@ -109,7 +109,7 @@ export function OrganizationsPage() {
                   style={{
                     ...S.card, padding: "16px 18px", cursor: "pointer",
                     border: active ? "1px solid var(--accent)" : S.card.border as string,
-                    background: active ? "rgba(108,142,247,.06)" : S.card.background as string,
+                    background: active ? "var(--accent-dim)" : S.card.background as string,
                   }}
                 >
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -123,7 +123,7 @@ export function OrganizationsPage() {
                       </div>
                     </div>
                     {active && (
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "rgba(108,142,247,.15)", padding: "2px 8px", borderRadius: 99 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent-2)", background: "var(--accent-dim)", padding: "2px 8px", borderRadius: 99 }}>
                         ACTIVE
                       </span>
                     )}
