@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.core.auth import owner_email
+from app.core.auth import owner_user_id as _owner_user_id
 from app.core.db import get_pool
 
 router = APIRouter(tags=["projects"])
@@ -18,15 +18,6 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-
-
-async def _owner_user_id(conn, request: Request) -> uuid.UUID:
-    """Resolve the authenticated subscriber's user_id via their sub_token email."""
-    email = owner_email(request)
-    uid = await conn.fetchval("SELECT id FROM users WHERE email=$1", email)
-    if not uid:
-        raise HTTPException(401, "No account found for this subscription — please register.")
-    return uid
 
 
 @router.post("/api/projects", status_code=201)

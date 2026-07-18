@@ -62,7 +62,7 @@ class TestProjectsUsesSubToken:
         mock_pool_ctx, conn = _mock_pool_with_user(OWNER_A_UID)
 
         with mock_pool_ctx, \
-             patch("app.routers.projects.owner_email", return_value=OWNER_A_EMAIL):
+             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
             with TestClient(app, raise_server_exceptions=False) as c:
                 res = c.get(
                     "/api/projects",
@@ -82,7 +82,7 @@ class TestProjectsUsesSubToken:
         mock_pool_ctx, conn = _mock_pool_with_user(OWNER_A_UID)
 
         with mock_pool_ctx, \
-             patch("app.routers.projects.owner_email", return_value=OWNER_A_EMAIL):
+             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
             with TestClient(app, raise_server_exceptions=False) as c:
                 res = c.get("/api/projects")
 
@@ -128,7 +128,7 @@ class TestProjectDataIsolation:
         pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
         with patch("app.routers.projects.get_pool", return_value=pool), \
-             patch("app.routers.projects.owner_email", return_value=OWNER_A_EMAIL):
+             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
             with TestClient(app, raise_server_exceptions=False) as c:
                 # Alice can see her own project
                 res_alice = c.get(
@@ -153,7 +153,7 @@ class TestProjectDataIsolation:
         pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
         with patch("app.routers.projects.get_pool", return_value=pool), \
-             patch("app.routers.projects.owner_email", return_value=OWNER_B_EMAIL):
+             patch("app.core.auth.owner_email", return_value=OWNER_B_EMAIL):
             with TestClient(app, raise_server_exceptions=False) as c:
                 res_bob = c.get(
                     f"/api/projects/{alice_project_id}",
@@ -174,7 +174,7 @@ class TestProjectDataIsolation:
         pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
         with patch("app.routers.projects.get_pool", return_value=pool), \
-             patch("app.routers.projects.owner_email", return_value="unregistered@example.com"):
+             patch("app.core.auth.owner_email", return_value="unregistered@example.com"):
             with TestClient(app, raise_server_exceptions=False) as c:
                 res = c.get("/api/projects", headers={"X-Sub-Token": "some-token"})
 

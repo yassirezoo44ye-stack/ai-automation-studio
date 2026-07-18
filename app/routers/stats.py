@@ -1,24 +1,38 @@
 import json
+import uuid
 from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
+from app.core.auth import owner_user_id
 from app.core.db import get_pool
 
 router = APIRouter(tags=["stats"])
 
 
 @router.get("/api/stats")
-async def get_stats():
+async def get_stats(request: Request):
     async with get_pool().acquire() as conn:
-        project_count = await conn.fetchval("SELECT COUNT(*) FROM projects")
-        run_count     = await conn.fetchval("SELECT COUNT(*) FROM agent_runs")
-        completed     = await conn.fetchval("SELECT COUNT(*) FROM agent_runs WHERE status='completed'")
-        conv_count    = await conn.fetchval("SELECT COUNT(*) FROM conversations")
-        msg_count     = await conn.fetchval("SELECT COUNT(*) FROM messages")
+        uid = await owner_user_id(conn, request)
+        project_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM projects WHERE user_id=$1", uid)
+        run_count     = await conn.fetchval(
+            "SELECT COUNT(*) FROM agent_runs ar JOIN projects p ON ar.project_id=p.id "
+            "WHERE p.user_id=$1", uid)
+        completed     = await conn.fetchval(
+            "SELECT COUNT(*) FROM agent_runs ar JOIN projects p ON ar.project_id=p.id "
+            "WHERE p.user_id=$1 AND ar.status='completed'", uid)
+        conv_count    = await conn.fetchval(
+            "SELECT COUNT(*) FROM conversations c JOIN projects p ON c.project_id=p.id "
+            "WHERE p.user_id=$1", uid)
+        msg_count     = await conn.fetchval(
+            "SELECT COUNT(*) FROM messages m "
+            "JOIN conversations c ON m.conversation_id=c.id "
+            "JOIN projects p ON c.project_id=p.id WHERE p.user_id=$1", uid)
         logs          = await conn.fetch(
-            "SELECT action, details, created_at FROM usage_logs ORDER BY created_at DESC LIMIT 10"
+            "SELECT action, details, created_at FROM usage_logs "
+            "WHERE user_id=$1 ORDER BY created_at DESC LIMIT 10", uid,
         )
     return {
         "projects":       int(project_count),
@@ -40,19 +54,24 @@ async def get_stats():
 
 
 @router.get("/api/stats/timeseries")
-async def stats_timeseries(days: int = 14):
+async def stats_timeseries(request: Request, days: int = 14):
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
         rows = await conn.fetch(
-            "SELECT DATE(created_at) as day, COUNT(*) as count "
-            "FROM messages WHERE created_at >= NOW() - ($1 || ' days')::INTERVAL "
+            "SELECT DATE(m.created_at) as day, COUNT(*) as count "
+            "FROM messages m "
+            "JOIN conversations c ON m.conversation_id=c.id "
+            "JOIN projects p ON c.project_id=p.id "
+            "WHERE p.user_id=$1 AND m.created_at >= NOW() - ($2 || ' days')::INTERVAL "
             "GROUP BY day ORDER BY day",
-            str(days),
+            uid, str(days),
         )
         build_rows = await conn.fetch(
             "SELECT DATE(created_at) as day, COUNT(*) as count "
-            "FROM usage_logs WHERE action='build' AND created_at >= NOW() - ($1 || ' days')::INTERVAL "
+            "FROM usage_logs WHERE user_id=$1 AND action='build' "
+            "AND created_at >= NOW() - ($2 || ' days')::INTERVAL "
             "GROUP BY day ORDER BY day",
-            str(days),
+            uid, str(days),
         )
     msg_map   = {str(r["day"]): int(r["count"]) for r in rows}
     build_map = {str(r["day"]): int(r["count"]) for r in build_rows}
@@ -67,10 +86,16 @@ async def stats_timeseries(days: int = 14):
 
 
 @router.get("/api/agent-runs")
-async def list_agent_runs(project_id: Optional[str] = None):
-    import uuid
+async def list_agent_runs(request: Request, project_id: Optional[str] = None):
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
         if project_id:
+            owned = await conn.fetchval(
+                "SELECT 1 FROM projects WHERE id=$1 AND user_id=$2",
+                uuid.UUID(project_id), uid,
+            )
+            if not owned:
+                raise HTTPException(404, "Project not found")
             rows = await conn.fetch(
                 "SELECT id,project_id,agent_type,status,started_at,completed_at "
                 "FROM agent_runs WHERE project_id=$1 ORDER BY started_at DESC",
@@ -78,8 +103,10 @@ async def list_agent_runs(project_id: Optional[str] = None):
             )
         else:
             rows = await conn.fetch(
-                "SELECT id,project_id,agent_type,status,started_at,completed_at "
-                "FROM agent_runs ORDER BY started_at DESC"
+                "SELECT ar.id,ar.project_id,ar.agent_type,ar.status,ar.started_at,ar.completed_at "
+                "FROM agent_runs ar JOIN projects p ON ar.project_id=p.id "
+                "WHERE p.user_id=$1 ORDER BY ar.started_at DESC",
+                uid,
             )
     return [{"id": str(r["id"]), "project_id": str(r["project_id"]), "agent_type": r["agent_type"],
              "status": r["status"], "started_at": r["started_at"].isoformat(),
@@ -88,10 +115,12 @@ async def list_agent_runs(project_id: Optional[str] = None):
 
 
 @router.get("/api/usage-logs")
-async def list_usage_logs():
+async def list_usage_logs(request: Request):
     async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
         rows = await conn.fetch(
-            "SELECT id, action, details, created_at FROM usage_logs ORDER BY created_at DESC LIMIT 100"
+            "SELECT id, action, details, created_at FROM usage_logs "
+            "WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100", uid,
         )
     return [{"id": str(r["id"]), "action": r["action"],
              "details": dict(r["details"]) if r["details"] else {},

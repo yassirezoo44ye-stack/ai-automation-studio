@@ -11,9 +11,10 @@ import hashlib
 import hmac
 import json
 import time as _time
+import uuid
 from typing import Optional
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 from app.core.config import SESSION_SECRET, TOKEN_TTL
 
@@ -73,3 +74,15 @@ def owner_email(request: Request) -> str:
         except Exception:
             pass
     return "demo@local"
+
+
+async def owner_user_id(conn, request: Request) -> uuid.UUID:
+    """Resolve the authenticated subscriber's users.id row via their token
+    email. Shared by every endpoint that must scope a query to "my data
+    only" (projects, stats, usage) — a single source of truth so scoping
+    can't silently drift per-router."""
+    email = owner_email(request)
+    uid = await conn.fetchval("SELECT id FROM users WHERE email=$1", email)
+    if not uid:
+        raise HTTPException(401, "No account found for this subscription — please register.")
+    return uid
