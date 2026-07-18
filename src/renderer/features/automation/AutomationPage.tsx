@@ -4,10 +4,12 @@
  * Data: /api/tasks, /api/agents, /workflows/*
  */
 import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON, authH } from "../../utils/api";
 import { relTime } from "../../utils/time";
 import { S, C } from "../../styles/theme";
+import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import type { Task, Agent } from "../../types";
 
 type AutoTab = "tasks" | "workflows";
@@ -38,7 +40,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   return (
-    <div style={{ ...S.card, padding: "14px 18px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+    <GlassCard style={{ padding: "14px 18px", display: "flex", gap: 12, alignItems: "flex-start" }}>
       <button
         onClick={() => onStatusChange(task.id, task.status === "done" ? "pending" : "done")}
         style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 2, color: task.status === "done" ? C.green : "rgba(255,255,255,0.2)", flexShrink: 0 }}
@@ -67,7 +69,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
             <span style={{ fontSize: 11, color: "var(--t5)" }}>Due {relTime(task.due_date)}</span>
           )}
           {task.category && (
-            <span style={{ fontSize: 11, color: "var(--ta)", background: "rgba(108,142,247,.08)", padding: "1px 7px", borderRadius: 99 }}>{task.category}</span>
+            <span style={{ fontSize: 11, color: "var(--accent-2)", background: "var(--accent-dim)", padding: "1px 7px", borderRadius: 99 }}>{task.category}</span>
           )}
         </div>
       </div>
@@ -85,7 +87,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
         </button>
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -215,7 +217,7 @@ export function AutomationPage() {
           </div>
         </div>
         {tab === "tasks" && (
-          <button onClick={() => setCreating(c => !c)} style={S.btnPrimary}>+ New Task</button>
+          <GoldButton onClick={() => setCreating(c => !c)}>+ New Task</GoldButton>
         )}
       </header>
 
@@ -224,7 +226,7 @@ export function AutomationPage() {
         <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
           {/* New task form */}
           {creating && (
-            <div style={{ ...S.card, marginBottom: 20, animation: "slideUp .2s ease" }}>
+            <GlassCard style={{ marginBottom: 20, animation: "slideUp .2s ease" }}>
               <div style={{ ...S.cardTitle, marginBottom: 12 }}>New Task</div>
               <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                 <input
@@ -239,10 +241,10 @@ export function AutomationPage() {
                 </select>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => void createTask()} disabled={saving || !newTitle.trim()} style={S.btnPrimary}>{saving ? "Creating…" : "Create Task"}</button>
-                <button onClick={() => { setCreating(false); setNewTitle(""); }} style={S.btnSecondary}>Cancel</button>
+                <GoldButton onClick={() => void createTask()} disabled={saving || !newTitle.trim()}>{saving ? "Creating…" : "Create Task"}</GoldButton>
+                <GoldButton variant="ghost" onClick={() => { setCreating(false); setNewTitle(""); }}>Cancel</GoldButton>
               </div>
-            </div>
+            </GlassCard>
           )}
 
           {/* Filter bar */}
@@ -251,8 +253,8 @@ export function AutomationPage() {
               {FILTERS.map(([id, label]) => (
                 <button key={id} onClick={() => setFilter(id)} style={{
                   padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-                  background: filter === id ? "rgba(108,142,247,0.2)" : "rgba(255,255,255,0.04)",
-                  color: filter === id ? C.blue : "var(--t4)",
+                  background: filter === id ? "var(--accent-dim)" : "rgba(255,255,255,0.04)",
+                  color: filter === id ? "var(--accent-2)" : "var(--t4)",
                   transition: "all .15s",
                 }}>{label}</button>
               ))}
@@ -275,14 +277,20 @@ export function AutomationPage() {
               </svg>
               <h3>No tasks{filter !== "all" ? ` with status "${filter}"` : ""}</h3>
               <p>Create a task or extract them from an AI conversation.</p>
-              <button onClick={() => setCreating(true)} style={S.btnPrimary}>+ New Task</button>
+              <GoldButton onClick={() => setCreating(true)}>+ New Task</GoldButton>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <motion.div
+              style={{ display: "flex", flexDirection: "column", gap: 8 }}
+              initial="hidden" animate="show"
+              variants={{ show: { transition: { staggerChildren: 0.03 } } }}
+            >
               {filtered.map(t => (
-                <TaskCard key={t.id} task={t} onStatusChange={updateStatus} onDelete={deleteTask} />
+                <motion.div key={t.id} variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}>
+                  <TaskCard task={t} onStatusChange={updateStatus} onDelete={deleteTask} />
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           )}
         </div>
       )}
@@ -292,12 +300,12 @@ export function AutomationPage() {
         <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
 
           {/* Active runs */}
-          <div style={S.card}>
+          <GlassCard lift={false}>
             <div style={{ ...S.cardTitle, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span>Active Workflow Runs</span>
-              <button onClick={loadWorkflows} disabled={wfLoading} style={{ ...S.btnSecondary, padding: "4px 12px", fontSize: 12 }}>
+              <GoldButton variant="ghost" onClick={loadWorkflows} disabled={wfLoading}>
                 {wfLoading ? "…" : "↻ Refresh"}
-              </button>
+              </GoldButton>
             </div>
             <div style={{ padding: "0 0 4px" }}>
               {wfLoading ? (
@@ -306,7 +314,8 @@ export function AutomationPage() {
                 <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>No active runs — start a workflow below.</div>
               ) : wfRuns.map(run => {
                 const pct = run.steps_total > 0 ? Math.round((run.steps_done / run.steps_total) * 100) : 0;
-                const statusColor: Record<string, string> = { running: C.blue, completed: C.green, failed: C.red, pending: C.amber };
+                const running = run.status === "running";
+                const statusColor: Record<string, string> = { running: "var(--accent-2)", completed: C.green, failed: C.red, pending: C.amber };
                 const color = statusColor[run.status] ?? "var(--t4)";
                 return (
                   <div key={run.run_id} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -314,7 +323,14 @@ export function AutomationPage() {
                       <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {run.workflow_id}
                       </span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "2px 8px", borderRadius: 99 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "2px 8px", borderRadius: 99 }}>
+                        {running && (
+                          <motion.span
+                            style={{ width: 6, height: 6, borderRadius: "50%", background: color, display: "inline-block" }}
+                            animate={{ opacity: [1, 0.3, 1] }}
+                            transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                          />
+                        )}
                         {run.status}
                       </span>
                       <span style={{ fontSize: 11, color: "var(--t4)" }}>
@@ -329,52 +345,50 @@ export function AutomationPage() {
                 );
               })}
             </div>
-          </div>
+          </GlassCard>
 
           {/* Workflow templates → run via real API */}
           <div>
             <div className="section-label" style={{ marginBottom: 12 }}>WORKFLOW TEMPLATES</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
+            <motion.div
+              style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}
+              initial="hidden" animate="show"
+              variants={{ show: { transition: { staggerChildren: 0.05 } } }}
+            >
               {([
                 { kind: "sequential", name: "Sequential Pipeline", desc: "Run steps one after another — fetch → process → store", icon: "📋", trigger: "On demand" },
                 { kind: "parallel",   name: "Parallel Fan-out",    desc: "Execute independent steps simultaneously for speed",   icon: "⚡", trigger: "On demand" },
                 { kind: "approval",   name: "Human-in-the-Loop",   desc: "Pause at checkpoints for manual review and approval",  icon: "👤", trigger: "On demand" },
                 { kind: "saga",       name: "Saga (Compensating)", desc: "Distributed transaction with automatic rollback",      icon: "🔄", trigger: "On demand" },
               ] as const).map(wf => (
-                <div
-                  key={wf.kind}
-                  style={{ ...S.card, padding: "16px 18px", cursor: runningDemo ? "wait" : "pointer" }}
-                  className="card-hover"
-                >
-                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 10 }}>
-                    <div style={{ fontSize: 24, lineHeight: 1 }}>{wf.icon}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{wf.name}</div>
-                      <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 3, lineHeight: 1.5 }}>{wf.desc}</div>
+                <motion.div key={wf.kind} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
+                  <GlassCard style={{ cursor: runningDemo ? "wait" : "default" }}>
+                    <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 10 }}>
+                      <div style={{ fontSize: 24, lineHeight: 1 }}>{wf.icon}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{wf.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 3, lineHeight: 1.5 }}>{wf.desc}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 10, color: "var(--ta)", fontWeight: 500, background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.2)", borderRadius: 20, padding: "2px 8px" }}>
-                      {wf.trigger}
-                    </span>
-                    <button
-                      onClick={() => runDemoWorkflow(wf.kind)}
-                      disabled={!!runningDemo}
-                      style={{ ...S.btnPrimary, padding: "5px 14px", fontSize: 12 }}
-                    >
-                      {runningDemo === wf.kind ? "Starting…" : "▶ Run"}
-                    </button>
-                  </div>
-                </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 10, color: "var(--accent-2)", fontWeight: 500, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", borderRadius: 20, padding: "2px 8px" }}>
+                        {wf.trigger}
+                      </span>
+                      <GoldButton onClick={() => runDemoWorkflow(wf.kind)} disabled={!!runningDemo}>
+                        {runningDemo === wf.kind ? "Starting…" : "▶ Run"}
+                      </GoldButton>
+                    </div>
+                  </GlassCard>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </div>
 
           {/* Pending approvals */}
-          <div style={S.card}>
+          <GlassCard lift={false}>
             <div style={S.cardTitle}>Pending Approvals</div>
             <ApprovalsList />
-          </div>
+          </GlassCard>
         </div>
       )}
     </>
