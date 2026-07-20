@@ -86,8 +86,9 @@ export function SettingsPage() {
   ] as const;
 
   const THEME_OPTIONS = [
-    { id: "dark"  as const, label: "Dark",  bg: "#05070f" },
-    { id: "light" as const, label: "Light", bg: "#f8f9fb" },
+    { id: "dark"          as const, label: "Dark",          bg: "#05070f" },
+    { id: "light"         as const, label: "Light",         bg: "#f8f9fb" },
+    { id: "high-contrast" as const, label: "High Contrast", bg: "#000000", swatchBorder: "#FFFF00" },
   ];
 
   return (
@@ -284,7 +285,7 @@ export function SettingsPage() {
                             textAlign: "center" as const, background: "transparent",
                           }}
                         >
-                          <div style={{ width: "100%", height: 50, borderRadius: 8, background: t.bg, marginBottom: 8, border: "1px solid rgba(128,128,128,0.15)" }} />
+                          <div style={{ width: "100%", height: 50, borderRadius: 8, background: t.bg, marginBottom: 8, border: `1px solid ${"swatchBorder" in t ? t.swatchBorder : "rgba(128,128,128,0.15)"}` }} />
                           <div style={{ fontSize: 12, fontWeight: 500, color: theme === t.id ? C.purple : "var(--t3)" }}>{t.label}</div>
                         </button>
                       ))}

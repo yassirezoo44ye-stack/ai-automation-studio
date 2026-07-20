@@ -3,7 +3,7 @@
 import { createContext, useContext } from "react";
 import type { Page } from "../types";
 
-export type Theme = "dark" | "light";
+export type Theme = "dark" | "light" | "high-contrast";
 
 export interface AppContextType {
   page: Page;

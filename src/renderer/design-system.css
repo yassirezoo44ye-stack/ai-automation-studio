@@ -174,6 +174,89 @@
 [data-theme="light"] textarea,
 [data-theme="light"] select { color-scheme: light; }
 
+/* ── High contrast theme ─────────────────────────────────────────────
+   WCAG-AAA-oriented, not a darker/brighter variant of the luxury gold
+   palette: flat pure-black surfaces (no subtle bg-shade "elevation" —
+   elevation reads through solid borders instead), solid high-opacity
+   borders instead of soft rgba washes, no gradients/blur, and a single
+   pure-yellow accent — the same convention OS-level high-contrast
+   themes (Windows "High Contrast Black") use, since legibility, not
+   brand color, is this theme's entire purpose. */
+[data-theme="high-contrast"] {
+  --bg-base:     #000000;
+  --bg-surface:  #000000;
+  --bg-elevated: #0a0a0a;
+  --bg-overlay:  rgba(0,0,0,0.95);
+  --bg-card:     #000000;
+  --bg-card-h:   #141400;
+  --bg-glass:    #000000;
+  --bg-input:    #000000;
+
+  --accent:        #FFFF00;
+  --accent-2:      #FFFF00;
+  --accent-light:  #FFFF66;
+  --accent-bright: #FFFF66;
+  --accent-dim:    rgba(255,255,0,0.20);
+  --accent-glow:   rgba(255,255,0,0.30);
+  --accent-border: #FFFF00;
+
+  --green:        #00FF66;
+  --green-dim:    rgba(0,255,102,0.20);
+  --red:          #FF5555;
+  --red-dim:      rgba(255,85,85,0.20);
+  --yellow:       #FFCC00;
+  --yellow-dim:   rgba(255,204,0,0.20);
+  --blue:         #66B2FF;
+  --blue-dim:     rgba(102,178,255,0.20);
+  --purple-dim:   rgba(255,255,0,0.15);
+
+  --t1: #FFFFFF;
+  --t2: #FFFFFF;
+  --t3: #E6E6E6;
+  --t4: #CCCCCC;
+  --t5: #999999;
+  --ta: #FFFF00;
+
+  /* Solid, high-opacity borders — high-contrast mode signals structure
+     through borders, not through subtle background-shade differences. */
+  --b1:  rgba(255,255,255,0.55);
+  --b2:  rgba(255,255,255,0.85);
+  --ba:  #FFFF00;
+  --ba2: #FFFF00;
+
+  /* Shadows carry little contrast information — flatten to thin solid
+     outlines rather than soft blurred glows. */
+  --shadow-xs:   0 0 0 1px rgba(255,255,255,0.4);
+  --shadow-sm:   0 0 0 1px rgba(255,255,255,0.5);
+  --shadow-md:   0 0 0 1px rgba(255,255,255,0.6);
+  --shadow-lg:   0 0 0 1px rgba(255,255,255,0.7);
+  --shadow-xl:   0 0 0 2px rgba(255,255,255,0.8);
+  --shadow-glow: 0 0 0 2px #FFFF00;
+  --shadow-btn:  0 0 0 1px #FFFF00;
+  --shadow-inset:inset 0 0 0 1px #FFFF00;
+
+  --skeleton-base:  #1a1a1a;
+  --skeleton-shine: #333333;
+
+  --border:    rgba(255,255,255,0.55);
+  --bg-hover:  #1a1a1a;
+  --bg-panel:  #000000;
+
+  --surface-1:      var(--bg-elevated);
+  --surface-2:      var(--bg-surface);
+  --surface-3:      var(--bg-card);
+  --text-primary:   var(--t1);
+  --text-secondary: var(--t3);
+  --radius-sm:      var(--r-sm);
+  --radius-md:      var(--r-md);
+
+  color-scheme: dark;
+}
+
+[data-theme="high-contrast"] input,
+[data-theme="high-contrast"] textarea,
+[data-theme="high-contrast"] select { color-scheme: dark; }
+
 /* ── Global Reset ────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root      { height: 100%; overflow: hidden; }

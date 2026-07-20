@@ -5,8 +5,11 @@ import { AppContext, type Theme } from "./app";
 function getStoredTheme(): Theme {
   try {
     const stored = localStorage.getItem("axon-theme");
-    if (stored === "light" || stored === "dark") return stored;
-    // Respect OS preference on first visit
+    if (stored === "light" || stored === "dark" || stored === "high-contrast") return stored;
+    // Respect OS preference on first visit — high-contrast is opt-in only
+    // via Settings (see SettingsPage's THEME_OPTIONS), never auto-detected,
+    // since prefers-contrast support/semantics vary too much across
+    // browsers to safely auto-switch a whole theme on it.
     if (window.matchMedia?.("(prefers-color-scheme: light)").matches) return "light";
   } catch {
     // localStorage unavailable (e.g. private browsing with storage blocked)

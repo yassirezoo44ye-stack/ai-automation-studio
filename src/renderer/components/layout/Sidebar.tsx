@@ -140,6 +140,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           >
+            {/* toggleTheme() only ever swaps between dark/light — a user in
+                high-contrast mode lands on dark, matching this icon/label. */}
             <span className="sidebar__icon" aria-hidden="true">
               {theme === "dark" ? <SunIcon /> : <MoonIcon />}
             </span>
