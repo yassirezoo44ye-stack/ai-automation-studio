@@ -368,7 +368,306 @@ class TestBackendSelection(unittest.TestCase):
                 backends._backend = None
                 backends._backend_name = None
 
+
+# ── Network allowlist (new gap) ──────────────────────────────────────────
+
+class TestNetworkAllowlist(unittest.TestCase):
+    def test_network_capability_with_no_domains_still_gets_allowlist_not_full(self):
+        """Declaring the capability alone must not grant unrestricted
+        access — see limits_from_granted_capabilities' safe-by-default
+        fix for the security regression caught mid-development."""
+        from app.sandbox.permissions import limits_from_granted_capabilities
+        limits = limits_from_granted_capabilities({"network"})
+        self.assertEqual(limits.network_policy, "allowlist")
+        self.assertEqual(limits.allowed_domains, [])
+
+    def test_declared_domains_populate_allowed_domains(self):
+        from app.sandbox.permissions import limits_from_granted_capabilities
+        limits = limits_from_granted_capabilities(
+            {"network"}, network_domains=["api.example.com", "auth.example.com"],
+        )
+        self.assertEqual(limits.network_policy, "allowlist")
+        self.assertEqual(limits.allowed_domains, ["api.example.com", "auth.example.com"])
+
+    def test_domains_ignored_without_the_network_capability(self):
+        from app.sandbox.permissions import limits_from_granted_capabilities
+        limits = limits_from_granted_capabilities(set(), network_domains=["api.example.com"])
+        self.assertEqual(limits.network_policy, "none")
+        self.assertEqual(limits.allowed_domains, [])
+
+    def test_manifest_network_domains_field_exists(self):
+        from app.plugins.manifest import PluginManifest
+        self.assertIn("network_domains", PluginManifest.model_fields)
+
+    def test_loader_threads_manifest_domains_into_spawn_worker(self):
+        import inspect
+        from app.plugins.loader import PluginLoader
+        source = inspect.getsource(PluginLoader.load)
+        self.assertIn("network_domains=manifest.network_domains", source)
+
+
+class TestDNSAllowlistResolution(unittest.TestCase):
+    def test_resolves_a_real_hostname(self):
+        from app.sandbox.backends import _resolve_allowed_domains
+
+        async def run():
+            return await _resolve_allowed_domains(["localhost"])
+
+        result = asyncio.run(run())
+        self.assertIn("localhost", result)
+
+    def test_unresolvable_domain_is_skipped_not_raised(self):
+        from app.sandbox.backends import _resolve_allowed_domains
+
+        async def run():
+            return await _resolve_allowed_domains(["this-domain-should-not-exist-1234567890.invalid"])
+
+        result = asyncio.run(run())
+        self.assertEqual(result, {})
+
+    def test_internal_policy_uses_a_real_docker_network_not_a_none_degrade(self):
+        import inspect
+        from app.sandbox import backends
+        source = inspect.getsource(backends.DockerBackend.spawn)
+        self.assertIn("_ensure_internal_network", source)
+        self.assertIn("_INTERNAL_NETWORK_NAME", source)
+
+
+# ── Worker default_timeout (SandboxLimits.timeout_s activation, new gap) ────
+
+class TestWorkerDefaultTimeout(unittest.TestCase):
+    def test_spawned_worker_carries_the_derived_timeout(self):
+        from app.sandbox.backends import ProcessBackend
+        from app.sandbox.permissions import SandboxLimits
+
+        async def rpc_handler(method, args, kwargs):
+            return None
+
+        async def run():
+            ws = Path(tempfile.mkdtemp(prefix="axon_sandbox_test_"))
+            shutil.copy(
+                Path(__file__).parent.parent / "app" / "plugins" / "base.py",
+                ws / "plugin_base.py",
+            )
+            (ws / "plugin_code.py").write_text(_EXAMPLE_TOOL_CODE, encoding="utf-8")
+            backend = ProcessBackend()
+            worker = await backend.spawn(
+                installation_id=f"test-{uuid.uuid4().hex[:8]}", workspace_dir=ws,
+                entry_point="plugin_code:IsoTestPlugin", plugin_id="iso_test",
+                org_id="test-org", config={}, limits=SandboxLimits(timeout_s=42.0),
+                secret_env={}, context_rpc_handler=rpc_handler,
+            )
+            try:
+                self.assertEqual(worker.default_timeout, 42.0)
+            finally:
+                await worker.stop()
+            shutil.rmtree(ws, ignore_errors=True)
+
         asyncio.run(run())
+
+    def test_call_omitting_timeout_falls_back_to_default_not_hardcoded_30(self):
+        """A Worker built with a short default_timeout must time out near
+        that value on a call with no explicit `timeout=` kwarg — proving
+        the fallback is live, not just stored and ignored."""
+        from app.sandbox.backends import ProcessBackend, WorkerCrashedError
+        from app.sandbox.permissions import SandboxLimits
+
+        async def rpc_handler(method, args, kwargs):
+            return None
+
+        async def run():
+            ws = Path(tempfile.mkdtemp(prefix="axon_sandbox_test_"))
+            shutil.copy(
+                Path(__file__).parent.parent / "app" / "plugins" / "base.py",
+                ws / "plugin_base.py",
+            )
+            (ws / "plugin_code.py").write_text(_SLEEPY_PLUGIN_CODE, encoding="utf-8")
+            backend = ProcessBackend()
+            worker = await backend.spawn(
+                installation_id=f"test-{uuid.uuid4().hex[:8]}", workspace_dir=ws,
+                entry_point="plugin_code:SleepyPlugin", plugin_id="sleepy",
+                org_id="test-org", config={}, limits=SandboxLimits(timeout_s=0.3),
+                secret_env={}, context_rpc_handler=rpc_handler,
+            )
+            try:
+                await worker.call("register", timeout=15)
+                with self.assertRaises(WorkerCrashedError):
+                    await worker.call("invoke", method="sleepy")  # no explicit timeout=
+            finally:
+                await worker.stop()
+            shutil.rmtree(ws, ignore_errors=True)
+
+        asyncio.run(run())
+
+
+# ── Plugin crash recovery (new gap) ──────────────────────────────────────
+
+class TestCrashRecovery(unittest.TestCase):
+    def test_call_worker_respawns_once_on_crash_then_succeeds(self):
+        from app.sandbox.backends import WorkerCrashedError
+        from app.sandbox.manager import SandboxManager
+        from unittest.mock import AsyncMock, patch
+
+        manager = SandboxManager()
+        installation_id = "crash-test-1"
+        crashed = AsyncMock()
+        crashed.is_alive = True
+        crashed.call = AsyncMock(side_effect=WorkerCrashedError("dead"))
+        healthy = AsyncMock()
+        healthy.is_alive = True
+        healthy.call = AsyncMock(return_value={"ok": True})
+        manager._workers[installation_id] = crashed
+
+        async def fake_respawn(iid):
+            manager._workers[iid] = healthy
+            return healthy
+
+        async def run():
+            with patch.object(manager, "_respawn", side_effect=fake_respawn) as mock_respawn:
+                result = await manager.call_worker(installation_id, "invoke", method="m")
+                self.assertEqual(result, {"ok": True})
+                mock_respawn.assert_called_once()
+
+        asyncio.run(run())
+
+    def test_call_worker_respawns_when_no_worker_yet(self):
+        from app.sandbox.manager import SandboxManager
+        from unittest.mock import AsyncMock, patch
+
+        manager = SandboxManager()
+        installation_id = "no-worker-yet"
+        healthy = AsyncMock()
+        healthy.is_alive = True
+        healthy.call = AsyncMock(return_value="result")
+
+        async def fake_respawn(iid):
+            return healthy
+
+        async def run():
+            with patch.object(manager, "_respawn", side_effect=fake_respawn) as mock_respawn:
+                result = await manager.call_worker(installation_id, "invoke")
+                self.assertEqual(result, "result")
+                mock_respawn.assert_called_once()
+
+        asyncio.run(run())
+
+    def test_second_consecutive_crash_propagates_not_retried_again(self):
+        """Exactly one respawn attempt — a plugin that crashes on every
+        call must not respawn in an infinite loop on every proxy call."""
+        from app.sandbox.backends import WorkerCrashedError
+        from app.sandbox.manager import SandboxManager
+        from unittest.mock import AsyncMock, patch
+
+        manager = SandboxManager()
+        installation_id = "double-crash"
+        crashed1 = AsyncMock()
+        crashed1.is_alive = True
+        crashed1.call = AsyncMock(side_effect=WorkerCrashedError("first"))
+        crashed2 = AsyncMock()
+        crashed2.is_alive = True
+        crashed2.call = AsyncMock(side_effect=WorkerCrashedError("second"))
+        manager._workers[installation_id] = crashed1
+        respawn_calls = []
+
+        async def fake_respawn(iid):
+            respawn_calls.append(iid)
+            manager._workers[iid] = crashed2
+            return crashed2
+
+        async def run():
+            with patch.object(manager, "_respawn", side_effect=fake_respawn):
+                with self.assertRaises(WorkerCrashedError):
+                    await manager.call_worker(installation_id, "invoke")
+
+        asyncio.run(run())
+        self.assertEqual(len(respawn_calls), 1)
+
+    def test_respawn_raises_when_no_cached_spawn_kwargs(self):
+        """A worker that crashed but was never spawned through this
+        manager instance (e.g. process restart) can't be silently
+        resurrected — it must fail loudly, not hang."""
+        from app.sandbox.backends import WorkerCrashedError
+        from app.sandbox.manager import SandboxManager
+
+        manager = SandboxManager()
+
+        async def run():
+            with self.assertRaises(WorkerCrashedError):
+                await manager._respawn("never-spawned-through-this-manager")
+
+        asyncio.run(run())
+
+    def test_proxies_route_through_installation_id_not_a_fixed_worker(self):
+        import inspect
+        from app.plugins import adapters
+        params = inspect.signature(adapters.WorkerProxyCallable.__init__).parameters
+        self.assertIn("installation_id", params)
+        self.assertNotIn("worker", params)
+
+
+# ── Plugin Telemetry (real MetricsRegistry wiring, new gap) ─────────────
+
+class TestPluginTelemetry(unittest.TestCase):
+    def test_emit_metric_records_into_metrics_registry(self):
+        from app.core.observability.metrics import get_metrics
+        from app.sandbox.manager import SandboxManager
+
+        manager = SandboxManager()
+        installation_id = f"telemetry-test-{uuid.uuid4().hex[:8]}"
+        manager._spawn_kwargs[installation_id] = {
+            "installation_id": installation_id, "org_id": "o1", "plugin_id": "my_test_plugin",
+            "entry_point": "x:Y", "code": "", "config": {}, "network_domains": None,
+        }
+
+        async def run():
+            await manager._service_context_rpc(installation_id, "emit_metric", ["requests", 42], {})
+
+        asyncio.run(run())
+        gauge = get_metrics()._gauges.get("plugin_my_test_plugin_requests")
+        self.assertIsNotNone(gauge)
+        self.assertEqual(gauge.value, 42.0)
+
+    def test_non_numeric_metric_value_is_skipped_not_raised(self):
+        from app.sandbox.manager import SandboxManager
+
+        manager = SandboxManager()
+        installation_id = f"telemetry-bad-{uuid.uuid4().hex[:8]}"
+
+        async def run():
+            await manager._service_context_rpc(installation_id, "emit_metric", ["bad", "not-a-number"], {})
+
+        asyncio.run(run())  # must not raise
+
+    def test_plugin_context_docstring_documents_the_real_wiring(self):
+        # Reads the source file directly rather than importing PluginContext
+        # — TestPluginLoaderIsolation (tests/test_plugins.py) exercises
+        # runner_entrypoint._load_plugin_code(), which (by design, to make
+        # a plugin's own `from app.plugins.base import ...` resolve inside
+        # its isolated worker) reassigns sys.modules["app.plugins.base"]
+        # for the rest of the pytest process — a fresh import here would
+        # pick up that substituted copy instead of the real module.
+        source = (Path(__file__).parent.parent / "app" / "plugins" / "base.py").read_text(encoding="utf-8")
+        self.assertIn("MetricsRegistry", source)
+
+
+# ── Dedicated sandbox worker health probe (new gap) ─────────────────────
+
+class TestSandboxHealthProbe(unittest.TestCase):
+    def test_registers_a_distinct_probe_name(self):
+        import inspect
+        from app.sandbox import health as sandbox_health
+        source = inspect.getsource(sandbox_health.register_sandbox_health_probe)
+        self.assertIn('"sandbox_workers"', source)
+
+    def test_exported_from_sandbox_package(self):
+        from app.sandbox import register_sandbox_health_probe
+        self.assertTrue(callable(register_sandbox_health_probe))
+
+    def test_wired_into_factory_alongside_but_distinct_from_plugin_loader_probe(self):
+        import inspect
+        from app import factory
+        source = inspect.getsource(factory)
+        self.assertIn("register_sandbox_health_probe", source)
 
 
 if __name__ == "__main__":

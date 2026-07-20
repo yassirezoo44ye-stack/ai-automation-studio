@@ -211,6 +211,11 @@ async def lifespan(app: FastAPI):
     get_sync_engine(pool).start()
     register_integration_health_probe()
 
+    # ── Agent Sandbox — dedicated crash-ratio health probe (distinct from
+    # the coarse "plugin_loader" active-instance probe registered above).
+    from app.sandbox import register_sandbox_health_probe
+    register_sandbox_health_probe()
+
     # ── Autonomous background services ──────────────────────────────────────
     from app.services.registry import get_service_registry
     svc_registry = get_service_registry()

@@ -55,16 +55,31 @@ class SandboxLimits:
         }
 
 
-def limits_from_granted_capabilities(granted: set[str]) -> SandboxLimits:
+def limits_from_granted_capabilities(
+    granted: set[str], *, network_domains: list[str] | None = None,
+) -> SandboxLimits:
     """Build a SandboxLimits from the set of capability names a plugin
     installation has been granted (plugin_permissions.capability where
     granted=true). Unknown capability names are ignored defensively —
     manifest validation (check_permission_manifest) already rejects them
-    at declaration time, this is a second, cheap safety net."""
+    at declaration time, this is a second, cheap safety net.
+
+    `network_domains` is the plugin manifest's own declared
+    `network_domains` list (see PluginManifest) — only meaningful when
+    "network"/"third_party_api" is also granted; a plugin that declares
+    domains gets "allowlist" (DNS-restricted to just those domains)
+    instead of "none"."""
     granted = {c for c in granted if c in ALL_KNOWN_CAPABILITIES}
     limits = SandboxLimits()
     if granted & _NETWORK_CAPABILITIES:
+        # Declaring the capability alone is not enough to get any outbound
+        # access — a plugin must also be specific about which domains it
+        # needs (least privilege). Only a non-empty declared list widens
+        # this past "none"; this preserves the previous safe-by-default
+        # behavior for a plugin that declares the capability but no domains.
         limits.network_policy = "allowlist"
+        if network_domains:
+            limits.allowed_domains = list(network_domains)
     if "filesystem" in granted:
         limits.timeout_s = max(limits.timeout_s, _DEFAULT_TIMEOUT_S)
     if "filesystem_write" in granted:

@@ -1,0 +1,26 @@
+{
+  "id": "discord",
+  "name": "Discord",
+  "version": "1.0.0",
+  "author": "Axon Team",
+  "description": "OAuth2 sign-in with Discord. Registers an AUTH_PROVIDER using the platform's existing OAuth2 mechanics. Ships with no credentials; requires client_id/client_secret/redirect_uri from a Discord application.",
+  "category": "auth_provider",
+  "dependencies": [],
+  "required_permissions": ["network", "third_party_api"],
+  "network_domains": [
+    "discord.com"
+  ],
+  "min_platform_version": "1.0.0",
+  "max_platform_version": null,
+  "entry_point": "plugin:DiscordPlugin",
+  "configuration_schema": {
+    "type": "object",
+    "required": ["client_id", "client_secret", "redirect_uri"],
+    "properties": {
+      "client_id": {"type": "string", "description": "Client ID from your Discord application's OAuth2 settings"},
+      "client_secret": {"type": "string", "description": "Client Secret from your Discord application's OAuth2 settings"},
+      "redirect_uri": {"type": "string", "description": "Registered OAuth2 redirect URL"},
+      "scopes": {"type": "array", "description": "Override default scopes (identify, email)"}
+    }
+  }
+}

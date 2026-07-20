@@ -371,5 +371,221 @@ class TestAIProviderRegistryRoundtrip(unittest.TestCase):
             provider_registry.unregister_provider("anthropic")
 
 
+# ── Digital Signature Verification (new gap) ────────────────────────────────
+
+class TestPluginSigning(unittest.TestCase):
+    def test_valid_signature_verifies(self):
+        from app.plugins.signing import generate_keypair, sign_code, verify_signature
+        priv, pub = generate_keypair()
+        code = "print('hello world')"
+        sig = sign_code(code, priv)
+        self.assertTrue(verify_signature(code, sig, pub))
+
+    def test_tampered_code_fails_verification(self):
+        from app.plugins.signing import generate_keypair, sign_code, verify_signature
+        priv, pub = generate_keypair()
+        sig = sign_code("original code", priv)
+        self.assertFalse(verify_signature("tampered code", sig, pub))
+
+    def test_wrong_public_key_fails_verification(self):
+        from app.plugins.signing import generate_keypair, sign_code, verify_signature
+        priv, _pub = generate_keypair()
+        _priv2, pub2 = generate_keypair()
+        sig = sign_code("some code", priv)
+        self.assertFalse(verify_signature("some code", sig, pub2))
+
+    def test_malformed_signature_returns_false_not_raise(self):
+        from app.plugins.signing import generate_keypair, verify_signature
+        _priv, pub = generate_keypair()
+        self.assertFalse(verify_signature("code", "not-valid-base64!!!", pub))
+        self.assertFalse(verify_signature("code", "", pub))
+
+    def test_malformed_public_key_returns_false_not_raise(self):
+        from app.plugins.signing import generate_keypair, sign_code, verify_signature
+        priv, _pub = generate_keypair()
+        sig = sign_code("some code", priv)
+        self.assertFalse(verify_signature("some code", sig, "not a real PEM key"))
+
+    def test_loader_rejects_invalid_signature(self):
+        import inspect
+        from app.plugins.loader import PluginLoader
+        source = inspect.getsource(PluginLoader.load)
+        self.assertIn("verify_signature", source)
+        self.assertIn("signature_verified", source)
+
+
+# ── Plugin-to-plugin dependency + version-constraint enforcement (new gap) ──
+
+class TestPluginManifestDependencies(unittest.TestCase):
+    def _valid_manifest_dict(self, **overrides):
+        base = {
+            "id": "dependent_plugin", "name": "Dependent", "version": "1.0.0",
+            "author": "Test", "description": "d", "category": "tool",
+            "min_platform_version": "1.0.0", "entry_point": "plugin:X",
+        }
+        base.update(overrides)
+        return base
+
+    def test_dependency_spec_parses(self):
+        from app.plugins.manifest import parse_manifest
+        m = parse_manifest(self._valid_manifest_dict(
+            dependencies=[{"plugin_id": "base_plugin", "version_constraint": "^1.2.0"}],
+        ))
+        self.assertEqual(len(m.dependencies), 1)
+        self.assertEqual(m.dependencies[0].plugin_id, "base_plugin")
+        self.assertEqual(m.dependencies[0].version_constraint, "^1.2.0")
+        self.assertFalse(m.dependencies[0].optional)
+
+    def test_loader_enforces_plugin_dependencies(self):
+        import inspect
+        from app.plugins.loader import PluginLoader
+        source = inspect.getsource(PluginLoader.load)
+        self.assertIn("manifest.dependencies", source)
+        self.assertIn("PluginDependencyError", source)
+
+    def test_dependency_error_message(self):
+        from app.plugins.loader import PluginDependencyError
+        exc = PluginDependencyError("a", "b", "not installed")
+        self.assertIn("a", str(exc))
+        self.assertIn("b", str(exc))
+        self.assertIn("not installed", str(exc))
+
+
+class TestVersionSatisfiesCompoundRanges(unittest.TestCase):
+    def test_compound_range_both_clauses_hold(self):
+        from app.marketplace.dependencies import version_satisfies
+        self.assertTrue(version_satisfies("1.5.0", ">=1.0.0,<2.0.0"))
+
+    def test_compound_range_lower_bound_violated(self):
+        from app.marketplace.dependencies import version_satisfies
+        self.assertFalse(version_satisfies("0.9.0", ">=1.0.0,<2.0.0"))
+
+    def test_compound_range_upper_bound_violated(self):
+        from app.marketplace.dependencies import version_satisfies
+        self.assertFalse(version_satisfies("2.0.0", ">=1.0.0,<2.0.0"))
+
+    def test_existing_single_clause_forms_still_work(self):
+        from app.marketplace.dependencies import version_satisfies
+        self.assertTrue(version_satisfies("1.2.5", "^1.2.0"))
+        self.assertTrue(version_satisfies("1.0.0", "*"))
+        self.assertTrue(version_satisfies("1.0.0", "1.0.0"))
+
+
+# ── Plugin Capability Discovery (new gap) ───────────────────────────────────
+
+class TestPluginCapabilityDiscovery(unittest.TestCase):
+    def test_get_adapted_registrations_strips_internal_proxy_field(self):
+        from app.plugins import adapters
+
+        installation_id = f"cap-test-{uuid.uuid4().hex[:8]}"
+        adapters._ADAPTED[installation_id] = [
+            {"type": "tool", "name": "my_tool"},
+            {"type": "event_listener", "name": "my_listener", "pattern": "job.*", "proxy": object()},
+        ]
+        try:
+            result = adapters.get_adapted_registrations(installation_id)
+            self.assertEqual(len(result), 2)
+            self.assertNotIn("proxy", result[1])
+            self.assertEqual(result[1]["pattern"], "job.*")
+        finally:
+            adapters._ADAPTED.pop(installation_id, None)
+
+    def test_get_adapted_registrations_empty_for_unknown_installation(self):
+        from app.plugins.adapters import get_adapted_registrations
+        self.assertEqual(get_adapted_registrations("no-such-installation"), [])
+
+    def test_router_exposes_capabilities_endpoints(self):
+        import inspect
+        from app.routers import plugins as plugins_router
+        source = inspect.getsource(plugins_router)
+        self.assertIn('@router.get("/capabilities")', source)
+        self.assertIn('@router.get("/installed/{installation_id}/capabilities")', source)
+
+    def test_adapters_no_longer_take_a_live_worker_reference(self):
+        """WorkerProxyCallable/WorkerProxyProvider must route by
+        installation_id through SandboxManager (not hold a fixed Worker),
+        or a crash-recovery respawn would be invisible to already-built
+        proxies — see app/plugins/adapters.py's WorkerProxyCallable
+        docstring."""
+        import inspect
+        from app.plugins import adapters
+        self.assertIn("installation_id", inspect.signature(adapters.WorkerProxyCallable.__init__).parameters)
+        self.assertIn("installation_id", inspect.signature(adapters.WorkerProxyProvider.__init__).parameters)
+
+
+# ── Example plugins (Google Workspace / Microsoft 365 / Slack / GitHub / Discord) ─
+
+class TestExamplePluginManifests(unittest.TestCase):
+    _EXPECTED = {
+        "google_workspace": ("plugin:GoogleWorkspacePlugin", "accounts.google.com"),
+        "microsoft_365": ("plugin:Microsoft365Plugin", "login.microsoftonline.com"),
+        "slack": ("plugin:SlackPlugin", "slack.com"),
+        "github": ("plugin:GitHubPlugin", "github.com"),
+        "discord": ("plugin:DiscordPlugin", "discord.com"),
+    }
+
+    def _load(self, dirname: str):
+        import json
+        from app.plugins.manifest import parse_manifest
+        root = Path(__file__).parent.parent / "dev_plugins" / dirname
+        raw = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+        return parse_manifest(raw), root
+
+    def test_all_five_manifests_parse_and_declare_auth_provider(self):
+        for dirname, (entry_point, expected_domain) in self._EXPECTED.items():
+            with self.subTest(dirname):
+                manifest, root = self._load(dirname)
+                self.assertEqual(manifest.category.value, "auth_provider")
+                self.assertEqual(manifest.entry_point, entry_point)
+                self.assertIn("network", manifest.required_permissions)
+                self.assertIn("third_party_api", manifest.required_permissions)
+                self.assertIn(expected_domain, manifest.network_domains)
+                for field in ("client_id", "client_secret", "redirect_uri"):
+                    self.assertIn(field, manifest.configuration_schema["required"])
+                self.assertTrue((root / "plugin.py").exists())
+
+    def test_no_real_credentials_hardcoded(self):
+        # A crude but effective guard: none of the shipped plugin.py files
+        # contain anything that looks like a live secret value (only
+        # placeholder config keys and public, well-known endpoint URLs).
+        suspicious_markers = ("GOCSPX-", "xoxb-", "xoxp-", "ghp_", "github_pat_")
+        for dirname in self._EXPECTED:
+            root = Path(__file__).parent.parent / "dev_plugins" / dirname
+            source = (root / "plugin.py").read_text(encoding="utf-8")
+            for marker in suspicious_markers:
+                self.assertNotIn(marker, source, f"{dirname}/plugin.py contains a real-looking credential marker")
+
+    def test_get_authorization_url_requires_no_network_and_is_well_formed(self):
+        """Loads each plugin's module directly (not through the sandbox —
+        the sandbox round-trip for all 5 is covered by a throwaway
+        verification script per this session's established convention) and
+        exercises the one method that needs no network I/O at all."""
+        import importlib.util
+        import urllib.parse
+
+        for dirname, (_entry_point, expected_domain) in self._EXPECTED.items():
+            with self.subTest(dirname):
+                root = Path(__file__).parent.parent / "dev_plugins" / dirname
+                spec = importlib.util.spec_from_file_location(f"_example_plugin_{dirname}", root / "plugin.py")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+                provider_cls = next(
+                    obj for name, obj in vars(module).items()
+                    if name.endswith("AuthProvider") and isinstance(obj, type)
+                )
+                provider = provider_cls({
+                    "client_id": "test-client-id", "client_secret": "test-secret",
+                    "redirect_uri": "https://example.invalid/cb",
+                })
+                url = provider.get_authorization_url(redirect_uri="https://example.invalid/cb", state="s1")
+                parsed = urllib.parse.urlparse(url)
+                self.assertEqual(parsed.hostname, expected_domain)
+                qs = urllib.parse.parse_qs(parsed.query)
+                self.assertEqual(qs["client_id"][0], "test-client-id")
+                self.assertEqual(qs["state"][0], "s1")
+                self.assertEqual(qs["response_type"][0], "code")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

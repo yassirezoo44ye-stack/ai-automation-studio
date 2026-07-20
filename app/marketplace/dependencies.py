@@ -69,13 +69,17 @@ def _parse_version(v: str) -> tuple[int, int, int]:
 
 
 def version_satisfies(installed: str, constraint: str) -> bool:
-    """Hand-rolled comparator — supports '*', exact '1.2.3', '^1.2.0', '>=1.0.0'.
-    No new pip dependency: version strings in this codebase are already
-    plain MAJOR.MINOR.PATCH, so this small comparator covers the spec's
-    'version constraints' requirement without adding semver/packaging."""
+    """Hand-rolled comparator — supports '*', exact '1.2.3', '^1.2.0',
+    '>=1.0.0', and comma-separated compound ranges ('>=1.0.0,<2.0.0',
+    every clause must hold — the standard AND semantics for a range). No
+    new pip dependency: version strings in this codebase are already plain
+    MAJOR.MINOR.PATCH, so this small comparator covers the spec's 'version
+    constraints' requirement without adding semver/packaging."""
     constraint = constraint.strip()
     if constraint in ("", "*"):
         return True
+    if "," in constraint:
+        return all(version_satisfies(installed, clause) for clause in constraint.split(","))
     installed_t = _parse_version(installed)
     if constraint.startswith("^"):
         base = _parse_version(constraint[1:])

@@ -1,0 +1,27 @@
+{
+  "id": "microsoft_365",
+  "name": "Microsoft 365",
+  "version": "1.0.0",
+  "author": "Axon Team",
+  "description": "OAuth2 sign-in with Microsoft 365 / Azure AD (multi-tenant). Registers an AUTH_PROVIDER using the platform's existing OAuth2 mechanics. Ships with no credentials; requires client_id/client_secret/redirect_uri from an Azure AD app registration.",
+  "category": "auth_provider",
+  "dependencies": [],
+  "required_permissions": ["network", "third_party_api"],
+  "network_domains": [
+    "login.microsoftonline.com",
+    "graph.microsoft.com"
+  ],
+  "min_platform_version": "1.0.0",
+  "max_platform_version": null,
+  "entry_point": "plugin:Microsoft365Plugin",
+  "configuration_schema": {
+    "type": "object",
+    "required": ["client_id", "client_secret", "redirect_uri"],
+    "properties": {
+      "client_id": {"type": "string", "description": "Application (client) ID from the Azure AD app registration"},
+      "client_secret": {"type": "string", "description": "Client secret value from the Azure AD app registration"},
+      "redirect_uri": {"type": "string", "description": "Registered redirect URI for the OAuth consent screen"},
+      "scopes": {"type": "array", "description": "Override default scopes (openid, email, profile, offline_access, User.Read)"}
+    }
+  }
+}

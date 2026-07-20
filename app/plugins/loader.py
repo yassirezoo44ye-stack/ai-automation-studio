@@ -64,6 +64,12 @@ class PluginImportError(PluginLoadError):
         self.plugin_id, self.reason = plugin_id, reason
 
 
+class PluginDependencyError(PluginLoadError):
+    def __init__(self, plugin_id: str, depends_on: str, reason: str):
+        super().__init__(f"plugin {plugin_id} depends on {depends_on}: {reason}")
+        self.plugin_id, self.depends_on, self.reason = plugin_id, depends_on, reason
+
+
 # Capabilities that require explicit admin approval before a plugin may be enabled.
 _SENSITIVE_CAPABILITIES = frozenset({
     "network", "filesystem", "shell_exec", "credentials_read", "third_party_api",
@@ -108,6 +114,23 @@ class PluginLoader:
             span.set_tag("plugin_id", manifest.id)
             span.set_tag("plugin_version", manifest.version)
 
+            # Digital signature verification — advisory unless the bundle
+            # itself declares a signature, in which case it must verify or
+            # the load is rejected outright. See app/plugins/signing.py's
+            # docstring for why this isn't tied to the marketplace
+            # publisher trust chain yet.
+            signature = bundle.get("signature")
+            publisher_public_key = bundle.get("publisher_public_key")
+            signature_verified = False
+            if signature and publisher_public_key:
+                from app.plugins.signing import verify_signature
+                if not verify_signature(bundle["code"], signature, publisher_public_key):
+                    raise PluginLoadError(f"plugin {manifest.id} signature verification failed")
+                signature_verified = True
+            else:
+                log.warning("plugin %s has no digital signature — loading unsigned code", manifest.id)
+            span.set_tag("signature_verified", signature_verified)
+
             # Version compatibility (reuses the same comparator Marketplace already ships)
             from app.marketplace.dependencies import version_satisfies
             if not version_satisfies(PLATFORM_VERSION, f">={manifest.min_platform_version}"):
@@ -127,9 +150,29 @@ class PluginLoader:
             from app.marketplace.dependencies import get_dependency_service
             await get_dependency_service().resolve_install_order(marketplace_item_id)
 
+            # Plugin-to-plugin dependency + version-constraint enforcement.
+            # manifest.dependencies (PluginDependencySpec, each with its own
+            # version_constraint) names other PLUGINS by manifest id, a
+            # separate namespace from the marketplace-catalog item graph
+            # resolved just above, so it can't be synced into that graph.
+            # Checked here instead, against what's actually installed and
+            # enabled for this org, reusing the same version_satisfies()
+            # comparator already imported above — not reimplemented.
+            for dep in manifest.dependencies:
+                dep_row = await self._find_installation_by_plugin_id(org_id, dep.plugin_id)
+                if dep_row is None or dep_row["status"] != "enabled":
+                    if dep.optional:
+                        continue
+                    raise PluginDependencyError(manifest.id, dep.plugin_id, "not installed and enabled for this organization")
+                if not version_satisfies(dep_row["version"], dep.version_constraint):
+                    raise PluginDependencyError(
+                        manifest.id, dep.plugin_id,
+                        f"installed version {dep_row['version']} does not satisfy {dep.version_constraint!r}",
+                    )
+
             installation = await self._upsert_installation(
                 org_id=org_id, marketplace_item_id=marketplace_item_id,
-                manifest=manifest, actor_id=actor_id,
+                manifest=manifest, actor_id=actor_id, signature_verified=signature_verified,
             )
             installation_id = str(installation["id"])
             span.set_tag("installation_id", installation_id)
@@ -145,6 +188,7 @@ class PluginLoader:
                 worker = await manager.spawn_worker(
                     installation_id=installation_id, org_id=org_id, plugin_id=manifest.id,
                     entry_point=manifest.entry_point, code=bundle["code"], config=installation["config"],
+                    network_domains=manifest.network_domains,
                 )
             except Exception as exc:
                 await self._log_health(installation_id, "error", str(exc))
@@ -163,7 +207,7 @@ class PluginLoader:
                 # error, not propagate uncaught past load()'s documented
                 # "never raises into the marketplace install transaction"
                 # contract.
-                adapt_registrations(installation_id, worker, registrations)
+                adapt_registrations(installation_id, registrations)
             except Exception as exc:
                 await manager.stop_worker(installation_id)
                 await self._log_health(installation_id, "error", f"register() failed: {exc}")
@@ -252,7 +296,7 @@ class PluginLoader:
                 # replacing it, since adapt_registrations always creates
                 # new proxy objects and EventBus matches by identity.
                 unadapt_registrations(installation_id)
-                adapt_registrations(installation_id, worker, registrations)
+                adapt_registrations(installation_id, registrations)
             except Exception as exc:
                 await self._log_health(installation_id, "error", f"re-register failed: {exc}")
                 await self._set_status(installation_id, "failed")
@@ -324,19 +368,23 @@ class PluginLoader:
                 return data
         return None
 
-    async def _upsert_installation(self, *, org_id: str, marketplace_item_id: str, manifest, actor_id: Optional[str]) -> dict[str, Any]:
+    async def _upsert_installation(
+        self, *, org_id: str, marketplace_item_id: str, manifest, actor_id: Optional[str],
+        signature_verified: bool = False,
+    ) -> dict[str, Any]:
         from app.core.db import get_pool
         async with get_pool().acquire() as conn:
             row = await conn.fetchrow(
                 """INSERT INTO plugin_installations
-                     (organization_id, marketplace_item_id, plugin_id, version, status, installed_by, manifest)
-                   VALUES ($1,$2,$3,$4,'installed',$5,$6)
+                     (organization_id, marketplace_item_id, plugin_id, version, status, installed_by, manifest, signature_verified)
+                   VALUES ($1,$2,$3,$4,'installed',$5,$6,$7)
                    ON CONFLICT (organization_id, plugin_id) DO UPDATE SET
                      marketplace_item_id=EXCLUDED.marketplace_item_id,
-                     version=EXCLUDED.version, manifest=EXCLUDED.manifest, updated_at=NOW()
+                     version=EXCLUDED.version, manifest=EXCLUDED.manifest,
+                     signature_verified=EXCLUDED.signature_verified, updated_at=NOW()
                    RETURNING *""",
                 uuid.UUID(org_id), marketplace_item_id, manifest.id, manifest.version,
-                uuid.UUID(actor_id) if actor_id else None, manifest.model_dump_json(),
+                uuid.UUID(actor_id) if actor_id else None, manifest.model_dump_json(), signature_verified,
             )
             await conn.executemany(
                 """INSERT INTO plugin_permissions (installation_id, capability, granted)
@@ -357,6 +405,18 @@ class PluginLoader:
             row = await conn.fetchrow(
                 "SELECT * FROM plugin_installations WHERE organization_id=$1 AND marketplace_item_id=$2",
                 uuid.UUID(org_id), marketplace_item_id,
+            )
+        return normalize_installation_row(dict(row)) if row else None
+
+    async def _find_installation_by_plugin_id(self, org_id: str, plugin_id: str) -> Optional[dict[str, Any]]:
+        """Looked up by plugin_id (the manifest's own stable identifier),
+        not marketplace_item_id — for checking a declared plugin-to-plugin
+        dependency, which names the other plugin this way."""
+        from app.core.db import get_pool
+        async with get_pool().acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM plugin_installations WHERE organization_id=$1 AND plugin_id=$2",
+                uuid.UUID(org_id), plugin_id,
             )
         return normalize_installation_row(dict(row)) if row else None
 

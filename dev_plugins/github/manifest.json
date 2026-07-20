@@ -1,0 +1,27 @@
+{
+  "id": "github",
+  "name": "GitHub",
+  "version": "1.0.0",
+  "author": "Axon Team",
+  "description": "OAuth2 sign-in with GitHub. Registers an AUTH_PROVIDER using the platform's existing OAuth2 mechanics. Ships with no credentials; requires client_id/client_secret/redirect_uri from a GitHub OAuth App.",
+  "category": "auth_provider",
+  "dependencies": [],
+  "required_permissions": ["network", "third_party_api"],
+  "network_domains": [
+    "github.com",
+    "api.github.com"
+  ],
+  "min_platform_version": "1.0.0",
+  "max_platform_version": null,
+  "entry_point": "plugin:GitHubPlugin",
+  "configuration_schema": {
+    "type": "object",
+    "required": ["client_id", "client_secret", "redirect_uri"],
+    "properties": {
+      "client_id": {"type": "string", "description": "Client ID from your GitHub OAuth App settings"},
+      "client_secret": {"type": "string", "description": "Client Secret from your GitHub OAuth App settings"},
+      "redirect_uri": {"type": "string", "description": "Registered Authorization callback URL"},
+      "scopes": {"type": "array", "description": "Override default scopes (read:user, user:email)"}
+    }
+  }
+}

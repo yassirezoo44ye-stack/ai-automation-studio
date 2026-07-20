@@ -77,11 +77,14 @@ class PluginContext:
 
     # ── Metrics API ───────────────────────────────────────────────────────
     def emit_metric(self, name: str, value: float, **tags: Any) -> None:
-        """Best-effort — this platform has no dedicated metrics backend yet
-        (confirmed: no existing metrics sink beyond structured logging), so
-        this logs a structured line a log pipeline can aggregate on. Kept as
-        a stable API so plugins don't need to change when a real backend
-        lands."""
+        """Structured-log fallback for when a PluginContext is used outside
+        a sandbox worker (e.g. directly in a test). Every real plugin
+        invocation runs inside a sandbox worker, where
+        app/sandbox/runner_entrypoint.py overrides this method to RPC back
+        into SandboxManager._service_context_rpc(), which records the value
+        into the platform's real MetricsRegistry (as
+        plugin_{plugin_id}_{name}) in addition to logging it — see
+        app/sandbox/manager.py."""
         self.logger.info("metric plugin=%s name=%s value=%s tags=%s",
                           self.plugin_id, name, value, tags)
 

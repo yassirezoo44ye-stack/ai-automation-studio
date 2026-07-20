@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS plugin_installations (
     status                VARCHAR(20) NOT NULL DEFAULT 'installed'
                           CHECK (status IN ('installed','enabled','disabled','failed','uninstalled')),
     approved              BOOLEAN NOT NULL DEFAULT false,
+    signature_verified    BOOLEAN NOT NULL DEFAULT false,
     config                JSONB NOT NULL DEFAULT '{}',
     manifest              JSONB NOT NULL DEFAULT '{}',
     installed_by          UUID,
@@ -84,4 +85,10 @@ CREATE INDEX IF NOT EXISTS idx_plugin_ui_ext_installation ON plugin_ui_extension
 
 async def init_plugins_schema(conn: asyncpg.Connection) -> None:
     await conn.execute(PLUGIN_SCHEMA)
+    # CREATE TABLE IF NOT EXISTS is a no-op on a deployment that already has
+    # plugin_installations from before signature_verified existed — this
+    # migration statement is what actually backfills the column there.
+    await conn.execute(
+        "ALTER TABLE plugin_installations ADD COLUMN IF NOT EXISTS signature_verified BOOLEAN NOT NULL DEFAULT false"
+    )
     log.info("plugin SDK schema initialised")

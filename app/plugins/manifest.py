@@ -41,6 +41,12 @@ class PluginManifest(BaseModel):
 
     dependencies        : list[PluginDependencySpec] = Field(default_factory=list)
     required_permissions: list[str] = Field(default_factory=list)
+    # Only meaningful alongside a "network"/"third_party_api" permission —
+    # the sandbox restricts outbound access to exactly these hostnames
+    # (DNS-level allowlist, see app/sandbox/backends.py). Declaring the
+    # network capability with no domains here still gets no outbound
+    # access at all (least privilege by default).
+    network_domains     : list[str] = Field(default_factory=list)
 
     min_platform_version: str
     max_platform_version: Optional[str] = None

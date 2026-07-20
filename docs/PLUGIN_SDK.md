@@ -13,6 +13,16 @@ This scaffolds `dev_plugins/my_tool/` with `manifest.json`, `plugin.py`, and
 a `README.md`. See `dev_plugins/example_tool/` for a complete, working
 reference implementation (a "reverse string" tool).
 
+Five `AUTH_PROVIDER`-type reference implementations demonstrate a real
+OAuth2 identity-provider integration end to end (authorize URL -> code
+exchange -> normalized profile), built entirely on this SDK's existing
+Sandbox + OAuth mechanics, with no real credentials shipped:
+`dev_plugins/google_workspace/`, `dev_plugins/microsoft_365/`,
+`dev_plugins/slack/`, `dev_plugins/github/`, `dev_plugins/discord/` — each
+works once an org admin supplies a real client_id/client_secret/
+redirect_uri via `PUT /plugins/installed/{id}/config` (see each plugin's
+own README.md for exact provider-registration steps).
+
 ## Plugin types
 
 | Type | Registers into |

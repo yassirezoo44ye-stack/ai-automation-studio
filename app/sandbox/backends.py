@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import shutil
+import socket
 import sys
 import uuid
 from abc import ABC, abstractmethod
@@ -52,12 +53,14 @@ class Worker:
         self, process: asyncio.subprocess.Process, *,
         installation_id: str, backend: str, container_name: Optional[str] = None,
         context_rpc_handler: Optional[ContextRpcHandler] = None,
+        default_timeout: float = 30.0,
     ) -> None:
         self._process = process
         self.installation_id = installation_id
         self.backend = backend
         self._container_name = container_name
         self._context_rpc_handler = context_rpc_handler
+        self.default_timeout = default_timeout
         self._lock = asyncio.Lock()
         self._stopped = False
 
@@ -72,12 +75,17 @@ class Worker:
     async def call(
         self, call: str, *, method: Optional[str] = None,
         args: Optional[list] = None, kwargs: Optional[dict] = None,
-        timeout: float = 30.0,
+        timeout: Optional[float] = None,
     ) -> Any:
         """Send one request, service any context_rpc round-trips the
-        worker sends back mid-call, and return the final result."""
+        worker sends back mid-call, and return the final result. `timeout`
+        defaults to this worker's per-plugin-derived `default_timeout`
+        (SandboxLimits.timeout_s) — pass it explicitly to override for one
+        call, as app/plugins/loader.py's lifecycle hooks do."""
         if self._stopped or not self.is_alive:
             raise WorkerCrashedError(f"worker for installation {self.installation_id} is not running")
+        if timeout is None:
+            timeout = self.default_timeout
         async with self._lock:
             req_id = uuid.uuid4().hex
             await self._send({"id": req_id, "call": call, "method": method,
@@ -221,7 +229,7 @@ class ProcessBackend(SandboxBackend):
             **kwargs,
         )
         return Worker(process, installation_id=installation_id, backend="process",
-                       context_rpc_handler=context_rpc_handler)
+                       context_rpc_handler=context_rpc_handler, default_timeout=limits.timeout_s)
 
 
 def _make_rlimit_preexec(limits: SandboxLimits):
@@ -238,17 +246,50 @@ def _make_rlimit_preexec(limits: SandboxLimits):
 
 
 _NETWORK_FLAG = {
+    # "internal" and "allowlist" are resolved dynamically in
+    # DockerBackend.spawn() (shared --internal network / --add-host DNS
+    # allowlist respectively) — this dict only covers the two static cases.
     "none": "none",
-    "internal": "none",  # no seeded internal-only Docker network yet — degrade to none, safer default
-    # Real per-domain allowlisting (iptables rules seeded from
-    # allowed_domains) isn't implemented — degrading to "none" rather than
-    # "bridge" is the deliberate, safer choice: a plugin that declared
-    # only network/third_party_api (mapped to "allowlist") must NOT
-    # silently receive the same unrestricted access as "full". A logged
-    # warning surfaces this at spawn time so it isn't a silent downgrade.
-    "allowlist": "none",
     "full": "bridge",
 }
+
+_INTERNAL_NETWORK_NAME = "axon-sandbox-internal"
+# Unreachable resolver inside the container: DNS queries for anything not
+# seeded via --add-host get connection-refused instead of succeeding, so
+# only the plugin's declared allowlisted domains resolve. This blocks
+# *resolution* of non-allowed hostnames — it does not block a plugin from
+# connecting directly to a raw IP address, which is a known, documented
+# limitation of DNS-based allowlisting.
+_BLACKHOLE_DNS = "127.0.0.1"
+
+
+async def _ensure_internal_network() -> None:
+    """Idempotently creates the shared Docker `--internal` bridge network
+    (no route to the external world, containers on it can still reach each
+    other) used by NetworkPolicy "internal". Real network isolation instead
+    of the previous degrade-to-"none" placeholder."""
+    proc = await asyncio.create_subprocess_exec(
+        "docker", "network", "create", "--internal", _INTERNAL_NETWORK_NAME,
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0 and b"already exists" not in stderr:
+        log.warning("failed to create internal sandbox network: %s", stderr.decode(errors="replace"))
+
+
+async def _resolve_allowed_domains(domains: list[str]) -> dict[str, str]:
+    """Host-side DNS resolution for each manifest-declared domain, used to
+    seed --add-host entries. Best-effort: a domain that fails to resolve is
+    skipped (logged), not fatal to spawning the worker."""
+    loop = asyncio.get_event_loop()
+    resolved: dict[str, str] = {}
+    for domain in domains:
+        try:
+            ip = await loop.run_in_executor(None, socket.gethostbyname, domain)
+            resolved[domain] = ip
+        except Exception as exc:
+            log.warning("sandbox: could not resolve allowlisted domain %r: %s", domain, exc)
+    return resolved
 
 
 class DockerBackend(SandboxBackend):
@@ -273,12 +314,22 @@ class DockerBackend(SandboxBackend):
         container_name = f"axon-sandbox-{installation_id}"
 
         network_flag = _NETWORK_FLAG.get(limits.network_policy, "none")
-        if limits.network_policy == "allowlist":
-            log.warning(
-                "sandbox worker for installation %s requested network_policy='allowlist' "
-                "(no per-domain enforcement implemented yet) — degraded to no network access",
-                installation_id,
-            )
+        extra_network_flags: list[str] = []
+        if limits.network_policy == "internal":
+            await _ensure_internal_network()
+            network_flag = _INTERNAL_NETWORK_NAME
+        elif limits.network_policy == "allowlist":
+            network_flag = "bridge"
+            resolved = await _resolve_allowed_domains(limits.allowed_domains)
+            for domain, ip in resolved.items():
+                extra_network_flags += ["--add-host", f"{domain}:{ip}"]
+            extra_network_flags += ["--dns", _BLACKHOLE_DNS]
+            if not resolved:
+                log.warning(
+                    "sandbox worker for installation %s granted network_policy='allowlist' "
+                    "but no declared domains resolved — effectively no reachable hosts",
+                    installation_id,
+                )
         # --cpus is a continuous rate cap (cores), a different concept from
         # cpu_seconds (a total CPU-time budget, enforced via RLIMIT_CPU on
         # the process backend and via the wall-clock timeout on Worker.call
@@ -296,6 +347,7 @@ class DockerBackend(SandboxBackend):
             "docker", "run", "-i", "--rm",
             "--name", container_name,
             "--network", network_flag,
+            *extra_network_flags,
             "--memory", f"{limits.memory_mb}m",
             "--cpus", cpus,
             "--pids-limit", str(limits.pids),
@@ -314,7 +366,8 @@ class DockerBackend(SandboxBackend):
             stderr=asyncio.subprocess.PIPE,
         )
         return Worker(process, installation_id=installation_id, backend="docker",
-                       container_name=container_name, context_rpc_handler=context_rpc_handler)
+                       container_name=container_name, context_rpc_handler=context_rpc_handler,
+                       default_timeout=limits.timeout_s)
 
 
 async def _docker_available() -> bool:

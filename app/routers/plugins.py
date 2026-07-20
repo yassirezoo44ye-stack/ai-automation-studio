@@ -14,6 +14,8 @@ Endpoints:
   PUT    /plugins/installed/{id}/config             validated against configuration_schema [plugins:manage]
   GET    /plugins/installed/{id}/health             [org member]
   GET    /plugins/installed/{id}/logs               [org member]
+  GET    /plugins/capabilities                      Plugin Capability Discovery: platform-wide catalog [org member]
+  GET    /plugins/installed/{id}/capabilities        Plugin Capability Discovery: this installation's granted permissions + actual registrations [org member]
 
 Installing itself is NOT a new route here — a plugin is installed via the
 existing POST /marketplace/listings/{id}/install endpoint; that endpoint's
@@ -87,6 +89,27 @@ def _installation_out(row: dict[str, Any]) -> dict[str, Any]:
         "manifest"           : row.get("manifest"),
         "installed_at"       : row["installed_at"],
         "updated_at"         : row["updated_at"],
+    }
+
+
+@router.get("/capabilities")
+async def list_capabilities(ctx: OrgContext = Depends(org_context)):
+    """Plugin Capability Discovery (platform-wide): every capability a
+    plugin manifest can declare in required_permissions, and every
+    PluginType a plugin can register as — lets a plugin developer or the
+    Plugins/marketplace UI discover what's possible instead of hardcoding
+    the list client-side. Reuses the existing ALL_KNOWN_CAPABILITIES
+    allowlist and PluginType enum — no new capability registry."""
+    from app.marketplace.security import ALL_KNOWN_CAPABILITIES
+    from app.plugins.base import PluginType
+    from app.plugins.loader import PLATFORM_VERSION, _SENSITIVE_CAPABILITIES
+    return {
+        "platform_version": PLATFORM_VERSION,
+        "plugin_types": [t.value for t in PluginType],
+        "capabilities": [
+            {"name": cap, "requires_approval": cap in _SENSITIVE_CAPABILITIES}
+            for cap in sorted(ALL_KNOWN_CAPABILITIES)
+        ],
     }
 
 
@@ -233,3 +256,26 @@ async def get_plugin_logs(
             uuid.UUID(installation_id), min(limit, 200),
         )
     return [dict(r) for r in rows]
+
+
+@router.get("/installed/{installation_id}/capabilities")
+async def get_plugin_capabilities(installation_id: str, ctx: OrgContext = Depends(org_context)):
+    """Plugin Capability Discovery (per-installation): which capabilities
+    this specific installation was actually granted (plugin_permissions),
+    and which tools/agents/workflow nodes/providers/event listeners it
+    actually registered into the platform's registries the last time it
+    loaded (app.plugins.adapters._ADAPTED) — the real, live surface this
+    plugin exposes, not just what its manifest declares wanting."""
+    await _get_owned_installation(installation_id, ctx.org_id)
+    from app.core.db import get_pool
+    async with get_pool().acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT capability, granted FROM plugin_permissions WHERE installation_id=$1 ORDER BY capability",
+            uuid.UUID(installation_id),
+        )
+    from app.plugins.adapters import get_adapted_registrations
+    return {
+        "installation_id": installation_id,
+        "granted_permissions": [dict(r) for r in rows],
+        "active_registrations": get_adapted_registrations(installation_id),
+    }
