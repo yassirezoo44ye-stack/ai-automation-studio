@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
@@ -7,9 +7,14 @@ import { motion } from "framer-motion";
 import { ProjectAvatar } from "../../components/ui/ProjectAvatar";
 import { KpiCard } from "../../shared/ui/gold";
 import { S, C, withAlpha } from "../../styles/theme";
+import { useAsyncData } from "../../shared/hooks/useAsyncData";
+import { ErrorState } from "../../shared/ui/StateViews";
 import type { Project } from "../../types";
 
 type HomeTab = "overview" | "projects";
+type ActivityEntry = { action: string; details: Record<string, string>; time: string };
+type StatsResponse = Record<string, number> & { recent_activity?: ActivityEntry[] };
+interface SeriesData { labels: string[]; messages: number[]; builds: number[] }
 
 export function HomePage() {
   const { setPage } = useAppContext();
@@ -17,15 +22,34 @@ export function HomePage() {
   const [tab, setTab] = useState<HomeTab>("overview");
 
   // ── Dashboard state ───────────────────────────────────────────────────────
-  const [stats, setStats]     = useState<Record<string, number> | null>(null);
-  const [series, setSeries]   = useState<{ labels: string[]; messages: number[]; builds: number[] } | null>(null);
-  const [activity, setActivity] = useState<{ action: string; details: Record<string, string>; time: string }[]>([]);
+  const statsQuery = useAsyncData<StatsResponse>(
+    () => apiFetch("/api/stats").then(r => parseJSON<StatsResponse>(r, "/api/stats")),
+    [],
+  );
+  const seriesQuery = useAsyncData<SeriesData>(
+    () => apiFetch("/api/stats/timeseries?days=14").then(r => parseJSON<SeriesData>(r, "/api/stats/timeseries")),
+    [],
+  );
+  const stats    = statsQuery.data ?? null;
+  const activity = statsQuery.data?.recent_activity ?? [];
+  const series   = seriesQuery.data ?? null;
+  // The backend-online pill is an infra ping, not a data widget — it keeps its
+  // own lightweight boolean rather than going through useAsyncData's
+  // loading/error/empty model, which doesn't apply to a health check.
   const [backendOk, setBackendOk] = useState<boolean | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  useEffect(() => {
+    apiFetch("/health").then(r => setBackendOk(r.ok)).catch(() => setBackendOk(false));
+  }, []);
+
   // ── Projects state ────────────────────────────────────────────────────────
-  const [projects, setProjects]   = useState<Project[]>([]);
-  const [loadingProj, setLoadingProj] = useState(true);
+  const projectsQuery = useAsyncData<Project[]>(
+    () => apiFetch("/api/projects").then(r => parseJSON<Project[]>(r, "/api/projects")),
+    [],
+  );
+  const projects    = projectsQuery.data ?? [];
+  const loadingProj = projectsQuery.status === "loading";
   const [creating, setCreating]   = useState(false);
   const [newName, setNewName]     = useState("");
   const [newDesc, setNewDesc]     = useState("");
@@ -33,20 +57,6 @@ export function HomePage() {
   const [search, setSearch]       = useState("");
   const [viewMode, setViewMode]   = useState<"grid" | "list">("grid");
   const [sortBy, setSortBy]       = useState<"name" | "date">("date");
-
-  useEffect(() => {
-    apiFetch("/api/stats").then(r => parseJSON<Record<string, number> & { recent_activity?: { action: string; details: Record<string, string>; time: string }[] }>(r, "/api/stats")).then(d => { setStats(d); setActivity(d.recent_activity ?? []); }).catch(() => {});
-    apiFetch("/api/stats/timeseries?days=14").then(r => parseJSON<{ labels: string[]; messages: number[]; builds: number[] }>(r, "/api/stats/timeseries")).then(setSeries).catch(() => {});
-    apiFetch("/health").then(r => setBackendOk(r.ok)).catch(() => setBackendOk(false));
-  }, []);
-
-  const loadProjects = useCallback(async () => {
-    setLoadingProj(true);
-    try { const r = await apiFetch("/api/projects"); setProjects(await parseJSON<Project[]>(r, "/api/projects")); }
-    catch { toast("Could not load projects", "err"); }
-    finally { setLoadingProj(false); }
-  }, [toast]);
-  useEffect(() => { void Promise.resolve().then(loadProjects); }, [loadProjects]);
 
   // ── Canvas chart ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -125,7 +135,7 @@ export function HomePage() {
         body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() || null }),
       });
       if (!r.ok) throw new Error();
-      setNewName(""); setNewDesc(""); setCreating(false); loadProjects(); toast("Project created");
+      setNewName(""); setNewDesc(""); setCreating(false); projectsQuery.refetch(); toast("Project created");
     } catch { toast("Failed to create", "err"); }
     finally { setSaving(false); }
   }
@@ -137,7 +147,7 @@ export function HomePage() {
       if (!r.ok) throw new Error();
       toast(`Deleted "${name}"`);
     } catch { toast("Failed to delete project", "err"); }
-    finally { loadProjects(); }
+    finally { projectsQuery.refetch(); }
   }
 
   const filteredProjects = projects
@@ -212,7 +222,9 @@ export function HomePage() {
           {/* KPI cards — animated count-up */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Overview</div>
-            {stats ? (
+            {statsQuery.status === "error" ? (
+              <ErrorState compact message={statsQuery.error ?? "Could not load stats."} suggestedFix={statsQuery.suggestedFix} onRetry={statsQuery.refetch} />
+            ) : stats ? (
               <motion.div
                 style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 12 }}
                 initial="hidden" animate="show"
@@ -241,7 +253,9 @@ export function HomePage() {
                   <span style={{ display: "flex", alignItems: "center", gap: 6, color: C.green }}><span style={{ width: 10, height: 3, borderRadius: 2, background: C.green, display: "inline-block" }} />Builds</span>
                 </div>
               </div>
-              {series ? <canvas ref={canvasRef} width={800} height={180} style={{ width: "100%", height: 180 }} />
+              {seriesQuery.status === "error" ? (
+                <ErrorState compact message={seriesQuery.error ?? "Could not load activity chart."} suggestedFix={seriesQuery.suggestedFix} onRetry={seriesQuery.refetch} />
+              ) : series ? <canvas ref={canvasRef} width={800} height={180} style={{ width: "100%", height: 180 }} />
                 : <div className="skeleton" style={{ height: 180 }} />}
             </div>
             <div style={S.card}>
@@ -335,6 +349,8 @@ export function HomePage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
               {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 100, borderRadius: 12 }} />)}
             </div>
+          ) : projectsQuery.status === "error" ? (
+            <ErrorState message={projectsQuery.error ?? "Could not load projects."} suggestedFix={projectsQuery.suggestedFix} onRetry={projectsQuery.refetch} />
           ) : filteredProjects.length === 0 ? (
             <div className="empty-state" style={{ direction: "ltr" }}>
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--ta)" strokeWidth="1.2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
