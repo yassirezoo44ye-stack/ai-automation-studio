@@ -89,7 +89,20 @@ export function useAsyncData<T>(
   }, [isEmpty]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // A disabled hook (e.g. no conversation selected yet) must not keep
+      // reporting the previous target's data/status — otherwise a caller
+      // that gates rendering on `enabled` can still observe stale loading/
+      // error/data from whatever was last fetched before it was disabled.
+      requestIdRef.current++;
+      void Promise.resolve().then(() => {
+        setData(undefined);
+        setError(null);
+        setSuggestedFix(null);
+        setStatus("success");
+      });
+      return;
+    }
     // Deferred a microtask so the fetch (and its eventual setState) runs
     // outside the effect's own commit, not synchronously within it.
     void Promise.resolve().then(() => run(false));

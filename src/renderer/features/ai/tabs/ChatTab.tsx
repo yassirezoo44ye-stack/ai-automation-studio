@@ -3,10 +3,10 @@
  * Handles conversation list, message rendering, streaming, task extraction.
  * All data access goes through apiFetch; no direct provider imports.
  */
-import { useState, useRef, useEffect, useCallback, memo } from "react";
+import { useState, useRef, useEffect, useMemo, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "../../../contexts/toast";
-import { apiFetch, apiJSON, parseJSON, authH, API } from "../../../utils/api";
+import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
 import { useAsyncData } from "../../../shared/hooks/useAsyncData";
@@ -16,6 +16,13 @@ import { S, C } from "../../../styles/theme";
 import AxonLogo from "../../../AxonLogo";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";
 import { PRIORITY_COLOR } from "../../../constants";
+
+/** Extracts a user-readable message from any caught error, preferring APIError's diagnostics. */
+function describeError(err: unknown, fallback: string): string {
+  if (err instanceof APIError) return err.details.probableCause ?? err.message;
+  if (err instanceof Error) return err.message || fallback;
+  return fallback;
+}
 
 interface ChatTabProps {
   agents:         Agent[];
@@ -31,13 +38,34 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     data: convs = [], status: convsStatus, error: convsError, suggestedFix: convsFix, refetch: loadConvs,
   } = useAsyncData(() => apiJSON<Conv[]>(`/api/conversations?project_id=${projectId}`), [projectId]);
   const [activeConv, setActiveConv] = useState<string | null>(null);
+  // Local, mutable copy of the active conversation's messages. Backed by
+  // useAsyncData below for the *load* — but sendMessage() must keep
+  // appending/streaming tokens into this directly, which a hook whose only
+  // externally-owned value is `data` can't support, so loaded history is
+  // synced in via effect rather than read straight from the hook.
   const [messages, setMessages]   = useState<Message[]>([]);
+  // Which conversation `messages` actually holds content for. Lets the UI
+  // tell "switching to a different, not-yet-loaded past conversation"
+  // (messagesConvId out of sync with activeConv -> show a spinner, don't
+  // flash the old conversation's messages) apart from "sendMessage() just
+  // created a brand-new conversation mid-stream" (messagesConvId is set to
+  // the new id immediately, in the same handler that flips activeConv, so
+  // the in-progress streamed reply is never hidden behind a loading state).
+  const [messagesConvId, setMessagesConvId] = useState<string | null>(null);
   const [prompt, setPrompt]       = useState("");
   const [streaming, setStreaming] = useState(false);
   const [searchQ, setSearchQ]     = useState("");
+  // Same local-copy-synced-from-hook pattern as messages: setTaskStatus
+  // optimistically mutates this list, which a hook-owned `data` can't allow.
   const [inlineTasks, setInlineTasks] = useState<Task[]>([]);
   const [extracting, setExtracting]   = useState(false);
   const [showTasks, setShowTasks]     = useState(false);
+  const [exporting, setExporting]     = useState(false);
+  // Track *which* conversation/task is in flight so only that row's control
+  // disables — an unrelated conversation's delete button, or a different
+  // task's checkbox, must stay clickable while another one is in flight.
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
 
@@ -46,72 +74,113 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   // Reset conversation state when the project changes — during render,
   // per React's "adjusting state when a prop changes" pattern.
   const [prevProjectId, setPrevProjectId] = useState(projectId);
-  if (prevProjectId !== projectId) { setPrevProjectId(projectId); setActiveConv(null); setMessages([]); }
-
-  const loadInlineTasks = useCallback(async () => {
-    if (!activeConv) return;
-    try {
-      const r = await apiFetch("/api/tasks?sort=created_at");
-      const d = await parseJSON<{ tasks?: Task[] }>(r, "/api/tasks");
-      setInlineTasks((d.tasks ?? []).slice(0, 6));
-    } catch {}
-  }, [activeConv]);
-
-  useEffect(() => { if (showTasks) void Promise.resolve().then(loadInlineTasks); }, [showTasks, loadInlineTasks]);
-
-  async function loadMessages(cid: string) {
-    const path = `/api/conversations/${cid}/messages`;
-    try {
-      const r = await apiFetch(path);
-      const msgs = await parseJSON<{ id: string; role: string; content: string }[]>(r, path);
-      setMessages(msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content })));
-    } catch {}
+  if (prevProjectId !== projectId) {
+    setPrevProjectId(projectId); setActiveConv(null); setMessages([]); setMessagesConvId(null);
   }
 
+  const {
+    data: loadedTasks, status: inlineTasksStatus, error: inlineTasksError,
+    suggestedFix: inlineTasksFix, refetch: loadInlineTasks,
+  } = useAsyncData(
+    () => apiJSON<{ tasks?: Task[] }>("/api/tasks?sort=created_at").then(d => (d.tasks ?? []).slice(0, 6)),
+    [activeConv, showTasks],
+    { enabled: !!activeConv && showTasks },
+  );
+  useEffect(() => {
+    // Deferred so the setState runs outside the effect's own commit.
+    if (loadedTasks) void Promise.resolve().then(() => setInlineTasks(loadedTasks));
+  }, [loadedTasks]);
+
+  const {
+    data: loadedMessages, status: messagesStatus, error: messagesError,
+    suggestedFix: messagesFix, refetch: reloadMessages,
+  } = useAsyncData<Message[]>(
+    async () => {
+      const path = `/api/conversations/${activeConv}/messages`;
+      const msgs = await apiJSON<{ id: string; role: string; content: string }[]>(path);
+      return msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
+    },
+    [activeConv],
+    { enabled: !!activeConv, isEmpty: () => false }, // an empty conversation is not an error state worth flagging
+  );
+  // Sync loaded history into the local, streaming-mutable copy. This effect
+  // only ever fires on an actual conversation switch or an explicit manual
+  // retry — sendMessage() never changes activeConv or calls reloadMessages,
+  // so it can't be clobbered by a fetch racing an in-progress stream.
+  useEffect(() => {
+    if (!loadedMessages) return;
+    // Deferred so the setState runs outside the effect's own commit.
+    void Promise.resolve().then(() => {
+      setMessages(loadedMessages);
+      setMessagesConvId(activeConv);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedMessages]);
+
   async function extractTasks() {
-    if (!activeConv || extracting) return;
+    if (!activeConv || extracting) return; // prevent duplicate submissions
     setExtracting(true);
     try {
       const path = `/api/tasks/from-conversation/${activeConv}`;
-      const r = await apiFetch(path, { method: "POST" });
-      const d = await parseJSON<{ created?: unknown[] }>(r, path);
+      const d = await apiJSON<{ created?: unknown[] }>(path, { method: "POST" });
       const n = d.created?.length ?? 0;
       toast(n > 0 ? `Extracted ${n} task${n !== 1 ? "s" : ""}` : "No clear tasks found", n > 0 ? "ok" : "info");
       if (n > 0) { setShowTasks(true); loadInlineTasks(); }
-    } catch { toast("Failed to extract tasks", "err"); }
-    finally { setExtracting(false); }
+    } catch (err) {
+      toast(describeError(err, "Failed to extract tasks"), "err");
+    } finally {
+      setExtracting(false);
+    }
   }
 
   async function setTaskStatus(t: Task, status: string) {
+    if (pendingTaskIds.has(t.id)) return; // prevent duplicate submissions for this task
+    setPendingTaskIds(prev => new Set(prev).add(t.id));
     setInlineTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: status as Task["status"] } : x));
     try {
       await apiFetch(`/api/tasks/${t.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-    } catch { loadInlineTasks(); }
+    } catch (err) {
+      toast(describeError(err, "Failed to update task — reverting"), "err");
+      loadInlineTasks(); // resync with server truth after the optimistic update failed
+    } finally {
+      setPendingTaskIds(prev => { const next = new Set(prev); next.delete(t.id); return next; });
+    }
   }
 
   async function deleteConv(e: React.MouseEvent, cid: string) {
     e.stopPropagation();
+    if (deletingIds.has(cid)) return; // prevent duplicate submissions for this conversation
+    setDeletingIds(prev => new Set(prev).add(cid));
     try {
       const r = await apiFetch(`/api/conversations/${cid}`, { method: "DELETE" });
-      if (!r.ok) throw new Error();
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       if (activeConv === cid) { setActiveConv(null); setMessages([]); }
       loadConvs();
-    } catch { toast("Failed to delete conversation", "err"); }
+    } catch (err) {
+      toast(describeError(err, "Failed to delete conversation"), "err");
+    } finally {
+      setDeletingIds(prev => { const next = new Set(prev); next.delete(cid); return next; });
+    }
   }
 
   async function exportConv() {
-    if (!activeConv) return;
+    if (!activeConv || exporting) return; // prevent duplicate submissions
+    setExporting(true);
     try {
       const r = await apiFetch(`/api/export/conversations/${activeConv}`);
-      if (!r.ok) { toast("Export failed", "err"); return; }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const blob = await r.blob();
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "conversation.md"; a.click();
       URL.revokeObjectURL(a.href);
       toast("Exported as Markdown");
-    } catch { toast("Export failed", "err"); }
+    } catch (err) {
+      toast(describeError(err, "Export failed"), "err");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function sendMessage() {
@@ -149,7 +218,15 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const ev = JSON.parse(line.slice(6));
-          if (ev.type === "conv_id" && !activeConv) { setActiveConv(ev.conv_id); loadConvs(); }
+          if (ev.type === "conv_id" && !activeConv) {
+            // Claim this id for the messages already in local state *before*
+            // flipping activeConv, so the messages-loading effect (keyed on
+            // activeConv) sees them as already in sync and never shows a
+            // loading state over the reply that's actively streaming in.
+            setMessagesConvId(ev.conv_id);
+            setActiveConv(ev.conv_id);
+            loadConvs();
+          }
           else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
           else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: `⚠️ ${ev.message}` } : m)); closed = true; break; }
           else if (ev.type === "done")   { loadConvs(); closed = true; }
@@ -164,10 +241,20 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     } finally { setStreaming(false); abortRef.current = null; }
   }
 
-  const filteredConvs = searchQ
-    ? convs.filter(c => c.title.toLowerCase().includes(searchQ.toLowerCase()))
-    : convs;
-  const activeAgent = agents.find(a => a.id === agentId);
+  const filteredConvs = useMemo(
+    () => searchQ ? convs.filter(c => c.title.toLowerCase().includes(searchQ.toLowerCase())) : convs,
+    [convs, searchQ],
+  );
+  const activeAgent = useMemo(() => agents.find(a => a.id === agentId), [agents, agentId]);
+
+  // True only while `messages` genuinely doesn't reflect activeConv yet —
+  // i.e. the user switched to a different, not-yet-loaded past conversation.
+  // False for a brand-new conversation created mid-stream, since sendMessage
+  // claims messagesConvId for it before flipping activeConv (see above) —
+  // the in-progress streamed reply must never be hidden behind a spinner.
+  const messagesOutOfSync = !!activeConv && messagesConvId !== activeConv;
+  const showMessagesLoading = messagesOutOfSync && messagesStatus === "loading";
+  const showMessagesError   = messagesOutOfSync && messagesStatus === "error";
 
   return (
     <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
@@ -188,9 +275,16 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           </select>
         </div>
         <div style={{ padding: "0 8px 6px", display: "flex", gap: 6 }}>
-          <button onClick={() => { setActiveConv(null); setMessages([]); setShowTasks(false); }} style={{ ...S.newChatBtn, flex: 1 }}>+ New Chat</button>
+          <button
+            onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
+            style={{ ...S.newChatBtn, flex: 1 }}
+          >
+            + New Chat
+          </button>
           {activeConv && (
-            <button onClick={exportConv} title="Export as Markdown" style={{ ...S.newChatBtn, width: 36, padding: 0, textAlign: "center" }}>↓</button>
+            <button onClick={exportConv} disabled={exporting} title="Export as Markdown" style={{ ...S.newChatBtn, width: 36, padding: 0, textAlign: "center" }}>
+              {exporting ? "…" : "↓"}
+            </button>
           )}
           {activeConv && (
             <button onClick={extractTasks} disabled={extracting} title="Extract tasks" style={{ ...S.newChatBtn, width: 36, padding: 0, textAlign: "center" }}>
@@ -217,49 +311,71 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           {(convsStatus === "success" || convsStatus === "refreshing") && filteredConvs.length === 0 && (
             <EmptyState compact title="No matches" description={`Nothing found for "${searchQ}".`} />
           )}
-          {filteredConvs.map(c => (
-            <div
-              key={c.id}
-              onClick={() => { setActiveConv(c.id); loadMessages(c.id); }}
-              style={{ ...S.convItem, ...(c.id === activeConv ? S.convItemActive : {}) }}
-            >
-              <div style={S.convTitle}>{c.title}</div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
-                <span style={S.convTime}>{relTime(c.updated_at)}</span>
-                <span onClick={e => deleteConv(e, c.id)} style={{ color: C.slate, fontSize: 11, cursor: "pointer" }}>✕</span>
+          {filteredConvs.map(c => {
+            const isDeleting = deletingIds.has(c.id);
+            return (
+              <div
+                key={c.id}
+                onClick={() => setActiveConv(c.id)}
+                style={{ ...S.convItem, ...(c.id === activeConv ? S.convItemActive : {}), ...(isDeleting ? { opacity: 0.5, pointerEvents: "none" } : {}) }}
+              >
+                <div style={S.convTitle}>{c.title}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
+                  <span style={S.convTime}>{relTime(c.updated_at)}</span>
+                  <span
+                    onClick={e => { if (!isDeleting) deleteConv(e, c.id); }}
+                    title={isDeleting ? "Deleting…" : "Delete conversation"}
+                    style={{ color: C.slate, fontSize: 11, cursor: isDeleting ? "default" : "pointer" }}
+                  >
+                    {isDeleting ? "…" : "✕"}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {/* ── Chat area ─────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        {/* Inline tasks strip */}
-        {showTasks && inlineTasks.length > 0 && (
+        {/* Inline tasks strip — shown while loading/erroring too now, not just once tasks exist,
+            so "Extract tasks" always gives visible feedback instead of silently doing nothing. */}
+        {showTasks && (inlineTasksStatus === "loading" || inlineTasksStatus === "error" || inlineTasks.length > 0) && (
           <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(108,142,247,0.04)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ta)", flexShrink: 0 }}>TASKS</span>
-            {inlineTasks.map(t => (
-              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12 }}>
-                <button
-                  onClick={() => setTaskStatus(t, t.status === "done" ? "pending" : "done")}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: t.status === "done" ? C.green : "var(--t5)", display: "flex" }}
-                >
-                  {t.status === "done"
-                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                    : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/></svg>}
-                </button>
-                <span style={{ color: t.status === "done" ? "var(--t5)" : "var(--t2)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{t.title}</span>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: PRIORITY_COLOR[t.priority], flexShrink: 0 }} title={t.priority} />
-              </div>
-            ))}
+            {inlineTasksStatus === "loading" && <LoadingSpinner size={14} label="" />}
+            {inlineTasksStatus === "error" && (
+              <ErrorState compact message={inlineTasksError ?? "Failed to load tasks."} suggestedFix={inlineTasksFix} onRetry={loadInlineTasks} />
+            )}
+            {inlineTasksStatus !== "loading" && inlineTasksStatus !== "error" && inlineTasks.map(t => {
+              const isPending = pendingTaskIds.has(t.id);
+              return (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12, opacity: isPending ? 0.6 : 1 }}>
+                  <button
+                    onClick={() => setTaskStatus(t, t.status === "done" ? "pending" : "done")}
+                    disabled={isPending}
+                    style={{ background: "none", border: "none", cursor: isPending ? "default" : "pointer", padding: 0, color: t.status === "done" ? C.green : "var(--t5)", display: "flex" }}
+                  >
+                    {t.status === "done"
+                      ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/></svg>}
+                  </button>
+                  <span style={{ color: t.status === "done" ? "var(--t5)" : "var(--t2)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{t.title}</span>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: PRIORITY_COLOR[t.priority], flexShrink: 0 }} title={t.priority} />
+                </div>
+              );
+            })}
             <button onClick={() => setShowTasks(false)} style={{ background: "none", border: "none", color: "var(--t5)", cursor: "pointer", marginLeft: "auto", fontSize: 16 }}>×</button>
           </div>
         )}
 
         {/* Messages */}
         <div style={{ ...S.messages, position: "relative" }}>
-          {messages.length === 0 && (
+          {showMessagesLoading && <LoadingSpinner fullPage label="Loading conversation…" />}
+          {showMessagesError && (
+            <ErrorState message={messagesError ?? "Failed to load this conversation."} suggestedFix={messagesFix} onRetry={reloadMessages} />
+          )}
+          {!showMessagesLoading && !showMessagesError && messages.length === 0 && (
             <div style={{ ...S.empty, animation: "fadeIn .4s ease" }}>
               <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "linear-gradient(135deg,rgba(255,215,0,.22),rgba(99,102,241,.17))", border: "1px solid rgba(255,215,0,.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
@@ -275,7 +391,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               </div>
             </div>
           )}
-          {messages.map((m, idx) => (
+          {/* Suppressed while a *different* conversation's history is loading/erroring, so the
+              previous conversation's messages never flash underneath the loading/error state. */}
+          {!showMessagesLoading && !showMessagesError && messages.map((m, idx) => (
             <MessageRow key={m.id} msg={m} isLast={idx === messages.length - 1}
                         agentName={activeAgent?.name ?? null} agentAvatar={activeAgent?.avatar ?? null} />
           ))}
