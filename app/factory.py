@@ -57,6 +57,7 @@ from app.routers import events_api       as events_api_router
 from app.routers import plugins          as plugins_router
 from app.routers import sandbox          as sandbox_router
 from app.routers import notifications    as notifications_router
+from app.routers import integrations     as integrations_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -171,6 +172,11 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await init_alert_schema(conn)
 
+    # ── Integration SDK — references organizations/users ────────────────────
+    from app.integrations import init_integrations_schema
+    async with pool.acquire() as conn:
+        await init_integrations_schema(conn)
+
     # ── Scoped Row Level Security (defense-in-depth on tenancy tables) ─────
     from app.tenancy import enable_scoped_rls
     async with pool.acquire() as conn:
@@ -193,6 +199,17 @@ async def lifespan(app: FastAPI):
     # ── Background job queue (Redis-backed when available) ──────────────────
     from app.core.jobs import get_job_queue
     get_job_queue(cache=cache)
+
+    # ── Integration SDK — register the example provider + health probe.
+    # No real third-party provider is registered here (see
+    # app/integrations/examples/ — the example needs no external account).
+    from app.integrations import get_integration_registry
+    from app.integrations.examples.webhook_relay_provider import WebhookRelayProvider
+    from app.integrations.sync_engine import get_sync_engine
+    from app.integrations.health import register_integration_health_probe
+    get_integration_registry().register(WebhookRelayProvider())
+    get_sync_engine(pool).start()
+    register_integration_health_probe()
 
     # ── Autonomous background services ──────────────────────────────────────
     from app.services.registry import get_service_registry
@@ -497,6 +514,7 @@ def create_app() -> FastAPI:
     app.include_router(plugins_router.router)
     app.include_router(sandbox_router.router)
     app.include_router(notifications_router.router)
+    app.include_router(integrations_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

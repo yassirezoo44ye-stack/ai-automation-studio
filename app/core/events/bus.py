@@ -33,6 +33,9 @@ EVENT_TYPES = frozenset({
     "memory.created",
     "organization.created", "organization.member_added",
     "job.completed", "job.failed",
+    "integration.connected", "integration.disconnected",
+    "integration.sync_started", "integration.sync_completed", "integration.sync_failed",
+    "integration.webhook_received", "integration.health_changed",
 })
 
 Handler = Callable[["Event"], Awaitable[None]]
