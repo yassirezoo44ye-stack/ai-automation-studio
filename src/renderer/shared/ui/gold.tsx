@@ -11,7 +11,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 /* ── Button ─────────────────────────────────────────────────────────────── */
 
 export function GoldButton({
-  children, onClick, variant = "primary", disabled, type = "button", title,
+  children, onClick, variant = "primary", disabled, type = "button", title, style,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -19,6 +19,8 @@ export function GoldButton({
   disabled?: boolean;
   type?: "button" | "submit";
   title?: string;
+  /** Escape hatch for layout only (e.g. width: "100%") — visual styling stays in the g-btn* classes. */
+  style?: CSSProperties;
 }) {
   const reduce = useReducedMotion();
   return (
@@ -28,6 +30,7 @@ export function GoldButton({
       className={`g-btn g-btn--${variant}`}
       onClick={onClick}
       disabled={disabled}
+      style={style}
       whileTap={reduce || disabled ? undefined : { scale: 0.97 }}
       whileHover={reduce || disabled ? undefined : { y: -1 }}
     >

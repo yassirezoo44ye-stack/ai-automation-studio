@@ -1,8 +1,12 @@
-import { C } from "../../shared/lib/theme";
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import AxonLogo from "../../AxonLogo";
 import { parseJSON } from "../../utils/api";
+import { useForm } from "../../shared/forms/useForm";
+import { useAsyncSubmit } from "../../shared/forms/useAsyncSubmit";
+import { all, required, email as emailValidator, minLength, matchesField, passwordStrength } from "../../shared/forms/validators";
+import { EmailField, PasswordField, TextField, Checkbox, SubmitButton, ErrorBanner, SuccessBanner } from "../../shared/ui/forms";
+import { GoldButton } from "../../shared/ui/gold";
 
 type Tab = "login" | "register" | "forgot";
 
@@ -43,21 +47,8 @@ const S = {
     background: "var(--bg-input)", color: "var(--t1)", fontSize: 13, fontWeight: 600,
     cursor: "pointer", transition: "background .15s",
   }),
-  field:   { marginBottom: 14 } as React.CSSProperties,
-  label:   { display: "block", fontSize: 12, color: "var(--t3)", marginBottom: 4, fontWeight: 500 } as React.CSSProperties,
-  input:   {
-    width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--b1)",
-    background: "var(--bg-input)", color: "var(--t1)", fontSize: 14,
-    boxSizing: "border-box" as const, outline: "none",
-  } as React.CSSProperties,
-  btn: (loading: boolean): React.CSSProperties => ({
-    width: "100%", padding: "11px", borderRadius: 10, border: "none",
-    background: loading ? "var(--bg-card-h)" : "linear-gradient(135deg, var(--accent-light), var(--accent))",
-    color: loading ? "var(--t4)" : "#fff",
-    fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
-    marginTop: 4, boxShadow: loading ? "none" : "var(--shadow-btn)",
-    transition: "filter 0.15s, box-shadow 0.15s",
-  }),
+  row:     { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } as React.CSSProperties,
+  link:    { fontSize: 13, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 } as React.CSSProperties,
   btnSecondary: {
     width: "100%", padding: "10px", borderRadius: 10, marginTop: 8,
     border: "1px solid var(--b1)", background: "transparent",
@@ -68,11 +59,6 @@ const S = {
     border: "none", background: "transparent",
     color: "var(--accent)", fontSize: 13, cursor: "pointer", textDecoration: "underline",
   } as React.CSSProperties,
-  error:   { color: C.redSoft, fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
-  success: { color: C.green, fontSize: 13, margin: "0 0 12px", textAlign: "center" } as React.CSSProperties,
-  row:     { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } as React.CSSProperties,
-  check:   { display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--t3)", cursor: "pointer" } as React.CSSProperties,
-  link:    { fontSize: 13, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", padding: 0 } as React.CSSProperties,
 };
 
 // ── OAuth provider buttons ────────────────────────────────────────────────────
@@ -107,90 +93,106 @@ function MicrosoftIcon() {
   );
 }
 
+function OAuthRow({ onSelect }: { onSelect: (provider: "google" | "github" | "microsoft") => void }) {
+  return (
+    <>
+      <div style={S.oauthRow}>
+        <button style={S.oauthBtn("#4285F4")} onClick={() => onSelect("google")} type="button">
+          <GoogleIcon /> Google
+        </button>
+        <button style={S.oauthBtn("#24292e")} onClick={() => onSelect("github")} type="button">
+          <GitHubIcon /> GitHub
+        </button>
+        <button style={S.oauthBtn("#2f2f2f")} onClick={() => onSelect("microsoft")} type="button">
+          <MicrosoftIcon /> Microsoft
+        </button>
+      </div>
+      <div style={S.divider}>
+        <span style={S.divLine} /><span>or</span><span style={S.divLine} />
+      </div>
+    </>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
+
+interface LoginValues { email: string; password: string; remember: boolean }
+interface RegisterValues { name: string; email: string; password: string; confirmPassword: string }
+interface ForgotValues { email: string }
 
 export function AuthPage() {
   const { login, register } = useAuth();
-  const [tab, setTab]         = useState<Tab>("login");
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
-  const [success, setSuccess] = useState("");
-  const [regEmail, setRegEmail] = useState(""); // kept for resend
-
-  // Login
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPw, setLoginPw]       = useState("");
-  const [remember, setRemember]     = useState(false);
-
-  // Register
-  const [regName, setRegName]   = useState("");
-  const [regPw, setRegPw]       = useState("");
-  const [regPw2, setRegPw2]     = useState("");
-  const [registered, setRegistered] = useState(false);
-
-  // Forgot
-  const [forgotEmail, setForgotEmail] = useState("");
-
-  function clear() { setError(""); setSuccess(""); }
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault(); clear(); setLoading(true);
-    try {
-      await login(loginEmail, loginPw, remember);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally { setLoading(false); }
-  }
-
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault(); clear();
-    if (regPw !== regPw2) { setError("Passwords do not match"); return; }
-    setLoading(true);
-    try {
-      const res = await register(regName, regEmail, regPw);
-      setSuccess(res.message);
-      setRegistered(true);
-      setLoginEmail(regEmail);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Registration failed");
-    } finally { setLoading(false); }
-  }
-
-  async function handleForgot(e: React.FormEvent) {
-    e.preventDefault(); clear(); setLoading(true);
-    try {
-      const res = await fetch(`${API}/api/auth/forgot-password`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: forgotEmail }),
-      });
-      const data = await parseJSON<{ message: string }>(res, "/api/auth/forgot-password");
-      setSuccess(data.message);
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally { setLoading(false); }
-  }
-
-  async function handleResend() {
-    clear(); setLoading(true);
-    try {
-      const res = await fetch(`${API}/api/auth/resend-verification`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: regEmail }),
-      });
-      const data = await parseJSON<{ message: string }>(res, "/api/auth/resend-verification");
-      setSuccess(data.message);
-    } catch {
-      setError("Failed to resend. Please try again.");
-    } finally { setLoading(false); }
-  }
+  const [tab, setTab] = useState<Tab>("login");
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
 
   function handleOAuth(provider: "google" | "github" | "microsoft") {
     window.location.href = `${API}/api/auth/${provider}`;
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Login ──────────────────────────────────────────────────────────────────
+  const loginSubmit = useAsyncSubmit<void>();
+  const loginForm = useForm<LoginValues>({
+    initialValues: { email: "", password: "", remember: false },
+    validators: {
+      email: all(required("Email is required"), emailValidator()),
+      password: required("Password is required"),
+    },
+    onValid: values => loginSubmit.run(() => login(values.email, values.password, values.remember)),
+  });
+
+  // ── Register ───────────────────────────────────────────────────────────────
+  const registerSubmit = useAsyncSubmit<{ message: string }>();
+  const registerForm = useForm<RegisterValues>({
+    initialValues: { name: "", email: "", password: "", confirmPassword: "" },
+    validators: {
+      name: required("Name is required"),
+      email: all(required("Email is required"), emailValidator()),
+      password: all(required("Password is required"), minLength(8), passwordStrength()),
+      confirmPassword: all(required("Please confirm your password"), matchesField("password", "Passwords do not match")),
+    },
+    onValid: values => {
+      registerSubmit.run(async () => {
+        const res = await register(values.name, values.email, values.password);
+        setRegisteredEmail(values.email);
+        return res;
+      });
+    },
+  });
+
+  // ── Forgot password ────────────────────────────────────────────────────────
+  const forgotSubmit = useAsyncSubmit<{ message: string }>();
+  const forgotForm = useForm<ForgotValues>({
+    initialValues: { email: "" },
+    validators: { email: all(required("Email is required"), emailValidator()) },
+    onValid: values => forgotSubmit.run(async signal => {
+      const res = await fetch(`${API}/api/auth/forgot-password`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: values.email }),
+        signal,
+      });
+      return parseJSON<{ message: string }>(res, "/api/auth/forgot-password");
+    }),
+  });
+
+  // ── Resend verification (button action, no fields) ────────────────────────
+  const resendSubmit = useAsyncSubmit<{ message: string }>();
+  function handleResend() {
+    if (!registeredEmail) return;
+    resendSubmit.run(async signal => {
+      const res = await fetch(`${API}/api/auth/resend-verification`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: registeredEmail }),
+        signal,
+      });
+      return parseJSON<{ message: string }>(res, "/api/auth/resend-verification");
+    });
+  }
+
+  function switchTab(next: Tab) {
+    setTab(next);
+    loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset();
+    if (next !== "register") setRegisteredEmail(null);
+  }
 
   return (
     <div style={S.wrap}>
@@ -200,149 +202,83 @@ export function AuthPage() {
         <p style={S.sub}>Powered by Axon AI Platform</p>
 
         {tab !== "forgot" && (
-          <div style={S.tabs}>
-            <button style={S.tab(tab === "login")}
-              onClick={() => { setTab("login"); clear(); setRegistered(false); }}>
+          <div style={S.tabs} role="tablist">
+            <button role="tab" aria-selected={tab === "login"} style={S.tab(tab === "login")} onClick={() => switchTab("login")}>
               Sign In
             </button>
-            <button style={S.tab(tab === "register")}
-              onClick={() => { setTab("register"); clear(); setRegistered(false); }}>
+            <button role="tab" aria-selected={tab === "register"} style={S.tab(tab === "register")} onClick={() => switchTab("register")}>
               Create Account
             </button>
           </div>
         )}
 
-        {error   && <p style={S.error}>{error}</p>}
-        {success && <p style={S.success}>{success}</p>}
-
         {/* ── Login ── */}
         {tab === "login" && (
           <>
-            <div style={S.oauthRow}>
-              <button style={S.oauthBtn("#4285F4")} onClick={() => handleOAuth("google")} type="button">
-                <GoogleIcon /> Google
-              </button>
-              <button style={S.oauthBtn("#24292e")} onClick={() => handleOAuth("github")} type="button">
-                <GitHubIcon /> GitHub
-              </button>
-              <button style={S.oauthBtn("#2f2f2f")} onClick={() => handleOAuth("microsoft")} type="button">
-                <MicrosoftIcon /> Microsoft
-              </button>
-            </div>
-            <div style={S.divider}>
-              <span style={S.divLine} /><span>or</span><span style={S.divLine} />
-            </div>
-            <form onSubmit={handleLogin}>
-              <div style={S.field}>
-                <label style={S.label}>Email</label>
-                <input style={S.input} type="email" value={loginEmail}
-                  onChange={e => setLoginEmail(e.target.value)}
-                  required autoFocus autoComplete="email" />
-              </div>
-              <div style={S.field}>
-                <label style={S.label}>Password</label>
-                <input style={S.input} type="password" value={loginPw}
-                  onChange={e => setLoginPw(e.target.value)}
-                  required autoComplete="current-password" />
-              </div>
+            <OAuthRow onSelect={handleOAuth} />
+            {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
+            <form onSubmit={loginForm.handleSubmit} noValidate>
+              <EmailField {...loginForm.register("email")} label="Email" required autoFocus autoComplete="email" />
+              <PasswordField {...loginForm.register("password")} label="Password" required autoComplete="current-password" />
               <div style={S.row}>
-                <label style={S.check}>
-                  <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
-                  Remember me
-                </label>
+                <Checkbox {...loginForm.registerCheckbox("remember")} label="Remember me" />
                 <button type="button" style={S.link}
-                  onClick={() => { setTab("forgot"); clear(); setForgotEmail(loginEmail); }}>
+                  onClick={() => { forgotForm.setValue("email", loginForm.values.email); switchTab("forgot"); }}>
                   Forgot password?
                 </button>
               </div>
-              <button type="submit" style={S.btn(loading)} disabled={loading}>
-                {loading ? "Signing in…" : "Sign In"}
-              </button>
+              <SubmitButton loading={loginSubmit.isSubmitting} loadingText="Signing in…">Sign In</SubmitButton>
             </form>
           </>
         )}
 
         {/* ── Register ── */}
-        {tab === "register" && !registered && (
+        {tab === "register" && !registeredEmail && (
           <>
-            <div style={S.oauthRow}>
-              <button style={S.oauthBtn("#4285F4")} onClick={() => handleOAuth("google")} type="button">
-                <GoogleIcon /> Google
-              </button>
-              <button style={S.oauthBtn("#24292e")} onClick={() => handleOAuth("github")} type="button">
-                <GitHubIcon /> GitHub
-              </button>
-              <button style={S.oauthBtn("#2f2f2f")} onClick={() => handleOAuth("microsoft")} type="button">
-                <MicrosoftIcon /> Microsoft
-              </button>
-            </div>
-            <div style={S.divider}>
-              <span style={S.divLine} /><span>or</span><span style={S.divLine} />
-            </div>
-            <form onSubmit={handleRegister}>
-              <div style={S.field}>
-                <label style={S.label}>Name</label>
-                <input style={S.input} type="text" value={regName}
-                  onChange={e => setRegName(e.target.value)} required autoFocus autoComplete="name" />
-              </div>
-              <div style={S.field}>
-                <label style={S.label}>Email</label>
-                <input style={S.input} type="email" value={regEmail}
-                  onChange={e => setRegEmail(e.target.value)} required autoComplete="email" />
-              </div>
-              <div style={S.field}>
-                <label style={S.label}>Password</label>
-                <input style={S.input} type="password" value={regPw}
-                  onChange={e => setRegPw(e.target.value)}
-                  required minLength={8} autoComplete="new-password" placeholder="Min 8 characters" />
-              </div>
-              <div style={S.field}>
-                <label style={S.label}>Confirm Password</label>
-                <input style={S.input} type="password" value={regPw2}
-                  onChange={e => setRegPw2(e.target.value)} required autoComplete="new-password" />
-              </div>
-              <button type="submit" style={S.btn(loading)} disabled={loading}>
-                {loading ? "Creating account…" : "Create Account"}
-              </button>
+            <OAuthRow onSelect={handleOAuth} />
+            {registerSubmit.error && <ErrorBanner message={registerSubmit.error} suggestedFix={registerSubmit.suggestedFix} onRetry={registerForm.isValid ? registerSubmit.retry : undefined} />}
+            <form onSubmit={registerForm.handleSubmit} noValidate>
+              <TextField {...registerForm.register("name")} label="Name" required autoFocus autoComplete="name" />
+              <EmailField {...registerForm.register("email")} label="Email" required autoComplete="email" />
+              <PasswordField {...registerForm.register("password")} label="Password" required autoComplete="new-password"
+                hint={!registerForm.errors.password ? "Min 8 characters, at least one letter and one number" : undefined} />
+              <PasswordField {...registerForm.register("confirmPassword")} label="Confirm Password" required autoComplete="new-password" />
+              <SubmitButton loading={registerSubmit.isSubmitting} loadingText="Creating account…">Create Account</SubmitButton>
             </form>
           </>
         )}
 
         {/* ── Post-registration: resend verification ── */}
-        {tab === "register" && registered && (
+        {tab === "register" && registeredEmail && (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
             <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>Check your inbox</p>
             <p style={{ color: "var(--t3)", fontSize: 13, marginBottom: 20 }}>
-              We sent a verification link to <strong style={{ color: "var(--t2)" }}>{regEmail}</strong>.
+              We sent a verification link to <strong style={{ color: "var(--t2)" }}>{registeredEmail}</strong>.
               Click the link to activate your account.
             </p>
-            <button style={S.btn(loading)} disabled={loading}
-              onClick={() => { setTab("login"); clear(); setRegistered(false); }}>
+            {resendSubmit.error && <ErrorBanner message={resendSubmit.error} suggestedFix={resendSubmit.suggestedFix} onRetry={resendSubmit.retry} />}
+            {resendSubmit.success && <SuccessBanner message="Verification email sent." />}
+            <GoldButton disabled={resendSubmit.isSubmitting} onClick={() => switchTab("login")} style={{ width: "100%" }}>
               Go to Sign In
-            </button>
-            <button type="button" style={S.btnText} disabled={loading} onClick={handleResend}>
-              {loading ? "Sending…" : "Resend verification email"}
+            </GoldButton>
+            <button type="button" style={S.btnText} disabled={resendSubmit.isSubmitting} onClick={handleResend}>
+              {resendSubmit.isSubmitting ? "Sending…" : "Resend verification email"}
             </button>
           </div>
         )}
 
         {/* ── Forgot password ── */}
         {tab === "forgot" && (
-          <form onSubmit={handleForgot}>
+          <form onSubmit={forgotForm.handleSubmit} noValidate>
             <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
               Enter your email and we'll send a password reset link.
             </p>
-            <div style={S.field}>
-              <label style={S.label}>Email</label>
-              <input style={S.input} type="email" value={forgotEmail}
-                onChange={e => setForgotEmail(e.target.value)} required autoFocus autoComplete="email" />
-            </div>
-            <button type="submit" style={S.btn(loading)} disabled={loading}>
-              {loading ? "Sending…" : "Send Reset Link"}
-            </button>
-            <button type="button" style={S.btnSecondary}
-              onClick={() => { setTab("login"); clear(); }}>
+            {forgotSubmit.error && <ErrorBanner message={forgotSubmit.error} suggestedFix={forgotSubmit.suggestedFix} onRetry={forgotForm.isValid ? forgotSubmit.retry : undefined} />}
+            {forgotSubmit.success && <SuccessBanner message="If that email exists, a reset link is on its way." />}
+            <EmailField {...forgotForm.register("email")} label="Email" required autoFocus autoComplete="email" />
+            <SubmitButton loading={forgotSubmit.isSubmitting} loadingText="Sending…">Send Reset Link</SubmitButton>
+            <button type="button" style={S.btnSecondary} onClick={() => switchTab("login")}>
               Back to Sign In
             </button>
           </form>
