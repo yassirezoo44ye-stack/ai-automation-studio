@@ -3,6 +3,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useOrg } from "../../contexts/OrgContext";
 import { motion } from "framer-motion";
 import { Icons } from "../../icons";
+import { NotificationBell } from "../../shared/ui/notifications";
 import type { Page } from "../../types";
 
 type NavItem = { id: Page; label: string; icon: keyof typeof Icons };
@@ -132,6 +133,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         </nav>
 
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+          <NotificationBell collapsed={sidebarCollapsed} />
           <button
             className="sidebar__item"
             onClick={toggleTheme}

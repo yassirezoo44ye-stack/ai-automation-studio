@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 EVENT_TYPES = frozenset({
     "workflow.started", "workflow.completed", "workflow.failed",
     "agent.started", "agent.finished",
-    "billing.updated",
+    "billing.updated", "billing.payment_failed", "billing.invoice_paid",
     "marketplace.installed", "marketplace.published",
     "marketplace.install_failed", "marketplace.uninstalled", "marketplace.publisher_verified",
     "deployment.completed",

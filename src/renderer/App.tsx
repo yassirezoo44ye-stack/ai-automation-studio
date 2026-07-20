@@ -2,6 +2,8 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OrgProvider }   from "./contexts/OrgContext";
 import { AppProvider }   from "./contexts/AppContext";
 import { ToastProvider } from "./contexts/ToastContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
+import { CopilotProvider } from "./contexts/CopilotContext";
 import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
@@ -48,7 +50,11 @@ function AppInner() {
     <ToastProvider>
       <OrgProvider>
         <AppProvider>
-          <AppLayout />
+          <NotificationProvider>
+            <CopilotProvider>
+              <AppLayout />
+            </CopilotProvider>
+          </NotificationProvider>
         </AppProvider>
       </OrgProvider>
     </ToastProvider>

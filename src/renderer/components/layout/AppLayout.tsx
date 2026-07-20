@@ -5,6 +5,7 @@ import { ErrorBoundary } from "../../shared/ui/ErrorBoundary";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
+import { CopilotButton } from "../../shared/ui/copilot";
 import type { Page } from "../../types";
 
 const HomePage       = lazy(() => import("../../features/home").then(m => ({ default: m.HomePage })));
@@ -117,6 +118,8 @@ export function AppLayout() {
           onClose={() => setCmdOpen(false)}
         />
       )}
+
+      <CopilotButton />
     </>
   );
 }

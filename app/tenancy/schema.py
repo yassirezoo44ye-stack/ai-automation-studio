@@ -115,6 +115,41 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_activity_org     ON activity_logs(organization_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_action  ON activity_logs(action);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+    type            VARCHAR(60)  NOT NULL,
+    category        VARCHAR(30)  NOT NULL DEFAULT 'system'
+                    CHECK (category IN ('system','workflow','agent','marketplace','billing',
+                                         'security','deployment','background_job',
+                                         'realtime_event','organization')),
+    severity        VARCHAR(10)  NOT NULL DEFAULT 'info'
+                    CHECK (severity IN ('success','info','warning','error')),
+    title           TEXT NOT NULL,
+    message         TEXT NOT NULL,
+    source          VARCHAR(60),
+    action          JSONB,
+    dismissible     BOOLEAN NOT NULL DEFAULT TRUE,
+    read_status     BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at         TIMESTAMPTZ,
+    archived_at     TIMESTAMPTZ,
+    expires_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user
+    ON notifications(user_id, created_at DESC) WHERE archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
+    ON notifications(user_id) WHERE read_status = FALSE AND archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_notifications_org
+    ON notifications(organization_id, created_at DESC) WHERE organization_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id          UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    muted_categories TEXT[] NOT NULL DEFAULT '{}',
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 """
 
 # Resource-based permission matrix: role -> [(resource, action)].

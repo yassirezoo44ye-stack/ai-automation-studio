@@ -56,6 +56,7 @@ from app.routers import ai_router_api    as ai_router_api_router
 from app.routers import events_api       as events_api_router
 from app.routers import plugins          as plugins_router
 from app.routers import sandbox          as sandbox_router
+from app.routers import notifications    as notifications_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -178,6 +179,12 @@ async def lifespan(app: FastAPI):
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
     await get_event_bus().connect()
+
+    # ── Notification Center — dispatcher subscribes to the event bus above
+    # and turns workflow/agent/billing/marketplace/deployment/org/job events
+    # into persisted, per-user notifications (see app/core/notifications/).
+    from app.core.notifications import wire_notification_dispatcher
+    wire_notification_dispatcher()
 
     # ── Redis cache adapter ─────────────────────────────────────────────────
     from app.core.cache import get_redis
@@ -489,6 +496,7 @@ def create_app() -> FastAPI:
     app.include_router(events_api_router.router)
     app.include_router(plugins_router.router)
     app.include_router(sandbox_router.router)
+    app.include_router(notifications_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

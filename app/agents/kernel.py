@@ -37,11 +37,15 @@ _LLM_THRESHOLD       = 0.6    # below this: use LLM router
 _DELIBERATION_THRESH = 0.75   # below this: use multi-agent voting
 
 
-async def _publish_agent_event(event_type: str, agent_name: str, **data) -> None:
+async def _publish_agent_event(
+    event_type: str, agent_name: str, *, organization_id: str | None = None, **data,
+) -> None:
     """Best-effort event bus publish — never affects agent execution."""
     try:
         from app.core.events import get_event_bus
-        await get_event_bus().publish(event_type, {"agent": agent_name, **data})
+        await get_event_bus().publish(
+            event_type, {"agent": agent_name, **data}, organization_id=organization_id,
+        )
     except Exception:
         log.warning("event publish failed for agent=%s %s", agent_name, event_type, exc_info=True)
 
@@ -198,10 +202,12 @@ class AgentKernel:
                     project_id = project_id,
                     organization_id = organization_id,
                 )
-                await _publish_agent_event("agent.started", intent_name, user_id=user_id)
+                await _publish_agent_event(
+                    "agent.started", intent_name, user_id=user_id, organization_id=organization_id,
+                )
                 result = await agent.run(ctx)
                 await _publish_agent_event(
-                    "agent.finished", intent_name, user_id=user_id,
+                    "agent.finished", intent_name, user_id=user_id, organization_id=organization_id,
                     success=result.success, duration_ms=result.duration_ms,
                 )
                 if not result.success:

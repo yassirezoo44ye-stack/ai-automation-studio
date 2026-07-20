@@ -5,6 +5,7 @@ Endpoints:
   WS /ws/agent/{session_id}       live agent output stream
   WS /ws/job/{job_id}             background job progress stream
   WS /ws/system                   system-wide broadcast (admin)
+  WS /ws/notifications            per-user notification stream (auth required)
 
 Protocol (JSON frames):
   → client sends:   {"type": "ping"}  |  {"type": "subscribe", "topic": "..."}
@@ -220,6 +221,56 @@ async def system_ws(ws: WebSocket):
 
     try:
         await manager.send(ws, {"type": "connected", "topic": "system"})
+        while True:
+            try:
+                raw = await asyncio.wait_for(ws.receive_text(), timeout=300)
+                msg = json.loads(raw)
+                if msg.get("type") == "ping":
+                    await manager.send(ws, {"type": "pong"})
+            except asyncio.TimeoutError:
+                await manager.send(ws, {"type": "ping"})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        hb.cancel()
+        manager.disconnect(ws, topic)
+
+
+# ── Notification stream (per-user, authenticated) ─────────────────────────────
+
+def _user_id_from_ws_token(token: str) -> str | None:
+    """Browsers can't set an Authorization header on a WS handshake, so the
+    access token travels as a query param instead. Same JWT the REST API
+    already issues (app.core.jwt_utils) — its `sub` claim IS the user id,
+    no extra DB round-trip needed."""
+    if not token:
+        return None
+    try:
+        from app.core.jwt_utils import decode_access_token
+        return decode_access_token(token).get("sub")
+    except Exception:
+        return None
+
+
+@router.websocket("/ws/notifications")
+async def notifications_ws(ws: WebSocket):
+    """Live stream of this user's own notifications. Emits
+    {"type": "event", "topic": "notifications:{user_id}", "data": <notification>}
+    frames as new notifications are created (see app/core/notifications/
+    dispatcher.py). Clients should also poll GET /api/notifications on
+    connect/reconnect to backfill anything missed while disconnected."""
+    token   = ws.query_params.get("token", "")
+    user_id = _user_id_from_ws_token(token)
+    if not user_id:
+        await ws.close(code=4401, reason="unauthorized")
+        return
+
+    topic = f"notifications:{user_id}"
+    await manager.connect(ws, topic)
+    hb    = asyncio.create_task(_heartbeat(ws))
+
+    try:
+        await manager.send(ws, {"type": "connected", "topic": topic})
         while True:
             try:
                 raw = await asyncio.wait_for(ws.receive_text(), timeout=300)
