@@ -64,3 +64,19 @@ PUBLIC_PREFIXES: tuple = (
     "/api/health/",
     "/health",
 )
+
+# ── Environment ───────────────────────────────────────────────────────────────
+# Read live via functions (not cached at import time, unlike the constants
+# above) so tests can toggle ENVIRONMENT with monkeypatch/os.environ without
+# reloading this module — same rationale as ObservabilityConfig's live reads
+# (app/core/observability/config.py). Unknown/unset values are treated as
+# "production": anything that gates on is_development() (e.g. the feature-gate
+# dev bypass, app/billing/feature_gate.py) fails closed by default, so a
+# missing or misspelled ENVIRONMENT var can never accidentally relax a
+# production deployment.
+def get_environment() -> str:
+    return os.getenv("ENVIRONMENT", "production").strip().lower()
+
+
+def is_development() -> bool:
+    return get_environment() == "development"

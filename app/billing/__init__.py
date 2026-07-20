@@ -1,6 +1,12 @@
-from app.billing.plans import Plan, METRICS
+from app.billing.plans import Plan, METRICS, FEATURES
 from app.billing.plan_service import (
     PlanService, get_plan_service, init_subscription_plans_schema,
+)
+from app.billing.feature_gate import (
+    FeatureGateService, get_feature_gate_service, check_feature, has_feature,
+    dev_bypass_active, FeatureGateError, OrganizationNotFoundError,
+    UnknownFeatureError, UnknownPlanError, MissingSubscriptionError,
+    SubscriptionExpiredError, FeatureNotEntitledError, FeatureCheckResult,
 )
 from app.billing.usage import (
     UsageService, QuotaExceeded, get_usage_service, init_usage_schema,
@@ -23,8 +29,12 @@ from app.billing.credits import (
 from app.billing.portal import create_portal_session, NoStripeCustomer
 
 __all__ = [
-    "Plan", "METRICS",
+    "Plan", "METRICS", "FEATURES",
     "PlanService", "get_plan_service", "init_subscription_plans_schema",
+    "FeatureGateService", "get_feature_gate_service", "check_feature", "has_feature",
+    "dev_bypass_active", "FeatureGateError", "OrganizationNotFoundError",
+    "UnknownFeatureError", "UnknownPlanError", "MissingSubscriptionError",
+    "SubscriptionExpiredError", "FeatureNotEntitledError", "FeatureCheckResult",
     "UsageService", "QuotaExceeded", "get_usage_service", "init_usage_schema",
     "WebhookEventService", "get_webhook_event_service", "init_billing_events_schema",
     "InvoiceService", "get_invoice_service", "init_invoices_schema",

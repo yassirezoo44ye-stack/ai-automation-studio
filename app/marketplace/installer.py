@@ -41,9 +41,15 @@ class MarketplacePermissionError(MarketplaceInstallError):
 
 
 class PlanFeatureNotEnabledError(MarketplaceInstallError):
-    def __init__(self, org_id: str, plan_id: str):
-        super().__init__(f"org {org_id}'s plan {plan_id!r} does not include the marketplace feature")
-        self.org_id, self.plan_id = org_id, plan_id
+    """Raised when FeatureGateService denies the "marketplace" feature for
+    this org — `reason` is that service's own message (see
+    app/billing/feature_gate.py), which already names the org's current
+    plan and which plans would grant access, so it's shown to the caller
+    as-is rather than replaced with a generic string here."""
+
+    def __init__(self, org_id: str, reason: str):
+        super().__init__(reason)
+        self.org_id, self.reason = org_id, reason
 
 
 class IntegrityError(MarketplaceInstallError):
@@ -107,7 +113,8 @@ class InstallationPipeline:
             verify_checksum, scan_for_secrets, scan_for_malware, scan_dependency_vulnerabilities,
         )
         from app.tenancy.service import get_tenancy_service
-        from app.billing import get_plan_service, get_usage_service
+        from app.billing import get_usage_service
+        from app.billing.feature_gate import FeatureGateError, check_feature
 
         store = get_marketplace_store()
         tenancy = get_tenancy_service()
@@ -127,10 +134,10 @@ class InstallationPipeline:
         if role is None:
             raise MarketplacePermissionError(org_id, actor_id)
 
-        org = await tenancy.get_organization(org_id)
-        plan = await get_plan_service().get_plan((org or {}).get("plan") or "free")
-        if "marketplace" not in plan.features:
-            raise PlanFeatureNotEnabledError(org_id, plan.id)
+        try:
+            await check_feature(org_id, "marketplace")
+        except FeatureGateError as exc:
+            raise PlanFeatureNotEnabledError(org_id, str(exc)) from exc
         await get_usage_service().check_quota(org_id, "marketplace_purchases", 1)
 
         # 3. resolve dependencies — raises on missing/circular/unsatisfied

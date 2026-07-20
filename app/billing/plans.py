@@ -30,6 +30,30 @@ METRICS = (
 )
 
 
+# Canonical feature-gate catalog — the ONLY place a feature id and its
+# human-readable label are defined. `app/billing/feature_gate.py` validates
+# every check_feature()/has_feature() call against these keys (an id not
+# listed here is a caller bug, not a plan-entitlement denial) and uses the
+# labels to build error messages. Which plans grant which feature stays
+# entirely inside each Plan.features tuple below (or the subscription_plans
+# table at runtime) — this dict never lists plans, so there is still exactly
+# one place ("does plan X include feature Y") that can answer that question.
+FEATURES: dict[str, str] = {
+    "community_support":  "Community support",
+    "email_support":      "Email support",
+    "priority_support":   "Priority support",
+    "dedicated_support":  "Dedicated support",
+    "marketplace":        "Marketplace",
+    "advanced_analytics": "Advanced analytics",
+    "sso":                "Single sign-on (SSO)",
+    "audit_logs":         "Audit logs",
+    "custom_roles":       "Custom roles",
+    "sla":                "SLA",
+    "private_cloud":      "Private cloud deployment",
+    "custom_models":      "Custom AI models",
+}
+
+
 @dataclass(frozen=True)
 class Plan:
     id: str
