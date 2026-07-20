@@ -60,38 +60,38 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
         <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ width: 70 }}>
-              <label style={S.label}>Avatar</label>
-              <input value={editing?.avatar ?? "🤖"} onChange={e => setEditing(p => ({ ...p, avatar: e.target.value }))}
+              <label style={S.label} htmlFor="agent-avatar">Avatar</label>
+              <input id="agent-avatar" value={editing?.avatar ?? "🤖"} onChange={e => setEditing(p => ({ ...p, avatar: e.target.value }))}
                 style={{ ...S.textInput, textAlign: "center", fontSize: 24 }} maxLength={2} />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={S.label}>Name *</label>
-              <input value={editing?.name ?? ""} onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
+              <label style={S.label} htmlFor="agent-name">Name *</label>
+              <input id="agent-name" value={editing?.name ?? ""} onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
                 style={S.textInput} placeholder="My Agent" autoFocus />
             </div>
           </div>
           <div>
-            <label style={S.label}>Description</label>
-            <input value={editing?.description ?? ""} onChange={e => setEditing(p => ({ ...p, description: e.target.value }))}
+            <label style={S.label} htmlFor="agent-description">Description</label>
+            <input id="agent-description" value={editing?.description ?? ""} onChange={e => setEditing(p => ({ ...p, description: e.target.value }))}
               style={S.textInput} placeholder="What does this agent do?" />
           </div>
           <div>
-            <label style={S.label}>System Prompt *</label>
-            <textarea value={editing?.system_prompt ?? ""} onChange={e => setEditing(p => ({ ...p, system_prompt: e.target.value }))}
+            <label style={S.label} htmlFor="agent-system-prompt">System Prompt *</label>
+            <textarea id="agent-system-prompt" value={editing?.system_prompt ?? ""} onChange={e => setEditing(p => ({ ...p, system_prompt: e.target.value }))}
               style={{ ...S.textInput, minHeight: 200, lineHeight: 1.6 }} placeholder="You are an expert in…" />
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
-              <label style={S.label}>Model</label>
-              <select value={editing?.model ?? "claude-sonnet-4-6"} onChange={e => setEditing(p => ({ ...p, model: e.target.value }))} style={S.textInput}>
+              <label style={S.label} htmlFor="agent-model">Model</label>
+              <select id="agent-model" value={editing?.model ?? "claude-sonnet-4-6"} onChange={e => setEditing(p => ({ ...p, model: e.target.value }))} style={S.textInput}>
                 <option value="claude-sonnet-4-6">Sonnet 4.6 (recommended)</option>
                 <option value="claude-opus-4-8">Opus 4.8 (most capable)</option>
                 <option value="claude-haiku-4-5-20251001">Haiku 4.5 (fastest)</option>
               </select>
             </div>
             <div style={{ width: 100 }}>
-              <label style={S.label}>Temperature</label>
-              <input type="number" min={0} max={1} step={0.1} value={editing?.temperature ?? 1}
+              <label style={S.label} htmlFor="agent-temperature">Temperature</label>
+              <input id="agent-temperature" type="number" min={0} max={1} step={0.1} value={editing?.temperature ?? 1}
                 onChange={e => setEditing(p => ({ ...p, temperature: parseFloat(e.target.value) }))} style={S.textInput} />
             </div>
           </div>
@@ -185,8 +185,15 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
             <div
               key={t.name}
               className="project-card"
+              role="button" tabIndex={0}
               style={{ ...S.card, cursor: "pointer" }}
               onClick={() => openForm({ name: t.name, avatar: t.avatar, description: t.description, system_prompt: t.system_prompt, model: "claude-sonnet-4-6", temperature: 1 })}
+              onKeyDown={e => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openForm({ name: t.name, avatar: t.avatar, description: t.description, system_prompt: t.system_prompt, model: "claude-sonnet-4-6", temperature: 1 });
+                }
+              }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = C.blue)}
               onMouseLeave={e => (e.currentTarget.style.borderColor = "")}
             >

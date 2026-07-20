@@ -177,7 +177,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
 
         {/* Project */}
         <div>
-          <label style={S.label}>Project</label>
+          <div style={S.label}>Project</div>
           <select
             value={projectId}
             onChange={e => setProjectId(e.target.value)}
@@ -192,7 +192,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {/* Language + Target */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <label style={S.label}>Runtime</label>
+            <div style={S.label}>Runtime</div>
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               {LANGS.map(l => (
                 <button
@@ -211,7 +211,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
           </div>
           {lang !== "docker" && (
             <div style={{ flex: "0 0 auto" }}>
-              <label style={S.label}>Target</label>
+              <div style={S.label}>Target</div>
               <select
                 value={target}
                 onChange={e => setTarget(e.target.value as PackTarget)}
@@ -294,18 +294,18 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {/* App metadata */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 2 }}>
-            <label style={S.label}>App Name</label>
+            <div style={S.label}>App Name</div>
             <input value={appName} onChange={e => setAppName(e.target.value)}
               style={{ ...S.textInput, marginTop: 4 }} aria-label="App name" />
           </div>
           <div style={{ flex: 1 }}>
-            <label style={S.label}>Version</label>
+            <div style={S.label}>Version</div>
             <input value={appVersion} onChange={e => setVersion(e.target.value)}
               style={{ ...S.textInput, marginTop: 4 }} aria-label="App version" />
           </div>
           {lang !== "docker" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "flex-end" }}>
-              <label style={S.label}>One-file</label>
+              <div style={S.label}>One-file</div>
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                 <input type="checkbox" checked={oneFile} onChange={e => setOneFile(e.target.checked)} aria-label="Bundle as one file" />
                 <span style={{ fontSize: 12, color: "var(--t3)" }}>Bundle</span>

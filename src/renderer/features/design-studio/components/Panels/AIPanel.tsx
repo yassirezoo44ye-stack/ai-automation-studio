@@ -144,14 +144,16 @@ export function AIPanel({ getCanvas }: Props) {
             {images.length > 0 && (
               <div style={s.imgGrid}>
                 {images.map((src, i) => (
-                  <img
+                  <button
                     key={i}
-                    src={src}
-                    style={s.genImg}
-                    alt={`Generated ${i + 1}`}
+                    type="button"
+                    style={{ ...s.genImg, padding: 0, border: "none", background: "none", cursor: "pointer" }}
                     onClick={() => void insertImage(src)}
                     title="Click to add to canvas"
-                  />
+                    aria-label={`Add generated image ${i + 1} to canvas`}
+                  >
+                    <img src={src} alt={`Generated ${i + 1}`} style={{ width: "100%", height: "100%", display: "block" }} />
+                  </button>
                 ))}
               </div>
             )}

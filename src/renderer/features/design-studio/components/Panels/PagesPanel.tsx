@@ -105,7 +105,8 @@ export function PagesPanel() {
                 )}
               </div>
 
-              {/* Actions */}
+              {/* Actions — pure click-propagation shield around real buttons below, not itself interactive */}
+              {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
               <div style={s.actions} onClick={e => e.stopPropagation()}>
                 <button
                   style={s.btn}

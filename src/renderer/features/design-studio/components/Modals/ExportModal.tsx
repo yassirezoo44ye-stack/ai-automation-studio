@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Canvas as FabricCanvas } from "fabric";
 import { exportCanvas, type ExportFormat } from "../../services/exportService";
 import styles from "./ExportModal.module.css";
@@ -21,6 +21,12 @@ export function ExportModal({ getCanvas, onClose }: Props) {
   const [scale,      setScale]      = useState(2);
   const [exporting,  setExporting]  = useState(false);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const handleExport = async () => {
     const fc = getCanvas();
     if (!fc) return;
@@ -34,6 +40,9 @@ export function ExportModal({ getCanvas, onClose }: Props) {
   };
 
   return (
+    // Backdrop click-to-close — not in the tab order, and Escape (handled
+    // by the window listener above) is the keyboard equivalent.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div className={styles.backdrop} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={styles.modal} role="dialog" aria-label="Export design">
         <div className={styles.header}>
@@ -43,7 +52,7 @@ export function ExportModal({ getCanvas, onClose }: Props) {
 
         <div className={styles.body}>
           <div className={styles.group}>
-            <label className={styles.label}>Format</label>
+            <div className={styles.label}>Format</div>
             <div className={styles.formatGrid}>
               {FORMATS.map(f => (
                 <button
@@ -61,7 +70,7 @@ export function ExportModal({ getCanvas, onClose }: Props) {
           {(format === "png" || format === "jpg") && (
             <>
               <div className={styles.group}>
-                <label className={styles.label}>Scale</label>
+                <div className={styles.label}>Scale</div>
                 <div className={styles.row}>
                   {[1, 2, 3].map(s => (
                     <button
@@ -77,8 +86,9 @@ export function ExportModal({ getCanvas, onClose }: Props) {
 
               {format === "jpg" && (
                 <div className={styles.group}>
-                  <label className={styles.label}>Quality: {quality}%</label>
+                  <label className={styles.label} htmlFor="export-quality">Quality: {quality}%</label>
                   <input
+                    id="export-quality"
                     type="range"
                     min={40}
                     max={100}

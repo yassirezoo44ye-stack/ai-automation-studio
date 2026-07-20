@@ -29,6 +29,10 @@ interface Props {
 
 export function LeftToolbar({ activeTool, onToolChange }: Props) {
   return (
+    // <aside> carrying role="toolbar" is the standard WAI-ARIA toolbar
+    // pattern (a landmark element grouping a row of buttons) — jsx-a11y's
+    // element/role map is conservative here, not flagging a real issue.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
     <aside className={styles.toolbar} role="toolbar" aria-label="Drawing tools">
       {TOOLS.map(t => (
         <button

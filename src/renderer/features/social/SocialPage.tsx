@@ -9,9 +9,9 @@ type SocialTab = "youtube" | "facebook";
 type YTInfo = { title: string; channel: string; duration: number; view_count: number; like_count: number; description: string; thumbnail: string; upload_date: string };
 type SocialVariation = { text: string; hashtags?: string[]; tip?: string };
 
-function Select({ value, onChange, opts }: { value: string; onChange: (v: string) => void; opts: [string, string][] }) {
+function Select({ value, onChange, opts, ariaLabel }: { value: string; onChange: (v: string) => void; opts: [string, string][]; ariaLabel?: string }) {
   return (
-    <select value={value} onChange={e => onChange(e.target.value)} style={{ ...S.textInput, cursor: "pointer" }}>
+    <select value={value} onChange={e => onChange(e.target.value)} style={{ ...S.textInput, cursor: "pointer" }} aria-label={ariaLabel}>
       {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
     </select>
   );
@@ -269,7 +269,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
       {/* Settings panel */}
       <div style={{ width: 300, borderRight: "1px solid rgba(255,255,255,.05)", overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16, background: "rgba(8,10,20,.6)", flexShrink: 0 }}>
         <div>
-          <label style={S.label}>المنصة</label>
+          <div style={S.label}>المنصة</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             {(["facebook","instagram","twitter","linkedin"] as const).map(p => (
               <button key={p} onClick={() => setPlatform(p)}
@@ -283,16 +283,16 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
           </div>
         </div>
         <div>
-          <label style={S.label}>نوع المحتوى</label>
-          <Select value={contentType} onChange={setCType} opts={[["post","منشور عادي"],["ad","إعلان مدفوع"],["story","ستوري"],["reel_caption","كابشن ريلز"],["thread","ثريد"]]} />
+          <div style={S.label}>نوع المحتوى</div>
+          <Select value={contentType} onChange={setCType} ariaLabel="نوع المحتوى" opts={[["post","منشور عادي"],["ad","إعلان مدفوع"],["story","ستوري"],["reel_caption","كابشن ريلز"],["thread","ثريد"]]} />
         </div>
         <div>
-          <label style={S.label}>الأسلوب</label>
-          <Select value={tone} onChange={setTone} opts={[["engaging","جذاب وتفاعلي"],["professional","احترافي ورسمي"],["funny","مرح وفكاهي"],["inspirational","ملهم وتحفيزي"],["urgent","عاجل ومُلحّ"]]} />
+          <div style={S.label}>الأسلوب</div>
+          <Select value={tone} onChange={setTone} ariaLabel="الأسلوب" opts={[["engaging","جذاب وتفاعلي"],["professional","احترافي ورسمي"],["funny","مرح وفكاهي"],["inspirational","ملهم وتحفيزي"],["urgent","عاجل ومُلحّ"]]} />
         </div>
         <div>
-          <label style={S.label}>اللغة</label>
-          <Select value={language} onChange={setLanguage} opts={[["arabic","عربي"],["english","English"],["both","عربي + English"]]} />
+          <div style={S.label}>اللغة</div>
+          <Select value={language} onChange={setLanguage} ariaLabel="اللغة" opts={[["arabic","عربي"],["english","English"],["both","عربي + English"]]} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <label style={{ ...S.label, marginBottom: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
@@ -303,10 +303,11 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
           </label>
         </div>
         <div>
-          <label style={S.label}>الموضوع / المنتج / الفكرة *</label>
+          <div style={S.label}>الموضوع / المنتج / الفكرة *</div>
           <textarea value={topic} onChange={e => setTopic(e.target.value)}
             placeholder={"مثال: متجر إلكتروني يبيع عطوراً فاخرة، عرض خصم 30%"}
-            style={{ ...S.textInput, minHeight: 100, lineHeight: 1.6 }} />
+            style={{ ...S.textInput, minHeight: 100, lineHeight: 1.6 }}
+            aria-label="الموضوع / المنتج / الفكرة" />
         </div>
         <button onClick={generate} disabled={generating || !topic.trim()} style={{ ...S.btnPrimary, width: "100%", padding: "12px" }}>
           {generating ? "⏳ جاري التوليد…" : "✨ ولّد المحتوى"}

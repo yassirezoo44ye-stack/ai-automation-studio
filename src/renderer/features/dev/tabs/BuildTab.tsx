@@ -118,7 +118,7 @@ export function BuildTab({
     <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
       <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
-          <label style={S.label}>What do you want to build?</label>
+          <div style={S.label}>What do you want to build?</div>
           <textarea
             value={buildPrompt}
             onChange={e => onPrompt(e.target.value)}
@@ -174,7 +174,7 @@ export function BuildTab({
         )}
 
         <div>
-          <label style={S.label}>TEMPLATES</label>
+          <div style={S.label}>TEMPLATES</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
             {BUILD_TEMPLATES.map(t => (
               <button

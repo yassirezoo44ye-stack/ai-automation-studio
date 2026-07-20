@@ -292,7 +292,10 @@ export function HomePage() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12 }}>
                 {projects.slice(0, 4).map(p => (
-                  <div key={p.id} style={{ ...S.card, padding: "16px 18px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }} onClick={() => setTab("projects")}>
+                  <div key={p.id} role="button" tabIndex={0}
+                    style={{ ...S.card, padding: "16px 18px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+                    onClick={() => setTab("projects")}
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("projects"); } }}>
                     <ProjectAvatar name={p.name} size={36} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>

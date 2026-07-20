@@ -127,6 +127,7 @@ export function NotificationPanel({ onClose, triggerRef }: {
         role="listbox"
         aria-label="Notification list"
         onKeyDown={onListKeyDown}
+        tabIndex={-1}
       >
         {status === "loading" && <LoadingSpinner label="Loading notifications…" />}
         {status === "error" && <ErrorState compact message={error ?? "Failed to load."} onRetry={refetch} />}

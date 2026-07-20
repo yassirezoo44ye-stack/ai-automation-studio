@@ -60,7 +60,9 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
           const myIdx = idx++;
           return (
             <div key={item.id} className={`cmd-item${myIdx === active ? " active" : ""}`}
-              onClick={() => run(item)} onMouseEnter={() => setActive(myIdx)}>
+              role="button" tabIndex={0}
+              onClick={() => run(item)} onMouseEnter={() => setActive(myIdx)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(item); } }}>
               <div className="cmd-item-icon">{item.icon}</div>
               <div className="cmd-item-label">
                 {item.label}
@@ -75,7 +77,12 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
   }
 
   return (
+    // Backdrop click-to-close + modal click-shield — neither is in the tab
+    // order (no tabIndex) and Escape (handled by the search input's onKey
+    // above) is already the keyboard equivalent for closing.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div className="cmd-overlay" onClick={onClose}>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="cmd-modal" onClick={e => e.stopPropagation()}>
         <div className="cmd-header">
           <span className="cmd-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>

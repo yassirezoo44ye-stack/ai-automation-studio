@@ -85,15 +85,17 @@ export function ComponentsPanel({ getCanvas }: Props) {
       {filtered.length === 0 ? (
         <div style={s.empty}>No components found</div>
       ) : (
-        <div style={s.grid} role="list">
+        <div style={s.grid}>
           {filtered.map(comp => (
+            // Actionable card (click-to-insert), not a static list item —
+            // role="button" matches its real behavior.
             <div
               key={comp.id}
-              role="listitem"
+              role="button"
               style={s.card}
               onClick={() => void insertComponent(comp.id)}
               tabIndex={0}
-              onKeyDown={e => e.key === "Enter" && void insertComponent(comp.id)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void insertComponent(comp.id); } }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = "#4f46e5")}
               onMouseLeave={e => (e.currentTarget.style.borderColor = "#374151")}
               title={`Insert ${comp.name}`}

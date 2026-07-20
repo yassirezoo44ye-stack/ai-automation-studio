@@ -2,11 +2,16 @@ import js from "@eslint/js";
 import ts from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 
 export default ts.config(
   { ignores: ["dist", "node_modules", "*.cjs"] },
   {
-    extends: [js.configs.recommended, ...ts.configs.recommended],
+    // jsxA11y's declared peerDependencies caps at eslint@^9, but its rules
+    // are plain rule objects with no dependency on ESLint's internals beyond
+    // the stable flat-config rule API — verified working against eslint@10
+    // (ran cleanly, produced correct findings) before adopting it here.
+    extends: [js.configs.recommended, ...ts.configs.recommended, jsxA11y.flatConfigs.recommended],
     files: ["src/**/*.{ts,tsx}"],
     plugins: {
       "react-hooks": reactHooks,
@@ -14,6 +19,13 @@ export default ts.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+
+      // autoFocus on a login field or a just-opened dialog's first input is
+      // expected, accessible behavior (matches the products this platform
+      // is benchmarked against) — this rule is more opinionated than
+      // helpful here, so it's disabled rather than stripping autoFocus
+      // from every call site.
+      "jsx-a11y/no-autofocus": "off",
 
       // React Refresh — only for the public surface of feature modules
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],

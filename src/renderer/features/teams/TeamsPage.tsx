@@ -286,7 +286,9 @@ export function TeamsPage() {
                 <div key={t.id} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", padding: "12px 4px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div
+                      role="button" tabIndex={0}
                       onClick={() => void toggleTeam(t.id)}
+                      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void toggleTeam(t.id); } }}
                       style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
                     >
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{t.name}</div>

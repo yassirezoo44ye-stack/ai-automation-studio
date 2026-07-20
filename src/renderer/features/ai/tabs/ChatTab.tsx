@@ -150,7 +150,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     }
   }
 
-  async function deleteConv(e: React.MouseEvent, cid: string) {
+  async function deleteConv(e: React.SyntheticEvent, cid: string) {
     e.stopPropagation();
     if (deletingIds.has(cid)) return; // prevent duplicate submissions for this conversation
     setDeletingIds(prev => new Set(prev).add(cid));
@@ -316,15 +316,20 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             return (
               <div
                 key={c.id}
+                role="button" tabIndex={0}
                 onClick={() => setActiveConv(c.id)}
+                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveConv(c.id); } }}
                 style={{ ...S.convItem, ...(c.id === activeConv ? S.convItemActive : {}), ...(isDeleting ? { opacity: 0.5, pointerEvents: "none" } : {}) }}
               >
                 <div style={S.convTitle}>{c.title}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                   <span style={S.convTime}>{relTime(c.updated_at)}</span>
                   <span
+                    role="button" tabIndex={0}
                     onClick={e => { if (!isDeleting) deleteConv(e, c.id); }}
+                    onKeyDown={e => { if (!isDeleting && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); void deleteConv(e, c.id); } }}
                     title={isDeleting ? "Deleting…" : "Delete conversation"}
+                    aria-label={isDeleting ? "Deleting…" : "Delete conversation"}
                     style={{ color: C.slate, fontSize: 11, cursor: isDeleting ? "default" : "pointer" }}
                   >
                     {isDeleting ? "…" : "✕"}

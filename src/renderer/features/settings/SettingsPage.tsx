@@ -241,8 +241,9 @@ export function SettingsPage() {
                 <div style={S.card}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <div>
-                      <label style={S.label}>Chat Model</label>
+                      <label style={S.label} htmlFor="settings-chat-model">Chat Model</label>
                       <select
+                        id="settings-chat-model"
                         style={S.textInput}
                         value={prefs.chatModel}
                         onChange={e => updatePref("chatModel", e.target.value)}
@@ -252,8 +253,9 @@ export function SettingsPage() {
                       <div style={{ ...S.muted, marginTop: 5, fontSize: 11 }}>Used in the AI Workspace chat.</div>
                     </div>
                     <div>
-                      <label style={S.label}>Build Model</label>
+                      <label style={S.label} htmlFor="settings-build-model">Build Model</label>
                       <select
+                        id="settings-build-model"
                         style={S.textInput}
                         value={prefs.buildModel}
                         onChange={e => updatePref("buildModel", e.target.value)}
@@ -292,8 +294,9 @@ export function SettingsPage() {
                     </div>
                     <hr className="divider" />
                     <div>
-                      <label style={S.label}>Sidebar default</label>
+                      <label style={S.label} htmlFor="settings-sidebar-mode">Sidebar default</label>
                       <select
+                        id="settings-sidebar-mode"
                         style={S.textInput}
                         value={prefs.sidebarMode}
                         onChange={e => updatePref("sidebarMode", e.target.value as UserPrefs["sidebarMode"])}

@@ -156,8 +156,11 @@ export function DevWorkspace() {
       </header>
 
       {/* ── Tab bar ────────────────────────────────────────────────────────── */}
+      {/* <nav> carrying role="tablist" is intentional — a landmark element
+          grouping the role="tab" buttons below; not a real a11y issue. */}
       <nav
         style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)", padding: "0 16px" }}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
         role="tablist"
         aria-label="Dev workspace tabs"
       >

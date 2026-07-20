@@ -128,16 +128,16 @@ export function BudgetsTab({ orgId }: { orgId: string }) {
     <div>
       <div style={{ ...S.card, marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div>
-          <label style={S.label}>Project ID</label>
-          <input value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
+          <label style={S.label} htmlFor="budgets-project-id">Project ID</label>
+          <input id="budgets-project-id" value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
         </div>
         <div>
-          <label style={S.label}>Workflow ID</label>
-          <input value={workflowId} onChange={e => setWorkflowId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
+          <label style={S.label} htmlFor="budgets-workflow-id">Workflow ID</label>
+          <input id="budgets-workflow-id" value={workflowId} onChange={e => setWorkflowId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
         </div>
         <div>
-          <label style={S.label}>Agent ID</label>
-          <input value={agentId} onChange={e => setAgentId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
+          <label style={S.label} htmlFor="budgets-agent-id">Agent ID</label>
+          <input id="budgets-agent-id" value={agentId} onChange={e => setAgentId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
         </div>
         <button onClick={() => void load()} style={{ ...S.btnSecondary, padding: "9px 16px" }}>View</button>
       </div>

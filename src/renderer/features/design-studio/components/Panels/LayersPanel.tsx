@@ -57,7 +57,9 @@ export function LayersPanel({ state, getCanvas, onSelect }: Props) {
               key={id}
               className={`${styles.item} ${isSelected ? styles.selected : ""}`}
               onClick={() => onSelect(id)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(id); } }}
               role="option"
+              tabIndex={0}
               aria-selected={isSelected}
             >
               <button
