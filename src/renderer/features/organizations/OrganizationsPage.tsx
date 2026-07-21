@@ -7,6 +7,8 @@ import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
+import { GoldButton, GlassCard } from "../../shared/ui/gold";
+import { EmptyState } from "../../shared/ui/EmptyState";
 
 interface ActivityEntry {
   action: string; resource: string | null; resource_id: string | null;
@@ -27,15 +29,17 @@ export function OrganizationsPage() {
   const [saving, setSaving] = useState(false);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(false);
 
   const loadActivity = useCallback(async (orgId: string) => {
     setActivityLoading(true);
+    setActivityError(false);
     try {
       const r = await apiFetch(`/api/orgs/${orgId}/activity?limit=20`);
-      if (!r.ok) { setActivity([]); return; }
+      if (!r.ok) { setActivity([]); setActivityError(true); return; }
       const d = await parseJSON<{ activity: ActivityEntry[] }>(r, "/api/orgs/{id}/activity");
       setActivity(d.activity);
-    } catch { setActivity([]); }
+    } catch { setActivity([]); setActivityError(true); }
     finally { setActivityLoading(false); }
   }, []);
 
@@ -63,25 +67,27 @@ export function OrganizationsPage() {
     <>
       <header style={S.header}>
         <span style={S.headerTitle}>Organizations</span>
-        <button onClick={() => setCreating(c => !c)} style={S.btnPrimary}>+ New Organization</button>
+        <GoldButton onClick={() => setCreating(c => !c)}>+ New Organization</GoldButton>
       </header>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
         {creating && (
-          <div style={{ ...S.card, marginBottom: 20 }}>
-            <div style={{ ...S.cardTitle, marginBottom: 12 }}>New Organization</div>
+          <GlassCard lift={false} style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>
+              New Organization
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
               <input
                 value={newName} onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && void handleCreate()}
-                placeholder="Organization name" style={{ ...S.textInput, flex: 1 }} autoFocus
+                placeholder="Organization name" className="g-input" style={{ flex: 1 }} autoFocus
               />
-              <button onClick={() => void handleCreate()} disabled={saving || !newName.trim()} style={S.btnPrimary}>
+              <GoldButton onClick={() => void handleCreate()} disabled={saving || !newName.trim()}>
                 {saving ? "Creating…" : "Create"}
-              </button>
-              <button onClick={() => { setCreating(false); setNewName(""); }} style={S.btnSecondary}>Cancel</button>
+              </GoldButton>
+              <GoldButton variant="ghost" onClick={() => { setCreating(false); setNewName(""); }}>Cancel</GoldButton>
             </div>
-          </div>
+          </GlassCard>
         )}
 
         {loading ? (
@@ -89,30 +95,32 @@ export function OrganizationsPage() {
             {[1, 2].map(i => <div key={i} className="skeleton" style={{ height: 72, borderRadius: 12 }} />)}
           </div>
         ) : orgs.length === 0 ? (
-          <div className="empty-state">
-            <div style={{ fontSize: 40 }}>🏢</div>
-            <h3>No organizations yet</h3>
-            <p>Create one to invite teammates and manage billing.</p>
-            <button onClick={() => setCreating(true)} style={S.btnPrimary}>+ New Organization</button>
-          </div>
+          <EmptyState
+            icon={<span style={{ fontSize: 40 }}>🏢</span>}
+            title="No organizations yet"
+            description="Create one to invite teammates and manage billing."
+            action={<GoldButton onClick={() => setCreating(true)}>+ New Organization</GoldButton>}
+          />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 12, marginBottom: 24 }}>
             {orgs.map(org => {
               const meta = KIND_META[org.kind] ?? KIND_META.organization;
               const active = org.id === currentOrgId;
               return (
-                <div
+                <GlassCard
                   key={org.id}
-                  role="button" tabIndex={0}
-                  onClick={() => setCurrentOrgId(org.id)}
-                  onKeyDown={e => e.key === "Enter" && setCurrentOrgId(org.id)}
                   style={{
-                    ...S.card, padding: "16px 18px", cursor: "pointer",
-                    border: active ? "1px solid var(--accent)" : S.card.border as string,
-                    background: active ? "var(--accent-dim)" : S.card.background as string,
+                    padding: "16px 18px",
+                    border: active ? "1px solid var(--accent)" : undefined,
+                    background: active ? "var(--accent-dim)" : undefined,
                   }}
                 >
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <div
+                    role="button" tabIndex={0}
+                    onClick={() => setCurrentOrgId(org.id)}
+                    onKeyDown={e => e.key === "Enter" && setCurrentOrgId(org.id)}
+                    style={{ display: "flex", gap: 12, alignItems: "center", cursor: "pointer" }}
+                  >
                     <div style={{ fontSize: 24 }}>{meta.icon}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -128,34 +136,42 @@ export function OrganizationsPage() {
                       </span>
                     )}
                   </div>
-                </div>
+                </GlassCard>
               );
             })}
           </div>
         )}
 
         {currentOrgId && (
-          <div style={S.card}>
-            <div style={{ ...S.cardTitle, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <GlassCard lift={false}>
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12,
+              fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px",
+            }}>
               <span>Recent Activity</span>
-              <button onClick={() => void refreshOrgs()} style={{ ...S.btnSecondary, padding: "4px 10px", fontSize: 11 }}>↻</button>
+              <GoldButton variant="ghost" onClick={() => void refreshOrgs()} style={{ padding: "4px 10px", fontSize: 11 }}>↻</GoldButton>
             </div>
-            <div style={{ padding: activityLoading || activity.length === 0 ? "16px 18px" : 0 }}>
-              {activityLoading ? (
-                <div style={{ color: "var(--t4)", fontSize: 13 }}>Loading…</div>
-              ) : activity.length === 0 ? (
-                <div style={{ color: "var(--t4)", fontSize: 13 }}>No activity yet.</div>
-              ) : activity.map((a, i) => (
-                <div key={i} style={{ padding: "10px 18px", borderTop: i > 0 ? "1px solid var(--border)" : "none", display: "flex", gap: 10, alignItems: "center" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)" }}>{a.action}</span>
-                  {a.resource && <span style={{ fontSize: 11, color: "var(--t4)" }}>{a.resource}</span>}
-                  <span style={{ fontSize: 11, color: "var(--t5)", marginLeft: "auto" }}>
-                    {new Date(a.created_at).toLocaleString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+            {activityLoading ? (
+              <div style={{ color: "var(--t4)", fontSize: 13 }}>Loading…</div>
+            ) : activityError ? (
+              <EmptyState
+                icon={<span style={{ fontSize: 32 }}>⚠️</span>}
+                title="Could not load activity"
+                description="Something went wrong reaching the server."
+                action={<GoldButton variant="ghost" onClick={() => void loadActivity(currentOrgId)}>Retry</GoldButton>}
+              />
+            ) : activity.length === 0 ? (
+              <div style={{ color: "var(--t4)", fontSize: 13 }}>No activity yet.</div>
+            ) : activity.map((a, i) => (
+              <div key={i} style={{ padding: "10px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none", display: "flex", gap: 10, alignItems: "center" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)" }}>{a.action}</span>
+                {a.resource && <span style={{ fontSize: 11, color: "var(--t4)" }}>{a.resource}</span>}
+                <span style={{ fontSize: 11, color: "var(--t5)", marginLeft: "auto" }}>
+                  {new Date(a.created_at).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </GlassCard>
         )}
       </div>
     </>
