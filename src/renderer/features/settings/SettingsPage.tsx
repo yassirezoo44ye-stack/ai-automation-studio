@@ -1,8 +1,17 @@
 import { useState, useEffect } from "react";
 import { apiFetch, parseJSON, API } from "../../utils/api";
 import { useAppContext } from "../../contexts/app";
-import { S, C } from "../../styles/theme";
+import { S } from "../../styles/theme";
+import { GlassCard } from "../../shared/ui/gold";
 import AxonLogo from "../../AxonLogo";
+
+// Local inline-code pill — S.code used a stale pre-rebrand gold-bg/purple-text
+// combo; this uses live accent tokens so it stays correct across themes.
+const codeStyle: React.CSSProperties = {
+  background: "var(--accent-dim)", padding: "2px 8px",
+  borderRadius: 6, fontSize: 12, color: "var(--accent-2)",
+  fontFamily: "var(--font-mono)",
+};
 
 type SettingsTab = "system" | "ai" | "appearance" | "about";
 
@@ -104,7 +113,7 @@ export function SettingsPage() {
       </header>
       <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
         {/* Left nav */}
-        <div style={{ width: 200, flexShrink: 0, padding: "20px 12px", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ width: 200, flexShrink: 0, padding: "20px 12px", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 2 }}>
           <div className="section-label" style={{ marginBottom: 10, paddingLeft: 10 }}>Settings</div>
           {SETTINGS_NAV.map(n => (
             <div key={n.id} className={`settings-nav-item${tab === n.id ? " active" : ""}`} onClick={() => setTab(n.id)} role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && setTab(n.id)}>
@@ -121,12 +130,12 @@ export function SettingsPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
               <div>
                 <div className="section-label" style={{ marginBottom: 12 }}>Backend</div>
-                <div style={S.card}>
+                <GlassCard lift={false}>
                   {health ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.green, flexShrink: 0, boxShadow: "0 0 8px #34d399" }} />
-                        <span style={{ fontSize: 13, fontWeight: 600, color: C.green }}>Backend online</span>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)", flexShrink: 0, boxShadow: "0 0 8px var(--green)" }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--green)" }}>Backend online</span>
                       </div>
                       <hr className="divider" />
                       <Row label="Status"     value={health.status} />
@@ -135,17 +144,17 @@ export function SettingsPage() {
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.redSoft, flexShrink: 0 }} />
-                      <span style={{ fontSize: 13, color: C.redSoft }}>Backend offline — run <code style={S.code}>python main.py</code></span>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--red)", flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: "var(--red)" }}>Backend offline — run <code style={codeStyle}>python main.py</code></span>
                     </div>
                   )}
-                </div>
+                </GlassCard>
               </div>
 
               {runtimes && Object.keys(runtimes).length > 0 && (
                 <div>
                   <div className="section-label" style={{ marginBottom: 12 }}>Runtimes</div>
-                  <div style={S.card}>
+                  <GlassCard lift={false}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       {Object.entries(runtimes).map(([name, info]) => (
                         <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
@@ -154,28 +163,28 @@ export function SettingsPage() {
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </GlassCard>
                 </div>
               )}
 
               {stats && (
                 <div>
                   <div className="section-label" style={{ marginBottom: 12 }}>Usage</div>
-                  <div style={S.card}>
+                  <GlassCard lift={false}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       <Row label="Projects"      value={String(stats.projects ?? 0)} />
                       <Row label="Conversations" value={String(stats.conversations ?? 0)} />
                       <Row label="Messages"      value={String(stats.messages ?? 0)} />
                       <Row label="Agent Runs"    value={String(stats.agent_runs ?? 0)} />
-                      <Row label="Success Rate"  value={<span style={{ color: C.green, fontWeight: 600 }}>{stats.success_rate ?? 0}%</span>} />
+                      <Row label="Success Rate"  value={<span style={{ color: "var(--green)", fontWeight: 600 }}>{stats.success_rate ?? 0}%</span>} />
                     </div>
-                  </div>
+                  </GlassCard>
                 </div>
               )}
 
               <div>
                 <div className="section-label" style={{ marginBottom: 12 }}>Keyboard Shortcuts</div>
-                <div style={S.card}>
+                <GlassCard lift={false}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                     {([
                       ["Global",         null,                        null],
@@ -205,12 +214,12 @@ export function SettingsPage() {
                       ) : (
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "3px 0" }}>
                           <span style={{ color: "var(--t4)" }}>{desc}</span>
-                          <code style={{ ...S.code, fontSize: 11 }}>{kbd}</code>
+                          <code style={{ ...codeStyle, fontSize: 11 }}>{kbd}</code>
                         </div>
                       )
                     )}
                   </div>
-                </div>
+                </GlassCard>
               </div>
             </div>
           )}
@@ -219,12 +228,12 @@ export function SettingsPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
               <div>
                 <div className="section-label" style={{ marginBottom: 12 }}>Anthropic API</div>
-                <div style={S.card}>
+                <GlassCard lift={false}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FFD700" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", borderRadius: 10, background: "var(--accent-dim)", border: "1px solid var(--accent-border)" }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-2)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                       <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.6 }}>
-                        Set <code style={S.code}>ANTHROPIC_API_KEY</code> in your <code style={S.code}>.env</code> file and restart the backend. Keys are never stored in the browser.
+                        Set <code style={codeStyle}>ANTHROPIC_API_KEY</code> in your <code style={codeStyle}>.env</code> file and restart the backend. Keys are never stored in the browser.
                       </div>
                     </div>
                     <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener noreferrer"
@@ -233,39 +242,39 @@ export function SettingsPage() {
                       Manage billing at console.anthropic.com
                     </a>
                   </div>
-                </div>
+                </GlassCard>
               </div>
 
               <div>
                 <div className="section-label" style={{ marginBottom: 12 }}>Default Models</div>
-                <div style={S.card}>
+                <GlassCard lift={false}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <div>
-                      <label style={S.label} htmlFor="settings-chat-model">Chat Model</label>
+                      <label className="g-label" htmlFor="settings-chat-model">Chat Model</label>
                       <select
                         id="settings-chat-model"
-                        style={S.textInput}
+                        className="g-input"
                         value={prefs.chatModel}
                         onChange={e => updatePref("chatModel", e.target.value)}
                       >
                         {CHAT_MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
-                      <div style={{ ...S.muted, marginTop: 5, fontSize: 11 }}>Used in the AI Workspace chat.</div>
+                      <div style={{ color: "var(--t4)", marginTop: 5, fontSize: 11 }}>Used in the AI Workspace chat.</div>
                     </div>
                     <div>
-                      <label style={S.label} htmlFor="settings-build-model">Build Model</label>
+                      <label className="g-label" htmlFor="settings-build-model">Build Model</label>
                       <select
                         id="settings-build-model"
-                        style={S.textInput}
+                        className="g-input"
                         value={prefs.buildModel}
                         onChange={e => updatePref("buildModel", e.target.value)}
                       >
                         {BUILD_MODELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
-                      <div style={{ ...S.muted, marginTop: 5, fontSize: 11 }}>Used in the Dev Workspace code builder.</div>
+                      <div style={{ color: "var(--t4)", marginTop: 5, fontSize: 11 }}>Used in the Dev Workspace code builder.</div>
                     </div>
                   </div>
-                </div>
+                </GlassCard>
               </div>
             </div>
           )}
@@ -274,30 +283,32 @@ export function SettingsPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
               <div>
                 <div className="section-label" style={{ marginBottom: 12 }}>Theme</div>
-                <div style={S.card}>
+                <GlassCard lift={false}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <div style={{ display: "flex", gap: 10 }}>
                       {THEME_OPTIONS.map(t => (
                         <button
                           key={t.id}
                           onClick={() => setTheme(t.id)}
+                          aria-pressed={theme === t.id}
                           style={{
-                            flex: 1, border: `2px solid ${theme === t.id ? "#D4AF37" : "rgba(255,255,255,0.08)"}`,
+                            flex: 1, border: `2px solid ${theme === t.id ? "var(--accent)" : "var(--b1)"}`,
                             borderRadius: 12, padding: 12, cursor: "pointer",
                             textAlign: "center" as const, background: "transparent",
                           }}
                         >
+                          {/* Swatch previews the theme's own raw colors, not the live tokens — this button lets you pick a theme you're not currently in. */}
                           <div style={{ width: "100%", height: 50, borderRadius: 8, background: t.bg, marginBottom: 8, border: `1px solid ${"swatchBorder" in t ? t.swatchBorder : "rgba(128,128,128,0.15)"}` }} />
-                          <div style={{ fontSize: 12, fontWeight: 500, color: theme === t.id ? C.purple : "var(--t3)" }}>{t.label}</div>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: theme === t.id ? "var(--accent)" : "var(--t3)" }}>{t.label}</div>
                         </button>
                       ))}
                     </div>
                     <hr className="divider" />
                     <div>
-                      <label style={S.label} htmlFor="settings-sidebar-mode">Sidebar default</label>
+                      <label className="g-label" htmlFor="settings-sidebar-mode">Sidebar default</label>
                       <select
                         id="settings-sidebar-mode"
-                        style={S.textInput}
+                        className="g-input"
                         value={prefs.sidebarMode}
                         onChange={e => updatePref("sidebarMode", e.target.value as UserPrefs["sidebarMode"])}
                       >
@@ -306,24 +317,24 @@ export function SettingsPage() {
                       </select>
                     </div>
                   </div>
-                </div>
+                </GlassCard>
               </div>
             </div>
           )}
 
           {tab === "about" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
-              <div style={{ ...S.card, display: "flex", gap: 20, alignItems: "center" }}>
+              <GlassCard lift={false} style={{ display: "flex", gap: 20, alignItems: "center" }}>
                 <AxonLogo size={52} />
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-0.4px" }}>Axon</div>
                   <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 2 }}>AI Automation Studio · v3.0.0</div>
                   <div style={{ fontSize: 12, color: "var(--t5)", marginTop: 6 }}>Powered by Claude</div>
                 </div>
-              </div>
+              </GlassCard>
               <div>
                 <div className="section-label" style={{ marginBottom: 12 }}>Stack</div>
-                <div style={S.card}>
+                <GlassCard lift={false}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <Row label="Frontend" value="React 19 + Vite 8 + TypeScript" />
                     <Row label="Backend"  value="FastAPI + asyncpg" />
@@ -331,15 +342,15 @@ export function SettingsPage() {
                     <Row label="AI"       value="Anthropic Claude" />
                     <Row label="Runtime"  value="Python 3.11 + Node.js 20 LTS" />
                   </div>
-                </div>
+                </GlassCard>
               </div>
               <div>
                 <div className="section-label" style={{ marginBottom: 12 }}>License</div>
-                <div style={S.card}>
+                <GlassCard lift={false}>
                   <div style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.7 }}>
                     © {new Date().getFullYear()} Axon AI. All rights reserved.
                   </div>
-                </div>
+                </GlassCard>
               </div>
             </div>
           )}
