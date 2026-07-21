@@ -4,9 +4,11 @@
  * now reads app/core/ai/models/catalog.py — the same catalog ModelRouter
  * uses for live provider selection, not a separate price table).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
+import { GlassCard, GoldButton } from "../../../shared/ui/gold";
+import { EmptyState } from "../../../shared/ui/EmptyState";
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
 
 interface ModelRow {
   id: string;
@@ -30,30 +32,36 @@ export function ModelsTab() {
   const [models, setModels] = useState<ModelRow[] | null>(null);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await apiFetch("/api/ai/models");
-        if (!r.ok) throw new Error();
-        const d = await parseJSON<{ models: ModelRow[] }>(r, "/api/ai/models");
-        if (alive) setModels(d.models);
-      } catch {
-        if (alive) setError(true);
-      }
-    })();
-    return () => { alive = false; };
+  const load = useCallback(async () => {
+    setError(false);
+    try {
+      const r = await apiFetch("/api/ai/models");
+      if (!r.ok) throw new Error();
+      const d = await parseJSON<{ models: ModelRow[] }>(r, "/api/ai/models");
+      setModels(d.models);
+    } catch {
+      setError(true);
+    }
   }, []);
 
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+
   if (error) {
-    return <div style={{ fontSize: 12, color: "var(--t4)" }}>Could not load the model catalog.</div>;
+    return (
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+        title="Could not load the model catalog"
+        description="Something went wrong reaching the server."
+        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+      />
+    );
   }
   if (!models) {
     return <div className="skeleton" style={{ height: 300, borderRadius: 16 }} />;
   }
 
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--t4)", fontSize: 11, textTransform: "uppercase" }}>
@@ -78,14 +86,12 @@ export function ModelsTab() {
               <td style={{ padding: "10px", color: "var(--t3)" }}>{Math.round(m.quality * 100)}%</td>
               <td style={{ padding: "10px", color: "var(--t3)" }}>{Math.round(m.speed * 100)}%</td>
               <td style={{ padding: "10px 0" }}>
-                <span style={{ ...S.badge, ...(m.available ? S.badgeSuccess : S.badgeNeutral) }}>
-                  {m.available ? "available" : "deferred"}
-                </span>
+                <StatusBadge kind={m.available ? "success" : "neutral"} label={m.available ? "available" : "deferred"} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </GlassCard>
   );
 }

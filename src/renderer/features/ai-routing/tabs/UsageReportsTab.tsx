@@ -6,7 +6,8 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { costClient, type UsageByProvider } from "../../../core/ai/platform";
-import { S } from "../../../styles/theme";
+import { GlassCard, GoldButton } from "../../../shared/ui/gold";
+import { EmptyState } from "../../../shared/ui/EmptyState";
 
 const WINDOWS: { label: string; days: number | null }[] = [
   { label: "7 days", days: 7 },
@@ -42,31 +43,37 @@ export function UsageReportsTab() {
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", gap: 6 }}>
         {WINDOWS.map((w, i) => (
-          <button
+          <GoldButton
             key={w.label}
+            variant={windowIdx === i ? "primary" : "ghost"}
             onClick={() => setWindowIdx(i)}
-            style={{ ...(windowIdx === i ? S.btnPrimary : S.btnSecondary), padding: "6px 14px", fontSize: 12 }}
+            style={{ padding: "6px 14px", fontSize: 12 }}
           >
             {w.label}
-          </button>
+          </GoldButton>
         ))}
       </div>
 
       {error ? (
-        <div style={{ fontSize: 12, color: "var(--t4)" }}>Could not load the usage report.</div>
+        <EmptyState
+          icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+          title="Could not load the usage report"
+          description="Something went wrong reaching the server."
+          action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+        />
       ) : totalUsd === null || byProvider === null ? (
         <div className="skeleton" style={{ height: 220, borderRadius: 16 }} />
       ) : (
         <>
-          <div style={S.card}>
-            <div style={S.muted}>Total spend — {WINDOWS[windowIdx].label.toLowerCase()}</div>
+          <GlassCard lift={false}>
+            <div style={{ fontSize: 13, color: "var(--t3)" }}>Total spend — {WINDOWS[windowIdx].label.toLowerCase()}</div>
             <div style={{ fontSize: 26, fontWeight: 700, color: "var(--t1)", marginTop: 4 }}>${totalUsd.toFixed(4)}</div>
-          </div>
+          </GlassCard>
 
-          <div style={S.card}>
-            <div style={{ ...S.cardTitle, marginBottom: 14 }}>By provider</div>
+          <GlassCard lift={false}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 14 }}>By provider</div>
             {byProvider.length === 0 ? (
-              <div style={S.muted}>No AI calls recorded in this window.</div>
+              <div style={{ fontSize: 13, color: "var(--t3)" }}>No AI calls recorded in this window.</div>
             ) : (
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
@@ -85,7 +92,7 @@ export function UsageReportsTab() {
                 </tbody>
               </table>
             )}
-          </div>
+          </GlassCard>
         </>
       )}
     </div>

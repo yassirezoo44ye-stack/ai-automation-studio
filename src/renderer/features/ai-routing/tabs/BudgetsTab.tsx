@@ -8,7 +8,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
-import { S, C } from "../../../styles/theme";
+import { GlassCard, GoldButton } from "../../../shared/ui/gold";
+import { EmptyState } from "../../../shared/ui/EmptyState";
 
 interface BudgetMetric { used: number; limit: number; pct: number | null }
 interface BudgetsResponse {
@@ -41,7 +42,7 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
   const [saving, setSaving] = useState(false);
 
   const pct = data.pct ?? 0;
-  const color = pct >= 90 ? C.redSoft : pct >= 70 ? C.amber : C.green;
+  const color = pct >= 90 ? "var(--red)" : pct >= 70 ? "var(--yellow)" : "var(--green)";
 
   const save = async () => {
     const trimmed = value.trim();
@@ -75,25 +76,25 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <input
               value={value} onChange={e => setValue(e.target.value)}
-              style={{ ...S.textInput, width: 90, padding: "4px 8px", fontSize: 11 }}
+              className="g-input" style={{ width: 90, padding: "4px 8px", fontSize: 11 }}
             />
-            <button onClick={() => void save()} disabled={saving} style={{ ...S.btnPrimary, padding: "4px 10px", fontSize: 11 }}>
+            <GoldButton onClick={() => void save()} disabled={saving} style={{ padding: "4px 10px", fontSize: 11 }}>
               {saving ? "…" : "Save"}
-            </button>
-            <button onClick={() => setEditing(false)} style={{ ...S.btnSecondary, padding: "4px 10px", fontSize: 11 }}>
+            </GoldButton>
+            <GoldButton variant="ghost" onClick={() => setEditing(false)} style={{ padding: "4px 10px", fontSize: 11 }}>
               Cancel
-            </button>
+            </GoldButton>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span style={{ fontSize: 11, color: "var(--t4)" }}>{fmt(data.used)} / {fmt(data.limit)}</span>
-            <button onClick={() => { setValue(String(data.limit)); setEditing(true); }} style={{ ...S.btnSecondary, padding: "3px 9px", fontSize: 10 }}>
+            <GoldButton variant="ghost" onClick={() => { setValue(String(data.limit)); setEditing(true); }} style={{ padding: "3px 9px", fontSize: 10 }}>
               Edit
-            </button>
+            </GoldButton>
           </div>
         )}
       </div>
-      <div style={{ height: 6, background: "rgba(255,255,255,.05)", borderRadius: 99, overflow: "hidden" }}>
+      <div style={{ height: 6, background: "var(--bg-hover)", borderRadius: 99, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${Math.min(pct, 100)}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
       </div>
     </div>
@@ -103,11 +104,13 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
 export function BudgetsTab({ orgId }: { orgId: string }) {
   const toast = useToast();
   const [budgets, setBudgets] = useState<BudgetsResponse | null>(null);
+  const [error, setError] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [workflowId, setWorkflowId] = useState("");
   const [agentId, setAgentId] = useState("");
 
   const load = useCallback(async () => {
+    setError(false);
     try {
       const params = new URLSearchParams();
       if (projectId) params.set("project_id", projectId);
@@ -119,6 +122,7 @@ export function BudgetsTab({ orgId }: { orgId: string }) {
       setBudgets(await parseJSON<BudgetsResponse>(r, "/api/ai/budgets"));
     } catch {
       toast("Could not load budgets", "err");
+      setError(true);
     }
   }, [projectId, workflowId, agentId, toast]);
 
@@ -126,27 +130,34 @@ export function BudgetsTab({ orgId }: { orgId: string }) {
 
   return (
     <div>
-      <div style={{ ...S.card, marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <GlassCard lift={false} style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div>
-          <label style={S.label} htmlFor="budgets-project-id">Project ID</label>
-          <input id="budgets-project-id" value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
+          <label className="g-label" htmlFor="budgets-project-id">Project ID</label>
+          <input id="budgets-project-id" value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="org-level" className="g-input" style={{ width: 160 }} />
         </div>
         <div>
-          <label style={S.label} htmlFor="budgets-workflow-id">Workflow ID</label>
-          <input id="budgets-workflow-id" value={workflowId} onChange={e => setWorkflowId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
+          <label className="g-label" htmlFor="budgets-workflow-id">Workflow ID</label>
+          <input id="budgets-workflow-id" value={workflowId} onChange={e => setWorkflowId(e.target.value)} placeholder="org-level" className="g-input" style={{ width: 160 }} />
         </div>
         <div>
-          <label style={S.label} htmlFor="budgets-agent-id">Agent ID</label>
-          <input id="budgets-agent-id" value={agentId} onChange={e => setAgentId(e.target.value)} placeholder="org-level" style={{ ...S.textInput, width: 160 }} />
+          <label className="g-label" htmlFor="budgets-agent-id">Agent ID</label>
+          <input id="budgets-agent-id" value={agentId} onChange={e => setAgentId(e.target.value)} placeholder="org-level" className="g-input" style={{ width: 160 }} />
         </div>
-        <button onClick={() => void load()} style={{ ...S.btnSecondary, padding: "9px 16px" }}>View</button>
-      </div>
+        <GoldButton variant="ghost" onClick={() => void load()} style={{ padding: "9px 16px" }}>View</GoldButton>
+      </GlassCard>
 
-      {!budgets ? (
+      {error ? (
+        <EmptyState
+          icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+          title="Could not load budgets"
+          description="Something went wrong reaching the server."
+          action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+        />
+      ) : !budgets ? (
         <div className="skeleton" style={{ height: 200, borderRadius: 16 }} />
       ) : (
-        <div style={S.card}>
-          <div style={{ ...S.cardTitle, marginBottom: 14 }}>
+        <GlassCard lift={false}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 14 }}>
             {projectId || workflowId || agentId ? "Scoped budget" : "Organization budget"}
           </div>
           {Object.entries(budgets.metrics).map(([metric, data]) => (
@@ -156,7 +167,7 @@ export function BudgetsTab({ orgId }: { orgId: string }) {
               onSaved={() => void load()}
             />
           ))}
-        </div>
+        </GlassCard>
       )}
     </div>
   );

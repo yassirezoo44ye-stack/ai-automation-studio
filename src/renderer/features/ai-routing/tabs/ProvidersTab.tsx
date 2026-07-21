@@ -3,9 +3,11 @@
  * Data: GET /api/ai/providers (app/routers/ai_router_api.py, reads
  * PlatformProviderRegistry.health() + app/ai/circuit_breaker.py).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S, C } from "../../../styles/theme";
+import { GlassCard, GoldButton } from "../../../shared/ui/gold";
+import { EmptyState } from "../../../shared/ui/EmptyState";
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
 
 interface ProviderHealth {
   available: boolean;
@@ -15,30 +17,36 @@ interface ProviderHealth {
 }
 
 const CIRCUIT_COLOR: Record<string, string> = {
-  closed: C.green, half_open: C.amber, open: C.redSoft,
+  closed: "var(--green)", half_open: "var(--yellow)", open: "var(--red)",
 };
 
 export function ProvidersTab() {
   const [providers, setProviders] = useState<Record<string, ProviderHealth> | null>(null);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await apiFetch("/api/ai/providers");
-        if (!r.ok) throw new Error();
-        const d = await parseJSON<{ providers: Record<string, ProviderHealth> }>(r, "/api/ai/providers");
-        if (alive) setProviders(d.providers);
-      } catch {
-        if (alive) setError(true);
-      }
-    })();
-    return () => { alive = false; };
+  const load = useCallback(async () => {
+    setError(false);
+    try {
+      const r = await apiFetch("/api/ai/providers");
+      if (!r.ok) throw new Error();
+      const d = await parseJSON<{ providers: Record<string, ProviderHealth> }>(r, "/api/ai/providers");
+      setProviders(d.providers);
+    } catch {
+      setError(true);
+    }
   }, []);
 
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+
   if (error) {
-    return <div style={{ fontSize: 12, color: "var(--t4)" }}>Could not load provider health.</div>;
+    return (
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+        title="Could not load provider health"
+        description="Something went wrong reaching the server."
+        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+      />
+    );
   }
   if (!providers) {
     return (
@@ -52,16 +60,12 @@ export function ProvidersTab() {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
       {entries.map(p => (
-        <div key={p.provider_id} style={S.card}>
+        <GlassCard key={p.provider_id} lift={false}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <span style={S.cardTitle}>{p.provider_id}</span>
-            <span style={{
-              ...S.badge, ...(p.available ? S.badgeSuccess : S.badgeNeutral),
-            }}>
-              <span style={S.dot} /> {p.available ? "configured" : "not configured"}
-            </span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>{p.provider_id}</span>
+            <StatusBadge kind={p.available ? "success" : "neutral"} label={p.available ? "configured" : "not configured"} />
           </div>
-          <div style={{ ...S.muted, marginBottom: 10 }}>
+          <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5, marginBottom: 10 }}>
             {p.default_model ?? "no default model — set the API key to enable"}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -73,7 +77,7 @@ export function ProvidersTab() {
               {p.circuit_state.replace("_", "-")}
             </span>
           </div>
-        </div>
+        </GlassCard>
       ))}
     </div>
   );

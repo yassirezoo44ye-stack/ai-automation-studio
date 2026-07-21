@@ -8,6 +8,8 @@
 import { useState } from "react";
 import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
+import { GoldButton } from "../../shared/ui/gold";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import { ProvidersTab } from "./tabs/ProvidersTab";
 import { ModelsTab } from "./tabs/ModelsTab";
 import { BudgetsTab } from "./tabs/BudgetsTab";
@@ -37,13 +39,14 @@ export function AIRoutingPage() {
 
       <div style={{ display: "flex", gap: 6, padding: "12px 24px 0" }}>
         {TABS.map(t => (
-          <button
+          <GoldButton
             key={t.id}
+            variant={tab === t.id ? "primary" : "ghost"}
             onClick={() => setTab(t.id)}
-            style={{ ...(tab === t.id ? S.btnPrimary : S.btnSecondary), padding: "7px 14px", fontSize: 12 }}
+            style={{ padding: "7px 14px", fontSize: 12 }}
           >
             {t.label}
-          </button>
+          </GoldButton>
         ))}
       </div>
 
@@ -56,11 +59,11 @@ export function AIRoutingPage() {
           currentOrgId ? (
             <BudgetsTab orgId={currentOrgId} />
           ) : (
-            <div className="empty-state" style={{ margin: "auto" }}>
-              <div style={{ fontSize: 40 }}>💰</div>
-              <h3>No organization selected</h3>
-              <p>{orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}</p>
-            </div>
+            <EmptyState
+              icon={<span style={{ fontSize: 40 }}>💰</span>}
+              title="No organization selected"
+              description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+            />
           )
         ) : tab === "cost" ? (
           <CostAnalyticsTab />
