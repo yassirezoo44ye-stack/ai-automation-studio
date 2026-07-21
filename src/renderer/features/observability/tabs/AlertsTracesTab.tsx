@@ -7,7 +7,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
-import { S, C } from "../../../styles/theme";
+import { GlassCard, GoldButton } from "../../../shared/ui/gold";
 import { EmptyNote, ErrorNote, Skeletons } from "../components";
 import type { AlertHistoryEntry, AlertRule, TraceSpan } from "../types";
 
@@ -58,7 +58,7 @@ export function AlertsTracesTab() {
     }
   };
 
-  if (error && !rules) return <ErrorNote>Could not load alerting/tracing data.</ErrorNote>;
+  if (error && !rules) return <ErrorNote onRetry={() => void load()}>Could not load alerting/tracing data.</ErrorNote>;
   if (!rules || !history || !traces) return <Skeletons n={3} />;
 
   const openCount = history.filter(h => !h.resolved_at).length;
@@ -71,37 +71,33 @@ export function AlertsTracesTab() {
           ["history", `History${openCount ? ` — ${openCount} open` : ""}`],
           ["traces", `Traces (${traces.length})`],
         ] as [SubTab, string][]).map(([id, label]) => (
-          <button key={id} onClick={() => setSub(id)} style={{ ...(sub === id ? S.btnPrimary : S.btnSecondary), padding: "6px 12px", fontSize: 11 }}>
+          <GoldButton key={id} variant={sub === id ? "primary" : "ghost"} onClick={() => setSub(id)} style={{ padding: "6px 12px", fontSize: 11 }}>
             {label}
-          </button>
+          </GoldButton>
         ))}
       </div>
 
       {sub === "rules" && (
         rules.length === 0 ? <EmptyNote>No alert rules configured.</EmptyNote> : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {rules.map(rule => (
+          <GlassCard lift={false}>
+            {rules.map((rule, i) => (
               <div key={rule.id} style={{
                 display: "flex", alignItems: "center", gap: 12,
-                background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 16px",
+                padding: "10px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
               }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", flex: 1 }}>{rule.name}</span>
                 <span style={{ fontSize: 11, color: "var(--t4)" }}>{rule.rule_type} · {rule.target}{rule.threshold != null ? ` > ${rule.threshold}` : ""}</span>
-                <button
+                <GoldButton
+                  variant={rule.enabled ? "primary" : "ghost"}
                   onClick={() => void toggleRule(rule)}
                   disabled={busy === rule.id}
-                  style={{
-                    padding: "4px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 11, fontWeight: 600,
-                    cursor: busy === rule.id ? "wait" : "pointer",
-                    background: rule.enabled ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.04)",
-                    color: rule.enabled ? C.green : "var(--t4)",
-                  }}
+                  style={{ padding: "4px 10px", fontSize: 11 }}
                 >
                   {busy === rule.id ? "…" : rule.enabled ? "Enabled" : "Disabled"}
-                </button>
+                </GoldButton>
               </div>
             ))}
-          </div>
+          </GlassCard>
         )
       )}
 
@@ -109,21 +105,23 @@ export function AlertsTracesTab() {
         history.length === 0 ? <EmptyNote>No alerts have fired.</EmptyNote> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {history.map(h => (
-              <div key={h.id} style={{
-                display: "flex", alignItems: "center", gap: 12,
-                background: "var(--bg-surface)", border: `1px solid ${h.resolved_at ? "var(--border)" : "rgba(248,113,113,.3)"}`,
-                borderRadius: 10, padding: "10px 16px",
-              }}>
+              <GlassCard
+                key={h.id} lift={false}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+                  border: h.resolved_at ? undefined : "1px solid var(--red)",
+                }}
+              >
                 <span style={{
                   fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 60,
-                  color: h.resolved_at ? "var(--t4)" : C.redSoft,
+                  color: h.resolved_at ? "var(--t4)" : "var(--red)",
                 }}>
                   {h.resolved_at ? "resolved" : "open"}
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{h.rule_name}</span>
                 <span style={{ fontSize: 11, color: "var(--t3)", flex: 1 }}>{h.message}</span>
                 <span style={{ fontSize: 11, color: "var(--t4)" }}>{new Date(h.fired_at).toLocaleString()}</span>
-              </div>
+              </GlassCard>
             ))}
           </div>
         )
@@ -133,16 +131,18 @@ export function AlertsTracesTab() {
         traces.length === 0 ? <EmptyNote>No traces recorded yet.</EmptyNote> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {traces.map(t => (
-              <div key={t.span_id} style={{
-                display: "flex", alignItems: "center", gap: 12,
-                background: "var(--bg-surface)", border: `1px solid ${t.error ? "rgba(248,113,113,.3)" : "var(--border)"}`,
-                borderRadius: 10, padding: "8px 16px",
-              }}>
+              <GlassCard
+                key={t.span_id} lift={false}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, padding: "8px 16px",
+                  border: t.error ? "1px solid var(--red)" : undefined,
+                }}
+              >
                 <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", minWidth: 160 }}>{t.name}</span>
                 <span style={{ fontSize: 11, color: "var(--t4)" }}>{t.service}</span>
                 <span style={{ fontSize: 11, color: "var(--t4)", marginLeft: "auto" }}>{t.duration_ms.toFixed(1)}ms</span>
-                {t.error && <span style={{ fontSize: 11, color: C.redSoft }}>{t.error}</span>}
-              </div>
+                {t.error && <span style={{ fontSize: 11, color: "var(--red)" }}>{t.error}</span>}
+              </GlassCard>
             ))}
           </div>
         )

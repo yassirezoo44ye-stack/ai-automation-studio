@@ -10,6 +10,7 @@
  */
 import { useState } from "react";
 import { S } from "../../styles/theme";
+import { GoldButton } from "../../shared/ui/gold";
 import { SystemOverviewTab } from "./tabs/SystemOverviewTab";
 import { AIAnalyticsTab } from "./tabs/AIAnalyticsTab";
 import { WorkflowAnalyticsTab } from "./tabs/WorkflowAnalyticsTab";
@@ -50,13 +51,14 @@ export function ObservabilityPage() {
 
       <div style={{ display: "flex", gap: 6, padding: "12px 24px 0", flexWrap: "wrap" }}>
         {TABS.map(t => (
-          <button
+          <GoldButton
             key={t.id}
+            variant={tab === t.id ? "primary" : "ghost"}
             onClick={() => setTab(t.id)}
-            style={{ ...(tab === t.id ? S.btnPrimary : S.btnSecondary), padding: "7px 14px", fontSize: 12 }}
+            style={{ padding: "7px 14px", fontSize: 12 }}
           >
             {t.label}
-          </button>
+          </GoldButton>
         ))}
       </div>
 

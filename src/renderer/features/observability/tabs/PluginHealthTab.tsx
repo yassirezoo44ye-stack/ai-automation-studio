@@ -8,12 +8,12 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S, C } from "../../../styles/theme";
+import { GlassCard } from "../../../shared/ui/gold";
 import { CardGrid, ErrorNote, ProbeCard, Skeletons } from "../components";
 import type { HealthReport, ServiceStatus } from "../types";
 
 const SERVICE_COLOR: Record<string, string> = {
-  running: C.green, starting: C.blue, stopped: "var(--t4)", stopping: C.amber, failed: C.redSoft,
+  running: "var(--green)", starting: "var(--blue)", stopped: "var(--t4)", stopping: "var(--yellow)", failed: "var(--red)",
 };
 
 export function PluginHealthTab() {
@@ -41,7 +41,7 @@ export function PluginHealthTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !health) return <ErrorNote>Could not load plugin/service health.</ErrorNote>;
+  if (error && !health) return <ErrorNote onRetry={() => void load()}>Could not load plugin/service health.</ErrorNote>;
   if (!health || !services) return <Skeletons n={3} />;
 
   const pluginProbe = health.probes.find(p => p.name === "plugin_loader");
@@ -50,21 +50,21 @@ export function PluginHealthTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {pluginProbe && (
         <div>
-          <div style={{ ...S.cardTitle, marginBottom: 12 }}>Plugin loader</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Plugin loader</div>
           <CardGrid><ProbeCard probe={pluginProbe} /></CardGrid>
-          <div style={{ ...S.muted, marginTop: 10 }}>
-            For per-plugin install detail, see the <span style={{ color: "#a5b4fc" }}>Plugins</span> page.
+          <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5, marginTop: 10 }}>
+            For per-plugin install detail, see the <span style={{ color: "var(--accent-2)" }}>Plugins</span> page.
           </div>
         </div>
       )}
 
       <div>
-        <div style={{ ...S.cardTitle, marginBottom: 12 }}>Background services</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {services.map(s => (
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Background services</div>
+        <GlassCard lift={false}>
+          {services.map((s, i) => (
             <div key={s.name} style={{
               display: "flex", alignItems: "center", gap: 12,
-              background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 16px",
+              padding: "10px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
             }}>
               <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 70, color: SERVICE_COLOR[s.state] ?? "var(--t4)" }}>
                 {s.state}
@@ -72,10 +72,10 @@ export function PluginHealthTab() {
               <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", flex: 1 }}>{s.name}</span>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>uptime {(s.uptime_s / 60).toFixed(0)}m</span>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>restarts {s.restarts}</span>
-              {s.error && <span style={{ fontSize: 11, color: C.redSoft }}>{s.error}</span>}
+              {s.error && <span style={{ fontSize: 11, color: "var(--red)" }}>{s.error}</span>}
             </div>
           ))}
-        </div>
+        </GlassCard>
       </div>
     </div>
   );

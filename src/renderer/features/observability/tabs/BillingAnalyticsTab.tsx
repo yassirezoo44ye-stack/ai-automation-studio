@@ -8,7 +8,6 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
 import { CardGrid, ErrorNote, MetricCard, Skeletons, StatusBadge } from "../components";
 import type { HealthReport, MetricsSnapshot } from "../types";
 
@@ -37,7 +36,7 @@ export function BillingAnalyticsTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote>Could not load billing metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load billing metrics.</ErrorNote>;
   if (!metrics || !health) return <Skeletons n={2} />;
 
   const probe = health.probes.find(p => p.name === "billing");
@@ -46,14 +45,14 @@ export function BillingAnalyticsTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {probe && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={S.cardTitle}>Billing subsystem</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>Billing subsystem</span>
           <StatusBadge status={probe.status} />
           <span style={{ fontSize: 12, color: "var(--t4)" }}>{probe.message}</span>
         </div>
       )}
-      <div style={S.muted}>
+      <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5 }}>
         For org-scoped revenue, invoices, and subscriptions, see the{" "}
-        <span style={{ color: "#a5b4fc" }}>Billing</span> page.
+        <span style={{ color: "var(--accent-2)" }}>Billing</span> page.
       </div>
       <CardGrid>
         <MetricCard label="Billing events processed" value={metrics.counters.billing_events_total ?? 0} />

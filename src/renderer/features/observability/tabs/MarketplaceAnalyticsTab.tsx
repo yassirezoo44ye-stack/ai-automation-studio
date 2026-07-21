@@ -6,7 +6,6 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
 import { CardGrid, ErrorNote, MetricCard, Skeletons, StatusBadge } from "../components";
 import type { HealthReport, MetricsSnapshot } from "../types";
 
@@ -35,7 +34,7 @@ export function MarketplaceAnalyticsTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote>Could not load marketplace metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load marketplace metrics.</ErrorNote>;
   if (!metrics || !health) return <Skeletons n={2} />;
 
   const probe = health.probes.find(p => p.name === "marketplace");
@@ -44,7 +43,7 @@ export function MarketplaceAnalyticsTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {probe && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={S.cardTitle}>Store backend</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>Store backend</span>
           <StatusBadge status={probe.status} />
           <span style={{ fontSize: 12, color: "var(--t4)" }}>{probe.message}</span>
         </div>

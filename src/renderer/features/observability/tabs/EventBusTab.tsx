@@ -6,7 +6,6 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
 import { CardGrid, ErrorNote, MetricCard, Skeletons, StatusBadge } from "../components";
 import type { HealthReport } from "../types";
 
@@ -31,7 +30,7 @@ export function EventBusTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !health) return <ErrorNote>Could not load event bus status.</ErrorNote>;
+  if (error && !health) return <ErrorNote onRetry={() => void load()}>Could not load event bus status.</ErrorNote>;
   if (!health) return <Skeletons n={1} />;
 
   const probe = health.probes.find(p => p.name === "event_bus");
@@ -45,7 +44,7 @@ export function EventBusTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={S.cardTitle}>Backend: {meta.backend ?? "unknown"}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>Backend: {meta.backend ?? "unknown"}</span>
         <StatusBadge status={probe.status} />
       </div>
       <CardGrid>
@@ -55,7 +54,7 @@ export function EventBusTab() {
       </CardGrid>
       {meta.subscriptions && Object.keys(meta.subscriptions).length > 0 && (
         <div>
-          <div style={{ ...S.cardTitle, marginBottom: 10, fontSize: 12 }}>Subscriptions by pattern</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 10 }}>Subscriptions by pattern</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {Object.entries(meta.subscriptions).map(([pattern, count]) => (
               <div key={pattern} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--t3)" }}>

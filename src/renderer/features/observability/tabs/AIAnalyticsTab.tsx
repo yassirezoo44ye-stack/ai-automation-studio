@@ -8,7 +8,6 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
 import { CardGrid, ErrorNote, MetricCard, Skeletons } from "../components";
 import type { MetricsSnapshot } from "../types";
 
@@ -33,7 +32,7 @@ export function AIAnalyticsTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote>Could not load AI metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load AI metrics.</ErrorNote>;
   if (!metrics) return <Skeletons n={3} />;
 
   const c = metrics.counters;
@@ -42,10 +41,10 @@ export function AIAnalyticsTab() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ ...S.muted }}>
+      <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5 }}>
         Aggregate totals across every provider since the process started. For
         per-provider/per-model cost breakdown, see the{" "}
-        <span style={{ color: "#a5b4fc" }}>AI Routing → Cost Analytics</span> tab.
+        <span style={{ color: "var(--accent-2)" }}>AI Routing → Cost Analytics</span> tab.
       </div>
       <CardGrid>
         <MetricCard label="Total requests" value={c.ai_requests_total ?? 0} />

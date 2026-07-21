@@ -5,7 +5,6 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
 import { CardGrid, ErrorNote, MetricCard, ProbeCard, Skeletons, StatusBadge } from "../components";
 import type { HealthReport, MetricsSnapshot } from "../types";
 
@@ -34,7 +33,7 @@ export function SystemOverviewTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !health) return <ErrorNote>Could not load system health.</ErrorNote>;
+  if (error && !health) return <ErrorNote onRetry={() => void load()}>Could not load system health.</ErrorNote>;
   if (!health || !metrics) return <Skeletons n={4} />;
 
   const g = metrics.gauges;
@@ -43,7 +42,7 @@ export function SystemOverviewTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <span style={S.cardTitle}>Overall status</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>Overall status</span>
           <StatusBadge status={health.status} />
           <span style={{ fontSize: 11, color: "var(--t4)" }}>uptime {(metrics.uptime_s / 3600).toFixed(1)}h</span>
         </div>
@@ -53,7 +52,7 @@ export function SystemOverviewTab() {
       </div>
 
       <div>
-        <div style={{ ...S.cardTitle, marginBottom: 12 }}>Resource usage</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Resource usage</div>
         <CardGrid>
           <MetricCard label="CPU" value={g.system_cpu_percent ?? 0} suffix="%" />
           <MetricCard label="Memory (RSS)" value={g.system_memory_rss_mb ?? 0} suffix=" MB" />
@@ -65,7 +64,7 @@ export function SystemOverviewTab() {
       </div>
 
       <div>
-        <div style={{ ...S.cardTitle, marginBottom: 12 }}>HTTP traffic</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>HTTP traffic</div>
         <CardGrid>
           <MetricCard label="Total requests" value={metrics.counters.http_requests_total ?? 0} />
           <MetricCard label="5xx errors" value={metrics.counters.http_errors_total ?? 0} />

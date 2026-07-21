@@ -6,7 +6,6 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
-import { S } from "../../../styles/theme";
 import { CardGrid, ErrorNote, MetricCard, Skeletons } from "../components";
 import type { MetricsSnapshot } from "../types";
 
@@ -31,16 +30,16 @@ export function SandboxMonitoringTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote>Could not load sandbox metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load sandbox metrics.</ErrorNote>;
   if (!metrics) return <Skeletons n={2} />;
 
   const g = metrics.gauges;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={S.muted}>
+      <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5 }}>
         For per-worker logs and permission requests, see the{" "}
-        <span style={{ color: "#a5b4fc" }}>Sandbox</span> page.
+        <span style={{ color: "var(--accent-2)" }}>Sandbox</span> page.
       </div>
       <CardGrid>
         <MetricCard label="Running workers" value={g.sandbox_running_workers ?? 0} />

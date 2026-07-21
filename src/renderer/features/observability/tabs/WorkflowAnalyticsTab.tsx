@@ -29,7 +29,7 @@ export function WorkflowAnalyticsTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote>Could not load workflow metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load workflow metrics.</ErrorNote>;
   if (!metrics) return <Skeletons n={2} />;
 
   const c = metrics.counters;

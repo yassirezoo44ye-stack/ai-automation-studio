@@ -1,42 +1,40 @@
 // Small shared presentational pieces used by every tab in this feature —
 // avoids re-deriving the same status-color / card-grid markup 10 times.
 import type { ReactNode } from "react";
-import { S } from "../../styles/theme";
+import { GlassCard, GoldButton } from "../../shared/ui/gold";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { StatusBadge as SharedStatusBadge } from "../../shared/ui/StatusBadge";
 import type { HealthStatus, ProbeResult } from "./types";
 
+const HEALTH_KIND = {
+  healthy: "success", degraded: "warning", unhealthy: "error", unknown: "neutral",
+} as const;
+
 export function StatusBadge({ status }: { status: HealthStatus }) {
-  const badgeStyle =
-    status === "healthy" ? S.badgeSuccess :
-    status === "degraded" ? S.badgeWarning :
-    status === "unhealthy" ? S.badgeError : S.badgeNeutral;
-  return (
-    <span style={{ ...S.badge, ...badgeStyle }}>
-      <span style={S.dot} /> {status}
-    </span>
-  );
+  return <SharedStatusBadge kind={HEALTH_KIND[status]} label={status} />;
 }
 
 export function ProbeCard({ probe }: { probe: ProbeResult }) {
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={S.cardTitle}>{probe.name}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>{probe.name}</span>
         <StatusBadge status={probe.status} />
       </div>
-      <div style={{ ...S.muted, marginBottom: 8 }}>{probe.message || "—"}</div>
+      <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5, marginBottom: 8 }}>{probe.message || "—"}</div>
       <div style={{ fontSize: 11, color: "var(--t4)" }}>{probe.duration_ms.toFixed(1)}ms</div>
-    </div>
+    </GlassCard>
   );
 }
 
 export function MetricCard({ label, value, suffix = "" }: { label: string; value: number | string; suffix?: string }) {
   return (
-    <div style={S.card}>
-      <div style={{ ...S.muted, marginBottom: 6 }}>{label}</div>
+    <GlassCard lift={false}>
+      <div style={{ fontSize: 13, color: "var(--t3)", marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)" }}>
         {typeof value === "number" ? value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : value}{suffix}
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -58,10 +56,19 @@ export function Skeletons({ n = 3, height = 90 }: { n?: number; height?: number 
   );
 }
 
-export function ErrorNote({ children }: { children: ReactNode }) {
-  return <div style={{ fontSize: 12, color: "var(--t4)" }}>{children}</div>;
+export function ErrorNote({ children, onRetry }: { children: ReactNode; onRetry?: () => void }) {
+  return (
+    <EmptyState
+      icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+      title="Could not load this data"
+      description={typeof children === "string" ? children : undefined}
+      action={onRetry ? <GoldButton variant="ghost" onClick={onRetry}>Retry</GoldButton> : undefined}
+    />
+  );
 }
 
 export function EmptyNote({ children }: { children: ReactNode }) {
-  return <div style={{ textAlign: "center", padding: "48px 0", color: "var(--t4)", fontSize: 13 }}>{children}</div>;
+  return (
+    <EmptyState title={typeof children === "string" ? children : "Nothing here yet"} />
+  );
 }

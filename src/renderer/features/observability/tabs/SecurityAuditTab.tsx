@@ -12,7 +12,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useOrg } from "../../../contexts/OrgContext";
-import { S } from "../../../styles/theme";
 import { ActivityTimeline, type TimelineEntry } from "../../../shared/ui/notifications";
 import type { ActivityLogEntry, AuditLogEntry } from "../types";
 
@@ -56,7 +55,7 @@ export function SecurityAuditTab() {
 
   return (
     <div>
-      <div style={{ ...S.cardTitle, marginBottom: 12 }}>Activity</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Activity</div>
       <ActivityTimeline
         entries={entries}
         groups={[
