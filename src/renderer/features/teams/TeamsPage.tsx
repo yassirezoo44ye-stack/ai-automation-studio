@@ -7,7 +7,9 @@ import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
-import { S, C } from "../../styles/theme";
+import { S } from "../../styles/theme";
+import { GoldButton, GlassCard } from "../../shared/ui/gold";
+import { EmptyState } from "../../shared/ui/EmptyState";
 
 type Role = "owner" | "admin" | "manager" | "developer" | "operator" | "viewer";
 
@@ -23,14 +25,16 @@ interface Team {
 interface TeamMember { user_id: string; email: string; name: string | null; joined_at: string }
 
 const ROLES: Role[] = ["owner", "admin", "manager", "developer", "operator", "viewer"];
+// Solid color (badge text/border) + the matching pre-mixed "-dim" token
+// (badge background) — every value here is an existing design token, no
+// hardcoded hex, no new CSS.
 const ROLE_COLOR: Record<Role, string> = {
-  owner: C.amber, admin: C.red, manager: "#D4AF37",
-  developer: C.blue, operator: C.green, viewer: C.gray,
+  owner: "var(--yellow)", admin: "var(--red)", manager: "var(--accent)",
+  developer: "var(--blue)", operator: "var(--green)", viewer: "var(--t4)",
 };
-
-const sectionLabel: React.CSSProperties = {
-  fontSize: 11, fontWeight: 700, color: "var(--t3)",
-  textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8,
+const ROLE_BG: Record<Role, string> = {
+  owner: "var(--yellow-dim)", admin: "var(--red-dim)", manager: "var(--accent-dim)",
+  developer: "var(--blue-dim)", operator: "var(--green-dim)", viewer: "var(--bg-hover)",
 };
 
 export function TeamsPage() {
@@ -38,6 +42,7 @@ export function TeamsPage() {
   const { currentOrgId, currentOrg, orgs } = useOrg();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [membersError, setMembersError] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Role>("viewer");
@@ -46,6 +51,7 @@ export function TeamsPage() {
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
+  const [teamsError, setTeamsError] = useState(false);
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamDesc, setNewTeamDesc] = useState("");
@@ -59,6 +65,7 @@ export function TeamsPage() {
   const load = useCallback(async () => {
     if (!currentOrgId) { setMembers([]); setLoading(false); return; }
     setLoading(true);
+    setMembersError(false);
     try {
       const r = await apiFetch(`/api/orgs/${currentOrgId}/members`);
       if (!r.ok) throw new Error();
@@ -67,6 +74,7 @@ export function TeamsPage() {
     } catch {
       toast("Could not load members", "err");
       setMembers([]);
+      setMembersError(true);
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
@@ -75,6 +83,7 @@ export function TeamsPage() {
   const loadTeams = useCallback(async () => {
     if (!currentOrgId) { setTeams([]); setTeamsLoading(false); return; }
     setTeamsLoading(true);
+    setTeamsError(false);
     try {
       const r = await apiFetch(`/api/orgs/${currentOrgId}/teams`);
       if (!r.ok) throw new Error();
@@ -83,6 +92,7 @@ export function TeamsPage() {
     } catch {
       toast("Could not load teams", "err");
       setTeams([]);
+      setTeamsError(true);
     } finally { setTeamsLoading(false); }
   }, [currentOrgId, toast]);
 
@@ -226,11 +236,11 @@ export function TeamsPage() {
 
   if (!currentOrgId) {
     return (
-      <div className="empty-state" style={{ margin: "auto" }}>
-        <div style={{ fontSize: 40 }}>👥</div>
-        <h3>No organization selected</h3>
-        <p>{orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}</p>
-      </div>
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>👥</span>}
+        title="No organization selected"
+        description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+      />
     );
   }
 
@@ -239,45 +249,54 @@ export function TeamsPage() {
       <header style={S.header}>
         <span style={S.headerTitle}>Teams — {currentOrg?.name ?? "…"}</span>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setCreatingTeam(v => !v)} style={S.btnSecondary}>+ New Team</button>
-          <button onClick={() => setInviting(v => !v)} style={S.btnPrimary}>+ Invite Member</button>
+          <GoldButton variant="ghost" onClick={() => setCreatingTeam(v => !v)}>+ New Team</GoldButton>
+          <GoldButton onClick={() => setInviting(v => !v)}>+ Invite Member</GoldButton>
         </div>
       </header>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
-        <div style={sectionLabel}>Teams</div>
+        <div className="section-label" style={{ marginBottom: 8 }}>Teams</div>
         {creatingTeam && (
-          <div style={{ ...S.card, marginBottom: 12 }}>
-            <div style={{ ...S.cardTitle, marginBottom: 12 }}>New Team</div>
+          <GlassCard lift={false} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>New Team</div>
             <div style={{ display: "flex", gap: 10 }}>
               <input
                 value={newTeamName} onChange={e => setNewTeamName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && void createTeam()}
-                placeholder="Team name" style={{ ...S.textInput, flex: 1 }} autoFocus
+                placeholder="Team name" className="g-input" style={{ flex: 1 }} autoFocus
               />
               <input
                 value={newTeamDesc} onChange={e => setNewTeamDesc(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && void createTeam()}
-                placeholder="Description (optional)" style={{ ...S.textInput, flex: 2 }}
+                placeholder="Description (optional)" className="g-input" style={{ flex: 2 }}
               />
-              <button onClick={() => void createTeam()} disabled={teamSaving || !newTeamName.trim()} style={S.btnPrimary}>
+              <GoldButton onClick={() => void createTeam()} disabled={teamSaving || !newTeamName.trim()}>
                 {teamSaving ? "Creating…" : "Create"}
-              </button>
-              <button onClick={() => { setCreatingTeam(false); setNewTeamName(""); setNewTeamDesc(""); }} style={S.btnSecondary}>Cancel</button>
+              </GoldButton>
+              <GoldButton variant="ghost" onClick={() => { setCreatingTeam(false); setNewTeamName(""); setNewTeamDesc(""); }}>Cancel</GoldButton>
             </div>
-          </div>
+          </GlassCard>
         )}
 
         {teamsLoading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
             {[1, 2].map(i => <div key={i} className="skeleton" style={{ height: 48, borderRadius: 12 }} />)}
           </div>
-        ) : teams.length === 0 ? (
-          <div style={{ ...S.card, marginBottom: 20, textAlign: "center", color: "var(--t4)", fontSize: 12, padding: 20 }}>
-            No teams yet — create one to group members for project access.
+        ) : teamsError ? (
+          <div style={{ marginBottom: 20 }}>
+            <EmptyState
+              icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+              title="Could not load teams"
+              description="Something went wrong reaching the server."
+              action={<GoldButton variant="ghost" onClick={() => void loadTeams()}>Retry</GoldButton>}
+            />
           </div>
+        ) : teams.length === 0 ? (
+          <GlassCard lift={false} style={{ marginBottom: 20, textAlign: "center", color: "var(--t4)", fontSize: 12, padding: 20 }}>
+            No teams yet — create one to group members for project access.
+          </GlassCard>
         ) : (
-          <div style={{ ...S.card, marginBottom: 20 }}>
+          <GlassCard lift={false} style={{ marginBottom: 20 }}>
             {teams.map((t, i) => {
               const isOpen = expandedTeam === t.id;
               const tm = teamMembers[t.id] || [];
@@ -294,14 +313,14 @@ export function TeamsPage() {
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{t.name}</div>
                       {t.description && <div style={{ fontSize: 11, color: "var(--t4)" }}>{t.description}</div>}
                     </div>
-                    <button
-                      onClick={() => void toggleTeam(t.id)}
-                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11 }}
-                    >{isOpen ? "Hide" : "Members"}</button>
-                    <button
-                      onClick={() => void deleteTeam(t.id)} disabled={teamBusy === t.id}
-                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: C.redSoft }}
-                    >Delete</button>
+                    <GoldButton
+                      variant="ghost" onClick={() => void toggleTeam(t.id)}
+                      style={{ padding: "5px 12px", fontSize: 11 }}
+                    >{isOpen ? "Hide" : "Members"}</GoldButton>
+                    <GoldButton
+                      variant="danger" onClick={() => void deleteTeam(t.id)} disabled={teamBusy === t.id}
+                      style={{ padding: "5px 12px", fontSize: 11 }}
+                    >Delete</GoldButton>
                   </div>
 
                   {isOpen && (
@@ -316,11 +335,11 @@ export function TeamsPage() {
                           {tm.map(m => (
                             <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
                               <span style={{ fontSize: 12, color: "var(--t1)", flex: 1 }}>{m.name || m.email}</span>
-                              <button
-                                onClick={() => void removeTeamMember(t.id, m.user_id)}
+                              <GoldButton
+                                variant="danger" onClick={() => void removeTeamMember(t.id, m.user_id)}
                                 disabled={teamBusy === `${t.id}:${m.user_id}`}
-                                style={{ ...S.btnSecondary, padding: "3px 10px", fontSize: 10, color: C.redSoft }}
-                              >Remove</button>
+                                style={{ padding: "3px 10px", fontSize: 10 }}
+                              >Remove</GoldButton>
                             </div>
                           ))}
                           {availableToAdd.length > 0 && (
@@ -328,18 +347,18 @@ export function TeamsPage() {
                               <select
                                 value={addMemberUserId}
                                 onChange={e => setAddMemberUserId(e.target.value)}
-                                style={{ ...S.textInput, flex: 1, fontSize: 11, padding: "5px 10px" }}
+                                className="g-input" style={{ flex: 1, fontSize: 11, padding: "5px 10px" }}
                               >
                                 <option value="">Add member…</option>
                                 {availableToAdd.map(m => (
                                   <option key={m.user_id} value={m.user_id}>{m.name || m.email}</option>
                                 ))}
                               </select>
-                              <button
-                                onClick={() => void addTeamMember(t.id)}
+                              <GoldButton
+                                variant="ghost" onClick={() => void addTeamMember(t.id)}
                                 disabled={!addMemberUserId || teamBusy === t.id}
-                                style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11 }}
-                              >Add</button>
+                                style={{ padding: "5px 12px", fontSize: 11 }}
+                              >Add</GoldButton>
                             </div>
                           )}
                         </>
@@ -349,41 +368,45 @@ export function TeamsPage() {
                 </div>
               );
             })}
-          </div>
+          </GlassCard>
         )}
 
-        <div style={sectionLabel}>Members</div>
+        <div className="section-label" style={{ marginBottom: 8 }}>Members</div>
         {inviting && (
-          <div style={{ ...S.card, marginBottom: 20 }}>
-            <div style={{ ...S.cardTitle, marginBottom: 12 }}>Invite by Email</div>
+          <GlassCard lift={false} style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Invite by Email</div>
             <div style={{ display: "flex", gap: 10 }}>
               <input
                 value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && void invite()}
-                placeholder="teammate@company.com" type="email" style={{ ...S.textInput, flex: 1 }} autoFocus
+                placeholder="teammate@company.com" type="email" className="g-input" style={{ flex: 1 }} autoFocus
               />
-              <select value={inviteRole} onChange={e => setInviteRole(e.target.value as Role)} style={{ ...S.textInput, width: "auto" }}>
+              <select value={inviteRole} onChange={e => setInviteRole(e.target.value as Role)} className="g-input" style={{ width: "auto" }}>
                 {ROLES.filter(r => r !== "owner").map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <button onClick={() => void invite()} disabled={saving || !inviteEmail.trim()} style={S.btnPrimary}>
+              <GoldButton onClick={() => void invite()} disabled={saving || !inviteEmail.trim()}>
                 {saving ? "Sending…" : "Send Invite"}
-              </button>
-              <button onClick={() => { setInviting(false); setInviteEmail(""); }} style={S.btnSecondary}>Cancel</button>
+              </GoldButton>
+              <GoldButton variant="ghost" onClick={() => { setInviting(false); setInviteEmail(""); }}>Cancel</GoldButton>
             </div>
-          </div>
+          </GlassCard>
         )}
 
         {loading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 56, borderRadius: 12 }} />)}
           </div>
+        ) : membersError ? (
+          <EmptyState
+            icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+            title="Could not load members"
+            description="Something went wrong reaching the server."
+            action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+          />
         ) : members.length === 0 ? (
-          <div className="empty-state">
-            <div style={{ fontSize: 40 }}>👥</div>
-            <h3>No members yet</h3>
-          </div>
+          <EmptyState icon={<span style={{ fontSize: 40 }}>👥</span>} title="No members yet" />
         ) : (
-          <div style={S.card}>
+          <GlassCard lift={false}>
             {members.map((m, i) => (
               <div key={m.user_id} style={{
                 padding: "12px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
@@ -391,9 +414,9 @@ export function TeamsPage() {
               }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                  background: "rgba(255,215,0,.14)", border: "1px solid rgba(255,215,0,.25)",
+                  background: "var(--accent-dim)", border: "1px solid var(--accent-border)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 13, fontWeight: 700, color: "#c4b5fd",
+                  fontSize: 13, fontWeight: 700, color: "var(--accent)",
                 }}>
                   {(m.name || m.email)[0]?.toUpperCase()}
                 </div>
@@ -403,8 +426,8 @@ export function TeamsPage() {
                 </div>
                 <span style={{
                   fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-                  color: ROLE_COLOR[m.role], background: ROLE_COLOR[m.role] + "18",
-                  border: `1px solid ${ROLE_COLOR[m.role]}33`,
+                  color: ROLE_COLOR[m.role], background: ROLE_BG[m.role],
+                  border: `1px solid ${ROLE_BG[m.role]}`,
                 }}>
                   {m.role}
                 </span>
@@ -413,19 +436,19 @@ export function TeamsPage() {
                     <select
                       value={m.role} disabled={busy === m.user_id}
                       onChange={e => void changeRole(m.user_id, e.target.value as Role)}
-                      style={{ ...S.textInput, width: "auto", fontSize: 11, padding: "5px 10px" }}
+                      className="g-input" style={{ width: "auto", fontSize: 11, padding: "5px 10px" }}
                     >
                       {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
-                    <button
-                      onClick={() => void removeMember(m.user_id)} disabled={busy === m.user_id}
-                      style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, color: C.redSoft }}
-                    >Remove</button>
+                    <GoldButton
+                      variant="danger" onClick={() => void removeMember(m.user_id)} disabled={busy === m.user_id}
+                      style={{ padding: "5px 12px", fontSize: 11 }}
+                    >Remove</GoldButton>
                   </>
                 )}
               </div>
             ))}
-          </div>
+          </GlassCard>
         )}
       </div>
     </>
