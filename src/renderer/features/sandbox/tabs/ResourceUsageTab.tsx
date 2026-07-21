@@ -8,6 +8,7 @@
  */
 import { useState, useEffect } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
+import { GlassCard } from "../../../shared/ui/gold";
 
 interface ResourceUsage {
   worker_id: string;
@@ -51,10 +52,10 @@ export function ResourceUsageTab({ workerId }: { workerId: string }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
       {cells.map(([label, value]) => (
-        <div key={label} style={{ background: "rgba(255,255,255,.03)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px" }}>
+        <GlassCard key={label} lift={false} style={{ padding: "10px 14px" }}>
           <div style={{ fontSize: 10, color: "var(--t5)", textTransform: "uppercase", fontWeight: 700, marginBottom: 4 }}>{label}</div>
           <div style={{ fontSize: 14, color: "var(--t2)", fontWeight: 600 }}>{value}</div>
-        </div>
+        </GlassCard>
       ))}
     </div>
   );

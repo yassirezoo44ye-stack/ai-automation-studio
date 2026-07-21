@@ -1,4 +1,3 @@
-import { C } from "../../../shared/lib/theme";
 /**
  * SandboxLogsTab — a worker's sandbox_events history (log/network/security/
  * resource/lifecycle events), mirrors plugins/tabs/HealthTab.tsx's list
@@ -17,7 +16,7 @@ interface SandboxEvent {
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
-  info: "var(--t4)", warning: C.amber, error: C.redSoft,
+  info: "var(--t4)", warning: "var(--yellow)", error: "var(--red)",
 };
 
 export function SandboxLogsTab({ workerId }: { workerId: string }) {

@@ -1,4 +1,3 @@
-import { C } from "../../shared/lib/theme";
 /**
  * SandboxPage — Agent Sandbox & Secure Execution Runtime monitoring.
  * Mirrors PluginsPage.tsx's tab-shell + expand-to-detail pattern (same
@@ -14,6 +13,8 @@ import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
+import { GoldButton, GlassCard } from "../../shared/ui/gold";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import { SandboxLogsTab } from "./tabs/SandboxLogsTab";
 import { ResourceUsageTab } from "./tabs/ResourceUsageTab";
 
@@ -51,7 +52,7 @@ type TopTab = "workers" | "permission-requests" | "security-events";
 type DetailTab = "logs" | "resource-usage";
 
 const STATUS_COLOR: Record<string, string> = {
-  running: C.green, starting: C.blue, stopped: "var(--t4)", crashed: C.redSoft,
+  running: "var(--green)", starting: "var(--blue)", stopped: "var(--t4)", crashed: "var(--red)",
 };
 
 export function SandboxPage() {
@@ -145,11 +146,11 @@ export function SandboxPage() {
 
   if (!currentOrgId) {
     return (
-      <div className="empty-state" style={{ margin: "auto" }}>
-        <div style={{ fontSize: 40 }}>🛡️</div>
-        <h3>No organization selected</h3>
-        <p>{orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}</p>
-      </div>
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>🛡️</span>}
+        title="No organization selected"
+        description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+      />
     );
   }
 
@@ -168,7 +169,7 @@ export function SandboxPage() {
           ] as [TopTab, string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTopTab(t)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: topTab === t ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+              background: topTab === t ? "var(--accent-dim)" : "var(--bg-hover)",
               color: topTab === t ? "var(--accent-2)" : "var(--t4)",
             }}>
               {label} {t === "workers" ? `(${workers.length})` : t === "permission-requests" ? `(${permissionRequests.length})` : ""}
@@ -184,15 +185,15 @@ export function SandboxPage() {
           </div>
         ) : topTab === "workers" ? (
           workers.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "64px 0", color: "var(--t4)" }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>🛡️</div>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "var(--t2)" }}>No sandbox workers</div>
-              <p style={{ fontSize: 13 }}>Workers appear here when a plugin is installed and enabled from the Plugins page.</p>
-            </div>
+            <EmptyState
+              icon={<span style={{ fontSize: 48 }}>🛡️</span>}
+              title="No sandbox workers"
+              description="Workers appear here when a plugin is installed and enabled from the Plugins page."
+            />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {workers.map(w => (
-                <div key={w.id} style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "16px 20px" }}>
+                <GlassCard key={w.id} lift={false} style={{ padding: "16px 20px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -206,24 +207,17 @@ export function SandboxPage() {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => toggleDetails(w.id)} style={{
-                        padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                        background: "rgba(255,255,255,.04)", color: "var(--t3)", fontSize: 12, cursor: "pointer",
-                      }}>
+                      <GoldButton variant="ghost" onClick={() => toggleDetails(w.id)} style={{ padding: "6px 12px", fontSize: 12 }}>
                         {expandedId === w.id ? "Hide" : "Details"}
-                      </button>
-                      <button
+                      </GoldButton>
+                      <GoldButton
+                        variant="danger"
                         onClick={() => void stopWorker(w)}
                         disabled={busy === w.id || w.status === "stopped" || w.status === "crashed"}
-                        style={{
-                          padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                          background: "rgba(248,113,113,.08)", color: C.redSoft, fontSize: 12,
-                          cursor: busy === w.id ? "wait" : "pointer",
-                          opacity: (w.status === "stopped" || w.status === "crashed") ? 0.5 : 1,
-                        }}
+                        style={{ padding: "6px 12px", fontSize: 12 }}
                       >
                         {busy === w.id ? "…" : "Stop"}
-                      </button>
+                      </GoldButton>
                     </div>
                   </div>
 
@@ -233,7 +227,7 @@ export function SandboxPage() {
                         {(["logs", "resource-usage"] as DetailTab[]).map(t => (
                           <button key={t} onClick={() => setDetailTab(t)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            background: detailTab === t ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+                            background: detailTab === t ? "var(--accent-dim)" : "var(--bg-hover)",
                             color: detailTab === t ? "var(--accent-2)" : "var(--t4)",
                           }}>
                             {t === "logs" ? "Logs" : "Resource Usage"}
@@ -244,66 +238,51 @@ export function SandboxPage() {
                       {detailTab === "resource-usage" && <ResourceUsageTab key={w.status} workerId={w.id} />}
                     </div>
                   )}
-                </div>
+                </GlassCard>
               ))}
             </div>
           )
         ) : topTab === "permission-requests" ? (
           permissionRequests.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "64px 0", color: "var(--t4)" }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--t2)" }}>No pending permission requests</div>
-            </div>
+            <EmptyState icon={<span style={{ fontSize: 48 }}>✅</span>} title="No pending permission requests" />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {permissionRequests.map(req => (
-                <div key={req.installation_id} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  background: "var(--bg-surface)", border: "1px solid rgba(245,158,11,.3)",
-                  borderRadius: 14, padding: "16px 20px",
-                }}>
+                <GlassCard
+                  key={req.installation_id} lift={false}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    border: "1px solid rgba(245,158,11,.3)", padding: "16px 20px",
+                  }}
+                >
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{req.plugin_id} <span style={{ color: "var(--t4)", fontWeight: 400 }}>v{req.version}</span></div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                       {req.pending_capabilities.map(c => (
-                        <span key={c} style={{
-                          fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 99,
-                          background: "rgba(245,158,11,.12)", color: C.amber, border: "1px solid rgba(245,158,11,.3)",
-                        }}>
-                          {c}
-                        </span>
+                        <span key={c} className="badge badge-yellow">{c}</span>
                       ))}
                     </div>
                   </div>
-                  <button
-                    onClick={() => void approveRequest(req)} disabled={busy === req.installation_id}
-                    style={{
-                      padding: "6px 16px", borderRadius: 8, border: "none", cursor: busy === req.installation_id ? "wait" : "pointer",
-                      background: C.amber, color: "#000", fontSize: 12, fontWeight: 700,
-                    }}
-                  >
+                  <GoldButton onClick={() => void approveRequest(req)} disabled={busy === req.installation_id}>
                     {busy === req.installation_id ? "…" : "Approve"}
-                  </button>
-                </div>
+                  </GoldButton>
+                </GlassCard>
               ))}
             </div>
           )
         ) : (
           securityEvents.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "64px 0", color: "var(--t4)" }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>🛡️</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--t2)" }}>No security events</div>
-            </div>
+            <EmptyState icon={<span style={{ fontSize: 48 }}>🛡️</span>} title="No security events" />
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {securityEvents.map(e => (
+            <GlassCard lift={false}>
+              {securityEvents.map((e, i) => (
                 <div key={e.id} style={{
                   display: "flex", gap: 12, alignItems: "center",
-                  background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 16px",
+                  padding: "10px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
                 }}>
                   <span style={{
                     fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 60,
-                    color: e.severity === "error" ? C.redSoft : e.severity === "warning" ? C.amber : "var(--t4)",
+                    color: e.severity === "error" ? "var(--red)" : e.severity === "warning" ? "var(--yellow)" : "var(--t4)",
                   }}>
                     {e.severity}
                   </span>
@@ -311,7 +290,7 @@ export function SandboxPage() {
                   <span style={{ fontSize: 11, color: "var(--t5)" }}>{new Date(e.created_at).toLocaleString()}</span>
                 </div>
               ))}
-            </div>
+            </GlassCard>
           )
         )}
       </div>
