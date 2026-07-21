@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
-import { S } from "../../../styles/theme";
+import { GoldButton, GlassCard } from "../../../shared/ui/gold";
 
 interface PlanDTO {
   id: string; name: string; price_monthly_usd: number;
@@ -70,17 +70,17 @@ export function SubscriptionTab({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {billing && billing.plan !== "free" && (
-        <div style={{ ...S.card, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <GlassCard style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>Manage your subscription</div>
             <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 2 }}>
               Change plan, update your payment method, or cancel — handled securely by Stripe.
             </div>
           </div>
-          <button onClick={() => void openPortal()} disabled={openingPortal} style={S.btnSecondary}>
+          <GoldButton variant="ghost" onClick={() => void openPortal()} disabled={openingPortal}>
             {openingPortal ? "Opening…" : "Manage in Stripe Portal"}
-          </button>
-        </div>
+          </GoldButton>
+        </GlassCard>
       )}
 
       <div>
@@ -90,10 +90,10 @@ export function SubscriptionTab({
             const isCurrent = p.id === billing?.plan;
             const purchasable = billing?.purchasable_plans.includes(p.id);
             return (
-              <div key={p.id} style={{
-                ...S.card, padding: "18px 20px",
-                border: isCurrent ? "1px solid var(--accent)" : S.card.border as string,
-              }}>
+              <GlassCard
+                key={p.id}
+                style={{ padding: "18px 20px", border: isCurrent ? "1px solid var(--accent)" : undefined }}
+              >
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>{p.name}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", marginBottom: 10 }}>
                   {p.price_monthly_usd > 0 ? `$${p.price_monthly_usd}` : p.id === "enterprise" ? "Custom" : "Free"}
@@ -104,22 +104,19 @@ export function SubscriptionTab({
                   {p.trial_days > 0 && !isCurrent && <> · {p.trial_days}-day trial</>}
                 </div>
                 {isCurrent ? (
-                  <div style={{ ...S.btnSecondary, textAlign: "center", opacity: 0.6, cursor: "default" }}>Current Plan</div>
+                  <GoldButton variant="ghost" disabled style={{ width: "100%" }}>Current Plan</GoldButton>
                 ) : purchasable ? (
-                  <button
-                    onClick={() => void upgrade(p.id)} disabled={!!upgrading}
-                    style={{ ...S.btnPrimary, width: "100%" }}
-                  >
+                  <GoldButton onClick={() => void upgrade(p.id)} disabled={!!upgrading} style={{ width: "100%" }}>
                     {upgrading === p.id ? "Redirecting…" : "Upgrade"}
-                  </button>
+                  </GoldButton>
                 ) : p.id === "enterprise" ? (
-                  <div style={{ ...S.btnSecondary, textAlign: "center" }}>Contact Sales</div>
+                  <GoldButton variant="ghost" disabled style={{ width: "100%" }}>Contact Sales</GoldButton>
                 ) : (
-                  <div style={{ ...S.btnSecondary, textAlign: "center", opacity: 0.4, cursor: "not-allowed" }} title="Stripe price not configured">
+                  <GoldButton variant="ghost" disabled title="Stripe price not configured" style={{ width: "100%" }}>
                     Unavailable
-                  </div>
+                  </GoldButton>
                 )}
-              </div>
+              </GlassCard>
             );
           })}
         </div>

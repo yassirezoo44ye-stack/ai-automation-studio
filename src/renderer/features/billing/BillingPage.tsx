@@ -7,7 +7,9 @@ import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
-import { S, C } from "../../styles/theme";
+import { S } from "../../styles/theme";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { StatusBadge } from "../../shared/ui/StatusBadge";
 import { SubscriptionTab } from "./tabs/SubscriptionTab";
 import { UsageTab, type BillingUsage } from "./tabs/UsageTab";
 import { InvoicesTab } from "./tabs/InvoicesTab";
@@ -66,11 +68,11 @@ export function BillingPage() {
 
   if (!currentOrgId) {
     return (
-      <div className="empty-state" style={{ margin: "auto" }}>
-        <div style={{ fontSize: 40 }}>💳</div>
-        <h3>No organization selected</h3>
-        <p>{orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}</p>
-      </div>
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>💳</span>}
+        title="No organization selected"
+        description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+      />
     );
   }
 
@@ -79,25 +81,25 @@ export function BillingPage() {
       <header style={S.header}>
         <span style={S.headerTitle}>Billing — {currentOrg?.name ?? "…"}</span>
         {billing && (
-          <span style={{
-            fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-            color: billing.has_access ? C.green : C.amber,
-            background: billing.has_access ? "rgba(52,211,153,.12)" : "rgba(245,158,11,.12)",
-            border: `1px solid ${billing.has_access ? "rgba(52,211,153,.3)" : "rgba(245,158,11,.3)"}`,
-          }}>
-            {billing.plan.toUpperCase()} · {billing.status}
-          </span>
+          <StatusBadge
+            kind={billing.has_access ? "success" : "warning"}
+            label={`${billing.plan.toUpperCase()} · ${billing.status}`}
+          />
         )}
       </header>
 
-      <div style={{ display: "flex", gap: 6, padding: "12px 24px 0" }}>
+      <div role="tablist" aria-label="Billing sections" style={{ display: "flex", gap: 6, padding: "12px 24px 0" }}>
         {TABS.map(t => (
           <button
             key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
             style={{
-              ...(tab === t.id ? S.btnPrimary : S.btnSecondary),
-              padding: "7px 14px", fontSize: 12,
+              padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
+              background: tab === t.id ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+              color: tab === t.id ? "var(--accent-2)" : "var(--t4)",
             }}
           >
             {t.label}

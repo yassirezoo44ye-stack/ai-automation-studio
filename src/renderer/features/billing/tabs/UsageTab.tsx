@@ -2,7 +2,7 @@
  * UsageTab — usage meters for the current billing period.
  * Data comes from the parent BillingPage's already-fetched `billing.usage`.
  */
-import { S, C } from "../../../styles/theme";
+import { GlassCard } from "../../../shared/ui/gold";
 
 interface UsageMetric { used: number; limit: number; pct: number | null }
 
@@ -23,7 +23,7 @@ function fmt(n: number): string {
 
 function UsageBar({ metric, data }: { metric: string; data: UsageMetric }) {
   const pct = data.pct ?? 0;
-  const color = pct >= 90 ? C.red : pct >= 70 ? C.amber : C.green;
+  const color = pct >= 90 ? "var(--red)" : pct >= 70 ? "var(--yellow)" : "var(--green)";
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
@@ -42,11 +42,13 @@ export function UsageTab({ usage }: { usage: BillingUsage | null }) {
     return <div className="skeleton" style={{ height: 200, borderRadius: 16 }} />;
   }
   return (
-    <div style={S.card}>
-      <div style={{ ...S.cardTitle, marginBottom: 14 }}>Usage this period ({usage.period})</div>
+    <GlassCard lift={false}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 14 }}>
+        Usage this period ({usage.period})
+      </div>
       {Object.entries(usage.metrics).map(([metric, data]) => (
         <UsageBar key={metric} metric={metric} data={data} />
       ))}
-    </div>
+    </GlassCard>
   );
 }

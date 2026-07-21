@@ -5,7 +5,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
-import { S, C } from "../../../styles/theme";
+import { GoldButton, GlassCard } from "../../../shared/ui/gold";
+import { EmptyState } from "../../../shared/ui/EmptyState";
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
+import { type StatusBadgeKind } from "../../../styles/theme";
 
 interface Payment {
   id: string; status: string; amount_cents: number; currency: string;
@@ -17,8 +20,8 @@ type HistoryRow =
   | { kind: "payment"; at: string; data: Payment }
   | { kind: "credit"; at: string; data: CreditEntry };
 
-const STATUS_COLOR: Record<string, string> = {
-  succeeded: C.green, pending: C.amber, failed: C.red, refunded: C.gray,
+const STATUS_KIND: Record<string, StatusBadgeKind> = {
+  succeeded: "success", pending: "warning", failed: "error", refunded: "neutral",
 };
 
 export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
@@ -26,9 +29,11 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
   const [balance, setBalance] = useState<number | null>(null);
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const [pr, cr] = await Promise.all([
         apiFetch(`/api/orgs/${currentOrgId}/billing/payments`),
@@ -47,6 +52,7 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
     } catch {
       toast("Could not load billing history", "err");
       setRows([]);
+      setError(true);
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
@@ -60,22 +66,30 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
     );
   }
 
+  if (error) {
+    return (
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+        title="Could not load billing history"
+        description="Something went wrong reaching the server."
+        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+      />
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {balance !== null && balance > 0 && (
-        <div style={{ ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <GlassCard lift={false} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 13, color: "var(--t2)" }}>Account credit balance</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: C.green }}>${balance.toFixed(2)}</span>
-        </div>
+          <span style={{ fontSize: 16, fontWeight: 700, color: "var(--green)" }}>${balance.toFixed(2)}</span>
+        </GlassCard>
       )}
 
       {rows.length === 0 ? (
-        <div className="empty-state">
-          <div style={{ fontSize: 40 }}>📜</div>
-          <h3>No billing history yet</h3>
-        </div>
+        <EmptyState icon={<span style={{ fontSize: 40 }}>📜</span>} title="No billing history yet" />
       ) : (
-        <div style={S.card}>
+        <GlassCard lift={false}>
           {rows.map((row, i) => (
             <div key={`${row.kind}-${row.data.id}`} style={{
               padding: "12px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
@@ -93,16 +107,11 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
                 </div>
               </div>
               {row.kind === "payment" && (
-                <span style={{
-                  fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-                  color: STATUS_COLOR[row.data.status] ?? C.gray,
-                  background: (STATUS_COLOR[row.data.status] ?? C.gray) + "18",
-                  border: `1px solid ${STATUS_COLOR[row.data.status] ?? C.gray}33`,
-                }}>{row.data.status}</span>
+                <StatusBadge kind={STATUS_KIND[row.data.status] ?? "neutral"} label={row.data.status} />
               )}
             </div>
           ))}
-        </div>
+        </GlassCard>
       )}
     </div>
   );

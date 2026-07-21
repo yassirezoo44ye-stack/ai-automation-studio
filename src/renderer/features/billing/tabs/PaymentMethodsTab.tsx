@@ -7,7 +7,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
-import { S, C } from "../../../styles/theme";
+import { GoldButton, GlassCard } from "../../../shared/ui/gold";
+import { EmptyState } from "../../../shared/ui/EmptyState";
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
 
 interface PaymentMethod {
   id: string; brand: string | null; last4: string | null;
@@ -18,11 +20,13 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
   const toast = useToast();
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const r = await apiFetch(`/api/orgs/${currentOrgId}/billing/payment-methods`);
       if (!r.ok) throw new Error();
@@ -31,6 +35,7 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
     } catch {
       toast("Could not load payment methods", "err");
       setMethods([]);
+      setError(true);
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
@@ -68,24 +73,31 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button onClick={() => void sync()} disabled={syncing} style={S.btnSecondary}>
+        <GoldButton variant="ghost" onClick={() => void sync()} disabled={syncing}>
           {syncing ? "Refreshing…" : "Refresh"}
-        </button>
-        <button onClick={() => void openPortal()} disabled={openingPortal} style={S.btnPrimary}>
+        </GoldButton>
+        <GoldButton onClick={() => void openPortal()} disabled={openingPortal}>
           {openingPortal ? "Opening…" : "Manage in Stripe Portal"}
-        </button>
+        </GoldButton>
       </div>
 
       {loading ? (
         <div className="skeleton" style={{ height: 100, borderRadius: 16 }} />
+      ) : error ? (
+        <EmptyState
+          icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+          title="Could not load payment methods"
+          description="Something went wrong reaching the server."
+          action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+        />
       ) : methods.length === 0 ? (
-        <div className="empty-state">
-          <div style={{ fontSize: 40 }}>💳</div>
-          <h3>No payment method on file</h3>
-          <p>Add one from the Stripe Portal above.</p>
-        </div>
+        <EmptyState
+          icon={<span style={{ fontSize: 40 }}>💳</span>}
+          title="No payment method on file"
+          description="Add one from the Stripe Portal above."
+        />
       ) : (
-        <div style={S.card}>
+        <GlassCard lift={false}>
           {methods.map((m, i) => (
             <div key={m.id} style={{
               padding: "12px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
@@ -99,15 +111,10 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
                   {m.exp_month && m.exp_year ? `Expires ${m.exp_month}/${m.exp_year}` : ""}
                 </div>
               </div>
-              {m.is_default && (
-                <span style={{
-                  fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-                  color: C.green, background: "rgba(52,211,153,.12)", border: "1px solid rgba(52,211,153,.3)",
-                }}>Default</span>
-              )}
+              {m.is_default && <StatusBadge kind="success" label="Default" />}
             </div>
           ))}
-        </div>
+        </GlassCard>
       )}
     </div>
   );

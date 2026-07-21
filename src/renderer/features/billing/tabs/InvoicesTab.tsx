@@ -5,7 +5,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
-import { S, C } from "../../../styles/theme";
+import { GoldButton, GlassCard } from "../../../shared/ui/gold";
+import { EmptyState } from "../../../shared/ui/EmptyState";
+import { StatusBadge } from "../../../shared/ui/StatusBadge";
+import { type StatusBadgeKind } from "../../../styles/theme";
 
 interface Invoice {
   id: string; status: string; amount_due_cents: number; amount_paid_cents: number;
@@ -13,9 +16,9 @@ interface Invoice {
   created_at: string;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  paid: C.green, open: C.amber, draft: C.gray,
-  uncollectible: C.red, void: C.gray,
+const STATUS_KIND: Record<string, StatusBadgeKind> = {
+  paid: "success", open: "warning", draft: "neutral",
+  uncollectible: "error", void: "neutral",
 };
 
 function money(cents: number, currency: string): string {
@@ -26,9 +29,11 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
   const toast = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const r = await apiFetch(`/api/orgs/${currentOrgId}/billing/invoices`);
       if (!r.ok) throw new Error();
@@ -37,6 +42,7 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
     } catch {
       toast("Could not load invoices", "err");
       setInvoices([]);
+      setError(true);
     } finally { setLoading(false); }
   }, [currentOrgId, toast]);
 
@@ -50,18 +56,29 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
     );
   }
 
+  if (error) {
+    return (
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>⚠️</span>}
+        title="Could not load invoices"
+        description="Something went wrong reaching the server."
+        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+      />
+    );
+  }
+
   if (invoices.length === 0) {
     return (
-      <div className="empty-state">
-        <div style={{ fontSize: 40 }}>🧾</div>
-        <h3>No invoices yet</h3>
-        <p>Invoices appear here once you're on a paid plan.</p>
-      </div>
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>🧾</span>}
+        title="No invoices yet"
+        description="Invoices appear here once you're on a paid plan."
+      />
     );
   }
 
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       {invoices.map((inv, i) => (
         <div key={inv.id} style={{
           padding: "12px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
@@ -75,21 +92,16 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
               {new Date(inv.created_at).toLocaleDateString()}
             </div>
           </div>
-          <span style={{
-            fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
-            color: STATUS_COLOR[inv.status] ?? C.gray, background: (STATUS_COLOR[inv.status] ?? C.gray) + "18",
-            border: `1px solid ${STATUS_COLOR[inv.status] ?? C.gray}33`,
-          }}>
-            {inv.status}
-          </span>
+          <StatusBadge kind={STATUS_KIND[inv.status] ?? "neutral"} label={inv.status} />
           {(inv.hosted_invoice_url || inv.invoice_pdf_url) && (
             <a
               href={inv.hosted_invoice_url ?? inv.invoice_pdf_url ?? "#"} target="_blank" rel="noreferrer"
-              style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 11, textDecoration: "none" }}
+              className="g-btn g-btn--ghost"
+              style={{ padding: "5px 12px", fontSize: 11, textDecoration: "none" }}
             >View</a>
           )}
         </div>
       ))}
-    </div>
+    </GlassCard>
   );
 }
