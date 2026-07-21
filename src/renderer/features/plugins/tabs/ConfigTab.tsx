@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { apiFetch } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
+import { GoldButton } from "../../../shared/ui/gold";
 
 export function ConfigTab({ installationId, config }: { installationId: string; config: Record<string, unknown> }) {
   const toast = useToast();
@@ -54,17 +55,9 @@ export function ConfigTab({ installationId, config }: { installationId: string; 
           fontSize: 12, fontFamily: "monospace", padding: 10, resize: "vertical",
         }}
       />
-      <button
-        onClick={() => void save()}
-        disabled={saving}
-        style={{
-          alignSelf: "flex-start", padding: "6px 16px", borderRadius: 6, border: "none",
-          cursor: saving ? "wait" : "pointer", background: "linear-gradient(135deg,#D4AF37,#FFD700)",
-          color: "#121008", fontSize: 12, fontWeight: 600,
-        }}
-      >
+      <GoldButton onClick={() => void save()} disabled={saving} style={{ alignSelf: "flex-start" }}>
         {saving ? "…" : "Save Configuration"}
-      </button>
+      </GoldButton>
     </div>
   );
 }

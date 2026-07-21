@@ -1,4 +1,3 @@
-import { C } from "../../../shared/lib/theme";
 /**
  * HealthTab — current status + recent event log.
  * Data: GET /plugins/installed/{id}/health, GET /plugins/installed/{id}/logs
@@ -9,7 +8,7 @@ import { apiFetch, parseJSON } from "../../../shared/utils/api";
 interface LogEntry { event: string; message: string | null; created_at: string }
 
 const EVENT_COLOR: Record<string, string> = {
-  load: C.green, unload: "var(--t4)", reload: C.blue, error: C.redSoft, tick: "var(--t4)",
+  load: "var(--green)", unload: "var(--t4)", reload: "var(--blue)", error: "var(--red)", tick: "var(--t4)",
 };
 
 export function HealthTab({ installationId, status }: { installationId: string; status: string }) {
@@ -38,7 +37,7 @@ export function HealthTab({ installationId, status }: { installationId: string; 
         <span style={{ fontSize: 12, color: "var(--t4)" }}>Status:</span>
         <span style={{
           fontSize: 12, fontWeight: 700, textTransform: "uppercase",
-          color: status === "enabled" ? C.green : status === "failed" ? C.redSoft : "var(--t3)",
+          color: status === "enabled" ? "var(--green)" : status === "failed" ? "var(--red)" : "var(--t3)",
         }}>
           {status}
         </span>

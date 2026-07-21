@@ -1,4 +1,3 @@
-import { C } from "../../shared/lib/theme";
 /**
  * PluginsPage — Installed / Available tab shell (mirrors BillingPage.tsx's
  * and MarketplacePage.tsx's established tab-shell pattern; no React Router
@@ -15,6 +14,8 @@ import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
+import { GoldButton, GlassCard } from "../../shared/ui/gold";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import { VersionsTab } from "../marketplace/tabs/VersionsTab";
 import { PermissionsTab } from "./tabs/PermissionsTab";
 import { HealthTab } from "./tabs/HealthTab";
@@ -39,7 +40,7 @@ type TopTab = "installed" | "available";
 type DetailTab = "config" | "permissions" | "health" | "versions";
 
 const STATUS_COLOR: Record<string, string> = {
-  enabled: C.green, disabled: "var(--t4)", failed: C.redSoft, installed: C.blue, uninstalled: "var(--t5)",
+  enabled: "var(--green)", disabled: "var(--t4)", failed: "var(--red)", installed: "var(--blue)", uninstalled: "var(--t5)",
 };
 
 export function PluginsPage() {
@@ -140,11 +141,11 @@ export function PluginsPage() {
 
   if (!currentOrgId) {
     return (
-      <div className="empty-state" style={{ margin: "auto" }}>
-        <div style={{ fontSize: 40 }}>🧩</div>
-        <h3>No organization selected</h3>
-        <p>{orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}</p>
-      </div>
+      <EmptyState
+        icon={<span style={{ fontSize: 40 }}>🧩</span>}
+        title="No organization selected"
+        description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+      />
     );
   }
 
@@ -163,7 +164,7 @@ export function PluginsPage() {
           {(["installed", "available"] as TopTab[]).map(t => (
             <button key={t} onClick={() => setTopTab(t)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: topTab === t ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+              background: topTab === t ? "var(--accent-dim)" : "var(--bg-hover)",
               color: topTab === t ? "var(--accent-2)" : "var(--t4)", textTransform: "capitalize",
             }}>
               {t} {t === "installed" ? `(${installed.length})` : ""}
@@ -179,15 +180,15 @@ export function PluginsPage() {
           </div>
         ) : topTab === "installed" ? (
           installed.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "64px 0", color: "var(--t4)" }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>🧩</div>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "var(--t2)" }}>No plugins installed</div>
-              <p style={{ fontSize: 13 }}>Browse the Available tab to install one.</p>
-            </div>
+            <EmptyState
+              icon={<span style={{ fontSize: 48 }}>🧩</span>}
+              title="No plugins installed"
+              description="Browse the Available tab to install one."
+            />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {installed.map(inst => (
-                <div key={inst.id} style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "16px 20px" }}>
+                <GlassCard key={inst.id} lift={false} style={{ padding: "16px 20px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -199,32 +200,21 @@ export function PluginsPage() {
                       <div style={{ fontSize: 11, color: "var(--t4)" }}>v{inst.version} · {inst.plugin_id}</div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => toggleDetails(inst.id)} style={{
-                        padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                        background: "rgba(255,255,255,.04)", color: "var(--t3)", fontSize: 12, cursor: "pointer",
-                      }}>
+                      <GoldButton variant="ghost" onClick={() => toggleDetails(inst.id)} style={{ padding: "6px 12px", fontSize: 12 }}>
                         {expandedId === inst.id ? "Hide" : "Details"}
-                      </button>
-                      <button
-                        onClick={() => void toggleEnabled(inst)} disabled={busy === inst.id}
-                        style={{
-                          padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                          background: "rgba(255,255,255,.04)", color: "var(--t3)", fontSize: 12,
-                          cursor: busy === inst.id ? "wait" : "pointer",
-                        }}
+                      </GoldButton>
+                      <GoldButton
+                        variant="ghost" onClick={() => void toggleEnabled(inst)} disabled={busy === inst.id}
+                        style={{ padding: "6px 12px", fontSize: 12 }}
                       >
                         {inst.status === "enabled" ? "Disable" : "Enable"}
-                      </button>
-                      <button
-                        onClick={() => void uninstall(inst)} disabled={busy === inst.id}
-                        style={{
-                          padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
-                          background: "rgba(248,113,113,.08)", color: C.redSoft, fontSize: 12,
-                          cursor: busy === inst.id ? "wait" : "pointer",
-                        }}
+                      </GoldButton>
+                      <GoldButton
+                        variant="danger" onClick={() => void uninstall(inst)} disabled={busy === inst.id}
+                        style={{ padding: "6px 12px", fontSize: 12 }}
                       >
                         Uninstall
-                      </button>
+                      </GoldButton>
                     </div>
                   </div>
 
@@ -234,7 +224,7 @@ export function PluginsPage() {
                         {(["config", "permissions", "health", "versions"] as DetailTab[]).map(t => (
                           <button key={t} onClick={() => setDetailTab(t)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            background: detailTab === t ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+                            background: detailTab === t ? "var(--accent-dim)" : "var(--bg-hover)",
                             color: detailTab === t ? "var(--accent-2)" : "var(--t4)", textTransform: "capitalize",
                           }}>
                             {t}
@@ -261,22 +251,19 @@ export function PluginsPage() {
                       )}
                     </div>
                   )}
-                </div>
+                </GlassCard>
               ))}
             </div>
           )
         ) : (
           available.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "64px 0", color: "var(--t4)" }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>🧩</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--t2)" }}>No plugins published yet</div>
-            </div>
+            <EmptyState icon={<span style={{ fontSize: 48 }}>🧩</span>} title="No plugins published yet" />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {available.map(p => {
                 const alreadyInstalled = installedItemIds.has(p.id);
                 return (
-                <div key={p.id} style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <GlassCard key={p.id} lift={false} style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{p.name}</div>
                     <div style={{ fontSize: 11, color: "var(--t4)" }}>by {p.author} · v{p.version}</div>
@@ -284,19 +271,15 @@ export function PluginsPage() {
                   <p style={{ fontSize: 12, color: "var(--t3)", margin: 0, lineHeight: 1.5 }}>{p.description}</p>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
                     <span style={{ fontSize: 11, color: "var(--t5)" }}>{p.installs.toLocaleString()} installs</span>
-                    <button
+                    <GoldButton
+                      variant={alreadyInstalled ? "ghost" : "primary"}
                       onClick={() => (alreadyInstalled ? setTopTab("installed") : void install(p.id))}
                       disabled={busy === p.id}
-                      style={{
-                        padding: "6px 16px", borderRadius: 8, border: "none", cursor: busy === p.id ? "wait" : "pointer",
-                        background: alreadyInstalled ? "rgba(255,255,255,.06)" : "linear-gradient(135deg,#D4AF37,#FFD700)",
-                        color: alreadyInstalled ? "var(--t3)" : "#121008", fontSize: 12, fontWeight: 600,
-                      }}
                     >
                       {busy === p.id ? "…" : alreadyInstalled ? "Installed" : "Install"}
-                    </button>
+                    </GoldButton>
                   </div>
-                </div>
+                </GlassCard>
                 );
               })}
             </div>
