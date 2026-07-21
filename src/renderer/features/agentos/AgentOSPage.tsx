@@ -1,10 +1,12 @@
-import { C, withAlpha } from "../../shared/lib/theme";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { agentOsApi } from "./api";
 import { apiFetch } from "../../utils/api";
+import { useToast } from "../../contexts/toast";
+import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import type { AgentResult, AgentInfo, MemoryRecord, SystemStatus, Suggestion, DeliberationBid } from "./api";
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Layout-only styles (no shared primitive fits these — page chrome and the
+// underline tab-bar, both already fully token-based) ───────────────────────
 const S = {
   page: {
     display: "flex", flexDirection: "column" as const,
@@ -22,13 +24,8 @@ const S = {
   },
   title: {
     fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px",
-    background: "linear-gradient(135deg, var(--accent), #E6C558)",
+    background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
     WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-  },
-  badge: {
-    fontSize: 11, fontWeight: 600, padding: "2px 8px",
-    borderRadius: 99, background: "var(--accent)", color: "#fff",
-    letterSpacing: "0.5px",
   },
   tabs: {
     display: "flex", gap: 0, marginBottom: -1,
@@ -44,46 +41,15 @@ const S = {
     flex: 1, overflow: "auto", padding: 24,
     display: "grid", gridTemplateColumns: "1fr", gap: 20,
   },
-  card: {
-    background: "var(--bg-surface)", border: "1px solid var(--border)",
-    borderRadius: 12, overflow: "hidden",
-  },
   cardHeader: {
-    padding: "12px 16px", borderBottom: "1px solid var(--border)",
-    fontSize: 13, fontWeight: 600, color: "var(--t2)",
     display: "flex", alignItems: "center", justifyContent: "space-between",
+    marginBottom: 14, fontSize: 13, fontWeight: 600, color: "var(--t2)",
   },
-  cardBody: { padding: 16 },
-  input: {
-    width: "100%", padding: "10px 14px", fontSize: 14,
-    background: "var(--bg-base)", border: "1px solid var(--border)",
-    borderRadius: 8, color: "var(--t1)", outline: "none",
-    boxSizing: "border-box" as const,
-    fontFamily: "inherit",
-  },
-  btn: (variant: "primary" | "ghost" | "danger" = "primary") => ({
-    padding: "8px 16px", fontSize: 13, fontWeight: 500,
-    borderRadius: 8,
-    border: variant === "ghost" ? "1px solid var(--border)" : "none",
-    cursor: "pointer",
-    background: variant === "primary" ? "var(--accent)"
-              : variant === "danger"  ? C.red
-              : "var(--bg-base)",
-    color: variant === "ghost" ? "var(--t2)" : "#fff",
-    transition: "opacity .15s",
-    whiteSpace: "nowrap" as const,
-    flexShrink: 0,
-  }),
   row: {
     display: "flex", gap: 8, alignItems: "center",
   },
-  tag: (color: string) => ({
-    fontSize: 11, fontWeight: 600, padding: "2px 7px",
-    borderRadius: 99, background: color + "22", color,
-    letterSpacing: "0.3px",
-  }),
   mono: {
-    fontFamily: "ui-monospace, monospace", fontSize: 12,
+    fontFamily: "var(--font-mono)", fontSize: 12,
     color: "var(--t2)",
   },
 };
@@ -100,7 +66,7 @@ function StatPill({ label, value, color = "var(--accent)" }: { label: string; va
 }
 
 function SuccessBar({ rate, height = 6 }: { rate: number; height?: number }) {
-  const color = rate >= 0.8 ? C.greenBright : rate >= 0.5 ? C.amber : C.red;
+  const color = rate >= 0.8 ? "var(--green)" : rate >= 0.5 ? "var(--yellow)" : "var(--red)";
   return (
     <div style={{ background: "var(--bg-base)", borderRadius: 99, height, overflow: "hidden", flex: 1 }}>
       <div style={{ height: "100%", width: `${rate * 100}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
@@ -109,15 +75,15 @@ function SuccessBar({ rate, height = 6 }: { rate: number; height?: number }) {
 }
 
 function ResultBox({ result }: { result: AgentResult }) {
-  const color = result.success ? C.greenBright : C.red;
+  const border = result.success ? "var(--green)" : "var(--red)";
   return (
-    <div style={{ marginTop: 12, borderRadius: 8, border: `1px solid ${color}33`, background: color + "0a", padding: 12 }}>
+    <GlassCard lift={false} style={{ marginTop: 12, background: result.success ? "var(--green-dim)" : "var(--red-dim)", border: `1px solid ${border}` }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-        <span style={{ color, fontWeight: 700, fontSize: 13 }}>{result.success ? "✓" : "✗"} {result.agent}</span>
+        <span style={{ color: border, fontWeight: 700, fontSize: 13 }}>{result.success ? "✓" : "✗"} {result.agent}</span>
         <span style={{ color: "var(--t3)", fontSize: 11 }}>{result.duration_ms.toFixed(0)}ms</span>
       </div>
       <pre style={{ ...S.mono, whiteSpace: "pre-wrap", margin: 0, color: "var(--t1)" }}>{result.output}</pre>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -162,63 +128,61 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   };
 
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <div style={S.cardHeader}>
         <span>🧠 Natural Language Terminal</span>
         <div style={S.row}>
           {(["run", "deliberate", "plan"] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)} style={{
-              ...S.btn(mode === m ? "primary" : "ghost"),
-              padding: "5px 12px", fontSize: 12,
-            }}>{m}</button>
+            <GoldButton key={m} variant={mode === m ? "primary" : "ghost"} onClick={() => setMode(m)} style={{ padding: "5px 12px", fontSize: 12 }}>
+              {m}
+            </GoldButton>
           ))}
         </div>
       </div>
-      <div style={S.cardBody}>
-        <div style={S.row}>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={onKey}
-            placeholder={
-              mode === "plan"      ? "Describe your goal: build and deploy a web scraper" :
-              mode === "deliberate"? "Describe a task — agents will vote on who handles it" :
-              "Natural language: analyze my project / deploy to production / evolve run"
-            }
-            style={{ ...S.input, minHeight: 60, resize: "vertical" }}
-            autoFocus
-          />
-          <button onClick={submit} disabled={loading} style={S.btn("primary")}>
-            {loading ? "…" : "Run"}
-          </button>
+      <div style={S.row}>
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={onKey}
+          placeholder={
+            mode === "plan"      ? "Describe your goal: build and deploy a web scraper" :
+            mode === "deliberate"? "Describe a task — agents will vote on who handles it" :
+            "Natural language: analyze my project / deploy to production / evolve run"
+          }
+          className="g-input"
+          style={{ minHeight: 60, resize: "vertical" }}
+          autoFocus
+        />
+        <GoldButton onClick={submit} disabled={loading}>
+          {loading ? "…" : "Run"}
+        </GoldButton>
+      </div>
+      {mode === "deliberate" && delib && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, color: "var(--t3)", marginBottom: 8 }}>Agent votes:</div>
+          {delib.bids.slice(0, 5).map(b => (
+            <div key={b.agent} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
+              <span style={{ width: 90, fontSize: 12, fontWeight: b.agent === delib.winner ? 700 : 400,
+                             color: b.agent === delib.winner ? "var(--accent)" : "var(--t2)" }}>
+                {b.agent === delib.winner ? "▶ " : "  "}{b.agent}
+              </span>
+              <SuccessBar rate={b.score} height={8} />
+              <span style={{ fontSize: 11, color: "var(--t3)", width: 36 }}>{(b.score * 100).toFixed(0)}%</span>
+            </div>
+          ))}
         </div>
-        {mode === "deliberate" && delib && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, color: "var(--t3)", marginBottom: 8 }}>Agent votes:</div>
-            {delib.bids.slice(0, 5).map(b => (
-              <div key={b.agent} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
-                <span style={{ width: 90, fontSize: 12, fontWeight: b.agent === delib.winner ? 700 : 400,
-                               color: b.agent === delib.winner ? "var(--accent)" : "var(--t2)" }}>
-                  {b.agent === delib.winner ? "▶ " : "  "}{b.agent}
-                </span>
-                <SuccessBar rate={b.score} height={8} />
-                <span style={{ fontSize: 11, color: "var(--t3)", width: 36 }}>{(b.score * 100).toFixed(0)}%</span>
-              </div>
-            ))}
-          </div>
-        )}
+      )}
 
-        {/* Quick examples */}
-        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
-          {["help", "status", "analyze agents", "evolve analyze", "build ."].map(ex => (
-            <button key={ex} onClick={() => setInput(ex)} style={{ ...S.btn("ghost"), padding: "4px 10px", fontSize: 11 }}>
-              {ex}
-            </button>
-          ))}
-        </div>
+      {/* Quick examples */}
+      <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+        {["help", "status", "analyze agents", "evolve analyze", "build ."].map(ex => (
+          <GoldButton key={ex} variant="ghost" onClick={() => setInput(ex)} style={{ padding: "4px 10px", fontSize: 11 }}>
+            {ex}
+          </GoldButton>
+        ))}
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -229,18 +193,19 @@ function AgentGrid({ agents }: { agents: AgentInfo[] }) {
   for (const a of agents) groups[a.group] = [...(groups[a.group] ?? []), a];
 
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <div style={S.cardHeader}>
         <span>⚡ Registered Agents ({agents.length})</span>
       </div>
-      <div style={S.cardBody}>
-        {Object.entries(groups).map(([group, items]) => (
-          <div key={group} style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
-              {group}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
-              {items.map(a => (
+      {Object.entries(groups).map(([group, items]) => (
+        <div key={group} style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+            {group}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
+            {items.map(a => {
+              const rateKind = a.stats.success_rate >= 0.8 ? "green" : a.stats.success_rate >= 0.5 ? "yellow" : "red";
+              return (
                 <div key={a.name} style={{
                   padding: "10px 12px", borderRadius: 8,
                   background: "var(--bg-base)", border: "1px solid var(--border)",
@@ -248,9 +213,7 @@ function AgentGrid({ agents }: { agents: AgentInfo[] }) {
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</span>
                     {a.stats.call_count > 0 && (
-                      <span style={S.tag(a.stats.success_rate >= 0.8 ? C.greenBright : a.stats.success_rate >= 0.5 ? C.amber : C.red)}>
-                        {(a.stats.success_rate * 100).toFixed(0)}%
-                      </span>
+                      <span className={`badge badge-${rateKind}`}>{(a.stats.success_rate * 100).toFixed(0)}%</span>
                     )}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--t3)", marginBottom: a.stats.call_count > 0 ? 6 : 0 }}>
@@ -265,12 +228,12 @@ function AgentGrid({ agents }: { agents: AgentInfo[] }) {
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
-    </div>
+        </div>
+      ))}
+    </GlassCard>
   );
 }
 
@@ -278,11 +241,11 @@ function AgentGrid({ agents }: { agents: AgentInfo[] }) {
 
 function ExecutionLog({ records }: { records: MemoryRecord[] }) {
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <div style={S.cardHeader}>
         <span>📋 Execution Memory ({records.length})</span>
       </div>
-      <div style={{ ...S.cardBody, maxHeight: 320, overflowY: "auto" }}>
+      <div style={{ maxHeight: 320, overflowY: "auto" }}>
         {records.length === 0 ? (
           <div style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
             No executions yet — run a command above.
@@ -292,7 +255,7 @@ function ExecutionLog({ records }: { records: MemoryRecord[] }) {
             display: "flex", gap: 10, alignItems: "flex-start",
             padding: "7px 0", borderBottom: i < records.length - 1 ? "1px solid var(--border)" : "none",
           }}>
-            <span style={{ color: r.success ? C.greenBright : C.red, fontSize: 14, flexShrink: 0, marginTop: 1 }}>
+            <span style={{ color: r.success ? "var(--green)" : "var(--red)", fontSize: 14, flexShrink: 0, marginTop: 1 }}>
               {r.success ? "✓" : "✗"}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -306,12 +269,12 @@ function ExecutionLog({ records }: { records: MemoryRecord[] }) {
               <div style={{ fontSize: 12, color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
                 {r.input}
               </div>
-              {r.error && <div style={{ fontSize: 11, color: C.red }}>{r.error}</div>}
+              {r.error && <div style={{ fontSize: 11, color: "var(--red)" }}>{r.error}</div>}
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -334,86 +297,84 @@ function EvolutionPanel({
   };
 
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <div style={S.cardHeader}>
         <span>🧬 Self-Evolution Engine</span>
         <div style={S.row}>
-          <button onClick={() => run("evolve", onEvolve)} disabled={loading === "evolve"} style={S.btn("primary")}>
+          <GoldButton onClick={() => run("evolve", onEvolve)} disabled={loading === "evolve"}>
             {loading === "evolve" ? "Evolving…" : "▶ Evolve"}
-          </button>
-          <button onClick={() => run("suggest", onSuggest)} disabled={loading === "suggest"} style={S.btn("ghost")}>
+          </GoldButton>
+          <GoldButton variant="ghost" onClick={() => run("suggest", onSuggest)} disabled={loading === "suggest"}>
             {loading === "suggest" ? "…" : "Suggest"}
-          </button>
+          </GoldButton>
         </div>
       </div>
-      <div style={S.cardBody}>
-        {/* Stats row */}
-        {status && (
-          <div style={{ display: "flex", gap: 24, marginBottom: 16, flexWrap: "wrap" as const }}>
-            <StatPill label="Agents"     value={status.agents} />
-            <StatPill label="Executions" value={status.memory_count} />
-            <StatPill label="Loop ticks" value={status.loop_stats?.tick_count ?? 0} color={C.purple} />
-            <StatPill label="Evolutions" value={status.loop_stats?.evolution_cycles ?? 0} color={C.amber} />
-            <StatPill label="LLM" value={status.llm_available ? "✓" : "✗"}
-                      color={status.llm_available ? C.greenBright : C.red} />
-          </div>
-        )}
+      {/* Stats row */}
+      {status && (
+        <div style={{ display: "flex", gap: 24, marginBottom: 16, flexWrap: "wrap" as const }}>
+          <StatPill label="Agents"     value={status.agents} />
+          <StatPill label="Executions" value={status.memory_count} />
+          <StatPill label="Loop ticks" value={status.loop_stats?.tick_count ?? 0} color="var(--accent)" />
+          <StatPill label="Evolutions" value={status.loop_stats?.evolution_cycles ?? 0} color="var(--yellow)" />
+          <StatPill label="LLM" value={status.llm_available ? "✓" : "✗"}
+                    color={status.llm_available ? "var(--green)" : "var(--red)"} />
+        </div>
+      )}
 
-        {/* Suggestions */}
-        {suggestions.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 8 }}>
-              Suggested improvements:
-            </div>
-            {suggestions.map(s => (
+      {/* Suggestions */}
+      {suggestions.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 8 }}>
+            Suggested improvements:
+          </div>
+          {suggestions.map(s => {
+            const priorityKind = s.priority >= 0.7 ? "red" : s.priority >= 0.4 ? "yellow" : "green";
+            return (
               <div key={s.index} style={{
                 display: "flex", gap: 10, alignItems: "center",
                 padding: "7px 10px", marginBottom: 4,
                 background: "var(--bg-base)", borderRadius: 8,
-                border: `1px solid ${s.implemented ? withAlpha(C.greenBright, "33") : "var(--border)"}`,
+                border: `1px solid ${s.implemented ? "var(--green)" : "var(--border)"}`,
               }}>
-                <span style={{ fontSize: 11, color: s.implemented ? C.greenBright : "var(--accent)", fontWeight: 700 }}>
+                <span style={{ fontSize: 11, color: s.implemented ? "var(--green)" : "var(--accent)", fontWeight: 700 }}>
                   [{s.index}]
                 </span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{s.title}</div>
                   <div style={{ fontSize: 11, color: "var(--t3)" }}>{s.description}</div>
                 </div>
-                <span style={S.tag(s.priority >= 0.7 ? C.red : s.priority >= 0.4 ? C.amber : C.greenBright)}>
-                  {(s.priority * 100).toFixed(0)}%
-                </span>
+                <span className={`badge badge-${priorityKind}`}>{(s.priority * 100).toFixed(0)}%</span>
                 {!s.implemented && (
                   <span style={{ fontSize: 11, color: "var(--t3)" }}>{s.agent_name}</span>
                 )}
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
+      )}
 
-        {/* Generate agent */}
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 8 }}>
-            Generate new agent:
-          </div>
-          <div style={S.row}>
-            <input
-              value={genDesc}
-              onChange={e => setGenDesc(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && genDesc.trim() && run("gen", () => onGenerate(genDesc))}
-              placeholder="a rate-limiting agent that tracks API calls per user"
-              style={S.input}
-            />
-            <button
-              onClick={() => genDesc.trim() && run("gen", () => onGenerate(genDesc).then(() => setGenDesc("")))}
-              disabled={loading === "gen" || !genDesc.trim()}
-              style={S.btn("primary")}
-            >
-              {loading === "gen" ? "…" : "Generate"}
-            </button>
-          </div>
+      {/* Generate agent */}
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 8 }}>
+          Generate new agent:
+        </div>
+        <div style={S.row}>
+          <input
+            value={genDesc}
+            onChange={e => setGenDesc(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && genDesc.trim() && run("gen", () => onGenerate(genDesc))}
+            placeholder="a rate-limiting agent that tracks API calls per user"
+            className="g-input"
+          />
+          <GoldButton
+            onClick={() => genDesc.trim() && run("gen", () => onGenerate(genDesc).then(() => setGenDesc("")))}
+            disabled={loading === "gen" || !genDesc.trim()}
+          >
+            {loading === "gen" ? "…" : "Generate"}
+          </GoldButton>
         </div>
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -427,50 +388,46 @@ function PerformancePanel({ stats }: { stats: PerfData | null }) {
   const underperf  = stats?.underperforming_agents ?? [];
 
   if (!agentStats.length) return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <div style={S.cardHeader}><span>📊 Performance</span></div>
-      <div style={S.cardBody}>
-        <p style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "16px 0" }}>
-          Run some commands to see performance data.
-        </p>
-      </div>
-    </div>
+      <p style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "16px 0" }}>
+        Run some commands to see performance data.
+      </p>
+    </GlassCard>
   );
 
+  const errorKind = errorRate > 0.3 ? "red" : errorRate > 0.1 ? "yellow" : "green";
+
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <div style={S.cardHeader}>
         <span>📊 Performance</span>
-        <span style={S.tag(errorRate > 0.3 ? C.red : errorRate > 0.1 ? C.amber : C.greenBright)}>
-          {(errorRate * 100).toFixed(0)}% error rate
-        </span>
+        <span className={`badge badge-${errorKind}`}>{(errorRate * 100).toFixed(0)}% error rate</span>
       </div>
-      <div style={S.cardBody}>
-        {underperf.length > 0 && (
-          <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 8,
-                        background: withAlpha(C.red, "11"), border: "1px solid #ef444433" }}>
-            <span style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>
-              ⚠ Underperforming: {underperf.join(", ")} — run "Evolve" to fix
-            </span>
-          </div>
-        )}
-        {agentStats.map(s => (
-          <div key={s.name} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-            <span style={{ width: 80, fontSize: 12, fontWeight: 500, flexShrink: 0 }}>{s.name}</span>
-            <SuccessBar rate={s.success_rate} />
-            <span style={{ fontSize: 11, color: "var(--t3)", width: 32, flexShrink: 0 }}>
-              {(s.success_rate * 100).toFixed(0)}%
-            </span>
-            <span style={{ fontSize: 11, color: "var(--t3)", width: 52, flexShrink: 0 }}>
-              {s.call_count} calls
-            </span>
-            <span style={{ fontSize: 11, color: "var(--t3)", width: 48, flexShrink: 0 }}>
-              {s.avg_ms.toFixed(0)}ms
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
+      {underperf.length > 0 && (
+        <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 8,
+                      background: "var(--red-dim)", border: "1px solid var(--red)" }}>
+          <span style={{ fontSize: 12, color: "var(--red)", fontWeight: 600 }}>
+            ⚠ Underperforming: {underperf.join(", ")} — run "Evolve" to fix
+          </span>
+        </div>
+      )}
+      {agentStats.map(s => (
+        <div key={s.name} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
+          <span style={{ width: 80, fontSize: 12, fontWeight: 500, flexShrink: 0 }}>{s.name}</span>
+          <SuccessBar rate={s.success_rate} />
+          <span style={{ fontSize: 11, color: "var(--t3)", width: 32, flexShrink: 0 }}>
+            {(s.success_rate * 100).toFixed(0)}%
+          </span>
+          <span style={{ fontSize: 11, color: "var(--t3)", width: 52, flexShrink: 0 }}>
+            {s.call_count} calls
+          </span>
+          <span style={{ fontSize: 11, color: "var(--t3)", width: 48, flexShrink: 0 }}>
+            {s.avg_ms.toFixed(0)}ms
+          </span>
+        </div>
+      ))}
+    </GlassCard>
   );
 }
 
@@ -479,6 +436,7 @@ function PerformancePanel({ stats }: { stats: PerfData | null }) {
 type Tab = "terminal" | "agents" | "memory" | "evolution" | "performance" | "jobs";
 
 export function AgentOSPage() {
+  const toast = useToast();
   const [tab, setTab]               = useState<Tab>("terminal");
   const [results, setResults]       = useState<AgentResult[]>([]);
   const [agents, setAgents]         = useState<AgentInfo[]>([]);
@@ -486,12 +444,6 @@ export function AgentOSPage() {
   const [status, setStatus]         = useState<SystemStatus | null>(null);
   const [perfData, setPerfData]     = useState<PerfData | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
-
-  const showToast = (msg: string, ok = true) => {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
-  };
 
   const refresh = useCallback(async () => {
     try {
@@ -516,30 +468,30 @@ export function AgentOSPage() {
 
   const handleResult = useCallback((r: AgentResult) => {
     setResults(prev => [r, ...prev].slice(0, 20));
-    showToast(r.success ? `✓ ${r.agent}: done` : `✗ ${r.error ?? "failed"}`, r.success);
+    toast(r.success ? `✓ ${r.agent}: done` : `✗ ${r.error ?? "failed"}`, r.success ? "ok" : "err");
     setTimeout(refresh, 500);
-  }, [refresh]);
+  }, [refresh, toast]);
 
   const handleEvolve = async () => {
     const res = await agentOsApi.evolve();
     const evolved = (res.evolved as string[] | undefined) ?? [];
-    showToast(evolved.length ? `Evolved: ${evolved.join(", ")}` : "All agents stable", true);
+    toast(evolved.length ? `Evolved: ${evolved.join(", ")}` : "All agents stable", "ok");
     refresh();
   };
 
   const handleSuggest = async () => {
     const res = await agentOsApi.suggest(3);
     setSuggestions(res.suggestions);
-    showToast(`${res.count} suggestion(s) ready`, true);
+    toast(`${res.count} suggestion(s) ready`, "ok");
   };
 
   const handleGenerate = async (desc: string) => {
     const res = await agentOsApi.generate(desc);
     if (res.status === "created") {
-      showToast(`Agent created: ${res.agent_name}`, true);
+      toast(`Agent created: ${res.agent_name}`, "ok");
       refresh();
     } else {
-      showToast(res.error ?? "Generate failed", false);
+      toast(res.error ?? "Generate failed", "err");
     }
   };
 
@@ -554,26 +506,15 @@ export function AgentOSPage() {
 
   return (
     <div style={S.page}>
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: "fixed", top: 16, right: 16, zIndex: 9999,
-          padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500,
-          background: toast.ok ? C.greenBright : C.red, color: "#fff",
-          boxShadow: "0 4px 20px rgba(0,0,0,.3)",
-          animation: "fadeIn .2s ease",
-        }}>{toast.msg}</div>
-      )}
-
       {/* Header */}
       <div style={S.header}>
         <div style={S.headerTop}>
           <div style={S.title}>AgentOS</div>
-          <span style={S.badge}>AUTONOMOUS</span>
-          {status?.llm_available && <span style={S.badge}>LLM ✓</span>}
-          <button onClick={refresh} style={{ ...S.btn("ghost"), marginLeft: "auto", padding: "5px 12px", fontSize: 12 }}>
+          <span className="badge badge-purple">AUTONOMOUS</span>
+          {status?.llm_available && <span className="badge badge-purple">LLM ✓</span>}
+          <GoldButton variant="ghost" onClick={refresh} style={{ marginLeft: "auto", padding: "5px 12px", fontSize: 12 }}>
             ↻ Refresh
-          </button>
+          </GoldButton>
         </div>
         <div style={S.tabs}>
           {TABS.map(t => (
@@ -618,8 +559,11 @@ function JobsMonitor() {
     progress: number; error?: string;
     created_at: string; started_at?: string; finished_at?: string;
   };
+  // Matches JobQueue.stats()'s actual shape (app/core/jobs/queue.py) — counts
+  // is a nested per-status map, not a flat Record<string, number>.
+  type JobStats = { total: number; active: number; dead: number; counts: Record<string, number> };
   const [jobs, setJobs]       = useState<Job[]>([]);
-  const [stats, setStats]     = useState<Record<string, number> | null>(null);
+  const [stats, setStats]     = useState<JobStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow]         = useState(() => Date.now());
 
@@ -633,7 +577,7 @@ function JobsMonitor() {
     try {
       const [jr, sr] = await Promise.all([
         apiFetch("/jobs").then(r => r.json()).catch(() => ({ jobs: [] })),
-        apiFetch("/jobs/stats").then(r => r.json()).catch(() => ({})),
+        apiFetch("/jobs/stats").then(r => r.json()).catch(() => null) as Promise<JobStats | null>,
       ]);
       setJobs(jr.jobs ?? []);
       setStats(sr);
@@ -647,12 +591,11 @@ function JobsMonitor() {
     load();
   };
 
+  const STATUS_KIND: Record<string, string> = {
+    pending: "yellow", running: "blue", completed: "green", failed: "red", cancelled: "muted",
+  };
   const STATUS_COLOR: Record<string, string> = {
-    pending:   C.amber,
-    running:   C.blue,
-    completed: C.green,
-    failed:    C.red,
-    cancelled: C.gray,
+    pending: "var(--yellow)", running: "var(--blue)", completed: "var(--green)", failed: "var(--red)", cancelled: "var(--t4)",
   };
 
   const elapsed = (job: Job, now: number) => {
@@ -663,59 +606,54 @@ function JobsMonitor() {
   };
 
   return (
-    <div style={S.card}>
+    <GlassCard lift={false}>
       <div style={S.cardHeader}>
         <span>⚙ Background Jobs</span>
-        <button onClick={load} disabled={loading} style={{ ...S.btn("ghost"), padding: "4px 10px", fontSize: 11 }}>
+        <GoldButton variant="ghost" onClick={load} disabled={loading} style={{ padding: "4px 10px", fontSize: 11 }}>
           {loading ? "…" : "↻"}
-        </button>
+        </GoldButton>
       </div>
-      <div style={S.cardBody}>
-        {/* Stats row */}
-        {stats && (
-          <div style={{ display: "flex", gap: 20, marginBottom: 16, flexWrap: "wrap" as const }}>
-            {Object.entries(stats).map(([k, v]) => (
-              <StatPill key={k} label={k} value={v}
-                color={k === "failed" ? C.red : k === "running" ? C.blue : k === "completed" ? C.green : "var(--accent)"} />
-            ))}
-          </div>
-        )}
+      {/* Stats row */}
+      {stats && (
+        <div style={{ display: "flex", gap: 20, marginBottom: 16, flexWrap: "wrap" as const }}>
+          <StatPill label="total" value={stats.total} />
+          <StatPill label="active" value={stats.active} color="var(--blue)" />
+          <StatPill label="dead" value={stats.dead} color="var(--red)" />
+          {Object.entries(stats.counts).map(([k, v]) => (
+            <StatPill key={k} label={k} value={v} color={STATUS_COLOR[k] ?? "var(--accent)"} />
+          ))}
+        </div>
+      )}
 
-        {loading ? (
-          <div style={{ color: "var(--t3)", fontSize: 13 }}>Loading…</div>
-        ) : jobs.length === 0 ? (
-          <div style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
-            No jobs yet — jobs created via the API appear here.
-          </div>
-        ) : jobs.map(job => {
-          const color = STATUS_COLOR[job.status] ?? "var(--t4)";
-          return (
-            <div key={job.job_id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)", display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>{job.kind}</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 7px", borderRadius: 99 }}>
-                    {job.status}
-                  </span>
-                  <span style={{ fontSize: 10, color: "var(--t4)" }}>{elapsed(job, now)}</span>
-                </div>
-                {job.status === "running" && (
-                  <div style={{ height: 3, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${job.progress}%`, background: C.blue, borderRadius: 99, transition: "width .4s" }} />
-                  </div>
-                )}
-                {job.error && <div style={{ fontSize: 11, color: C.red, marginTop: 2 }}>{job.error}</div>}
-              </div>
-              <span style={{ ...S.mono, fontSize: 10, color: "var(--t5)", flexShrink: 0 }}>{job.job_id.slice(0, 8)}…</span>
-              {(job.status === "pending" || job.status === "running") && (
-                <button onClick={() => cancel(job.job_id)} style={{ ...S.btn("danger"), padding: "3px 10px", fontSize: 11 }}>
-                  Cancel
-                </button>
-              )}
+      {loading ? (
+        <div style={{ color: "var(--t3)", fontSize: 13 }}>Loading…</div>
+      ) : jobs.length === 0 ? (
+        <div style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
+          No jobs yet — jobs created via the API appear here.
+        </div>
+      ) : jobs.map(job => (
+        <div key={job.job_id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)", display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>{job.kind}</span>
+              <span className={`badge badge-${STATUS_KIND[job.status] ?? "muted"}`}>{job.status}</span>
+              <span style={{ fontSize: 10, color: "var(--t4)" }}>{elapsed(job, now)}</span>
             </div>
-          );
-        })}
-      </div>
-    </div>
+            {job.status === "running" && (
+              <div style={{ height: 3, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${job.progress}%`, background: STATUS_COLOR.running, borderRadius: 99, transition: "width .4s" }} />
+              </div>
+            )}
+            {job.error && <div style={{ fontSize: 11, color: "var(--red)", marginTop: 2 }}>{job.error}</div>}
+          </div>
+          <span style={{ ...S.mono, fontSize: 10, color: "var(--t5)", flexShrink: 0 }}>{job.job_id.slice(0, 8)}…</span>
+          {(job.status === "pending" || job.status === "running") && (
+            <GoldButton variant="danger" onClick={() => cancel(job.job_id)} style={{ padding: "3px 10px", fontSize: 11 }}>
+              Cancel
+            </GoldButton>
+          )}
+        </div>
+      ))}
+    </GlassCard>
   );
 }
