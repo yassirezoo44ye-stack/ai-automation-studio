@@ -16,6 +16,7 @@ Endpoints:
   GET    /plugins/installed/{id}/logs               [org member]
   GET    /plugins/capabilities                      Plugin Capability Discovery: platform-wide catalog [org member]
   GET    /plugins/installed/{id}/capabilities        Plugin Capability Discovery: this installation's granted permissions + actual registrations [org member]
+  GET    /plugins/compatibility-matrix               Plugin Compatibility Matrix: platform + cross-plugin dependency compatibility for every installed plugin [org member]
 
 Installing itself is NOT a new route here — a plugin is installed via the
 existing POST /marketplace/listings/{id}/install endpoint; that endpoint's
@@ -85,6 +86,8 @@ def _installation_out(row: dict[str, Any]) -> dict[str, Any]:
         "version"            : row["version"],
         "status"             : row["status"],
         "approved"           : row["approved"],
+        "signature_verified" : row.get("signature_verified", False),
+        "trusted_publisher"  : row.get("trusted_publisher", False),
         "config"             : row["config"],
         "manifest"           : row.get("manifest"),
         "installed_at"       : row["installed_at"],
@@ -111,6 +114,20 @@ async def list_capabilities(ctx: OrgContext = Depends(org_context)):
             for cap in sorted(ALL_KNOWN_CAPABILITIES)
         ],
     }
+
+
+@router.get("/compatibility-matrix")
+async def get_compatibility_matrix(ctx: OrgContext = Depends(org_context)):
+    """Plugin Compatibility Matrix: for every plugin installed in this org,
+    reports platform-version compatibility (min/max_platform_version vs
+    the running PLATFORM_VERSION) and cross-plugin dependency
+    satisfaction (each manifest.dependencies entry vs what's actually
+    installed/enabled) — the same checks PluginLoader.load() already
+    enforces one-at-a-time at install/upgrade, exposed queryably for the
+    whole org at once so an admin can see what upgrading the platform (or
+    a specific plugin) would break before doing it."""
+    from app.plugins.compatibility import build_compatibility_matrix
+    return await build_compatibility_matrix(ctx.org_id)
 
 
 @router.get("/installed")

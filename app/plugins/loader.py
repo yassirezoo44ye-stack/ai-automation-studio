@@ -116,9 +116,7 @@ class PluginLoader:
 
             # Digital signature verification — advisory unless the bundle
             # itself declares a signature, in which case it must verify or
-            # the load is rejected outright. See app/plugins/signing.py's
-            # docstring for why this isn't tied to the marketplace
-            # publisher trust chain yet.
+            # the load is rejected outright.
             signature = bundle.get("signature")
             publisher_public_key = bundle.get("publisher_public_key")
             signature_verified = False
@@ -130,6 +128,23 @@ class PluginLoader:
             else:
                 log.warning("plugin %s has no digital signature — loading unsigned code", manifest.id)
             span.set_tag("signature_verified", signature_verified)
+
+            # Plugin Trust Model: signature_verified only proves the bundle
+            # wasn't tampered with relative to WHATEVER key it shipped —
+            # trusted_publisher additionally proves that key belongs to a
+            # REGISTERED, admin-verified marketplace publisher (the same
+            # marketplace_publishers.verified flag the admin-verify
+            # endpoint already sets), not just any self-declared key.
+            trusted_publisher = False
+            if signature_verified:
+                from app.marketplace.publishers import get_publisher_service
+                publisher = await get_publisher_service().get_by_item(marketplace_item_id)
+                if (
+                    publisher and publisher.get("verified")
+                    and publisher.get("public_key_pem") == publisher_public_key
+                ):
+                    trusted_publisher = True
+            span.set_tag("trusted_publisher", trusted_publisher)
 
             # Version compatibility (reuses the same comparator Marketplace already ships)
             from app.marketplace.dependencies import version_satisfies
@@ -170,12 +185,23 @@ class PluginLoader:
                         f"installed version {dep_row['version']} does not satisfy {dep.version_constraint!r}",
                     )
 
+            # Automatic Migration Support: the previous installation row
+            # (if any) is read BEFORE _upsert_installation overwrites its
+            # version, so an upgrade can be distinguished from a first
+            # install/no-op re-load.
+            previous_installation = await self._find_installation(org_id, marketplace_item_id)
+
             installation = await self._upsert_installation(
                 org_id=org_id, marketplace_item_id=marketplace_item_id,
                 manifest=manifest, actor_id=actor_id, signature_verified=signature_verified,
+                trusted_publisher=trusted_publisher,
             )
             installation_id = str(installation["id"])
             span.set_tag("installation_id", installation_id)
+            is_upgrade = (
+                previous_installation is not None
+                and previous_installation["version"] != manifest.version
+            )
 
             sensitive = [c for c in manifest.required_permissions if c in _SENSITIVE_CAPABILITIES]
             if sensitive and not installation["approved"]:
@@ -197,6 +223,21 @@ class PluginLoader:
 
             from app.plugins.adapters import adapt_registrations
             try:
+                if is_upgrade:
+                    # migrate() sees the OLD (pre-upgrade) config — worker
+                    # was just spawned with installation["config"], which
+                    # _upsert_installation's ON CONFLICT clause deliberately
+                    # never touches. A returned dict is persisted as the
+                    # installation's new config for every future load/
+                    # enable; a raised exception aborts the upgrade below,
+                    # same as a register() failure.
+                    migrated_config = await worker.call(
+                        "lifecycle", method="migrate",
+                        args=[previous_installation["version"], manifest.version], timeout=15,
+                    )
+                    if isinstance(migrated_config, dict):
+                        await self._persist_config(installation_id, migrated_config)
+                        installation["config"] = migrated_config
                 await worker.call("lifecycle", method="on_install", timeout=15)
                 await worker.call("lifecycle", method="on_enable", timeout=15)
                 registrations = await worker.call("register", timeout=15)
@@ -210,7 +251,7 @@ class PluginLoader:
                 adapt_registrations(installation_id, registrations)
             except Exception as exc:
                 await manager.stop_worker(installation_id)
-                await self._log_health(installation_id, "error", f"register() failed: {exc}")
+                await self._log_health(installation_id, "error", f"activation failed: {exc}")
                 await self._set_status(installation_id, "failed")
                 raise PluginImportError(manifest.id, str(exc)) from exc
 
@@ -307,12 +348,7 @@ class PluginLoader:
             await self.load(row["marketplace_item_id"], org_id=str(row["organization_id"]))
 
     async def update_config(self, installation_id: str, new_config: dict[str, Any]) -> None:
-        from app.core.db import get_pool
-        async with get_pool().acquire() as conn:
-            row = await conn.fetchrow(
-                "UPDATE plugin_installations SET config=$2, updated_at=NOW() WHERE id=$1 RETURNING plugin_id, organization_id",
-                uuid.UUID(installation_id), json.dumps(new_config),
-            )
+        row = await self._persist_config(installation_id, new_config)
         if row is None:
             raise PluginLoadError(f"installation {installation_id} not found")
         worker = self._instances.get(installation_id)
@@ -321,6 +357,20 @@ class PluginLoader:
                 await worker.call("lifecycle", method="on_config_change", args=[new_config], timeout=10)
             except Exception as exc:
                 log.warning("plugin %s raised during on_config_change: %s", installation_id, exc)
+
+    async def _persist_config(self, installation_id: str, new_config: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """Raw config UPDATE shared by update_config() (admin-initiated,
+        additionally fires on_config_change) and load()'s migrate() step
+        (upgrade-initiated — on_config_change is deliberately NOT fired
+        there, since migrate() already IS the plugin's chance to react to
+        its own config transition)."""
+        from app.core.db import get_pool
+        async with get_pool().acquire() as conn:
+            row = await conn.fetchrow(
+                "UPDATE plugin_installations SET config=$2, updated_at=NOW() WHERE id=$1 RETURNING plugin_id, organization_id",
+                uuid.UUID(installation_id), json.dumps(new_config),
+            )
+        return dict(row) if row else None
 
     async def approve(self, installation_id: str) -> None:
         from app.core.db import get_pool
@@ -370,21 +420,23 @@ class PluginLoader:
 
     async def _upsert_installation(
         self, *, org_id: str, marketplace_item_id: str, manifest, actor_id: Optional[str],
-        signature_verified: bool = False,
+        signature_verified: bool = False, trusted_publisher: bool = False,
     ) -> dict[str, Any]:
         from app.core.db import get_pool
         async with get_pool().acquire() as conn:
             row = await conn.fetchrow(
                 """INSERT INTO plugin_installations
-                     (organization_id, marketplace_item_id, plugin_id, version, status, installed_by, manifest, signature_verified)
-                   VALUES ($1,$2,$3,$4,'installed',$5,$6,$7)
+                     (organization_id, marketplace_item_id, plugin_id, version, status, installed_by, manifest, signature_verified, trusted_publisher)
+                   VALUES ($1,$2,$3,$4,'installed',$5,$6,$7,$8)
                    ON CONFLICT (organization_id, plugin_id) DO UPDATE SET
                      marketplace_item_id=EXCLUDED.marketplace_item_id,
                      version=EXCLUDED.version, manifest=EXCLUDED.manifest,
-                     signature_verified=EXCLUDED.signature_verified, updated_at=NOW()
+                     signature_verified=EXCLUDED.signature_verified,
+                     trusted_publisher=EXCLUDED.trusted_publisher, updated_at=NOW()
                    RETURNING *""",
                 uuid.UUID(org_id), marketplace_item_id, manifest.id, manifest.version,
-                uuid.UUID(actor_id) if actor_id else None, manifest.model_dump_json(), signature_verified,
+                uuid.UUID(actor_id) if actor_id else None, manifest.model_dump_json(),
+                signature_verified, trusted_publisher,
             )
             await conn.executemany(
                 """INSERT INTO plugin_permissions (installation_id, capability, granted)

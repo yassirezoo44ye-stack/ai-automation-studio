@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS plugin_installations (
                           CHECK (status IN ('installed','enabled','disabled','failed','uninstalled')),
     approved              BOOLEAN NOT NULL DEFAULT false,
     signature_verified    BOOLEAN NOT NULL DEFAULT false,
+    trusted_publisher     BOOLEAN NOT NULL DEFAULT false,
     config                JSONB NOT NULL DEFAULT '{}',
     manifest              JSONB NOT NULL DEFAULT '{}',
     installed_by          UUID,
@@ -90,5 +91,11 @@ async def init_plugins_schema(conn: asyncpg.Connection) -> None:
     # migration statement is what actually backfills the column there.
     await conn.execute(
         "ALTER TABLE plugin_installations ADD COLUMN IF NOT EXISTS signature_verified BOOLEAN NOT NULL DEFAULT false"
+    )
+    # Plugin Trust Model — distinct from signature_verified (a signature
+    # can verify against a self-declared key with no registered publisher
+    # behind it at all); see app/plugins/loader.py's load().
+    await conn.execute(
+        "ALTER TABLE plugin_installations ADD COLUMN IF NOT EXISTS trusted_publisher BOOLEAN NOT NULL DEFAULT false"
     )
     log.info("plugin SDK schema initialised")

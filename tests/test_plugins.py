@@ -587,5 +587,199 @@ class TestExamplePluginManifests(unittest.TestCase):
                 self.assertEqual(qs["response_type"][0], "code")
 
 
+# ── Plugin Trust Model (new capability) ──────────────────────────────────
+
+class TestPluginTrustModel(unittest.TestCase):
+    def test_trusted_publisher_requires_verified_and_matching_key(self):
+        import inspect
+        from app.plugins.loader import PluginLoader
+        source = inspect.getsource(PluginLoader.load)
+        self.assertIn("trusted_publisher", source)
+        self.assertIn('publisher.get("verified")', source)
+        self.assertIn('publisher.get("public_key_pem") == publisher_public_key', source)
+
+    def test_trusted_publisher_only_evaluated_when_signature_verified(self):
+        import inspect
+        from app.plugins.loader import PluginLoader
+        source = inspect.getsource(PluginLoader.load)
+        # The "if signature_verified:" guard must appear before the
+        # trusted_publisher lookup — an unsigned/unverified bundle must
+        # never be looked up against a publisher's key at all.
+        sig_idx = source.index("signature_verified = True")
+        trust_idx = source.index("trusted_publisher = False")
+        self.assertLess(sig_idx, trust_idx)
+
+    def test_installation_schema_has_trusted_publisher_column(self):
+        from app.plugins.schema import PLUGIN_SCHEMA
+        self.assertIn("trusted_publisher", PLUGIN_SCHEMA)
+
+    def test_publishers_schema_has_public_key_column(self):
+        import inspect
+        from app.marketplace.publishers import init_publishers_schema
+        source = inspect.getsource(init_publishers_schema)
+        self.assertIn("public_key_pem", source)
+
+    def test_installation_output_exposes_trust_fields(self):
+        import inspect
+        from app.routers import plugins as plugins_router
+        source = inspect.getsource(plugins_router._installation_out)
+        self.assertIn("signature_verified", source)
+        self.assertIn("trusted_publisher", source)
+
+    def test_admin_endpoint_to_register_publisher_key_exists(self):
+        import inspect
+        from app.routers import marketplace as marketplace_router
+        source = inspect.getsource(marketplace_router)
+        self.assertIn('"/api/admin/marketplace/publishers/{publisher_id}/public-key"', source)
+        self.assertIn("require_api_key(scopes=[\"admin\"])", source)
+
+    def test_publisher_service_has_get_by_item_and_set_public_key(self):
+        from app.marketplace.publishers import PublisherService
+        self.assertTrue(hasattr(PublisherService, "get_by_item"))
+        self.assertTrue(hasattr(PublisherService, "set_public_key"))
+
+
+# ── Plugin Compatibility Matrix (new capability) ─────────────────────────
+
+class TestPluginCompatibilityMatrix(unittest.TestCase):
+    def _row(self, plugin_id, version, status="enabled", manifest=None):
+        return {"plugin_id": plugin_id, "version": version, "status": status, "manifest": manifest or {}}
+
+    def test_compatible_plugin_with_no_constraints(self):
+        from app.plugins.compatibility import _evaluate_plugin_compatibility
+        row = self._row("a", "1.0.0")
+        result = _evaluate_plugin_compatibility(row, {"a": row}, platform_version="1.0.0")
+        self.assertTrue(result["platform_compatible"])
+        self.assertTrue(result["fully_compatible"])
+        self.assertEqual(result["dependencies"], [])
+
+    def test_platform_version_too_low_is_incompatible(self):
+        from app.plugins.compatibility import _evaluate_plugin_compatibility
+        row = self._row("a", "1.0.0", manifest={"min_platform_version": "2.0.0"})
+        result = _evaluate_plugin_compatibility(row, {"a": row}, platform_version="1.0.0")
+        self.assertFalse(result["platform_compatible"])
+        self.assertFalse(result["fully_compatible"])
+
+    def test_platform_version_above_max_is_incompatible(self):
+        from app.plugins.compatibility import _evaluate_plugin_compatibility
+        row = self._row("a", "1.0.0", manifest={"max_platform_version": "0.9.0"})
+        result = _evaluate_plugin_compatibility(row, {"a": row}, platform_version="1.0.0")
+        self.assertFalse(result["platform_compatible"])
+
+    def test_satisfied_dependency(self):
+        from app.plugins.compatibility import _evaluate_plugin_compatibility
+        dep_row = self._row("base", "1.5.0")
+        row = self._row("a", "1.0.0", manifest={
+            "dependencies": [{"plugin_id": "base", "version_constraint": "^1.2.0", "optional": False}],
+        })
+        by_id = {"a": row, "base": dep_row}
+        result = _evaluate_plugin_compatibility(row, by_id, platform_version="1.0.0")
+        self.assertEqual(len(result["dependencies"]), 1)
+        self.assertTrue(result["dependencies"][0]["satisfied"])
+        self.assertEqual(result["dependencies"][0]["installed_version"], "1.5.0")
+        self.assertTrue(result["fully_compatible"])
+
+    def test_missing_required_dependency_is_unsatisfied(self):
+        from app.plugins.compatibility import _evaluate_plugin_compatibility
+        row = self._row("a", "1.0.0", manifest={
+            "dependencies": [{"plugin_id": "missing", "version_constraint": "*", "optional": False}],
+        })
+        result = _evaluate_plugin_compatibility(row, {"a": row}, platform_version="1.0.0")
+        self.assertFalse(result["dependencies"][0]["satisfied"])
+        self.assertIsNone(result["dependencies"][0]["installed_version"])
+        self.assertFalse(result["fully_compatible"])
+
+    def test_missing_optional_dependency_is_satisfied(self):
+        from app.plugins.compatibility import _evaluate_plugin_compatibility
+        row = self._row("a", "1.0.0", manifest={
+            "dependencies": [{"plugin_id": "missing", "version_constraint": "*", "optional": True}],
+        })
+        result = _evaluate_plugin_compatibility(row, {"a": row}, platform_version="1.0.0")
+        self.assertTrue(result["dependencies"][0]["satisfied"])
+        self.assertTrue(result["fully_compatible"])
+
+    def test_dependency_version_constraint_violated(self):
+        from app.plugins.compatibility import _evaluate_plugin_compatibility
+        dep_row = self._row("base", "0.9.0")
+        row = self._row("a", "1.0.0", manifest={
+            "dependencies": [{"plugin_id": "base", "version_constraint": ">=1.0.0", "optional": False}],
+        })
+        by_id = {"a": row, "base": dep_row}
+        result = _evaluate_plugin_compatibility(row, by_id, platform_version="1.0.0")
+        self.assertFalse(result["dependencies"][0]["satisfied"])
+
+    def test_dependency_installed_but_disabled_is_unsatisfied(self):
+        from app.plugins.compatibility import _evaluate_plugin_compatibility
+        dep_row = self._row("base", "1.5.0", status="disabled")
+        row = self._row("a", "1.0.0", manifest={
+            "dependencies": [{"plugin_id": "base", "version_constraint": "*", "optional": False}],
+        })
+        by_id = {"a": row, "base": dep_row}
+        result = _evaluate_plugin_compatibility(row, by_id, platform_version="1.0.0")
+        self.assertFalse(result["dependencies"][0]["satisfied"])
+
+    def test_router_exposes_compatibility_matrix_endpoint(self):
+        import inspect
+        from app.routers import plugins as plugins_router
+        source = inspect.getsource(plugins_router)
+        self.assertIn('@router.get("/compatibility-matrix")', source)
+
+
+# ── Automatic Migration Support (new capability) ─────────────────────────
+
+class TestAutomaticMigration(unittest.TestCase):
+    def test_plugin_base_declares_migrate_hook_with_safe_default(self):
+        import asyncio
+        from app.plugins.base import PluginBase, PluginContext, PluginType
+        self.assertTrue(hasattr(PluginBase, "migrate"))
+
+        class Impl(PluginBase):
+            plugin_type = PluginType.TOOL
+
+            def register(self, ctx):
+                pass
+
+        ctx = PluginContext(plugin_id="p", installation_id="i", organization_id="o", config={}, logger=None)
+        result = asyncio.new_event_loop().run_until_complete(Impl().migrate(ctx, "1.0.0", "2.0.0"))
+        self.assertIsNone(result)
+
+    def test_loader_computes_is_upgrade_before_calling_migrate(self):
+        import inspect
+        from app.plugins.loader import PluginLoader
+        source = inspect.getsource(PluginLoader.load)
+        self.assertIn("is_upgrade", source)
+        self.assertIn('method="migrate"', source)
+        # migrate() must run before on_install/on_enable/register for the
+        # new version, per its own docstring contract.
+        migrate_idx = source.index('method="migrate"')
+        on_install_idx = source.index('method="on_install"')
+        self.assertLess(migrate_idx, on_install_idx)
+
+    def test_migrate_failure_uses_the_same_failure_path_as_register(self):
+        import inspect
+        from app.plugins.loader import PluginLoader
+        source = inspect.getsource(PluginLoader.load)
+        self.assertIn("activation failed", source)
+
+    def test_migrated_config_is_persisted_via_shared_helper(self):
+        import inspect
+        from app.plugins.loader import PluginLoader
+        load_source = inspect.getsource(PluginLoader.load)
+        self.assertIn("_persist_config", load_source)
+        update_config_source = inspect.getsource(PluginLoader.update_config)
+        self.assertIn("_persist_config", update_config_source)
+
+    def test_persist_config_does_not_fire_on_config_change(self):
+        """migrate()'s config persistence must NOT re-trigger
+        on_config_change (that hook is for admin-initiated PUT /config
+        changes) — only update_config() should call it. Checks for the
+        actual worker.call(...) invocation, not just the word appearing
+        anywhere (the docstring mentions it explanatorily)."""
+        import inspect
+        from app.plugins.loader import PluginLoader
+        source = inspect.getsource(PluginLoader._persist_config)
+        self.assertNotIn('method="on_config_change"', source)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

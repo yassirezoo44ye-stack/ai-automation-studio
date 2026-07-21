@@ -38,6 +38,14 @@ async def init_publishers_schema(conn: asyncpg.Connection) -> None:
         "ALTER TABLE marketplace_items ADD COLUMN IF NOT EXISTS publisher_id "
         "UUID REFERENCES marketplace_publishers(id) ON DELETE SET NULL"
     )
+    # Plugin Trust Model (app/plugins/loader.py): a verified publisher's
+    # own registered Ed25519 public key, distinct from the bundle-supplied
+    # key app/plugins/signing.py already checks — a plugin's signature can
+    # verify against a self-declared key (signature_verified) without ever
+    # matching a REGISTERED, admin-verified publisher (trusted_publisher).
+    await conn.execute(
+        "ALTER TABLE marketplace_publishers ADD COLUMN IF NOT EXISTS public_key_pem TEXT"
+    )
     log.info("marketplace publishers schema initialised")
 
 
@@ -82,6 +90,34 @@ class PublisherService:
                 "UPDATE marketplace_items SET publisher_id=$2 WHERE id=$1",
                 item_id, uuid.UUID(str(publisher_id)),
             )
+
+    async def get_by_item(self, item_id: str) -> Optional[dict[str, Any]]:
+        """Resolves a marketplace listing's linked publisher, if any — a
+        dedicated JOIN rather than widening store.py's own get_item()
+        fixed _ITEM_COLS list, so the Plugin Trust Model stays a purely
+        additive lookup for app/plugins/loader.py to call."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT mp.* FROM marketplace_publishers mp
+                   JOIN marketplace_items mi ON mi.publisher_id = mp.id
+                   WHERE mi.id = $1""",
+                item_id,
+            )
+        return dict(row) if row else None
+
+    async def set_public_key(self, publisher_id: str, public_key_pem: str) -> Optional[dict[str, Any]]:
+        """Registers the Ed25519 public key (PEM, see app/plugins/signing.py)
+        a verified publisher signs their plugin bundles with — the anchor
+        the Plugin Trust Model checks a bundle's declared signing key
+        against, distinct from merely verifying a signature was made with
+        SOME key (see PluginLoader.load's signature_verified vs
+        trusted_publisher)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "UPDATE marketplace_publishers SET public_key_pem=$2, updated_at=NOW() WHERE id=$1 RETURNING *",
+                uuid.UUID(str(publisher_id)), public_key_pem,
+            )
+        return dict(row) if row else None
 
     async def verify(self, publisher_id: str, *, admin_actor: Optional[str] = None) -> Optional[dict[str, Any]]:
         async with self._pool.acquire() as conn:

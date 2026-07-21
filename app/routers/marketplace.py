@@ -21,6 +21,7 @@ Endpoints:
   GET    /marketplace/listings/{id}/reviews                      list reviews
   GET    /marketplace/publishers/{org_id}                        publisher profile
   POST   /api/admin/marketplace/publishers/{id}/verify            verify a publisher      [platform admin API key]
+  POST   /api/admin/marketplace/publishers/{id}/public-key        register signing key (Plugin Trust Model) [platform admin API key]
 
 Item types: agent | plugin | theme | template | prompt_pack | workflow | dataset | model
 
@@ -518,6 +519,27 @@ async def get_publisher_profile(org_id: str):
     store = get_marketplace_store()
     items = [i for i in await store.list_items() if i.get("owner_organization_id") == org_id]
     return {**publisher, "item_count": len(items)}
+
+
+class SetPublisherPublicKeyRequest(BaseModel):
+    public_key_pem: str = Field(..., min_length=1)
+
+
+@admin_router.post("/api/admin/marketplace/publishers/{publisher_id}/public-key")
+async def set_publisher_public_key(
+    publisher_id: str, body: SetPublisherPublicKeyRequest,
+    key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"])),
+):
+    """Registers the Ed25519 public key a publisher signs their plugin
+    bundles with — the anchor app/plugins/loader.py's Plugin Trust Model
+    checks a bundle's declared signing key against. Same admin-only gate
+    as verify_publisher() below; setting a key does not itself verify the
+    publisher — both steps (verified=true AND a matching registered key)
+    are required for a plugin to be marked trusted_publisher=true."""
+    publisher = await get_publisher_service().set_public_key(publisher_id, body.public_key_pem)
+    if publisher is None:
+        raise HTTPException(status_code=404, detail="Publisher not found")
+    return publisher
 
 
 @admin_router.post("/api/admin/marketplace/publishers/{publisher_id}/verify")

@@ -132,6 +132,21 @@ class PluginBase(ABC):
     async def on_install(self, ctx: PluginContext) -> None:
         """Called once, right after the code is loaded for the first time."""
 
+    async def migrate(self, ctx: PluginContext, from_version: str, to_version: str) -> Optional[dict[str, Any]]:
+        """Automatic Migration Support — called once during an upgrade
+        (an installed plugin's version actually changing), before
+        on_install/on_enable/register run for the new version. `ctx.config`
+        is the installation's existing (pre-upgrade) stored config; return
+        a new config dict to have PluginLoader persist it as this
+        installation's config going forward (e.g. renaming/defaulting a
+        field whose shape changed between from_version and to_version) —
+        return None (the default) to leave the stored config untouched.
+        Raising aborts the upgrade the same way a register() failure does
+        (status set to "failed", installation not left half-migrated); the
+        newly-spawned worker is stopped and the previous version's
+        installation row is unaffected other than the failed status."""
+        return None
+
     async def on_enable(self, ctx: PluginContext) -> None:
         """Called every time the plugin transitions disabled → enabled
         (including the first enable after install). This is where
