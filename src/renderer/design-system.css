@@ -259,10 +259,14 @@
 
 /* ── Global Reset ────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body, #root      { height: 100%; overflow: hidden; }
+/* html/#root also need var(--bg-base), not just body — #root previously
+   had no rule here at all, leaving index.html's pre-CSS-load inline
+   fallback (a plain hardcoded dark hex) as the only thing painting it,
+   permanently, on every theme, since nothing ever overrode it after CSS
+   loaded. */
+html, body, #root      { height: 100%; overflow: hidden; background: var(--bg-base); }
 body {
   font-family: var(--font-sans);
-  background: var(--bg-base);
   color: var(--t2);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

@@ -12,13 +12,29 @@
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body, #root {
-      height: 100%; width: 100%;
-      background: #05070f;
-      color: #e2e8f0;
-      overflow: hidden;
-    }
+    html, body, #root { height: 100%; width: 100%; overflow: hidden; }
   </style>
+  <script>
+    // Sets data-theme (and a matching fallback background) synchronously,
+    // before first paint — mirrors AppContext.tsx's getStoredTheme()/
+    // applyTheme() exactly (same localStorage key, same OS-preference
+    // fallback order) so there's no flash of the wrong theme's background
+    // while React and design-system.css's [data-theme] rules load, for
+    // ANY of the three themes, not just dark.
+    (function () {
+      var BG = { dark: "#090909", light: "#faf8f2", "high-contrast": "#000000" };
+      var t;
+      try {
+        t = localStorage.getItem("axon-theme");
+        if (t !== "light" && t !== "dark" && t !== "high-contrast") {
+          t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+        }
+      } catch (e) { t = "dark"; }
+      var root = document.documentElement;
+      root.setAttribute("data-theme", t);
+      root.style.background = BG[t];
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>

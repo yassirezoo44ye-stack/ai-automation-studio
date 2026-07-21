@@ -35,15 +35,18 @@ export const S: Record<string, React.CSSProperties> = {
   },
   main: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
 
-  // Header
+  // Header — uses the same theme-reactive tokens GlassCard/GoldButton read
+  // (var(--bg-glass)/var(--border)/var(--t1)/var(--t4)), not fixed hex/rgba,
+  // so every page's header follows Light/High Contrast switches instead of
+  // staying permanently dark underneath a now-light page body.
   header: {
     padding: "0 28px", height: 57, minHeight: 57,
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    borderBottom: "1px solid var(--border)",
     display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0,
-    background: "rgba(7,9,18,0.7)", backdropFilter: "blur(16px)",
+    background: "var(--bg-glass)", backdropFilter: "blur(16px)",
   },
-  headerTitle: { fontSize: 15, fontWeight: 600, color: "#f1f5f9", letterSpacing: "-0.2px" },
-  headerSub:   { fontSize: 12, color: "rgba(148,163,184,0.45)", fontWeight: 400 },
+  headerTitle: { fontSize: 15, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.2px" },
+  headerSub:   { fontSize: 12, color: "var(--t4)", fontWeight: 400 },
 
   // Cards
   card: {
