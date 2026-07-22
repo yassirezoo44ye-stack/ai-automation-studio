@@ -19,6 +19,21 @@ from fastapi import HTTPException, Request
 from app.core.config import SESSION_SECRET, TOKEN_TTL
 
 
+def derive_fernet_key(namespace: str = "") -> bytes:
+    """Deterministically derive a 32-byte urlsafe-base64 Fernet key from
+    SESSION_SECRET — no separate key-management step needed. `namespace`
+    keeps different subsystems' derived keys distinct (e.g. plugin secrets
+    vs. integration credentials) without a second secret to manage.
+
+    Shared by app/plugins/secrets.py and app/integrations/credential_store.py
+    — both encrypt at rest with Fernet keyed this way; each still keeps its
+    own @lru_cache(maxsize=1)-wrapped Fernet() instance, this just factors
+    out the derivation math they'd otherwise duplicate."""
+    material = f"{SESSION_SECRET}:{namespace}" if namespace else SESSION_SECRET
+    digest = hashlib.sha256(material.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest)
+
+
 def make_token(email: str, trial: bool, days_remaining: int) -> str:
     payload = {
         "e":     email,
@@ -46,17 +61,26 @@ def verify_token(token: str) -> Optional[dict]:
         return None
 
 
+def extract_auth_credentials(request: Request) -> tuple[str, str]:
+    """(sub_token, bearer) from a request — the dual-auth extraction shared
+    by owner_email() below and factory.py's api_auth_middleware. sub_token
+    comes from X-Sub-Token or the sub_token cookie; bearer is the
+    Authorization header with any "Bearer " prefix stripped."""
+    sub_token = (
+        request.headers.get("X-Sub-Token")
+        or request.cookies.get("sub_token", "")
+    )
+    bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    return sub_token, bearer
+
+
 def owner_email(request: Request) -> str:
     """The per-user identity used to scope owned records (tasks, etc.).
 
     Tries subscription token first; falls back to JWT so that users who
     authenticated via the new JWT auth system are identified correctly.
     """
-    sub_token = (
-        request.headers.get("X-Sub-Token")
-        or request.cookies.get("sub_token", "")
-    )
-    bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    sub_token, bearer = extract_auth_credentials(request)
     payload = verify_token(sub_token) if sub_token else None
     if not payload and bearer:
         # A subscription token is also accepted via Authorization: Bearer,

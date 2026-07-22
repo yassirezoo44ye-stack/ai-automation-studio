@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
 from typing import Callable, TypeVar, Awaitable
+
+from app.core.reliability import compute_backoff_delay
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ async def with_retry(
             )
 
         if attempt < max_retries:
-            delay = min(base_delay * (2 ** attempt) + random.uniform(0, 0.5), max_delay)
+            delay = compute_backoff_delay(attempt, base_delay, max_delay)
             log.debug("Retrying in %.2fs", delay)
             await asyncio.sleep(delay)
 

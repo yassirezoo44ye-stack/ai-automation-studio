@@ -12,22 +12,18 @@ for use inside a plugin's own PluginContext.
 """
 from __future__ import annotations
 
-import base64
-import hashlib
 import uuid
 from functools import lru_cache
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from app.core.auth import derive_fernet_key
+
 
 @lru_cache(maxsize=1)
 def _fernet() -> Fernet:
-    from app.core.config import SESSION_SECRET
-    # Fernet requires a 32-byte urlsafe-base64 key; derive one deterministically
-    # from SESSION_SECRET so no separate key-management step is needed.
-    digest = hashlib.sha256(SESSION_SECRET.encode("utf-8")).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
+    return Fernet(derive_fernet_key())
 
 
 async def get_plugin_secret(installation_id: str, key: str) -> Optional[str]:

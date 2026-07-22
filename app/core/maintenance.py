@@ -15,6 +15,7 @@ from datetime import datetime
 import asyncpg
 
 from app.core.config import WORKSPACES, DIST_DIR
+from app.core.reliability import compute_backoff_delay
 
 # ── Error tracking ─────────────────────────────────────────────────────────────
 _error_counts: dict[str, int] = defaultdict(int)
@@ -51,7 +52,9 @@ async def with_retry(coro_fn, *args, retries: int = 3, base_delay: float = 0.5, 
             last_exc = e
             record_error("db_transient")
             if attempt < retries - 1:
-                await asyncio.sleep(base_delay * (2 ** attempt))
+                # No jitter here — DB/OS retries are low-volume and don't
+                # need thundering-herd smoothing the way provider calls do.
+                await asyncio.sleep(compute_backoff_delay(attempt, base_delay, jitter=False))
     raise last_exc
 
 

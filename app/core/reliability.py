@@ -146,6 +146,27 @@ def get_bulkhead(name: str, default_limit: int) -> Bulkhead:
     return _bulkheads[name]
 
 
+def compute_backoff_delay(
+    attempt: int, base_delay: float, max_delay: float = 30.0, *, jitter: bool = True,
+) -> float:
+    """Exponential backoff with optional jitter — the actual formula shared
+    by app/ai/retries.py's with_retry (AI-provider retry policy: broad
+    exception handling, terminal-error short-circuit, per-attempt timeout)
+    and app/core/maintenance.py's with_retry (DB/OS retry policy: narrow
+    exception whitelist, args passthrough, error-counter side effect).
+
+    Those two are deliberately NOT merged into one function — their retry-
+    eligibility policies differ in ways that matter for correctness (the DB
+    version retrying on arbitrary exceptions would silently mask real bugs
+    as "transient"). This is the one piece of math that was actually
+    duplicated between them."""
+    delay = base_delay * (2 ** attempt)
+    if jitter:
+        import random
+        delay += random.uniform(0, 0.5)
+    return min(delay, max_delay)
+
+
 def bulkhead_snapshot() -> dict[str, dict]:
     return {
         n: {"limit": b.limit, "in_flight": b.in_flight}

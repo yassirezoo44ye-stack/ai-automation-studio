@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.core.auth import verify_token
+from app.core.auth import extract_auth_credentials, verify_token
 from app.core.config import (
     APP_URL, DATABASE_URL, DIST_DIR, PUBLIC_PREFIXES, WORKSPACES,
 )
@@ -419,11 +419,7 @@ def create_app() -> FastAPI:
     async def api_auth_middleware(request: Request, call_next):
         path = request.url.path
         if path.startswith("/api/") and not any(path.startswith(p) for p in PUBLIC_PREFIXES):
-            sub_token = (
-                request.headers.get("X-Sub-Token") or
-                request.cookies.get("sub_token", "")
-            )
-            bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            sub_token, bearer = extract_auth_credentials(request)
 
             if (sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer)):
                 pass  # valid subscription token (X-Sub-Token/cookie, or Authorization: Bearer)

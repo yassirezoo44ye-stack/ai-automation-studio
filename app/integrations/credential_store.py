@@ -8,8 +8,6 @@ of plugin_secrets so each subsystem owns its own table.
 """
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import uuid
 from functools import lru_cache
@@ -17,14 +15,13 @@ from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from app.core.auth import derive_fernet_key
 from app.integrations.types import IntegrationCredential, ProviderType
 
 
 @lru_cache(maxsize=1)
 def _fernet() -> Fernet:
-    from app.core.config import SESSION_SECRET
-    digest = hashlib.sha256((SESSION_SECRET + ":integrations").encode("utf-8")).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
+    return Fernet(derive_fernet_key("integrations"))
 
 
 class CredentialStore:
