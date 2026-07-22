@@ -3,7 +3,7 @@
  * Handles conversation list, message rendering, streaming, task extraction.
  * All data access goes through apiFetch; no direct provider imports.
  */
-import { useState, useRef, useEffect, useMemo, memo } from "react";
+import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
@@ -12,7 +12,7 @@ import { MD_COMPONENTS } from "../../../shared/ui/md-components";
 import { useAsyncData } from "../../../shared/hooks/useAsyncData";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { ErrorState, EmptyState } from "../../../shared/ui/StateViews";
-import { S, C } from "../../../styles/theme";
+import { GoldButton } from "../../../shared/ui/gold";
 import AxonLogo from "../../../AxonLogo";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";
 import { PRIORITY_COLOR } from "../../../constants";
@@ -259,9 +259,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   return (
     <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
       {/* ── Conversation sidebar ──────────────────────────────────────────────── */}
-      <div style={S.chatSidebar}>
+      <div style={{ width: 230, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--bg-panel)", backdropFilter: "blur(16px)", borderRight: "1px solid var(--border)" }}>
         <div style={{ padding: "10px 10px 6px", display: "flex", gap: 6 }}>
-          <select value={projectId} onChange={e => setProjectId(e.target.value)} style={{ ...S.projectSelect, flex: 1 }}>
+          <select value={projectId} onChange={e => setProjectId(e.target.value)} className="g-input" style={{ flex: 1, fontSize: 12, padding: "8px 12px" }}>
             <option value="demo">Demo Project</option>
             {projects.filter(p => p.id !== "00000000-0000-0000-0000-000000000001").map(p => (
               <option key={p.id} value={p.id}>{p.name}</option>
@@ -269,31 +269,31 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           </select>
         </div>
         <div style={{ padding: "0 10px 6px" }}>
-          <select value={agentId} onChange={e => setAgentId(e.target.value)} style={{ ...S.projectSelect, width: "100%" }}>
+          <select value={agentId} onChange={e => setAgentId(e.target.value)} className="g-input" style={{ width: "100%", fontSize: 12, padding: "8px 12px" }}>
             <option value="default">🤖 Claude (default)</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>)}
           </select>
         </div>
         <div style={{ padding: "0 8px 6px", display: "flex", gap: 6 }}>
-          <button
+          <GoldButton
             onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
-            style={{ ...S.newChatBtn, flex: 1 }}
+            style={{ flex: 1, fontSize: 12 }}
           >
             + New Chat
-          </button>
+          </GoldButton>
           {activeConv && (
-            <button onClick={exportConv} disabled={exporting} title="Export as Markdown" style={{ ...S.newChatBtn, width: 36, padding: 0, textAlign: "center" }}>
+            <button onClick={exportConv} disabled={exporting} title="Export as Markdown" className="btn-icon" style={{ width: 36 }}>
               {exporting ? "…" : "↓"}
             </button>
           )}
           {activeConv && (
-            <button onClick={extractTasks} disabled={extracting} title="Extract tasks" style={{ ...S.newChatBtn, width: 36, padding: 0, textAlign: "center" }}>
+            <button onClick={extractTasks} disabled={extracting} title="Extract tasks" className="btn-icon" style={{ width: 36 }}>
               {extracting ? "…" : "✅"}
             </button>
           )}
         </div>
         <div style={{ padding: "0 8px 6px" }}>
-          <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search…" style={{ ...S.textInput, fontSize: 12, padding: "6px 10px" }} />
+          <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search…" className="g-input" style={{ fontSize: 12, padding: "6px 10px" }} />
         </div>
         <div style={{ flex: 1, overflowY: "auto", position: "relative" }}>
           {convsStatus === "refreshing" && (
@@ -319,18 +319,23 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                 role="button" tabIndex={0}
                 onClick={() => setActiveConv(c.id)}
                 onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveConv(c.id); } }}
-                style={{ ...S.convItem, ...(c.id === activeConv ? S.convItemActive : {}), ...(isDeleting ? { opacity: 0.5, pointerEvents: "none" } : {}) }}
+                style={{
+                  padding: "10px 14px", cursor: "pointer", transition: "background .15s",
+                  background: c.id === activeConv ? "var(--accent-dim)" : "transparent",
+                  borderRight: c.id === activeConv ? "2px solid var(--accent)" : "2px solid transparent",
+                  ...(isDeleting ? { opacity: 0.5, pointerEvents: "none" } : {}),
+                }}
               >
-                <div style={S.convTitle}>{c.title}</div>
+                <div style={{ fontSize: 12, fontWeight: 500, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
-                  <span style={S.convTime}>{relTime(c.updated_at)}</span>
+                  <span style={{ fontSize: 10, color: "var(--t5)" }}>{relTime(c.updated_at)}</span>
                   <span
                     role="button" tabIndex={0}
                     onClick={e => { if (!isDeleting) deleteConv(e, c.id); }}
                     onKeyDown={e => { if (!isDeleting && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); void deleteConv(e, c.id); } }}
                     title={isDeleting ? "Deleting…" : "Delete conversation"}
                     aria-label={isDeleting ? "Deleting…" : "Delete conversation"}
-                    style={{ color: C.slate, fontSize: 11, cursor: isDeleting ? "default" : "pointer" }}
+                    style={{ color: "var(--t5)", fontSize: 11, cursor: isDeleting ? "default" : "pointer" }}
                   >
                     {isDeleting ? "…" : "✕"}
                   </span>
@@ -346,7 +351,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         {/* Inline tasks strip — shown while loading/erroring too now, not just once tasks exist,
             so "Extract tasks" always gives visible feedback instead of silently doing nothing. */}
         {showTasks && (inlineTasksStatus === "loading" || inlineTasksStatus === "error" || inlineTasks.length > 0) && (
-          <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(108,142,247,0.04)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--accent-dim)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ta)", flexShrink: 0 }}>TASKS</span>
             {inlineTasksStatus === "loading" && <LoadingSpinner size={14} label="" />}
             {inlineTasksStatus === "error" && (
@@ -355,11 +360,11 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             {inlineTasksStatus !== "loading" && inlineTasksStatus !== "error" && inlineTasks.map(t => {
               const isPending = pendingTaskIds.has(t.id);
               return (
-                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: 12, opacity: isPending ? 0.6 : 1 }}>
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "var(--bg-hover)", border: "1px solid var(--border)", fontSize: 12, opacity: isPending ? 0.6 : 1 }}>
                   <button
                     onClick={() => setTaskStatus(t, t.status === "done" ? "pending" : "done")}
                     disabled={isPending}
-                    style={{ background: "none", border: "none", cursor: isPending ? "default" : "pointer", padding: 0, color: t.status === "done" ? C.green : "var(--t5)", display: "flex" }}
+                    style={{ background: "none", border: "none", cursor: isPending ? "default" : "pointer", padding: 0, color: t.status === "done" ? "var(--green)" : "var(--t5)", display: "flex" }}
                   >
                     {t.status === "done"
                       ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -375,14 +380,14 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         )}
 
         {/* Messages */}
-        <div style={{ ...S.messages, position: "relative" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "32px 0", display: "flex", flexDirection: "column", gap: 0, position: "relative" }}>
           {showMessagesLoading && <LoadingSpinner fullPage label="Loading conversation…" />}
           {showMessagesError && (
             <ErrorState message={messagesError ?? "Failed to load this conversation."} suggestedFix={messagesFix} onRetry={reloadMessages} />
           )}
           {!showMessagesLoading && !showMessagesError && messages.length === 0 && (
-            <div style={{ ...S.empty, animation: "fadeIn .4s ease" }}>
-              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "linear-gradient(135deg,rgba(255,215,0,.22),rgba(99,102,241,.17))", border: "1px solid rgba(255,215,0,.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ margin: "auto", textAlign: "center", color: "var(--t5)", paddingBottom: 80, animation: "fadeIn .4s ease" }}>
+              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>{activeAgent ? activeAgent.name : "Axon AI"}</div>
@@ -391,7 +396,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
                 {["Write Python code", "Explain a concept", "Debug my script", "Build a web app"].map(s => (
-                  <button key={s} onClick={() => setPrompt(s)} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 14px" }}>{s}</button>
+                  <GoldButton key={s} variant="ghost" onClick={() => setPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
                 ))}
               </div>
             </div>
@@ -406,17 +411,17 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         </div>
 
         {/* Input */}
-        <div style={S.inputRow}>
+        <div style={{ padding: "14px 22px", gap: 10, borderTop: "1px solid var(--border)", display: "flex", alignItems: "flex-end", background: "var(--bg-panel)", backdropFilter: "blur(16px)" }}>
           <textarea
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
             placeholder="Message… (Enter to send, Shift+Enter for new line)"
-            style={S.input} rows={1}
+            className="g-input" style={{ flex: 1, maxHeight: 160, resize: "none" }} rows={1}
           />
           {streaming
-            ? <button onClick={() => abortRef.current?.abort()} style={{ ...S.sendBtn, background: C.redSoft }}>■</button>
-            : <button onClick={() => void sendMessage()} disabled={!prompt.trim()} style={S.sendBtn}>↑</button>}
+            ? <GoldButton variant="danger" onClick={() => abortRef.current?.abort()} style={{ width: 42, height: 42, padding: 0, flexShrink: 0 }}>■</GoldButton>
+            : <GoldButton onClick={() => void sendMessage()} disabled={!prompt.trim()} style={{ width: 42, height: 42, padding: 0, flexShrink: 0 }}>↑</GoldButton>}
         </div>
       </div>
     </div>
@@ -429,27 +434,50 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 const MessageRow = memo(function MessageRow({ msg, isLast, agentName, agentAvatar }: {
   msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
 }) {
+  const rowStyle: CSSProperties = msg.role === "user"
+    ? { display: "flex", gap: 14, alignItems: "flex-start", padding: "16px 32px", maxWidth: 900, width: "100%", alignSelf: "flex-end", flexDirection: "row-reverse", animation: "slideIn .22s ease" }
+    : { display: "flex", gap: 14, alignItems: "flex-start", padding: "16px 32px", maxWidth: 900, width: "100%", animation: "slideIn .22s ease" };
   return (
-    <div style={msg.role === "user" ? S.msgRowUser : S.msgRowAssist} className="msg-row">
+    <div style={rowStyle} className="msg-row">
       {msg.role === "assistant" && (
-        <div style={S.avatar}><span style={{ fontSize: 18 }}>{agentAvatar ?? "◈"}</span></div>
+        <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+          <span style={{ fontSize: 18 }}>{agentAvatar ?? "◈"}</span>
+        </div>
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={msg.role === "user" ? S.msgLabelUser : S.msgLabelAssist}>
+        <div style={{
+          fontSize: 11, fontWeight: 600, marginBottom: 7, display: "flex", alignItems: "center", gap: 8,
+          letterSpacing: "0.04em", textTransform: "uppercase",
+          color: msg.role === "user" ? "var(--t5)" : "var(--ta)",
+          justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+        }}>
           {msg.role === "user" ? "You" : (agentName ?? "Claude")}
-          <span style={S.msgTime}>{isLast ? "now" : ""}</span>
+          <span style={{ fontSize: 10, color: "var(--t5)", fontWeight: 400 }}>{isLast ? "now" : ""}</span>
         </div>
         {msg.role === "user" ? (
-          <div style={S.msgBubbleUser}>{msg.content}</div>
+          <div style={{
+            fontSize: 15, lineHeight: 1.75, color: "var(--t1)",
+            background: "linear-gradient(135deg, var(--accent-dim), var(--accent-glow))",
+            border: "1px solid var(--accent-border)",
+            borderRadius: 16, borderTopRightRadius: 4, padding: "12px 18px",
+            boxShadow: "0 2px 16px var(--accent-dim)", display: "inline-block",
+          }}>{msg.content}</div>
         ) : msg.content === "" ? (
           <div style={{ padding: "8px 0" }} className="typing"><span /><span /><span /></div>
         ) : (
-          <div style={S.msgBubbleAssist} className="md-body">
+          <div style={{ fontSize: 15, color: "var(--t2)", lineHeight: 1.8 }} className="md-body">
             <ReactMarkdown components={MD_COMPONENTS}>{msg.content}</ReactMarkdown>
           </div>
         )}
       </div>
-      {msg.role === "user" && <div style={S.avatarUser}>Y</div>}
+      {msg.role === "user" && (
+        <div style={{
+          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+          background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 13, fontWeight: 700, color: "#121008", marginTop: 2,
+        }}>Y</div>
+      )}
     </div>
   );
 });

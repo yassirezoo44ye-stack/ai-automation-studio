@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { S } from "../../styles/theme";
+import { GoldButton } from "../../shared/ui/gold";
 import type { Project, Agent } from "../../types";
 import { ChatTab }   from "./tabs/ChatTab";
 import { AgentsTab } from "./tabs/AgentsTab";
@@ -52,29 +53,22 @@ export function AIWorkspace() {
       <header style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={S.headerTitle}>AI Workspace</span>
-          <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.04)", borderRadius: 12, padding: 4 }}>
+          <div className="pill-tabs">
             {TABS.map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => setTab(id)}
                 role="tab"
                 aria-selected={tab === id}
-                style={{
-                  padding: "6px 16px", borderRadius: 9, border: "none", cursor: "pointer",
-                  fontSize: 13, fontWeight: 500, transition: "all .18s",
-                  background: tab === id ? "linear-gradient(135deg,#D4AF37,#FFD700)" : "transparent",
-                  color:      tab === id ? "#fff" : "rgba(148,163,184,.6)",
-                  boxShadow:  tab === id ? "0 2px 12px rgba(255,215,0,.35)" : "none",
-                }}
+                className={`pill-tab${tab === id ? " active" : ""}`}
               >{label}</button>
             ))}
           </div>
         </div>
         {tab === "agents" && (
-          <button
-            onClick={() => { setChatAgentId(null); setTab("agents"); }}
-            style={S.btnPrimary}
-          >+ New Agent</button>
+          <GoldButton onClick={() => { setChatAgentId(null); setTab("agents"); }}>
+            + New Agent
+          </GoldButton>
         )}
       </header>
 
