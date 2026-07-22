@@ -196,7 +196,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const useAgent = agentId !== "default";
-    const url = useAgent ? `${API}/api/agents/${agentId}/chat/stream` : `${API}/run/stream`;
+    const url = useAgent ? `${API}/api/agents/${agentId}/chat/stream` : `${API}/api/run/stream`;
 
     try {
       const res = await fetch(url, {

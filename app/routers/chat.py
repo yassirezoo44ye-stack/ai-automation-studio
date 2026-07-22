@@ -28,7 +28,7 @@ class ConversationCreate(BaseModel):
     title: Optional[str] = "New conversation"
 
 
-@router.post("/run/stream")
+@router.post("/api/run/stream")
 async def run_stream(req: RunRequest, request: Request):
     from app.core.reliability import get_bulkhead
     bulkhead = get_bulkhead("ai", 32)
@@ -134,7 +134,7 @@ async def run_stream(req: RunRequest, request: Request):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@router.post("/run")
+@router.post("/api/run")
 async def run_agent(req: RunRequest, request: Request):
     from app.core.reliability import get_bulkhead
     org_id = await check_org_quota(request)

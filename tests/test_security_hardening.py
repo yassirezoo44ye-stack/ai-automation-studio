@@ -247,5 +247,79 @@ class TestOAuthExchangeIsSingleUse(unittest.TestCase):
         self.assertEqual(second.status_code, 400)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Unauthenticated AI-cost endpoint (app/routers/chat.py) — /run(/stream)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestChatRunEndpointsRequireAuth(unittest.TestCase):
+    """POST /run and /run/stream (app/routers/chat.py) — the endpoints the
+    live Chat page actually calls — used to be mounted without an /api/
+    prefix, so api_auth_middleware's global auth gate (app/factory.py,
+    only matches paths starting with /api/) never saw them: anyone with
+    network access could call Claude through them with zero login, with
+    only a spoofable per-IP rate limit standing between them and the
+    platform's Anthropic bill. Moved to /api/run(/stream) so the existing
+    gate applies, same as every other AI-cost endpoint in this app."""
+
+    def _app(self):
+        import os
+        os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+        os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+        from app.factory import create_app
+        return create_app()
+
+    def test_unauthenticated_run_stream_rejected(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/api/run/stream", json={"project_id": "demo", "prompt": "hi"})
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+    def test_unauthenticated_run_rejected(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/api/run", json={"project_id": "demo", "prompt": "hi"})
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+    def test_authenticated_run_stream_passes_the_auth_gate(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+        from app.core.auth import make_token
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            headers = {"X-Sub-Token": make_token("run-stream-test@example.com", False, 0)}
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post(
+                    "/api/run/stream", json={"project_id": "demo", "prompt": "hi"}, headers=headers,
+                )
+        # No live Postgres in this test, so the handler itself may still
+        # fail downstream — the only thing under test is that a valid
+        # credential is not rejected by the auth gate (never 401).
+        self.assertNotEqual(asyncio.run(_run()).status_code, 401)
+
+    def test_old_unprefixed_run_stream_path_no_longer_registered(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/run/stream", json={"project_id": "demo", "prompt": "hi"})
+
+        # No POST route matches the old path anymore — only the (GET-only)
+        # SPA catch-all does, so this is a 405, not the chat handler.
+        self.assertEqual(asyncio.run(_run()).status_code, 405)
+
+
 if __name__ == "__main__":
     unittest.main()

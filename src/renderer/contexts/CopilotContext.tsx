@@ -1,7 +1,7 @@
 /**
  * CopilotContext — persistent, page-aware AI assistant.
  *
- * Reuses the EXISTING /run/stream chat endpoint (app/routers/chat.py) —
+ * Reuses the EXISTING /api/run/stream chat endpoint (app/routers/chat.py) —
  * no new AI model, no new backend endpoint. Context-awareness (current
  * page / organization) is achieved by prefixing the prompt text sent to
  * that endpoint with a short context line before streaming; the raw
@@ -66,7 +66,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        const res = await fetch(`${API}/run/stream`, {
+        const res = await fetch(`${API}/api/run/stream`, {
           method: "POST",
           headers: authH(),
           body: JSON.stringify({

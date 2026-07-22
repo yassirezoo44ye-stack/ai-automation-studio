@@ -58,7 +58,7 @@ export async function fetchRecentTasks(limit = 6): Promise<Task[]> {
 export function buildChatStreamUrl(agentId: string, isCustomAgent: boolean): string {
   return isCustomAgent
     ? `${API}/api/agents/${agentId}/chat/stream`
-    : `${API}/run/stream`;
+    : `${API}/api/run/stream`;
 }
 
 export function getChatStreamHeaders(): Record<string, string> {
