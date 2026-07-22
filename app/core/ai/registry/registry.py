@@ -46,7 +46,8 @@ class PlatformProviderRegistry:
     """
 
     def __init__(self) -> None:
-        self._providers: dict[str, BaseProvider] = {}
+        self._providers:  dict[str, BaseProvider] = {}
+        self._builtin_ids: set[str] = set()
         self._register_defaults()
 
     # ── Registration ──────────────────────────────────────────────────────────
@@ -60,13 +61,18 @@ class PlatformProviderRegistry:
             LocalProvider(),
         ]:
             self._providers[p.provider_id] = p
+            self._builtin_ids.add(p.provider_id)
 
     def register(self, provider: BaseProvider) -> None:
-        """Register or replace a provider at runtime."""
+        """Register or replace a provider at runtime (e.g. an AI_PROVIDER-type
+        plugin). Built-in providers are still wired at module load time — this
+        just lets a plugin add to the same dict."""
         self._providers[provider.provider_id] = provider
         log.info("PlatformRegistry: registered provider '%s'", provider.provider_id)
 
     def unregister(self, provider_id: str) -> None:
+        if provider_id in self._builtin_ids:
+            raise ValueError(f"cannot unregister built-in provider {provider_id!r}")
         self._providers.pop(provider_id, None)
 
     # ── Primary API ───────────────────────────────────────────────────────────

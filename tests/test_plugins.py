@@ -354,21 +354,25 @@ class TestToolAdapterRoundtrip(unittest.TestCase):
 
 class TestAIProviderRegistryRoundtrip(unittest.TestCase):
     def test_register_provider_then_unregister(self):
-        from app.ai.providers.registry import registry as provider_registry
-
-        class _FakeProvider:
-            provider_id = "fake"
-            is_available = True
+        from app.core.ai.registry.registry import platform_registry
 
         provider_id = f"fake_{uuid.uuid4().hex[:8]}"
-        provider_registry.register_provider(provider_id, _FakeProvider())
-        self.assertIs(provider_registry.get(provider_id).__class__, _FakeProvider)
-        self.assertTrue(provider_registry.unregister_provider(provider_id))
+
+        class _FakeProvider:
+            def __init__(self, provider_id: str) -> None:
+                self.provider_id  = provider_id
+                self.is_available = True
+
+        platform_registry.register(_FakeProvider(provider_id))
+        self.assertIs(platform_registry.get(provider_id).__class__, _FakeProvider)
+        platform_registry.unregister(provider_id)
+        with self.assertRaises(ValueError):
+            platform_registry.get(provider_id)
 
     def test_cannot_unregister_builtin_provider(self):
-        from app.ai.providers.registry import registry as provider_registry
+        from app.core.ai.registry.registry import platform_registry
         with self.assertRaises(ValueError):
-            provider_registry.unregister_provider("anthropic")
+            platform_registry.unregister("anthropic")
 
 
 # ── Digital Signature Verification (new gap) ────────────────────────────────

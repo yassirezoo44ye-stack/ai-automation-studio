@@ -2,17 +2,7 @@
  * Generic AI client — all calls go through /api/ai/*.
  * Zero provider imports. Zero hardcoded model strings.
  */
-import { apiFetch, getToken, parseJSON, API } from "../../shared/utils/api";
-
-async function apiJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string> ?? {}),
-  };
-  const res = await apiFetch(path, { ...init, headers });
-  if (res.status === 204) return undefined as T;
-  return parseJSON<T>(res, `${API}${path}`);
-}
+import { apiFetch, apiJSON, getToken, API } from "../../shared/utils/api";
 
 import type {
   CompletionResponse,
@@ -71,7 +61,10 @@ export async function getMessages(conversationId: string): Promise<ConversationM
 }
 
 export async function deleteConversation(conversationId: string): Promise<void> {
-  await apiJSON(`/api/ai/conversations/${conversationId}`, { method: "DELETE" });
+  // 204 No Content — apiJSON/parseJSON would throw trying to JSON.parse an
+  // empty body, so this hits apiFetch directly and only checks .ok.
+  const res = await apiFetch(`/api/ai/conversations/${conversationId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to delete conversation: HTTP ${res.status}`);
 }
 
 // ── Providers ─────────────────────────────────────────────────────────────────
@@ -111,7 +104,9 @@ export async function recallMemory(limit = 10): Promise<{ items: string[] }> {
 }
 
 export async function deleteMemoryItem(id: string): Promise<void> {
-  await apiJSON(`/api/ai/memory/${id}`, { method: "DELETE" });
+  // 204 No Content — see deleteConversation's comment above.
+  const res = await apiFetch(`/api/ai/memory/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to delete memory item: HTTP ${res.status}`);
 }
 
 // ── Prompts ───────────────────────────────────────────────────────────────────

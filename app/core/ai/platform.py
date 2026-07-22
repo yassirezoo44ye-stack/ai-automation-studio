@@ -112,7 +112,6 @@ class AIPlatform:
 
         # Phase 3 pool wiring
         self._context_mgr.init(pool)
-        self._cost_mgr.init(pool)
 
         # Phase 3 compound services
         self._knowledge   = KnowledgeEngine(embeddings=embeddings, bus=bus)

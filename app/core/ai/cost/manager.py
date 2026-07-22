@@ -8,13 +8,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Optional
 
 from ..events.bus    import EventBus
 from ..events.events import CostRecorded, BudgetExceeded
-
-if TYPE_CHECKING:
-    import asyncpg
 
 
 @dataclass
@@ -47,26 +44,23 @@ class BudgetError(Exception):
 
 class CostManager:
     """
-    Records all AI costs and enforces spending limits.
+    Records all AI costs (in-memory, for live budget checks/dashboards) and
+    enforces spending limits.
 
-    Stores records in-memory (for dashboards) and optionally persists to DB.
+    Durable persistence is app/ai/cost_tracker.py's job (writes ai_usage_log,
+    called by AIGateway._post_complete) — this class does not duplicate it.
     """
 
     def __init__(
         self,
         bus:          EventBus,
-        pool:         Optional["asyncpg.Pool"] = None,
         global_limit: Optional[float]          = None,
     ) -> None:
         self._bus      = bus
-        self._pool     = pool
         self._records: list[CostRecord] = []
         self._limits:  list[SpendingLimit] = []
         if global_limit is not None:
             self._limits.append(SpendingLimit("global", "*", global_limit))
-
-    def init(self, pool: "asyncpg.Pool") -> None:
-        self._pool = pool
 
     def add_limit(self, limit: SpendingLimit) -> None:
         self._limits.append(limit)
@@ -133,10 +127,6 @@ class CostManager:
                     actual_usd=actual,
                 ))
 
-        # Persist to DB
-        if self._pool:
-            await self._persist(record)
-
     def total_for_user(self, user_id: Optional[str]) -> float:
         if user_id is None:
             return 0.0
@@ -180,22 +170,3 @@ class CostManager:
         if limit.scope == "conversation":
             return sum(r.amount_usd for r in self._records if r.conversation_id == limit.scope_id)
         return 0.0
-
-    async def _persist(self, record: CostRecord) -> None:
-        try:
-            await self._pool.execute(   # type: ignore[union-attr]
-                """
-                INSERT INTO ai_usage
-                  (user_id, provider_id, model, input_tokens, output_tokens,
-                   cost_usd, conversation_id, created_at)
-                VALUES ($1, $2, $3, 0, 0, $4, $5, NOW())
-                ON CONFLICT DO NOTHING
-                """,
-                record.user_id,
-                record.provider_id,
-                record.model,
-                record.amount_usd,
-                record.conversation_id,
-            )
-        except Exception:
-            pass   # DB errors don't block the request

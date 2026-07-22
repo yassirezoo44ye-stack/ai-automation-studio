@@ -626,7 +626,7 @@ class TestContextManager:
 class TestCostManager:
     def _mgr(self):
         from app.core.ai.cost.manager import CostManager
-        return CostManager(bus=EventBus(), pool=None)
+        return CostManager(bus=EventBus())
 
     def test_record_and_total(self):
         m = self._mgr()
