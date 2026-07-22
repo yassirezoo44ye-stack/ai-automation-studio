@@ -3,7 +3,7 @@ Org quota helpers for legacy single-tenant routers (chat.py, build.py) that
 call the Anthropic SDK directly instead of going through AIGateway/
 InferenceEngine (which already enforce quota — see app/ai/gateway.py).
 
-These routers predate multi-tenancy, so org context is optional: read
+These routers predate multi-tenancy, so org context is optional: resolve
 X-Organization-Id (the same header apiFetch() already sends when an org is
 selected — see src/renderer/shared/utils/api.ts) and only enforce/meter
 when it's present. Callers with no org header keep working exactly as
@@ -21,8 +21,17 @@ log = logging.getLogger(__name__)
 
 async def check_org_quota(request: Request) -> Optional[str]:
     """Quota-check up front, before spending money on a provider call.
-    Returns the org_id if present, or None to skip enforcement entirely."""
-    org_id = request.headers.get("X-Organization-Id")
+    Returns the caller's org_id if present *and verified* (they're actually
+    a member — see app.tenancy.context.optional_org_id), or None to skip
+    enforcement entirely.
+
+    Verifying membership (rather than trusting the X-Organization-Id header
+    as-is, which the original version of this function did) matters here
+    specifically because it's metering/billing-relevant: an unverified org
+    id would let any authenticated caller charge their token usage against,
+    or trip the quota limit of, an org they don't belong to."""
+    from app.tenancy.context import optional_org_id
+    org_id = await optional_org_id(request)
     if not org_id:
         return None
     from app.billing import get_usage_service, QuotaExceeded
