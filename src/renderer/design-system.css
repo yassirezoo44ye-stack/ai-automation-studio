@@ -424,6 +424,13 @@ input:focus, textarea:focus, select:focus {
   padding: 3px;
   gap: 2px;
 }
+.pill-tab {
+  padding: 7px 16px; border: none; border-radius: var(--r-md);
+  background: transparent; color: var(--t4);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--t-base) var(--ease);
+}
 .pill-tab.active {
   background: linear-gradient(135deg,#D4AF37,#FFD700);
   color: #fff;
