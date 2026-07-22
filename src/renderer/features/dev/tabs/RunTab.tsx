@@ -4,7 +4,7 @@
  */
 import { useRef } from "react";
 import { apiFetch, authH } from "../../../shared/utils/api";
-import { S, C } from "../../../styles/theme";
+import { GoldButton } from "../../../shared/ui/gold";
 import type { BuildFile } from "../../../shared/types";
 
 interface RunError {
@@ -32,9 +32,9 @@ interface RunTabProps {
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
-  high:   C.red,
-  medium: C.amber,
-  low:    C.gray,
+  high:   "var(--red)",
+  medium: "var(--yellow)",
+  low:    "var(--t4)",
 };
 
 export function RunTab({
@@ -171,9 +171,9 @@ export function RunTab({
           This workspace is empty. Generate a project first — the Terminal will
           auto-detect the right command and run it here.
         </p>
-        <button onClick={() => onSwitchTab("generate")} style={{ ...S.btnPrimary, padding: "9px 22px" }}>
+        <GoldButton onClick={() => onSwitchTab("generate")} style={{ padding: "9px 22px" }}>
           ✦ Go to Generate
-        </button>
+        </GoldButton>
       </div>
     );
   }
@@ -182,7 +182,7 @@ export function RunTab({
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Toolbar */}
       <div style={{
-        padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)",
+        padding: "8px 16px", borderBottom: "1px solid var(--border)",
         display: "flex", gap: 8, alignItems: "center", flexShrink: 0,
       }}>
         <span style={{ fontSize: 11, color: "var(--t5)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>$</span>
@@ -199,28 +199,32 @@ export function RunTab({
         />
         {running
           ? (
-            <button onClick={stop} style={{ ...S.btnSecondary, padding: "5px 14px", fontSize: 12 }}>
+            <GoldButton variant="ghost" onClick={stop} style={{ padding: "5px 14px", fontSize: 12 }}>
               ⏹ Stop
-            </button>
+            </GoldButton>
           ) : (
-            <button onClick={() => void run()} style={{ ...S.btnPrimary, padding: "5px 14px", fontSize: 12 }}>
+            <GoldButton onClick={() => void run()} style={{ padding: "5px 14px", fontSize: 12 }}>
               Run ▶
-            </button>
+            </GoldButton>
           )
         }
         {currentPreviewUrl && !running && (
-          <button
+          <GoldButton
+            variant="ghost"
             onClick={() => onSwitchTab("preview")}
-            style={{ ...S.btnSecondary, padding: "5px 12px", fontSize: 12 }}
-          >🌐 Preview</button>
+            style={{ padding: "5px 12px", fontSize: 12 }}
+          >🌐 Preview</GoldButton>
         )}
       </div>
 
-      {/* Output */}
+      {/* Output — a terminal pane stays black-on-monospace regardless of app
+          theme, matching every IDE/terminal convention (VS Code, iTerm, etc.);
+          this is the same "fixed surface" exception as a code viewer or an
+          arbitrary thumbnail, just for a different reason (terminal readability). */}
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <pre style={{
           flex: 1, margin: 0, padding: "14px 18px", overflowY: "auto",
-          fontSize: 12, color: C.green, fontFamily: "var(--font-mono)",
+          fontSize: 12, color: "var(--green)", fontFamily: "var(--font-mono)",
           lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-all",
           background: "#040506",
         }}>
@@ -229,7 +233,7 @@ export function RunTab({
 
         {runError && (
           <div style={{
-            borderTop: `2px solid ${SEVERITY_COLOR[runError.severity] ?? C.gray}`,
+            borderTop: `2px solid ${SEVERITY_COLOR[runError.severity] ?? "var(--t4)"}`,
             background: "#0f0a0a", padding: "14px 18px", flexShrink: 0,
           }}>
             <div style={{ color: SEVERITY_COLOR[runError.severity], fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
@@ -237,12 +241,12 @@ export function RunTab({
             </div>
             {runError.fix.length > 0 && (
               <div>
-                <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                <div style={{ color: "var(--t4)", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
                   Fix Suggestions
                 </div>
                 {runError.fix.map((step, i) => (
-                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4, fontSize: 12, color: "#cbd5e1" }}>
-                    <span style={{ color: "#60a5fa", minWidth: 18 }}>{i + 1}.</span>
+                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4, fontSize: 12, color: "var(--t2)" }}>
+                    <span style={{ color: "var(--blue)", minWidth: 18 }}>{i + 1}.</span>
                     <span>{step}</span>
                   </div>
                 ))}

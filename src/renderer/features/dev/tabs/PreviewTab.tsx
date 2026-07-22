@@ -1,7 +1,7 @@
 /**
  * PreviewTab — iframe sandbox for HTML projects and server previews.
  */
-import { S } from "../../../styles/theme";
+import { GoldButton } from "../../../shared/ui/gold";
 
 interface PreviewTabProps {
   previewUrl: string | null;
@@ -38,9 +38,9 @@ export function PreviewTab({ previewUrl, canOpenPreview, onOpenPreview }: Previe
         Build an HTML project and run it, or click below if a static preview is available.
       </div>
       {canOpenPreview && (
-        <button onClick={onOpenPreview} style={{ ...S.btnPrimary, fontSize: 13 }}>
+        <GoldButton onClick={onOpenPreview} style={{ fontSize: 13 }}>
           Open HTML Preview
-        </button>
+        </GoldButton>
       )}
     </div>
   );

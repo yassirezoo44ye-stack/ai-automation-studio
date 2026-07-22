@@ -10,6 +10,7 @@ import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { S } from "../../styles/theme";
+import { GoldButton } from "../../shared/ui/gold";
 import type { Project, BuildFile, BuildState } from "../../types";
 
 import { BuildTab }   from "./tabs/BuildTab";
@@ -110,7 +111,11 @@ export function DevWorkspace() {
 
   const allFiles = buildState === "done"
     ? files
-    : existingFiles.map(f => ({ path: f.path, content: "" }));
+    // content stays undefined (not "") — handleFileSelect's `f.content !==
+    // undefined` guard uses this to tell "already loaded" from "needs a
+    // fetch"; an empty string satisfied that check too, so every file from
+    // a previously-generated project showed permanently blank on click.
+    : existingFiles.map(f => ({ path: f.path, content: undefined as string | undefined }));
 
   // Flow order: Generate → Preview → Files → Terminal → Package
   const TABS: [DevTab, string][] = [
@@ -137,7 +142,7 @@ export function DevWorkspace() {
           <select
             value={projectId}
             onChange={e => setProjectId(e.target.value)}
-            style={{ ...S.projectSelect, width: "auto" }}
+            className="g-input" style={{ width: "auto" }}
             aria-label="Active project"
           >
             <option value="demo">Demo Project</option>
@@ -148,8 +153,8 @@ export function DevWorkspace() {
 
           {allFiles.length > 0 && (
             <>
-              <button onClick={downloadZip}   style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>⬇ ZIP</button>
-              <button onClick={clearWorkspace} style={{ ...S.btnSecondary, fontSize: 12, padding: "6px 12px" }}>🗑 Clear</button>
+              <GoldButton variant="ghost" onClick={downloadZip}   style={{ fontSize: 12, padding: "6px 12px" }}>⬇ ZIP</GoldButton>
+              <GoldButton variant="ghost" onClick={clearWorkspace} style={{ fontSize: 12, padding: "6px 12px" }}>🗑 Clear</GoldButton>
             </>
           )}
         </div>
@@ -159,7 +164,7 @@ export function DevWorkspace() {
       {/* <nav> carrying role="tablist" is intentional — a landmark element
           grouping the role="tab" buttons below; not a real a11y issue. */}
       <nav
-        style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)", padding: "0 16px" }}
+        style={{ display: "flex", borderBottom: "1px solid var(--border)", background: "var(--bg-hover)", padding: "0 16px" }}
         // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
         role="tablist"
         aria-label="Dev workspace tabs"

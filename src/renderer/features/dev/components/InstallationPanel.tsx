@@ -1,4 +1,3 @@
-import { C } from "../../../shared/lib/theme";
 /**
  * InstallationPanel — the first actionable section after a successful Generate.
  *
@@ -91,7 +90,7 @@ function CopyBtn({ text }: { text: string }) {
         fontSize: 12, fontWeight: 600, border: "1px solid",
         borderColor: copied ? "rgba(52,211,153,.45)" : "var(--border)",
         background: copied ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.05)",
-        color: copied ? C.green : "var(--t2)",
+        color: copied ? "var(--green)" : "var(--t2)",
         transition: "all .2s",
         flexShrink: 0,
       }}
@@ -216,7 +215,7 @@ export function InstallationPanel({
         <span style={{
           display: "inline-flex", alignItems: "center", gap: 6,
           fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-          background: "rgba(52,211,153,.14)", color: C.green,
+          background: "rgba(52,211,153,.14)", color: "var(--green)",
           border: "1px solid rgba(52,211,153,.35)",
           animation: entered ? "pulseOnce .9s ease" : undefined,
         }}>
@@ -237,24 +236,14 @@ export function InstallationPanel({
 
         {/* Package-manager tabs (Node only) */}
         {isNode && (
-          <div role="tablist" aria-label="Package manager" style={{
-            display: "flex", gap: 4, padding: 4, borderRadius: 12,
-            background: "rgba(0,0,0,.28)", width: "fit-content", maxWidth: "100%", flexWrap: "wrap",
-          }}>
+          <div role="tablist" aria-label="Package manager" className="pill-tabs" style={{ width: "fit-content", maxWidth: "100%", flexWrap: "wrap" }}>
             {(Object.keys(PM_COMMANDS) as PM[]).map(p => (
               <button
                 key={p}
                 role="tab"
                 aria-selected={pm === p}
                 onClick={() => setPm(p)}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  padding: "7px 16px", borderRadius: 9, border: "none", cursor: "pointer",
-                  fontSize: 13, fontWeight: 600, transition: "all .18s",
-                  background: pm === p ? "linear-gradient(135deg,#34d399,#22c55e)" : "transparent",
-                  color: pm === p ? "#052e1b" : "var(--t4)",
-                  boxShadow: pm === p ? "0 2px 12px rgba(52,211,153,.3)" : "none",
-                }}
+                className={`pill-tab${pm === p ? " active" : ""}`}
               >
                 {PM_ICONS[p]} {p}
               </button>
@@ -283,7 +272,7 @@ export function InstallationPanel({
           }}>
             {commands.map((c, i) => (
               <div key={i} style={{ color: c.startsWith("#") ? "var(--t5)" : undefined }}>
-                {!c.startsWith("#") && <span style={{ color: C.green, userSelect: "none" }}>$ </span>}
+                {!c.startsWith("#") && <span style={{ color: "var(--green)", userSelect: "none" }}>$ </span>}
                 {c}
               </div>
             ))}

@@ -1,4 +1,3 @@
-import { C } from "../../../shared/lib/theme";
 /**
  * FilesTab — dual-pane file tree + code viewer.
  */
@@ -22,7 +21,7 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
     <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
       {/* File tree */}
       <nav
-        style={{ width: 220, borderRight: "1px solid rgba(255,255,255,0.06)", overflowY: "auto", background: "#0a0c10", flexShrink: 0 }}
+        style={{ width: 220, borderRight: "1px solid var(--border)", overflowY: "auto", background: "var(--bg-panel)", flexShrink: 0 }}
         aria-label="File tree"
       >
         {files.length === 0 && (
@@ -41,9 +40,9 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
               onKeyDown={e => e.key === "Enter" && onSelect(f)}
               style={{
                 ...TREE_ITEM,
-                color:       active ? "#e2e8f0" : "rgba(148,163,184,.7)",
-                background:  active ? "rgba(255,215,0,.12)" : "transparent",
-                borderLeft:  active ? "2px solid #D4AF37" : "2px solid transparent",
+                color:       active ? "var(--t1)" : "var(--t3)",
+                background:  active ? "var(--accent-dim)" : "transparent",
+                borderLeft:  active ? "2px solid var(--accent)" : "2px solid transparent",
               }}
               aria-current={active ? "true" : undefined}
               title={f.path}
@@ -57,13 +56,14 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
         })}
       </nav>
 
-      {/* Code viewer */}
+      {/* Code viewer — stays black-on-monospace regardless of app theme,
+          same terminal-convention exception as RunTab's console output. */}
       <div style={{ flex: 1, overflow: "auto", background: "#080a0f" }}>
         {activeFile ? (
           <>
             <div style={{
               padding: "10px 20px", borderBottom: "1px solid #1e2438",
-              fontSize: 12, color: C.grayBlue,
+              fontSize: 12, color: "#94a3b8",
               display: "flex", justifyContent: "space-between", alignItems: "center",
               position: "sticky", top: 0, background: "#080a0f", zIndex: 1,
             }}>

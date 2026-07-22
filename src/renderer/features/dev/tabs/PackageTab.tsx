@@ -5,7 +5,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON, authH, API } from "../../../shared/utils/api";
-import { S, C } from "../../../styles/theme";
+import { GoldButton } from "../../../shared/ui/gold";
 import type { Project } from "../../../shared/types";
 
 type PackTarget = "exe" | "apk" | "zip";
@@ -35,7 +35,7 @@ const TARGETS_FOR: Record<PackLang, { id: PackTarget; label: string }[]> = {
   docker:   [{ id: "zip", label: "Deploy ZIP" }],
 };
 
-const LOG_COLOR: Record<string, string> = { ok: C.green, err: C.redSoft, cmd: C.purple, info: "#94a3b8" };
+const LOG_COLOR: Record<string, string> = { ok: "var(--green)", err: "var(--red)", cmd: "var(--ta)", info: "var(--t4)" };
 
 interface PackageTabProps {
   projects:  Project[];
@@ -177,11 +177,11 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
 
         {/* Project */}
         <div>
-          <div style={S.label}>Project</div>
+          <div className="g-label">Project</div>
           <select
             value={projectId}
             onChange={e => setProjectId(e.target.value)}
-            style={{ ...S.textInput, marginTop: 4 }}
+            className="g-input" style={{ marginTop: 4 }}
             aria-label="Select project"
           >
             <option value="demo">Demo Project</option>
@@ -192,30 +192,26 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {/* Language + Target */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <div style={S.label}>Runtime</div>
+            <div className="g-label">Runtime</div>
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               {LANGS.map(l => (
-                <button
+                <GoldButton
                   key={l.id}
+                  variant={lang === l.id ? "primary" : "ghost"}
                   onClick={() => handleLangChange(l.id)}
-                  style={{
-                    ...S.btnSecondary, flex: 1, fontSize: 12,
-                    borderColor: lang === l.id ? "var(--accent)" : undefined,
-                    background:  lang === l.id ? "rgba(124,58,237,.2)" : undefined,
-                    color:       lang === l.id ? "#c4b5fd" : undefined,
-                  }}
+                  style={{ flex: 1, fontSize: 12 }}
                   title={l.desc}
-                >{l.icon} {l.label}</button>
+                >{l.icon} {l.label}</GoldButton>
               ))}
             </div>
           </div>
           {lang !== "docker" && (
             <div style={{ flex: "0 0 auto" }}>
-              <div style={S.label}>Target</div>
+              <div className="g-label">Target</div>
               <select
                 value={target}
                 onChange={e => setTarget(e.target.value as PackTarget)}
-                style={{ ...S.textInput, marginTop: 4 }}
+                className="g-input" style={{ marginTop: 4 }}
                 aria-label="Package target"
               >
                 {TARGETS_FOR[lang].map(t => (
@@ -227,16 +223,16 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         </div>
 
         {lang === "web" && target === "exe" && (
-          <div style={{ padding: "10px 14px", background: "rgba(255,215,0,.08)", borderRadius: 8,
-                        border: "1px solid rgba(255,215,0,.2)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
+          <div style={{ padding: "10px 14px", background: "var(--accent-dim)", borderRadius: 8,
+                        border: "1px solid var(--accent-border)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
             ⚡ <strong>Web → Windows .exe</strong> — يتم تغليف تطبيق الويب داخل Electron
             ثم بناؤه كمثبِّت NSIS قابل للتوزيع.
           </div>
         )}
 
         {lang === "docker" && (
-          <div style={{ padding: "10px 14px", background: "rgba(56,189,248,.08)", borderRadius: 8,
-                        border: "1px solid rgba(56,189,248,.2)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
+          <div style={{ padding: "10px 14px", background: "var(--blue-dim)", borderRadius: 8,
+                        border: "1px solid rgba(108,142,247,0.25)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
             🐳 <strong>Full-Stack Deploy Package</strong> — يجمع كل ملفات المشروع مع سكربتات النشر وملف
             {" "}<code>.env.example</code> وتعليمات Docker Compose كاملة.
           </div>
@@ -253,11 +249,11 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {!pfLoading && preflight && preflight.checks.length > 0 && (
           <div style={{
             borderRadius: 8, border: `1px solid ${preflight.ok ? "rgba(52,211,153,.25)" : "rgba(248,113,113,.3)"}`,
-            background: preflight.ok ? "rgba(52,211,153,.05)" : "rgba(248,113,113,.06)",
+            background: preflight.ok ? "var(--green-dim)" : "var(--red-dim)",
             padding: "10px 14px",
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: preflight.checks.length ? 8 : 0 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: preflight.ok ? C.green : C.redSoft }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: preflight.ok ? "var(--green)" : "var(--red)" }}>
                 {preflight.ok ? "✓ Build environment ready" : "⚠ Build environment not ready"}
               </span>
               <button
@@ -271,8 +267,8 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
               {preflight.checks.map(c => (
                 <span key={c.name} title={c.version ?? undefined} style={{
                   fontSize: 11, padding: "2px 8px", borderRadius: 20,
-                  color: c.available ? C.green : C.redSoft,
-                  background: c.available ? "rgba(52,211,153,.1)" : "rgba(248,113,113,.1)",
+                  color: c.available ? "var(--green)" : "var(--red)",
+                  background: c.available ? "var(--green-dim)" : "var(--red-dim)",
                   border: `1px solid ${c.available ? "rgba(52,211,153,.25)" : "rgba(248,113,113,.3)"}`,
                 }}>
                   {c.available ? "✓" : "✗"} {c.display}
@@ -283,7 +279,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
               <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                 {preflight.checks.filter(c => !c.available).map(c => (
                   <div key={c.name} style={{ fontSize: 11, color: "var(--t3)", lineHeight: 1.5 }}>
-                    <strong style={{ color: C.redSoft }}>{c.display}</strong> — {c.fix_hint}
+                    <strong style={{ color: "var(--red)" }}>{c.display}</strong> — {c.fix_hint}
                   </div>
                 ))}
               </div>
@@ -294,18 +290,18 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {/* App metadata */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 2 }}>
-            <div style={S.label}>App Name</div>
+            <div className="g-label">App Name</div>
             <input value={appName} onChange={e => setAppName(e.target.value)}
-              style={{ ...S.textInput, marginTop: 4 }} aria-label="App name" />
+              className="g-input" style={{ marginTop: 4 }} aria-label="App name" />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={S.label}>Version</div>
+            <div className="g-label">Version</div>
             <input value={appVersion} onChange={e => setVersion(e.target.value)}
-              style={{ ...S.textInput, marginTop: 4 }} aria-label="App version" />
+              className="g-input" style={{ marginTop: 4 }} aria-label="App version" />
           </div>
           {lang !== "docker" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "flex-end" }}>
-              <div style={S.label}>One-file</div>
+              <div className="g-label">One-file</div>
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                 <input type="checkbox" checked={oneFile} onChange={e => setOneFile(e.target.checked)} aria-label="Bundle as one file" />
                 <span style={{ fontSize: 12, color: "var(--t3)" }}>Bundle</span>
@@ -317,16 +313,17 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {/* Files */}
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-            <label style={S.label}>Files ({files.length})</label>
-            <button
+            <label className="g-label">Files ({files.length})</label>
+            <GoldButton
+              variant="ghost"
               onClick={() => uploadRef.current?.click()}
               disabled={uploading}
-              style={{ ...S.btnSecondary, fontSize: 12, padding: "4px 10px" }}
-            >{uploading ? "Uploading…" : "⬆ Upload"}</button>
+              style={{ fontSize: 12, padding: "4px 10px" }}
+            >{uploading ? "Uploading…" : "⬆ Upload"}</GoldButton>
             <input ref={uploadRef} type="file" multiple style={{ display: "none" }} onChange={uploadFiles} aria-label="Upload files" />
           </div>
           {files.length > 0 && (
-            <div style={{ background: "rgba(255,255,255,.02)", borderRadius: 8, border: "1px solid rgba(255,255,255,.06)", maxHeight: 120, overflowY: "auto", padding: "4px 0" }}>
+            <div style={{ background: "var(--bg-hover)", borderRadius: 8, border: "1px solid var(--border)", maxHeight: 120, overflowY: "auto", padding: "4px 0" }}>
               {files.map(f => (
                 <div key={f.path} style={{ padding: "4px 12px", fontSize: 11, color: "var(--t3)", display: "flex", justifyContent: "space-between" }}>
                   <span>{f.path}</span>
@@ -343,17 +340,16 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ display: "flex", gap: 8 }}>
-                <button
+                <GoldButton
                   onClick={state === "building" ? () => abortRef.current?.abort() : () => void pack()}
                   disabled={envBlocked}
-                  style={{ ...S.btnPrimary, flex: 1, opacity: envBlocked ? 0.5 : 1, cursor: envBlocked ? "not-allowed" : "pointer" }}
-                  aria-label={state === "building" ? "Stop packaging" : "Package app"}
-                  title={envBlocked ? "Fix the missing tools above, or Recheck once installed" : undefined}
+                  style={{ flex: 1 }}
+                  title={envBlocked ? "Fix the missing tools above, or Recheck once installed" : (state === "building" ? "Stop packaging" : "Package app")}
                 >
                   {state === "building" ? "⏹ Stop" : envBlocked ? "⚠ Environment Not Ready" : "⚙ Package App"}
-                </button>
+                </GoldButton>
                 {downloadUrl && (
-                  <a href={downloadUrl} download style={{ ...S.btnSecondary, padding: "0 18px", display: "flex", alignItems: "center", textDecoration: "none" }}>
+                  <a href={downloadUrl} download className="g-btn g-btn--ghost" style={{ padding: "0 18px", display: "flex", alignItems: "center", textDecoration: "none" }}>
                     ⬇ Download
                   </a>
                 )}
@@ -367,7 +363,8 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
           );
         })()}
 
-        {/* Logs */}
+        {/* Logs — terminal-style build log, same fixed-dark convention as
+            RunTab's console output. */}
         {logs.length > 0 && (
           <div style={{
             background: "#040506", borderRadius: 8, border: "1px solid rgba(255,255,255,.06)",

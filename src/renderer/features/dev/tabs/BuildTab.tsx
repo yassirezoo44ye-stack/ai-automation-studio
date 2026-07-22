@@ -6,7 +6,7 @@
 import { useRef } from "react";
 import { authH, API, parseJSON } from "../../../shared/utils/api";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
-import { S, C } from "../../../styles/theme";
+import { GoldButton } from "../../../shared/ui/gold";
 import { BUILD_TEMPLATES } from "../../../constants";
 import { InstallationPanel } from "../components/InstallationPanel";
 import type { BuildFile, BuildState, Project } from "../../../shared/types";
@@ -118,29 +118,29 @@ export function BuildTab({
     <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
       <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
-          <div style={S.label}>What do you want to build?</div>
+          <div className="g-label">What do you want to build?</div>
           <textarea
             value={buildPrompt}
             onChange={e => onPrompt(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && e.ctrlKey) void build(); }}
             placeholder={"Describe your app in detail…\n\nCtrl+Enter to build"}
-            style={{ ...S.textInput, minHeight: 140, resize: "vertical", fontFamily: "inherit" }}
+            className="g-input" style={{ minHeight: 140, resize: "vertical", fontFamily: "inherit" }}
             aria-label="Build prompt"
           />
         </div>
 
-        <button
+        <GoldButton
           onClick={buildState === "building" ? stop : () => void build()}
           disabled={!buildPrompt.trim() && buildState !== "building"}
-          style={{ ...S.btnPrimary, flex: 1 }}
-          aria-label={buildState === "building" ? "Stop build" : "Generate app"}
+          style={{ flex: 1 }}
+          title={buildState === "building" ? "Stop build" : "Generate app"}
         >
           {buildState === "building" ? "⏹ Stop" : "✦ Generate"}
-        </button>
+        </GoldButton>
 
         {buildState === "error" && status && (
-          <div style={S.errorPanel}>
-            <div style={S.errorPanelTitle}>⚠ Build error</div>
+          <div style={{ margin: "10px 12px", padding: "12px 14px", borderRadius: 12, background: "var(--red-dim)", border: "1px solid var(--red)", fontSize: 12, color: "var(--red)", lineHeight: 1.6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, marginBottom: 6, fontSize: 12 }}>⚠ Build error</div>
             {status.replace(/^Error:\s*/, "")}
           </div>
         )}
@@ -148,7 +148,7 @@ export function BuildTab({
         {buildState === "building" && status && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <StatusBadge kind="info" label="Building" />
-            <span style={{ fontSize: 12, color: C.green }}>{status}</span>
+            <span style={{ fontSize: 12, color: "var(--green)" }}>{status}</span>
           </div>
         )}
 
@@ -168,20 +168,21 @@ export function BuildTab({
         )}
 
         {description && (
-          <div style={{ ...S.muted, background: "rgba(255,255,255,.03)", borderRadius: 10, padding: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.5, background: "var(--bg-hover)", borderRadius: 10, padding: 12 }}>
             {description}
           </div>
         )}
 
         <div>
-          <div style={S.label}>TEMPLATES</div>
+          <div className="g-label">TEMPLATES</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
             {BUILD_TEMPLATES.map(t => (
-              <button
+              <GoldButton
                 key={t.label}
+                variant="ghost"
                 onClick={() => onPrompt(t.prompt)}
-                style={{ ...S.btnSecondary, fontSize: 12 }}
-              >{t.label}</button>
+                style={{ fontSize: 12 }}
+              >{t.label}</GoldButton>
             ))}
           </div>
         </div>
