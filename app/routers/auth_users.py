@@ -778,6 +778,34 @@ def _oauth_not_configured(provider: str):
                              f"Set {provider.upper()}_CLIENT_ID and {provider.upper()}_CLIENT_SECRET.")
 
 
+_OAUTH_STATE_COOKIE   = "oauth_state"
+_OAUTH_STATE_MAX_AGE  = 600  # 10 min — long enough for a real login, short enough to bound replay
+
+
+def _new_oauth_state() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _set_oauth_state_cookie(response: RedirectResponse, state: str) -> None:
+    """Stash the state value the *_start endpoint just generated in a
+    short-lived, httponly cookie so the callback can verify the redirect
+    that comes back is the same browser that initiated it — the standard
+    OAuth CSRF defense (RFC 6749 §10.12). Without this, an attacker can
+    complete their own OAuth flow, then trick a victim into opening the
+    resulting callback URL/code, logging the victim's browser into the
+    attacker's account (login/session-fixation CSRF)."""
+    response.set_cookie(
+        _OAUTH_STATE_COOKIE, state, max_age=_OAUTH_STATE_MAX_AGE,
+        httponly=True, samesite="lax", secure=_APP_URL_BASE.startswith("https://"),
+    )
+
+
+def _verify_oauth_state(request: Request, state: Optional[str]) -> None:
+    cookie_state = request.cookies.get(_OAUTH_STATE_COOKIE)
+    if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+        raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
+
+
 async def _upsert_oauth_user(conn, email: str, name: str, avatar_url: str, provider: str):
     """Create or update a user from OAuth; return the user row."""
     existing = await conn.fetchrow("SELECT * FROM users WHERE email=$1", email)
@@ -818,6 +846,7 @@ async def _make_oauth_session(conn, user, ip: str, ua: str) -> dict:
 async def google_oauth_start():
     if not _GOOGLE_CLIENT_ID:
         _oauth_not_configured("Google")
+    state = _new_oauth_state()
     redirect_uri = f"{_APP_URL_BASE}/api/auth/google/callback"
     params = (
         f"client_id={_GOOGLE_CLIENT_ID}"
@@ -825,14 +854,18 @@ async def google_oauth_start():
         f"&response_type=code"
         f"&scope=openid%20email%20profile"
         f"&access_type=offline"
+        f"&state={state}"
     )
-    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+    resp = RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+    _set_oauth_state_cookie(resp, state)
+    return resp
 
 
 @router.get("/google/callback")
-async def google_oauth_callback(code: str, request: Request):
+async def google_oauth_callback(code: str, request: Request, state: Optional[str] = None):
     if not _GOOGLE_CLIENT_ID:
         _oauth_not_configured("Google")
+    _verify_oauth_state(request, state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/google/callback"
     async with _httpx.AsyncClient() as client:
         token_res = await client.post("https://oauth2.googleapis.com/token", data={
@@ -863,13 +896,16 @@ async def google_oauth_callback(code: str, request: Request):
     p = (f"access_token={session['access_token']}"
          f"&refresh_token={session['refresh_token']}"
          f"&sub_token={session['sub_token']}")
-    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    resp.delete_cookie(_OAUTH_STATE_COOKIE)
+    return resp
 
 
 @router.get("/microsoft")
 async def microsoft_oauth_start():
     if not _MICROSOFT_CLIENT_ID:
         _oauth_not_configured("Microsoft")
+    state = _new_oauth_state()
     redirect_uri = f"{_APP_URL_BASE}/api/auth/microsoft/callback"
     params = (
         f"client_id={_MICROSOFT_CLIENT_ID}"
@@ -877,14 +913,18 @@ async def microsoft_oauth_start():
         f"&response_type=code"
         f"&response_mode=query"
         f"&scope=openid%20email%20profile"
+        f"&state={state}"
     )
-    return RedirectResponse(f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?{params}")
+    resp = RedirectResponse(f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?{params}")
+    _set_oauth_state_cookie(resp, state)
+    return resp
 
 
 @router.get("/microsoft/callback")
-async def microsoft_oauth_callback(code: str, request: Request):
+async def microsoft_oauth_callback(code: str, request: Request, state: Optional[str] = None):
     if not _MICROSOFT_CLIENT_ID:
         _oauth_not_configured("Microsoft")
+    _verify_oauth_state(request, state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/microsoft/callback"
     async with _httpx.AsyncClient() as client:
         token_res = await client.post(
@@ -918,26 +958,33 @@ async def microsoft_oauth_callback(code: str, request: Request):
     p = (f"access_token={session['access_token']}"
          f"&refresh_token={session['refresh_token']}"
          f"&sub_token={session['sub_token']}")
-    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    resp.delete_cookie(_OAUTH_STATE_COOKIE)
+    return resp
 
 
 @router.get("/github")
 async def github_oauth_start():
     if not _GITHUB_CLIENT_ID:
         _oauth_not_configured("GitHub")
+    state = _new_oauth_state()
     redirect_uri = f"{_APP_URL_BASE}/api/auth/github/callback"
     params = (
         f"client_id={_GITHUB_CLIENT_ID}"
         f"&redirect_uri={redirect_uri}"
         f"&scope=user:email"
+        f"&state={state}"
     )
-    return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
+    resp = RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
+    _set_oauth_state_cookie(resp, state)
+    return resp
 
 
 @router.get("/github/callback")
-async def github_oauth_callback(code: str, request: Request):
+async def github_oauth_callback(code: str, request: Request, state: Optional[str] = None):
     if not _GITHUB_CLIENT_ID:
         _oauth_not_configured("GitHub")
+    _verify_oauth_state(request, state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/github/callback"
     async with _httpx.AsyncClient() as client:
         token_res = await client.post(
@@ -977,4 +1024,6 @@ async def github_oauth_callback(code: str, request: Request):
     p = (f"access_token={session['access_token']}"
          f"&refresh_token={session['refresh_token']}"
          f"&sub_token={session['sub_token']}")
-    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    resp.delete_cookie(_OAUTH_STATE_COOKIE)
+    return resp

@@ -145,5 +145,61 @@ class TestOrgQuotaTrustsOnlyVerifiedMembership(unittest.TestCase):
         self.assertEqual(asyncio.run(_run()), "my-real-org-id")
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# OAuth login CSRF (app/routers/auth_users.py) — missing `state` parameter
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestOAuthStateCsrfProtection(unittest.TestCase):
+    """Google/Microsoft/GitHub OAuth start+callback used to have no `state`
+    parameter at all — RFC 6749 §10.12's textbook CSRF defense. Without it,
+    an attacker completes their own OAuth flow, then tricks a victim into
+    opening the resulting callback URL: the victim's browser ends up
+    logged into the attacker's account (login/session-fixation CSRF)."""
+
+    def _client(self):
+        import os
+        os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+        os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.routers import auth_users
+        auth_users._GOOGLE_CLIENT_ID = "test-google-client-id"
+        app = FastAPI()
+        app.include_router(auth_users.router)
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_start_endpoint_includes_state_and_sets_cookie(self):
+        client = self._client()
+        resp = client.get("/api/auth/google", follow_redirects=False)
+        self.assertIn(resp.status_code, (302, 307))
+        self.assertIn("state=", resp.headers["location"])
+        self.assertIn("oauth_state", resp.cookies)
+
+    def test_callback_without_state_rejected(self):
+        client = self._client()
+        resp = client.get("/api/auth/google/callback?code=irrelevant", follow_redirects=False)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_callback_with_mismatched_state_rejected(self):
+        client = self._client()
+        client.cookies.set("oauth_state", "cookie-value")
+        resp = client.get(
+            "/api/auth/google/callback?code=irrelevant&state=attacker-supplied",
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_callback_with_no_cookie_at_all_rejected(self):
+        # An attacker replaying their own captured callback URL (with a
+        # real-looking state value) against a victim who never started the
+        # flow has no oauth_state cookie to match against.
+        client = self._client()
+        resp = client.get(
+            "/api/auth/google/callback?code=irrelevant&state=some-state-value",
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()
