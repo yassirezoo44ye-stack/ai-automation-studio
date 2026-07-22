@@ -23,7 +23,9 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from app.core.ssrf_guard import UnsafeUrlError, assert_public_url
 
 log    = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
@@ -110,6 +112,20 @@ class AlertRuleCreate(BaseModel):
     notify_email: Optional[str] = None
     notify_webhook_url: Optional[str] = None
     enabled: bool = True
+
+    @field_validator("notify_webhook_url")
+    @classmethod
+    def _webhook_must_be_public(cls, v: Optional[str]) -> Optional[str]:
+        # Blocks SSRF via a rule whose webhook points at an internal
+        # service or the cloud metadata endpoint (169.254.169.254) — the
+        # tick loop (app/services/alerting.py) would otherwise POST to
+        # whatever URL is stored here with no further checks.
+        if v:
+            try:
+                assert_public_url(v)
+            except UnsafeUrlError as exc:
+                raise ValueError(f"notify_webhook_url is not allowed: {exc}") from exc
+        return v
 
 
 @router.get("/alerts/rules")

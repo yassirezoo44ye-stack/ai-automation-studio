@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 
+from app.core.ssrf_guard import UnsafeUrlError, assert_public_url
 from app.services.registry import BaseService
 
 log = logging.getLogger(__name__)
@@ -172,10 +173,17 @@ class AlertingService(BaseService):
 
         if rule["notify_webhook_url"]:
             try:
+                # Defense-in-depth — the router already rejects a non-public
+                # URL at rule-creation time; re-checked here too so this
+                # stays safe even if a rule ever reaches the DB some other
+                # way (a future admin tool, a manual seed, etc).
+                assert_public_url(rule["notify_webhook_url"])
                 import httpx
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     await client.post(rule["notify_webhook_url"], json={
                         "rule": rule["name"], "message": message,
                     })
+            except UnsafeUrlError as exc:
+                log.warning("alert webhook for rule %s blocked (unsafe URL): %s", rule["name"], exc)
             except Exception:
                 log.warning("alert webhook delivery failed for rule %s", rule["name"], exc_info=True)
