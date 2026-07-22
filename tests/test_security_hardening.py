@@ -201,5 +201,51 @@ class TestOAuthStateCsrfProtection(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# OAuth tokens-in-URL (app/routers/auth_users.py) — one-time exchange code
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestOAuthExchangeIsSingleUse(unittest.TestCase):
+    """POST /api/auth/oauth-exchange redeems the one-time code an OAuth
+    callback hands the frontend for the real tokens, replacing the old
+    behavior of putting tokens directly in the redirect URL (exposed via
+    browser history, Referer headers, and any access log that captures
+    full request URLs)."""
+
+    def _client(self):
+        import os
+        os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+        os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.routers import auth_users
+        app = FastAPI()
+        app.include_router(auth_users.router)
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_unknown_code_rejected(self):
+        client = self._client()
+        resp = client.post("/api/auth/oauth-exchange", json={"code": "not-a-real-code"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_valid_code_redeems_once_then_fails(self):
+        import asyncio
+        from app.routers.auth_users import _stash_oauth_session_for_exchange
+
+        async def _stash():
+            return await _stash_oauth_session_for_exchange(
+                {"access_token": "at", "refresh_token": "rt", "sub_token": "st"}
+            )
+        code = asyncio.run(_stash())
+
+        client = self._client()
+        first = client.post("/api/auth/oauth-exchange", json={"code": code})
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["access_token"], "at")
+
+        second = client.post("/api/auth/oauth-exchange", json={"code": code})
+        self.assertEqual(second.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

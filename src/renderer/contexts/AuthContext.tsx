@@ -163,20 +163,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Bootstrap from stored refresh token on mount (+ handle OAuth callback)
   useEffect(() => {
     void (async () => {
-      // OAuth callback: /oauth-callback?access_token=...&refresh_token=...&sub_token=...
+      // OAuth callback: /oauth-callback?code=<one-time exchange code>
+      // (tokens themselves never appear in the URL — redeemed server-side
+      // below via POST /api/auth/oauth-exchange, see app/routers/auth_users.py)
       if (window.location.pathname === "/oauth-callback") {
         const params = new URLSearchParams(window.location.search);
-        const at  = params.get("access_token");
-        const rt  = params.get("refresh_token");
-        const st  = params.get("sub_token");
-        if (at && rt) {
-          localStorage.setItem(REFRESH_KEY, rt);
-          if (st) localStorage.setItem("sub_token", st);
-          setGlobalToken(at);
-          setAccessToken(at);
-          await fetchMe(at);
-          scheduleRefresh();
-          // Clean URL without reloading
+        const code = params.get("code");
+        if (code) {
+          try {
+            const res = await apiFetch("/api/auth/oauth-exchange", {
+              method: "POST",
+              body: JSON.stringify({ code }),
+            });
+            const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token?: string }>(
+              res, "/api/auth/oauth-exchange",
+            );
+            localStorage.setItem(REFRESH_KEY, data.refresh_token);
+            if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
+            setGlobalToken(data.access_token);
+            setAccessToken(data.access_token);
+            await fetchMe(data.access_token);
+            scheduleRefresh();
+          } catch (err) {
+            console.warn("[auth] OAuth exchange failed", err);
+          }
+          // Clean URL without reloading, whether the exchange succeeded or not
           window.history.replaceState({}, "", "/");
           setLoading(false);
           return;

@@ -806,6 +806,44 @@ def _verify_oauth_state(request: Request, state: Optional[str]) -> None:
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
 
 
+_OAUTH_EXCHANGE_TTL = 60  # seconds — just long enough for the immediate frontend redirect + fetch
+
+
+async def _stash_oauth_session_for_exchange(session: dict) -> str:
+    """Put the real tokens in a short-lived, single-use server-side slot
+    instead of the redirect URL — putting them in the URL (the previous
+    behavior) leaks them via browser history, the Referer header on any
+    subsequent same-tab navigation, and any access log that captures full
+    request URLs. The frontend gets back only an opaque code, redeemed once
+    via POST /api/auth/oauth-exchange (see below)."""
+    from app.core.cache.redis_adapter import get_redis
+    code  = secrets.token_urlsafe(32)
+    redis = await get_redis()
+    await redis.set_json(f"oauth_exchange:{code}", session, ttl=_OAUTH_EXCHANGE_TTL)
+    return code
+
+
+class OAuthExchangeRequest(BaseModel):
+    code: str
+
+
+@router.post("/oauth-exchange")
+async def oauth_exchange(body: OAuthExchangeRequest):
+    """Redeem the one-time code an OAuth callback redirect handed the
+    frontend for the real session tokens (see _stash_oauth_session_for_exchange).
+    Single-use: the entry is deleted on read, so a captured/replayed code
+    (e.g. from a shared link or proxy log) is worthless after the first
+    legitimate redemption, and the whole thing expires in 60s regardless."""
+    from app.core.cache.redis_adapter import get_redis
+    redis  = await get_redis()
+    key    = f"oauth_exchange:{body.code}"
+    bundle = await redis.get_json(key)
+    if bundle is None:
+        raise HTTPException(400, "Invalid or expired OAuth exchange code")
+    await redis.delete(key)
+    return bundle
+
+
 async def _upsert_oauth_user(conn, email: str, name: str, avatar_url: str, provider: str):
     """Create or update a user from OAuth; return the user row."""
     existing = await conn.fetchrow("SELECT * FROM users WHERE email=$1", email)
@@ -892,11 +930,11 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
         user = await _upsert_oauth_user(conn, email, info.get("name", ""), info.get("picture", ""), "google")
         session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
-    # Redirect to frontend with tokens in query params (picked up by AuthPage)
-    p = (f"access_token={session['access_token']}"
-         f"&refresh_token={session['refresh_token']}"
-         f"&sub_token={session['sub_token']}")
-    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    # Redirect to frontend with a one-time exchange code (picked up by
+    # AuthPage, redeemed via POST /api/auth/oauth-exchange) — not the
+    # tokens themselves, see _stash_oauth_session_for_exchange.
+    exchange_code = await _stash_oauth_session_for_exchange(session)
+    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
     resp.delete_cookie(_OAUTH_STATE_COOKIE)
     return resp
 
@@ -955,10 +993,8 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
         user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft")
         session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
-    p = (f"access_token={session['access_token']}"
-         f"&refresh_token={session['refresh_token']}"
-         f"&sub_token={session['sub_token']}")
-    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    exchange_code = await _stash_oauth_session_for_exchange(session)
+    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
     resp.delete_cookie(_OAUTH_STATE_COOKIE)
     return resp
 
@@ -1021,9 +1057,7 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
         user = await _upsert_oauth_user(conn, email, gh_user.get("name") or gh_user.get("login", ""), avatar, "github")
         session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
-    p = (f"access_token={session['access_token']}"
-         f"&refresh_token={session['refresh_token']}"
-         f"&sub_token={session['sub_token']}")
-    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?{p}")
+    exchange_code = await _stash_oauth_session_for_exchange(session)
+    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
     resp.delete_cookie(_OAUTH_STATE_COOKIE)
     return resp
