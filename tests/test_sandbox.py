@@ -72,6 +72,25 @@ class TestSandboxLimits(unittest.TestCase):
         self.assertTrue(limits.filesystem_write)
         self.assertTrue(limits.env_vars_allowed)
 
+    def test_docker_access_gets_shell_level_headroom(self):
+        from app.sandbox.permissions import limits_from_granted_capabilities
+        default = limits_from_granted_capabilities(set())
+        limits  = limits_from_granted_capabilities({"docker_access"})
+        self.assertGreater(limits.cpu_seconds, default.cpu_seconds)
+        self.assertGreater(limits.timeout_s, default.timeout_s)
+
+    def test_git_access_implies_filesystem_write(self):
+        from app.sandbox.permissions import limits_from_granted_capabilities
+        limits = limits_from_granted_capabilities({"git_access"})
+        self.assertTrue(limits.filesystem_write)
+
+    def test_browser_automation_widens_memory_and_timeout(self):
+        from app.sandbox.permissions import limits_from_granted_capabilities
+        default = limits_from_granted_capabilities(set())
+        limits  = limits_from_granted_capabilities({"browser_automation"})
+        self.assertGreater(limits.memory_mb, default.memory_mb)
+        self.assertGreater(limits.timeout_s, default.timeout_s)
+
 
 # ── Protocol wire format ─────────────────────────────────────────────────
 

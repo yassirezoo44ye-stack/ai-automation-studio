@@ -86,9 +86,18 @@ def limits_from_granted_capabilities(
         limits.filesystem_write = True
     if "environment_variables" in granted:
         limits.env_vars_allowed = True
-    if "shell_exec" in granted or "terminal" in granted:
-        # A plugin that needs a real shell gets more headroom — still
+    if "shell_exec" in granted or "terminal" in granted or "docker_access" in granted:
+        # A plugin that needs a real shell (or the docker CLI, which is
+        # itself invoked via shell_exec) gets more headroom — still
         # capped, never unlimited.
         limits.cpu_seconds = max(limits.cpu_seconds, 30.0)
         limits.timeout_s = max(limits.timeout_s, 30.0)
+    if "git_access" in granted:
+        # A checkout/commit needs to write into the worker's filesystem.
+        limits.filesystem_write = True
+    if "browser_automation" in granted:
+        # Headless-browser automation (Puppeteer/Playwright-style) is
+        # memory-hungry and slower than a typical task.
+        limits.memory_mb   = max(limits.memory_mb, 512)
+        limits.timeout_s   = max(limits.timeout_s, 60.0)
     return limits

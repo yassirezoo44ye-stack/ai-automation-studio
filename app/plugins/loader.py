@@ -73,6 +73,12 @@ class PluginDependencyError(PluginLoadError):
 # Capabilities that require explicit admin approval before a plugin may be enabled.
 _SENSITIVE_CAPABILITIES = frozenset({
     "network", "filesystem", "shell_exec", "credentials_read", "third_party_api",
+    # Agent Sandbox runtime capabilities — same sensitivity tier as the
+    # ones above (docker_access can reach the host via the Docker socket,
+    # git_access can read/exfiltrate repo contents and credentials,
+    # browser_automation can scrape/act on arbitrary sites) — must not be
+    # silently grantable without approval just because they're newer.
+    "docker_access", "git_access", "browser_automation",
 })
 
 

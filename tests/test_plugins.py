@@ -133,6 +133,18 @@ class TestPluginConfigValidation(unittest.TestCase):
 # tests/test_sandbox.py). _WORKDIR is monkeypatched since it's normally a
 # module-level Path.cwd() snapshot pointing at the real worker's workspace.
 
+class TestSensitiveCapabilities(unittest.TestCase):
+    """The Agent Sandbox runtime capabilities (docker_access/git_access/
+    browser_automation) must require the same admin approval as the
+    original sensitive set — see loader.py:212-215 and :450, which gate
+    plugin activation and default-grant status off this set."""
+
+    def test_agent_sandbox_capabilities_require_approval(self):
+        from app.plugins.loader import _SENSITIVE_CAPABILITIES
+        for cap in ("docker_access", "git_access", "browser_automation"):
+            self.assertIn(cap, _SENSITIVE_CAPABILITIES)
+
+
 class TestPluginLoaderIsolation(unittest.TestCase):
     def _write_workspace(self, code: str) -> str:
         import shutil
