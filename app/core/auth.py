@@ -79,7 +79,14 @@ def owner_email(request: Request) -> str:
 
     Tries subscription token first; falls back to JWT so that users who
     authenticated via the new JWT auth system are identified correctly.
-    """
+
+    Raises 401 if neither credential resolves to an identity — every
+    caller of this function sits behind factory.py's api_auth_middleware,
+    which already rejects unauthenticated /api/* requests before routing
+    even runs, so reaching this point with no identity means the two
+    layers disagree about what's valid and the safe behavior is to reject,
+    not to silently scope the request to a shared "demo@local" identity
+    (which would let unrelated callers see/mutate each other's data)."""
     sub_token, bearer = extract_auth_credentials(request)
     payload = verify_token(sub_token) if sub_token else None
     if not payload and bearer:
@@ -94,10 +101,12 @@ def owner_email(request: Request) -> str:
         try:
             from app.core.jwt_utils import decode_access_token
             claims = decode_access_token(bearer)
-            return claims.get("email", "demo@local")
+            email = claims.get("email")
+            if email:
+                return email
         except Exception:
             pass
-    return "demo@local"
+    raise HTTPException(401, "Authentication required")
 
 
 async def owner_user_id(conn, request: Request) -> uuid.UUID:

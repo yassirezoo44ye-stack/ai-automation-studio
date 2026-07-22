@@ -321,5 +321,37 @@ class TestChatRunEndpointsRequireAuth(unittest.TestCase):
         self.assertEqual(asyncio.run(_run()).status_code, 405)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# owner_email() fail-open fallback (app/core/auth.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestOwnerEmailFailsClosed(unittest.TestCase):
+    """owner_email() used to silently return a shared "demo@local" identity
+    for any request it couldn't identify, instead of rejecting it — every
+    caller of this function sits behind api_auth_middleware, so reaching
+    that fallback meant the two layers disagreed about what's valid. Now
+    it raises 401 instead of scoping the request to a shared identity."""
+
+    class _Req:
+        def __init__(self, headers):
+            self.headers = headers
+            self.cookies = {}
+            self.client = None
+
+    def test_no_credentials_raises_401_not_demo_fallback(self):
+        from fastapi import HTTPException
+        from app.core.auth import owner_email
+        with self.assertRaises(HTTPException) as ctx:
+            owner_email(self._Req({}))
+        self.assertEqual(ctx.exception.status_code, 401)
+
+    def test_garbage_bearer_raises_401_not_demo_fallback(self):
+        from fastapi import HTTPException
+        from app.core.auth import owner_email
+        with self.assertRaises(HTTPException) as ctx:
+            owner_email(self._Req({"Authorization": "Bearer not-a-real-token"}))
+        self.assertEqual(ctx.exception.status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -309,10 +309,16 @@ class TestOwnerEmail:
         req = self._make_request({}, {"sub_token": token})
         assert main._owner_email(req) == "cookie@test.com"
 
-    def test_falls_back_to_demo_when_no_token(self):
+    def test_no_token_raises_401(self):
+        # Was a silent fallback to a shared "demo@local" identity — closed
+        # as a security fix (see app.core.auth.owner_email's docstring).
         req = self._make_request({})
-        assert main._owner_email(req) == "demo@local"
+        with pytest.raises(HTTPException) as exc_info:
+            main._owner_email(req)
+        assert exc_info.value.status_code == 401
 
-    def test_falls_back_to_demo_on_invalid_token(self):
+    def test_invalid_token_raises_401(self):
         req = self._make_request({"X-Sub-Token": "garbage.token"})
-        assert main._owner_email(req) == "demo@local"
+        with pytest.raises(HTTPException) as exc_info:
+            main._owner_email(req)
+        assert exc_info.value.status_code == 401

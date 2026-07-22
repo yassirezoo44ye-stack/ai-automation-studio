@@ -4,6 +4,8 @@ Runs without a live database.
 """
 import time as _time
 
+import pytest
+from fastapi import HTTPException
 
 from app.core.auth import make_token, verify_token, owner_email
 
@@ -67,10 +69,18 @@ class TestOwnerEmail:
         req = self._Req({}, {"sub_token": tok})
         assert owner_email(req) == "e@f.com"
 
-    def test_no_token_returns_demo(self):
+    def test_no_token_raises_401(self):
+        # Was a silent fallback to a shared "demo@local" identity — closed
+        # as a security fix (any caller reaching here already passed
+        # factory.py's api_auth_middleware, so having no identity here
+        # means reject, not silently share one account across callers).
         req = self._Req({})
-        assert owner_email(req) == "demo@local"
+        with pytest.raises(HTTPException) as exc_info:
+            owner_email(req)
+        assert exc_info.value.status_code == 401
 
-    def test_invalid_token_returns_demo(self):
+    def test_invalid_token_raises_401(self):
         req = self._Req({"X-Sub-Token": "garbage.stuff"})
-        assert owner_email(req) == "demo@local"
+        with pytest.raises(HTTPException) as exc_info:
+            owner_email(req)
+        assert exc_info.value.status_code == 401
