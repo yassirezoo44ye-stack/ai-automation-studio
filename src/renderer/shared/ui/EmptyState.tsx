@@ -5,11 +5,17 @@ interface Props {
   title: string;
   description?: string;
   action?: ReactNode;
+  /** Tighter padding/gap for inline use (a panel or sidebar), instead of
+   * this page's whole content area. */
+  compact?: boolean;
 }
 
-export function EmptyState({ icon, title, description, action }: Props) {
+export function EmptyState({ icon, title, description, action, compact = false }: Props) {
   return (
-    <div className="empty-state" style={{ direction: "ltr", padding: "48px 24px" }}>
+    <div
+      className="empty-state"
+      style={{ direction: "ltr", padding: compact ? "20px 16px" : "48px 24px" }}
+    >
       {icon && <div style={{ marginBottom: 16, opacity: 0.5 }}>{icon}</div>}
       <div style={{ fontWeight: 600, color: "var(--t2)", marginBottom: 6 }}>{title}</div>
       {description && (

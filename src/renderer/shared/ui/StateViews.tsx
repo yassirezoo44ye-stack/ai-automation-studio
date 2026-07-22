@@ -2,9 +2,15 @@
  * The two view states every data-driven panel needs beyond loading/success:
  * ErrorState (with retry) and EmptyState (zero results — not a failure).
  * Pairs with useAsyncData; loading itself reuses LoadingSpinner.
+ *
+ * EmptyState re-exports shared/ui/EmptyState.tsx — that's the canonical
+ * implementation (Billing/Teams/Organizations/Sandbox/Plugins/AI Routing/
+ * Observability all import it directly); this file used to define a
+ * second, near-identical component instead of reusing it.
  */
-import type { ReactNode } from "react";
 import { GoldButton } from "./gold";
+
+export { EmptyState } from "./EmptyState";
 
 export function ErrorState({
   message, suggestedFix, onRetry, compact = false,
@@ -31,38 +37,6 @@ export function ErrorState({
         <div style={{ fontSize: 12, color: "var(--t5)", maxWidth: 340 }}>{suggestedFix}</div>
       )}
       <GoldButton variant="ghost" onClick={onRetry}>Retry</GoldButton>
-    </div>
-  );
-}
-
-export function EmptyState({
-  icon, title, description, action, compact = false,
-}: {
-  icon?: ReactNode;
-  title: string;
-  description?: string;
-  action?: ReactNode;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      style={{
-        flex: compact ? undefined : 1,
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        gap: 8, padding: compact ? "20px 16px" : "40px 20px", textAlign: "center",
-      }}
-    >
-      {icon && (
-        <div style={{
-          width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
-          background: "var(--accent-dim)", border: "1px solid var(--accent-border)", color: "var(--accent-2)",
-        }}>
-          {icon}
-        </div>
-      )}
-      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t2)" }}>{title}</div>
-      {description && <div style={{ fontSize: 12.5, color: "var(--t5)", maxWidth: 300, lineHeight: 1.5 }}>{description}</div>}
-      {action}
     </div>
   );
 }

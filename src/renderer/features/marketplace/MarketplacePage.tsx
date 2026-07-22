@@ -19,6 +19,7 @@ import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import { VersionsTab } from "./tabs/VersionsTab";
 import { DependenciesTab } from "./tabs/DependenciesTab";
 import { ReviewsTab } from "./tabs/ReviewsTab";
@@ -298,22 +299,6 @@ function CategoryBar({ categories, active, onChange }: {
   );
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
-
-function EmptyState({ query }: { query: string }) {
-  return (
-    <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "64px 0", color: "var(--t4)" }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: "var(--t2)" }}>
-        {query ? `No results for "${query}"` : "No listings yet"}
-      </div>
-      <p style={{ fontSize: 13, maxWidth: 320, margin: "0 auto" }}>
-        {query ? "Try a different search term or browse by category." : "Be the first to publish to the marketplace."}
-      </p>
-    </div>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 type SortBy = "verified" | "rating" | "installs" | "newest";
@@ -505,7 +490,11 @@ export function MarketplacePage() {
             ))}
           </div>
         ) : sorted.length === 0 ? (
-          <EmptyState query={search} />
+          <EmptyState
+            icon={<span style={{ fontSize: 48 }}>🔍</span>}
+            title={search ? `No results for "${search}"` : "No listings yet"}
+            description={search ? "Try a different search term or browse by category." : "Be the first to publish to the marketplace."}
+          />
         ) : (
           <motion.div
             style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}
