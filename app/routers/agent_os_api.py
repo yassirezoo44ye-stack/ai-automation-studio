@@ -88,6 +88,7 @@ class LoopRequest(BaseModel):
 @router.post("/api/agentos/run")
 async def agentos_run(req: RunRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     kernel = get_agent_kernel()
     result = await kernel.run(
         req.input,
@@ -96,7 +97,7 @@ async def agentos_run(req: RunRequest, request: Request):
         workspace  = req.workspace,
         project_id = req.project_id,
         deliberate = req.deliberate,
-        organization_id = getattr(request.state, "org_id", None),
+        organization_id = await optional_org_id(request),
     )
     return result.to_dict()
 
@@ -104,13 +105,14 @@ async def agentos_run(req: RunRequest, request: Request):
 @router.post("/api/agentos/collaborate")
 async def agentos_collaborate(req: CollaborateRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     kernel  = get_agent_kernel()
     results = await kernel.collaborate(
         req.tasks,
         caller    = req.caller,
         workspace = req.workspace,
         parallel  = req.parallel,
-        organization_id = getattr(request.state, "org_id", None),
+        organization_id = await optional_org_id(request),
     )
     return {
         "tasks"   : req.tasks,
@@ -123,22 +125,24 @@ async def agentos_collaborate(req: CollaborateRequest, request: Request):
 @router.post("/api/agentos/plan")
 async def agentos_plan(req: PlanRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     return await get_agent_kernel().plan_and_run(
         req.goal, caller=req.caller, workspace=req.workspace,
-        organization_id=getattr(request.state, "org_id", None),
+        organization_id=await optional_org_id(request),
     )
 
 
 @router.post("/api/agentos/deliberate")
 async def agentos_deliberate(req: RunRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     kernel = get_agent_kernel()
     result, vote = await kernel.deliberate_and_run(
         req.input,
         caller    = req.caller,
         user_id   = req.user_id,
         workspace = req.workspace,
-        organization_id = getattr(request.state, "org_id", None),
+        organization_id = await optional_org_id(request),
     )
     return {"result": result.to_dict(), "deliberation": vote}
 
@@ -193,10 +197,11 @@ async def agentos_performance():
 @router.post("/api/agentos/evolve")
 async def agentos_evolve(req: EvolveRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     kernel = get_agent_kernel()
     if req.dry_run:
         return kernel.evolution_analysis()
-    return await kernel.evolve(organization_id=getattr(request.state, "org_id", None))
+    return await kernel.evolve(organization_id=await optional_org_id(request))
 
 
 @router.get("/api/agentos/reflections")
@@ -210,17 +215,19 @@ async def agentos_reflections(n: int = 20):
 @router.post("/api/agentos/generate")
 async def agentos_generate(req: GenerateRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     return await get_agent_kernel().generate_agent(
         req.description, req.agent_name,
-        organization_id=getattr(request.state, "org_id", None),
+        organization_id=await optional_org_id(request),
     )
 
 
 @router.post("/api/agentos/suggest")
 async def agentos_suggest(req: SuggestRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     suggestions = await get_agent_kernel().suggest(
-        req.n, organization_id=getattr(request.state, "org_id", None),
+        req.n, organization_id=await optional_org_id(request),
     )
     return {"count": len(suggestions), "suggestions": suggestions}
 
@@ -228,16 +235,18 @@ async def agentos_suggest(req: SuggestRequest, request: Request):
 @router.post("/api/agentos/implement")
 async def agentos_implement(req: ImplementRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     return await get_agent_kernel().implement(
-        req.index, organization_id=getattr(request.state, "org_id", None),
+        req.index, organization_id=await optional_org_id(request),
     )
 
 
 @router.post("/api/agentos/loop")
 async def agentos_loop(req: LoopRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
+    from app.tenancy.context import optional_org_id
     results = await get_agent_kernel().autonomous_loop(
-        req.cycles, organization_id=getattr(request.state, "org_id", None),
+        req.cycles, organization_id=await optional_org_id(request),
     )
     return {"cycles": req.cycles, "results": results}
 

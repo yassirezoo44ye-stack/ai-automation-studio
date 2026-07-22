@@ -133,12 +133,15 @@ def _parse_since(since: Optional[str]) -> Optional[datetime]:
 @router.get("/api/ai/usage")
 async def usage_summary(request: Request, since: Optional[str] = None):
     """Total spend from ai_usage_log — the consolidated cost ledger.
-    Org-scoped when X-Organization-Id is present, platform-wide otherwise
-    (mirrors app.core.org_quota's optional-org convention)."""
+    Org-scoped when the caller is a verified member of the org named in
+    X-Organization-Id, platform-wide otherwise (mirrors
+    app.core.org_quota's optional-org convention) — unverified would let
+    any authenticated caller read another org's spend by naming its id."""
     from app.ai import cost_tracker
     from app.core.db import get_pool
+    from app.tenancy.context import optional_org_id
 
-    org_id  = getattr(request.state, "org_id", None)
+    org_id  = await optional_org_id(request)
     since_dt = _parse_since(since)
     totals  = await cost_tracker.totals(pool=get_pool(), org_id=org_id, since=since_dt)
     rows    = await cost_tracker.by_provider(pool=get_pool(), org_id=org_id, since=since_dt)
@@ -161,8 +164,9 @@ async def usage_summary(request: Request, since: Optional[str] = None):
 async def usage_by_provider(request: Request, since: Optional[str] = None):
     from app.ai import cost_tracker
     from app.core.db import get_pool
+    from app.tenancy.context import optional_org_id
 
-    org_id  = getattr(request.state, "org_id", None)
+    org_id  = await optional_org_id(request)
     since_dt = _parse_since(since)
     rows    = await cost_tracker.by_provider(pool=get_pool(), org_id=org_id, since=since_dt)
 

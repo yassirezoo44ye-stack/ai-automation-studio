@@ -49,11 +49,12 @@ class WorkflowResumeIn(BaseModel):
 
 @router.post("/orchestrate")
 async def orchestrate(body: OrchestrateIn, request: Request):
+    from app.tenancy.context import optional_org_id
     try:
         req = OrchestratorRequest(
             prompt=body.prompt,
             user_id=getattr(request.state, "user_id", None),
-            organization_id=getattr(request.state, "org_id", None),
+            organization_id=await optional_org_id(request),
             mode=body.mode,
             conversation_id=body.conversation_id,
             project_id=body.project_id,
@@ -70,10 +71,11 @@ async def orchestrate(body: OrchestrateIn, request: Request):
 
 @router.post("/orchestrate/stream")
 async def orchestrate_stream(body: OrchestrateIn, request: Request):
+    from app.tenancy.context import optional_org_id
     req = OrchestratorRequest(
         prompt=body.prompt,
         user_id=getattr(request.state, "user_id", None),
-        organization_id=getattr(request.state, "org_id", None),
+        organization_id=await optional_org_id(request),
         mode=body.mode,
         conversation_id=body.conversation_id,
         project_id=body.project_id,
@@ -139,9 +141,10 @@ async def stream_builtin_agent(body: AgentRunIn):
 @router.post("/workflows/run")
 async def run_workflow(body: WorkflowRunIn, request: Request):
     from app.core.ai.workflow.engine import WorkflowDefinition, WorkflowNode
+    from app.tenancy.context import optional_org_id
 
     user_id = getattr(request.state, "user_id", None)
-    org_id  = getattr(request.state, "org_id", None)
+    org_id  = await optional_org_id(request)
 
     raw = body.definition
     nodes = {
@@ -214,11 +217,13 @@ async def get_execution(execution_id: str):
 async def cost_summary(request: Request):
     """Real numbers from ai_usage_log — the consolidated cost/token ledger
     (AI Routing consolidation; see app/ai/cost_tracker.py). Org-scoped when
-    an X-Organization-Id header is present, platform-wide otherwise."""
+    the caller is a verified member of the org named in X-Organization-Id,
+    platform-wide otherwise."""
     from app.ai import cost_tracker
     from app.core.db import get_pool
+    from app.tenancy.context import optional_org_id
 
-    org_id = getattr(request.state, "org_id", None)
+    org_id = await optional_org_id(request)
     pool   = get_pool()
     totals = await cost_tracker.totals(pool=pool, org_id=org_id)
     by_provider_rows = await cost_tracker.by_provider(pool=pool, org_id=org_id)
