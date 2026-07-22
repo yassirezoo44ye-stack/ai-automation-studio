@@ -537,7 +537,7 @@ class TestCrashRecovery(unittest.TestCase):
         healthy.call = AsyncMock(return_value={"ok": True})
         manager._workers[installation_id] = crashed
 
-        async def fake_respawn(iid):
+        async def fake_respawn(iid, *, stale=None):
             manager._workers[iid] = healthy
             return healthy
 
@@ -588,7 +588,7 @@ class TestCrashRecovery(unittest.TestCase):
         manager._workers[installation_id] = crashed1
         respawn_calls = []
 
-        async def fake_respawn(iid):
+        async def fake_respawn(iid, *, stale=None):
             respawn_calls.append(iid)
             manager._workers[iid] = crashed2
             return crashed2
@@ -613,6 +613,62 @@ class TestCrashRecovery(unittest.TestCase):
         async def run():
             with self.assertRaises(WorkerCrashedError):
                 await manager._respawn("never-spawned-through-this-manager")
+
+        asyncio.run(run())
+
+    def test_respawn_stops_and_replaces_a_hung_but_still_alive_worker(self):
+        """A worker that timed out is still technically `is_alive` (the OS
+        process/container hasn't exited — it's just unresponsive). Before
+        this fix, _respawn's `existing.is_alive` short-circuit handed that
+        SAME hung worker straight back out, so it was never actually
+        killed and every future call kept re-hitting it. Passing `stale`
+        must force a real stop() + fresh spawn instead."""
+        from unittest.mock import AsyncMock, patch
+        from app.sandbox.manager import SandboxManager
+
+        manager = SandboxManager()
+        installation_id = "hung-worker"
+        hung = AsyncMock()
+        hung.is_alive = True  # still running — just unresponsive, not exited
+        hung.stop = AsyncMock()
+        manager._workers[installation_id] = hung
+        manager._spawn_kwargs[installation_id] = {
+            "installation_id": installation_id, "org_id": "org-1", "plugin_id": "p",
+            "entry_point": "main", "code": "", "config": None, "network_domains": None,
+        }
+
+        fresh = AsyncMock()
+
+        async def run():
+            with patch.object(manager, "spawn_worker", AsyncMock(return_value=fresh)) as mock_spawn, \
+                 patch.object(manager, "_log_event", AsyncMock()):
+                result = await manager._respawn(installation_id, stale=hung)
+                self.assertIs(result, fresh)
+                hung.stop.assert_awaited_once()
+                mock_spawn.assert_awaited_once()
+
+        asyncio.run(run())
+
+    def test_respawn_returns_existing_worker_untouched_when_not_stale(self):
+        """A worker that's alive and NOT the one the caller flagged as
+        broken (e.g. a concurrent respawn already replaced it) must be
+        returned as-is — no spurious stop()/respawn."""
+        from unittest.mock import AsyncMock, patch
+        from app.sandbox.manager import SandboxManager
+
+        manager = SandboxManager()
+        installation_id = "already-fresh"
+        current = AsyncMock()
+        current.is_alive = True
+        current.stop = AsyncMock()
+        manager._workers[installation_id] = current
+
+        async def run():
+            with patch.object(manager, "spawn_worker", AsyncMock()) as mock_spawn:
+                result = await manager._respawn(installation_id, stale=None)
+                self.assertIs(result, current)
+                current.stop.assert_not_awaited()
+                mock_spawn.assert_not_awaited()
 
         asyncio.run(run())
 

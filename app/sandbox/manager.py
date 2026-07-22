@@ -135,15 +135,31 @@ class SandboxManager:
             return await worker.call(call, method=method, args=args, kwargs=kwargs, timeout=timeout)
         except WorkerCrashedError:
             log.warning("sandbox worker %s crashed mid-call — attempting one respawn", installation_id)
-            worker = await self._respawn(installation_id)
+            worker = await self._respawn(installation_id, stale=worker)
             return await worker.call(call, method=method, args=args, kwargs=kwargs, timeout=timeout)
 
-    async def _respawn(self, installation_id: str) -> Worker:
+    async def _respawn(self, installation_id: str, *, stale: Optional[Worker] = None) -> Worker:
         lock = self._respawn_locks.setdefault(installation_id, asyncio.Lock())
         async with lock:
             existing = self._workers.get(installation_id)
-            if existing is not None and existing.is_alive:
-                return existing  # another concurrent caller already respawned it
+            # Only short-circuit if a DIFFERENT worker is already installed —
+            # i.e. a concurrent caller's respawn already replaced `stale`.
+            # Comparing identity (not just is_alive) matters because a
+            # worker that just timed out mid-call is still "alive" (the OS
+            # process/container is still running, just unresponsive) —
+            # without this, a hung worker would be handed straight back out
+            # forever instead of ever actually being replaced, and the
+            # hung process/container would never be killed (zombie
+            # accumulation on every subsequent timeout).
+            if existing is not None and existing is not stale and existing.is_alive:
+                return existing
+            self._workers.pop(installation_id, None)
+            if existing is not None:
+                try:
+                    await existing.stop()
+                except Exception:
+                    log.warning("failed to stop stale sandbox worker %s during respawn",
+                                installation_id, exc_info=True)
             spawn_kwargs = self._spawn_kwargs.get(installation_id)
             if spawn_kwargs is None:
                 raise WorkerCrashedError(
@@ -154,7 +170,6 @@ class SandboxManager:
             org_id = self._org_ids.get(installation_id, spawn_kwargs["org_id"])
             if row_id:
                 await self._log_event(row_id, org_id, "lifecycle", "warning", "worker crashed — respawning")
-            self._workers.pop(installation_id, None)
             return await self.spawn_worker(**spawn_kwargs)
 
     # ── context_rpc servicing (worker -> main process) ──────────────────────
