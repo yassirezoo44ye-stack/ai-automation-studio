@@ -58,6 +58,11 @@ class AgentKernel:
         self._memory    : AgentMemory = get_memory()
         self._parser    : IntentParser = IntentParser()
         self._booted    : bool = False
+        # See app.plugins.registry_guard's module docstring — without
+        # this, one org's plugin-provided agent can silently hijack the
+        # name of a built-in agent or another org's plugin agent.
+        from app.plugins.registry_guard import OwnershipTracker
+        self._agent_owners = OwnershipTracker("agent")
 
         # Components set during boot
         self._modifier  = None
@@ -111,12 +116,21 @@ class AgentKernel:
 
     # ── Agent registry ────────────────────────────────────────────────────────
 
-    def register_agent(self, agent: EvolvableAgent) -> None:
+    def register_agent(self, agent: EvolvableAgent, *, owner: Optional[str] = None) -> None:
+        """`owner` should be the plugin's installation_id for a
+        plugin-provided agent (app.plugins.adapters.adapt_agent supplies
+        it) — None (the default, used by every built-in agent via
+        app.agents.loader.load_all) marks it as protected from being
+        claimed by a plugin. Raises RegistrationConflictError on a
+        same-name claim by a different owner rather than silently
+        replacing it."""
+        self._agent_owners.claim(agent.name, owner)
         self._agents[agent.name] = agent
         self._parser.update_agents(list(self._agents.keys()))
 
     def unregister_agent(self, name: str) -> bool:
         if name in self._agents:
+            self._agent_owners.release(name)
             del self._agents[name]
             self._parser.update_agents(list(self._agents.keys()))
             return True

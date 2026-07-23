@@ -12,10 +12,16 @@ import logging
 from typing import Any, Callable
 
 from app.ai.models import ToolSchema
+from app.plugins.registry_guard import OwnershipTracker
 
 log = logging.getLogger(__name__)
 
 _REGISTRY: dict[str, "_ToolEntry"] = {}
+# Tracks which owner (a plugin installation_id, or None for a built-in)
+# holds each tool name — see registry_guard's docstring for why this
+# matters: without it, one org's plugin can silently hijack another
+# org's (or a built-in's) tool name.
+_owners = OwnershipTracker("tool")
 
 
 class _ToolEntry:
@@ -57,22 +63,31 @@ def tool(
             description=description,
             parameters=parameters,
         )
+        _owners.claim(tool_name, None)  # built-in — owner=None, protected from plugin takeover
         _REGISTRY[tool_name] = _ToolEntry(schema=schema, fn=fn)
         log.debug("Registered tool: %s", tool_name)
         return fn
     return decorator
 
 
-def register_tool(schema: ToolSchema, fn: Callable) -> None:
+def register_tool(schema: ToolSchema, fn: Callable, *, owner: str | None = None) -> None:
     """Non-decorator registration — for callers that build a ToolSchema
     dynamically (e.g. a Plugin SDK TOOL-type plugin loaded from a
     marketplace asset, where there's no source-level `@tool(...)` to
-    decorate). Same _REGISTRY the decorator writes to."""
+    decorate). Same _REGISTRY the decorator writes to.
+
+    `owner` should be the plugin's installation_id for any plugin-sourced
+    tool (app.plugins.adapters.adapt_tool always supplies it) — raises
+    RegistrationConflictError if the name is already held by a different
+    owner, rather than silently overwriting it. See registry_guard's
+    module docstring for why this matters."""
+    _owners.claim(schema.name, owner)
     _REGISTRY[schema.name] = _ToolEntry(schema=schema, fn=fn)
-    log.debug("Registered tool (dynamic): %s", schema.name)
+    log.debug("Registered tool (dynamic): %s (owner=%s)", schema.name, owner)
 
 
 def unregister_tool(tool_name: str) -> bool:
+    _owners.release(tool_name)
     return _REGISTRY.pop(tool_name, None) is not None
 
 

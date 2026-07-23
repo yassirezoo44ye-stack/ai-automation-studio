@@ -48,6 +48,13 @@ class PlatformProviderRegistry:
     def __init__(self) -> None:
         self._providers:  dict[str, BaseProvider] = {}
         self._builtin_ids: set[str] = set()
+        # See app.plugins.registry_guard's module docstring — without
+        # this, a plugin could register provider_id="anthropic" (or any
+        # other built-in/other-plugin id) and silently hijack every
+        # completion request the platform routes to that id, redirecting
+        # prompts/keys/responses into its own sandbox.
+        from app.plugins.registry_guard import OwnershipTracker
+        self._owners = OwnershipTracker("AI provider")
         self._register_defaults()
 
     # ── Registration ──────────────────────────────────────────────────────────
@@ -62,17 +69,26 @@ class PlatformProviderRegistry:
         ]:
             self._providers[p.provider_id] = p
             self._builtin_ids.add(p.provider_id)
+            self._owners.claim(p.provider_id, None)
 
-    def register(self, provider: BaseProvider) -> None:
+    def register(self, provider: BaseProvider, *, owner: str | None = None) -> None:
         """Register or replace a provider at runtime (e.g. an AI_PROVIDER-type
         plugin). Built-in providers are still wired at module load time — this
-        just lets a plugin add to the same dict."""
+        just lets a plugin add to the same dict.
+
+        `owner` should be the plugin's installation_id
+        (app.plugins.adapters.adapt_ai_provider supplies it) — raises
+        RegistrationConflictError if provider_id is already held by a
+        different owner (a built-in, or another plugin) instead of
+        silently redirecting that id's traffic."""
+        self._owners.claim(provider.provider_id, owner)
         self._providers[provider.provider_id] = provider
-        log.info("PlatformRegistry: registered provider '%s'", provider.provider_id)
+        log.info("PlatformRegistry: registered provider '%s' (owner=%s)", provider.provider_id, owner)
 
     def unregister(self, provider_id: str) -> None:
         if provider_id in self._builtin_ids:
             raise ValueError(f"cannot unregister built-in provider {provider_id!r}")
+        self._owners.release(provider_id)
         self._providers.pop(provider_id, None)
 
     # ── Primary API ───────────────────────────────────────────────────────────

@@ -387,6 +387,229 @@ class TestAIProviderRegistryRoundtrip(unittest.TestCase):
             platform_registry.unregister("anthropic")
 
 
+# ── Cross-tenant registry name-collision guard (Tool Authorization audit) ───
+#
+# app.ai.tools._REGISTRY, app.plugins.workflow_nodes.WorkflowNodeRegistry,
+# AgentKernel._agents, app.plugins.registry's provider dicts, and
+# PlatformProviderRegistry are five separate `dict[name] = value` registries
+# every plugin (from every org) shares, all fed by the same untrusted
+# source (a plugin manifest's self-declared name) via
+# app.plugins.adapters.adapt_registrations(). Before this fix, a second
+# registration under a name already in use silently replaced the first —
+# meaning Org A's agent calling a tool it believes is its own plugin's
+# could be silently redirected into Org B's plugin sandbox (with whatever
+# arguments Org A's agent constructed) if Org B's plugin declared the same
+# tool name. Concretely: "Org A tries to run a tool that resolves to Org
+# B's resource" (IDOR-by-name-collision) is exactly what these tests prove
+# can no longer happen.
+
+class TestToolRegistrationOwnership(unittest.TestCase):
+    def test_different_owner_claiming_existing_name_is_rejected(self):
+        from app.ai.models import ToolSchema
+        from app.ai.tools import register_tool, unregister_tool
+        from app.plugins.registry_guard import RegistrationConflictError
+
+        name = f"collide_{uuid.uuid4().hex[:8]}"
+        schema = ToolSchema(name=name, description="d", parameters={"type": "object", "properties": {}})
+        try:
+            register_tool(schema, lambda **kw: "org-a-result", owner="installation-org-a")
+            with self.assertRaises(RegistrationConflictError):
+                register_tool(schema, lambda **kw: "org-b-result", owner="installation-org-b")
+            # Org A's own registration must still be the one live — the
+            # rejected attempt must not have partially overwritten it.
+            from app.ai.tools import _REGISTRY
+            self.assertEqual(_REGISTRY[name].fn(), "org-a-result")
+        finally:
+            unregister_tool(name)
+
+    def test_plugin_cannot_shadow_a_builtin_tool_name(self):
+        from app.ai.models import ToolSchema
+        from app.ai.tools import register_tool
+        from app.plugins.registry_guard import RegistrationConflictError
+
+        # "calculate" is a real built-in (owner=None) registered at
+        # module import time — a plugin claiming it must be rejected,
+        # not silently take over every agent's calculator calls.
+        schema = ToolSchema(name="calculate", description="d", parameters={"type": "object", "properties": {}})
+        with self.assertRaises(RegistrationConflictError):
+            register_tool(schema, lambda **kw: "evil", owner="installation-attacker")
+
+    def test_same_owner_can_reregister_its_own_name(self):
+        """A plugin hot-reload re-registering its own tool must keep
+        working — the guard only blocks a DIFFERENT owner's claim."""
+        from app.ai.models import ToolSchema
+        from app.ai.tools import register_tool, unregister_tool
+
+        name = f"reload_{uuid.uuid4().hex[:8]}"
+        schema = ToolSchema(name=name, description="d", parameters={"type": "object", "properties": {}})
+        try:
+            register_tool(schema, lambda **kw: "v1", owner="installation-x")
+            register_tool(schema, lambda **kw: "v2", owner="installation-x")  # must not raise
+            from app.ai.tools import _REGISTRY
+            self.assertEqual(_REGISTRY[name].fn(), "v2")
+        finally:
+            unregister_tool(name)
+
+
+class TestWorkflowNodeRegistrationOwnership(unittest.TestCase):
+    def test_different_owner_claiming_existing_node_name_is_rejected(self):
+        from app.plugins.workflow_nodes import WorkflowNodeRegistry
+        from app.plugins.registry_guard import RegistrationConflictError
+
+        async def fn_a(**kwargs):
+            return "org-a"
+
+        async def fn_b(**kwargs):
+            return "org-b"
+
+        registry = WorkflowNodeRegistry()
+        registry.register("shared_node", fn_a, owner="installation-org-a")
+        with self.assertRaises(RegistrationConflictError):
+            registry.register("shared_node", fn_b, owner="installation-org-b")
+        self.assertIs(registry.get_node("shared_node"), fn_a)
+
+
+class TestAgentRegistrationOwnership(unittest.TestCase):
+    def test_different_owner_claiming_existing_agent_name_is_rejected(self):
+        from app.agents.kernel import AgentKernel
+        from app.agents.base import AgentContext, AgentResult, EvolvableAgent
+        from app.plugins.registry_guard import RegistrationConflictError
+
+        class _Agent(EvolvableAgent):
+            name = "shared_agent"
+            description = "test"
+            group = "test"
+
+            async def execute(self, ctx: AgentContext) -> AgentResult:
+                return AgentResult.ok(self.name, "ok")
+
+        kernel = AgentKernel.__new__(AgentKernel)
+        kernel._agents = {}
+        from app.agents.intent import IntentParser
+        kernel._parser = IntentParser()
+        from app.plugins.registry_guard import OwnershipTracker
+        kernel._agent_owners = OwnershipTracker("agent")
+
+        kernel.register_agent(_Agent(), owner="installation-org-a")
+        with self.assertRaises(RegistrationConflictError):
+            kernel.register_agent(_Agent(), owner="installation-org-b")
+
+
+class TestAIProviderRegistrationOwnership(unittest.TestCase):
+    def test_plugin_cannot_hijack_builtin_provider_id(self):
+        """The most severe instance of this bug class: a plugin
+        registering provider_id="anthropic" would redirect every
+        completion request the platform routes there — prompts, API
+        keys, responses — into the plugin's own sandbox."""
+        from app.core.ai.registry.registry import platform_registry
+        from app.plugins.registry_guard import RegistrationConflictError
+
+        class _FakeProvider:
+            def __init__(self, provider_id: str) -> None:
+                self.provider_id  = provider_id
+                self.is_available = True
+
+        with self.assertRaises(RegistrationConflictError):
+            platform_registry.register(_FakeProvider("anthropic"), owner="installation-attacker")
+
+    def test_different_plugins_cannot_collide_on_provider_id(self):
+        from app.core.ai.registry.registry import platform_registry
+        from app.plugins.registry_guard import RegistrationConflictError
+
+        provider_id = f"fake_{uuid.uuid4().hex[:8]}"
+
+        class _FakeProvider:
+            def __init__(self, provider_id: str) -> None:
+                self.provider_id  = provider_id
+                self.is_available = True
+
+        try:
+            platform_registry.register(_FakeProvider(provider_id), owner="installation-org-a")
+            with self.assertRaises(RegistrationConflictError):
+                platform_registry.register(_FakeProvider(provider_id), owner="installation-org-b")
+        finally:
+            platform_registry.unregister(provider_id)
+
+
+class TestAdaptRegistrationsRollback(unittest.TestCase):
+    """adapt_registrations() must not leave a partially-registered
+    plugin's earlier (successful) registrations orphaned in the global
+    registries when a later one in the same batch conflicts — otherwise
+    they're live but absent from _ADAPTED, so unadapt_registrations()
+    (called on uninstall) can never find and remove them."""
+
+    def test_conflict_partway_through_rolls_back_earlier_registrations(self):
+        from app.plugins import adapters
+        from app.ai.tools import get_schema
+
+        existing_name = f"taken_{uuid.uuid4().hex[:8]}"
+        new_tool_name = f"fresh_{uuid.uuid4().hex[:8]}"
+
+        # Pre-claim `existing_name` under a different installation, so the
+        # second registration in this batch collides.
+        from app.ai.models import ToolSchema
+        from app.ai.tools import register_tool, unregister_tool
+        register_tool(
+            ToolSchema(name=existing_name, description="d", parameters={"type": "object", "properties": {}}),
+            lambda **kw: "someone-else",
+            owner="installation-other-org",
+        )
+        try:
+            registrations = [
+                {"type": "tool", "name": new_tool_name,
+                 "schema": {"name": new_tool_name, "description": "d",
+                            "parameters": {"type": "object", "properties": {}}}},
+                {"type": "tool", "name": existing_name,
+                 "schema": {"name": existing_name, "description": "d",
+                            "parameters": {"type": "object", "properties": {}}}},
+            ]
+            with self.assertRaises(Exception):
+                adapters.adapt_registrations("installation-under-test", registrations)
+
+            # The first (successful) registration must have been rolled
+            # back, not left live with nothing in _ADAPTED to clean it up.
+            self.assertIsNone(get_schema(new_tool_name))
+            self.assertEqual(adapters.get_adapted_registrations("installation-under-test"), [])
+        finally:
+            unregister_tool(existing_name)
+            unregister_tool(new_tool_name)
+
+
+class TestOwnershipTrackerConcurrency(unittest.TestCase):
+    def test_concurrent_claims_from_multiple_orgs_stay_consistent(self):
+        """Simultaneous plugin loads from several orgs, some claiming
+        genuinely distinct names and some deliberately colliding, must
+        never corrupt the tracker's state or let two different owners
+        both believe they hold the same name."""
+        import threading
+        from app.plugins.registry_guard import OwnershipTracker, RegistrationConflictError
+
+        tracker = OwnershipTracker("test")
+        contested_name = "contested"
+        winners: list[str] = []
+        lock = threading.Lock()
+
+        def _claim(owner: str) -> None:
+            try:
+                tracker.claim(contested_name, owner)
+                with lock:
+                    winners.append(owner)
+            except RegistrationConflictError:
+                pass
+            # Each thread also claims its own unique name — must never
+            # conflict with anything.
+            tracker.claim(f"unique-{owner}", owner)
+
+        threads = [threading.Thread(target=_claim, args=(f"org-{i}",)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Exactly one thread's claim on the contested name can have won.
+        self.assertEqual(len(winners), 1)
+
+
 # ── Digital Signature Verification (new gap) ────────────────────────────────
 
 class TestPluginSigning(unittest.TestCase):

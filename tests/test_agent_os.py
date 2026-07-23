@@ -65,8 +65,10 @@ def _make_memory() -> AgentMemory:
 
 def _make_kernel() -> "AgentKernel":
     from app.agents.kernel import AgentKernel
+    from app.plugins.registry_guard import OwnershipTracker
     k = AgentKernel.__new__(AgentKernel)
     k._agents       = {}
+    k._agent_owners = OwnershipTracker("agent")
     k._memory       = _make_memory()
     k._parser       = IntentParser()
     k._booted       = True
