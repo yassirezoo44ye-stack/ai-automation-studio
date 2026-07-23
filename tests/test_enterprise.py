@@ -935,17 +935,86 @@ class TestMarketplaceSecurity(unittest.TestCase):
         from app.marketplace.security import check_permission_manifest
         self.assertEqual(check_permission_manifest(["network", "filesystem"]), [])
 
-    def test_malware_and_vuln_scan_stubs_are_labeled_not_configured(self):
-        """These are deliberately unimplemented this phase — guard against
-        someone silently flipping them to a fake 'pass' without the
-        'not configured' signal a caller depends on to know it's a stub."""
-        from app.marketplace.security import scan_for_malware, scan_dependency_vulnerabilities
-        r1 = scan_for_malware({"item_id": "x"})
-        r2 = scan_dependency_vulnerabilities("x")
-        self.assertTrue(r1.passed)
-        self.assertTrue(r2.passed)
-        self.assertTrue(any("not configured" in f for f in r1.findings))
-        self.assertTrue(any("not configured" in f for f in r2.findings))
+    def test_malware_scan_clean_asset_passes(self):
+        from app.marketplace.security import scan_for_malware
+        r = scan_for_malware({"item_id": "x", "assets": [
+            {"id": "a1", "asset_type": "inline", "content": "def handler():\n    return 'hello'\n"},
+        ]})
+        self.assertTrue(r.passed)
+        self.assertTrue(any("no dangerous code constructs" in f for f in r.findings))
+
+    def test_malware_scan_flags_eval_and_shell_true(self):
+        """Marketplace Security phase: these two were previously stubs that
+        unconditionally returned passed=True with a 'not configured'
+        finding — a false sense of security, since the installer logs
+        whatever they return as if a real check ran. Now a real static
+        scan for dangerous constructs (the same class bandit's
+        B307/B605 flag) that must actually flag something recognizably
+        dangerous."""
+        from app.marketplace.security import scan_for_malware
+        r = scan_for_malware({"item_id": "x", "assets": [
+            {"id": "a1", "asset_type": "inline",
+             "content": "user_input = fetch()\neval(user_input)\n"},
+            {"id": "a2", "asset_type": "inline",
+             "content": "subprocess.run(cmd, shell=True)\n"},
+        ]})
+        self.assertFalse(r.passed)
+        self.assertTrue(any("eval" in f for f in r.findings))
+        self.assertTrue(any("shell=True" in f for f in r.findings))
+
+    def test_vuln_scan_with_no_declared_dependencies_is_a_real_empty_result(self):
+        """No network call should happen when there's nothing to check —
+        this must resolve instantly and not depend on OSV.dev being
+        reachable in a CI sandbox with no internet access."""
+        from app.marketplace.security import scan_dependency_vulnerabilities
+        r = run(scan_dependency_vulnerabilities("x", [
+            {"id": "a1", "asset_type": "inline", "content": "def handler(): pass"},
+        ]))
+        self.assertTrue(r.passed)
+        self.assertTrue(any("nothing to check" in f for f in r.findings))
+
+    def test_vuln_scan_extracts_pinned_pypi_requirements_and_queries_osv(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.marketplace.security import scan_dependency_vulnerabilities
+
+        fake_response = MagicMock()
+        fake_response.raise_for_status = MagicMock()
+        fake_response.json = MagicMock(return_value={
+            "results": [{"vulns": [{"id": "GHSA-test-0000"}]}],
+        })
+        fake_client = MagicMock()
+        fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_client.__aexit__ = AsyncMock(return_value=False)
+        fake_client.post = AsyncMock(return_value=fake_response)
+
+        with patch("httpx.AsyncClient", return_value=fake_client):
+            r = run(scan_dependency_vulnerabilities("x", [
+                {"id": "a1", "asset_type": "inline", "content": "requests==2.25.0\n"},
+            ]))
+
+        self.assertFalse(r.passed)
+        self.assertTrue(any("GHSA-test-0000" in f for f in r.findings))
+        queried = fake_client.post.call_args.kwargs["json"]["queries"]
+        self.assertEqual(queried[0]["package"], {"name": "requests", "ecosystem": "PyPI"})
+        self.assertEqual(queried[0]["version"], "2.25.0")
+
+    def test_vuln_scan_never_raises_when_osv_unreachable(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.marketplace.security import scan_dependency_vulnerabilities
+
+        fake_client = MagicMock()
+        fake_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_client.__aexit__ = AsyncMock(return_value=False)
+        fake_client.post = AsyncMock(side_effect=ConnectionError("no network"))
+
+        with patch("httpx.AsyncClient", return_value=fake_client):
+            r = run(scan_dependency_vulnerabilities("x", [
+                {"id": "a1", "asset_type": "inline", "content": "requests==2.25.0\n"},
+            ]))
+
+        # Unreachable must never be conflated with "definitely clean".
+        self.assertTrue(r.passed)
+        self.assertTrue(any("unreachable" in f for f in r.findings))
 
 
 class TestMarketplaceAuthRegression(unittest.TestCase):

@@ -148,7 +148,11 @@ class InstallationPipeline:
         assets = await get_asset_service().get_assets(item_id, target_version)
 
         # 5. verify integrity — checksum + secret scan BLOCK on failure;
-        # the two stub hooks only warn (they can't meaningfully fail today).
+        # malware/dependency-vuln findings only warn (deliberately — a
+        # static pattern match or a known-vulnerable transitive dependency
+        # isn't proof of malicious intent, and rejecting installs on a
+        # heuristic false positive would be worse than logging it for
+        # review — see app.marketplace.security's module docstring).
         for asset in assets:
             if asset["asset_type"] == "inline":
                 if not verify_checksum(asset["content"], asset["checksum_sha256"]):
@@ -159,7 +163,7 @@ class InstallationPipeline:
         malware = scan_for_malware({"item_id": item_id, "assets": assets})
         if not malware.passed:
             log.warning("marketplace malware scan flagged %s: %s", item_id, malware.findings)
-        vuln = scan_dependency_vulnerabilities(item_id)
+        vuln = await scan_dependency_vulnerabilities(item_id, assets)
         if not vuln.passed:
             log.warning("marketplace dependency vuln scan flagged %s: %s", item_id, vuln.findings)
 
