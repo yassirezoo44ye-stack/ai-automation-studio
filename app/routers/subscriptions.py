@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.core.auth import make_token, verify_token
 from app.core.config import STRIPE_PRICE_ID, APP_URL
 from app.core.db import get_pool
-from app.core.security import check_rate_limit
+from app.core.rate_limit import _real_ip, check_rate_limit
 
 log = logging.getLogger(__name__)
 
@@ -39,11 +39,7 @@ async def create_checkout(req: CheckoutRequest):
 
 @router.get("/api/subscription/status")
 async def subscription_status(email: str, request: Request):
-    client_ip = (
-        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        or (request.client.host if request.client else "unknown")
-    )
-    if not check_rate_limit(f"sub:{client_ip}", max_calls=10, window=60):
+    if not check_rate_limit(f"sub:{_real_ip(request)}", max_calls=10, window=60):
         raise HTTPException(429, "Too many requests. Try again later.")
 
     async with get_pool().acquire() as conn:
