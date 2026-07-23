@@ -169,9 +169,16 @@ async def agentos_agents():
 
 
 @router.get("/api/agentos/memory")
-async def agentos_memory(n: int = 50):
+async def agentos_memory(request: Request, n: int = 50):
+    """Execution history is a single, process-wide log shared by every
+    tenant — a record's input/args/error can contain confidential
+    business content, so this always scopes to the caller's own verified
+    org (or the no-org bucket if the caller isn't in one), never the
+    cross-tenant view."""
     from app.agents.memory import get_memory
-    records = get_memory().recent(min(n, 200))
+    from app.tenancy.context import optional_org_id
+    org_id = await optional_org_id(request)
+    records = get_memory().recent(min(n, 200), org_id=org_id)
     return {"count": len(records), "records": [r.to_dict() for r in reversed(records)]}
 
 

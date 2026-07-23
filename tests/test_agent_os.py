@@ -166,6 +166,30 @@ class TestAgentMemory:
         assert stats[0].name == "popular"
         assert stats[1].name == "rare"
 
+    def test_recent_org_scoping_excludes_other_orgs(self):
+        # AgentMemory is a single, process-wide log shared by every
+        # tenant — recent(org_id=...) must never leak another org's
+        # raw execution content (input/args/error) to the caller.
+        mem = _make_memory()
+        mem._records += [
+            ExecutionRecord(agent="a", input="org-a secret", args="", success=True,
+                             duration_ms=1.0, organization_id="org-a"),
+            ExecutionRecord(agent="b", input="org-b secret", args="", success=True,
+                             duration_ms=1.0, organization_id="org-b"),
+            ExecutionRecord(agent="c", input="no-org legacy", args="", success=True,
+                             duration_ms=1.0, organization_id=None),
+        ]
+        org_a = mem.recent(10, org_id="org-a")
+        assert len(org_a) == 1
+        assert org_a[0].input == "org-a secret"
+
+        org_b = mem.recent(10, org_id="org-b")
+        assert len(org_b) == 1
+        assert org_b[0].input == "org-b secret"
+
+        unscoped = mem.recent(10)
+        assert len(unscoped) == 3  # no org_id passed — internal/system use only
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # IntentParser
@@ -327,6 +351,48 @@ class TestAgentKernel:
         before = self.kernel._memory.total_count()
         _run(self.kernel.run("echo test"))
         assert self.kernel._memory.total_count() == before + 1
+
+    def test_run_tags_memory_record_with_caller_org(self):
+        # Regression: kernel.run() must stamp organization_id onto the
+        # ExecutionRecord it writes, or AgentMemory.recent(org_id=...)
+        # has nothing to scope by and every tenant's records look
+        # ownerless (which recent()'s unscoped path treats as visible
+        # to nobody's org-scoped query, silently hiding the leak).
+        _run(self.kernel.run("echo test", organization_id="org-xyz"))
+        record = self.kernel._memory.recent(1)[0]
+        assert record.organization_id == "org-xyz"
+
+    def test_run_without_organization_id_records_none(self):
+        # Backward compatibility: legacy/single-tenant callers that never
+        # pass organization_id (e.g. a local, no-org deployment) must
+        # keep working exactly as before — the record is just tagged
+        # None, not rejected or defaulted to some other tenant's id.
+        _run(self.kernel.run("echo test"))
+        record = self.kernel._memory.recent(1)[0]
+        assert record.organization_id is None
+
+    def test_sequential_runs_each_tagged_with_their_own_org(self):
+        # Proves org tagging isn't accidentally sticky/cached across
+        # calls on the same kernel instance — each run's record must
+        # carry exactly the org_id that call was made with.
+        _run(self.kernel.run("echo one", organization_id="org-a"))
+        _run(self.kernel.run("echo two", organization_id="org-b"))
+        _run(self.kernel.run("echo three", organization_id="org-a"))
+        records = self.kernel._memory.recent(3)
+        assert [r.organization_id for r in records] == ["org-a", "org-b", "org-a"]
+
+    def test_collaborate_parallel_tags_every_task_with_caller_org(self):
+        # collaborate(parallel=True) is this kernel's concurrent/async
+        # execution path (asyncio.gather over kernel.run()) — verify org
+        # tagging survives it and no task's record leaks a different or
+        # missing org_id under concurrency.
+        _run(self.kernel.collaborate(
+            ["echo one", "echo two", "echo three"],
+            parallel=True, organization_id="org-concurrent",
+        ))
+        records = self.kernel._memory.for_agent("echo")
+        assert len(records) == 3
+        assert all(r.organization_id == "org-concurrent" for r in records)
 
     def test_collaborate_sequential_stops_on_failure(self):
         results = _run(self.kernel.collaborate(["fail", "echo after"], parallel=False))

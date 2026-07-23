@@ -11,7 +11,7 @@ class StatusAgent(EvolvableAgent):
 
     async def execute(self, ctx: AgentContext) -> AgentResult:
         kernel_status = ctx.kernel.status()
-        memory_recent = ctx.memory.recent(5)
+        memory_recent = ctx.memory.recent(5, org_id=ctx.organization_id)
         underperform  = ctx.memory.underperformers()
 
         lines = [

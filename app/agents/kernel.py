@@ -231,6 +231,7 @@ class AgentKernel:
                 duration_ms = result.duration_ms,
                 error       = result.error,
                 data        = {"intent_confidence": ir.confidence, "intent_method": ir.method},
+                organization_id = organization_id,
             ))
 
             # ── 6. Self-reflection (non-blocking) ────────────────────────────

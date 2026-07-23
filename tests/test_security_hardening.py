@@ -353,5 +353,176 @@ class TestOwnerEmailFailsClosed(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 401)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cross-tenant agent-execution memory leak (app/agents/memory.py, agent_os_api.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAgentosMemoryEndpointIsOrgScoped(unittest.TestCase):
+    """GET /api/agentos/memory used to return every org's raw execution
+    history (input/args/error) with zero tenant scoping — any
+    authenticated user of any org could read it. It must resolve the
+    caller's verified org (app.tenancy.context.optional_org_id, the same
+    pattern used by the cross-org billing fix earlier this phase) and
+    pass it through to AgentMemory.recent(org_id=...)."""
+
+    def test_resolves_and_passes_verified_org_id(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value="org-42")):
+                mem = MagicMock()
+                mem.recent = MagicMock(return_value=[])
+                with patch("app.agents.memory.get_memory", return_value=mem):
+                    from app.routers.agent_os_api import agentos_memory
+                    req = MagicMock()
+                    result = await agentos_memory(req, n=50)
+                    return mem.recent, result
+
+        recent_mock, result = asyncio.run(_run())
+        recent_mock.assert_called_once_with(50, org_id="org-42")
+        self.assertEqual(result, {"count": 0, "records": []})
+
+    def _real_memory_with_two_tenants(self):
+        """A real (non-mocked) AgentMemory, in-process only — same
+        construction pattern tests/test_agent_os.py's _make_memory() uses
+        — pre-populated with one record each for org-a and org-b, so the
+        isolation tests below exercise the real recent(org_id=...)
+        filtering logic end-to-end, not a mock's assertion."""
+        import threading
+        from app.agents.memory import AgentMemory, ExecutionRecord
+        mem = AgentMemory.__new__(AgentMemory)
+        mem._lock = threading.Lock()
+        mem._records = [
+            ExecutionRecord(agent="echo", input="org-a confidential business data", args="",
+                             success=True, duration_ms=1.0, organization_id="org-a"),
+            ExecutionRecord(agent="echo", input="org-b confidential business data", args="",
+                             success=True, duration_ms=1.0, organization_id="org-b"),
+        ]
+        return mem
+
+    def test_org_a_cannot_read_org_b_records(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        mem = self._real_memory_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value="org-a")), \
+                 patch("app.agents.memory.get_memory", return_value=mem):
+                from app.routers.agent_os_api import agentos_memory
+                return await agentos_memory(MagicMock(), n=50)
+
+        result = asyncio.run(_run())
+        self.assertEqual(result["count"], 1)
+        inputs = [r["input"] for r in result["records"]]
+        self.assertIn("org-a confidential business data", inputs)
+        self.assertNotIn("org-b confidential business data", inputs)
+
+    def test_org_b_cannot_read_org_a_records(self):
+        # Same check, other direction — isolation must not be a one-way
+        # accident of iteration/insertion order.
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        mem = self._real_memory_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value="org-b")), \
+                 patch("app.agents.memory.get_memory", return_value=mem):
+                from app.routers.agent_os_api import agentos_memory
+                return await agentos_memory(MagicMock(), n=50)
+
+        result = asyncio.run(_run())
+        self.assertEqual(result["count"], 1)
+        inputs = [r["input"] for r in result["records"]]
+        self.assertIn("org-b confidential business data", inputs)
+        self.assertNotIn("org-a confidential business data", inputs)
+
+    def test_empty_result_when_caller_org_has_no_records(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        mem = self._real_memory_with_two_tenants()  # only org-a / org-b have data
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value="org-c")), \
+                 patch("app.agents.memory.get_memory", return_value=mem):
+                from app.routers.agent_os_api import agentos_memory
+                return await agentos_memory(MagicMock(), n=50)
+
+        result = asyncio.run(_run())
+        self.assertEqual(result, {"count": 0, "records": []})
+
+    def test_forged_org_id_is_ignored_when_membership_verification_fails(self):
+        # optional_org_id resolves the raw X-Organization-Id header value
+        # ONLY after verifying real DB membership (app.tenancy.context) —
+        # a caller who names an org they don't belong to gets None back,
+        # never the forged id. This proves the endpoint relies on that
+        # verified value, not on a client-supplied header directly.
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock as MM, patch
+
+        mem = self._real_memory_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context._get_current_user_dep") as get_dep, \
+                 patch("app.tenancy.context.get_tenancy_service") as get_svc, \
+                 patch("app.agents.memory.get_memory", return_value=mem):
+                from fastapi.security import HTTPBearer
+                with patch.object(HTTPBearer, "__call__", new=AsyncMock(return_value="creds")):
+                    get_dep.return_value = AsyncMock(return_value={"id": "attacker"})
+                    svc = MM()
+                    svc.get_member_role = AsyncMock(return_value=None)  # not a member of org-a
+                    get_svc.return_value = svc
+
+                    req = MM()
+                    req.headers = {"X-Organization-Id": "org-a"}  # forged/claimed, not actually a member
+                    req.query_params = {}
+                    req.path_params = {}
+
+                    from app.routers.agent_os_api import agentos_memory
+                    return await agentos_memory(req, n=50)
+
+        result = asyncio.run(_run())
+        # Falls back to the no-org bucket (org_id=None), never org-a's data
+        self.assertEqual(result, {"count": 0, "records": []})
+
+    def test_garbage_org_id_cannot_bypass_filtering(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        mem = self._real_memory_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value=None)), \
+                 patch("app.agents.memory.get_memory", return_value=mem):
+                from app.routers.agent_os_api import agentos_memory
+                return await agentos_memory(MagicMock(), n=50)
+
+        result = asyncio.run(_run())
+        # org_id=None is the explicit "no org" bucket — must not silently
+        # widen to "every org", which is exactly the original leak.
+        self.assertEqual(result, {"count": 0, "records": []})
+
+    def test_missing_authentication_returns_401(self):
+        # /api/agentos/memory is gated by factory.py's api_auth_middleware
+        # like every other /api/* route outside PUBLIC_PREFIXES — an
+        # unauthenticated request must never reach the handler at all.
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            import os
+            os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+            os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+            from app.factory import create_app
+            transport = ASGITransport(app=create_app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.get("/api/agentos/memory")
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()
