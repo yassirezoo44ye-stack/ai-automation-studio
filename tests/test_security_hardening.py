@@ -674,5 +674,97 @@ class TestArabicApiRequiresAuth(unittest.TestCase):
         self.assertEqual(asyncio.run(_run()).status_code, 405)
 
 
+class TestAgentosAgentEndpointsAreOrgScoped(unittest.TestCase):
+    """GET /api/agentos/agents and /status used to return every org's
+    plugin-installed/self-generated agent names + metadata with zero
+    tenant scoping — /agents took no request context at all. Now scoped
+    via AgentKernel.visible_agents()/status(organization_id=...), the
+    Agent Execution Isolation phase's core fix."""
+
+    def _kernel_with_two_tenants(self):
+        import threading
+        from app.agents.base import AgentContext, AgentResult, EvolvableAgent
+        from app.agents.intent import IntentParser
+        from app.agents.kernel import AgentKernel
+        from app.agents.memory import AgentMemory
+        from app.plugins.registry_guard import OwnershipTracker
+
+        class _OrgAgent(EvolvableAgent):
+            group = "test"
+            def __init__(self, name):
+                self.name = name
+                self.description = "owned"
+            async def execute(self, ctx: AgentContext) -> AgentResult:
+                return AgentResult.ok(self.name, "ok")
+
+        mem = AgentMemory.__new__(AgentMemory)
+        mem._lock, mem._records = threading.Lock(), []
+
+        kernel = AgentKernel.__new__(AgentKernel)
+        kernel._agents, kernel._memory = {}, mem
+        kernel._agent_owners = OwnershipTracker("agent")
+        kernel._parser = IntentParser()
+        kernel._booted = True
+        kernel._modifier = kernel._reloader = kernel._router = None
+        kernel._reflector = kernel._deliberation = kernel._autonomy = kernel._loop = None
+        kernel._evolution = None
+
+        kernel.register_agent(_OrgAgent("shared_builtin"))               # owner=None
+        kernel.register_agent(_OrgAgent("org_a_secret_agent"), owner="org-a")
+        kernel.register_agent(_OrgAgent("org_b_secret_agent"), owner="org-b")
+        kernel._parser.update_agents(list(kernel._agents.keys()))
+        return kernel
+
+    def test_agents_endpoint_hides_other_orgs_custom_agents(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        kernel = self._kernel_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value="org-a")), \
+                 patch("app.agents.kernel.get_agent_kernel", return_value=kernel):
+                from app.routers.agent_os_api import agentos_agents
+                return await agentos_agents(MagicMock())
+
+        result = asyncio.run(_run())
+        names = {a["name"] for a in result["agents"]}
+        self.assertIn("shared_builtin", names)
+        self.assertIn("org_a_secret_agent", names)
+        self.assertNotIn("org_b_secret_agent", names)
+
+    def test_agents_endpoint_with_no_verified_org_sees_only_builtins(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        kernel = self._kernel_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value=None)), \
+                 patch("app.agents.kernel.get_agent_kernel", return_value=kernel):
+                from app.routers.agent_os_api import agentos_agents
+                return await agentos_agents(MagicMock())
+
+        result = asyncio.run(_run())
+        names = {a["name"] for a in result["agents"]}
+        self.assertEqual(names, {"shared_builtin"})
+
+    def test_status_endpoint_agent_names_scoped_to_caller_org(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        kernel = self._kernel_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value="org-b")), \
+                 patch("app.agents.kernel.get_agent_kernel", return_value=kernel):
+                from app.routers.agent_os_api import agentos_status
+                return await agentos_status(MagicMock())
+
+        result = asyncio.run(_run())
+        self.assertIn("org_b_secret_agent", result["agent_names"])
+        self.assertNotIn("org_a_secret_agent", result["agent_names"])
+
+
 if __name__ == "__main__":
     unittest.main()

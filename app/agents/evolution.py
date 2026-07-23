@@ -23,7 +23,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Callable, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from app.agents.memory import AgentMemory
@@ -87,22 +87,37 @@ class EvolutionEngine:
         memory  : "AgentMemory",
         modifier: "SelfModifyingEngine",
         reloader: "HotReloader",
+        owner_of: Optional[Callable[[str], Optional[str]]] = None,
     ) -> None:
         self._memory   = memory
         self._modifier = modifier
         self._reloader = reloader
+        # AgentKernel._agent_owners.owner_of — self-generated agents are
+        # written into the same app/agents/builtin/ directory as real
+        # built-ins (see AutonomyEngine.generate_agent's _AGENTS_DIR), so
+        # without this an org calling evolve() could get the LLM to
+        # rewrite another org's generated agent's source, using its own
+        # token budget and without that org's knowledge. Global (built-in,
+        # owner=None) underperformers stay evolved from platform-wide
+        # stats regardless of caller — that's the intended shared
+        # self-improvement behavior, not a per-tenant one.
+        self._owner_of = owner_of
         self._last_run : float = 0.0
         self._last_report: Optional[EvolutionReport] = None
 
     # ── Public ────────────────────────────────────────────────────────────────
 
-    def analyze(self) -> EvolutionReport:
+    def analyze(self, *, org_id: Optional[str] = None) -> EvolutionReport:
         """Build a performance report without making any changes."""
         underperformers = self._memory.underperformers(
             threshold=_THRESHOLD, min_calls=_MIN_CALLS
         )
         candidates = []
         for stats in underperformers:
+            if self._owner_of is not None:
+                owner = self._owner_of(stats.name)
+                if owner is not None and owner != org_id:
+                    continue
             file = _agent_file(stats.name)
             if file is None:
                 continue
@@ -136,7 +151,7 @@ class EvolutionEngine:
             )
 
         self._last_run = time.time()
-        report = self.analyze()
+        report = self.analyze(org_id=org_id)
 
         if not report.candidates:
             report.status = "stable"

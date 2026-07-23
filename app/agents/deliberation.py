@@ -123,7 +123,10 @@ class Deliberation:
         """
         Run deliberation and return the winner agent name + full vote record.
         """
-        agents = kernel.all_agents()
+        # Scoped to what this org may invoke — an agent belonging to
+        # another org's plugin install must not even be allowed to bid,
+        # let alone win and be executed for this caller.
+        agents = kernel.visible_agents(org_id)
         if len(agents) == 0:
             return DeliberationResult(winner="help", winner_score=0.0,
                                       method="single", reasoning="No agents registered")

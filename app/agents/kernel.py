@@ -96,7 +96,8 @@ class AgentKernel:
         policy             = PolicyEngine()
         self._modifier     = SelfModifyingEngine(policy, state)
         self._reloader     = HotReloader(None, state)
-        self._evolution    = EvolutionEngine(self._memory, self._modifier, self._reloader)
+        self._evolution    = EvolutionEngine(self._memory, self._modifier, self._reloader,
+                                             owner_of=self._agent_owners.owner_of)
         self._router       = LLMRouter()
         self._reflector    = SelfReflector()
         self._deliberation = Deliberation()
@@ -140,7 +141,27 @@ class AgentKernel:
         return self._agents.get(name)
 
     def all_agents(self) -> list[EvolvableAgent]:
+        """Every registered agent, across every organization's plugin
+        installs and self-generated agents. Reserved for internal/system
+        callers (evolution analysis, the background ImprovementLoop) that
+        never surface the list to one specific end user — anything that
+        does must use visible_agents()/visible_agent_names() instead, or
+        it discloses other tenants' custom agents by name."""
         return list(self._agents.values())
+
+    def visible_agent_names(self, organization_id: Optional[str]) -> list[str]:
+        """Names of agents this org may see or invoke: every built-in
+        (owner=None) plus this org's own plugin-installed or
+        self-generated agents. `organization_id=None` (no verified org)
+        sees only built-ins — never every tenant's custom agents."""
+        return [
+            name for name in self._agents
+            if self._agent_owners.owner_of(name) in (None, organization_id)
+        ]
+
+    def visible_agents(self, organization_id: Optional[str]) -> list[EvolvableAgent]:
+        names = set(self.visible_agent_names(organization_id))
+        return [a for n, a in self._agents.items() if n in names]
 
     # ── Core execution pipeline ───────────────────────────────────────────────
 
@@ -166,7 +187,14 @@ class AgentKernel:
             if user_id:
                 span.set_tag("user_id", user_id)
 
-            known = list(self._agents.keys())
+            # Only names this caller may see/invoke — built-ins plus its
+            # own plugin-installed or self-generated agents. Feeding the
+            # full cross-tenant _agents dict into intent parsing/routing/
+            # deliberation here would let another org's agent win the
+            # match; the hard boundary is still enforced again just before
+            # execution below (defense in depth against a future path
+            # that resolves intent_name some other way).
+            known = self.visible_agent_names(organization_id)
 
             # ── 1. Heuristic intent parse ──────────────────────────────────
             ir = self._parser.parse(raw_input)
@@ -174,21 +202,30 @@ class AgentKernel:
             # ── 2. LLM router (when heuristic is uncertain) ─────────────────
             if ir.confidence < _LLM_THRESHOLD and self._router and self._router.available():
                 routed = await self._router.route(raw_input, known, org_id=organization_id)
-                if routed and routed.intent in self._agents:
+                if routed and routed.intent in known:
                     ir = _adapt_routed(routed)
 
             # ── 3. Multi-agent deliberation (when still ambiguous) ──────────
             intent_name = ir.intent
             if (deliberate or ir.confidence < _DELIBERATION_THRESH) and \
-                    self._deliberation and len(self._agents) >= 2:
+                    self._deliberation and len(known) >= 2:
                 delib = await self._deliberation.vote(raw_input, self, ir.intent, org_id=organization_id)
-                if delib.winner in self._agents:
+                if delib.winner in known:
                     intent_name = delib.winner
 
             span.set_tag("intent", intent_name)
 
             # ── 4. Agent selection + execution ───────────────────────────────
             agent = self._agents.get(intent_name)
+            # Hard boundary, independent of how intent_name was resolved
+            # above: the heuristic IntentParser matches against its own
+            # kernel-wide known-agent list (updated on every registration,
+            # not scoped per request), so intent_name can still land on
+            # another org's agent even though `known` above was scoped.
+            # Treat that exactly like "no agent for this intent" — same
+            # error shape, no hint that the name exists at all.
+            if agent is not None and self._agent_owners.owner_of(intent_name) not in (None, organization_id):
+                agent = None
 
             if agent is None:
                 result = AgentResult(
@@ -350,25 +387,31 @@ class AgentKernel:
             return {"status": "error", "error": "evolution engine not initialized"}
         return (await self._evolution.evolve(org_id=organization_id)).to_dict()
 
-    def evolution_analysis(self) -> dict:
+    def evolution_analysis(self, organization_id: Optional[str] = None) -> dict:
         if self._evolution is None:
             return {"status": "not_initialized"}
-        return self._evolution.analyze().to_dict()
+        return self._evolution.analyze(org_id=organization_id).to_dict()
 
     # ── Status ────────────────────────────────────────────────────────────────
 
-    def status(self) -> dict:
-        stats = self._memory.global_stats()
+    def status(self, organization_id: Optional[str] = None) -> dict:
+        """Scoped to the caller's own org: agent_names/performance/
+        memory_count/suggestions must never disclose another tenant's
+        plugin-installed or self-generated agents, executions, or
+        suggestion text. `organization_id=None` (no verified org) sees
+        only built-ins and the no-org bucket — never every tenant's data."""
+        names = self.visible_agent_names(organization_id)
+        stats = self._memory.global_stats(org_id=organization_id)
         return {
-            "agents"       : len(self._agents),
-            "agent_names"  : list(self._agents.keys()),
-            "memory_count" : self._memory.total_count(),
+            "agents"       : len(names),
+            "agent_names"  : names,
+            "memory_count" : self._memory.total_count(org_id=organization_id),
             "performance"  : [s.to_dict() for s in stats],
             "booted"       : self._booted,
             "llm_available": self._router.available() if self._router else False,
             "loop_stats"   : self._loop.stats() if self._loop else {},
             "reflections"  : self._reflector.to_dict_list() if self._reflector else [],
-            "suggestions"  : self._autonomy.all_suggestions() if self._autonomy else [],
+            "suggestions"  : self._autonomy.all_suggestions(org_id=organization_id) if self._autonomy else [],
         }
 
     def loop_stats(self) -> dict:

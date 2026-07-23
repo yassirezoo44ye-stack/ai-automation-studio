@@ -150,19 +150,26 @@ async def agentos_deliberate(req: RunRequest, request: Request):
 # ── System state ──────────────────────────────────────────────────────────────
 
 @router.get("/api/agentos/status")
-async def agentos_status():
+async def agentos_status(request: Request):
     from app.agents.kernel import get_agent_kernel
-    return get_agent_kernel().status()
+    from app.tenancy.context import optional_org_id
+    return get_agent_kernel().status(organization_id=await optional_org_id(request))
 
 
 @router.get("/api/agentos/agents")
-async def agentos_agents():
+async def agentos_agents(request: Request):
+    """Agent registry is a single, process-wide dict shared by every
+    tenant's plugin-installed and self-generated agents — always scoped
+    to the caller's own org (built-ins + its own agents), never every
+    tenant's custom agents."""
     from app.agents.kernel import get_agent_kernel
     from app.agents.memory import get_memory
+    from app.tenancy.context import optional_org_id
     kernel = get_agent_kernel()
     memory = get_memory()
+    org_id = await optional_org_id(request)
     agents = []
-    for ag in kernel.all_agents():
+    for ag in kernel.visible_agents(org_id):
         stats = memory.stats(ag.name)
         agents.append({**ag.to_dict(), "stats": stats.to_dict()})
     return {"count": len(agents), "agents": agents}
@@ -183,12 +190,17 @@ async def agentos_memory(request: Request, n: int = 50):
 
 
 @router.get("/api/agentos/performance")
-async def agentos_performance():
+async def agentos_performance(request: Request):
+    """Execution stats are keyed by agent name across a single,
+    process-wide memory log — scoped to the caller's own org's
+    executions, same contract as /api/agentos/memory."""
     from app.agents.memory import get_memory
+    from app.tenancy.context import optional_org_id
+    org_id       = await optional_org_id(request)
     memory       = get_memory()
-    stats        = memory.global_stats()
-    underperform = memory.underperformers()
-    total        = memory.total_count()
+    stats        = memory.global_stats(org_id=org_id)
+    underperform = memory.underperformers(org_id=org_id)
+    total        = memory.total_count(org_id=org_id)
     errors       = sum(s.fail_count for s in stats)
     return {
         "total_executions"      : total,
@@ -206,15 +218,28 @@ async def agentos_evolve(req: EvolveRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id
     kernel = get_agent_kernel()
+    org_id = await optional_org_id(request)
     if req.dry_run:
-        return kernel.evolution_analysis()
-    return await kernel.evolve(organization_id=await optional_org_id(request))
+        return kernel.evolution_analysis(org_id)
+    return await kernel.evolve(organization_id=org_id)
 
 
 @router.get("/api/agentos/reflections")
-async def agentos_reflections(n: int = 20):
+async def agentos_reflections(request: Request, n: int = 20):
+    """Reflection insight text is computed from execution stats across
+    every tenant (a system-wide self-improvement signal, not attributable
+    to one org) — error_rate/execution_count stay aggregate, but
+    flagged_agents can name another org's plugin-installed or
+    self-generated agent, so it's filtered to what the caller can see."""
+    from app.agents.kernel import get_agent_kernel
     from app.agents.reflection import get_reflector
-    return {"reflections": get_reflector().to_dict_list()}
+    from app.tenancy.context import optional_org_id
+    org_id  = await optional_org_id(request)
+    visible = set(get_agent_kernel().visible_agent_names(org_id))
+    reflections = get_reflector().to_dict_list()
+    for r in reflections:
+        r["flagged_agents"] = [a for a in r.get("flagged_agents", []) if a in visible]
+    return {"reflections": reflections}
 
 
 # ── Autonomous development ─────────────────────────────────────────────────────

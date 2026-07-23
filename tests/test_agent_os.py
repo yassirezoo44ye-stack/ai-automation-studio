@@ -192,6 +192,42 @@ class TestAgentMemory:
         unscoped = mem.recent(10)
         assert len(unscoped) == 3  # no org_id passed — internal/system use only
 
+    def test_global_stats_org_scoping(self):
+        # global_stats/underperformers/total_count are aggregate (not raw
+        # content) but still keyed by agent name across every tenant —
+        # Agent Execution Isolation phase: org_id must scope them the same
+        # way recent() already is, or /api/agentos/performance and
+        # AutonomyEngine's prompt-building disclose another org's usage.
+        mem = _make_memory()
+        mem._records += [
+            ExecutionRecord(agent="shared", input="x", args="", success=True,
+                             duration_ms=1.0, organization_id="org-a"),
+            ExecutionRecord(agent="shared", input="x", args="", success=False,
+                             duration_ms=1.0, organization_id="org-b"),
+            ExecutionRecord(agent="shared", input="x", args="", success=False,
+                             duration_ms=1.0, organization_id="org-b"),
+        ]
+        a_stats = mem.global_stats(org_id="org-a")
+        assert a_stats[0].call_count == 1
+        assert a_stats[0].success_rate == 1.0
+
+        b_stats = mem.global_stats(org_id="org-b")
+        assert b_stats[0].call_count == 2
+        assert b_stats[0].success_rate == 0.0
+
+        assert mem.total_count(org_id="org-a") == 1
+        assert mem.total_count(org_id="org-b") == 2
+        assert mem.total_count() == 3  # unscoped — internal/system use only
+
+        # org-b's own view flags its own underperformer...
+        assert any(s.name == "shared" for s in mem.underperformers(
+            threshold=0.7, min_calls=1, org_id="org-b"))
+        # ...but org-a's view of its own data must not, since org-a's own
+        # slice is 100% success — org-a never sees org-b dragged the
+        # global number down.
+        assert not any(s.name == "shared" for s in mem.underperformers(
+            threshold=0.7, min_calls=1, org_id="org-a"))
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # StatusAgent — the other raw-content reader that used to leak cross-tenant
@@ -472,6 +508,117 @@ class TestAgentKernel:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Agent Execution Isolation — AgentKernel._agents is a single, process-wide
+# dict shared by every tenant's plugin-installed and self-generated agents.
+# These verify the visibility/execution gate (AgentKernel.visible_agent_names
+# + the ownership check inside run()) actually blocks cross-tenant use, not
+# just cross-tenant *registration* collisions (already covered separately in
+# tests/test_plugins.py's TestAgentRegistrationOwnership).
+# ──────────────────────────────────────────────────────────────────────────────
+
+class _OwnedAgent(EvolvableAgent):
+    name        = "owned_agent"
+    description = "belongs to whichever org registered it"
+    group       = "test"
+
+    async def execute(self, ctx: AgentContext) -> AgentResult:
+        return AgentResult.ok(self.name, f"ran for org={ctx.organization_id}")
+
+
+class TestAgentExecutionIsolation:
+    def setup_method(self):
+        self.kernel = _make_kernel()
+        self.kernel.register_agent(EchoAgent())          # owner=None: built-in
+        self.kernel.register_agent(SlowAgent())           # owner=None: built-in
+        self.kernel.register_agent(_OwnedAgent(), owner="org-a")
+        self.kernel._parser.update_agents(list(self.kernel._agents.keys()))
+
+    def test_owner_can_invoke_its_own_agent(self):
+        result = _run(self.kernel.run("owned_agent", organization_id="org-a"))
+        assert result.success
+        assert "org=org-a" in result.output
+
+    def test_other_org_cannot_invoke_it_by_name(self):
+        # Org B running a tool/agent against a resource belonging to org A:
+        # intent-parsing still resolves the real registered name, but the
+        # execution gate must treat it exactly like "no agent for this
+        # intent" — same error shape as a genuinely unknown name, so org B
+        # gets no signal that org-a's agent even exists.
+        result = _run(self.kernel.run("owned_agent", organization_id="org-b"))
+        assert result.success is False
+        assert result.error == "agent_not_found"
+        assert "owned_agent" not in result.data.get("agents", [])
+
+    def test_forged_or_missing_org_id_is_not_a_wildcard(self):
+        # optional_org_id() never raises — an unauthenticated caller or one
+        # with a garbage header value still reaches kernel.run() with some
+        # organization_id. Neither None nor a made-up value may act as a
+        # skeleton key that unlocks every tenant's agents.
+        for org in (None, "totally-made-up-org", ""):
+            result = _run(self.kernel.run("owned_agent", organization_id=org))
+            assert result.success is False
+            assert result.error == "agent_not_found"
+
+    def test_builtin_stays_invocable_by_everyone(self):
+        for org in (None, "org-a", "org-b", "anything"):
+            result = _run(self.kernel.run("echo hi", organization_id=org))
+            assert result.success
+
+    def test_visible_agent_names_scoped_per_org(self):
+        assert "owned_agent" in self.kernel.visible_agent_names("org-a")
+        assert "owned_agent" not in self.kernel.visible_agent_names("org-b")
+        assert "owned_agent" not in self.kernel.visible_agent_names(None)
+        assert "echo" in self.kernel.visible_agent_names("org-b")  # built-in
+
+    def test_status_agent_names_scoped_per_org(self):
+        s_a = self.kernel.status(organization_id="org-a")
+        s_b = self.kernel.status(organization_id="org-b")
+        assert "owned_agent" in s_a["agent_names"]
+        assert "owned_agent" not in s_b["agent_names"]
+
+    def test_concurrent_execution_from_two_orgs_stays_isolated(self):
+        # Two orgs hitting the kernel at the same time via asyncio.gather —
+        # org-b's call must fail exactly as it would alone, unaffected by
+        # org-a's concurrent, legitimate call to the same agent name.
+        async def scenario():
+            return await asyncio.gather(
+                self.kernel.run("owned_agent", organization_id="org-a"),
+                self.kernel.run("owned_agent", organization_id="org-b"),
+            )
+
+        a_result, b_result = _run(scenario())
+        assert a_result.success is True
+        assert b_result.success is False
+        assert b_result.error == "agent_not_found"
+
+    def test_cancelling_one_orgs_task_does_not_cancel_anothers(self):
+        async def scenario():
+            t_a = asyncio.ensure_future(self.kernel.run("slow", organization_id="org-a"))
+            t_b = asyncio.ensure_future(self.kernel.run("echo still-fine", organization_id="org-b"))
+            await asyncio.sleep(0.01)
+            t_a.cancel()
+            b_result = await t_b
+            try:
+                await t_a
+            except asyncio.CancelledError:
+                pass
+            return b_result
+
+        b_result = _run(scenario())
+        assert b_result.success
+        assert "still-fine" in b_result.output
+
+    def test_deliberation_only_bids_from_visible_agents(self):
+        # Deliberation.vote() used to call kernel.all_agents() — another
+        # org's agent could bid on (and win) a request it should never
+        # even see, let alone execute.
+        from app.agents.deliberation import Deliberation
+        delib = Deliberation()
+        result = _run(delib.vote("owned_agent", self.kernel, org_id="org-b"))
+        assert result.winner != "owned_agent"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # EvolutionEngine
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -535,6 +682,49 @@ class TestEvolutionEngine:
         assert "candidates" in d
         assert "evolved" in d
 
+    def _underperformer_records(self):
+        # "analyze" maps to a real file (app/agents/builtin/analyze_agent.py)
+        # so it survives the _agent_file() existence check downstream of
+        # the owner_of filter — same name test_analyze_detects_underperformer
+        # above relies on.
+        return [
+            ExecutionRecord(agent="analyze", input="x", args="", success=False, duration_ms=10)
+            for _ in range(4)
+        ] + [ExecutionRecord(agent="analyze", input="x", args="", success=True, duration_ms=10)]
+
+    def test_owner_of_filters_out_other_orgs_underperformer(self):
+        # Agent Execution Isolation: self-generated agents live in the same
+        # app/agents/builtin/ directory as real built-ins (see
+        # AutonomyEngine.generate_agent), so without an ownership check
+        # here, org-b calling evolve() could get org-a's underperforming
+        # agent rewritten by the LLM using org-b's token budget, without
+        # org-a's knowledge.
+        mem = _make_memory()
+        mem._records += self._underperformer_records()
+        modifier = MagicMock()
+        reloader = MagicMock()
+        engine = EvolutionEngine(mem, modifier, reloader, owner_of=lambda name: "org-a")
+
+        other_org_report = engine.analyze(org_id="org-b")
+        assert "analyze" not in [c.name for c in other_org_report.candidates]
+
+        owner_report = engine.analyze(org_id="org-a")
+        assert "analyze" in [c.name for c in owner_report.candidates]
+
+    def test_owner_of_never_blocks_builtin_underperformer(self):
+        # owner_of returning None means "built-in" — shared self-improvement
+        # target regardless of which org (or no org at all) triggered the
+        # cycle. That's existing, intended behavior, not a regression.
+        mem = _make_memory()
+        mem._records += self._underperformer_records()
+        modifier = MagicMock()
+        reloader = MagicMock()
+        engine = EvolutionEngine(mem, modifier, reloader, owner_of=lambda name: None)
+
+        for org in (None, "org-a", "org-b"):
+            report = engine.analyze(org_id=org)
+            assert "analyze" in [c.name for c in report.candidates]
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Integration: plan_and_run
@@ -567,3 +757,90 @@ class TestPlanAndRun:
         assert "plan" in result
         assert "results" in result
         assert len(result["results"]) == 2
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# AutonomyEngine — self._suggestions is a single kernel-wide list shared by
+# every org's suggest_improvements() calls; generate_agent() writes into the
+# same app/agents/builtin/ directory used by real built-ins.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestAutonomyEngineOrgScoping:
+    def _engine(self, api_key="fake-key-for-test"):
+        from app.agents.autonomy import AutonomyEngine
+        engine = AutonomyEngine.__new__(AutonomyEngine)
+        engine._kernel      = None
+        engine._suggestions = []
+        engine._api_key     = api_key
+        return engine
+
+    def test_generate_agent_without_org_id_is_rejected_before_any_write(self):
+        # Guards against the pre-fix behavior: a caller with no verified
+        # org membership had its generated agent registered as owner=None
+        # (a protected built-in, invocable by every tenant). Checked before
+        # any file I/O or LLM call — engine._kernel is None here on purpose,
+        # so a bug that reached that code would crash the test loudly.
+        engine = self._engine()
+        result = _run(engine.generate_agent("does anything", org_id=None))
+        assert result["status"] == "error"
+        assert "organization" in result["error"]
+
+    def test_generate_agent_with_no_api_key_fails_before_org_check(self):
+        # Existing precedence preserved: missing API key is still reported
+        # as its own distinct error, not masked by the new org check.
+        engine = self._engine(api_key="")
+        result = _run(engine.generate_agent("does anything", org_id="org-a"))
+        assert result["status"] == "error"
+        assert "ANTHROPIC_API_KEY" in result["error"]
+
+    def test_implement_suggestion_blocks_cross_org_index_reference(self):
+        # self._suggestions is shared kernel-wide — index alone must not be
+        # enough to implement (and consume) another org's suggestion.
+        from app.agents.autonomy import Suggestion
+        engine = self._engine()
+        engine._suggestions = [Suggestion(
+            index=0, title="t", description="d", agent_name="x", file="f",
+            priority=0.5, organization_id="org-a",
+        )]
+        result = _run(engine.implement_suggestion(0, org_id="org-b"))
+        assert result["status"] == "error"
+        assert "No suggestion" in result["error"]
+
+    def test_owner_can_reference_its_own_suggestion_index(self):
+        from app.agents.autonomy import Suggestion
+        engine = self._engine(api_key="")   # force the API-key error path,
+        engine._suggestions = [Suggestion(  # so this stays a safe no-write test
+            index=0, title="t", description="d", agent_name="x", file="f",
+            priority=0.5, organization_id="org-a",
+        )]
+        result = _run(engine.implement_suggestion(0, org_id="org-a"))
+        # Reaches generate_agent() (proving the org match found the
+        # suggestion) and fails there on the missing API key, not on
+        # "No suggestion at index".
+        assert result["status"] == "error"
+        assert "ANTHROPIC_API_KEY" in result["error"]
+
+    def test_all_suggestions_scoped_to_org(self):
+        from app.agents.autonomy import Suggestion
+        engine = self._engine()
+        engine._suggestions = [
+            Suggestion(index=0, title="a", description="d", agent_name="a",
+                      file="f", priority=0.5, organization_id="org-a"),
+            Suggestion(index=1, title="b", description="d", agent_name="b",
+                      file="f", priority=0.5, organization_id="org-b"),
+        ]
+        org_a_view = engine.all_suggestions(org_id="org-a")
+        assert len(org_a_view) == 1
+        assert org_a_view[0]["agent_name"] == "a"
+
+    def test_pending_suggestions_scoped_to_org(self):
+        from app.agents.autonomy import Suggestion
+        engine = self._engine()
+        engine._suggestions = [
+            Suggestion(index=0, title="a", description="d", agent_name="a",
+                      file="f", priority=0.5, organization_id="org-a"),
+            Suggestion(index=1, title="b", description="d", agent_name="b",
+                      file="f", priority=0.5, organization_id="org-b"),
+        ]
+        pending = engine.pending_suggestions(org_id="org-a")
+        assert [s.agent_name for s in pending] == ["a"]

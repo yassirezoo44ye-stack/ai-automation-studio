@@ -115,10 +115,20 @@ class AgentMemory:
         records = self.for_agent(name)
         return _compute_stats(name, records)
 
-    def global_stats(self) -> list[AgentStats]:
+    def global_stats(self, *, org_id: Any = _UNSCOPED) -> list[AgentStats]:
+        """Per-agent aggregate stats. `org_id` scopes to one organization's
+        own executions, same contract as `recent()` — pass the caller's
+        verified org (including explicit `None` for a caller with no
+        verified org) whenever this is exposed to an end user; leaving it
+        unset is reserved for internal/system callers (the background
+        ImprovementLoop, cross-tenant admin views) that never attribute
+        the numbers to one specific requester."""
         with self._lock:
+            records = self._records if org_id is _UNSCOPED else [
+                r for r in self._records if r.organization_id == org_id
+            ]
             by_agent: dict[str, list[ExecutionRecord]] = {}
-            for r in self._records:
+            for r in records:
                 by_agent.setdefault(r.agent, []).append(r)
         return sorted(
             [_compute_stats(n, recs) for n, recs in by_agent.items()],
@@ -126,15 +136,18 @@ class AgentMemory:
             reverse=True,
         )
 
-    def underperformers(self, threshold: float = 0.7, min_calls: int = 3) -> list[AgentStats]:
+    def underperformers(self, threshold: float = 0.7, min_calls: int = 3, *,
+                        org_id: Any = _UNSCOPED) -> list[AgentStats]:
         return [
-            s for s in self.global_stats()
+            s for s in self.global_stats(org_id=org_id)
             if s.call_count >= min_calls and s.success_rate < threshold
         ]
 
-    def total_count(self) -> int:
+    def total_count(self, *, org_id: Any = _UNSCOPED) -> int:
         with self._lock:
-            return len(self._records)
+            if org_id is _UNSCOPED:
+                return len(self._records)
+            return sum(1 for r in self._records if r.organization_id == org_id)
 
     def to_dict_list(self, n: int = 100) -> list[dict]:
         return [r.to_dict() for r in self.recent(n)]

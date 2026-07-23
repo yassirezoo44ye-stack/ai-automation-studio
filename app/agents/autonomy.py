@@ -43,6 +43,7 @@ class Suggestion:
     priority   : float        # 0–1
     implemented: bool = False
     timestamp  : float = field(default_factory=time.time)
+    organization_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -84,6 +85,13 @@ class AutonomyEngine:
         """
         if not self._api_key:
             return {"status": "error", "error": "ANTHROPIC_API_KEY not set"}
+        if not org_id:
+            # Generated agents are registered with owner=org_id (see
+            # loader.load_file) so they're only visible/invocable by the
+            # generating org, not treated as a protected built-in. A
+            # caller with no verified org membership has no org to scope
+            # the result to, so it can't be allowed to write one at all.
+            return {"status": "error", "error": "organization membership required"}
 
         agent_name = agent_name or _slug(description)
         file_rel   = f"{_AGENTS_DIR}/{agent_name}_agent.py"
@@ -110,9 +118,19 @@ class AutonomyEngine:
             file_abs.parent.mkdir(parents=True, exist_ok=True)
             file_abs.write_text(source, encoding="utf-8")
 
-        # Hot-reload into the kernel
+        # Hot-reload into the kernel, scoped to the generating org. The
+        # file is already written at this point regardless of outcome —
+        # load_file() can still fail (e.g. the name collides with another
+        # org's agent or a built-in — see OwnershipTracker.claim), and
+        # that must be reported rather than claimed as "created".
         from app.agents.loader import load_file
-        load_file(file_abs, self._kernel)
+        if not load_file(file_abs, self._kernel, owner=org_id):
+            return {
+                "status": "error",
+                "error": f"generated source for '{agent_name}' failed to load "
+                         "(syntax error, or the name is already in use)",
+                "file": file_rel,
+            }
 
         return {
             "status"    : "created",
@@ -133,14 +151,18 @@ class AutonomyEngine:
         if not await check_org_quota_id(org_id):
             return []
 
-        existing_agents = [a.name for a in self._kernel.all_agents()]
-        memory_stats    = self._kernel._memory.global_stats()
-        common_errors   = [s.name for s in self._kernel._memory.underperformers()]
+        # Scoped to this org's own view — an LLM prompt built from another
+        # org's agent names/error patterns would both disclose them to
+        # this org (via the prompt) and risk them resurfacing in the
+        # generated suggestion text handed back to the caller.
+        existing_agents = self._kernel.visible_agent_names(org_id)
+        memory_stats    = self._kernel._memory.global_stats(org_id=org_id)
+        common_errors   = [s.name for s in self._kernel._memory.underperformers(org_id=org_id)]
 
         prompt = (
             f"Existing agents: {', '.join(existing_agents)}\n"
             f"Underperforming: {', '.join(common_errors) or 'none'}\n"
-            f"Total executions: {self._kernel._memory.total_count()}\n\n"
+            f"Total executions: {self._kernel._memory.total_count(org_id=org_id)}\n\n"
             f"Suggest {n} NEW agent ideas that would add value.\n"
             f"Respond with JSON array:\n"
             f'[{{"title":"...","description":"...","agent_name":"...","priority":0.0-1.0}}]'
@@ -177,6 +199,7 @@ class AutonomyEngine:
                     agent_name  = name,
                     file        = file,
                     priority    = float(item.get("priority", 0.5)),
+                    organization_id = org_id,
                 )
                 suggestions.append(s)
 
@@ -189,8 +212,13 @@ class AutonomyEngine:
 
     async def implement_suggestion(self, index: int, *,
                                    org_id: Optional[str] = None) -> dict:
-        """Implement a previously generated suggestion by index."""
-        matches = [s for s in self._suggestions if s.index == index]
+        """Implement a previously generated suggestion by index. Scoped to
+        the calling org's own suggestions — index alone isn't enough,
+        since self._suggestions is a single kernel-wide list shared by
+        every org's suggest_improvements() calls; without the org check
+        one org could reference another org's index to implement (and
+        consume — see `s.implemented` below) their suggestion."""
+        matches = [s for s in self._suggestions if s.index == index and s.organization_id == org_id]
         if not matches:
             return {"status": "error", "error": f"No suggestion at index {index}"}
         s = matches[0]
@@ -228,11 +256,15 @@ class AutonomyEngine:
 
         return results
 
-    def pending_suggestions(self) -> list[Suggestion]:
-        return [s for s in self._suggestions if not s.implemented]
+    def pending_suggestions(self, *, org_id: Optional[str] = None) -> list[Suggestion]:
+        return [s for s in self._suggestions if not s.implemented and s.organization_id == org_id]
 
-    def all_suggestions(self) -> list[dict]:
-        return [s.to_dict() for s in self._suggestions]
+    def all_suggestions(self, *, org_id: Optional[str] = None) -> list[dict]:
+        """self._suggestions is a single kernel-wide list shared by every
+        org's suggest_improvements() calls — must filter here or one
+        org's status view discloses another org's suggested agent ideas
+        (LLM-generated text, paid for by that org's own quota)."""
+        return [s.to_dict() for s in self._suggestions if s.organization_id == org_id]
 
     # ── Internal ─────────────────────────────────────────────────────────────
 

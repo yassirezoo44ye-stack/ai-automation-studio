@@ -60,3 +60,11 @@ class OwnershipTracker:
     def release(self, name: str) -> None:
         with self._lock:
             self._owners.pop(name, None)
+
+    def owner_of(self, name: str) -> Optional[str]:
+        """Current owner of `name`, or None if it's a built-in (or was
+        never claimed — callers that only query names known to exist in
+        the corresponding registry, e.g. AgentKernel._agents, don't need
+        to distinguish the two: an entry there was always claimed first)."""
+        with self._lock:
+            return self._owners.get(name)

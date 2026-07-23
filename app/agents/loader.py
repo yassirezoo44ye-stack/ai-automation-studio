@@ -19,7 +19,7 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from app.agents.base import EvolvableAgent
 
@@ -44,9 +44,14 @@ def load_all(kernel: "AgentKernel") -> int:
     return count
 
 
-def load_file(path: Path, kernel: "AgentKernel") -> bool:
-    """Dynamically load a single agent file at runtime."""
-    return _load_file(path, kernel, package="agents.dynamic")
+def load_file(path: Path, kernel: "AgentKernel", *, owner: Optional[str] = None) -> bool:
+    """Dynamically load a single agent file at runtime. `owner` should be
+    the requesting org's id when this is reachable from an API call (e.g.
+    AutonomyEngine.generate_agent) — the loaded agent is then scoped to
+    that org (see AgentKernel.visible_agents) instead of being registered
+    as owner=None, which marks it as a protected built-in indistinguishable
+    from shipped platform code and invocable by every other tenant."""
+    return _load_file(path, kernel, package="agents.dynamic", owner=owner)
 
 
 # ── Internal ──────────────────────────────────────────────────────────────────
@@ -63,7 +68,7 @@ def _load_dir(directory: Path, kernel: "AgentKernel", package: str) -> int:
     return count
 
 
-def _load_file(file: Path, kernel: "AgentKernel", package: str) -> bool:
+def _load_file(file: Path, kernel: "AgentKernel", package: str, *, owner: Optional[str] = None) -> bool:
     module_name = f"{package}.{file.stem}"
     try:
         if module_name in sys.modules:
@@ -84,7 +89,7 @@ def _load_file(file: Path, kernel: "AgentKernel", package: str) -> bool:
 
         # Strategy 2: `agent` variable = EvolvableAgent instance
         if hasattr(mod, "agent") and isinstance(mod.agent, EvolvableAgent):
-            kernel.register_agent(mod.agent)
+            kernel.register_agent(mod.agent, owner=owner)
             log.debug("loaded agent instance: %s from %s", mod.agent.name, file.name)
             return True
 
@@ -98,7 +103,7 @@ def _load_file(file: Path, kernel: "AgentKernel", package: str) -> bool:
                 and not attr_name.startswith("_")
             ):
                 instance = obj()
-                kernel.register_agent(instance)
+                kernel.register_agent(instance, owner=owner)
                 log.debug("loaded agent class: %s from %s", instance.name, file.name)
                 return True
 
