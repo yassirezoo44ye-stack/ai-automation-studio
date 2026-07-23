@@ -7,7 +7,7 @@ import anthropic
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.core.auth import owner_email
+from app.core.auth import owner_email, owner_user_id
 from app.core.db import get_pool, ensure_tasks_table
 from app.core.helpers import get_ai_client, anthropic_error_message
 from app.core.org_quota import check_org_quota, record_org_tokens
@@ -226,7 +226,22 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
     ai = get_ai_client()
 
     async with get_pool().acquire() as conn:
-        conv = await conn.fetchrow("SELECT id, project_id FROM conversations WHERE id=$1", conv_id)
+        # conversations has no owner column of its own — ownership is
+        # transitive through projects.user_id. Without this join, any
+        # authenticated caller could pass an arbitrary conversation_id
+        # UUID and have another user's private messages fetched below,
+        # fed to the LLM, and partially leaked back via the extracted
+        # tasks' titles/notes (IDOR / broken object-level authorization).
+        uid = await owner_user_id(conn, request)
+        conv = await conn.fetchrow(
+            """
+            SELECT c.id, c.project_id
+            FROM conversations c
+            JOIN projects p ON p.id = c.project_id
+            WHERE c.id = $1 AND p.user_id = $2
+            """,
+            conv_id, uid,
+        )
         if not conv:
             raise HTTPException(404, "Conversation not found")
         msgs = await conn.fetch(
