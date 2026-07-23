@@ -306,6 +306,68 @@ class TestOAuthAbstraction:
             assert not (hasattr(val, "client_id") and hasattr(val, "authorize_url") and not isinstance(val, type))
 
 
+# ── Secrets Management: credential-carrying dataclasses must not leak via
+# their default repr/str — Python's auto-generated dataclass repr prints
+# every field verbatim, and the log-scrubbing safety net in
+# app/core/logging.py (SensitiveDataFilter) targets key=value-shaped text,
+# not the {'key': 'value'} shape a dict/dataclass repr actually produces, so
+# it cannot be relied on to catch a leak of this shape. ─────────────────────
+
+class TestCredentialReprSafety:
+    def test_oauth_provider_config_repr_redacts_client_secret(self):
+        from app.integrations.oauth import OAuthProviderConfig
+        config = OAuthProviderConfig(
+            client_id="cid", client_secret="SUPER-SECRET-CLIENT-VALUE",
+            authorize_url="https://example.test/authorize", token_url="https://example.test/token",
+            redirect_uri="https://app.test/callback", scopes=["read"],
+        )
+        text = repr(config)
+        assert "SUPER-SECRET-CLIENT-VALUE" not in text
+        assert str(config) == text  # dataclasses fall back to __repr__ for __str__
+        assert "cid" in text and "https://example.test/authorize" in text  # non-secret fields stay visible
+
+    def test_oauth_token_repr_redacts_access_and_refresh_tokens_and_raw(self):
+        from app.integrations.oauth import OAuthToken
+        token = OAuthToken(
+            access_token="ACCESS-VALUE", refresh_token="REFRESH-VALUE", expires_at=123.0,
+            raw={"access_token": "ACCESS-VALUE", "id_token": "JWT-VALUE-HERE"},
+        )
+        text = repr(token)
+        assert "ACCESS-VALUE" not in text
+        assert "REFRESH-VALUE" not in text
+        assert "JWT-VALUE-HERE" not in text
+        assert "123.0" in text  # non-secret field stays visible
+
+    def test_oauth_token_repr_handles_missing_refresh_token(self):
+        from app.integrations.oauth import OAuthToken
+        token = OAuthToken(access_token="ACCESS-VALUE", refresh_token=None, expires_at=None, raw={})
+        text = repr(token)
+        assert "ACCESS-VALUE" not in text
+        assert "refresh_token=None" in text
+
+    def test_integration_credential_repr_redacts_secrets_dict_values(self):
+        from app.integrations.types import IntegrationCredential, ProviderType
+        cred = IntegrationCredential(
+            provider_id="webhook-relay", organization_id=_org_id(), provider_type=ProviderType.CUSTOM,
+            secrets={"access_token": "TOP-SECRET-VALUE", "webhook_secret": "ANOTHER-SECRET"},
+            metadata={"account_email": "user@example.test"},
+        )
+        text = repr(cred)
+        assert "TOP-SECRET-VALUE" not in text
+        assert "ANOTHER-SECRET" not in text
+        assert str(cred) == text
+        # non-secret fields (including secret *key names*, and metadata) stay visible for debuggability
+        assert "access_token" in text
+        assert "webhook_secret" in text
+        assert "user@example.test" in text
+        assert "webhook-relay" in text
+
+    def test_integration_credential_repr_empty_secrets_is_safe(self):
+        from app.integrations.types import IntegrationCredential, ProviderType
+        cred = IntegrationCredential(provider_id="p", organization_id=_org_id(), provider_type=ProviderType.API_KEY)
+        assert repr(cred) == str(cred)
+
+
 # ── Webhooks: verify + dedup + dispatch ──────────────────────────────────────
 
 class TestWebhookPipeline:

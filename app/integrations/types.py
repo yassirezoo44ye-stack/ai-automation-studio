@@ -77,6 +77,16 @@ class IntegrationCredential:
     def is_expired(self) -> bool:
         return self.expires_at is not None and time.time() >= self.expires_at
 
+    def __repr__(self) -> str:
+        # dataclass's auto-generated __repr__ would print `secrets` verbatim
+        # (Python's dict repr isn't caught by SensitiveDataFilter's
+        # key=value-shaped regexes — see app/core/logging.py), so this
+        # object must never fall back to that default if it's ever logged.
+        redacted = {k: "***REDACTED***" for k in self.secrets}
+        return (f"IntegrationCredential(provider_id={self.provider_id!r}, "
+                f"organization_id={self.organization_id!r}, provider_type={self.provider_type!r}, "
+                f"secrets={redacted!r}, metadata={self.metadata!r}, expires_at={self.expires_at!r})")
+
 
 @dataclass
 class WebhookEvent:

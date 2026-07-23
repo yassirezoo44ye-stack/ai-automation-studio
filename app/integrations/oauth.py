@@ -36,6 +36,15 @@ class OAuthProviderConfig:
     scopes: list[str] = field(default_factory=list)
     extra_authorize_params: dict[str, str] = field(default_factory=dict)
 
+    def __repr__(self) -> str:
+        # See OAuthToken.__repr__ below — same rationale (default dataclass
+        # repr would print client_secret verbatim; the log scrubber's
+        # key=value-shaped regexes don't match Python's dict/dataclass repr).
+        return (f"OAuthProviderConfig(client_id={self.client_id!r}, client_secret='***REDACTED***', "
+                f"authorize_url={self.authorize_url!r}, token_url={self.token_url!r}, "
+                f"redirect_uri={self.redirect_uri!r}, scopes={self.scopes!r}, "
+                f"extra_authorize_params={self.extra_authorize_params!r})")
+
 
 @dataclass
 class OAuthToken:
@@ -44,6 +53,20 @@ class OAuthToken:
     expires_at: float | None
     token_type: str = "Bearer"
     raw: dict = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        # Default dataclass repr would print access_token/refresh_token AND
+        # raw (the provider's full token-response payload — often carries
+        # the same tokens again, sometimes an id_token JWT) verbatim. See
+        # app/integrations/types.py's IntegrationCredential.__repr__ for
+        # why the existing log scrubber can't be relied on to catch this
+        # shape if it ever reaches a log call.
+        redacted_refresh = "***REDACTED***" if self.refresh_token else None
+        redacted_raw = {k: "***REDACTED***" for k in self.raw}
+        return (f"OAuthToken(access_token='***REDACTED***', "
+                f"refresh_token={redacted_refresh!r}, "
+                f"expires_at={self.expires_at!r}, token_type={self.token_type!r}, "
+                f"raw={redacted_raw!r})")
 
 
 def generate_state() -> str:
