@@ -1,15 +1,15 @@
 """
 Arabic NLU REST API — Layer 6 surface.
 
-POST /arabic/analyze          run the full NLU pipeline
-POST /arabic/normalize        normalize Arabic text only
-GET  /arabic/intents          return supported intent taxonomy
-GET  /arabic/dialects         return supported dialects
-POST /arabic/detect-language  detect if text is Arabic / mixed / other
+POST /api/arabic/analyze          run the full NLU pipeline
+POST /api/arabic/normalize        normalize Arabic text only
+GET  /api/arabic/intents          return supported intent taxonomy
+GET  /api/arabic/dialects         return supported dialects
+POST /api/arabic/detect-language  detect if text is Arabic / mixed / other
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from app.ai.arabic_nlu import (
@@ -17,7 +17,10 @@ from app.ai.arabic_nlu import (
     detect_language, normalize_arabic, get_arabic_nlu,
 )
 
-router = APIRouter(prefix="/arabic", tags=["arabic-nlu"])
+# Was "/arabic" (no /api/ prefix) — factory.py's api_auth_middleware only
+# gates paths starting with /api/, so this whole router (including
+# /analyze, which makes a real LLM call) was reachable with zero login.
+router = APIRouter(prefix="/api/arabic", tags=["arabic-nlu"])
 
 
 # ── Request schemas ───────────────────────────────────────────────────────────
@@ -39,16 +42,18 @@ class DetectRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/analyze")
-async def analyze(body: AnalyzeRequest):
+async def analyze(body: AnalyzeRequest, request: Request):
     """
     Full Arabic NLU pipeline.
     Returns intent, dialect, entities, confidence, and clarification hint.
     """
+    from app.tenancy.context import optional_org_id
     pipeline = get_arabic_nlu()
     result: ArabicNLUResult = await pipeline.process(
         body.text,
         user_id    = body.user_id,
         session_id = body.session_id,
+        organization_id = await optional_org_id(request),
     )
     return result.to_dict()
 

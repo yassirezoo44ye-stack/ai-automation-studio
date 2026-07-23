@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
@@ -179,10 +179,15 @@ async def alert_history(limit: int = 100, open_only: bool = False):
 # ── Layered memory ────────────────────────────────────────────────────────────
 
 @router.get("/memory")
-async def diagnostics_memory(n: int = 50, kind: Optional[str] = None):
+async def diagnostics_memory(request: Request, n: int = 50, kind: Optional[str] = None):
+    """LayeredMemory is a single, process-wide store shared by every
+    tenant — always scope to the caller's own verified org (or the
+    no-org bucket if they aren't in one), never the cross-tenant view."""
     from app.memory.layered import get_layered_memory
+    from app.tenancy.context import optional_org_id
+    org_id  = await optional_org_id(request)
     mem     = get_layered_memory()
-    records = mem.recent(n, kind=kind)
+    records = mem.recent(n, kind=kind, org_id=org_id)
     return {
         "stats"  : mem.stats,
         "records": [r.to_dict() for r in reversed(records)],
@@ -196,9 +201,11 @@ class MemorySearchRequest(BaseModel):
 
 
 @router.post("/memory/search")
-async def diagnostics_memory_search(req: MemorySearchRequest):
+async def diagnostics_memory_search(req: MemorySearchRequest, request: Request):
     from app.memory.layered import get_layered_memory
-    results = get_layered_memory().search(req.query, limit=req.limit, kind=req.kind)
+    from app.tenancy.context import optional_org_id
+    org_id  = await optional_org_id(request)
+    results = get_layered_memory().search(req.query, limit=req.limit, kind=req.kind, org_id=org_id)
     return {"count": len(results), "results": [r.to_dict() for r in results]}
 
 

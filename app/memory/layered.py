@@ -20,13 +20,19 @@ import time
 from collections import deque
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 _TMPDIR = Path(os.getenv("TMPDIR", "/tmp") if os.name != "nt" else os.getenv("TEMP", "C:\\Temp"))
 _LT_PATH  = _TMPDIR / "axon-longterm-memory.json"
 _ST_TTL   = 30 * 60   # 30 minutes
 _ST_MAX   = 200
 _LT_MAX   = 5_000
+
+# Sentinel distinguishing "org_id not specified at all" (unscoped,
+# cross-tenant — internal use only) from "org_id explicitly passed as
+# None" (the no-org bucket — a real, filterable value, not "everything").
+# Same convention as app.agents.memory.AgentMemory.recent().
+_UNSCOPED = object()
 
 
 # ── Memory record ─────────────────────────────────────────────────────────────
@@ -42,6 +48,7 @@ class MemoryItem:
     created_at: float = field(default_factory=time.time)
     agent     : Optional[str] = None
     success   : Optional[bool] = None
+    organization_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -61,14 +68,16 @@ class ShortTermMemory:
         with self._lock:
             self._items.append(item)
 
-    def recent(self, n: int = 50) -> list[MemoryItem]:
+    def recent(self, n: int = 50, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
         now = time.time()
         with self._lock:
             live = [i for i in self._items if (now - i.created_at) < self._ttl]
+            if org_id is not _UNSCOPED:
+                live = [i for i in live if i.organization_id == org_id]
             return list(live)[-n:]
 
-    def search(self, query: str, limit: int = 10) -> list[MemoryItem]:
-        results = self.recent(self._items.maxlen or _ST_MAX)
+    def search(self, query: str, limit: int = 10, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
+        results = self.recent(self._items.maxlen or _ST_MAX, org_id=org_id)
         scored  = [(i, _score(query, i.content)) for i in results]
         scored.sort(key=lambda x: -x[1])
         return [i for i, s in scored[:limit] if s > 0]
@@ -118,17 +127,21 @@ class LongTermMemory:
             self._save()
 
     def search(self, query: str, limit: int = 10,
-               kind: Optional[str] = None) -> list[MemoryItem]:
+               kind: Optional[str] = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
         with self._lock:
             items = self._items if not kind else [i for i in self._items if i.kind == kind]
+            if org_id is not _UNSCOPED:
+                items = [i for i in items if i.organization_id == org_id]
         scored = [(i, _score(query, i.content + " " + " ".join(i.tags))) for i in items]
         scored.sort(key=lambda x: -x[1])
         return [i for i, s in scored[:limit] if s > 0]
 
     def recent(self, n: int = 50,
-               kind: Optional[str] = None) -> list[MemoryItem]:
+               kind: Optional[str] = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
         with self._lock:
             items = self._items if not kind else [i for i in self._items if i.kind == kind]
+            if org_id is not _UNSCOPED:
+                items = [i for i in items if i.organization_id == org_id]
         return list(items)[-n:]
 
     @property
@@ -168,6 +181,14 @@ class LayeredMemory:
     """
     Writes to both layers.
     Searches short-term first, fills remaining results from long-term.
+
+    A single, process-wide store shared by every tenant — items may hold
+    confidential content, so any caller that surfaces raw item content to
+    an end user MUST pass the calling org's verified id to recent()/
+    search() via org_id, including explicitly passing org_id=None for a
+    caller with no verified org (the no-org bucket). Leaving org_id unset
+    entirely returns the unscoped, cross-tenant view and must stay
+    reserved for internal/system purposes only.
     """
 
     def __init__(self) -> None:
@@ -182,21 +203,21 @@ class LayeredMemory:
         self.long.add(lt_item)
 
     def search(self, query: str, limit: int = 20,
-               kind: Optional[str] = None) -> list[MemoryItem]:
+               kind: Optional[str] = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
         seen  : set[str] = set()
         results: list[MemoryItem] = []
-        for item in self.short.search(query, limit):
+        for item in self.short.search(query, limit, org_id=org_id):
             if item.id not in seen:
                 seen.add(item.id)
                 results.append(item)
-        for item in self.long.search(query, limit, kind=kind):
+        for item in self.long.search(query, limit, kind=kind, org_id=org_id):
             if item.id not in seen and len(results) < limit:
                 seen.add(item.id)
                 results.append(item)
         return results[:limit]
 
-    def recent(self, n: int = 50, kind: Optional[str] = None) -> list[MemoryItem]:
-        return self.long.recent(n, kind=kind)
+    def recent(self, n: int = 50, kind: Optional[str] = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
+        return self.long.recent(n, kind=kind, org_id=org_id)
 
     @property
     def stats(self) -> dict:

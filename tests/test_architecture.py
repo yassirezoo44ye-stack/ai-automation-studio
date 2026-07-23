@@ -473,6 +473,110 @@ class TestLayeredMemory(unittest.TestCase):
         self.assertIn("long_term",  stats)
 
 
+class TestLayeredMemoryOrgScoping(unittest.TestCase):
+    """LayeredMemory is a single, process-wide store shared by every
+    tenant — recent()/search() must never leak another org's raw item
+    content to a caller scoping by org_id."""
+
+    def setUp(self):
+        from app.memory.layered import LayeredMemory
+        self.mem = LayeredMemory()
+
+    def _item(self, content: str, organization_id):
+        import uuid
+        import time
+        from app.memory.layered import MemoryItem
+        return MemoryItem(
+            id=str(uuid.uuid4()), layer="", kind="execution",
+            content=content, tags=[], created_at=time.time(),
+            agent="assistant", success=True,
+            organization_id=organization_id,
+        )
+
+    def test_recent_scoped_to_own_org(self):
+        self.mem.add(self._item("org-a secret", "org-a"))
+        self.mem.add(self._item("org-b secret", "org-b"))
+        records = self.mem.recent(10, org_id="org-a")
+        contents = [r.content for r in records]
+        self.assertIn("org-a secret", contents)
+        self.assertNotIn("org-b secret", contents)
+
+    def test_recent_excludes_other_org_even_with_same_kind_and_agent(self):
+        # Same kind + agent across two orgs on purpose — isolation must
+        # hold on organization_id alone. Uses membership checks, not
+        # exact counts: LongTermMemory persists to a shared on-disk file
+        # across the whole test session (by design — durable long-term
+        # memory), so other tests' org-b records legitimately accumulate
+        # here too; what matters is zero cross-contamination, not volume.
+        self.mem.add(self._item("org-a confidential marker", "org-a"))
+        self.mem.add(self._item("org-b confidential marker", "org-b"))
+        org_b_records = self.mem.recent(50, org_id="org-b")
+        contents = [r.content for r in org_b_records]
+        self.assertIn("org-b confidential marker", contents)
+        self.assertNotIn("org-a confidential marker", contents)
+        self.assertTrue(all(r.organization_id == "org-b" for r in org_b_records))
+
+    def test_search_scoped_to_own_org(self):
+        self.mem.add(self._item("deploy failed on production server", "org-a"))
+        self.mem.add(self._item("deploy failed on production server", "org-b"))
+        results = self.mem.search("deploy failed production", org_id="org-a")
+        self.assertTrue(len(results) >= 1)
+        self.assertTrue(all(r.organization_id == "org-a" for r in results))
+
+    def test_no_org_id_returns_only_no_org_bucket_not_everything(self):
+        # A caller with no verified org (org_id=None) must be scoped to
+        # the no-org bucket, never fall through to "everyone's data" —
+        # the exact bug caught before the AgentMemory fix landed.
+        self.mem.add(self._item("org-a secret", "org-a"))
+        self.mem.add(self._item("legacy no-org item", None))
+        records = self.mem.recent(10, org_id=None)
+        contents = [r.content for r in records]
+        self.assertIn("legacy no-org item", contents)
+        self.assertNotIn("org-a secret", contents)
+
+    def test_unscoped_default_is_internal_only_cross_tenant_view(self):
+        # Leaving org_id unset entirely (the default) is the deliberate
+        # internal/system escape hatch — both orgs' items must appear
+        # together in one unscoped read, proving org isn't being
+        # filtered when the caller didn't ask for scoping.
+        self.mem.add(self._item("org-a unscoped-view marker", "org-a"))
+        self.mem.add(self._item("org-b unscoped-view marker", "org-b"))
+        records = self.mem.recent(10)  # both items are the most recent 2 additions
+        contents = [r.content for r in records]
+        self.assertIn("org-a unscoped-view marker", contents)
+        self.assertIn("org-b unscoped-view marker", contents)
+
+    def test_concurrent_access_from_multiple_orgs_stays_isolated(self):
+        """Multiple orgs writing/reading LayeredMemory concurrently must
+        never see each other's items — proves org filtering holds under
+        the same threaded-write pattern test_parallel_memory_writes uses
+        to prove thread-safety."""
+        import threading
+        errors: list[str] = []
+        seen_leak: list[str] = []
+
+        def _work(org: str):
+            try:
+                for i in range(20):
+                    self.mem.add(self._item(f"{org}-item-{i}", org))
+                records = self.mem.recent(100, org_id=org)
+                for r in records:
+                    if r.organization_id != org:
+                        seen_leak.append(f"{org} saw {r.organization_id}'s item")
+            except Exception as exc:
+                errors.append(str(exc))
+
+        threads = [threading.Thread(target=_work, args=(org,))
+                   for org in ("org-a", "org-b", "org-c")]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [], f"Thread errors: {errors}")
+        self.assertEqual(seen_leak, [], f"Cross-org leaks: {seen_leak}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 7. Code Generation Pipeline
 # ═══════════════════════════════════════════════════════════════════════════════

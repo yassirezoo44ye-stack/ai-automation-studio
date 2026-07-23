@@ -524,5 +524,155 @@ class TestAgentosMemoryEndpointIsOrgScoped(unittest.TestCase):
         self.assertEqual(asyncio.run(_run()).status_code, 401)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cross-tenant LayeredMemory leak (app/memory/layered.py, diagnostics_api.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestDiagnosticsMemoryEndpointIsOrgScoped(unittest.TestCase):
+    """GET /api/diagnostics/memory and POST /api/diagnostics/memory/search
+    read from LayeredMemory — a single, process-wide store shared by
+    every tenant — with zero org scoping. Same fix shape as the AgentOS
+    memory leak: resolve the caller's verified org via
+    app.tenancy.context.optional_org_id and pass it through."""
+
+    def _memory_with_two_tenants(self):
+        import time
+        import uuid
+        from app.memory.layered import LayeredMemory, MemoryItem
+        mem = LayeredMemory()
+        mem.add(MemoryItem(id=str(uuid.uuid4()), layer="", kind="execution",
+                            content="org-a confidential business data", tags=[],
+                            created_at=time.time(), agent="assistant",
+                            organization_id="org-a"))
+        mem.add(MemoryItem(id=str(uuid.uuid4()), layer="", kind="execution",
+                            content="org-b confidential business data", tags=[],
+                            created_at=time.time(), agent="assistant",
+                            organization_id="org-b"))
+        return mem
+
+    def test_org_a_cannot_read_org_b_records(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        mem = self._memory_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value="org-a")), \
+                 patch("app.memory.layered.get_layered_memory", return_value=mem):
+                from app.routers.diagnostics_api import diagnostics_memory
+                return await diagnostics_memory(MagicMock(), n=50)
+
+        result = asyncio.run(_run())
+        contents = [r["content"] for r in result["records"]]
+        self.assertIn("org-a confidential business data", contents)
+        self.assertNotIn("org-b confidential business data", contents)
+
+    def test_org_b_cannot_read_org_a_records(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        mem = self._memory_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value="org-b")), \
+                 patch("app.memory.layered.get_layered_memory", return_value=mem):
+                from app.routers.diagnostics_api import diagnostics_memory
+                return await diagnostics_memory(MagicMock(), n=50)
+
+        result = asyncio.run(_run())
+        contents = [r["content"] for r in result["records"]]
+        self.assertIn("org-b confidential business data", contents)
+        self.assertNotIn("org-a confidential business data", contents)
+
+    def test_forged_org_id_is_ignored_when_membership_verification_fails(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock as MM, patch
+
+        mem = self._memory_with_two_tenants()
+
+        async def _run():
+            with patch("app.tenancy.context._get_current_user_dep") as get_dep, \
+                 patch("app.tenancy.context.get_tenancy_service") as get_svc, \
+                 patch("app.memory.layered.get_layered_memory", return_value=mem):
+                from fastapi.security import HTTPBearer
+                with patch.object(HTTPBearer, "__call__", new=AsyncMock(return_value="creds")):
+                    get_dep.return_value = AsyncMock(return_value={"id": "attacker"})
+                    svc = MM()
+                    svc.get_member_role = AsyncMock(return_value=None)  # not a member of org-a
+                    get_svc.return_value = svc
+
+                    req = MM()
+                    req.headers = {"X-Organization-Id": "org-a"}
+                    req.query_params = {}
+                    req.path_params = {}
+
+                    from app.routers.diagnostics_api import diagnostics_memory
+                    return await diagnostics_memory(req, n=50)
+
+        result = asyncio.run(_run())
+        contents = [r["content"] for r in result["records"]]
+        self.assertNotIn("org-a confidential business data", contents)
+        self.assertNotIn("org-b confidential business data", contents)
+
+    def test_missing_authentication_returns_401(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            import os
+            os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+            os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+            from app.factory import create_app
+            transport = ASGITransport(app=create_app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.get("/api/diagnostics/memory")
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Unauthenticated Arabic NLU endpoint (app/routers/arabic_api.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestArabicApiRequiresAuth(unittest.TestCase):
+    """POST /arabic/analyze used to be mounted without an /api/ prefix,
+    the same shape of bug as chat.py's /run(/stream) — it bypassed
+    api_auth_middleware entirely and made a real LLM call with zero
+    login. No frontend caller depended on the old path (dead surface
+    from the UI's perspective, but a live, reachable one over HTTP)."""
+
+    def _app(self):
+        import os
+        os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+        os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+        from app.factory import create_app
+        return create_app()
+
+    def test_unauthenticated_analyze_rejected(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/api/arabic/analyze", json={"text": "مرحبا"})
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+    def test_old_unprefixed_path_no_longer_registered(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/arabic/analyze", json={"text": "مرحبا"})
+
+        # No POST route matches the old path anymore — only the (GET-only)
+        # SPA catch-all does, so this is a 405, not the NLU handler
+        # (same reasoning as the chat.py /run/stream regression test).
+        self.assertEqual(asyncio.run(_run()).status_code, 405)
+
+
 if __name__ == "__main__":
     unittest.main()

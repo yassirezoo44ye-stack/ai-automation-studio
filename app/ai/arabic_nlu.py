@@ -227,7 +227,8 @@ class ArabicNLUPipeline:
         self._memory  = memory    # app.memory.layered.LayeredMemory
 
     async def process(self, text: str, *, user_id: str = "anonymous",
-                      session_id: str = "") -> ArabicNLUResult:
+                      session_id: str = "",
+                      organization_id: Optional[str] = None) -> ArabicNLUResult:
         t0 = time.perf_counter()
 
         # 1. Language detection
@@ -278,12 +279,12 @@ class ArabicNLUPipeline:
 
         # 5. Store to episodic memory
         if self._memory and lang != "other":
-            self._store_episode(result, user_id, session_id)
+            self._store_episode(result, user_id, session_id, organization_id)
 
         return result
 
     def _store_episode(self, result: ArabicNLUResult, user_id: str,
-                       session_id: str) -> None:
+                       session_id: str, organization_id: Optional[str] = None) -> None:
         try:
             from app.memory.layered import MemoryItem
             item = MemoryItem(
@@ -295,6 +296,7 @@ class ArabicNLUPipeline:
                 tags       = ["arabic", "nlu", result.intent, result.dialect],
                 agent      = user_id,
                 success    = not result.needs_clarification,
+                organization_id = organization_id,
             )
             self._memory.add(item)
         except Exception as exc:
