@@ -53,7 +53,7 @@ class AIGateway:
 
         # Cache check
         if request.cache_ttl:
-            key = cache.make_key(request)
+            key = cache.make_key(request, org_id=org_id)
             hit = cache.get(key)
             if hit:
                 log.debug("Cache hit for request")
@@ -80,7 +80,7 @@ class AIGateway:
 
         # Store in cache
         if request.cache_ttl:
-            cache.set(cache.make_key(request), response, request.cache_ttl)
+            cache.set(cache.make_key(request, org_id=org_id), response, request.cache_ttl)
 
         return response
 

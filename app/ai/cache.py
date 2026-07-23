@@ -72,9 +72,19 @@ class ResponseCache:
     # ── Key generation ────────────────────────────────────────────────────────
 
     @staticmethod
-    def make_key(request: CompletionRequest) -> str:
-        """Deterministic cache key based on all request fields that affect the response."""
+    def make_key(request: CompletionRequest, *, org_id: Optional[str] = None) -> str:
+        """Deterministic cache key based on all request fields that affect the
+        response, PLUS org_id. Two organizations issuing content-identical
+        requests (a shared demo-workflow template, an agent's static system
+        prompt, a common question) must never collide on the same cache
+        entry — org_id isn't reliably "baked into" message/system content
+        (memory injection only happens when memory_enabled and a saved
+        memory actually exists), so it has to be a hard, explicit component
+        of the key rather than something the content coincidentally varies
+        by. See app/core/cache/invalidation.py's cached() for the same
+        explicit-scoping convention used elsewhere in this codebase."""
         payload = {
+            "org_id":      org_id,
             "provider":    request.provider,
             "model":       request.model,
             "messages":    [m.model_dump() for m in request.messages],

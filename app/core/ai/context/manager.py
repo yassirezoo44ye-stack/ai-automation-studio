@@ -73,8 +73,8 @@ class ContextManager:
             bundle.history = await self._load_history(conversation_id, token_budget // 3)
 
         # Load project metadata
-        if project_id:
-            bundle.project_meta = await self._load_project(project_id)
+        if project_id and user_id:
+            bundle.project_meta = await self._load_project(project_id, user_id)
 
         bundle.token_estimate = self._estimate_tokens(bundle)
         return bundle
@@ -153,11 +153,17 @@ class ContextManager:
         except Exception:
             return []
 
-    async def _load_project(self, project_id: str) -> dict[str, Any]:
+    async def _load_project(self, project_id: str, user_id: str) -> dict[str, Any]:
         try:
+            # projects has no organization_id (see app/core/db.py) — ownership
+            # is user_id directly. Without this check, any caller passing an
+            # arbitrary project_id would get that project's name/description
+            # injected as "context" into their own AI request regardless of
+            # who owns it (the same missing-ownership-JOIN bug class fixed
+            # elsewhere in this codebase for conversations/tasks).
             row = await self._pool.fetchrow(   # type: ignore[union-attr]
-                "SELECT name, description FROM projects WHERE id = $1",
-                project_id,
+                "SELECT name, description FROM projects WHERE id = $1 AND user_id = $2",
+                project_id, user_id,
             )
             if row:
                 return {"project": row["name"], "description": row["description"] or ""}

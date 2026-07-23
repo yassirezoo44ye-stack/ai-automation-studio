@@ -1120,3 +1120,124 @@ class TestMemoryContextPromptInjectionFraming:
         assert "saved fact" in enriched.system
         assert enriched.system.startswith("[Saved user notes")
 
+
+# ── AI Provider Isolation: response cache must never cross a tenant
+# boundary. Two organizations issuing content-identical requests (a shared
+# demo-workflow template, a built-in agent's static system prompt, a common
+# question with memory_enabled=False or no saved memories yet) previously
+# hashed to the SAME cache key, since ResponseCache.make_key() only looked
+# at request content — org_id was never part of it, even though the org_id
+# AIGateway.complete()/stream() already receive was sitting right there
+# unused. See app/ai/cache.py's make_key docstring. ───────────────────────
+
+class TestResponseCacheOrgIsolation:
+    def _req(self) -> CompletionRequest:
+        return CompletionRequest(
+            messages=[Message(role="user", content="Summarize this document.")],
+            system="You are a helpful assistant.",
+        )
+
+    def test_make_key_differs_by_org_id_for_identical_request_content(self):
+        from app.ai.cache import ResponseCache
+        req = self._req()
+        key_a = ResponseCache.make_key(req, org_id="org-A")
+        key_b = ResponseCache.make_key(req, org_id="org-B")
+        assert key_a != key_b
+
+    def test_make_key_differs_between_no_org_and_an_org(self):
+        from app.ai.cache import ResponseCache
+        req = self._req()
+        assert ResponseCache.make_key(req) != ResponseCache.make_key(req, org_id="org-A")
+
+    def test_make_key_stable_for_same_org_and_content(self):
+        from app.ai.cache import ResponseCache
+        req = self._req()
+        assert ResponseCache.make_key(req, org_id="org-A") == ResponseCache.make_key(req, org_id="org-A")
+
+    def test_gateway_cache_hit_is_scoped_to_the_requesting_org(self):
+        # End-to-end through AIGateway.complete(): org-A populates the
+        # cache, then an identical request from org-B must NOT get served
+        # org-A's cached response — it has to actually call the provider.
+        from app.ai.cache import cache as response_cache
+        from app.ai.gateway import AIGateway
+        from app.ai.models import CompletionResponse
+
+        response_cache.clear()
+        gw = AIGateway(pool=object())
+        req = CompletionRequest(
+            messages=[Message(role="user", content="Same prompt, two tenants")],
+            cache_ttl=60,
+        )
+
+        org_a_response = CompletionResponse(content="org-A's private answer")
+        org_b_response = CompletionResponse(content="org-B's own answer")
+
+        async def fake_enrich(request, *, user_id=None):
+            return request
+
+        async def fake_check_quota(_org_id):
+            return None
+
+        async def fake_post_complete(*a, **kw):
+            return None
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(gw, "_enrich", fake_enrich)
+            mp.setattr(gw, "_check_quota", fake_check_quota)
+            mp.setattr(gw, "_post_complete", fake_post_complete)
+            mp.setattr(
+                "app.core.ai.registry.registry.platform_registry.complete_with_events",
+                AsyncMock(side_effect=[
+                    (org_a_response, "test-provider"),
+                    (org_b_response, "test-provider"),
+                ]),
+            )
+            resp_a = _run(gw.complete(req, org_id="org-A"))
+            resp_b = _run(gw.complete(req, org_id="org-B"))
+
+        assert resp_a.content == "org-A's private answer"
+        # The bug this regression guards against: org-B silently receiving
+        # org-A's cached response instead of making its own call.
+        assert resp_b.content == "org-B's own answer"
+        assert resp_b.content != resp_a.content
+
+        response_cache.clear()
+
+
+# ── AI Provider Isolation: ContextManager's project-context injection must
+# be ownership-checked. `projects` has no organization_id (see
+# app/core/db.py) — ownership is user_id directly — so a caller passing an
+# arbitrary project_id must not get that project's name/description
+# injected as "context" unless it actually belongs to the requesting user.
+# (ContextManager.build() has no live caller yet — see platform.py — but
+# the same missing-ownership-JOIN bug class has bitten this codebase
+# multiple times elsewhere, so this is fixed defensively before it's wired
+# up rather than after.) ────────────────────────────────────────────────────
+
+class TestContextManagerProjectOwnership:
+    def test_project_context_scoped_to_owning_user(self):
+        from app.core.ai.context.manager import ContextManager
+
+        pool = MagicMock()
+        pool.fetchrow = AsyncMock(return_value={"name": "Proj", "description": "desc"})
+        mgr = ContextManager(pool=pool)
+
+        bundle = _run(mgr.build(user_id="owner-1", project_id="proj-1"))
+
+        sql, *params = pool.fetchrow.call_args.args
+        assert "user_id" in sql
+        assert params == ["proj-1", "owner-1"]
+        assert bundle.project_meta == {"project": "Proj", "description": "desc"}
+
+    def test_project_context_skipped_without_user_id(self):
+        from app.core.ai.context.manager import ContextManager
+
+        pool = MagicMock()
+        pool.fetchrow = AsyncMock(return_value={"name": "Proj", "description": "desc"})
+        mgr = ContextManager(pool=pool)
+
+        bundle = _run(mgr.build(project_id="proj-1"))
+
+        pool.fetchrow.assert_not_called()
+        assert bundle.project_meta == {}
+
