@@ -906,5 +906,131 @@ class TestAgentosAgentEndpointsAreOrgScoped(unittest.TestCase):
         self.assertNotIn("org_a_secret_agent", result["agent_names"])
 
 
+class TestBuildProjectEndpointsRequireOwnership(unittest.TestCase):
+    """Every /api/projects/{project_id}/{files,sync,upload,download,run,
+    process,proxy} endpoint used to operate purely on the URL's project_id
+    string — workspace(project_id) only guards against path traversal, it
+    has no concept of ownership, and none of these 10 routes ever called
+    resolve_project_id (unlike /api/build, which already did, one function
+    away). Any authenticated user who learned another user's project_id
+    (a UUID, but one that travels through URLs/logs/screenshots) could
+    read, overwrite, delete, or download that project's files, or run/stop
+    a process and proxy into its running dev server. Webhook & Callback
+    Security phase fix: every route now calls the shared
+    _require_project_owner() guard before touching workspace()/process_mgr."""
+
+    def _full_app(self):
+        import os
+        os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+        os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+        from app.factory import create_app
+        return create_app()
+
+    def test_unauthenticated_requests_rejected(self):
+        """No X-Sub-Token at all: api_auth_middleware must reject before
+        the handler (and its ownership check) ever runs."""
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._full_app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                results = {}
+                results["list_files"] = await client.get("/api/projects/some-id/files")
+                results["download"] = await client.get("/api/projects/some-id/download")
+                results["stop"] = await client.delete("/api/projects/some-id/process")
+                results["proxy"] = await client.get("/api/projects/some-id/proxy/")
+                return results
+
+        for name, res in asyncio.run(_run()).items():
+            self.assertEqual(res.status_code, 401, f"{name} did not reject an unauthenticated caller")
+
+    def _build_router_app(self):
+        from fastapi import FastAPI
+        from app.routers.build import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, *, requester_uid, owns_project: bool):
+        from unittest.mock import AsyncMock, MagicMock
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(side_effect=[
+            requester_uid,             # owner_user_id() resolves the caller
+            1 if owns_project else None,  # resolve_project_id()'s ownership SELECT
+        ])
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
+    def test_non_owner_gets_404_not_the_files(self):
+        """Bob authenticates fine, but the project belongs to Alice —
+        every affected route must 404, never leak Alice's data."""
+        import uuid
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+
+        bob_uid = uuid.uuid4()
+        alice_project_id = str(uuid.uuid4())
+        app = self._build_router_app()
+
+        routes = [
+            ("GET", f"/api/projects/{alice_project_id}/files"),
+            ("GET", f"/api/projects/{alice_project_id}/download"),
+            ("DELETE", f"/api/projects/{alice_project_id}/process"),
+            ("GET", f"/api/projects/{alice_project_id}/process"),
+            ("GET", f"/api/projects/{alice_project_id}/proxy/"),
+        ]
+        for method, path in routes:
+            pool = self._mock_pool(requester_uid=bob_uid, owns_project=False)
+            with patch("app.routers.build.get_pool", return_value=pool), \
+                 patch("app.core.auth.owner_email", return_value="bob@example.com"):
+                with TestClient(app, raise_server_exceptions=False) as c:
+                    res = c.request(method, path, headers={"X-Sub-Token": "bob-token"})
+            self.assertEqual(res.status_code, 404, f"{method} {path} should 404 for a non-owner, got {res.status_code}")
+
+    def test_owner_can_still_list_files(self):
+        """The fix must not break legitimate access for the actual owner."""
+        import uuid
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+
+        alice_uid = uuid.uuid4()
+        project_id = str(uuid.uuid4())
+        app = self._build_router_app()
+        pool = self._mock_pool(requester_uid=alice_uid, owns_project=True)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("app.routers.build.get_pool", return_value=pool), \
+                 patch("app.core.auth.owner_email", return_value="alice@example.com"), \
+                 patch("app.core.filesystem.WORKSPACES", Path(tmp)):
+                with TestClient(app, raise_server_exceptions=False) as c:
+                    res = c.get(f"/api/projects/{project_id}/files", headers={"X-Sub-Token": "alice-token"})
+
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("files", res.json())
+
+    def test_owner_can_still_check_process_status(self):
+        import uuid
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+
+        alice_uid = uuid.uuid4()
+        project_id = str(uuid.uuid4())
+        app = self._build_router_app()
+        pool = self._mock_pool(requester_uid=alice_uid, owns_project=True)
+
+        with patch("app.routers.build.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(f"/api/projects/{project_id}/process", headers={"X-Sub-Token": "alice-token"})
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), {"running": False})
+
+
 if __name__ == "__main__":
     unittest.main()
