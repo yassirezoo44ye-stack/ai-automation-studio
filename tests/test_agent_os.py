@@ -192,6 +192,55 @@ class TestAgentMemory:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# StatusAgent — the other raw-content reader that used to leak cross-tenant
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestStatusAgentOrgScoping:
+    def test_status_agent_only_sees_own_org_executions(self):
+        # Same agent name ("echo") on both records on purpose — isolation
+        # must hold on organization_id alone, not accidentally depend on
+        # agent name/id ever differing between tenants.
+        from app.agents.builtin.status_agent import StatusAgent
+
+        mem = _make_memory()
+        mem._records += [
+            ExecutionRecord(agent="echo", input="org-a confidential task", args="",
+                             success=True, duration_ms=1.0, organization_id="org-a"),
+            ExecutionRecord(agent="echo", input="org-b confidential task", args="",
+                             success=True, duration_ms=1.0, organization_id="org-b"),
+        ]
+        kernel = _make_kernel()
+        kernel._memory = mem
+        ctx = AgentContext(input="status", args="", kernel=kernel, memory=mem,
+                           organization_id="org-a")
+
+        result = _run(StatusAgent().execute(ctx))
+
+        assert "org-a confidential task" in result.output
+        assert "org-b confidential task" not in result.output
+
+    def test_status_agent_with_no_org_sees_only_no_org_bucket(self):
+        # A caller with no verified org (organization_id=None) must be
+        # scoped to the no-org bucket, never fall through to "everyone's
+        # data" — this is the exact bug caught before the fix landed.
+        from app.agents.builtin.status_agent import StatusAgent
+
+        mem = _make_memory()
+        mem._records += [
+            ExecutionRecord(agent="echo", input="org-a confidential task", args="",
+                             success=True, duration_ms=1.0, organization_id="org-a"),
+        ]
+        kernel = _make_kernel()
+        kernel._memory = mem
+        ctx = AgentContext(input="status", args="", kernel=kernel, memory=mem,
+                           organization_id=None)
+
+        result = _run(StatusAgent().execute(ctx))
+
+        assert "org-a confidential task" not in result.output
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # IntentParser
 # ──────────────────────────────────────────────────────────────────────────────
 
