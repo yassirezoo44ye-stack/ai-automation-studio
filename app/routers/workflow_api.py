@@ -1,11 +1,30 @@
 """
 Workflow Engine REST API — Layer 8 surface.
 
-GET  /workflows/active               list currently running workflow runs
-GET  /workflows/approvals/pending    list steps waiting for human approval
-POST /workflows/approvals/{run_id}/{step_id}/approve  approve a step
-POST /workflows/approvals/{run_id}/{step_id}/reject   reject a step
-POST /workflows/demo                 run a demo 3-step workflow
+GET  /api/workflows/active               list currently running workflow runs
+GET  /api/workflows/approvals/pending    list steps waiting for human approval
+POST /api/workflows/approvals/{run_id}/{step_id}/approve  approve a step
+POST /api/workflows/approvals/{run_id}/{step_id}/reject   reject a step
+POST /api/workflows/demo                 run a demo 3-step workflow
+
+Was mounted at /workflows (no /api/ prefix) — app.factory's
+api_auth_middleware only gates paths starting with /api/, so every
+endpoint here, including approve/reject (a human-approval gate meant to
+require a real, authorized person) was reachable with zero authentication
+by anyone. Same shape of bug as the earlier chat.py /run(/stream) and
+arabic_api.py fixes this phase.
+
+KNOWN RESIDUAL GAP (flagged, not fixed here): the /api/ prefix now
+requires a real authenticated caller, but WorkflowRun/the approval
+registry (app/core/workflow/engine.py's WorkflowEngine._active +
+_approval_registry) carry no organization_id at all — active()/
+pending_approvals() return every org's runs, and approve()/reject()
+never verify the run belongs to the caller's org. Any authenticated user
+from ANY org can approve/reject/inspect another org's workflow step
+today. Closing this needs WorkflowRun to carry organization_id from
+WorkflowBuilder.build(context=...) through to the approval registry — a
+larger change than the auth fix above, tracked separately rather than
+folded into this commit.
 """
 from __future__ import annotations
 
@@ -17,7 +36,7 @@ from app.core.workflow import (
     WorkflowBuilder, RetryPolicy, get_workflow_engine,
 )
 
-router = APIRouter(prefix="/workflows", tags=["workflows"])
+router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 
 # ── Demo step functions ───────────────────────────────────────────────────────

@@ -576,8 +576,8 @@ function JobsMonitor() {
     setLoading(true);
     try {
       const [jr, sr] = await Promise.all([
-        apiFetch("/jobs").then(r => r.json()).catch(() => ({ jobs: [] })),
-        apiFetch("/jobs/stats").then(r => r.json()).catch(() => null) as Promise<JobStats | null>,
+        apiFetch("/api/jobs").then(r => r.json()).catch(() => ({ jobs: [] })),
+        apiFetch("/api/jobs/stats").then(r => r.json()).catch(() => null) as Promise<JobStats | null>,
       ]);
       setJobs(jr.jobs ?? []);
       setStats(sr);
@@ -587,7 +587,7 @@ function JobsMonitor() {
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   const cancel = async (job_id: string) => {
-    await apiFetch(`/jobs/${job_id}`, { method: "DELETE" }).catch(() => {});
+    await apiFetch(`/api/jobs/${job_id}`, { method: "DELETE" }).catch(() => {});
     load();
   };
 

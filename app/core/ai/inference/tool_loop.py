@@ -41,6 +41,12 @@ async def run_tool_loop(
     tool_exec = tool_executor or default_executor
     current_req  = request
     current_resp = response
+    # The exact tools offered to the model for this request — a
+    # tool_call naming anything else (hallucinated, prompt-injected, or
+    # simply never offered) must not execute, or the caller's tool
+    # exposure is effectively "every registered tool platform-wide"
+    # regardless of what request.tools actually declared.
+    allowed_tools = {t.name for t in (request.tools or [])}
 
     for _round in range(max_rounds):
         if not current_resp.tool_calls:
@@ -54,6 +60,7 @@ async def run_tool_loop(
             result: ToolResult = await tool_exec.execute(
                 tc.name, tc.arguments,
                 call_id=tc.id, user_id=user_id,
+                allowed_tools=allowed_tools,
             )
             tool_messages.append(Message(
                 role="tool",
@@ -103,6 +110,7 @@ async def stream_tool_loop(
     tool_exec      = tool_executor or default_executor
     current_req    = request
     accumulated_tc = []
+    allowed_tools  = {t.name for t in (request.tools or [])}
 
     # First stream pass
     if callable(gateway):
@@ -129,6 +137,7 @@ async def stream_tool_loop(
             result: ToolResult = await tool_exec.execute(
                 tc.name, tc.arguments,
                 call_id=tc.id, user_id=user_id,
+                allowed_tools=allowed_tools,
             )
             yield {
                 "type":      "tool_result",

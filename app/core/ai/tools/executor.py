@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Set
 
 from app.ai.models import ToolSchema
 from app.core.ai.events.bus import bus
@@ -59,11 +59,24 @@ class ToolExecutor:
         user_id:      Optional[str] = None,
         permissions:  ToolPermissions | None = None,
         max_retries:  int         = 0,
+        allowed_tools: Optional[Set[str]] = None,
     ) -> ToolResult:
         """
         Execute a registered tool and return a ToolResult.
 
         Always returns — never raises. Errors are captured inside ToolResult.
+
+        `allowed_tools`, when given, is the exact set of tool names that
+        were actually offered to the model for this request/agent (e.g.
+        AgentConfig.tools, or CompletionRequest.tools's names) — the
+        server-side re-check that a returned tool_call names one of them.
+        Without this, _REGISTRY.get(tool_name) resolves ANY tool ever
+        registered platform-wide (every plugin from every org, including
+        admin-only ones), so a hallucinated or prompt-injected tool_call
+        naming a tool that was never offered — or that belongs to another
+        org's plugin install entirely — would still execute. `None` (the
+        default) means the caller isn't enforcing an allowlist here;
+        every caller reachable from an agent/HTTP request must pass one.
         """
         from app.ai import tools as _registry  # lazy import to avoid circular deps
 
@@ -76,6 +89,19 @@ class ToolExecutor:
             call_id=call_id,
             user_id=user_id,
         ))
+
+        if allowed_tools is not None and tool_name not in allowed_tools:
+            result = ToolResult(
+                tool_name=tool_name, call_id=call_id,
+                success=False,
+                output=json.dumps({"error": f"Tool '{tool_name}' was not offered for this request"}),
+                error=f"Tool '{tool_name}' is not among the tools available to this caller",
+            )
+            await bus.emit(ToolFinished(
+                tool_name=tool_name, call_id=call_id,
+                success=False, error=result.error,
+            ))
+            return result
 
         entry = _registry._REGISTRY.get(tool_name)
         if not entry:

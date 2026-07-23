@@ -123,7 +123,7 @@ export function AutomationPage() {
   const loadWorkflows = useCallback(async () => {
     setWfLoading(true);
     try {
-      const r = await apiFetch("/workflows/active");
+      const r = await apiFetch("/api/workflows/active");
       if (r.ok) { const d = await r.json(); setWfRuns(d.runs ?? []); }
     } catch {}
     finally { setWfLoading(false); }
@@ -132,7 +132,7 @@ export function AutomationPage() {
   const runDemoWorkflow = async (kind: string) => {
     setRunningDemo(kind);
     try {
-      const r = await apiFetch("/workflows/demo", { method: "POST", body: JSON.stringify({ kind }) });
+      const r = await apiFetch("/api/workflows/demo", { method: "POST", body: JSON.stringify({ kind }) });
       if (!r.ok) throw new Error();
       const d = await r.json();
       toast(`Workflow started — run_id: ${d.run_id}`, "ok");
@@ -403,7 +403,7 @@ function ApprovalsList() {
 
   const load = useCallback(async () => {
     try {
-      const r = await apiFetch("/workflows/approvals/pending");
+      const r = await apiFetch("/api/workflows/approvals/pending");
       if (r.ok) { const d = await r.json(); setApprovals(d.approvals ?? []); }
     } catch {}
   }, []);
@@ -413,7 +413,7 @@ function ApprovalsList() {
   const decide = async (run_id: string, step_id: string, action: "approve" | "reject") => {
     setBusy(`${run_id}:${step_id}`);
     try {
-      const r = await apiFetch(`/workflows/approvals/${run_id}/${step_id}/${action}`, { method: "POST" });
+      const r = await apiFetch(`/api/workflows/approvals/${run_id}/${step_id}/${action}`, { method: "POST" });
       if (!r.ok) throw new Error();
       toast(`Step ${action}d`, "ok");
       setApprovals(p => p.filter(a => !(a.run_id === run_id && a.step_id === step_id)));

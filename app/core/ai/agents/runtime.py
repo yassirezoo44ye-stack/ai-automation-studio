@@ -126,6 +126,14 @@ class AgentRuntime:
                 if schema:
                     tool_schemas.append(schema)
 
+        # config.tools declares what this agent MAY use — that alone was
+        # only ever advisory (it just shapes what's offered to the
+        # provider). A returned tool_calls entry is re-checked against it
+        # via allowed_tools= below before execution, since a hallucinated
+        # or prompt-injected tool_call could otherwise name ANY tool in
+        # the platform-wide registry, including another org's plugin.
+        allowed_tools = set(self.config.tools)
+
         messages: list[Message] = [Message(role="user", content=prompt)]
         system   = self.config.system_prompt or None
         all_tool_calls: list[dict] = []
@@ -176,6 +184,7 @@ class AgentRuntime:
                     result = await self._executor.execute(
                         tc.name, tc.arguments,
                         call_id=tc.id, user_id=user_id,
+                        allowed_tools=allowed_tools,
                     )
                     comment = await self.on_tool_result(result)
                     tool_messages.append(Message(
@@ -232,6 +241,7 @@ class AgentRuntime:
                 schema = self._executor.get_schema(name)
                 if schema:
                     tool_schemas.append(schema)
+        allowed_tools = set(self.config.tools)
 
         for round_num in range(self.config.max_rounds):
             provider_enum = None
@@ -266,6 +276,7 @@ class AgentRuntime:
             for tc in accumulated_tools:
                 result = await self._executor.execute(
                     tc.name, tc.arguments, call_id=tc.id, user_id=user_id,
+                    allowed_tools=allowed_tools,
                 )
                 yield {"type": "tool_result", "tool_name": tc.name, "result": result.output}
                 tool_messages.append(Message(role="tool", content=result.to_message_content(), name=tc.name))

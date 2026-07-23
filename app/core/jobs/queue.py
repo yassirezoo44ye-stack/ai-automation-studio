@@ -199,11 +199,23 @@ class JobQueue:
         priority    : str = "normal",
         max_retries : int = 0,
         run_at      : Optional[float] = None,
+        org_id      : Optional[str]   = None,
     ) -> str:
+        """`org_id`, when given, always overwrites payload["organization_id"]
+        rather than merely defaulting it — a caller reachable from an HTTP
+        request (app.routers.jobs_api) must never let the request body's
+        own payload dict claim a different organization_id than the one
+        the server actually verified for this caller. Internal callers
+        that already build a trusted payload themselves (e.g.
+        app.integrations.sync_engine.schedule_sync) simply don't pass
+        org_id and are unaffected."""
         if priority not in _PRIORITY_ORDER:
             priority = "normal"
+        payload = dict(payload or {})
+        if org_id is not None:
+            payload["organization_id"] = org_id
         job = Job(
-            id=str(uuid.uuid4()), kind=kind, payload=payload or {}, ttl=ttl,
+            id=str(uuid.uuid4()), kind=kind, payload=payload, ttl=ttl,
             priority=priority, max_retries=max_retries, run_at=run_at,
         )
         await self._store.save(job)
@@ -357,12 +369,20 @@ class JobQueue:
         status  : Optional[JobStatus] = None,
         kind    : Optional[str]       = None,
         limit   : int                 = 50,
+        *,
+        org_id  : Optional[str]       = None,
     ) -> list[Job]:
+        """`org_id`, when given, scopes to jobs stamped with that
+        organization (see JobQueue.submit's docstring) — reserved unset
+        for internal/system callers that aren't exposing the list to one
+        specific end user."""
         jobs = await self._store.list_all()
         if status:
             jobs = [j for j in jobs if j.status == status]
         if kind:
             jobs = [j for j in jobs if j.kind == kind]
+        if org_id is not None:
+            jobs = [j for j in jobs if j.payload.get("organization_id") == org_id]
         jobs.sort(key=lambda j: j.created_at, reverse=True)
         return jobs[:limit]
 
@@ -403,14 +423,20 @@ class JobQueue:
 
     # ── Stats ──────────────────────────────────────────────────────────────────
 
-    async def stats(self) -> dict:
+    async def stats(self, *, org_id: Optional[str] = None) -> dict:
         all_jobs = await self._store.list_all()
-        counts   = {s.value: 0 for s in JobStatus}
+        if org_id is not None:
+            all_jobs = [j for j in all_jobs if j.payload.get("organization_id") == org_id]
+        counts = {s.value: 0 for s in JobStatus}
         for j in all_jobs:
             counts[j.status.value] += 1
         return {
             "total"  : len(all_jobs),
-            "active" : len(self._active),
+            # self._active counts in-flight asyncio Tasks platform-wide —
+            # only a correct "active" figure for the unscoped/internal
+            # view; a scoped caller gets it from the filtered jobs' own
+            # status instead.
+            "active" : len(self._active) if org_id is None else counts[JobStatus.RUNNING.value],
             "dead"   : sum(1 for j in all_jobs if j.dead),
             "counts" : counts,
         }

@@ -674,6 +674,146 @@ class TestArabicApiRequiresAuth(unittest.TestCase):
         self.assertEqual(asyncio.run(_run()).status_code, 405)
 
 
+class TestWorkflowApiRequiresAuth(unittest.TestCase):
+    """POST /workflows/approvals/{run_id}/{step_id}/approve(/reject) used to
+    be mounted without an /api/ prefix — same shape of bug as chat.py's
+    /run(/stream): api_auth_middleware never saw it, so ANYONE could
+    approve or reject a human-approval-gated workflow step for any
+    organization, with zero authentication. Privilege Escalation Audit
+    phase fix: moved to /api/workflows."""
+
+    def _app(self):
+        import os
+        os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+        os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+        from app.factory import create_app
+        return create_app()
+
+    def test_unauthenticated_approve_rejected(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/api/workflows/approvals/run-1/step-1/approve")
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+    def test_unauthenticated_active_list_rejected(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.get("/api/workflows/active")
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+    def test_old_unprefixed_approve_path_no_longer_registered(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/workflows/approvals/run-1/step-1/approve")
+
+        # No route matches the old unprefixed path anymore — the SPA
+        # catch-all is GET-only, so a POST here is 405, not the handler.
+        self.assertEqual(asyncio.run(_run()).status_code, 405)
+
+
+class TestJobsApiRequiresAuthAndOrgScoping(unittest.TestCase):
+    """POST/GET/DELETE /jobs used to be mounted without an /api/ prefix AND
+    had no per-route auth dependency — worse than a read-only leak:
+    submit_job accepted an arbitrary client-supplied payload dict
+    (including "organization_id") verbatim, and the queue's only
+    registered handler (integration sync) trusts payload["organization_id"]
+    to decide whose integration credentials to use. Privilege Escalation
+    Audit phase fix: /api/jobs + mandatory org_context on every route +
+    JobQueue.submit's org_id kwarg always overwrites whatever the client
+    put in payload["organization_id"]."""
+
+    def _app(self):
+        import os
+        os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+        os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+        from app.factory import create_app
+        return create_app()
+
+    def test_unauthenticated_submit_rejected(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/api/jobs", json={"kind": "integration_sync", "payload": {}})
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+    def test_unauthenticated_list_rejected(self):
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.get("/api/jobs")
+
+        self.assertEqual(asyncio.run(_run()).status_code, 401)
+
+    def test_old_unprefixed_path_no_longer_registered(self):
+        # GET would be caught by app.factory's GET-only SPA catch-all
+        # (200, not 404) — POST isn't, so a POST to the old path with no
+        # matching route is the real signal it's gone (405), same
+        # reasoning as the chat.py/arabic_api.py regression tests.
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+
+        async def _run():
+            transport = ASGITransport(app=self._app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/jobs", json={"kind": "k"})
+
+        self.assertEqual(asyncio.run(_run()).status_code, 405)
+
+    def test_submit_always_overwrites_client_supplied_organization_id(self):
+        # The core exploit this closes: even a legitimate, authenticated
+        # caller must not be able to make the queue believe a job belongs
+        # to a DIFFERENT org than the one it's actually verified for.
+        import asyncio
+        from app.core.jobs.queue import JobQueue
+
+        async def _run():
+            queue = JobQueue()
+            job_id = await queue.submit(
+                "integration_sync",
+                payload={"organization_id": "attacker-claimed-org", "provider_id": "x"},
+                org_id="server-verified-org",
+            )
+            return await queue.get(job_id)
+
+        job = asyncio.run(_run())
+        self.assertEqual(job.payload["organization_id"], "server-verified-org")
+
+    def test_list_jobs_scoped_to_org(self):
+        import asyncio
+        from app.core.jobs.queue import JobQueue
+
+        async def _run():
+            queue = JobQueue()
+            await queue.submit("k", payload={}, org_id="org-a")
+            await queue.submit("k", payload={}, org_id="org-b")
+            return await queue.list_jobs(org_id="org-a")
+
+        jobs = asyncio.run(_run())
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0].payload["organization_id"], "org-a")
+
+
 class TestAgentosAgentEndpointsAreOrgScoped(unittest.TestCase):
     """GET /api/agentos/agents and /status used to return every org's
     plugin-installed/self-generated agent names + metadata with zero
