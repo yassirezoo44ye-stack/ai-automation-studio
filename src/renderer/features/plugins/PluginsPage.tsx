@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from "react";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
+import { useAppContext } from "../../contexts/app";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { VersionsTab } from "../marketplace/tabs/VersionsTab";
@@ -46,6 +47,7 @@ const STATUS_COLOR: Record<string, string> = {
 export function PluginsPage() {
   const toast = useToast();
   const { currentOrgId, orgs } = useOrg();
+  const { setPage } = useAppContext();
   const [topTab, setTopTab] = useState<TopTab>("installed");
   const [installed, setInstalled] = useState<Installation[]>([]);
   const [available, setAvailable] = useState<AvailablePlugin[]>([]);
@@ -145,6 +147,7 @@ export function PluginsPage() {
         icon={<span style={{ fontSize: 40 }}>🧩</span>}
         title="No organization selected"
         description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+        action={<GoldButton onClick={() => setPage("organizations")}>Go to Organizations</GoldButton>}
       />
     );
   }

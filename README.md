@@ -249,8 +249,8 @@ POST /api/stripe/webhook         — Stripe webhook handler
 ### Chat / AI
 
 ```
-POST /run/stream                           — Streaming Claude chat (SSE)
-POST /run                                  — Synchronous Claude chat
+POST /api/run/stream                       — Streaming Claude chat (SSE)
+POST /api/run                              — Synchronous Claude chat
 GET  /api/conversations                    — List conversations
 POST /api/conversations                    — Create conversation
 GET  /api/conversations/{id}/messages      — Get messages
