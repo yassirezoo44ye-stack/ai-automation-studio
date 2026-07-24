@@ -20,6 +20,15 @@ _SECRET_PATTERNS = [
     re.compile(r'secret\s*=\s*["\'][^"\']{8,}["\']',   re.I),
 ]
 
+# app.core.logging's own log-masking filter (and OAuthProviderConfig/
+# OAuthToken's __repr__ in app.integrations.oauth) substitute this exact
+# placeholder for a real secret before ever printing/logging one — the
+# code that exists specifically to keep a secret out of logs/reprs was
+# itself tripping `secret\s*=\s*"..."` (confirmed via a live production-
+# config local run: this file ships in the Docker image, so this false
+# positive fired on every real boot, not just dev/CI).
+_REDACTED_PLACEHOLDER = "***REDACTED***"
+
 _SCANNED_GLOBS = ["*.py", "*.ts", "*.tsx", "*.js", "*.json"]
 _SKIP_DIRS     = {
     ".git", "node_modules", "dist", ".backups", "__pycache__",
@@ -28,6 +37,18 @@ _SKIP_DIRS     = {
     # legitimately contain strings matching these patterns) and turns this
     # into a many-thousand-file walk every tick.
     "venv", ".venv", "env", "site-packages",
+    # Test/fixture files legitimately contain secret-shaped strings to
+    # exercise the secret-detection/log-masking code itself (e.g. a fake
+    # password-assignment fixture, mock OAuth client secrets) — every one
+    # of those was a guaranteed false-positive CRITICAL alert
+    # on every single boot in any environment where tests/ is present
+    # (confirmed via a live local run). scripts/ci_secret_scan.py already
+    # excludes tests/ for the identical reason; this brings the runtime
+    # monitor in line with that established convention. Not a production
+    # exposure either way — the Dockerfile never COPYs tests/ into the
+    # deployed image — but this stops false CRITICALs from training
+    # anyone watching logs to ignore this service.
+    "tests",
 }
 
 
@@ -71,7 +92,7 @@ def _scan() -> list[str]:
             except (OSError, PermissionError):
                 continue
             for rx in _SECRET_PATTERNS:
-                if rx.search(text):
+                if any(_REDACTED_PLACEHOLDER not in m.group(0) for m in rx.finditer(text)):
                     rel = str(fpath.relative_to(_ROOT))
                     hits.append(rel)
                     log.critical("SECURITY: possible secret found in %s", rel)
