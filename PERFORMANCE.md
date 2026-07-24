@@ -48,6 +48,38 @@
   fan-out is now parallel (`asyncio.gather`) so one slow client can't
   head-of-line-block the rest.
 
+## v1.0 Phase 3 Performance Review (post-Security-Hardening)
+
+Audited every module touched by the 11-commit Security Hardening phase for
+regressions, plus re-ran the budgets above.
+
+- **Fixed:** `app/core/rate_limit.py`'s `rl_store` (the in-process rate-
+  limit fallback) had no eviction — `check_rate_limit()` only ever trimmed
+  a key's own timestamp list, never removed the key itself once empty.
+  One dict entry accumulates per distinct IP (factory.py's global
+  middleware alone) or per user+IP (`ai_rate_limit`), forever, for the
+  life of the process — unbounded growth on a long-running server. This
+  predates this phase, but the Rate Limiting fix in Security Hardening
+  made it materially worse: it consolidated `app/core/security.py` (which
+  used to run its own periodic GC sweep) into a re-export shim over this
+  module, so five more routers' worth of traffic lost that mitigation.
+  Fixed by porting the same periodic-sweep pattern into the now-canonical
+  module (`_maybe_gc`, 5-minute cadence, evicts keys whose entire window
+  has aged out) — `tests/test_rate_limit.py::TestRlStoreGarbageCollection`
+  regression-tested (reverting the fix makes the eviction test fail).
+- **Audited, no change needed:** the ownership check added to 10
+  `/api/projects/{id}/*` routes in the same phase (`_require_project_owner`)
+  adds two sequential indexed point-lookups per request
+  (`users.email` is `UNIQUE NOT NULL`, auto-indexed by Postgres;
+  `projects.id` is the PK) — single-digit milliseconds, well inside the
+  documented DB budget. Not combined into one JOIN query: the two-query
+  shape already matches this codebase's established `owner_user_id()` +
+  `resolve_project_id()` convention used everywhere else, and merging
+  it would be a speculative micro-optimization outside what this review
+  found any evidence of needing.
+- Re-ran `tests/test_performance.py` (circuit breaker, bulkhead, job
+  queue, cache-hit-path budgets) — all still pass unchanged.
+
 ## Load testing
 
 - `tests/test_performance.py` — deterministic overhead tests, run in CI.

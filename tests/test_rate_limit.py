@@ -80,3 +80,53 @@ class TestRequireRateLimit:
         with pytest.raises(HTTPException):
             require_rate_limit(_req("1.1.1.1"), key_prefix="t", max_calls=2, window=60)
         require_rate_limit(_req("2.2.2.2"), key_prefix="t", max_calls=2, window=60)
+
+
+class TestRlStoreGarbageCollection:
+    """rl_store is a module-level dict keyed by every distinct IP/user
+    combination ever rate-limit-checked — factory.py's global middleware
+    alone creates one entry per distinct visitor with no natural upper
+    bound. check_rate_limit() only ever trims a KEY's own list; nothing
+    previously removed the key itself once its list emptied out, so a
+    long-running process leaked one dict entry per unique caller forever.
+    _maybe_gc() sweeps those out periodically."""
+
+    def test_gc_evicts_keys_whose_entire_window_has_expired(self):
+        import app.core.rate_limit as rl
+
+        rl.rl_store["stale:key"] = [time.time() - 120]  # 2 min old, window=60
+        rl._last_gc = 0.0  # force the next check to actually sweep
+
+        check_rate_limit("unrelated:key", max_calls=10, window=60)
+
+        assert "stale:key" not in rl.rl_store
+
+    def test_gc_keeps_keys_with_recent_activity(self):
+        import app.core.rate_limit as rl
+
+        check_rate_limit("active:key", max_calls=10, window=60)
+        rl._last_gc = 0.0  # force the next check to actually sweep
+
+        check_rate_limit("unrelated:key", max_calls=10, window=60)
+
+        assert "active:key" in rl.rl_store
+
+    def test_gc_does_not_run_more_often_than_the_interval(self):
+        import app.core.rate_limit as rl
+
+        rl.rl_store["stale:key"] = [time.time() - 120]
+        rl._last_gc = time.time()  # just ran — next call must not sweep again
+
+        check_rate_limit("unrelated:key", max_calls=10, window=60)
+
+        assert "stale:key" in rl.rl_store  # not swept — interval hasn't elapsed
+
+    def test_gc_does_not_evict_the_key_being_checked_right_now(self):
+        import app.core.rate_limit as rl
+
+        rl._last_gc = 0.0
+        # The key under check has no prior timestamps yet (defaultdict),
+        # so a naive sweep could treat it as "dead" before it's recorded —
+        # it must still end up allowed and present afterward.
+        assert check_rate_limit("brand:new:key", max_calls=5, window=60) is True
+        assert "brand:new:key" in rl.rl_store

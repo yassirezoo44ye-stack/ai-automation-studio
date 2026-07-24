@@ -22,10 +22,36 @@ log = logging.getLogger(__name__)
 
 rl_store: dict[str, list[float]] = defaultdict(list)
 
+# Every distinct key (one per client IP, or per user+IP for ai_rate_limit)
+# lives in rl_store forever once created — check_rate_limit only ever
+# trims a key's OWN list, it never removes the key itself, even once that
+# list is empty. On a long-running process this is unbounded growth keyed
+# by every IP/user that has ever made one request: factory.py's global
+# middleware alone creates one "global:{ip}" entry per distinct visitor,
+# with no upper bound. This periodic sweep — ported from the per-module
+# store app/core/security.py used to keep before it became a re-export
+# shim over this module (see that module's docstring) — evicts any key
+# whose entire list has aged out of its own window, bounding memory to
+# "keys actually active in the last ~window seconds" instead of "every
+# key ever seen".
+_last_gc: float = 0.0
+_GC_INTERVAL = 300.0  # sweep at most once per 5 minutes
+
+
+def _maybe_gc(now: float, window: int) -> None:
+    global _last_gc
+    if now - _last_gc < _GC_INTERVAL:
+        return
+    _last_gc = now
+    dead = [k for k, ts in rl_store.items() if not any(now - t < window for t in ts)]
+    for k in dead:
+        del rl_store[k]
+
 
 def check_rate_limit(key: str, max_calls: int = 10, window: int = 60) -> bool:
     """Return True if the call is allowed; False if the limit is exceeded."""
     now = time.time()
+    _maybe_gc(now, window)
     rl_store[key] = [t for t in rl_store[key] if now - t < window]
     if len(rl_store[key]) >= max_calls:
         return False
