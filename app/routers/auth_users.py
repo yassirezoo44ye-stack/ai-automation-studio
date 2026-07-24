@@ -19,6 +19,7 @@ Endpoints:
   DELETE /api/auth/me
 """
 import datetime
+import logging
 import secrets
 import uuid
 from typing import Annotated, Optional
@@ -41,6 +42,8 @@ from app.core.jwt_utils import (
     make_refresh_token,
 )
 from app.core.passwords import hash_password, verify_password
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -778,12 +781,17 @@ def _oauth_not_configured(provider: str):
                              f"Set {provider.upper()}_CLIENT_ID and {provider.upper()}_CLIENT_SECRET.")
 
 
-def _oauth_provider_unreachable(provider: str) -> HTTPException:
+def _oauth_provider_unreachable(provider: str, exc: Exception) -> HTTPException:
     """The token-exchange/userinfo calls only ever branched on HTTP status
     codes — a connection error or timeout reaching the provider (network
     blip, provider outage) propagated as an unhandled 500 instead of a
     clean OAuth-failure response. Callers catch httpx.RequestError around
-    those calls and raise this."""
+    those calls and raise this. Logged here (not just returned as a bare
+    HTTPException) because FastAPI's built-in HTTPException handling never
+    reaches app.factory's catch-all Exception handler — without this the
+    only server-side trace of "Google OAuth is down" is an undifferentiated
+    generic access-log line."""
+    log.warning("oauth callback: %s unreachable: %s", provider, exc)
     return HTTPException(502, f"{provider} is unreachable right now — please try signing in again.")
 
 
@@ -812,6 +820,7 @@ def _set_oauth_state_cookie(response: RedirectResponse, state: str) -> None:
 def _verify_oauth_state(request: Request, state: Optional[str]) -> None:
     cookie_state = request.cookies.get(_OAUTH_STATE_COOKIE)
     if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+        log.warning("oauth callback: state mismatch (possible CSRF) ip=%s", _client_ip(request))
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
 
 
@@ -932,7 +941,7 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
                 raise HTTPException(400, "Failed to fetch Google user info")
             info = info_res.json()
     except _httpx.RequestError as exc:
-        raise _oauth_provider_unreachable("Google") from exc
+        raise _oauth_provider_unreachable("Google", exc) from exc
 
     email = info.get("email")
     if not email:
@@ -998,7 +1007,7 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
                 raise HTTPException(400, "Failed to fetch Microsoft user info")
             info = info_res.json()
     except _httpx.RequestError as exc:
-        raise _oauth_provider_unreachable("Microsoft") from exc
+        raise _oauth_provider_unreachable("Microsoft", exc) from exc
 
     email = info.get("mail") or info.get("userPrincipalName")
     if not email:
@@ -1060,7 +1069,7 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
             gh_user = user_res.json()
             emails = emails_res.json() if emails_res.status_code == 200 else []
     except _httpx.RequestError as exc:
-        raise _oauth_provider_unreachable("GitHub") from exc
+        raise _oauth_provider_unreachable("GitHub", exc) from exc
 
     # Pick primary verified email
     email = gh_user.get("email")

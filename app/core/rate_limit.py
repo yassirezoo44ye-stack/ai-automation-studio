@@ -96,6 +96,18 @@ def _real_ip(request: Request) -> str:
     return ips[-1] if ips else (request.client.host if request.client else "unknown")
 
 
+def _record_rejection(key_prefix: str, ip: str) -> None:
+    """A 429 is a 4xx, so it never touched http_errors_total (5xx-only) or
+    any other metric — a sustained abuse/cost-attack pattern against
+    ai_rate_limit or any other limiter was completely invisible to
+    dashboards and alerting. Logged + counted here so AlertingService has
+    something to watch (see 'Elevated rate-limit rejections' in
+    app/services/alerting.py)."""
+    log.warning("rate_limit rejected key_prefix=%s ip=%s", key_prefix, ip)
+    from app.core.observability.metrics import get_metrics
+    get_metrics().counter("rate_limit_rejections_total").inc()
+
+
 def require_rate_limit(
     request   : Request,
     *,
@@ -105,8 +117,10 @@ def require_rate_limit(
     error_detail: Optional[str] = None,
 ) -> None:
     """FastAPI sync dependency: raise HTTP 429 when the limit is exceeded."""
-    key = f"{key_prefix}:{_real_ip(request)}"
+    ip  = _real_ip(request)
+    key = f"{key_prefix}:{ip}"
     if not check_rate_limit(key, max_calls, window):
+        _record_rejection(key_prefix, ip)
         raise HTTPException(
             status_code = 429,
             detail      = error_detail or f"Rate limit exceeded — max {max_calls} per {window}s",
@@ -118,8 +132,10 @@ def ai_rate_limit(request: Request, max_calls: int = 20, window: int = 60) -> No
     """Stricter limit for AI inference endpoints (cost-exposure protection)."""
     from app.core.auth import owner_email as _owner_email
     owner = _owner_email(request)
-    key = f"ai:{owner}:{_real_ip(request)}"
+    ip  = _real_ip(request)
+    key = f"ai:{owner}:{ip}"
     if not check_rate_limit(key, max_calls=max_calls, window=window):
+        _record_rejection("ai", ip)
         raise HTTPException(429, "Too many AI requests — please wait a moment.")
 
 
@@ -153,8 +169,10 @@ async def require_rate_limit_async(
     error_detail: Optional[str] = None,
 ) -> None:
     """FastAPI async dependency — uses Redis when available."""
-    key = f"{key_prefix}:{_real_ip(request)}"
+    ip  = _real_ip(request)
+    key = f"{key_prefix}:{ip}"
     if not await check_rate_limit_async(key, max_calls, window):
+        _record_rejection(key_prefix, ip)
         raise HTTPException(
             status_code = 429,
             detail      = error_detail or f"Rate limit exceeded — max {max_calls} per {window}s",

@@ -200,6 +200,9 @@ def _wire_defaults(m: MetricsRegistry) -> None:
     m.histogram("http_request_duration_ms",    "HTTP request latency in ms")
     m.counter  ("http_errors_total",           "Total HTTP 5xx errors")
 
+    # ── Rate limiting ────────────────────────────────────────────────────
+    m.counter  ("rate_limit_rejections_total", "Total requests rejected with HTTP 429")
+
     # ── AI ────────────────────────────────────────────────────────────────
     m.counter  ("ai_requests_total",           "Total completed AI requests")
     m.counter  ("ai_tokens_input_total",       "Total input tokens consumed")

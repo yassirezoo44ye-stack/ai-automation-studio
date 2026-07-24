@@ -51,8 +51,8 @@ CREATE INDEX IF NOT EXISTS idx_alert_history_rule_open ON alert_history(rule_id)
 # is generic (gauge_above / counter_rate_above / health_unhealthy) — an
 # admin can add rules for anything else in MetricsRegistry/HealthRegistry
 # without a code change, this seed list just isn't exhaustive of every
-# category the directive named (e.g. queue backlog, auth failure rate)
-# since those don't have a wired metric yet.
+# category the directive named (e.g. queue backlog) since those don't
+# have a wired metric yet.
 _DEFAULT_RULES = [
     # (name, rule_type, target, threshold)
     ("High HTTP error rate",       "counter_rate_above", "http_errors_total",         5.0),
@@ -61,6 +61,11 @@ _DEFAULT_RULES = [
     ("AI provider unhealthy",      "health_unhealthy",    "ai_providers",              None),
     ("Database unhealthy",         "health_unhealthy",    "database",                  None),
     ("Elevated workflow failures", "counter_rate_above",  "workflow_runs_failed",      5.0),
+    # Threshold higher than the 5.0 above: normal bursty traffic (a few
+    # users hitting a shared endpoint at once) can legitimately trip a
+    # handful of 429s without being abuse — this rule is for a sustained
+    # pattern (e.g. a cost-exposure attack against ai_rate_limit).
+    ("Elevated rate-limit rejections", "counter_rate_above", "rate_limit_rejections_total", 20.0),
 ]
 
 

@@ -130,3 +130,51 @@ class TestRlStoreGarbageCollection:
         # it must still end up allowed and present afterward.
         assert check_rate_limit("brand:new:key", max_calls=5, window=60) is True
         assert "brand:new:key" in rl.rl_store
+
+
+class TestRateLimitObservability:
+    """A 429 is a 4xx — it never touched http_errors_total (5xx-only) or
+    any other metric, so a sustained rejection pattern (e.g. a
+    cost-exposure attack against ai_rate_limit) was completely invisible
+    to dashboards/alerting. require_rate_limit/ai_rate_limit must now
+    increment rate_limit_rejections_total on every 429."""
+
+    def test_require_rate_limit_increments_metric_on_429(self):
+        from app.core.observability.metrics import get_metrics
+
+        counter = get_metrics().counter("rate_limit_rejections_total")
+        before = counter.value
+
+        req = _req("9.9.9.9")
+        require_rate_limit(req, key_prefix="obs_test", max_calls=1, window=60)  # allowed
+        with pytest.raises(HTTPException):
+            require_rate_limit(req, key_prefix="obs_test", max_calls=1, window=60)  # rejected
+
+        assert counter.value == before + 1
+
+    def test_require_rate_limit_does_not_increment_metric_when_allowed(self):
+        from app.core.observability.metrics import get_metrics
+
+        counter = get_metrics().counter("rate_limit_rejections_total")
+        before = counter.value
+
+        require_rate_limit(_req("8.8.8.8"), key_prefix="obs_test2", max_calls=5, window=60)
+
+        assert counter.value == before
+
+    def test_ai_rate_limit_increments_metric_on_429(self):
+        from unittest.mock import patch
+
+        from app.core.observability.metrics import get_metrics
+        from app.core.rate_limit import ai_rate_limit
+
+        counter = get_metrics().counter("rate_limit_rejections_total")
+        before = counter.value
+
+        req = _req("7.7.7.7")
+        with patch("app.core.auth.owner_email", return_value="test@example.com"):
+            ai_rate_limit(req, max_calls=1, window=60)  # allowed
+            with pytest.raises(HTTPException):
+                ai_rate_limit(req, max_calls=1, window=60)  # rejected
+
+        assert counter.value == before + 1
