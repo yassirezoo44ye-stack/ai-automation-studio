@@ -778,6 +778,15 @@ def _oauth_not_configured(provider: str):
                              f"Set {provider.upper()}_CLIENT_ID and {provider.upper()}_CLIENT_SECRET.")
 
 
+def _oauth_provider_unreachable(provider: str) -> HTTPException:
+    """The token-exchange/userinfo calls only ever branched on HTTP status
+    codes — a connection error or timeout reaching the provider (network
+    blip, provider outage) propagated as an unhandled 500 instead of a
+    clean OAuth-failure response. Callers catch httpx.RequestError around
+    those calls and raise this."""
+    return HTTPException(502, f"{provider} is unreachable right now — please try signing in again.")
+
+
 _OAUTH_STATE_COOKIE   = "oauth_state"
 _OAUTH_STATE_MAX_AGE  = 600  # 10 min — long enough for a real login, short enough to bound replay
 
@@ -905,22 +914,25 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
         _oauth_not_configured("Google")
     _verify_oauth_state(request, state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/google/callback"
-    async with _httpx.AsyncClient() as client:
-        token_res = await client.post("https://oauth2.googleapis.com/token", data={
-            "code": code, "client_id": _GOOGLE_CLIENT_ID,
-            "client_secret": _GOOGLE_CLIENT_SECRET,
-            "redirect_uri": redirect_uri, "grant_type": "authorization_code",
-        })
-        if token_res.status_code != 200:
-            raise HTTPException(400, "Google OAuth token exchange failed")
-        tokens = token_res.json()
-        info_res = await client.get(
-            "https://www.googleapis.com/oauth2/v2/userinfo",
-            headers={"Authorization": f"Bearer {tokens['access_token']}"},
-        )
-        if info_res.status_code != 200:
-            raise HTTPException(400, "Failed to fetch Google user info")
-        info = info_res.json()
+    try:
+        async with _httpx.AsyncClient() as client:
+            token_res = await client.post("https://oauth2.googleapis.com/token", data={
+                "code": code, "client_id": _GOOGLE_CLIENT_ID,
+                "client_secret": _GOOGLE_CLIENT_SECRET,
+                "redirect_uri": redirect_uri, "grant_type": "authorization_code",
+            })
+            if token_res.status_code != 200:
+                raise HTTPException(400, "Google OAuth token exchange failed")
+            tokens = token_res.json()
+            info_res = await client.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {tokens['access_token']}"},
+            )
+            if info_res.status_code != 200:
+                raise HTTPException(400, "Failed to fetch Google user info")
+            info = info_res.json()
+    except _httpx.RequestError as exc:
+        raise _oauth_provider_unreachable("Google") from exc
 
     email = info.get("email")
     if not email:
@@ -964,26 +976,29 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
         _oauth_not_configured("Microsoft")
     _verify_oauth_state(request, state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/microsoft/callback"
-    async with _httpx.AsyncClient() as client:
-        token_res = await client.post(
-            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-            data={
-                "code": code, "client_id": _MICROSOFT_CLIENT_ID,
-                "client_secret": _MICROSOFT_CLIENT_SECRET,
-                "redirect_uri": redirect_uri, "grant_type": "authorization_code",
-                "scope": "openid email profile",
-            },
-        )
-        if token_res.status_code != 200:
-            raise HTTPException(400, "Microsoft OAuth token exchange failed")
-        tokens = token_res.json()
-        info_res = await client.get(
-            "https://graph.microsoft.com/v1.0/me",
-            headers={"Authorization": f"Bearer {tokens['access_token']}"},
-        )
-        if info_res.status_code != 200:
-            raise HTTPException(400, "Failed to fetch Microsoft user info")
-        info = info_res.json()
+    try:
+        async with _httpx.AsyncClient() as client:
+            token_res = await client.post(
+                "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                data={
+                    "code": code, "client_id": _MICROSOFT_CLIENT_ID,
+                    "client_secret": _MICROSOFT_CLIENT_SECRET,
+                    "redirect_uri": redirect_uri, "grant_type": "authorization_code",
+                    "scope": "openid email profile",
+                },
+            )
+            if token_res.status_code != 200:
+                raise HTTPException(400, "Microsoft OAuth token exchange failed")
+            tokens = token_res.json()
+            info_res = await client.get(
+                "https://graph.microsoft.com/v1.0/me",
+                headers={"Authorization": f"Bearer {tokens['access_token']}"},
+            )
+            if info_res.status_code != 200:
+                raise HTTPException(400, "Failed to fetch Microsoft user info")
+            info = info_res.json()
+    except _httpx.RequestError as exc:
+        raise _oauth_provider_unreachable("Microsoft") from exc
 
     email = info.get("mail") or info.get("userPrincipalName")
     if not email:
@@ -1022,27 +1037,30 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
         _oauth_not_configured("GitHub")
     _verify_oauth_state(request, state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/github/callback"
-    async with _httpx.AsyncClient() as client:
-        token_res = await client.post(
-            "https://github.com/login/oauth/access_token",
-            headers={"Accept": "application/json"},
-            data={"client_id": _GITHUB_CLIENT_ID, "client_secret": _GITHUB_CLIENT_SECRET,
-                  "code": code, "redirect_uri": redirect_uri},
-        )
-        if token_res.status_code != 200:
-            raise HTTPException(400, "GitHub OAuth token exchange failed")
-        gh_access = token_res.json().get("access_token")
-        if not gh_access:
-            raise HTTPException(400, "GitHub did not return an access token")
+    try:
+        async with _httpx.AsyncClient() as client:
+            token_res = await client.post(
+                "https://github.com/login/oauth/access_token",
+                headers={"Accept": "application/json"},
+                data={"client_id": _GITHUB_CLIENT_ID, "client_secret": _GITHUB_CLIENT_SECRET,
+                      "code": code, "redirect_uri": redirect_uri},
+            )
+            if token_res.status_code != 200:
+                raise HTTPException(400, "GitHub OAuth token exchange failed")
+            gh_access = token_res.json().get("access_token")
+            if not gh_access:
+                raise HTTPException(400, "GitHub did not return an access token")
 
-        user_res = await client.get("https://api.github.com/user",
-                                    headers={"Authorization": f"Bearer {gh_access}"})
-        emails_res = await client.get("https://api.github.com/user/emails",
-                                      headers={"Authorization": f"Bearer {gh_access}"})
-        if user_res.status_code != 200:
-            raise HTTPException(400, "Failed to fetch GitHub user info")
-        gh_user = user_res.json()
-        emails = emails_res.json() if emails_res.status_code == 200 else []
+            user_res = await client.get("https://api.github.com/user",
+                                        headers={"Authorization": f"Bearer {gh_access}"})
+            emails_res = await client.get("https://api.github.com/user/emails",
+                                          headers={"Authorization": f"Bearer {gh_access}"})
+            if user_res.status_code != 200:
+                raise HTTPException(400, "Failed to fetch GitHub user info")
+            gh_user = user_res.json()
+            emails = emails_res.json() if emails_res.status_code == 200 else []
+    except _httpx.RequestError as exc:
+        raise _oauth_provider_unreachable("GitHub") from exc
 
     # Pick primary verified email
     email = gh_user.get("email")

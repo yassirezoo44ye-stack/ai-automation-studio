@@ -11,6 +11,7 @@ import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -298,3 +299,79 @@ class TestRateLimitXFFSpoofing:
             )  # must NOT raise
         finally:
             rl_store.clear()
+
+
+# ── Reliability regression: OAuth callbacks must not leak raw 500s on a
+#    provider network failure — only HTTP-status branches were handled;
+#    a connection error/timeout talking to Google/Microsoft/GitHub had no
+#    try/except and propagated as an unhandled exception. ─────────────────────
+
+class _UnreachableProviderClient:
+    """Stands in for httpx.AsyncClient(); every call raises a connection
+    error, simulating the OAuth provider being unreachable."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    async def post(self, *args, **kwargs):
+        raise httpx.ConnectError("connection refused")
+
+    async def get(self, *args, **kwargs):
+        raise httpx.ConnectError("connection refused")
+
+
+class TestOAuthCallbackProviderUnreachable:
+    """A network-level failure reaching the OAuth provider must produce a
+    clean 502, not an unhandled 500."""
+
+    @staticmethod
+    def _get_callback(client, path: str, state: str = "state-value"):
+        return client.get(
+            path,
+            params={"code": "auth-code", "state": state},
+            cookies={"oauth_state": state},
+        )
+
+    def test_google_callback_502_on_connect_error(self, client):
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_UnreachableProviderClient()):
+            resp = self._get_callback(client, "/api/auth/google/callback")
+
+        assert resp.status_code == 502
+        assert "Google" in resp.json()["detail"]
+
+    def test_microsoft_callback_502_on_connect_error(self, client):
+        with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_UnreachableProviderClient()):
+            resp = self._get_callback(client, "/api/auth/microsoft/callback")
+
+        assert resp.status_code == 502
+        assert "Microsoft" in resp.json()["detail"]
+
+    def test_github_callback_502_on_connect_error(self, client):
+        with patch("app.routers.auth_users._GITHUB_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_UnreachableProviderClient()):
+            resp = self._get_callback(client, "/api/auth/github/callback")
+
+        assert resp.status_code == 502
+        assert "GitHub" in resp.json()["detail"]
+
+    def test_google_callback_still_400s_on_bad_state(self, client):
+        """Provider-unreachable handling must not swallow the existing
+        CSRF-state check — a mismatched state must still 400, not 502."""
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_UnreachableProviderClient()):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": "attacker-supplied"},
+                cookies={"oauth_state": "state-value"},
+            )
+
+        assert resp.status_code == 400
