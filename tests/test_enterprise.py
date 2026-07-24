@@ -303,10 +303,18 @@ class TestEventBus(unittest.TestCase):
 
 class TestMarketplaceJsonStore(unittest.TestCase):
     def setUp(self):
-        import os
         import tempfile
-        self._tmp = tempfile.mkdtemp()
-        os.environ["WORKSPACES"] = self._tmp
+        # WORKSPACES (app.core.config) is resolved once at import time from
+        # WORKSPACES_DIR, then cached as a module-level constant everywhere
+        # it's imported (including app.marketplace.store) — setting the env
+        # var here has no effect post-import. Patch the constant itself so
+        # each test gets its own tempdir instead of sharing the real one
+        # (and colliding with every other test that touches the same
+        # on-disk listings.json/reviews.json).
+        self._tmp = Path(tempfile.mkdtemp())
+        self._patcher = mock.patch("app.marketplace.store.WORKSPACES", self._tmp)
+        self._patcher.start()
+        self.addCleanup(self._patcher.stop)
         from app.marketplace.store import JsonMarketplaceStore
         self.store = JsonMarketplaceStore()
 

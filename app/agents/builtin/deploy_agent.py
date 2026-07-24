@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import logging
-import os
 import shlex
 from pathlib import Path
 
 from app.agents.base import AgentContext, AgentResult, EvolvableAgent
+from app.core.config import WORKSPACES
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class DeployAgent(EvolvableAgent):
     async def _zip_deploy(self, ws: Path, steps: list) -> AgentResult:
         import shutil
         import uuid
-        out_dir = Path(os.getenv("WORKSPACES", "/tmp")) / "deploys"
+        out_dir = WORKSPACES / "deploys"
         out_dir.mkdir(parents=True, exist_ok=True)
         zip_path = out_dir / f"{ws.name}_{uuid.uuid4().hex[:8]}.zip"
 

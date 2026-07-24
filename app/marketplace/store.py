@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
-from pathlib import Path
 from typing import Any, Optional
 
 import asyncpg
+
+from app.core.config import WORKSPACES
 
 log = logging.getLogger(__name__)
 
@@ -337,7 +337,7 @@ class JsonMarketplaceStore:
     backend = "json"
 
     def __init__(self) -> None:
-        self._dir = Path(os.getenv("WORKSPACES", "/tmp")) / ".marketplace"
+        self._dir = WORKSPACES / ".marketplace"
         self._dir.mkdir(parents=True, exist_ok=True)
         self._listings_file = self._dir / "listings.json"
         self._reviews_file  = self._dir / "reviews.json"

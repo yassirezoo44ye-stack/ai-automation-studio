@@ -2,7 +2,7 @@
 
 A production-grade SaaS platform for AI automation, developer tools, and social content management.
 
-**Stack:** React 19 · TypeScript · Vite · FastAPI · PostgreSQL · asyncpg · Stripe · Anthropic Claude
+**Stack:** React 19 · TypeScript · Vite · FastAPI · PostgreSQL · asyncpg · Redis (optional) · Stripe · Anthropic Claude · OpenAI / OpenRouter / local models (optional)
 
 ---
 
@@ -25,7 +25,8 @@ axon/
 ├── app/                    # FastAPI backend
 │   ├── core/               # Config, auth, DB pool, logging, security, middleware
 │   ├── execution/          # Runtime engine + pluggable drivers (Node, Python, static)
-│   ├── routers/            # 15 FastAPI endpoint suites
+│   ├── routers/            # 40 FastAPI endpoint suites (auth, billing, marketplace,
+│   │                       #   plugins, sandbox, AI routing, observability, ...)
 │   └── runtime/            # Tool discovery, capability flags, preflight, diagnostics
 ├── migrations/             # Alembic database migrations
 ├── src/renderer/           # React 19 frontend (Electron-compatible)
@@ -43,7 +44,7 @@ axon/
 |---|---|
 | HMAC-signed tokens (no JWT lib) | Zero runtime dependency; tokens carry email+expiry+trial in one cookie/header |
 | AsyncPG (no ORM) | Maximum async throughput; full control over query plans |
-| Alembic migrations | Version-controlled schema; safe zero-downtime deploys |
+| Idempotent schema init at startup | `app.factory.lifespan()` runs `init_db()`/`init_*_schema()` on every boot — see [Schema management](#schema-management) |
 | Feature-boundary barrel exports | Cross-feature imports go through `features/<name>/index.ts` only |
 | SSE streaming | Real-time build/run/AI output without WebSocket overhead |
 | Unified runtime registry | Single source of truth for tool detection across build, package, execution |
@@ -72,13 +73,11 @@ pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env
 # Edit .env
 
-# 2. Run database migrations
-alembic upgrade head
-
-# 3. Start backend
+# 2. Start backend — schema is created/updated automatically on startup,
+#    no separate migration step needed (see Schema management below)
 python app_main.py
 
-# 4. Frontend (separate terminal)
+# 3. Frontend (separate terminal)
 npm install
 npm run dev     # http://localhost:3000 (proxied to :8000 for API)
 ```
@@ -94,10 +93,17 @@ npm run dev     # http://localhost:3000 (proxied to :8000 for API)
 | `ANTHROPIC_API_KEY` | ✅ | API key from console.anthropic.com |
 | `STRIPE_SECRET_KEY` | ✅ (billing) | Stripe secret key (`sk_live_…` or `sk_test_…`) |
 | `STRIPE_WEBHOOK_SECRET` | ✅ (billing) | Webhook endpoint secret from Stripe Dashboard |
-| `STRIPE_PRICE_ID` | ✅ (billing) | Stripe Price ID for the subscription plan |
+| `STRIPE_PRICE_ID` | ✅ (billing) | Stripe Price ID for the legacy flat subscription plan |
+| `STRIPE_PRICE_ID_STARTER/PRO/TEAM` | ✅ (org billing) | Stripe Price IDs for the org-scoped tiered plans |
 | `APP_URL` | ✅ (prod) | Public URL of the app e.g. `https://axon.example.com` |
 | `WORKSPACES_DIR` | Optional | Override workspace storage path (default: `./workspaces`) |
 | `PORT` | Optional | HTTP port (default: `8000`) |
+
+This table covers what's required to boot and take payments. `.env.example`
+is the source of truth for the full list, including optional integrations
+(email/SMTP, Redis, OpenRouter/local AI models, OAuth providers, database
+pool tuning, sandbox/Docker, observability) — every var there has an
+inline comment explaining what it does and its default.
 
 > **Security:** Never commit `.env` to Git. Use your deployment platform's secrets manager for production values.
 
@@ -116,19 +122,26 @@ python -m py_compile app/**/*.py
 
 # Tests
 pytest tests/ -v
-
-# New migration
-alembic revision -m "add_feature_table"
-alembic upgrade head
-alembic downgrade -1   # rollback one step
 ```
+
+### Schema management
+
+Alembic is present in the repo but is **not** how schema changes actually
+ship — `alembic history` fails past migration `001` (later migrations use
+a different, non-Alembic `up(conn)/down(conn)` shape). The real mechanism
+is the idempotent `init_db()`/`ensure_*_table()`/`init_*_schema()` calls
+`app.factory.lifespan()` runs on every startup: add your new
+`CREATE TABLE IF NOT EXISTS`/`ALTER TABLE` statements to the relevant
+`init_*_schema()` function and restart the app. See `DEPLOYMENT.md` →
+"Schema/migration safety" for the full rationale.
 
 ### Frontend
 
 ```bash
 npm run dev          # Vite dev server on :3000
 npm run typecheck    # tsc --noEmit
-npm run lint         # ESLint (zero warnings)
+npm run lint         # ESLint
+npm run lint:strict  # ESLint, zero warnings — what CI enforces
 npm run lint:fix     # Auto-fix
 npm run test         # Vitest unit tests
 npm run build        # Production build → dist/
@@ -152,11 +165,13 @@ npm run build        # Production build → dist/
 pytest tests/ -v --tb=short
 ```
 
-Test files:
-- `tests/test_helpers.py` — token auth, rate limiting, project ID resolution
-- `tests/test_auth.py` — auth module unit tests
-- `tests/test_security.py` — rate limiter unit tests
-- `tests/test_runtime.py` — runtime module smoke tests
+~28 files under `tests/`, one per subsystem (helpers, auth, rate limiting,
+runtime, workflow, marketplace, plugins, sandbox, AI routing,
+observability, ...). Security-regression tests specifically live under
+`tests/security/` (auth, authz, tenant isolation, prompt injection, rate
+limiting, API/provider/webhook security, cross-layer attack chains —
+one file per category) — see `2.7 Security Testing` in the codebase's
+security work for how that suite is organized.
 
 ### Frontend
 
@@ -165,9 +180,9 @@ npm test               # Run once
 npm run test:watch     # Watch mode
 ```
 
-Test files:
-- `src/renderer/__tests__/theme.test.ts` — theme persistence
-- `src/renderer/__tests__/utils.test.ts` — utility functions
+Test files under `src/renderer/__tests__/`: `theme.test.ts` (theme
+persistence), `utils.test.ts` (utility functions), `navigation.test.tsx`
+(routing/sidebar navigation).
 
 ---
 
@@ -178,7 +193,8 @@ Test files:
 1. Set all required environment variables in the platform dashboard.
 2. Connect your repo — the platform will use `Dockerfile` for builds.
 3. Set the health-check path to `/health`.
-4. Run migrations on first deploy: add a pre-deploy command `alembic upgrade head`.
+4. No pre-deploy migration command needed — schema init runs
+   automatically on app startup (see [Schema management](#schema-management)).
 
 Config files for each platform:
 - **Render:** `render.yaml`
@@ -187,17 +203,31 @@ Config files for each platform:
 
 ### CI/CD (GitHub Actions)
 
-`.github/workflows/ci.yml` runs on every push/PR:
+`.github/workflows/ci.yml` jobs:
 
-1. **Backend** — Python syntax check + pytest unit tests
-2. **Frontend** — TypeScript check + ESLint + Vite production build
-3. **Docker** — Multi-stage image build (no push on PR; push on main when configured)
+1. **backend** — ruff lint, `pytest` against a real Postgres service
+   container, schema-init check, dependency + secret scans
+2. **frontend** — typecheck, `lint:strict` (zero warnings), vitest, Vite
+   production build
+3. **docker** — multi-stage image build
+4. **deploy** — on push to `main` only: triggers the Render deploy
+5. **smoke-test** — post-deploy `GET /health/deep` check
+6. **release** — version bump, `CHANGELOG.md` entry, GitHub release
+
+See `DEPLOYMENT.md` for the full pipeline rationale and `ROLLBACK.md` for
+the manual rollback procedure (automatic rollback-on-failed-health-check
+isn't implemented — documented gap, not an oversight).
 
 ---
 
 ## API Reference
 
-Full interactive docs available at `/docs` (Swagger UI) and `/redoc` when the server is running.
+**`/docs` (Swagger UI) and `/redoc`, generated from the live route table
+when the server is running, are the authoritative and complete API
+reference.** The routes below are a curated subset — the commonly-used
+ones — not an exhaustive list; the backend has 40 router modules covering
+billing, marketplace, plugins, sandbox execution, AI routing,
+observability, notifications, and more that aren't enumerated here.
 
 ### Health
 
@@ -301,10 +331,24 @@ GET /api/usage-logs       — Detailed usage logs
 
 ---
 
+## Related documentation
+
+- [`PERFORMANCE.md`](PERFORMANCE.md) — latency/throughput budgets, DB pool
+  and cache tuning, load testing, known scaling constraints
+- [`RELIABILITY.md`](RELIABILITY.md) — outbound-call error handling audit,
+  what's covered by existing crash/retry tests
+- [`OBSERVABILITY.md`](OBSERVABILITY.md) — what's traced/logged/metriced/
+  alertable and where the gaps were before they were closed
+- [`DEPLOYMENT.md`](DEPLOYMENT.md) — CI/CD pipeline, schema-management
+  reality (see [Schema management](#schema-management) above), environments
+- [`ROLLBACK.md`](ROLLBACK.md) — manual rollback procedure
+- [`CHANGELOG.md`](CHANGELOG.md) — auto-generated per release by the
+  `release` CI job; empty until the first tagged release
+
 ## Contributing
 
 1. Fork the repo and create a feature branch.
-2. Follow the code style — run `npm run lint` and `ruff check app/` before pushing.
+2. Follow the code style — run `npm run lint:strict` and `ruff check app/` before pushing (CI enforces both).
 3. Add tests for new backend behavior.
 4. Submit a PR — CI runs automatically.
 
