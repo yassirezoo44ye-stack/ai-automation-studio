@@ -1,15 +1,26 @@
 """
-Unit tests for app.core.security — now a compatibility shim over
-app.core.rate_limit (see that module's docstring). These tests confirm
-the shim actually re-exports the fixed implementation, and specifically
-regression-guard the bug that motivated the consolidation: the old
-standalone implementation keyed ai_rate_limit on the client-spoofable
-LEFTMOST X-Forwarded-For entry, letting a single caller get a fresh rate-
-limit bucket on every request just by varying a fake leftmost IP. The
-core sliding-window behavior itself (allow/block/independent-keys/window
-expiry) is already covered by tests/test_rate_limit.py against the real
-implementation — no need to re-test it a second time here.
+Security Regression Suite — Rate Limiting & Abuse Protection.
+
+app/core/security.py used to be an independent, in-memory-only rate
+limiter that keyed ai_rate_limit() on the client-spoofable LEFTMOST
+X-Forwarded-For entry — an attacker could get a fresh bucket on every
+single request just by sending a different fake leftmost IP, completely
+defeating the "cap one account's AI-cost abuse" guard on build.py,
+chat.py, design.py, agents.py, social.py, and youtube.py. It's now a
+compatibility shim re-exporting app.core.rate_limit's implementation,
+which keys on the trusted RIGHTMOST entry (the one appended by the
+nearest real proxy) and adds Redis backing across instances.
+
+The core sliding-window algorithm itself (allow/block/independent-keys/
+window-expiry) is functional-correctness coverage, not security-motivated
+— it lives in tests/test_rate_limit.py, not duplicated here.
+
+Relocated (unmodified) from tests/test_security.py as part of the
+Security Testing phase's tests/security/ reorganization. No behavioral
+change.
 """
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -73,3 +84,7 @@ class TestAiRateLimitIgnoresSpoofedLeftmostForwardedFor:
             # A genuinely different caller (different rightmost/proxy-
             # appended IP) must still be able to make requests.
             ai_rate_limit(_req("10.0.0.1, 198.51.100.4"), max_calls=20, window=60)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

@@ -15,7 +15,6 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
@@ -305,148 +304,11 @@ class TestOAuthAbstraction:
             val = getattr(oauth_mod, name)
             assert not (hasattr(val, "client_id") and hasattr(val, "authorize_url") and not isinstance(val, type))
 
+# TestCredentialReprSafety moved to tests/security/test_provider_security.py;
+# TestWebhookPipeline moved to tests/security/test_webhook_security.py —
+# both as part of the Security Testing phase's tests/security/
+# reorganization.
 
-# ── Secrets Management: credential-carrying dataclasses must not leak via
-# their default repr/str — Python's auto-generated dataclass repr prints
-# every field verbatim, and the log-scrubbing safety net in
-# app/core/logging.py (SensitiveDataFilter) targets key=value-shaped text,
-# not the {'key': 'value'} shape a dict/dataclass repr actually produces, so
-# it cannot be relied on to catch a leak of this shape. ─────────────────────
-
-class TestCredentialReprSafety:
-    def test_oauth_provider_config_repr_redacts_client_secret(self):
-        from app.integrations.oauth import OAuthProviderConfig
-        config = OAuthProviderConfig(
-            client_id="cid", client_secret="SUPER-SECRET-CLIENT-VALUE",
-            authorize_url="https://example.test/authorize", token_url="https://example.test/token",
-            redirect_uri="https://app.test/callback", scopes=["read"],
-        )
-        text = repr(config)
-        assert "SUPER-SECRET-CLIENT-VALUE" not in text
-        assert str(config) == text  # dataclasses fall back to __repr__ for __str__
-        assert "cid" in text and "https://example.test/authorize" in text  # non-secret fields stay visible
-
-    def test_oauth_token_repr_redacts_access_and_refresh_tokens_and_raw(self):
-        from app.integrations.oauth import OAuthToken
-        token = OAuthToken(
-            access_token="ACCESS-VALUE", refresh_token="REFRESH-VALUE", expires_at=123.0,
-            raw={"access_token": "ACCESS-VALUE", "id_token": "JWT-VALUE-HERE"},
-        )
-        text = repr(token)
-        assert "ACCESS-VALUE" not in text
-        assert "REFRESH-VALUE" not in text
-        assert "JWT-VALUE-HERE" not in text
-        assert "123.0" in text  # non-secret field stays visible
-
-    def test_oauth_token_repr_handles_missing_refresh_token(self):
-        from app.integrations.oauth import OAuthToken
-        token = OAuthToken(access_token="ACCESS-VALUE", refresh_token=None, expires_at=None, raw={})
-        text = repr(token)
-        assert "ACCESS-VALUE" not in text
-        assert "refresh_token=None" in text
-
-    def test_integration_credential_repr_redacts_secrets_dict_values(self):
-        from app.integrations.types import IntegrationCredential, ProviderType
-        cred = IntegrationCredential(
-            provider_id="webhook-relay", organization_id=_org_id(), provider_type=ProviderType.CUSTOM,
-            secrets={"access_token": "TOP-SECRET-VALUE", "webhook_secret": "ANOTHER-SECRET"},
-            metadata={"account_email": "user@example.test"},
-        )
-        text = repr(cred)
-        assert "TOP-SECRET-VALUE" not in text
-        assert "ANOTHER-SECRET" not in text
-        assert str(cred) == text
-        # non-secret fields (including secret *key names*, and metadata) stay visible for debuggability
-        assert "access_token" in text
-        assert "webhook_secret" in text
-        assert "user@example.test" in text
-        assert "webhook-relay" in text
-
-    def test_integration_credential_repr_empty_secrets_is_safe(self):
-        from app.integrations.types import IntegrationCredential, ProviderType
-        cred = IntegrationCredential(provider_id="p", organization_id=_org_id(), provider_type=ProviderType.API_KEY)
-        assert repr(cred) == str(cred)
-
-
-# ── Webhooks: verify + dedup + dispatch ──────────────────────────────────────
-
-class TestWebhookPipeline:
-    def test_receive_webhook_happy_path(self):
-        from app.integrations.webhooks import receive_webhook
-        from app.integrations.examples.webhook_relay_provider import WebhookRelayProvider
-        from app.integrations.types import IntegrationCredential, ProviderType
-        import hmac
-        import hashlib
-
-        provider = WebhookRelayProvider()
-        org_id = _org_id()
-        secret = "shhh"
-        cred = IntegrationCredential(
-            provider_id="webhook-relay", organization_id=org_id, provider_type=ProviderType.CUSTOM,
-            secrets={"webhook_secret": secret},
-        )
-        body = b'{"hello":"world"}'
-        sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-
-        conn = AsyncMock()
-        conn.fetchval = AsyncMock(return_value=uuid.uuid4())  # inserted (not a dup)
-        pool = _mock_pool(conn)
-
-        event = run(receive_webhook(
-            provider=provider, credential=cred, headers={"x-relay-signature": sig}, body=body, pool=pool,
-        ))
-        assert event.body == body
-
-    def test_receive_webhook_rejects_bad_signature(self):
-        from app.integrations.webhooks import receive_webhook, WebhookVerificationError
-        from app.integrations.examples.webhook_relay_provider import WebhookRelayProvider
-        from app.integrations.types import IntegrationCredential, ProviderType
-
-        provider = WebhookRelayProvider()
-        cred = IntegrationCredential(
-            provider_id="webhook-relay", organization_id=_org_id(), provider_type=ProviderType.CUSTOM,
-            secrets={"webhook_secret": "shhh"},
-        )
-        with pytest.raises(WebhookVerificationError):
-            run(receive_webhook(
-                provider=provider, credential=cred, headers={"x-relay-signature": "wrong"}, body=b"{}",
-                pool=_mock_pool(AsyncMock()),
-            ))
-
-    def test_receive_webhook_raises_duplicate_when_dedup_key_conflicts(self):
-        from app.integrations.webhooks import receive_webhook, WebhookDuplicateError
-        from app.integrations.examples.webhook_relay_provider import WebhookRelayProvider
-        from app.integrations.types import IntegrationCredential, ProviderType
-        import hmac
-        import hashlib
-
-        provider = WebhookRelayProvider()
-        secret = "shhh"
-        cred = IntegrationCredential(
-            provider_id="webhook-relay", organization_id=_org_id(), provider_type=ProviderType.CUSTOM,
-            secrets={"webhook_secret": secret},
-        )
-        body = b"{}"
-        sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-
-        conn = AsyncMock()
-        conn.fetchval = AsyncMock(return_value=None)  # ON CONFLICT DO NOTHING -> no row
-        with pytest.raises(WebhookDuplicateError):
-            run(receive_webhook(
-                provider=provider, credential=cred, headers={"x-relay-signature": sig}, body=body,
-                pool=_mock_pool(conn),
-            ))
-
-    def test_dedup_key_is_scoped_per_provider_and_org(self):
-        from app.integrations.webhooks import _dedup_key
-        body = b"same body"
-        k1 = _dedup_key("provider-a", "org-1", body)
-        k2 = _dedup_key("provider-b", "org-1", body)
-        k3 = _dedup_key("provider-a", "org-2", body)
-        assert len({k1, k2, k3}) == 3
-
-
-# ── Sync engine ───────────────────────────────────────────────────────────────
 
 class TestSyncEngine:
     def test_schedule_sync_inserts_pending_row_and_submits_job(self):
@@ -902,93 +764,7 @@ class TestWebhookRelayProvider:
         assert result.status == SyncStatus.SUCCEEDED
         assert result.items_synced == 0
 
-
-# ── Router surface ────────────────────────────────────────────────────────────
-
-@pytest.fixture()
-def integrations_client():
-    from fastapi import FastAPI
-    from app.routers.integrations import router
-    app = FastAPI()
-    app.include_router(router)
-    with TestClient(app, raise_server_exceptions=False) as c:
-        yield c
-
-
-class TestIntegrationsRouterGating:
-    """Matches tests/test_enterprise.py's gating-verification convention:
-    require_permission() returns a fresh closure per call, so equality is
-    checked via __qualname__ + the resource/action baked into the closure's
-    repr, not object identity."""
-
-    def _gated_resource_action(self, endpoint):
-        import inspect
-        from app.tenancy.context import require_permission
-        for p in inspect.signature(endpoint).parameters.values():
-            if p.default is not inspect.Parameter.empty and hasattr(p.default, "dependency"):
-                dep = p.default.dependency
-                if getattr(dep, "__qualname__", "") == require_permission("x", "y").__qualname__:
-                    return dep
-        return None
-
-    def test_providers_and_list_gated_on_read(self):
-        from app.routers.integrations import list_providers, list_connections
-        assert self._gated_resource_action(list_providers) is not None
-        assert self._gated_resource_action(list_connections) is not None
-
-    def test_mutating_endpoints_gated_on_manage(self):
-        from app.routers.integrations import connect, disconnect, trigger_sync
-        for endpoint in (connect, disconnect, trigger_sync):
-            assert self._gated_resource_action(endpoint) is not None
-
-    def test_webhook_endpoint_has_no_permission_dependency(self):
-        """External senders can't attach a bearer token — the router must
-        not require org auth on this route (signature verification is the
-        auth), mirroring /api/stripe/webhook."""
-        import inspect
-        from app.routers.integrations import receive_webhook
-        for p in inspect.signature(receive_webhook).parameters.values():
-            if p.default is not inspect.Parameter.empty and hasattr(p.default, "dependency"):
-                assert "require_permission" not in repr(p.default.dependency)
-
-
-class TestIntegrationsWebhookEndpoint:
-    def test_unknown_provider_returns_404(self, integrations_client):
-        fake_svc = MagicMock()
-        fake_svc.receive_webhook = AsyncMock(side_effect=KeyError("nope"))
-        with patch("app.routers.integrations.get_integration_service", return_value=fake_svc):
-            res = integrations_client.post(f"/api/orgs/{_org_id()}/integrations/nope/webhook", content=b"{}")
-        assert res.status_code == 404
-
-    def test_bad_signature_returns_401(self, integrations_client):
-        from app.integrations.webhooks import WebhookVerificationError
-        fake_svc = MagicMock()
-        fake_svc.receive_webhook = AsyncMock(side_effect=WebhookVerificationError("bad sig"))
-        with patch("app.routers.integrations.get_integration_service", return_value=fake_svc):
-            res = integrations_client.post(f"/api/orgs/{_org_id()}/integrations/webhook-relay/webhook", content=b"{}")
-        assert res.status_code == 401
-
-    def test_duplicate_delivery_returns_200(self, integrations_client):
-        from app.integrations.webhooks import WebhookDuplicateError
-        fake_svc = MagicMock()
-        fake_svc.receive_webhook = AsyncMock(side_effect=WebhookDuplicateError("dup"))
-        with patch("app.routers.integrations.get_integration_service", return_value=fake_svc):
-            res = integrations_client.post(f"/api/orgs/{_org_id()}/integrations/webhook-relay/webhook", content=b"{}")
-        assert res.status_code == 200
-        assert "duplicate" in res.json()["status"]
-
-    def test_success_returns_received(self, integrations_client):
-        fake_svc = MagicMock()
-        fake_svc.receive_webhook = AsyncMock(return_value=None)
-        with patch("app.routers.integrations.get_integration_service", return_value=fake_svc):
-            res = integrations_client.post(f"/api/orgs/{_org_id()}/integrations/webhook-relay/webhook", content=b"{}")
-        assert res.status_code == 200
-        assert res.json()["status"] == "received"
-
-    def test_integration_error_returns_400(self, integrations_client):
-        from app.integrations.service import IntegrationError
-        fake_svc = MagicMock()
-        fake_svc.receive_webhook = AsyncMock(side_effect=IntegrationError("not connected"))
-        with patch("app.routers.integrations.get_integration_service", return_value=fake_svc):
-            res = integrations_client.post(f"/api/orgs/{_org_id()}/integrations/webhook-relay/webhook", content=b"{}")
-        assert res.status_code == 400
+# TestIntegrationsRouterGating moved to tests/security/test_authorization.py;
+# TestIntegrationsWebhookEndpoint (+ its integrations_client fixture) moved
+# to tests/security/test_webhook_security.py — both as part of the
+# Security Testing phase's tests/security/ reorganization.
