@@ -17,6 +17,12 @@ services:
         sync: false
       - key: STRIPE_PRICE_ID
         sync: false
+      - key: STRIPE_PRICE_ID_STARTER
+        sync: false
+      - key: STRIPE_PRICE_ID_PRO
+        sync: false
+      - key: STRIPE_PRICE_ID_TEAM
+        sync: false
       - key: APP_URL
         sync: false
       - key: SESSION_SECRET
