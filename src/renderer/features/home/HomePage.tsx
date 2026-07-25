@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
@@ -101,12 +101,19 @@ export function HomePage() {
     ctx.textAlign = "start";
   }, [series]);
 
-  const kpis = [
+  const kpis: { label: string; value: number; suffix: string; accent: boolean; icon: ReactNode; displayOverride?: string }[] = [
     { label: "Conversations", value: stats?.conversations ?? 0, suffix: "", accent: true,  icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
     { label: "Messages",      value: stats?.messages ?? 0,      suffix: "", accent: false, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
     { label: "Builds",        value: stats?.agent_runs ?? 0,    suffix: "", accent: false, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
     { label: "Projects",      value: stats?.projects ?? 0,      suffix: "", accent: false, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
-    { label: "Success Rate",  value: stats?.success_rate ?? 0,  suffix: "%", accent: true, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> },
+    {
+      label: "Success Rate", value: stats?.success_rate ?? 0, suffix: "%",
+      // A "0%" success rate reads as a bad result — but with zero builds run,
+      // there's simply no data yet, so show a neutral N/A instead of an
+      // alarming-looking zero.
+      accent: !!stats?.agent_runs, displayOverride: stats?.agent_runs ? undefined : "N/A",
+      icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+    },
   ];
 
   const actionMeta: Record<string, { label: string; color: string }> = {
@@ -129,7 +136,7 @@ export function HomePage() {
 
   // ── Projects helpers ──────────────────────────────────────────────────────
   async function createProject() {
-    if (!newName.trim()) return;
+    if (newName.trim().length < 2) return;
     setSaving(true);
     try {
       const r = await apiFetch("/api/projects", {
@@ -234,7 +241,7 @@ export function HomePage() {
               >
                 {kpis.map(k => (
                   <motion.div key={k.label} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
-                    <KpiCard label={k.label} value={k.value} suffix={k.suffix} icon={k.icon} accent={k.accent} />
+                    <KpiCard label={k.label} value={k.value} suffix={k.suffix} icon={k.icon} accent={k.accent} displayOverride={k.displayOverride} />
                   </motion.div>
                 ))}
               </motion.div>
@@ -340,9 +347,12 @@ export function HomePage() {
               <div style={{ ...S.cardTitle, marginBottom: 14 }}>New Project</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Project name *" style={S.textInput} onKeyDown={e => e.key === "Enter" && createProject()} autoFocus />
+                {newName.length > 0 && newName.trim().length < 2 && (
+                  <span style={{ fontSize: 11, color: "var(--red)", marginTop: -4 }}>Project name must be at least 2 characters.</span>
+                )}
                 <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description (optional)" style={{ ...S.textInput, resize: "vertical", minHeight: 70, fontFamily: "inherit" }} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={createProject} disabled={saving || !newName.trim()} style={S.btnPrimary}>{saving ? "Creating…" : "Create Project"}</button>
+                  <button onClick={createProject} disabled={saving || newName.trim().length < 2} style={S.btnPrimary}>{saving ? "Creating…" : "Create Project"}</button>
                   <button onClick={() => { setCreating(false); setNewName(""); setNewDesc(""); }} style={S.btnSecondary}>Cancel</button>
                 </div>
               </div>

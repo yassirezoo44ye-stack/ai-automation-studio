@@ -320,7 +320,10 @@ def create_app() -> FastAPI:
         detail = "; ".join(
             f"{' -> '.join(str(l) for l in e['loc'])}: {e['msg']}" for e in errors
         )
-        return JSONResponse(status_code=422, content={"detail": detail, "errors": errors})
+        # Pydantic puts the raw exception object (e.g. the ValueError a
+        # field_validator raised) in ctx, which json.dumps can't serialize.
+        safe_errors = [{k: v for k, v in e.items() if k != "ctx"} for e in errors]
+        return JSONResponse(status_code=422, content={"detail": detail, "errors": safe_errors})
 
     @app.exception_handler(QuotaExceeded)
     async def quota_exceeded_handler(request: Request, exc: QuotaExceeded):

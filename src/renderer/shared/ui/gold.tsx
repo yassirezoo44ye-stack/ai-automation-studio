@@ -123,13 +123,17 @@ export function Dialog({
 /* ── KPI card with animated count-up ────────────────────────────────────── */
 
 export function KpiCard({
-  label, value, suffix = "", icon, accent = false,
+  label, value, suffix = "", icon, accent = false, displayOverride,
 }: {
   label: string;
   value: number;
   suffix?: string;
   icon?: ReactNode;
   accent?: boolean;
+  /** Renders this string instead of the animated number — for zero-data
+   * states where e.g. "0%" would misleadingly read as a bad result rather
+   * than "no data yet". */
+  displayOverride?: string;
 }) {
   const reduce = useReducedMotion();
   const [shown, setShown] = useState(reduce ? value : 0);
@@ -154,7 +158,7 @@ export function KpiCard({
         <span className="g-kpi__label">{label}</span>
         {icon && <span className="g-kpi__icon">{icon}</span>}
       </div>
-      <div className="g-kpi__value">{shown.toLocaleString()}{suffix}</div>
+      <div className="g-kpi__value">{displayOverride ?? `${shown.toLocaleString()}${suffix}`}</div>
     </GlassCard>
   );
 }

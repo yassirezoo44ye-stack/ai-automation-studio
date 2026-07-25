@@ -3,7 +3,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.auth import owner_user_id as _owner_user_id
 from app.core.db import get_pool
@@ -11,14 +11,31 @@ from app.core.db import get_pool
 router = APIRouter(tags=["projects"])
 
 
+def _validate_project_name(v: str) -> str:
+    v = v.strip()
+    if len(v) < 2:
+        raise ValueError("Project name must be at least 2 characters")
+    return v
+
+
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def name_min_length(cls, v: str) -> str:
+        return _validate_project_name(v)
 
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def name_min_length(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_project_name(v) if v is not None else v
 
 
 @router.post("/api/projects", status_code=201)
