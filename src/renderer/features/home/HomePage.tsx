@@ -93,7 +93,7 @@ export function HomePage() {
       vals.forEach((v, i) => i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v)));
       ctx.stroke();
     };
-    drawArea(series.messages, withAlpha("#FFD700", "33"), "#FFD700", 2.5);
+    drawArea(series.messages, withAlpha("#6E32E0", "33"), "#6E32E0", 2.5);
     drawArea(series.builds,   withAlpha(C.green, "30"), C.green, 2);
 
     ctx.fillStyle = C.slate; ctx.font = "11px Segoe UI"; ctx.textAlign = "center";
@@ -161,14 +161,14 @@ export function HomePage() {
     <>
       <header style={S.header}>
         <span style={S.headerTitle}>Home</span>
-        <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.04)", borderRadius: 12, padding: 4 }}>
+        <div style={{ display: "flex", gap: 4, background: "var(--bg-card)", borderRadius: 12, padding: 4 }}>
           {tabs.map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{
               padding: "7px 18px", borderRadius: 9, border: "none", cursor: "pointer",
               fontSize: 13, fontWeight: 500, transition: "all .18s",
-              background: tab === id ? "linear-gradient(135deg,#D4AF37,#FFD700)" : "transparent",
-              color: tab === id ? "#fff" : "rgba(148,163,184,.6)",
-              boxShadow: tab === id ? "0 2px 12px rgba(255,215,0,.35)" : "none",
+              background: tab === id ? "linear-gradient(135deg,var(--accent),var(--teal))" : "transparent",
+              color: tab === id ? "#fff" : "var(--t4)",
+              boxShadow: tab === id ? "0 2px 12px rgba(110,50,224,.35)" : "none",
             }}>{label}</button>
           ))}
         </div>
@@ -194,7 +194,7 @@ export function HomePage() {
                     : "Your AI-powered automation studio is ready."}
                 </p>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: "var(--r-full)", background: backendOk === true ? "var(--green-dim)" : backendOk === false ? "var(--red-dim)" : "rgba(255,255,255,0.04)", border: `1px solid ${backendOk === true ? "rgba(52,211,153,0.25)" : backendOk === false ? "rgba(248,113,113,0.25)" : "var(--b1)"}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: "var(--r-full)", background: backendOk === true ? "var(--green-dim)" : backendOk === false ? "var(--red-dim)" : "var(--bg-card)", border: `1px solid ${backendOk === true ? "rgba(22,163,74,0.25)" : backendOk === false ? "rgba(220,38,38,0.25)" : "var(--b1)"}` }}>
                 <div className={`health-dot ${backendOk === true ? "ok" : backendOk === false ? "err" : "warn"} ${backendOk === null ? "pulse" : ""}`} />
                 <span style={{ fontSize: 11, fontWeight: 600, color: backendOk === true ? "var(--green)" : backendOk === false ? "var(--red)" : "var(--t4)" }}>
                   {backendOk === true ? "Backend online" : backendOk === false ? "Backend offline" : "Checking…"}
@@ -270,7 +270,7 @@ export function HomePage() {
                 {activity.slice(0, 8).map((a, i) => {
                   const meta = actionMeta[a.action] ?? { label: a.action, color: "var(--t4)" };
                   return (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: i < Math.min(activity.length, 8) - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: i < Math.min(activity.length, 8) - 1 ? "1px solid var(--b1)" : "none" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                         <span className="badge" style={{ background: meta.color + "1e", color: meta.color, border: `1px solid ${meta.color}30`, flexShrink: 0 }}>{meta.label}</span>
                         {a.details.prompt_preview && <span style={{ fontSize: 12, color: "var(--t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{a.details.prompt_preview}"</span>}

@@ -16,14 +16,14 @@ const S = {
   wrap: {
     display: "flex", alignItems: "center", justifyContent: "center",
     minHeight: "100vh",
-    background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,215,0,0.12) 0%, var(--bg-base) 70%)",
+    background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(110,50,224,0.12) 0%, var(--bg-base) 70%)",
     fontFamily: "var(--font-sans)",
     padding: "24px",
   } as React.CSSProperties,
   card: {
     background: "var(--bg-elevated)", border: "1px solid var(--b1)",
     borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 420,
-    boxShadow: "0 24px 64px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04)",
+    boxShadow: "var(--shadow-xl)",
   } as React.CSSProperties,
   logo:  { display: "flex", justifyContent: "center", marginBottom: 12 } as React.CSSProperties,
   title: { margin: "0 0 2px", fontSize: 22, fontWeight: 700, color: "var(--t1)", textAlign: "center" } as React.CSSProperties,

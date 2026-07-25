@@ -127,7 +127,7 @@ export const C = {
   redSoft:     "#EF4444",   // danger (soft)
   amber:       "#A16207",   // warning
   blue:        "#2563EB",   // info / running
-  purple:      "#8B5CF6",   // was mislabeled gold (#E6C558) — now an actual purple
+  purple:      "#8B5CF6",
   sky:         "#38bdf8",
   pink:        "#f472b6",
   orange:      "#fb923c",

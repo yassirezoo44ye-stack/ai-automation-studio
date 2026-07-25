@@ -94,7 +94,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
                 disabled={rollingBack === v.version}
                 style={{
                   padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,.04)", color: "var(--t3)", fontSize: 11,
+                  background: "var(--bg-card)", color: "var(--t3)", fontSize: 11,
                   cursor: rollingBack === v.version ? "wait" : "pointer", whiteSpace: "nowrap",
                 }}
               >

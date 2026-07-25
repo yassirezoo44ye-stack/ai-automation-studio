@@ -30,7 +30,7 @@ function UsageBar({ metric, data }: { metric: string; data: UsageMetric }) {
         <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>{METRIC_LABEL[metric] ?? metric}</span>
         <span style={{ fontSize: 11, color: "var(--t4)" }}>{fmt(data.used)} / {fmt(data.limit)}</span>
       </div>
-      <div style={{ height: 6, background: "rgba(255,255,255,.05)", borderRadius: 99, overflow: "hidden" }}>
+      <div style={{ height: 6, background: "var(--bg-card)", borderRadius: 99, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${Math.min(pct, 100)}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
       </div>
     </div>

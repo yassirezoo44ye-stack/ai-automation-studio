@@ -98,7 +98,7 @@ export function BillingPage() {
             onClick={() => setTab(t.id)}
             style={{
               padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-              background: tab === t.id ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+              background: tab === t.id ? "var(--accent-dim)" : "var(--bg-card)",
               color: tab === t.id ? "var(--accent-2)" : "var(--t4)",
             }}
           >

@@ -89,7 +89,7 @@ function CopyBtn({ text }: { text: string }) {
         padding: "6px 14px", borderRadius: 8, cursor: "pointer",
         fontSize: 12, fontWeight: 600, border: "1px solid",
         borderColor: copied ? "rgba(52,211,153,.45)" : "var(--border)",
-        background: copied ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.05)",
+        background: copied ? "rgba(52,211,153,.12)" : "var(--bg-hover)",
         color: copied ? "var(--green)" : "var(--t2)",
         transition: "all .2s",
         flexShrink: 0,
@@ -120,7 +120,7 @@ function QuickAction({ icon, label, onClick }: { icon: React.ReactNode; label: s
         display: "flex", flexDirection: "column", alignItems: "center", gap: 7,
         padding: "14px 8px", borderRadius: 12, cursor: "pointer",
         border: "1px solid var(--border)",
-        background: "rgba(255,255,255,.03)",
+        background: "var(--bg-card)",
         color: "var(--t2)", fontSize: 12, fontWeight: 500,
         transition: "transform .15s, border-color .15s, background .15s",
         flex: 1, minWidth: 90,
@@ -193,10 +193,8 @@ export function InstallationPanel({
       style={{
         borderRadius: 16,
         border: "1px solid rgba(52,211,153,.28)",
-        background: "linear-gradient(160deg, rgba(52,211,153,.06), rgba(108,142,247,.05) 55%, rgba(255,255,255,.02))",
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
-        boxShadow: "0 8px 32px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.06)",
+        background: "var(--bg-elevated)",
+        boxShadow: "var(--shadow-md)",
         overflow: "hidden",
         opacity: entered ? 1 : 0,
         transform: entered ? "translateY(0) scale(1)" : "translateY(14px) scale(.98)",
@@ -206,7 +204,7 @@ export function InstallationPanel({
       {/* Header with success badge */}
       <div style={{
         padding: "16px 20px 14px",
-        borderBottom: "1px solid rgba(255,255,255,.06)",
+        borderBottom: "1px solid var(--b1)",
         display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
       }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: "var(--t1)", display: "flex", alignItems: "center", gap: 8 }}>
@@ -268,11 +266,11 @@ export function InstallationPanel({
           <pre style={{
             margin: 0, padding: "14px 16px",
             fontFamily: "ui-monospace, 'Cascadia Code', monospace", fontSize: 13, lineHeight: 1.8,
-            color: "var(--t1)", overflowX: "auto",
+            color: "#E8E8E8", overflowX: "auto",
           }}>
             {commands.map((c, i) => (
-              <div key={i} style={{ color: c.startsWith("#") ? "var(--t5)" : undefined }}>
-                {!c.startsWith("#") && <span style={{ color: "var(--green)", userSelect: "none" }}>$ </span>}
+              <div key={i} style={{ color: c.startsWith("#") ? "rgba(232,232,232,.5)" : undefined }}>
+                {!c.startsWith("#") && <span style={{ color: "#34D399", userSelect: "none" }}>$ </span>}
                 {c}
               </div>
             ))}
@@ -312,7 +310,7 @@ export function InstallationPanel({
             display: "inline-flex", alignItems: "center", gap: 8,
             padding: "8px 16px", borderRadius: 9, cursor: "pointer",
             fontSize: 12, fontWeight: 600,
-            border: "1px solid var(--border)", background: "rgba(255,255,255,.04)",
+            border: "1px solid var(--border)", background: "var(--bg-card)",
             color: "var(--t2)", transition: "border-color .15s",
           }}
         >

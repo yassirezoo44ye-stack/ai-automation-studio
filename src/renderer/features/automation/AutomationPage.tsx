@@ -204,14 +204,14 @@ export function AutomationPage() {
       <header style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={S.headerTitle}>Automation</span>
-          <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.04)", borderRadius: 12, padding: 4 }}>
+          <div style={{ display: "flex", gap: 4, background: "var(--bg-card)", borderRadius: 12, padding: 4 }}>
             {TABS.map(([id, label]) => (
               <button key={id} onClick={() => setTab(id)} role="tab" aria-selected={tab === id} style={{
                 padding: "6px 16px", borderRadius: 9, border: "none", cursor: "pointer",
                 fontSize: 13, fontWeight: 500, transition: "all .18s",
-                background: tab === id ? "linear-gradient(135deg,#D4AF37,#FFD700)" : "transparent",
-                color:      tab === id ? "#fff" : "rgba(148,163,184,.6)",
-                boxShadow:  tab === id ? "0 2px 12px rgba(255,215,0,.35)" : "none",
+                background: tab === id ? "linear-gradient(135deg,var(--accent),var(--teal))" : "transparent",
+                color:      tab === id ? "#fff" : "var(--t4)",
+                boxShadow:  tab === id ? "0 2px 12px rgba(110,50,224,.35)" : "none",
               }}>{label}</button>
             ))}
           </div>
@@ -253,7 +253,7 @@ export function AutomationPage() {
               {FILTERS.map(([id, label]) => (
                 <button key={id} onClick={() => setFilter(id)} style={{
                   padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-                  background: filter === id ? "var(--accent-dim)" : "rgba(255,255,255,0.04)",
+                  background: filter === id ? "var(--accent-dim)" : "var(--bg-card)",
                   color: filter === id ? "var(--accent-2)" : "var(--t4)",
                   transition: "all .15s",
                 }}>{label}</button>

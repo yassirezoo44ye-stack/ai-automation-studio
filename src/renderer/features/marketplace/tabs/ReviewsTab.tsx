@@ -91,7 +91,7 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
           disabled={submitting}
           style={{
             padding: "6px 14px", borderRadius: 6, border: "none", cursor: submitting ? "wait" : "pointer",
-            background: "linear-gradient(135deg,#D4AF37,#FFD700)", color: "#121008", fontSize: 12, fontWeight: 600,
+            background: "linear-gradient(135deg,var(--accent),var(--teal))", color: "#fff", fontSize: 12, fontWeight: 600,
           }}
         >
           {submitting ? "…" : "Submit"}
