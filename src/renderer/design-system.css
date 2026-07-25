@@ -2,75 +2,83 @@
    Axon Design System v2
    ══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* ── Tokens ──────────────────────────────────────────────────────── */
+/* ── Tokens ──────────────────────────────────────────────────────────
+   Canva-style identity: light-first, purple/teal brand, friendly rounded
+   shapes. :root is now the light (default) palette; [data-theme="dark"]
+   below is a companion dark variant, not a reversion to the old gold
+   palette. See plan doc for the full rationale + contrast math. ────── */
 :root {
   /* Background layers */
-  --bg-base:     #090909;
-  --bg-surface:  #111111;
-  --bg-elevated: #181818;
-  --bg-overlay:  rgba(0,0,0,0.72);
-  --bg-card:     rgba(255,255,255,0.035);
-  --bg-card-h:   rgba(255,215,0,0.05);
-  --bg-glass:    rgba(17,17,17,0.78);
-  --bg-input:    rgba(255,255,255,0.045);
+  --bg-base:     #F5F4FA;
+  --bg-surface:  #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-overlay:  rgba(23,20,40,0.45);
+  --bg-card:     rgba(23,20,40,0.035);
+  --bg-card-h:   rgba(110,50,224,0.05);
+  --bg-glass:    #FFFFFF;
+  --bg-input:    rgba(23,20,40,0.035);
 
-  /* Accent — luxury gold */
-  --accent:        #D4AF37;
-  --accent-2:      #FFD700;
-  --accent-light:  #E6C558;
-  --accent-bright: #FFDF4D;
-  --accent-dim:    rgba(255,215,0,0.12);
-  --accent-glow:   rgba(255,215,0,0.16);
-  --accent-border: rgba(255,215,0,0.24);
+  /* Accent — Canva purple */
+  --accent:        #6E32E0;
+  --accent-2:      #7C3AED;
+  --accent-light:  #8B5CF6;
+  --accent-bright: #A78BFA;
+  --accent-dim:    rgba(110,50,224,0.10);
+  --accent-glow:   rgba(110,50,224,0.16);
+  --accent-border: rgba(110,50,224,0.28);
 
-  /* Semantic colours */
-  --green:        #00C853;
-  --green-dim:    rgba(0,200,83,0.14);
-  --red:          #FF5252;
-  --red-dim:      rgba(255,82,82,0.14);
-  --yellow:       #FFB300;
-  --yellow-dim:   rgba(255,179,0,0.14);
-  --blue:         #6c8ef7;
-  --blue-dim:     rgba(108,142,247,0.15);
-  --purple-dim:   rgba(212,175,55,0.15);
+  /* Secondary brand hue — teal (gradients, highlights) */
+  --teal:     #0B7A70;
+  --teal-dim: rgba(11,122,112,0.12);
 
-  /* Text scale */
-  --t1: #FFFFFF;
-  --t2: #E8E8E8;
-  --t3: #BDBDBD;
-  --t4: rgba(189,189,189,0.55);
-  --t5: rgba(189,189,189,0.30);
-  --ta: #FFD700;
+  /* Semantic colours — darkened for AA contrast on white */
+  --green:        #16A34A;
+  --green-dim:    rgba(22,163,74,0.14);
+  --red:          #DC2626;
+  --red-dim:      rgba(220,38,38,0.14);
+  --yellow:       #A16207;
+  --yellow-dim:   rgba(161,98,7,0.14);
+  --blue:         #2563EB;
+  --blue-dim:     rgba(37,99,235,0.15);
+  --purple-dim:   rgba(110,50,224,0.15);
+
+  /* Text scale — dark aubergine-ink, not pure black */
+  --t1: #1A1523;
+  --t2: #322B45;
+  --t3: #6B6480;
+  --t4: rgba(107,100,128,0.65);
+  --t5: rgba(107,100,128,0.35);
+  --ta: #7C3AED;
 
   /* Borders */
-  --b1:  rgba(255,215,0,0.10);
-  --b2:  rgba(255,215,0,0.18);
-  --ba:  rgba(255,215,0,0.24);
-  --ba2: rgba(255,215,0,0.42);
+  --b1:  rgba(23,20,40,0.08);
+  --b2:  rgba(23,20,40,0.14);
+  --ba:  rgba(110,50,224,0.35);
+  --ba2: rgba(110,50,224,0.55);
 
-  /* Radius scale */
-  --r-xs:  4px;
-  --r-sm:  6px;
-  --r-md:  10px;
-  --r-lg:  14px;
-  --r-xl:  18px;
-  --r-2xl: 24px;
+  /* Radius scale — bumped for the friendlier Canva shape language */
+  --r-xs:  6px;
+  --r-sm:  8px;
+  --r-md:  12px;
+  --r-lg:  16px;
+  --r-xl:  20px;
+  --r-2xl: 28px;
   --r-full:9999px;
 
-  /* Shadow scale */
-  --shadow-xs:   0 1px 2px  rgba(0,0,0,0.25);
-  --shadow-sm:   0 2px 8px  rgba(0,0,0,0.35);
-  --shadow-md:   0 4px 16px rgba(0,0,0,0.45);
-  --shadow-lg:   0 8px 32px rgba(0,0,0,0.55);
-  --shadow-xl:   0 16px 48px rgba(0,0,0,0.65);
-  --shadow-glow: 0 0 28px rgba(255,215,0,0.14);
-  --shadow-btn:  0 4px 20px rgba(212,175,55,0.35);
-  --shadow-inset:inset 0 0 0 1px rgba(255,215,0,0.22);
+  /* Shadow scale — cool-tinted, soft (opaque cards, not glass) */
+  --shadow-xs:   0 1px 2px  rgba(23,20,40,0.06);
+  --shadow-sm:   0 2px 8px  rgba(23,20,40,0.08);
+  --shadow-md:   0 4px 16px rgba(23,20,40,0.10);
+  --shadow-lg:   0 8px 32px rgba(23,20,40,0.13);
+  --shadow-xl:   0 16px 48px rgba(23,20,40,0.16);
+  --shadow-glow: 0 0 0 3px rgba(110,50,224,0.12);
+  --shadow-btn:  0 4px 20px rgba(110,50,224,0.28);
+  --shadow-inset:inset 0 0 0 1px rgba(110,50,224,0.18);
 
-  /* Typography */
-  --font-sans: 'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+  /* Typography — public fallback stack only (no proprietary "Canva Sans") */
+  --font-sans: 'Noto Sans','Segoe UI',system-ui,-apple-system,sans-serif;
   --font-mono: 'JetBrains Mono','Cascadia Code','Fira Code','Consolas',monospace;
 
   /* Spacing scale (4px base) */
@@ -92,71 +100,13 @@
   --t-slow: 320ms;
 
   /* Skeleton shimmer */
-  --skeleton-base: rgba(255,255,255,0.06);
-  --skeleton-shine: rgba(255,255,255,0.12);
+  --skeleton-base: rgba(23,20,40,0.06);
+  --skeleton-shine: rgba(23,20,40,0.12);
 
   /* Aliases used by AuthPage and legacy components */
-  --border:    rgba(255,255,255,0.09);
-  --bg-hover:  rgba(255,255,255,0.05);
-  --bg-panel:  #0d0d0d;
-
-  /* Aliases used by DesignStudio module CSS */
-  --surface-1:      var(--bg-elevated);
-  --surface-2:      var(--bg-surface);
-  --surface-3:      var(--bg-card);
-  --text-primary:   var(--t1);
-  --text-secondary: var(--t3);
-  --radius-sm:      var(--r-sm);
-  --radius-md:      var(--r-md);
-}
-
-/* ── Light theme overrides ───────────────────────────────────────── */
-[data-theme="light"] {
-  --bg-base:     #faf8f2;
-  --bg-surface:  #ffffff;
-  --bg-elevated: #f5f1e6;
-  --bg-overlay:  rgba(0,0,0,0.40);
-  --bg-card:     rgba(0,0,0,0.035);
-  --bg-card-h:   rgba(0,0,0,0.060);
-  --bg-glass:    rgba(248,250,252,0.92);
-  --bg-input:    rgba(0,0,0,0.040);
-
-  --t1: #0f172a;
-  --t2: #1e293b;
-  --t3: rgba(71,85,105,0.90);
-  --t4: rgba(71,85,105,0.55);
-  --t5: rgba(71,85,105,0.30);
-  --ta: #9A7B1E;
-
-  /* Dark, WCAG-safe gold — the dark-theme --accent/--accent-2 (#D4AF37/
-     #FFD700) read fine on near-black but drop to ~1.5:1 on this light
-     background. Darkened equivalents (~4-5:1) so every G1-G7 usage that
-     reads --accent-2 as a text color (tab labels, badges, links) stays
-     legible in light mode too. --accent-dim/--accent-border keep the
-     bright-gold rgba wash from :root — fine as a background tint. */
-  --accent:   #8A6D1A;
-  --accent-2: #9A7B1E;
-
-  --b1:  rgba(0,0,0,0.08);
-  --b2:  rgba(0,0,0,0.14);
-  --ba:  rgba(154,123,30,0.30);
-  --ba2: rgba(154,123,30,0.48);
-
-  --shadow-xs:   0 1px 2px  rgba(0,0,0,0.08);
-  --shadow-sm:   0 2px 8px  rgba(0,0,0,0.12);
-  --shadow-md:   0 4px 16px rgba(0,0,0,0.14);
-  --shadow-lg:   0 8px 32px rgba(0,0,0,0.18);
-  --shadow-xl:   0 16px 48px rgba(0,0,0,0.20);
-  --shadow-glow: 0 0 28px rgba(154,123,30,0.16);
-  --shadow-btn:  0 4px 20px rgba(154,123,30,0.26);
-  --shadow-inset:inset 0 0 0 1px rgba(154,123,30,0.24);
-
-  --skeleton-base:  rgba(0,0,0,0.07);
-  --skeleton-shine: rgba(0,0,0,0.04);
-
-  --border:    rgba(0,0,0,0.10);
-  --bg-hover:  rgba(0,0,0,0.05);
-  --bg-panel:  #f7f4ec;
+  --border:    rgba(23,20,40,0.09);
+  --bg-hover:  rgba(23,20,40,0.05);
+  --bg-panel:  #FBFAFD;
 
   /* Aliases used by DesignStudio module CSS */
   --surface-1:      var(--bg-elevated);
@@ -173,6 +123,83 @@
 [data-theme="light"] input,
 [data-theme="light"] textarea,
 [data-theme="light"] select { color-scheme: light; }
+
+/* ── Dark theme (Canva-dark companion) ───────────────────────────────
+   A genuine dark variant of the purple/teal identity — not the old gold
+   palette. :root above is now the default/primary light identity. ──── */
+[data-theme="dark"] {
+  --bg-base:     #15121F;
+  --bg-surface:  #1E1A2E;
+  --bg-elevated: #262038;
+  --bg-overlay:  rgba(0,0,0,0.60);
+  --bg-card:     rgba(255,255,255,0.035);
+  --bg-card-h:   rgba(167,139,250,0.06);
+  --bg-glass:    #262038;
+  --bg-input:    rgba(255,255,255,0.045);
+
+  --accent:        #A78BFA;
+  --accent-2:      #C4B5FD;
+  --accent-light:  #B9A4F7;
+  --accent-bright: #DDD6FE;
+  --accent-dim:    rgba(167,139,250,0.14);
+  --accent-glow:   rgba(167,139,250,0.20);
+  --accent-border: rgba(167,139,250,0.30);
+
+  --teal:     #2DD4BF;
+  --teal-dim: rgba(45,212,191,0.16);
+
+  --green:        #34D399;
+  --green-dim:    rgba(52,211,153,0.16);
+  --red:          #F87171;
+  --red-dim:      rgba(248,113,113,0.16);
+  --yellow:       #FBBF24;
+  --yellow-dim:   rgba(251,191,36,0.16);
+  --blue:         #60A5FA;
+  --blue-dim:     rgba(96,165,250,0.16);
+  --purple-dim:   rgba(167,139,250,0.16);
+
+  --t1: #F5F3FA;
+  --t2: #DFDAEE;
+  --t3: #B3A9CC;
+  --t4: rgba(179,169,204,0.60);
+  --t5: rgba(179,169,204,0.32);
+  --ta: #C4B5FD;
+
+  --b1:  rgba(255,255,255,0.08);
+  --b2:  rgba(255,255,255,0.14);
+  --ba:  rgba(167,139,250,0.35);
+  --ba2: rgba(167,139,250,0.55);
+
+  --shadow-xs:   0 1px 2px  rgba(0,0,0,0.30);
+  --shadow-sm:   0 2px 8px  rgba(0,0,0,0.38);
+  --shadow-md:   0 4px 16px rgba(0,0,0,0.46);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.55);
+  --shadow-xl:   0 16px 48px rgba(0,0,0,0.65);
+  --shadow-glow: 0 0 0 3px rgba(167,139,250,0.20);
+  --shadow-btn:  0 4px 20px rgba(167,139,250,0.30);
+  --shadow-inset:inset 0 0 0 1px rgba(167,139,250,0.22);
+
+  --skeleton-base:  rgba(255,255,255,0.06);
+  --skeleton-shine: rgba(255,255,255,0.12);
+
+  --border:    rgba(255,255,255,0.09);
+  --bg-hover:  rgba(255,255,255,0.05);
+  --bg-panel:  #1A1626;
+
+  --surface-1:      var(--bg-elevated);
+  --surface-2:      var(--bg-surface);
+  --surface-3:      var(--bg-card);
+  --text-primary:   var(--t1);
+  --text-secondary: var(--t3);
+  --radius-sm:      var(--r-sm);
+  --radius-md:      var(--r-md);
+
+  color-scheme: dark;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select { color-scheme: dark; }
 
 /* ── High contrast theme ─────────────────────────────────────────────
    WCAG-AAA-oriented, not a darker/brighter variant of the luxury gold

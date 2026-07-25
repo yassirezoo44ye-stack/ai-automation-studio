@@ -10,11 +10,11 @@ function getStoredTheme(): Theme {
     // via Settings (see SettingsPage's THEME_OPTIONS), never auto-detected,
     // since prefers-contrast support/semantics vary too much across
     // browsers to safely auto-switch a whole theme on it.
-    if (window.matchMedia?.("(prefers-color-scheme: light)").matches) return "light";
+    if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) return "dark";
   } catch {
     // localStorage unavailable (e.g. private browsing with storage blocked)
   }
-  return "dark";
+  return "light";
 }
 
 function applyTheme(t: Theme) {

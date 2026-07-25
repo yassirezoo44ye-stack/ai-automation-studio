@@ -95,8 +95,8 @@ export function SettingsPage() {
   ] as const;
 
   const THEME_OPTIONS = [
-    { id: "dark"          as const, label: "Dark",          bg: "#05070f" },
-    { id: "light"         as const, label: "Light",         bg: "#f8f9fb" },
+    { id: "dark"          as const, label: "Dark",          bg: "#15121F" },
+    { id: "light"         as const, label: "Light",         bg: "#F5F4FA" },
     { id: "high-contrast" as const, label: "High Contrast", bg: "#000000", swatchBorder: "#FFFF00" },
   ];
 
