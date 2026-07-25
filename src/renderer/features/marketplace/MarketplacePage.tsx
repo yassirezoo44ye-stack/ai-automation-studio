@@ -104,37 +104,39 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
     <GlassCard
       className="g-listing-card"
       style={{
-        display: "flex", flexDirection: "column", gap: 12, position: "relative",
+        display: "flex", flexDirection: "column", padding: 0, overflow: "hidden",
         ...(expanded ? { borderColor: `${meta.color}60`, boxShadow: "var(--shadow-glow)" } : {}),
       }}
     >
-      {item.visibility !== "public" && (
-        <span style={{
-          position: "absolute", top: 12, right: 12,
-          fontSize: 10, fontWeight: 700, letterSpacing: "0.6px",
-          background: "rgba(255,255,255,.08)", color: "var(--t3)",
-          padding: "2px 8px", borderRadius: 99,
-        }}>
-          {item.visibility.toUpperCase()}
-        </span>
-      )}
-
-      {/* Header */}
+      {/* Gallery-tile banner — colour-washed strip using the type's own
+          accent so the grid reads as a template gallery even though these
+          listings have no real preview image. */}
       <div
         role="button" tabIndex={0}
-        style={{ display: "flex", gap: 12, alignItems: "flex-start", cursor: "pointer" }}
+        style={{
+          position: "relative", height: 76, flexShrink: 0, cursor: "pointer",
+          background: `linear-gradient(135deg, ${meta.color}28, ${meta.color}10)`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
         onClick={() => onToggleDetails(item.id)}
         onKeyDown={e => e.key === "Enter" && onToggleDetails(item.id)}
       >
-        <div style={{
-          width: 44, height: 44, borderRadius: 10, flexShrink: 0,
-          background: `${meta.color}18`, border: `1px solid ${meta.color}30`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 22,
-        }}>
-          {meta.icon}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 34 }}>{meta.icon}</span>
+        {item.visibility !== "public" && (
+          <span style={{
+            position: "absolute", top: 10, right: 10,
+            fontSize: 10, fontWeight: 700, letterSpacing: "0.6px",
+            background: "var(--bg-elevated)", color: "var(--t3)",
+            padding: "2px 8px", borderRadius: 99,
+          }}>
+            {item.visibility.toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "14px 16px 16px" }}>
+        {/* Header */}
+        <div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {item.name}
@@ -147,59 +149,59 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
           </div>
           <div style={{ fontSize: 11, color: "var(--t4)" }}>by {item.author} · v{item.version}</div>
         </div>
-      </div>
 
-      {/* Description */}
-      <p style={{
-        fontSize: 13, color: "var(--t3)", lineHeight: 1.5, margin: 0,
-        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-      }}>
-        {item.description}
-      </p>
+        {/* Description */}
+        <p style={{
+          fontSize: 13, color: "var(--t3)", lineHeight: 1.5, margin: 0,
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+        }}>
+          {item.description}
+        </p>
 
-      {/* Tags */}
-      {item.tags.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          <span style={{
-            fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 99,
-            background: `${meta.color}15`, color: meta.color, border: `1px solid ${meta.color}25`,
-          }}>
-            {meta.icon} {meta.label}
-          </span>
-          {item.tags.slice(0, 3).map(t => (
-            <span key={t} style={{
-              fontSize: 11, padding: "2px 8px", borderRadius: 99,
-              background: "rgba(255,255,255,.04)", color: "var(--t4)",
-              border: "1px solid var(--border)",
+        {/* Tags */}
+        {item.tags.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            <span style={{
+              fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 99,
+              background: `${meta.color}15`, color: meta.color, border: `1px solid ${meta.color}25`,
             }}>
-              {t}
+              {meta.icon} {meta.label}
             </span>
-          ))}
-        </div>
-      )}
+            {item.tags.slice(0, 3).map(t => (
+              <span key={t} style={{
+                fontSize: 11, padding: "2px 8px", borderRadius: 99,
+                background: "var(--bg-card)", color: "var(--t4)",
+                border: "1px solid var(--border)",
+              }}>
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
 
-      {/* Footer */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <Stars rating={item.rating} count={item.rating_count} />
-          <span style={{ fontSize: 11, color: "var(--t5)" }}>
-            {item.installs.toLocaleString()} installs
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <GoldButton variant="ghost" onClick={() => onToggleDetails(item.id)}>
-            {expanded ? "Hide" : "Details"}
-          </GoldButton>
-          <PriceBadge priceUsd={item.price_usd} />
-          {installed ? (
-            <GoldButton variant="ghost" disabled={installing} onClick={() => onUninstall(item.id)}>
-              {installing ? "…" : "Uninstall"}
+        {/* Footer */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <Stars rating={item.rating} count={item.rating_count} />
+            <span style={{ fontSize: 11, color: "var(--t5)" }}>
+              {item.installs.toLocaleString()} installs
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <GoldButton variant="ghost" onClick={() => onToggleDetails(item.id)}>
+              {expanded ? "Hide" : "Details"}
             </GoldButton>
-          ) : (
-            <GoldButton variant="primary" disabled={installing} onClick={() => onInstall(item.id)}>
-              {installing ? "…" : item.price_usd === 0 ? "Install" : "Buy"}
-            </GoldButton>
-          )}
+            <PriceBadge priceUsd={item.price_usd} />
+            {installed ? (
+              <GoldButton variant="ghost" disabled={installing} onClick={() => onUninstall(item.id)}>
+                {installing ? "…" : "Uninstall"}
+              </GoldButton>
+            ) : (
+              <GoldButton variant="primary" disabled={installing} onClick={() => onInstall(item.id)}>
+                {installing ? "…" : item.price_usd === 0 ? "Install" : "Buy"}
+              </GoldButton>
+            )}
+          </div>
         </div>
       </div>
     </GlassCard>
@@ -234,7 +236,7 @@ function DetailPanel({ item, onClose, canManage, onRolledBack }: {
         {DETAIL_TABS.map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-            background: tab === id ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+            background: tab === id ? "var(--accent-dim)" : "var(--bg-card)",
             color: tab === id ? "var(--accent-2)" : "var(--t4)",
           }}>
             {label}
@@ -265,7 +267,7 @@ function CategoryBar({ categories, active, onChange }: {
         style={{
           padding: "7px 14px", borderRadius: 99, cursor: "pointer",
           fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
-          background: active === "all" ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+          background: active === "all" ? "var(--accent-dim)" : "var(--bg-card)",
           color: active === "all" ? "var(--accent-2)" : "var(--t4)",
           outline: "none",
           border: active === "all" ? "1px solid var(--accent-border)" : "1px solid transparent",
@@ -284,7 +286,7 @@ function CategoryBar({ categories, active, onChange }: {
             style={{
               padding: "7px 14px", borderRadius: 99, cursor: "pointer",
               fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
-              background: isActive ? `${color}22` : "rgba(255,255,255,.04)",
+              background: isActive ? `${color}22` : "var(--bg-card)",
               color: isActive ? color : "var(--t4)",
               outline: "none",
               border: isActive ? `1px solid ${color}40` : "1px solid transparent",
@@ -436,7 +438,7 @@ export function MarketplacePage() {
             {SORT_OPTIONS.map(([id, label]) => (
               <button key={id} onClick={() => setSortBy(id)} style={{
                 padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-                background: sortBy === id ? "var(--accent-dim)" : "rgba(255,255,255,.04)",
+                background: sortBy === id ? "var(--accent-dim)" : "var(--bg-card)",
                 color: sortBy === id ? "var(--accent-2)" : "var(--t4)",
                 transition: "all .15s",
               }}>{label}</button>
@@ -444,10 +446,10 @@ export function MarketplacePage() {
           </div>
         </div>
 
-        {/* Search */}
+        {/* Search — a prominent, pill-shaped bar leads the gallery, Canva-style */}
         <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-            style={{ position: "absolute", left: 12, color: "var(--t4)", pointerEvents: "none" }}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            style={{ position: "absolute", left: 18, color: "var(--t4)", pointerEvents: "none" }}>
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <input
@@ -455,15 +457,15 @@ export function MarketplacePage() {
             onChange={e => handleSearch(e.target.value)}
             placeholder="Search agents, plugins, workflows, themes…"
             style={{
-              width: "100%", padding: "10px 14px 10px 38px", fontSize: 14,
+              width: "100%", padding: "13px 18px 13px 46px", fontSize: 15,
               background: "var(--bg-base)", border: "1px solid var(--border)",
-              borderRadius: 10, color: "var(--t1)", outline: "none", boxSizing: "border-box",
-              fontFamily: "inherit",
+              borderRadius: "var(--r-full)", color: "var(--t1)", outline: "none", boxSizing: "border-box",
+              fontFamily: "inherit", transition: "border-color .15s, box-shadow .15s",
             }}
           />
           {search && (
             <button onClick={() => { setSearch(""); void load("", category); }} style={{
-              position: "absolute", right: 10, background: "none", border: "none",
+              position: "absolute", right: 14, background: "none", border: "none",
               cursor: "pointer", color: "var(--t4)", padding: 4, fontSize: 16, lineHeight: 1,
             }}>×</button>
           )}
@@ -484,7 +486,7 @@ export function MarketplacePage() {
           />
         )}
         {loading ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
             {[1,2,3,4,5,6].map(i => (
               <div key={i} className="skeleton" style={{ height: 220, borderRadius: 14 }} />
             ))}
@@ -497,7 +499,7 @@ export function MarketplacePage() {
           />
         ) : (
           <motion.div
-            style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}
+            style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}
             initial="hidden" animate="show"
             variants={{ show: { transition: { staggerChildren: 0.04 } } }}
           >
