@@ -1,36 +1,43 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Icons } from "../../icons";
 import type { Page } from "../../types";
 
 type CmdItem = { id: string; label: string; sub?: string; icon: React.JSX.Element; action: () => void; kbd?: string };
 
 export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) => void; onClose: () => void }) {
+  const { t } = useTranslation("common");
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
+  const pg = (key: string) => t(`cmdPalette.pages.${key}.label`);
+  const pgSub = (key: string) => t(`cmdPalette.pages.${key}.sub`);
+  const ac = (key: string) => t(`cmdPalette.actions.${key}.label`);
+  const acSub = (key: string) => t(`cmdPalette.actions.${key}.sub`);
+
   const pages: CmdItem[] = [
-    { id: "home",       label: "Home",       sub: "Overview & projects",   icon: Icons.home(),       action: () => onNavigate("home")       },
-    { id: "ai",         label: "AI",         sub: "Chat & agents",         icon: Icons.ai(),         action: () => onNavigate("ai")         },
-    { id: "dev",        label: "Dev",        sub: "Build, run & package",  icon: Icons.dev(),        action: () => onNavigate("dev")        },
-    { id: "design",     label: "Design",     sub: "Visual design studio",  icon: Icons.design(),     action: () => onNavigate("design")     },
-    { id: "automation", label: "Automation", sub: "Tasks & workflows",     icon: Icons.automation(), action: () => onNavigate("automation") },
-    { id: "agentos",     label: "AgentOS",     sub: "Self-evolving AI OS",     icon: Icons.agentos(),     action: () => onNavigate("agentos")     },
-    { id: "marketplace", label: "Marketplace", sub: "Browse agents & plugins", icon: Icons.marketplace(), action: () => onNavigate("marketplace") },
-    { id: "organizations", label: "Organizations", sub: "Create & switch orgs",  icon: Icons.organizations(), action: () => onNavigate("organizations") },
-    { id: "teams",          label: "Teams",         sub: "Members & invitations", icon: Icons.teams(),         action: () => onNavigate("teams")         },
-    { id: "billing",        label: "Billing",       sub: "Plan & usage",          icon: Icons.billing(),       action: () => onNavigate("billing")       },
-    { id: "social",      label: "Social",      sub: "Social media content",    icon: Icons.social(),      action: () => onNavigate("social")      },
-    { id: "settings",   label: "Settings",   sub: "App configuration",     icon: Icons.settings(),   action: () => onNavigate("settings")   },
+    { id: "home",       label: pg("home"),       sub: pgSub("home"),       icon: Icons.home(),       action: () => onNavigate("home")       },
+    { id: "ai",         label: pg("ai"),         sub: pgSub("ai"),         icon: Icons.ai(),         action: () => onNavigate("ai")         },
+    { id: "dev",        label: pg("dev"),        sub: pgSub("dev"),        icon: Icons.dev(),        action: () => onNavigate("dev")        },
+    { id: "design",     label: pg("design"),     sub: pgSub("design"),     icon: Icons.design(),     action: () => onNavigate("design")     },
+    { id: "automation", label: pg("automation"), sub: pgSub("automation"), icon: Icons.automation(), action: () => onNavigate("automation") },
+    { id: "agentos",     label: pg("agentos"),     sub: pgSub("agentos"),     icon: Icons.agentos(),     action: () => onNavigate("agentos")     },
+    { id: "marketplace", label: pg("marketplace"), sub: pgSub("marketplace"), icon: Icons.marketplace(), action: () => onNavigate("marketplace") },
+    { id: "organizations", label: pg("organizations"), sub: pgSub("organizations"), icon: Icons.organizations(), action: () => onNavigate("organizations") },
+    { id: "teams",          label: pg("teams"),          sub: pgSub("teams"),          icon: Icons.teams(),         action: () => onNavigate("teams")         },
+    { id: "billing",        label: pg("billing"),       sub: pgSub("billing"),          icon: Icons.billing(),       action: () => onNavigate("billing")       },
+    { id: "social",      label: pg("social"),      sub: pgSub("social"),    icon: Icons.social(),      action: () => onNavigate("social")      },
+    { id: "settings",   label: pg("settings"),   sub: pgSub("settings"),     icon: Icons.settings(),   action: () => onNavigate("settings")   },
   ];
 
   const actions: CmdItem[] = [
-    { id: "new-chat",    label: "New Chat",    sub: "Start a conversation", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="10" y1="10" x2="14" y2="10"/></svg>, action: () => { onNavigate("ai"); onClose(); }, kbd: "N" },
-    { id: "new-build",   label: "New Build",   sub: "Open code builder",    icon: Icons.dev(),    action: () => { onNavigate("dev"); onClose(); } },
-    { id: "new-agent",   label: "New Agent",   sub: "Create an AI agent",   icon: Icons.ai(),     action: () => { onNavigate("ai");  onClose(); } },
-    { id: "new-project", label: "New Project", sub: "Create a project",     icon: Icons.home(),   action: () => { onNavigate("home"); onClose(); } },
+    { id: "new-chat",    label: ac("newChat"),    sub: acSub("newChat"), icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="10" y1="10" x2="14" y2="10"/></svg>, action: () => { onNavigate("ai"); onClose(); }, kbd: "N" },
+    { id: "new-build",   label: ac("newBuild"),   sub: acSub("newBuild"),    icon: Icons.dev(),    action: () => { onNavigate("dev"); onClose(); } },
+    { id: "new-agent",   label: ac("newAgent"),   sub: acSub("newAgent"),   icon: Icons.ai(),     action: () => { onNavigate("ai");  onClose(); } },
+    { id: "new-project", label: ac("newProject"), sub: acSub("newProject"),     icon: Icons.home(),   action: () => { onNavigate("home"); onClose(); } },
   ];
 
   const allItems = [...actions, ...pages];
@@ -87,18 +94,18 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
         <div className="cmd-header">
           <span className="cmd-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
           <input ref={inputRef} className="cmd-input" value={q} onChange={e => { setQ(e.target.value); setActive(0); }}
-            onKeyDown={onKey} placeholder="Search pages, actions…" />
+            onKeyDown={onKey} placeholder={t("cmdPalette.searchPlaceholder")} />
           <span className="cmd-kbd">ESC</span>
         </div>
         <div className="cmd-list">
-          {filtered.length === 0 && <div style={{ padding: "24px", textAlign: "center", color: "var(--t5)", fontSize: 13 }}>No results for "{q}"</div>}
-          {renderGroup("Quick Actions", actionItems)}
-          {renderGroup("Navigate", pageItems)}
+          {filtered.length === 0 && <div style={{ padding: "24px", textAlign: "center", color: "var(--t5)", fontSize: 13 }}>{t("cmdPalette.noResults", { query: q })}</div>}
+          {renderGroup(t("cmdPalette.quickActions"), actionItems)}
+          {renderGroup(t("cmdPalette.navigateGroup"), pageItems)}
         </div>
         <div className="cmd-footer">
-          <span><span className="cmd-kbd">↑↓</span> navigate</span>
-          <span><span className="cmd-kbd">↵</span> open</span>
-          <span><span className="cmd-kbd">ESC</span> close</span>
+          <span><span className="cmd-kbd">↑↓</span> {t("cmdPalette.kbdNavigate")}</span>
+          <span><span className="cmd-kbd">↵</span> {t("cmdPalette.kbdOpen")}</span>
+          <span><span className="cmd-kbd">ESC</span> {t("cmdPalette.kbdClose")}</span>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
 import AxonLogo from "../../AxonLogo";
 import { parseJSON } from "../../utils/api";
@@ -94,21 +95,22 @@ function MicrosoftIcon() {
 }
 
 function OAuthRow({ onSelect }: { onSelect: (provider: "google" | "github" | "microsoft") => void }) {
+  const { t } = useTranslation("auth");
   return (
     <>
       <div style={S.oauthRow}>
         <button style={S.oauthBtn("#4285F4")} onClick={() => onSelect("google")} type="button">
-          <GoogleIcon /> Google
+          <GoogleIcon /> {t("oauth.google")}
         </button>
         <button style={S.oauthBtn("#24292e")} onClick={() => onSelect("github")} type="button">
-          <GitHubIcon /> GitHub
+          <GitHubIcon /> {t("oauth.github")}
         </button>
         <button style={S.oauthBtn("#2f2f2f")} onClick={() => onSelect("microsoft")} type="button">
-          <MicrosoftIcon /> Microsoft
+          <MicrosoftIcon /> {t("oauth.microsoft")}
         </button>
       </div>
       <div style={S.divider}>
-        <span style={S.divLine} /><span>or</span><span style={S.divLine} />
+        <span style={S.divLine} /><span>{t("oauth.or")}</span><span style={S.divLine} />
       </div>
     </>
   );
@@ -121,6 +123,7 @@ interface RegisterValues { name: string; email: string; password: string; confir
 interface ForgotValues { email: string }
 
 export function AuthPage() {
+  const { t } = useTranslation("auth");
   const { login, register } = useAuth();
   const [tab, setTab] = useState<Tab>("login");
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
@@ -134,8 +137,8 @@ export function AuthPage() {
   const loginForm = useForm<LoginValues>({
     initialValues: { email: "", password: "", remember: false },
     validators: {
-      email: all(required("Email is required"), emailValidator()),
-      password: required("Password is required"),
+      email: all(required(t("validation.emailRequired")), emailValidator()),
+      password: required(t("validation.passwordRequired")),
     },
     onValid: values => loginSubmit.run(() => login(values.email, values.password, values.remember)),
   });
@@ -145,10 +148,10 @@ export function AuthPage() {
   const registerForm = useForm<RegisterValues>({
     initialValues: { name: "", email: "", password: "", confirmPassword: "" },
     validators: {
-      name: required("Name is required"),
-      email: all(required("Email is required"), emailValidator()),
-      password: all(required("Password is required"), minLength(8), passwordStrength()),
-      confirmPassword: all(required("Please confirm your password"), matchesField("password", "Passwords do not match")),
+      name: required(t("validation.nameRequired")),
+      email: all(required(t("validation.emailRequired")), emailValidator()),
+      password: all(required(t("validation.passwordRequired")), minLength(8), passwordStrength()),
+      confirmPassword: all(required(t("validation.confirmRequired")), matchesField("password", t("validation.passwordsMismatch"))),
     },
     onValid: values => {
       registerSubmit.run(async () => {
@@ -163,7 +166,7 @@ export function AuthPage() {
   const forgotSubmit = useAsyncSubmit<{ message: string }>();
   const forgotForm = useForm<ForgotValues>({
     initialValues: { email: "" },
-    validators: { email: all(required("Email is required"), emailValidator()) },
+    validators: { email: all(required(t("validation.emailRequired")), emailValidator()) },
     onValid: values => forgotSubmit.run(async signal => {
       const res = await fetch(`${API}/api/auth/forgot-password`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -198,16 +201,16 @@ export function AuthPage() {
     <div style={S.wrap}>
       <div style={S.card}>
         <div style={S.logo}><AxonLogo size={56} /></div>
-        <h1 style={S.title}>AI Automation Studio</h1>
-        <p style={S.sub}>Powered by Axon AI Platform</p>
+        <h1 style={S.title}>{t("title")}</h1>
+        <p style={S.sub}>{t("subtitle")}</p>
 
         {tab !== "forgot" && (
           <div style={S.tabs} role="tablist">
             <button role="tab" aria-selected={tab === "login"} style={S.tab(tab === "login")} onClick={() => switchTab("login")}>
-              Sign In
+              {t("tabs.signIn")}
             </button>
             <button role="tab" aria-selected={tab === "register"} style={S.tab(tab === "register")} onClick={() => switchTab("register")}>
-              Create Account
+              {t("tabs.createAccount")}
             </button>
           </div>
         )}
@@ -218,16 +221,16 @@ export function AuthPage() {
             <OAuthRow onSelect={handleOAuth} />
             {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
             <form onSubmit={loginForm.handleSubmit} noValidate>
-              <EmailField {...loginForm.register("email")} label="Email" required autoFocus autoComplete="email" />
-              <PasswordField {...loginForm.register("password")} label="Password" required autoComplete="current-password" />
+              <EmailField {...loginForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
+              <PasswordField {...loginForm.register("password")} label={t("login.password")} required autoComplete="current-password" />
               <div style={S.row}>
-                <Checkbox {...loginForm.registerCheckbox("remember")} label="Remember me" />
+                <Checkbox {...loginForm.registerCheckbox("remember")} label={t("login.rememberMe")} />
                 <button type="button" style={S.link}
                   onClick={() => { forgotForm.setValue("email", loginForm.values.email); switchTab("forgot"); }}>
-                  Forgot password?
+                  {t("login.forgotPassword")}
                 </button>
               </div>
-              <SubmitButton loading={loginSubmit.isSubmitting} loadingText="Signing in…">Sign In</SubmitButton>
+              <SubmitButton loading={loginSubmit.isSubmitting} loadingText={t("login.submitting")}>{t("login.submit")}</SubmitButton>
             </form>
           </>
         )}
@@ -238,12 +241,12 @@ export function AuthPage() {
             <OAuthRow onSelect={handleOAuth} />
             {registerSubmit.error && <ErrorBanner message={registerSubmit.error} suggestedFix={registerSubmit.suggestedFix} onRetry={registerForm.isValid ? registerSubmit.retry : undefined} />}
             <form onSubmit={registerForm.handleSubmit} noValidate>
-              <TextField {...registerForm.register("name")} label="Name" required autoFocus autoComplete="name" />
-              <EmailField {...registerForm.register("email")} label="Email" required autoComplete="email" />
-              <PasswordField {...registerForm.register("password")} label="Password" required autoComplete="new-password"
-                hint={!registerForm.errors.password ? "Min 8 characters, at least one letter and one number" : undefined} />
-              <PasswordField {...registerForm.register("confirmPassword")} label="Confirm Password" required autoComplete="new-password" />
-              <SubmitButton loading={registerSubmit.isSubmitting} loadingText="Creating account…">Create Account</SubmitButton>
+              <TextField {...registerForm.register("name")} label={t("register.name")} required autoFocus autoComplete="name" />
+              <EmailField {...registerForm.register("email")} label={t("register.email")} required autoComplete="email" />
+              <PasswordField {...registerForm.register("password")} label={t("register.password")} required autoComplete="new-password"
+                hint={!registerForm.errors.password ? t("register.passwordHint") : undefined} />
+              <PasswordField {...registerForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
+              <SubmitButton loading={registerSubmit.isSubmitting} loadingText={t("register.submitting")}>{t("register.submit")}</SubmitButton>
             </form>
           </>
         )}
@@ -252,18 +255,17 @@ export function AuthPage() {
         {tab === "register" && registeredEmail && (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
-            <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>Check your inbox</p>
+            <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>{t("verify.checkInbox")}</p>
             <p style={{ color: "var(--t3)", fontSize: 13, marginBottom: 20 }}>
-              We sent a verification link to <strong style={{ color: "var(--t2)" }}>{registeredEmail}</strong>.
-              Click the link to activate your account.
+              {t("verify.sentTo", { email: registeredEmail })}
             </p>
             {resendSubmit.error && <ErrorBanner message={resendSubmit.error} suggestedFix={resendSubmit.suggestedFix} onRetry={resendSubmit.retry} />}
-            {resendSubmit.success && <SuccessBanner message="Verification email sent." />}
+            {resendSubmit.success && <SuccessBanner message={t("verify.emailSent")} />}
             <GoldButton disabled={resendSubmit.isSubmitting} onClick={() => switchTab("login")} style={{ width: "100%" }}>
-              Go to Sign In
+              {t("verify.goToSignIn")}
             </GoldButton>
             <button type="button" style={S.btnText} disabled={resendSubmit.isSubmitting} onClick={handleResend}>
-              {resendSubmit.isSubmitting ? "Sending…" : "Resend verification email"}
+              {resendSubmit.isSubmitting ? t("verify.sending") : t("verify.resend")}
             </button>
           </div>
         )}
@@ -272,14 +274,14 @@ export function AuthPage() {
         {tab === "forgot" && (
           <form onSubmit={forgotForm.handleSubmit} noValidate>
             <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
-              Enter your email and we'll send a password reset link.
+              {t("forgot.intro")}
             </p>
             {forgotSubmit.error && <ErrorBanner message={forgotSubmit.error} suggestedFix={forgotSubmit.suggestedFix} onRetry={forgotForm.isValid ? forgotSubmit.retry : undefined} />}
-            {forgotSubmit.success && <SuccessBanner message="If that email exists, a reset link is on its way." />}
-            <EmailField {...forgotForm.register("email")} label="Email" required autoFocus autoComplete="email" />
-            <SubmitButton loading={forgotSubmit.isSubmitting} loadingText="Sending…">Send Reset Link</SubmitButton>
+            {forgotSubmit.success && <SuccessBanner message={t("forgot.success")} />}
+            <EmailField {...forgotForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
+            <SubmitButton loading={forgotSubmit.isSubmitting} loadingText={t("forgot.submitting")}>{t("forgot.submit")}</SubmitButton>
             <button type="button" style={S.btnSecondary} onClick={() => switchTab("login")}>
-              Back to Sign In
+              {t("forgot.backToSignIn")}
             </button>
           </form>
         )}

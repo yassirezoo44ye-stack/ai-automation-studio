@@ -1,1 +1,67 @@
-{}
+{
+  "sidebar": {
+    "groups": { "workspace": "Workspace", "automation": "Automation", "platform": "Platform", "organization": "Organization" },
+    "nav": {
+      "home": "Home", "ai": "AI", "dev": "Dev", "design": "Design",
+      "automation": "Workflows", "agentos": "AgentOS", "marketplace": "Marketplace", "plugins": "Plugins", "sandbox": "Sandbox",
+      "aiRouting": "AI Routing", "observability": "Observability",
+      "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings"
+    },
+    "mainNav": "Main navigation",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "selectOrg": "Select organization",
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode",
+    "light": "Light",
+    "dark": "Dark",
+    "switchToArabic": "التبديل إلى العربية",
+    "switchToEnglish": "Switch to English",
+    "signOutTitle": "Sign out ({{email}})",
+    "signOut": "Sign Out"
+  },
+  "appLayout": {
+    "skipToContent": "Skip to main content",
+    "loadingWorkspace": "Loading workspace…",
+    "openNavMenu": "Open navigation menu"
+  },
+  "cmdPalette": {
+    "searchPlaceholder": "Search pages, actions…",
+    "noResults": "No results for \"{{query}}\"",
+    "quickActions": "Quick Actions",
+    "navigateGroup": "Navigate",
+    "kbdNavigate": "navigate",
+    "kbdOpen": "open",
+    "kbdClose": "close",
+    "pages": {
+      "home": { "label": "Home", "sub": "Overview & projects" },
+      "ai": { "label": "AI", "sub": "Chat & agents" },
+      "dev": { "label": "Dev", "sub": "Build, run & package" },
+      "design": { "label": "Design", "sub": "Visual design studio" },
+      "automation": { "label": "Automation", "sub": "Tasks & workflows" },
+      "agentos": { "label": "AgentOS", "sub": "Self-evolving AI OS" },
+      "marketplace": { "label": "Marketplace", "sub": "Browse agents & plugins" },
+      "organizations": { "label": "Organizations", "sub": "Create & switch orgs" },
+      "teams": { "label": "Teams", "sub": "Members & invitations" },
+      "billing": { "label": "Billing", "sub": "Plan & usage" },
+      "social": { "label": "Social", "sub": "Social media content" },
+      "settings": { "label": "Settings", "sub": "App configuration" }
+    },
+    "actions": {
+      "newChat": { "label": "New Chat", "sub": "Start a conversation" },
+      "newBuild": { "label": "New Build", "sub": "Open code builder" },
+      "newAgent": { "label": "New Agent", "sub": "Create an AI agent" },
+      "newProject": { "label": "New Project", "sub": "Create a project" }
+    }
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "save": "Save"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago"
+  }
+}

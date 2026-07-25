@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
 import { PageTransition } from "../../shared/ui/gold";
 import { ErrorBoundary } from "../../shared/ui/ErrorBoundary";
@@ -25,10 +26,10 @@ const SandboxPage       = lazy(() => import("../../features/sandbox").then(m => 
 const AIRoutingPage     = lazy(() => import("../../features/ai-routing").then(m => ({ default: m.AIRoutingPage })));
 const ObservabilityPage = lazy(() => import("../../features/observability").then(m => ({ default: m.ObservabilityPage })));
 
-const FALLBACK = <LoadingSpinner fullPage label="Loading workspace…" />;
-
 function WorkspaceContent() {
+  const { t } = useTranslation("common");
   const { page } = useAppContext();
+  const fallback = <LoadingSpinner fullPage label={t("appLayout.loadingWorkspace")} />;
   return (
     // Keyed by page: an error on one page must never leak into the next
     // page's fallback UI. Without a key, ErrorBoundary is the same instance
@@ -36,7 +37,7 @@ function WorkspaceContent() {
     // manual Retry button — so a crash on "ai" would keep showing "Error in
     // ai" chrome after navigating away to "home".
     <ErrorBoundary key={page} name={page}>
-      <Suspense fallback={FALLBACK}>
+      <Suspense fallback={fallback}>
         <PageTransition pageKey={page}>
         {page === "home"       && <HomePage />}
         {page === "ai"         && <AIWorkspace />}
@@ -61,6 +62,7 @@ function WorkspaceContent() {
 }
 
 export function AppLayout() {
+  const { t } = useTranslation("common");
   const { setPage, isPageTransitioning } = useAppContext();
   const [mobileOpen, setMobileOpen]   = useState(false);
   const [cmdOpen,    setCmdOpen]       = useState(false);
@@ -87,13 +89,13 @@ export function AppLayout() {
   return (
     <>
       {/* Skip-to-content for keyboard/screen-reader users */}
-      <a href="#main-content" className="skip-link">Skip to main content</a>
+      <a href="#main-content" className="skip-link">{t("appLayout.skipToContent")}</a>
 
       {/* Mobile hamburger */}
       <button
         className="mobile-menu-btn"
         onClick={() => setMobileOpen(v => !v)}
-        aria-label="Open navigation menu"
+        aria-label={t("appLayout.openNavMenu")}
         aria-expanded={mobileOpen}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

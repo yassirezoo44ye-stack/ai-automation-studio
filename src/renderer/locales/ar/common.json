@@ -1,1 +1,67 @@
-{}
+{
+  "sidebar": {
+    "groups": { "workspace": "مساحة العمل", "automation": "الأتمتة", "platform": "المنصة", "organization": "المؤسسة" },
+    "nav": {
+      "home": "الرئيسية", "ai": "الذكاء الاصطناعي", "dev": "التطوير", "design": "التصميم",
+      "automation": "سير العمل", "agentos": "نظام الوكلاء", "marketplace": "المتجر", "plugins": "الإضافات", "sandbox": "بيئة الاختبار",
+      "aiRouting": "توجيه الذكاء الاصطناعي", "observability": "المراقبة",
+      "organizations": "المؤسسات", "teams": "الفرق", "billing": "الفوترة", "social": "التواصل الاجتماعي", "settings": "الإعدادات"
+    },
+    "mainNav": "التنقل الرئيسي",
+    "collapse": "طي الشريط الجانبي",
+    "expand": "توسيع الشريط الجانبي",
+    "selectOrg": "اختر المؤسسة",
+    "switchToDark": "التبديل إلى الوضع الداكن",
+    "switchToLight": "التبديل إلى الوضع الفاتح",
+    "light": "فاتح",
+    "dark": "داكن",
+    "switchToArabic": "التبديل إلى العربية",
+    "switchToEnglish": "Switch to English",
+    "signOutTitle": "تسجيل الخروج ({{email}})",
+    "signOut": "تسجيل الخروج"
+  },
+  "appLayout": {
+    "skipToContent": "تخطي إلى المحتوى الرئيسي",
+    "loadingWorkspace": "جارٍ تحميل مساحة العمل…",
+    "openNavMenu": "فتح قائمة التنقل"
+  },
+  "cmdPalette": {
+    "searchPlaceholder": "ابحث عن صفحات أو إجراءات…",
+    "noResults": "لا توجد نتائج لـ \"{{query}}\"",
+    "quickActions": "إجراءات سريعة",
+    "navigateGroup": "التنقل",
+    "kbdNavigate": "تنقل",
+    "kbdOpen": "فتح",
+    "kbdClose": "إغلاق",
+    "pages": {
+      "home": { "label": "الرئيسية", "sub": "نظرة عامة والمشاريع" },
+      "ai": { "label": "الذكاء الاصطناعي", "sub": "المحادثات والوكلاء" },
+      "dev": { "label": "التطوير", "sub": "البناء والتشغيل والتحزيم" },
+      "design": { "label": "التصميم", "sub": "استوديو التصميم المرئي" },
+      "automation": { "label": "الأتمتة", "sub": "المهام وسير العمل" },
+      "agentos": { "label": "نظام الوكلاء", "sub": "نظام تشغيل ذكاء اصطناعي ذاتي التطور" },
+      "marketplace": { "label": "المتجر", "sub": "تصفح الوكلاء والإضافات" },
+      "organizations": { "label": "المؤسسات", "sub": "إنشاء المؤسسات والتبديل بينها" },
+      "teams": { "label": "الفرق", "sub": "الأعضاء والدعوات" },
+      "billing": { "label": "الفوترة", "sub": "الخطة والاستخدام" },
+      "social": { "label": "التواصل الاجتماعي", "sub": "محتوى وسائل التواصل الاجتماعي" },
+      "settings": { "label": "الإعدادات", "sub": "إعدادات التطبيق" }
+    },
+    "actions": {
+      "newChat": { "label": "محادثة جديدة", "sub": "بدء محادثة" },
+      "newBuild": { "label": "بناء جديد", "sub": "فتح أداة بناء الكود" },
+      "newAgent": { "label": "وكيل جديد", "sub": "إنشاء وكيل ذكاء اصطناعي" },
+      "newProject": { "label": "مشروع جديد", "sub": "إنشاء مشروع" }
+    }
+  },
+  "actions": {
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "save": "حفظ"
+  },
+  "time": {
+    "justNow": "الآن",
+    "minutesAgo": "منذ {{count}} د",
+    "hoursAgo": "منذ {{count}} س"
+  }
+}

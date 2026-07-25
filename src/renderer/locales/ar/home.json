@@ -1,0 +1,85 @@
+{
+  "header": {
+    "title": "الرئيسية",
+    "tabOverview": "نظرة عامة",
+    "tabProjects": "المشاريع",
+    "newProject": "مشروع جديد"
+  },
+  "greeting": {
+    "morning": "صباح الخير",
+    "afternoon": "نهارك سعيد",
+    "evening": "مساء الخير"
+  },
+  "welcome": {
+    "platformLabel": "منصة AXON",
+    "withData": "لديك {{conversations}} محادثة و{{projects}} مشروع. واصل البناء.",
+    "noData": "استوديو الأتمتة الذكي بالذكاء الاصطناعي جاهز.",
+    "backendOnline": "الخادم متصل",
+    "backendOffline": "الخادم غير متصل",
+    "checking": "جارٍ التحقق…"
+  },
+  "quickActions": {
+    "label": "إجراءات سريعة",
+    "newChat": { "label": "محادثة جديدة", "sub": "ابدأ محادثة مع الذكاء الاصطناعي" },
+    "buildApp": { "label": "بناء تطبيق", "sub": "أنشئ الكود بالذكاء الاصطناعي" },
+    "newAgent": { "label": "وكيل جديد", "sub": "أنشئ وكيل ذكاء اصطناعي" },
+    "newProject": { "label": "مشروع جديد", "sub": "نظّم عملك" }
+  },
+  "overview": {
+    "label": "نظرة عامة",
+    "kpiConversations": "المحادثات",
+    "kpiMessages": "الرسائل",
+    "kpiBuilds": "عمليات البناء",
+    "kpiProjects": "المشاريع",
+    "kpiSuccessRate": "نسبة النجاح",
+    "notAvailable": "غير متاح",
+    "statsError": "تعذر تحميل الإحصائيات."
+  },
+  "chart": {
+    "title": "النشاط — آخر 14 يومًا",
+    "messages": "الرسائل",
+    "builds": "عمليات البناء",
+    "error": "تعذر تحميل مخطط النشاط."
+  },
+  "activity": {
+    "title": "النشاط الأخير",
+    "empty": "لا يوجد نشاط بعد — ابدأ محادثة أو أنشئ مشروعًا.",
+    "chat": "محادثة",
+    "message": "رسالة",
+    "build": "بناء",
+    "project": "مشروع",
+    "conversation": "محادثة"
+  },
+  "recentProjects": {
+    "title": "المشاريع الأخيرة",
+    "viewAll": "عرض الكل ←"
+  },
+  "toolbar": {
+    "searchPlaceholder": "ابحث في المشاريع…",
+    "sortLatest": "الأحدث",
+    "sortAZ": "أ ← ي",
+    "gridView": "شبكة",
+    "listView": "قائمة"
+  },
+  "newProjectForm": {
+    "title": "مشروع جديد",
+    "namePlaceholder": "اسم المشروع *",
+    "nameHint": "يجب أن يتكون اسم المشروع من حرفين على الأقل.",
+    "descPlaceholder": "الوصف (اختياري)",
+    "creating": "جارٍ الإنشاء…",
+    "create": "إنشاء المشروع"
+  },
+  "projects": {
+    "loadError": "تعذر تحميل المشاريع.",
+    "emptyTitle": "لا توجد مشاريع بعد",
+    "emptyDesc": "أنشئ مشروعك الأول للبدء.",
+    "delete": "حذف",
+    "deleteConfirm": "حذف \"{{name}}\"؟ لا يمكن التراجع عن هذا الإجراء."
+  },
+  "toast": {
+    "created": "تم إنشاء المشروع",
+    "createFailed": "فشل الإنشاء",
+    "deleted": "تم حذف \"{{name}}\"",
+    "deleteFailed": "فشل حذف المشروع"
+  }
+}

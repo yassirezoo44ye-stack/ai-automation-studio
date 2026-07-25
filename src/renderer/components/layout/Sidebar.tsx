@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOrg } from "../../contexts/OrgContext";
@@ -7,31 +8,31 @@ import { Icons } from "../../icons";
 import { NotificationBell } from "../../shared/ui/notifications";
 import type { Page } from "../../types";
 
-type NavItem = { id: Page; label: string; icon: keyof typeof Icons };
-const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
-  { label: "Workspace", items: [
-    { id: "home",   label: "Home",   icon: "home"   },
-    { id: "ai",     label: "AI",     icon: "ai"     },
-    { id: "dev",    label: "Dev",    icon: "dev"    },
-    { id: "design", label: "Design", icon: "design" },
+type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
+const NAV_GROUPS: { groupKey: string; items: NavItem[] }[] = [
+  { groupKey: "workspace", items: [
+    { id: "home",   navKey: "home",   icon: "home"   },
+    { id: "ai",     navKey: "ai",     icon: "ai"     },
+    { id: "dev",    navKey: "dev",    icon: "dev"    },
+    { id: "design", navKey: "design", icon: "design" },
   ]},
-  { label: "Automation", items: [
-    { id: "automation",  label: "Workflows",   icon: "automation"  },
-    { id: "agentos",     label: "AgentOS",     icon: "agentos"     },
-    { id: "marketplace", label: "Marketplace", icon: "marketplace" },
-    { id: "plugins",     label: "Plugins",     icon: "plugins"     },
-    { id: "sandbox",     label: "Sandbox",     icon: "sandbox"     },
+  { groupKey: "automation", items: [
+    { id: "automation",  navKey: "automation",  icon: "automation"  },
+    { id: "agentos",     navKey: "agentos",     icon: "agentos"     },
+    { id: "marketplace", navKey: "marketplace", icon: "marketplace" },
+    { id: "plugins",     navKey: "plugins",     icon: "plugins"     },
+    { id: "sandbox",     navKey: "sandbox",     icon: "sandbox"     },
   ]},
-  { label: "Platform", items: [
-    { id: "ai-routing",    label: "AI Routing",    icon: "ai-routing"    },
-    { id: "observability", label: "Observability", icon: "observability" },
+  { groupKey: "platform", items: [
+    { id: "ai-routing",    navKey: "aiRouting",    icon: "ai-routing"    },
+    { id: "observability", navKey: "observability", icon: "observability" },
   ]},
-  { label: "Organization", items: [
-    { id: "organizations", label: "Organizations", icon: "organizations" },
-    { id: "teams",         label: "Teams",         icon: "teams"         },
-    { id: "billing",       label: "Billing",       icon: "billing"       },
-    { id: "social",        label: "Social",        icon: "social"        },
-    { id: "settings",      label: "Settings",      icon: "settings"      },
+  { groupKey: "organization", items: [
+    { id: "organizations", navKey: "organizations", icon: "organizations" },
+    { id: "teams",         navKey: "teams",         icon: "teams"         },
+    { id: "billing",       navKey: "billing",       icon: "billing"       },
+    { id: "social",        navKey: "social",        icon: "social"        },
+    { id: "settings",      navKey: "settings",      icon: "settings"      },
   ]},
 ];
 
@@ -67,6 +68,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
+  const { t } = useTranslation("common");
   const { page, setPage, sidebarCollapsed, setSidebarCollapsed, theme, toggleTheme } = useAppContext();
   const { user, logout } = useAuth();
   const { orgs, currentOrgId, setCurrentOrgId } = useOrg();
@@ -85,13 +87,13 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       <aside
         className={`sidebar ${sidebarCollapsed ? "sidebar--collapsed" : ""} ${mobileOpen ? "sidebar--open" : ""}`}
         role="navigation"
-        aria-label="Main navigation"
+        aria-label={t("sidebar.mainNav")}
       >
         <button
           className="sidebar__toggle"
           onClick={() => setSidebarCollapsed(v => !v)}
-          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={sidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+          title={sidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             {sidebarCollapsed ? <polyline points="9 18 15 12 9 6" /> : <polyline points="15 18 9 12 15 6" />}
@@ -103,8 +105,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             <select
               value={currentOrgId ?? ""}
               onChange={e => setCurrentOrgId(e.target.value || null)}
-              aria-label="Current organization"
-              title={orgs.find(o => o.id === currentOrgId)?.name ?? "Select organization"}
+              aria-label={t("sidebar.selectOrg")}
+              title={orgs.find(o => o.id === currentOrgId)?.name ?? t("sidebar.selectOrg")}
               style={{
                 width: "100%", fontSize: sidebarCollapsed ? 0 : 12,
                 background: "var(--bg-input)", color: "var(--t2)",
@@ -120,25 +122,26 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
         <nav className="sidebar__nav">
           {NAV_GROUPS.map(group => (
-            <div key={group.label} className="sidebar__group">
-              {!sidebarCollapsed && <div className="sidebar__group-label">{group.label}</div>}
+            <div key={group.groupKey} className="sidebar__group">
+              {!sidebarCollapsed && <div className="sidebar__group-label">{t(`sidebar.groups.${group.groupKey}`)}</div>}
               {group.items.map(item => {
                 const Icon = Icons[item.icon];
                 const active = page === item.id;
+                const label = t(`sidebar.nav.${item.navKey}`);
                 return (
                   <button
                     key={item.id}
                     className={`sidebar__item ${active ? "sidebar__item--active" : ""}`}
                     onClick={() => handleNav(item.id)}
                     aria-current={active ? "page" : undefined}
-                    title={item.label}
+                    title={label}
                   >
                     {active && (
                       <motion.span layoutId="sidebar-active-pill" className="sidebar__pill"
                                    transition={{ type: "spring", stiffness: 420, damping: 32 }} />
                     )}
                     <span className="sidebar__icon" aria-hidden="true"><Icon /></span>
-                    {!sidebarCollapsed && <span className="sidebar__label">{item.label}</span>}
+                    {!sidebarCollapsed && <span className="sidebar__label">{label}</span>}
                   </button>
                 );
               })}
@@ -151,8 +154,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           <button
             className="sidebar__item"
             onClick={toggleTheme}
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? t("sidebar.switchToLight") : t("sidebar.switchToDark")}
+            aria-label={theme === "dark" ? t("sidebar.switchToLight") : t("sidebar.switchToDark")}
           >
             {/* toggleTheme() only ever swaps between dark/light — a user in
                 high-contrast mode lands on dark, matching this icon/label. */}
@@ -160,15 +163,15 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               {theme === "dark" ? <SunIcon /> : <MoonIcon />}
             </span>
             {!sidebarCollapsed && (
-              <span className="sidebar__label">{theme === "dark" ? "Light" : "Dark"}</span>
+              <span className="sidebar__label">{theme === "dark" ? t("sidebar.light") : t("sidebar.dark")}</span>
             )}
           </button>
 
           <button
             className="sidebar__item"
             onClick={toggleLang}
-            title={lang === "en" ? "التبديل إلى العربية" : "Switch to English"}
-            aria-label={lang === "en" ? "التبديل إلى العربية" : "Switch to English"}
+            title={lang === "en" ? t("sidebar.switchToArabic") : t("sidebar.switchToEnglish")}
+            aria-label={lang === "en" ? t("sidebar.switchToArabic") : t("sidebar.switchToEnglish")}
           >
             <span className="sidebar__icon" aria-hidden="true"><GlobeIcon /></span>
             {!sidebarCollapsed && (
@@ -180,8 +183,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             <button
               className="sidebar__item"
               onClick={() => void logout()}
-              title={`Sign out (${user.email})`}
-              aria-label="Sign out"
+              title={t("sidebar.signOutTitle", { email: user.email })}
+              aria-label={t("sidebar.signOut")}
             >
               <span className="sidebar__icon" aria-hidden="true">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -190,7 +193,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               </span>
               {!sidebarCollapsed && (
                 <span className="sidebar__label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  Sign Out
+                  {t("sidebar.signOut")}
                 </span>
               )}
             </button>

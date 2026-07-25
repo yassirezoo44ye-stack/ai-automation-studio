@@ -1,0 +1,85 @@
+{
+  "header": {
+    "title": "Home",
+    "tabOverview": "Overview",
+    "tabProjects": "Projects",
+    "newProject": "New Project"
+  },
+  "greeting": {
+    "morning": "Good morning",
+    "afternoon": "Good afternoon",
+    "evening": "Good evening"
+  },
+  "welcome": {
+    "platformLabel": "AXON PLATFORM",
+    "withData": "You have {{conversations}} conversations and {{projects}} projects. Keep building.",
+    "noData": "Your AI-powered automation studio is ready.",
+    "backendOnline": "Backend online",
+    "backendOffline": "Backend offline",
+    "checking": "Checking…"
+  },
+  "quickActions": {
+    "label": "Quick Actions",
+    "newChat": { "label": "New Chat", "sub": "Start an AI conversation" },
+    "buildApp": { "label": "Build App", "sub": "Generate code with AI" },
+    "newAgent": { "label": "New Agent", "sub": "Create an AI agent" },
+    "newProject": { "label": "New Project", "sub": "Organize your work" }
+  },
+  "overview": {
+    "label": "Overview",
+    "kpiConversations": "Conversations",
+    "kpiMessages": "Messages",
+    "kpiBuilds": "Builds",
+    "kpiProjects": "Projects",
+    "kpiSuccessRate": "Success Rate",
+    "notAvailable": "N/A",
+    "statsError": "Could not load stats."
+  },
+  "chart": {
+    "title": "Activity — last 14 days",
+    "messages": "Messages",
+    "builds": "Builds",
+    "error": "Could not load activity chart."
+  },
+  "activity": {
+    "title": "Recent Activity",
+    "empty": "No activity yet — start a chat or build a project.",
+    "chat": "Chat",
+    "message": "Message",
+    "build": "Build",
+    "project": "Project",
+    "conversation": "Conversation"
+  },
+  "recentProjects": {
+    "title": "Recent Projects",
+    "viewAll": "View all →"
+  },
+  "toolbar": {
+    "searchPlaceholder": "Search projects…",
+    "sortLatest": "Latest",
+    "sortAZ": "A → Z",
+    "gridView": "Grid",
+    "listView": "List"
+  },
+  "newProjectForm": {
+    "title": "New Project",
+    "namePlaceholder": "Project name *",
+    "nameHint": "Project name must be at least 2 characters.",
+    "descPlaceholder": "Description (optional)",
+    "creating": "Creating…",
+    "create": "Create Project"
+  },
+  "projects": {
+    "loadError": "Could not load projects.",
+    "emptyTitle": "No projects yet",
+    "emptyDesc": "Create your first project to get started.",
+    "delete": "Delete",
+    "deleteConfirm": "Delete \"{{name}}\"? This cannot be undone."
+  },
+  "toast": {
+    "created": "Project created",
+    "createFailed": "Failed to create",
+    "deleted": "Deleted \"{{name}}\"",
+    "deleteFailed": "Failed to delete project"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "title": "الإعدادات",
+  "saved": "تم الحفظ",
+  "nav": {
+    "label": "الإعدادات",
+    "system": "النظام",
+    "ai": "الذكاء الاصطناعي والنماذج",
+    "appearance": "المظهر",
+    "about": "حول"
+  },
+  "system": {
+    "backend": "الخادم",
+    "backendOnline": "الخادم متصل",
+    "backendOffline": "الخادم غير متصل — شغّل",
+    "status": "الحالة",
+    "database": "قاعدة البيانات",
+    "postgresql": "PostgreSQL",
+    "runtimes": "بيئات التشغيل",
+    "usage": "الاستخدام",
+    "projects": "المشاريع",
+    "conversations": "المحادثات",
+    "messages": "الرسائل",
+    "agentRuns": "تشغيلات الوكلاء",
+    "successRate": "نسبة النجاح",
+    "shortcuts": "اختصارات لوحة المفاتيح",
+    "sectionGlobal": "عام",
+    "sectionChat": "المحادثة",
+    "sectionDesignStudio": "استوديو التصميم",
+    "kbd": {
+      "openPalette": "فتح لوحة الأوامر",
+      "closeModals": "إغلاق النوافذ / اللوحة",
+      "navigatePalette": "التنقل في لوحة الأوامر",
+      "sendMessage": "إرسال رسالة",
+      "newLine": "سطر جديد في الرسالة",
+      "undo": "تراجع",
+      "redo": "إعادة",
+      "saveCanvas": "حفظ اللوحة",
+      "deleteSelected": "حذف العناصر المحددة",
+      "copySelected": "نسخ المحدد",
+      "paste": "لصق",
+      "selectAll": "تحديد الكل",
+      "zoom": "تكبير / تصغير",
+      "resetZoom": "إعادة ضبط التكبير",
+      "deselect": "إلغاء التحديد / إلغاء الأداة",
+      "rectangleTool": "أداة المستطيل",
+      "circleTool": "أداة الدائرة",
+      "textTool": "أداة النص"
+    }
+  },
+  "ai": {
+    "anthropicApi": "واجهة Anthropic API",
+    "apiKeyHint": "اضبط {{key}} في ملف {{envFile}} وأعد تشغيل الخادم. المفاتيح لا تُخزَّن أبدًا في المتصفح.",
+    "manageBilling": "إدارة الفوترة عبر console.anthropic.com",
+    "defaultModels": "النماذج الافتراضية",
+    "chatModel": "نموذج المحادثة",
+    "chatModelHint": "يُستخدم في محادثة مساحة عمل الذكاء الاصطناعي.",
+    "buildModel": "نموذج البناء",
+    "buildModelHint": "يُستخدم في أداة بناء الكود بمساحة عمل التطوير."
+  },
+  "appearance": {
+    "theme": "المظهر",
+    "themeDark": "داكن",
+    "themeLight": "فاتح",
+    "themeHighContrast": "تباين عالٍ",
+    "sidebarDefault": "الوضع الافتراضي للشريط الجانبي",
+    "sidebarExpanded": "موسّع",
+    "sidebarCollapsed": "مطوي",
+    "language": "اللغة"
+  },
+  "about": {
+    "tagline": "استوديو الأتمتة الذكي · الإصدار 3.0.0",
+    "poweredBy": "مدعوم بواسطة Claude",
+    "stack": "المكونات التقنية",
+    "frontend": "الواجهة الأمامية",
+    "backend": "الخادم",
+    "database": "قاعدة البيانات",
+    "ai": "الذكاء الاصطناعي",
+    "runtime": "بيئة التشغيل",
+    "license": "الترخيص",
+    "copyright": "© {{year}} Axon AI. جميع الحقوق محفوظة."
+  }
+}

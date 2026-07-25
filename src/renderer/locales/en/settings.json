@@ -1,0 +1,82 @@
+{
+  "title": "Settings",
+  "saved": "Saved",
+  "nav": {
+    "label": "Settings",
+    "system": "System",
+    "ai": "AI & Models",
+    "appearance": "Appearance",
+    "about": "About"
+  },
+  "system": {
+    "backend": "Backend",
+    "backendOnline": "Backend online",
+    "backendOffline": "Backend offline — run",
+    "status": "Status",
+    "database": "Database",
+    "postgresql": "PostgreSQL",
+    "runtimes": "Runtimes",
+    "usage": "Usage",
+    "projects": "Projects",
+    "conversations": "Conversations",
+    "messages": "Messages",
+    "agentRuns": "Agent Runs",
+    "successRate": "Success Rate",
+    "shortcuts": "Keyboard Shortcuts",
+    "sectionGlobal": "Global",
+    "sectionChat": "Chat",
+    "sectionDesignStudio": "Design Studio",
+    "kbd": {
+      "openPalette": "Open command palette",
+      "closeModals": "Close modals / palette",
+      "navigatePalette": "Navigate command palette",
+      "sendMessage": "Send message",
+      "newLine": "New line in message",
+      "undo": "Undo",
+      "redo": "Redo",
+      "saveCanvas": "Save canvas",
+      "deleteSelected": "Delete selected objects",
+      "copySelected": "Copy selected",
+      "paste": "Paste",
+      "selectAll": "Select all",
+      "zoom": "Zoom in / out",
+      "resetZoom": "Reset zoom",
+      "deselect": "Deselect / cancel tool",
+      "rectangleTool": "Rectangle tool",
+      "circleTool": "Circle tool",
+      "textTool": "Text tool"
+    }
+  },
+  "ai": {
+    "anthropicApi": "Anthropic API",
+    "apiKeyHint": "Set {{key}} in your {{envFile}} file and restart the backend. Keys are never stored in the browser.",
+    "manageBilling": "Manage billing at console.anthropic.com",
+    "defaultModels": "Default Models",
+    "chatModel": "Chat Model",
+    "chatModelHint": "Used in the AI Workspace chat.",
+    "buildModel": "Build Model",
+    "buildModelHint": "Used in the Dev Workspace code builder."
+  },
+  "appearance": {
+    "theme": "Theme",
+    "themeDark": "Dark",
+    "themeLight": "Light",
+    "themeHighContrast": "High Contrast",
+    "sidebarDefault": "Sidebar default",
+    "sidebarExpanded": "Expanded",
+    "sidebarCollapsed": "Collapsed",
+    "language": "Language"
+  },
+  "about": {
+    "tagline": "AI Automation Studio · v3.0.0",
+    "poweredBy": "Powered by Claude",
+    "stack": "Stack",
+    "frontend": "Frontend",
+    "backend": "Backend",
+    "database": "Database",
+    "ai": "AI",
+    "runtime": "Runtime",
+    "license": "License",
+    "copyright": "© {{year}} Axon AI. All rights reserved."
+  }
+}
