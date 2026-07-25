@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import "./i18n";
 
 const REFRESH_KEY = "axon_refresh_token";
 const SUB_KEY = "sub_token";
