@@ -811,7 +811,9 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--r-md);
   background: transparent;
   border: none;
-  color: var(--t4);
+  /* --t3, not --t4 — --t4 falls below WCAG AA (4.5:1) for the inactive
+     nav-item label text against the sidebar's opaque background. */
+  color: var(--t3);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -1221,7 +1223,9 @@ kbd {
 .sidebar__group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .sidebar__group-label {
   font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--t5); padding: 6px 14px 4px;
+  /* --t3, not --t4/--t5 — those fall below WCAG AA (4.5:1) against the
+     sidebar's opaque background; --t3 clears it in every theme. */
+  color: var(--t3); padding: 6px 14px 4px;
 }
 .sidebar__item { position: relative; min-height: 38px; }
 .sidebar__item > * { position: relative; z-index: 1; }
