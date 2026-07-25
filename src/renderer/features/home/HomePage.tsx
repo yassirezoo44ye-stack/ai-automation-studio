@@ -110,9 +110,11 @@ export function HomePage() {
   ];
 
   const actionMeta: Record<string, { label: string; color: string }> = {
-    agent_run:       { label: "Chat",    color: C.blue },
-    build:           { label: "Build",   color: C.green },
-    project_created: { label: "Project", color: C.amber },
+    agent_run:            { label: "Chat",         color: C.blue },
+    message_sent:         { label: "Message",      color: C.sky },
+    build:                { label: "Build",        color: C.green },
+    project_created:      { label: "Project",      color: C.amber },
+    conversation_created: { label: "Conversation", color: C.sky },
   };
 
   const hour = new Date().getHours();

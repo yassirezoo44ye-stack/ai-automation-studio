@@ -1,3 +1,4 @@
+import json
 import uuid
 from typing import Optional
 
@@ -27,6 +28,10 @@ async def create_project(project: ProjectCreate, request: Request):
         pid = await conn.fetchval(
             "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) RETURNING id",
             uid, project.name, project.description,
+        )
+        await conn.execute(
+            "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'project_created',$2)",
+            uid, json.dumps({"project_id": str(pid), "name": project.name}),
         )
     return {"id": str(pid), "message": "Project created"}
 

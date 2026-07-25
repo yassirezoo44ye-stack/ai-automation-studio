@@ -70,6 +70,15 @@ async def run_stream(req: RunRequest, request: Request):
             conv_id, req.prompt,
         )
         await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
+        # Logged here (message saved) rather than only on AI success below —
+        # otherwise a failed/errored AI call (e.g. a bad provider key) leaves
+        # a real, user-visible message in the `messages` table (and thus in
+        # the /api/stats/timeseries chart) with no corresponding entry in
+        # Recent Activity, which reads only from usage_logs.
+        await conn.execute(
+            "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'message_sent',$2)",
+            uid, json.dumps({"conversation_id": str(conv_id), "prompt_preview": req.prompt[:80]}),
+        )
 
     history.append({"role": "user", "content": req.prompt})
 
@@ -179,6 +188,10 @@ async def create_conversation(body: ConversationCreate, request: Request):
         cid = await conn.fetchval(
             "INSERT INTO conversations (project_id, title) VALUES ($1,$2) RETURNING id",
             pid, body.title,
+        )
+        await conn.execute(
+            "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'conversation_created',$2)",
+            uid, json.dumps({"conversation_id": str(cid), "title": body.title}),
         )
     return {"id": str(cid), "title": body.title}
 
