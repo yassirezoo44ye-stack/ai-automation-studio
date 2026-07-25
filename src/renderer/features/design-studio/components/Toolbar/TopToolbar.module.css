@@ -5,7 +5,7 @@
   padding:         0 12px;
   height:          48px;
   background:      var(--surface-1);
-  border-bottom:   1px solid var(--border);
+  box-shadow:      var(--shadow-xs);
   flex-shrink:     0;
   gap:             12px;
 }

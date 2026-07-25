@@ -5,7 +5,7 @@
   gap:            2px;
   padding:        8px 4px;
   background:     var(--surface-1);
-  border-right:   1px solid var(--border);
+  box-shadow:     var(--shadow-xs);
   width:          48px;
   flex-shrink:    0;
   overflow-y:     auto;
@@ -32,8 +32,9 @@
 }
 
 .toolBtn.active {
-  background: var(--accent);
-  color:      #fff;
+  background:    var(--accent);
+  color:         #fff;
+  border-radius: var(--radius-md);
 }
 
 .icon {
