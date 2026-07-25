@@ -34,6 +34,22 @@
       root.setAttribute("data-theme", t);
       root.style.background = BG[t];
     })();
+    // Sets lang/dir synchronously, before first paint — mirrors
+    // LangContext.tsx's getStoredLang()/applyLang() exactly (same
+    // localStorage key, same browser-language fallback) so an Arabic
+    // reload never flashes an LTR layout before flipping to RTL.
+    (function () {
+      var l;
+      try {
+        l = localStorage.getItem("axon-lang");
+        if (l !== "en" && l !== "ar") {
+          l = (navigator.language || "").toLowerCase().indexOf("ar") === 0 ? "ar" : "en";
+        }
+      } catch (e) { l = "en"; }
+      var root = document.documentElement;
+      root.setAttribute("lang", l);
+      root.setAttribute("dir", l === "ar" ? "rtl" : "ltr");
+    })();
   </script>
 </head>
 <body>

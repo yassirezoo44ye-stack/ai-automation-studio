@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { apiFetch, parseJSON, API } from "../../utils/api";
 import { useAppContext } from "../../contexts/app";
+import { useLangContext } from "../../contexts/lang";
 import { S } from "../../styles/theme";
 import { GlassCard } from "../../shared/ui/gold";
 import AxonLogo from "../../AxonLogo";
@@ -61,6 +62,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function SettingsPage() {
   const { theme, setTheme, setSidebarCollapsed } = useAppContext();
+  const { lang, setLang } = useLangContext();
   const [tab, setTab]         = useState<SettingsTab>("system");
   const [health, setHealth]   = useState<Record<string, string> | null>(null);
   const [stats, setStats]     = useState<Record<string, number> | null>(null);
@@ -98,6 +100,11 @@ export function SettingsPage() {
     { id: "dark"          as const, label: "Dark",          bg: "#15121F" },
     { id: "light"         as const, label: "Light",         bg: "#F5F4FA" },
     { id: "high-contrast" as const, label: "High Contrast", bg: "#000000", swatchBorder: "#FFFF00" },
+  ];
+
+  const LANG_OPTIONS = [
+    { id: "en" as const, label: "English" },
+    { id: "ar" as const, label: "العربية" },
   ];
 
   return (
@@ -316,6 +323,29 @@ export function SettingsPage() {
                         <option value="collapsed">Collapsed</option>
                       </select>
                     </div>
+                  </div>
+                </GlassCard>
+              </div>
+
+              <div>
+                <div className="section-label" style={{ marginBottom: 12 }}>Language</div>
+                <GlassCard lift={false}>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {LANG_OPTIONS.map(l => (
+                      <button
+                        key={l.id}
+                        onClick={() => setLang(l.id)}
+                        aria-pressed={lang === l.id}
+                        style={{
+                          flex: 1, border: `2px solid ${lang === l.id ? "var(--accent)" : "var(--b1)"}`,
+                          borderRadius: 12, padding: 12, cursor: "pointer",
+                          textAlign: "center" as const, background: "transparent",
+                          fontSize: 13, fontWeight: 500, color: lang === l.id ? "var(--accent)" : "var(--t3)",
+                        }}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
                   </div>
                 </GlassCard>
               </div>

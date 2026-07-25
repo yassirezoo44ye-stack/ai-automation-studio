@@ -1,6 +1,7 @@
 import { useAppContext } from "../../contexts/app";
 import { useAuth } from "../../contexts/AuthContext";
 import { useOrg } from "../../contexts/OrgContext";
+import { useLangContext } from "../../contexts/lang";
 import { motion } from "framer-motion";
 import { Icons } from "../../icons";
 import { NotificationBell } from "../../shared/ui/notifications";
@@ -50,6 +51,16 @@ function MoonIcon() {
   );
 }
 
+function GlobeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="2" y1="12" x2="22" y2="12"/>
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+    </svg>
+  );
+}
+
 interface SidebarProps {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -59,6 +70,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const { page, setPage, sidebarCollapsed, setSidebarCollapsed, theme, toggleTheme } = useAppContext();
   const { user, logout } = useAuth();
   const { orgs, currentOrgId, setCurrentOrgId } = useOrg();
+  const { lang, toggleLang } = useLangContext();
 
   const handleNav = (id: Page) => {
     setPage(id);
@@ -147,6 +159,18 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             </span>
             {!sidebarCollapsed && (
               <span className="sidebar__label">{theme === "dark" ? "Light" : "Dark"}</span>
+            )}
+          </button>
+
+          <button
+            className="sidebar__item"
+            onClick={toggleLang}
+            title={lang === "en" ? "التبديل إلى العربية" : "Switch to English"}
+            aria-label={lang === "en" ? "التبديل إلى العربية" : "Switch to English"}
+          >
+            <span className="sidebar__icon" aria-hidden="true"><GlobeIcon /></span>
+            {!sidebarCollapsed && (
+              <span className="sidebar__label">{lang === "en" ? "العربية" : "English"}</span>
             )}
           </button>
 

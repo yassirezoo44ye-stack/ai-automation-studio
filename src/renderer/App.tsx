@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OrgProvider }   from "./contexts/OrgContext";
 import { AppProvider }   from "./contexts/AppContext";
+import { LangProvider }  from "./contexts/LangContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { NotificationProvider } from "./contexts/NotificationContext";
 import { CopilotProvider } from "./contexts/CopilotContext";
@@ -63,8 +64,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppInner />
-    </AuthProvider>
+    <LangProvider>
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
+    </LangProvider>
   );
 }
