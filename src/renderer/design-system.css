@@ -299,7 +299,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-size: 14px;
   line-height: 1.5;
-  direction: ltr;
+  /* direction is intentionally NOT set here — it must inherit from
+     <html dir="...">, which LangContext/index.html's pre-hydration
+     script control. A hardcoded "ltr" here silently overrides that and
+     breaks every logical-property (inset-inline-*, margin-inline-*, ...)
+     conversion in this file, since direction cascades from here down. */
 }
 textarea    { resize: none; }
 *:focus     { outline: none; }
@@ -479,7 +483,7 @@ input:focus, textarea:focus, select:focus {
 }
 .code-block-wrap:hover .copy-btn { opacity: 1; }
 .copy-btn {
-  position: absolute; top: 10px; right: 10px;
+  position: absolute; top: 10px; inset-inline-end: 10px;
   padding: 4px 10px; border-radius: var(--r-sm);
   background: rgba(30,30,50,0.85); border: 1px solid var(--b2);
   color: var(--t3); font-size: 11px; font-weight: 500; cursor: pointer;
@@ -539,7 +543,7 @@ input:focus, textarea:focus, select:focus {
   font-family: var(--font-mono);
 }
 .md-body pre code { background: none; padding: 0; color: var(--t2); font-size: 13.5px; }
-.md-body ul, .md-body ol { padding-left: 24px; margin: 8px 0; }
+.md-body ul, .md-body ol { padding-inline-start: 24px; margin: 8px 0; }
 .md-body li  { margin: 5px 0; line-height: 1.7; }
 .md-body h1  { font-size: 20px; font-weight: 700; color: var(--t1); margin: 20px 0 10px; letter-spacing: -.3px; }
 .md-body h2  { font-size: 17px; font-weight: 600; color: var(--t1); margin: 18px 0 8px; }
@@ -549,8 +553,8 @@ input:focus, textarea:focus, select:focus {
 .md-body a   { color: #818cf8; text-decoration: none; border-bottom: 1px solid rgba(129,140,248,.3); transition: border-color .15s; }
 .md-body a:hover { border-bottom-color: #818cf8; }
 .md-body blockquote {
-  border-left: 3px solid rgba(110,50,224,.5);
-  padding: 4px 0 4px 16px; margin: 12px 0;
+  border-inline-start: 3px solid rgba(110,50,224,.5);
+  padding-block: 4px; padding-inline: 16px 0; margin: 12px 0;
   color: var(--t3); font-style: italic;
 }
 .md-body hr  { border: none; border-top: 1px solid var(--b1); margin: 16px 0; }
@@ -704,7 +708,7 @@ input:focus, textarea:focus, select:focus {
 }
 .welcome-header::before {
   content: '';
-  position: absolute; top: 0; right: 0; width: 300px; height: 100%;
+  position: absolute; top: 0; inset-inline-end: 0; width: 300px; height: 100%;
   background: radial-gradient(ellipse at right top, rgba(110,50,224,0.12), transparent 60%);
   pointer-events: none;
 }
@@ -739,7 +743,7 @@ input:focus, textarea:focus, select:focus {
    is handled by the global rule above, which freezes this animation too. */
 .page-nav-progress {
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: 0; inset-inline: 0;
   height: 2px;
   z-index: 5;
   overflow: hidden;
@@ -748,14 +752,14 @@ input:focus, textarea:focus, select:focus {
 .page-nav-progress::after {
   content: "";
   position: absolute;
-  top: 0; bottom: 0; left: -30%;
+  top: 0; bottom: 0; inset-inline-start: -30%;
   width: 30%;
   background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
   animation: page-nav-progress-sweep 900ms ease-in-out infinite;
 }
 @keyframes page-nav-progress-sweep {
-  0%   { left: -30%; }
-  100% { left: 100%; }
+  0%   { inset-inline-start: -30%; }
+  100% { inset-inline-start: 100%; }
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────── */
@@ -765,7 +769,7 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   background: var(--bg-panel);
-  border-right: 1px solid var(--b1);
+  border-inline-end: 1px solid var(--b1);
   transition: width var(--t-slow) var(--ease), min-width var(--t-slow) var(--ease);
   overflow: hidden;
   position: relative;
@@ -792,6 +796,9 @@ input:focus, textarea:focus, select:focus {
   flex-shrink: 0;
 }
 .sidebar__toggle:hover { background: var(--bg-hover); color: var(--t2); }
+/* The chevron SVG points left/right for expand/collapse — the whole icon
+   mirrors under RTL rather than branching the JSX on direction. */
+[dir="rtl"] .sidebar__toggle svg { transform: scaleX(-1); }
 
 .sidebar__nav {
   flex: 1;
@@ -817,7 +824,7 @@ input:focus, textarea:focus, select:focus {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  text-align: left;
+  text-align: start;
   white-space: nowrap;
   overflow: hidden;
   width: 100%;
@@ -890,7 +897,7 @@ kbd {
 
 /* ── Skip to main content ────────────────────────────────────────── */
 .skip-link {
-  position: absolute; top: -100%; left: var(--sp-4);
+  position: absolute; top: -100%; inset-inline-start: var(--sp-4);
   background: var(--accent); color: #fff;
   padding: var(--sp-2) var(--sp-4);
   border-radius: var(--r-md);
@@ -908,13 +915,22 @@ kbd {
 
   .sidebar {
     position: fixed;
-    top: 0; left: 0; bottom: 0;
+    top: 0; inset-inline-start: 0; bottom: 0;
     z-index: 500;
     transform: translateX(-100%);
     transition: transform var(--t-base) var(--ease);
     box-shadow: var(--shadow-xl);
   }
   .sidebar--open {
+    transform: translateX(0);
+  }
+  /* translateX is a physical X-axis offset — dir doesn't flip it the way
+     it flips inset-inline-start above, so the RTL drawer needs its own
+     explicit slide-in-from-the-right rule. */
+  [dir="rtl"] .sidebar {
+    transform: translateX(100%);
+  }
+  [dir="rtl"] .sidebar--open {
     transform: translateX(0);
   }
   .sidebar-backdrop {
@@ -930,7 +946,7 @@ kbd {
   .mobile-menu-btn {
     display: flex;
     align-items: center; justify-content: center;
-    position: fixed; top: var(--sp-4); left: var(--sp-4);
+    position: fixed; top: var(--sp-4); inset-inline-start: var(--sp-4);
     z-index: 400;
     width: 40px; height: 40px;
     background: var(--bg-elevated);
@@ -992,7 +1008,7 @@ kbd {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 12px; font-weight: 600; color: var(--t3); margin-bottom: 5px;
 }
-.g-label__required { color: var(--red); margin-left: 2px; }
+.g-label__required { color: var(--red); margin-inline-start: 2px; }
 .g-input {
   width: 100%; box-sizing: border-box;
   padding: 10px 12px; border-radius: var(--r-md);
@@ -1011,7 +1027,7 @@ kbd {
 }
 .g-field-hint { font-size: 12px; color: var(--t5); margin-top: 5px; }
 .g-password-toggle {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
   background: none; border: none; color: var(--t4); cursor: pointer;
   padding: 6px; display: flex; border-radius: var(--r-sm);
 }
@@ -1035,13 +1051,13 @@ kbd {
 
 /* ── Notification Center (shared/ui/notifications) ── */
 .g-notif-badge {
-  position: absolute; top: -6px; right: -8px; min-width: 16px; height: 16px;
+  position: absolute; top: -6px; inset-inline-end: -8px; min-width: 16px; height: 16px;
   padding: 0 4px; border-radius: 999px; background: var(--red); color: #fff;
   font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
   box-shadow: 0 0 0 2px var(--bg-surface);
 }
 .g-notif-panel {
-  position: absolute; bottom: calc(100% + 8px); left: 0; width: 340px; max-width: 92vw;
+  position: absolute; bottom: calc(100% + 8px); inset-inline-start: 0; width: 340px; max-width: 92vw;
   max-height: 480px; display: flex; flex-direction: column;
   background: var(--bg-elevated); border: 1px solid var(--b2); border-radius: var(--r-xl);
   box-shadow: var(--shadow-xl); z-index: 1000; overflow: hidden;
@@ -1064,7 +1080,7 @@ kbd {
 }
 .g-notif-chip--active { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent-2); }
 .g-notif-category-select {
-  margin-left: auto; font-size: 11.5px; background: var(--bg-input); color: var(--t3);
+  margin-inline-start: auto; font-size: 11.5px; background: var(--bg-input); color: var(--t3);
   border: 1px solid var(--b1); border-radius: var(--r-sm); padding: 4px 6px; outline: none;
 }
 .g-notif-panel__list { overflow-y: auto; flex: 1; min-height: 80px; }
@@ -1098,7 +1114,7 @@ kbd {
 @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* ── AI Copilot (shared/ui/copilot) ── */
-.g-copilot-fab-wrap { position: fixed; right: 24px; bottom: 24px; z-index: 900; }
+.g-copilot-fab-wrap { position: fixed; inset-inline-end: 24px; bottom: 24px; z-index: 900; }
 .g-copilot-fab {
   width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer;
   background: linear-gradient(135deg, var(--accent), var(--teal)); color: #fff;
@@ -1108,7 +1124,7 @@ kbd {
 }
 .g-copilot-fab:hover { transform: scale(1.06); }
 .g-copilot-panel {
-  position: absolute; bottom: calc(100% + 12px); right: 0; width: 380px; max-width: calc(100vw - 48px);
+  position: absolute; bottom: calc(100% + 12px); inset-inline-end: 0; width: 380px; max-width: calc(100vw - 48px);
   height: 480px; max-height: 70vh; display: flex; flex-direction: column;
   background: var(--bg-elevated); border: 1px solid var(--b2); border-radius: var(--r-xl);
   box-shadow: var(--shadow-xl); overflow: hidden;
@@ -1120,7 +1136,7 @@ kbd {
 .g-copilot-panel__title { font-size: 13.5px; font-weight: 700; color: var(--t1); display: flex; align-items: center; gap: 8px; }
 .g-copilot-panel__list { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .g-copilot-empty { color: var(--t5); font-size: 12.5px; line-height: 1.6; }
-.g-copilot-empty ul { margin: 8px 0 0; padding-left: 18px; }
+.g-copilot-empty ul { margin: 8px 0 0; padding-inline-start: 18px; }
 .g-copilot-msg { font-size: 13px; line-height: 1.55; padding: 9px 12px; border-radius: var(--r-md); max-width: 88%; }
 .g-copilot-msg--user { align-self: flex-end; background: var(--accent-dim); color: var(--t1); }
 .g-copilot-msg--assistant { align-self: flex-start; background: var(--bg-surface); color: var(--t2); border: 1px solid var(--b1); }
@@ -1153,7 +1169,7 @@ kbd {
 .g-activity-item__badge--organization { background: var(--blue-dim); color: var(--blue); }
 .g-activity-item__action { font-size: 12.5px; font-weight: 600; color: var(--t1); }
 .g-activity-item__sub { font-size: 11px; color: var(--t4); }
-.g-activity-item__time { font-size: 11px; color: var(--t5); margin-left: auto; flex-shrink: 0; }
+.g-activity-item__time { font-size: 11px; color: var(--t5); margin-inline-start: auto; flex-shrink: 0; }
 
 /* ── Card (opaque — Canva chrome uses flat cards with shadow-based
    depth, not translucent glassmorphism) ── */
@@ -1218,7 +1234,7 @@ kbd {
 /* ── Shell overrides ── */
 .sidebar {
   background: var(--bg-glass);
-  border-right: 1px solid var(--b1);
+  border-inline-end: 1px solid var(--b1);
 }
 .sidebar__group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
 .sidebar__group-label {

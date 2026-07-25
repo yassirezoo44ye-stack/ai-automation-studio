@@ -71,7 +71,7 @@
   cursor:         pointer;
   padding:        6px;
   transition:     border-color 0.15s, box-shadow 0.15s;
-  text-align:     left;
+  text-align:     start;
 }
 
 .card:hover {

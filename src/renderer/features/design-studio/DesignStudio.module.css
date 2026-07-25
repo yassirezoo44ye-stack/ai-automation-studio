@@ -21,7 +21,7 @@
   flex-direction: column;
   width:          220px;
   min-width:      200px;
-  border-right:   1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   background:     var(--surface-1);
   flex-shrink:    0;
   overflow:       hidden;
@@ -75,7 +75,7 @@
   flex-direction: column;
   width:          220px;
   min-width:      200px;
-  border-left:    1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
   background:     var(--surface-1);
   flex-shrink:    0;
   overflow:       hidden;
