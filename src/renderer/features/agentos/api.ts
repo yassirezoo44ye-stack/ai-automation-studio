@@ -2,7 +2,7 @@
  * AgentOS API client — typed wrappers for /api/agentos/* endpoints.
  */
 
-const BASE = (import.meta.env.VITE_API_URL ?? "") + "/api/agentos";
+const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "") + "/api/agentos";
 
 function authHeaders(): HeadersInit {
   const token = localStorage.getItem("access_token") ?? "";

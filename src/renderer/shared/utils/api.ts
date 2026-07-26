@@ -1,4 +1,7 @@
-export const API = import.meta.env.VITE_API_URL ?? "";
+// Trailing slashes are stripped so `${API}/api/...` call sites never
+// produce a double slash (e.g. VITE_API_URL="https://host.com/") — a
+// double slash is a different path to most routers and 404s.
+export const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 export function getToken(): string { return localStorage.getItem("sub_token") ?? ""; }
 

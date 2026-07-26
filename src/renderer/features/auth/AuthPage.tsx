@@ -11,7 +11,7 @@ import { GoldButton } from "../../shared/ui/gold";
 
 type Tab = "login" | "register" | "forgot";
 
-const API = import.meta.env.VITE_API_URL ?? "";
+const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 const S = {
   wrap: {

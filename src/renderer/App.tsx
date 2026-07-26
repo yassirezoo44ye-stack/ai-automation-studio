@@ -11,7 +11,7 @@ import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
 import "./design-system.css";
 
 // Keep Render free tier awake
-const API = import.meta.env.VITE_API_URL ?? "";
+const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
 function AppInner() {

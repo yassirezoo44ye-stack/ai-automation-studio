@@ -9,7 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { parseJSON } from "../utils/api";
 
-const API = import.meta.env.VITE_API_URL ?? "";
+const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 const REFRESH_KEY = "axon_refresh_token";
 
 function setGlobalToken(token: string | null) {
