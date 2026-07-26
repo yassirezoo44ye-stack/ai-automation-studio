@@ -25,6 +25,11 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      # Comma-separated additional CORS origins for a split-frontend setup
+      # (e.g. https://your-app.vercel.app) — set after your first Vercel
+      # deploy once you know the assigned domain.
+      - key: EXTRA_CORS_ORIGINS
+        sync: false
       - key: SESSION_SECRET
         sync: false
       - key: OPENAI_API_KEY

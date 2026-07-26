@@ -36,6 +36,12 @@ _stripe.api_key          = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_ID: str       = os.getenv("STRIPE_PRICE_ID", "")  # legacy flat $/mo trial gate
 APP_URL: str               = os.getenv("APP_URL", "http://localhost:8000")
+# Comma-separated additional CORS origins (e.g. a Vercel-hosted frontend)
+# beyond the single primary APP_URL — the backend itself is served from a
+# different host than the browser origin in a split frontend/backend setup.
+EXTRA_CORS_ORIGINS: list[str] = [
+    o.strip() for o in os.getenv("EXTRA_CORS_ORIGINS", "").split(",") if o.strip()
+]
 
 # Org-scoped tiered plans (Enterprise is contact-sales — no Stripe price).
 STRIPE_PRICE_ID_STARTER: str = os.getenv("STRIPE_PRICE_ID_STARTER", "")

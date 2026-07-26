@@ -20,7 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
 from app.core.config import (
-    APP_URL, DATABASE_URL, DIST_DIR, PUBLIC_PREFIXES, WORKSPACES,
+    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, PUBLIC_PREFIXES, WORKSPACES,
 )
 from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
@@ -443,6 +443,7 @@ def create_app() -> FastAPI:
         [APP_URL] if APP_URL and APP_URL != "http://localhost:8000"
         else ["http://localhost:5173", "http://localhost:8000", "http://127.0.0.1:8000"]
     )
+    _cors_origins = _cors_origins + [o for o in EXTRA_CORS_ORIGINS if o not in _cors_origins]
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
