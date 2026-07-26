@@ -9,16 +9,18 @@ import settingsEn from "./locales/en/settings.json";
 import settingsAr from "./locales/ar/settings.json";
 import authEn from "./locales/en/auth.json";
 import authAr from "./locales/ar/auth.json";
+import socialEn from "./locales/en/social.json";
+import socialAr from "./locales/ar/social.json";
 
 void i18next.use(initReactI18next).init({
   resources: {
-    en: { common: commonEn, home: homeEn, settings: settingsEn, auth: authEn },
-    ar: { common: commonAr, home: homeAr, settings: settingsAr, auth: authAr },
+    en: { common: commonEn, home: homeEn, settings: settingsEn, auth: authEn, social: socialEn },
+    ar: { common: commonAr, home: homeAr, settings: settingsAr, auth: authAr, social: socialAr },
   },
   lng: "en",
   fallbackLng: "en",
   defaultNS: "common",
-  ns: ["common", "home", "settings", "auth"],
+  ns: ["common", "home", "settings", "auth", "social"],
   interpolation: { escapeValue: false },
   returnEmptyString: false,
 });

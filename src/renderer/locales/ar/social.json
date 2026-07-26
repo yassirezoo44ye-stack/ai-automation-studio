@@ -1,0 +1,64 @@
+{
+  "header": "السوشيال ميديا",
+  "tabs": { "youtube": "يوتيوب", "facebook": "التواصل الاجتماعي" },
+  "youtube": {
+    "videoLink": "رابط الفيديو",
+    "views": "مشاهدة",
+    "likes": "إعجاب",
+    "extracting": "جاري استخراج النص…",
+    "transcriptLoaded": "النص مُحمَّل",
+    "extractTranscript": "استخرج النص",
+    "quickQuestions": "أسئلة سريعة",
+    "q1": "لخّص هذا الفيديو",
+    "q2": "ما أهم النقاط؟",
+    "q3": "ما رأيك في المحتوى؟",
+    "q4": "Summarize in English",
+    "emptyTitle": "محلل يوتيوب",
+    "emptyDesc": "الصق رابط فيديو وابدأ التحليل بالذكاء الاصطناعي",
+    "askPrompt": "اسأل Claude عن محتوى الفيديو",
+    "inputPlaceholder": "اسأل عن الفيديو…",
+    "infoLoaded": "تم تحميل معلومات الفيديو",
+    "transcriptLoadedWithLang": "تم تحميل النص ({{language}})",
+    "errorStatus": "خطأ {{status}}"
+  },
+  "facebook": {
+    "platform": "المنصة",
+    "contentType": "نوع المحتوى",
+    "contentTypeOptions": {
+      "post": "منشور عادي",
+      "ad": "إعلان مدفوع",
+      "story": "ستوري",
+      "reelCaption": "كابشن ريلز",
+      "thread": "ثريد"
+    },
+    "tone": "الأسلوب",
+    "toneOptions": {
+      "engaging": "جذاب وتفاعلي",
+      "professional": "احترافي ورسمي",
+      "funny": "مرح وفكاهي",
+      "inspirational": "ملهم وتحفيزي",
+      "urgent": "عاجل ومُلحّ"
+    },
+    "language": "اللغة",
+    "languageOptions": {
+      "arabic": "عربي",
+      "english": "English",
+      "both": "عربي + English"
+    },
+    "hashtags": "هاشتاقات",
+    "emoji": "إيموجي",
+    "topic": "الموضوع / المنتج / الفكرة *",
+    "topicPlaceholder": "مثال: متجر إلكتروني يبيع عطوراً فاخرة، عرض خصم 30%",
+    "connecting": "جاري الاتصال…",
+    "errorStatus": "خطأ {{status}}",
+    "generating": "جاري التوليد…",
+    "generate": "ولّد المحتوى",
+    "generatedCount": "تم توليد {{count}} نسخ",
+    "copied": "تم النسخ",
+    "emptyTitle": "منشئ محتوى السوشيال ميديا",
+    "emptyDesc": "أدخل موضوعك في الإعدادات واضغط \"ولّد المحتوى\" للحصول على 3 نسخ احترافية",
+    "variation": "النسخة {{n}}",
+    "copiedShort": "تم النسخ",
+    "copy": "نسخ"
+  }
+}

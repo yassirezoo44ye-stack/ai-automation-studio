@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON, authH, API } from "../../utils/api";
 import { MD_COMPONENTS } from "../../shared/ui/md-components";
@@ -19,14 +20,15 @@ function Select({ value, onChange, opts, ariaLabel }: { value: string; onChange:
 }
 
 export function SocialPage() {
+  const { t } = useTranslation("social");
   const toast = useToast();
   const [tab, setTab] = useState<SocialTab>("youtube");
   return (
     <>
       <header style={S.header}>
-        <span style={S.headerTitle}>🌐 Social Media</span>
+        <span style={S.headerTitle}>🌐 {t("header")}</span>
         <div className="pill-tabs">
-          {([["youtube","▶ YouTube"],["facebook","📘 Social"]] as [SocialTab,string][]).map(([id,label]) => (
+          {([["youtube",`▶ ${t("tabs.youtube")}`],["facebook",`📘 ${t("tabs.facebook")}`]] as [SocialTab,string][]).map(([id,label]) => (
             <button key={id} onClick={() => setTab(id)} className={`pill-tab${tab === id ? " active" : ""}`}>
               {label}
             </button>
@@ -42,6 +44,7 @@ export function SocialPage() {
 }
 
 function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => void }) {
+  const { t } = useTranslation("social");
   const [url, setUrl]               = useState("");
   const [loading, setLoading]       = useState(false);
   const [info, setInfo]             = useState<YTInfo | null>(null);
@@ -57,7 +60,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     setLoading(true); setInfo(null); setTranscript(""); setAnswer("");
     try {
       const r = await apiFetch("/api/youtube/info", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
-      setInfo(await parseJSON<YTInfo>(r, "/api/youtube/info")); toast("Video info loaded");
+      setInfo(await parseJSON<YTInfo>(r, "/api/youtube/info")); toast(t("youtube.infoLoaded"));
     } catch (e) { toast((e as Error).message, "err"); }
     finally { setLoading(false); }
   }
@@ -68,7 +71,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     try {
       const r = await apiFetch("/api/youtube/transcript", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
       const d = await parseJSON<{ transcript: string; language: string }>(r, "/api/youtube/transcript");
-      setTranscript(d.transcript); toast(`Transcript loaded (${d.language})`);
+      setTranscript(d.transcript); toast(t("youtube.transcriptLoadedWithLang", { language: d.language }));
     } catch (e) { toast((e as Error).message, "err"); }
     finally { setTL(false); }
   }
@@ -84,7 +87,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
         body: JSON.stringify({ url, question: finalQ, transcript }),
         signal: ctrl.signal,
       });
-      if (!res.ok || !res.body) { toast(`Error ${res.status}`, "err"); return; }
+      if (!res.ok || !res.body) { toast(t("youtube.errorStatus", { status: res.status }), "err"); return; }
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
       while (true) {
         const { done, value } = await reader.read(); if (done) break;
@@ -103,7 +106,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     finally { setAnswering(false); }
   }
 
-  const quickQ = ["لخّص هذا الفيديو", "ما أهم النقاط؟", "ما رأيك في المحتوى؟", "Summarize in English"];
+  const quickQ = [t("youtube.q1"), t("youtube.q2"), t("youtube.q3"), t("youtube.q4")];
   const fmtDur = (s: number) => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
   const fmtNum = (n: number) => n >= 1e6 ? `${(n/1e6).toFixed(1)}M` : n >= 1e3 ? `${(n/1e3).toFixed(1)}K` : String(n);
 
@@ -112,7 +115,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
       {/* Left panel */}
       <div style={{ width: 340, borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", background: "var(--bg-panel)", flexShrink: 0 }}>
         <div style={{ padding: 16, borderBottom: "1px solid var(--border)" }}>
-          <div style={{ fontSize: 12, color: "var(--t4)", marginBottom: 8, fontWeight: 500 }}>رابط الفيديو</div>
+          <div style={{ fontSize: 12, color: "var(--t4)", marginBottom: 8, fontWeight: 500 }}>{t("youtube.videoLink")}</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input value={url} onChange={e => setUrl(e.target.value)}
               onKeyDown={e => e.key === "Enter" && fetchInfo()}
@@ -139,7 +142,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", lineHeight: 1.4, marginBottom: 6 }}>{info.title}</div>
             <div style={{ fontSize: 12, color: "var(--t3)", marginBottom: 10 }}>{info.channel}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              {[["👁", fmtNum(info.view_count), "مشاهدة"], ["👍", fmtNum(info.like_count || 0), "إعجاب"]].map(([icon,val,label]) => (
+              {[["👁", fmtNum(info.view_count), t("youtube.views")], ["👍", fmtNum(info.like_count || 0), t("youtube.likes")]].map(([icon,val,label]) => (
                 <div key={label} style={{ background: "var(--bg-hover)", borderRadius: 8, padding: "5px 10px", fontSize: 12, color: "var(--t2)", display: "flex", gap: 4, alignItems: "center" }}>
                   {icon} {val} <span style={{ color: "var(--t4)" }}>{label}</span>
                 </div>
@@ -147,14 +150,14 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
             </div>
             {info.description && <div style={{ fontSize: 12, color: "var(--t4)", lineHeight: 1.6 }}>{info.description}</div>}
             <GoldButton variant="ghost" onClick={fetchTranscript} disabled={transcriptLoading} style={{ width: "100%", marginTop: 12, fontSize: 12 }}>
-              {transcriptLoading ? "⏳ جاري استخراج النص…" : transcript ? "✅ النص مُحمَّل" : "📄 استخرج النص"}
+              {transcriptLoading ? `⏳ ${t("youtube.extracting")}` : transcript ? `✅ ${t("youtube.transcriptLoaded")}` : `📄 ${t("youtube.extractTranscript")}`}
             </GoldButton>
           </div>
         )}
 
         {info && (
           <div style={{ padding: 12 }}>
-            <div style={{ fontSize: 11, color: "var(--t5)", marginBottom: 8, fontWeight: 600 }}>أسئلة سريعة</div>
+            <div style={{ fontSize: 11, color: "var(--t5)", marginBottom: 8, fontWeight: 600 }}>{t("youtube.quickQuestions")}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {quickQ.map(q => (
                 <GoldButton key={q} variant="ghost" onClick={() => askQuestion(q)} style={{ fontSize: 12, textAlign: "left" as const, padding: "8px 12px" }}>
@@ -171,8 +174,8 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
         {!info ? (
           <div style={{ margin: "auto", textAlign: "center", color: "var(--t5)" }}>
             <div style={{ fontSize: 64, marginBottom: 16 }}>▶</div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: "var(--t4)", marginBottom: 8 }}>YouTube Analyzer</div>
-            <div style={{ fontSize: 14 }}>الصق رابط فيديو وابدأ التحليل بالذكاء الاصطناعي</div>
+            <div style={{ fontSize: 18, fontWeight: 600, color: "var(--t4)", marginBottom: 8 }}>{t("youtube.emptyTitle")}</div>
+            <div style={{ fontSize: 14 }}>{t("youtube.emptyDesc")}</div>
           </div>
         ) : (
           <>
@@ -180,7 +183,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
               {!answer && !answering && (
                 <div style={{ textAlign: "center", color: "var(--t5)", padding: "40px 0" }}>
                   <div style={{ fontSize: 32, marginBottom: 10 }}>💬</div>
-                  <div>اسأل Claude عن محتوى الفيديو</div>
+                  <div>{t("youtube.askPrompt")}</div>
                 </div>
               )}
               {(answer || answering) && (
@@ -207,7 +210,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
             <div style={S.inputRow}>
               <input value={question} onChange={e => setQuestion(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && askQuestion()}
-                placeholder="اسأل عن الفيديو…"
+                placeholder={t("youtube.inputPlaceholder")}
                 style={{ ...S.input, borderRadius: 12, padding: "12px 16px" }} />
               <button onClick={() => askQuestion()} disabled={answering || !question.trim()} style={S.sendBtn}>↑</button>
             </div>
@@ -219,6 +222,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
 }
 
 function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => void }) {
+  const { t } = useTranslation("social");
   const [topic, setTopic]       = useState("");
   const [platform, setPlatform] = useState("facebook");
   const [contentType, setCType] = useState("post");
@@ -233,13 +237,13 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
 
   async function generate() {
     if (!topic.trim()) return;
-    setGen(true); setVars([]); setStatus("Connecting…");
+    setGen(true); setVars([]); setStatus(t("facebook.connecting"));
     try {
       const res = await fetch(`${API}/api/social/generate/stream`, {
         method: "POST", headers: authH(),
         body: JSON.stringify({ topic, platform, content_type: contentType, tone, language, include_hashtags: hashtags, include_emoji: emoji, variations: 3 }),
       });
-      if (!res.ok || !res.body) { toast(`Error ${res.status}`, "err"); return; }
+      if (!res.ok || !res.body) { toast(t("facebook.errorStatus", { status: res.status }), "err"); return; }
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
       while (true) {
         const { done, value } = await reader.read(); if (done) break;
@@ -251,7 +255,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
             const ev = JSON.parse(line.slice(6));
             if (ev.type === "status")         setStatus(ev.message);
             else if (ev.type === "variation") setVars(p => [...p, ev.data]);
-            else if (ev.type === "done")      { setStatus(""); toast(`تم توليد ${ev.count} نسخ`); }
+            else if (ev.type === "done")      { setStatus(""); toast(t("facebook.generatedCount", { count: ev.count })); }
             else if (ev.type === "error")     { setStatus(""); toast(ev.message, "err"); }
           } catch {}
         }
@@ -263,7 +267,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
   function copy(text: string, i: number) {
     navigator.clipboard.writeText(text);
     setCopied(i); setTimeout(() => setCopied(null), 2000);
-    toast("تم النسخ");
+    toast(t("facebook.copied"));
   }
 
   const platformIcon: Record<string,string> = { facebook:"📘", instagram:"📸", twitter:"🐦", linkedin:"💼" };
@@ -272,7 +276,7 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
       {/* Settings panel */}
       <div style={{ width: 300, borderRight: "1px solid var(--border)", overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16, background: "var(--bg-panel)", flexShrink: 0 }}>
         <div>
-          <div className="g-label">المنصة</div>
+          <div className="g-label">{t("facebook.platform")}</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             {(["facebook","instagram","twitter","linkedin"] as const).map(p => (
               <button key={p} onClick={() => setPlatform(p)} className={`pill-tab${platform === p ? " active" : ""}`}>
@@ -282,34 +286,34 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
           </div>
         </div>
         <div>
-          <div className="g-label">نوع المحتوى</div>
-          <Select value={contentType} onChange={setCType} ariaLabel="نوع المحتوى" opts={[["post","منشور عادي"],["ad","إعلان مدفوع"],["story","ستوري"],["reel_caption","كابشن ريلز"],["thread","ثريد"]]} />
+          <div className="g-label">{t("facebook.contentType")}</div>
+          <Select value={contentType} onChange={setCType} ariaLabel={t("facebook.contentType")} opts={[["post",t("facebook.contentTypeOptions.post")],["ad",t("facebook.contentTypeOptions.ad")],["story",t("facebook.contentTypeOptions.story")],["reel_caption",t("facebook.contentTypeOptions.reelCaption")],["thread",t("facebook.contentTypeOptions.thread")]]} />
         </div>
         <div>
-          <div className="g-label">الأسلوب</div>
-          <Select value={tone} onChange={setTone} ariaLabel="الأسلوب" opts={[["engaging","جذاب وتفاعلي"],["professional","احترافي ورسمي"],["funny","مرح وفكاهي"],["inspirational","ملهم وتحفيزي"],["urgent","عاجل ومُلحّ"]]} />
+          <div className="g-label">{t("facebook.tone")}</div>
+          <Select value={tone} onChange={setTone} ariaLabel={t("facebook.tone")} opts={[["engaging",t("facebook.toneOptions.engaging")],["professional",t("facebook.toneOptions.professional")],["funny",t("facebook.toneOptions.funny")],["inspirational",t("facebook.toneOptions.inspirational")],["urgent",t("facebook.toneOptions.urgent")]]} />
         </div>
         <div>
-          <div className="g-label">اللغة</div>
-          <Select value={language} onChange={setLanguage} ariaLabel="اللغة" opts={[["arabic","عربي"],["english","English"],["both","عربي + English"]]} />
+          <div className="g-label">{t("facebook.language")}</div>
+          <Select value={language} onChange={setLanguage} ariaLabel={t("facebook.language")} opts={[["arabic",t("facebook.languageOptions.arabic")],["english",t("facebook.languageOptions.english")],["both",t("facebook.languageOptions.both")]]} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <label className="g-label" style={{ marginBottom: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
-            <input type="checkbox" checked={hashtags} onChange={e => setHashtags(e.target.checked)} /> هاشتاقات
+            <input type="checkbox" checked={hashtags} onChange={e => setHashtags(e.target.checked)} /> {t("facebook.hashtags")}
           </label>
           <label className="g-label" style={{ marginBottom: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
-            <input type="checkbox" checked={emoji} onChange={e => setEmoji(e.target.checked)} /> إيموجي
+            <input type="checkbox" checked={emoji} onChange={e => setEmoji(e.target.checked)} /> {t("facebook.emoji")}
           </label>
         </div>
         <div>
-          <div className="g-label">الموضوع / المنتج / الفكرة *</div>
+          <div className="g-label">{t("facebook.topic")}</div>
           <textarea value={topic} onChange={e => setTopic(e.target.value)}
-            placeholder={"مثال: متجر إلكتروني يبيع عطوراً فاخرة، عرض خصم 30%"}
+            placeholder={t("facebook.topicPlaceholder")}
             className="g-input" style={{ minHeight: 100, lineHeight: 1.6 }}
-            aria-label="الموضوع / المنتج / الفكرة" />
+            aria-label={t("facebook.topic")} />
         </div>
         <GoldButton onClick={generate} disabled={generating || !topic.trim()} style={{ width: "100%", padding: "12px" }}>
-          {generating ? "⏳ جاري التوليد…" : "✨ ولّد المحتوى"}
+          {generating ? `⏳ ${t("facebook.generating")}` : `✨ ${t("facebook.generate")}`}
         </GoldButton>
         {status && <div style={{ fontSize: 12, color: "var(--accent)", textAlign: "center" }}>{status}</div>}
       </div>
@@ -320,10 +324,10 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
           <div style={{ margin: "auto", textAlign: "center", color: "var(--t5)" }}>
             <div style={{ fontSize: 56, marginBottom: 14 }}>{platformIcon[platform]}</div>
             <div style={{ fontSize: 18, fontWeight: 600, color: "var(--t4)", marginBottom: 8 }}>
-              منشئ محتوى السوشيال ميديا
+              {t("facebook.emptyTitle")}
             </div>
             <div style={{ fontSize: 14, maxWidth: 340, lineHeight: 1.7 }}>
-              أدخل موضوعك في الإعدادات واضغط "ولّد المحتوى" للحصول على 3 نسخ احترافية
+              {t("facebook.emptyDesc")}
             </div>
           </div>
         )}
@@ -332,10 +336,10 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, var(--accent), var(--accent-2))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>{i + 1}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>النسخة {i + 1}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{t("facebook.variation", { n: i + 1 })}</span>
               </div>
               <GoldButton variant="ghost" onClick={() => copy(v.text + (v.hashtags?.length ? "\n\n" + v.hashtags.join(" ") : ""), i)} style={{ fontSize: 12, padding: "5px 12px" }}>
-                {copied === i ? "✅ تم النسخ" : "📋 نسخ"}
+                {copied === i ? `✅ ${t("facebook.copiedShort")}` : `📋 ${t("facebook.copy")}`}
               </GoldButton>
             </div>
             <div style={{ fontSize: 15, color: "var(--t2)", lineHeight: 1.85, whiteSpace: "pre-wrap", direction: language === "english" ? "ltr" : "rtl", textAlign: language === "english" ? "left" : "right" }}>

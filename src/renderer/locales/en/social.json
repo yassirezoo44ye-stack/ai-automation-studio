@@ -1,0 +1,64 @@
+{
+  "header": "Social Media",
+  "tabs": { "youtube": "YouTube", "facebook": "Social" },
+  "youtube": {
+    "videoLink": "Video link",
+    "views": "views",
+    "likes": "likes",
+    "extracting": "Extracting transcript…",
+    "transcriptLoaded": "Transcript loaded",
+    "extractTranscript": "Extract transcript",
+    "quickQuestions": "Quick questions",
+    "q1": "Summarize this video",
+    "q2": "What are the key points?",
+    "q3": "What do you think of the content?",
+    "q4": "Summarize in English",
+    "emptyTitle": "YouTube Analyzer",
+    "emptyDesc": "Paste a video link and start the AI analysis",
+    "askPrompt": "Ask Claude about the video's content",
+    "inputPlaceholder": "Ask about the video…",
+    "infoLoaded": "Video info loaded",
+    "transcriptLoadedWithLang": "Transcript loaded ({{language}})",
+    "errorStatus": "Error {{status}}"
+  },
+  "facebook": {
+    "platform": "Platform",
+    "contentType": "Content type",
+    "contentTypeOptions": {
+      "post": "Regular post",
+      "ad": "Paid ad",
+      "story": "Story",
+      "reelCaption": "Reel caption",
+      "thread": "Thread"
+    },
+    "tone": "Tone",
+    "toneOptions": {
+      "engaging": "Engaging",
+      "professional": "Professional",
+      "funny": "Funny",
+      "inspirational": "Inspirational",
+      "urgent": "Urgent"
+    },
+    "language": "Language",
+    "languageOptions": {
+      "arabic": "Arabic",
+      "english": "English",
+      "both": "Arabic + English"
+    },
+    "hashtags": "Hashtags",
+    "emoji": "Emoji",
+    "topic": "Topic / Product / Idea *",
+    "topicPlaceholder": "e.g. an online store selling luxury perfumes, 30% off",
+    "connecting": "Connecting…",
+    "errorStatus": "Error {{status}}",
+    "generating": "Generating…",
+    "generate": "Generate content",
+    "generatedCount": "Generated {{count}} variations",
+    "copied": "Copied",
+    "emptyTitle": "Social Media Content Creator",
+    "emptyDesc": "Enter your topic in the settings and click \"Generate content\" to get 3 professional variations",
+    "variation": "Variation {{n}}",
+    "copiedShort": "Copied",
+    "copy": "Copy"
+  }
+}
