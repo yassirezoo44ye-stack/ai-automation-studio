@@ -11,6 +11,7 @@ import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import { EmptyState } from "../../shared/ui/EmptyState";
+import { useOrgPresence } from "../../shared/hooks/useOrgPresence";
 
 type Role = "owner" | "admin" | "manager" | "developer" | "operator" | "viewer";
 
@@ -42,6 +43,7 @@ export function TeamsPage() {
   const { t } = useTranslation("teams");
   const toast = useToast();
   const { currentOrgId, currentOrg, orgs } = useOrg();
+  const { isOnline } = useOrgPresence(currentOrgId);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [membersError, setMembersError] = useState(false);
@@ -414,13 +416,25 @@ export function TeamsPage() {
                 padding: "12px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
                 display: "flex", alignItems: "center", gap: 12,
               }}>
-                <div style={{
-                  width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                  background: "var(--accent-dim)", border: "1px solid var(--accent-border)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 13, fontWeight: 700, color: "var(--accent)",
-                }}>
-                  {(m.name || m.email)[0]?.toUpperCase()}
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: 9,
+                    background: "var(--accent-dim)", border: "1px solid var(--accent-border)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 13, fontWeight: 700, color: "var(--accent)",
+                  }}>
+                    {(m.name || m.email)[0]?.toUpperCase()}
+                  </div>
+                  <span
+                    title={isOnline(m.user_id) ? t("presence.online") : t("presence.offline")}
+                    aria-label={isOnline(m.user_id) ? t("presence.online") : t("presence.offline")}
+                    style={{
+                      position: "absolute", insetInlineEnd: -2, bottom: -2,
+                      width: 10, height: 10, borderRadius: "50%",
+                      background: isOnline(m.user_id) ? "var(--green)" : "var(--t5)",
+                      border: "2px solid var(--bg-card)",
+                    }}
+                  />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{m.name || m.email}</div>

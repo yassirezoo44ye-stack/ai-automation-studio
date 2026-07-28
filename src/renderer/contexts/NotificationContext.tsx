@@ -17,6 +17,7 @@ import {
 
 const PAGE_SIZE = 30;
 const MAX_BACKOFF_MS = 30_000;
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 function wsUrl(token: string): string {
   const base = API || window.location.origin;
@@ -38,6 +39,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("offline");
   const [mutedCategories, setMutedCategories] = useState<NotificationCategory[]>([]);
+  const [presenceDeltas, setPresenceDeltas] = useState<Map<string, boolean>>(new Map());
   const [filters, setFiltersState] = useState<NotificationFilters>({
     unreadOnly: false, category: null, search: "",
   });
@@ -132,6 +134,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
     function connect() {
       if (cancelled) return;
@@ -144,13 +147,26 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setConnectionStatus("live");
         // Backfill anything published while we were disconnected/offline.
         void Promise.resolve().then(() => fetchFirstPage(filtersRef.current));
+        // Presence heartbeat — each ping refreshes this user's online TTL
+        // server-side (see app/core/presence/service.py); piggybacks on the
+        // same socket rather than opening a second connection.
+        heartbeatTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
+        }, HEARTBEAT_INTERVAL_MS);
       };
 
       ws.onmessage = (evt) => {
         try {
-          const frame = JSON.parse(evt.data as string) as { type: string; data?: Notification };
+          const frame = JSON.parse(evt.data as string) as { type: string; topic?: string; data?: unknown };
           if (frame.type !== "event" || !frame.data) return;
-          const incoming = frame.data;
+
+          if (frame.topic?.startsWith("presence:")) {
+            const { user_id: presenceUserId, online } = frame.data as { user_id: string; online: boolean };
+            setPresenceDeltas(prev => new Map(prev).set(presenceUserId, online));
+            return;
+          }
+
+          const incoming = frame.data as Notification;
           if (seenIdsRef.current.has(incoming.id)) return;
           seenIdsRef.current.add(incoming.id);
           setNotifications(prev => [incoming, ...prev]);
@@ -161,6 +177,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       };
 
       ws.onclose = () => {
+        if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
         if (cancelled) return;
         setConnectionStatus("reconnecting");
         const attempt = ++reconnectAttemptRef.current;
@@ -174,6 +191,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     connect();
     return () => {
       cancelled = true;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       wsRef.current?.close();
       wsRef.current = null;
@@ -232,11 +250,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({
     notifications, unreadCount, status, error, hasMore, loadingMore, connectionStatus,
     filters, setFilters, mutedCategories, refetch, loadMore, markRead, markAllRead,
-    archive, remove, setMuted,
+    archive, remove, setMuted, presenceDeltas,
   }), [
     notifications, unreadCount, status, error, hasMore, loadingMore, connectionStatus,
     filters, setFilters, mutedCategories, refetch, loadMore, markRead, markAllRead,
-    archive, remove, setMuted,
+    archive, remove, setMuted, presenceDeltas,
   ]);
 
   return (

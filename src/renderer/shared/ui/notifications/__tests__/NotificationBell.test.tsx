@@ -19,6 +19,7 @@ function baseCtx(overrides: Partial<NotificationContextType> = {}): Notification
     filters: { unreadOnly: false, category: null, search: "" }, setFilters: vi.fn(),
     mutedCategories: [], refetch: vi.fn(), loadMore: vi.fn(), markRead: vi.fn(),
     markAllRead: vi.fn(), archive: vi.fn(), remove: vi.fn(), setMuted: vi.fn(),
+    presenceDeltas: new Map(),
     ...overrides,
   };
 }

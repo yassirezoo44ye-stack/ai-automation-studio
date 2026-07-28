@@ -196,6 +196,11 @@ async def lifespan(app: FastAPI):
     from app.core.cache import get_redis
     cache = await get_redis()
 
+    # ── Presence — heartbeat online/offline tracking, pub/sub fan-out to
+    # org-mates over the notifications socket above (app/core/presence/).
+    from app.core.presence import wire_presence_fanout
+    await wire_presence_fanout()
+
     # ── Background job queue (Redis-backed when available) ──────────────────
     from app.core.jobs import get_job_queue
     get_job_queue(cache=cache)

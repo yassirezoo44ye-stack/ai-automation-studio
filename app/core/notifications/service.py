@@ -198,6 +198,18 @@ class NotificationService:
             )
         return [str(r["user_id"]) for r in rows]
 
+    async def org_ids_for_user(self, *, user_id: str) -> list[str]:
+        """Every org a user actively belongs to — the reverse of
+        org_member_ids(), used by presence fan-out to find a user's
+        org-mates without the caller needing to already know their org."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT organization_id FROM organization_members "
+                "WHERE user_id=$1 AND deleted_at IS NULL",
+                uuid.UUID(user_id),
+            )
+        return [str(r["organization_id"]) for r in rows]
+
 
 # ── Singleton wiring ─────────────────────────────────────────────────────────
 

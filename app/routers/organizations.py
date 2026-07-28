@@ -27,6 +27,7 @@ GET    /api/orgs/{org_id}/api-keys                list org-scoped API keys
 DELETE /api/orgs/{org_id}/api-keys/{key_id}       revoke an org-scoped API key
 GET    /api/orgs/{org_id}/invitations             list pending invitations
 DELETE /api/orgs/{org_id}/invitations/{invitation_id} revoke a pending invitation
+GET    /api/orgs/{org_id}/presence                online/offline status of every member
 """
 from __future__ import annotations
 
@@ -195,6 +196,20 @@ async def list_members(ctx: OrgContext = Depends(require_permission("members", "
          "role": m["role"], "joined_at": m["created_at"].isoformat()}
         for m in members
     ]}
+
+
+@router.get("/{org_id}/presence")
+async def get_presence(ctx: OrgContext = Depends(require_permission("members", "read"))):
+    """Initial online/offline snapshot for every member — the live WS
+    presence:{user_id} push (see app/routers/ws.py) only fires on a status
+    *change*, so the frontend fetches this once on mount/reconnect to know
+    who's already online before the first change event arrives."""
+    from app.core.presence import get_presence_service
+
+    svc = get_tenancy_service()
+    members = await svc.list_members(ctx.org_id)
+    statuses = await get_presence_service().bulk_status([str(m["user_id"]) for m in members])
+    return {"presence": statuses}
 
 
 @router.patch("/{org_id}/members/{member_user_id}")

@@ -24,6 +24,7 @@ import logging
 import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +38,12 @@ class _ConnectionManager:
         self._subs: dict[str, list[WebSocket]] = {}
 
     async def connect(self, ws: WebSocket, topic: str) -> None:
-        await ws.accept()
+        # A socket already connected to one topic (e.g. notifications_ws
+        # additionally subscribing itself to presence:{user_id}) must not be
+        # accepted twice — a second accept() on an already-CONNECTED socket
+        # is an invalid ASGI state transition and raises.
+        if ws.application_state == WebSocketState.CONNECTING:
+            await ws.accept()
         self._subs.setdefault(topic, []).append(ws)
         log.debug("ws connected topic=%s total=%d", topic, len(self._subs[topic]))
 
@@ -258,15 +264,29 @@ async def notifications_ws(ws: WebSocket):
     {"type": "event", "topic": "notifications:{user_id}", "data": <notification>}
     frames as new notifications are created (see app/core/notifications/
     dispatcher.py). Clients should also poll GET /api/notifications on
-    connect/reconnect to backfill anything missed while disconnected."""
+    connect/reconnect to backfill anything missed while disconnected.
+
+    Also doubles as the transport for presence heartbeats (see
+    app/core/presence/service.py) — no separate socket. The client sends
+    {"type": "ping"} every ~15s; each one (plus the initial connect) refreshes
+    this user's online TTL. The same socket is subscribed to
+    `presence:{user_id}`, so {"type": "event", "topic": "presence:{user_id}",
+    "data": {"user_id": ..., "online": ...}} frames for this user's org-mates
+    arrive here too, interleaved with notification events."""
     token   = ws.query_params.get("token", "")
     user_id = _user_id_from_ws_token(token)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
         return
 
-    topic = f"notifications:{user_id}"
+    from app.core.presence import get_presence_service
+    presence = get_presence_service()
+
+    topic          = f"notifications:{user_id}"
+    presence_topic = f"presence:{user_id}"
     await manager.connect(ws, topic)
+    await manager.connect(ws, presence_topic)
+    await presence.touch(user_id)
     hb    = asyncio.create_task(_heartbeat(ws))
 
     try:
@@ -276,6 +296,7 @@ async def notifications_ws(ws: WebSocket):
                 raw = await asyncio.wait_for(ws.receive_text(), timeout=300)
                 msg = json.loads(raw)
                 if msg.get("type") == "ping":
+                    await presence.touch(user_id)
                     await manager.send(ws, {"type": "pong"})
             except asyncio.TimeoutError:
                 await manager.send(ws, {"type": "ping"})
@@ -284,3 +305,8 @@ async def notifications_ws(ws: WebSocket):
     finally:
         hb.cancel()
         manager.disconnect(ws, topic)
+        manager.disconnect(ws, presence_topic)
+        # Only the user's LAST open connection (they may have several tabs)
+        # should flip them offline.
+        if manager.subscriber_count(topic) == 0:
+            await presence.mark_offline(user_id)

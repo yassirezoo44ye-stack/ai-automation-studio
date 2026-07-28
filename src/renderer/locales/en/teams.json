@@ -74,5 +74,9 @@
     "developer": "Developer",
     "operator": "Operator",
     "viewer": "Viewer"
+  },
+  "presence": {
+    "online": "Online",
+    "offline": "Offline"
   }
 }

@@ -59,6 +59,14 @@ export interface NotificationContextType {
   archive: (id: string) => void;
   remove: (id: string) => void;
   setMuted: (category: NotificationCategory, muted: boolean) => void;
+  /** Live presence deltas received over the same socket: user id -> latest
+   * known online state. Only holds an entry once this client has actually
+   * been told that user's status *changed* — a user absent from this map
+   * is unknown from the live stream, not necessarily offline. Callers
+   * wanting a correct answer for users with no delta yet should fetch the
+   * initial snapshot from GET /api/orgs/{id}/presence and merge it in
+   * (see useOrgPresence, which does exactly this). */
+  presenceDeltas: ReadonlyMap<string, boolean>;
 }
 
 const noop = () => {};
@@ -81,6 +89,7 @@ export const NotificationContext = createContext<NotificationContextType>({
   archive: noop,
   remove: noop,
   setMuted: noop,
+  presenceDeltas: new Map(),
 });
 
 export function useNotifications(): NotificationContextType {

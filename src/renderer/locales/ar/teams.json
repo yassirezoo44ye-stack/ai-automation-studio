@@ -74,5 +74,9 @@
     "developer": "مطوّر",
     "operator": "مُشغّل",
     "viewer": "مُشاهد"
+  },
+  "presence": {
+    "online": "متصل",
+    "offline": "غير متصل"
   }
 }
