@@ -67,7 +67,7 @@ export function PluginsPage() {
     } catch {
       toast(t("toast.loadInstalledFailed"), "err");
     }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   const loadAvailable = useCallback(async () => {
     try {
@@ -78,7 +78,7 @@ export function PluginsPage() {
     } catch {
       toast(t("toast.loadAvailableFailed"), "err");
     }
-  }, [toast]);
+  }, [toast, t]);
 
   useEffect(() => {
     void Promise.resolve().then(() => {

@@ -4,6 +4,7 @@
  * Delegates to AIDesignEngine service.
  */
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Canvas as FabricCanvas } from "fabric";
 import { aiDesignEngine } from "../../features/ai/AIDesignEngine";
 import type { DesignSuggestion, FontPairingResult, ColorPaletteResult } from "../../features/ai/AIDesignEngine";
@@ -42,6 +43,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 }
 
 export function AIPanel({ getCanvas }: Props) {
+  const { t } = useTranslation("designStudio");
   const [tool, setTool]     = useState<Tool>("image");
   const [busy, setBusy]     = useState(false);
   const [error, setError]   = useState("");
@@ -81,11 +83,11 @@ export function AIPanel({ getCanvas }: Props) {
         setSuggestions(res);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed");
+      setError(e instanceof Error ? e.message : t("aiPanel.requestFailed"));
     } finally {
       setBusy(false);
     }
-  }, [tool, imgPrompt, palPrompt, fontStyle, getCanvas]);
+  }, [tool, imgPrompt, palPrompt, fontStyle, getCanvas, t]);
 
   const insertImage = async (src: string) => {
     const fc = getCanvas();
@@ -100,45 +102,40 @@ export function AIPanel({ getCanvas }: Props) {
     } catch { /* noop */ }
   };
 
-  const TABS: { id: Tool; label: string }[] = [
-    { id: "image",       label: "Image"   },
-    { id: "palette",     label: "Palette" },
-    { id: "fonts",       label: "Fonts"   },
-    { id: "suggestions", label: "Ideas"   },
-  ];
+  const TAB_IDS: Tool[] = ["image", "palette", "fonts", "suggestions"];
 
   return (
     <div style={s.root}>
-      <div style={s.tabs} role="tablist" aria-label="AI tools">
-        {TABS.map(t => (
+      <div style={s.tabs} role="tablist" aria-label={t("aiPanel.toolsAriaLabel")}>
+        {TAB_IDS.map(id => (
           <button
-            key={t.id}
+            key={id}
             role="tab"
-            aria-selected={tool === t.id}
+            aria-selected={tool === id}
             style={{
               ...s.tab,
-              color: tool === t.id ? "var(--accent-2)" : "#6b7280",
-              borderBottomColor: tool === t.id ? "var(--accent-2)" : "transparent",
+              color: tool === id ? "var(--accent-2)" : "#6b7280",
+              borderBottomColor: tool === id ? "var(--accent-2)" : "transparent",
             }}
-            onClick={() => { setTool(t.id); setError(""); }}
-          >{t.label}</button>
+            onClick={() => { setTool(id); setError(""); }}
+          >{t(`aiPanel.tabs.${id}`)}</button>
         ))}
       </div>
 
       <div style={s.body}>
         {tool === "image" && (
           <>
-            <Section label="Describe your image">
+            <Section label={t("aiPanel.describeImage")}>
               <textarea
                 style={{ ...s.input, minHeight: "64px" }}
                 value={imgPrompt}
                 onChange={e => setImgPrompt(e.target.value)}
-                placeholder="A minimalist logo on white background…"
-                aria-label="Image prompt"
+                placeholder={t("aiPanel.imagePromptPlaceholder")}
+                aria-label={t("aiPanel.imagePromptAriaLabel")}
               />
             </Section>
             <button style={s.btn} onClick={run} disabled={busy || !imgPrompt.trim()}>
-              {busy ? "Generating…" : "Generate Image"}
+              {busy ? t("aiPanel.generating") : t("aiPanel.generateImage")}
             </button>
             {error && <div style={s.error}>{error}</div>}
             {images.length > 0 && (
@@ -149,10 +146,10 @@ export function AIPanel({ getCanvas }: Props) {
                     type="button"
                     style={{ ...s.genImg, padding: 0, border: "none", background: "none", cursor: "pointer" }}
                     onClick={() => void insertImage(src)}
-                    title="Click to add to canvas"
-                    aria-label={`Add generated image ${i + 1} to canvas`}
+                    title={t("aiPanel.addToCanvasTitle")}
+                    aria-label={t("aiPanel.addGeneratedImageAriaLabel", { num: i + 1 })}
                   >
-                    <img src={src} alt={`Generated ${i + 1}`} style={{ width: "100%", height: "100%", display: "block" }} />
+                    <img src={src} alt={t("aiPanel.generatedImageAlt", { num: i + 1 })} style={{ width: "100%", height: "100%", display: "block" }} />
                   </button>
                 ))}
               </div>
@@ -162,23 +159,23 @@ export function AIPanel({ getCanvas }: Props) {
 
         {tool === "palette" && (
           <>
-            <Section label="Describe your brand or mood">
+            <Section label={t("aiPanel.describeBrand")}>
               <input
                 style={s.input}
                 value={palPrompt}
                 onChange={e => setPalPrompt(e.target.value)}
-                placeholder="Ocean, calm, professional…"
-                aria-label="Palette prompt"
+                placeholder={t("aiPanel.palettePromptPlaceholder")}
+                aria-label={t("aiPanel.palettePromptAriaLabel")}
               />
             </Section>
             <button style={s.btn} onClick={run} disabled={busy || !palPrompt.trim()}>
-              {busy ? "Generating…" : "Generate Palette"}
+              {busy ? t("aiPanel.generating") : t("aiPanel.generatePalette")}
             </button>
             {error && <div style={s.error}>{error}</div>}
             {palette.length > 0 && (
               <div style={s.colorRow}>
                 {palette.map((c, i) => (
-                  <div key={i} style={{ ...s.swatch, background: c.hex }} title={`${c.name}: ${c.hex}`} />
+                  <div key={i} style={{ ...s.swatch, background: c.hex }} title={t("aiPanel.colorSwatchTitle", { name: c.name, hex: c.hex })} />
                 ))}
               </div>
             )}
@@ -187,26 +184,26 @@ export function AIPanel({ getCanvas }: Props) {
 
         {tool === "fonts" && (
           <>
-            <Section label="Style">
+            <Section label={t("aiPanel.style")}>
               <select
                 style={s.input}
                 value={fontStyle}
                 onChange={e => setFontStyle(e.target.value)}
-                aria-label="Font style"
+                aria-label={t("aiPanel.fontStyleAriaLabel")}
               >
-                {["modern", "classic", "playful", "minimal", "bold"].map(v => (
-                  <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
+                {(["modern", "classic", "playful", "minimal", "bold"] as const).map(v => (
+                  <option key={v} value={v}>{t(`aiPanel.fontStyles.${v}`)}</option>
                 ))}
               </select>
             </Section>
             <button style={s.btn} onClick={run} disabled={busy}>
-              {busy ? "Pairing…" : "Get Font Pairings"}
+              {busy ? t("aiPanel.pairing") : t("aiPanel.getFontPairings")}
             </button>
             {error && <div style={s.error}>{error}</div>}
             {fontPairs.map((pair, i) => (
               <div key={i} style={s.fontItem}>
                 <div style={{ ...s.fontH, fontFamily: pair.heading.family }}>{pair.heading.family}</div>
-                <div style={{ ...s.fontSub, fontFamily: pair.body.family }}>Body: {pair.body.family} · {pair.label}</div>
+                <div style={{ ...s.fontSub, fontFamily: pair.body.family }}>{t("aiPanel.bodyLabel", { family: pair.body.family, label: pair.label })}</div>
               </div>
             ))}
           </>
@@ -215,13 +212,13 @@ export function AIPanel({ getCanvas }: Props) {
         {tool === "suggestions" && (
           <>
             <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: 0 }}>
-              Analyzes your current canvas and suggests improvements.
+              {t("aiPanel.suggestionsDescription")}
             </p>
             <button style={s.btn} onClick={run} disabled={busy}>
-              {busy ? "Analyzing…" : "Analyze Canvas"}
+              {busy ? t("aiPanel.analyzing") : t("aiPanel.analyzeCanvas")}
             </button>
             {error && <div style={s.error}>{error}</div>}
-            {busy && <div style={s.loading}>Thinking…</div>}
+            {busy && <div style={s.loading}>{t("aiPanel.thinking")}</div>}
             {suggestions.map((sug, i) => (
               <div key={i} style={s.suggItem}>
                 <div style={s.suggTitle}>{sug.title}</div>

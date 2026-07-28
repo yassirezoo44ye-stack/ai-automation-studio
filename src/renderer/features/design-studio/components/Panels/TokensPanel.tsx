@@ -3,18 +3,19 @@
  * Integrates with tokenRegistry singleton for Color, Typography, Spacing, etc.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { tokenRegistry } from "../../core/tokens/TokenRegistry";
 import type { DesignToken, TokenCategory } from "../../core/tokens/DesignToken";
 
-const CATEGORIES: { id: TokenCategory; label: string; emoji: string }[] = [
-  { id: "color",      label: "Colors",     emoji: "🎨" },
-  { id: "gradient",   label: "Gradients",  emoji: "🌈" },
-  { id: "typography", label: "Typography", emoji: "T" },
-  { id: "spacing",    label: "Spacing",    emoji: "↔" },
-  { id: "radius",     label: "Radius",     emoji: "⌒" },
-  { id: "shadow",     label: "Shadow",     emoji: "⊕" },
-  { id: "border",     label: "Border",     emoji: "▢" },
-  { id: "effect",     label: "Effects",    emoji: "✨" },
+const CATEGORIES: { id: TokenCategory; emoji: string }[] = [
+  { id: "color",      emoji: "🎨" },
+  { id: "gradient",   emoji: "🌈" },
+  { id: "typography", emoji: "T" },
+  { id: "spacing",    emoji: "↔" },
+  { id: "radius",     emoji: "⌒" },
+  { id: "shadow",     emoji: "⊕" },
+  { id: "border",     emoji: "▢" },
+  { id: "effect",     emoji: "✨" },
 ];
 
 const s: Record<string, React.CSSProperties> = {
@@ -44,6 +45,7 @@ function tokenValueLabel(token: DesignToken): string {
 }
 
 export function TokensPanel() {
+  const { t } = useTranslation("designStudio");
   const [category, setCategory] = useState<TokenCategory>("color");
   const [tokens, setTokens]     = useState<DesignToken[]>([]);
   const [newName, setNewName]   = useState("");
@@ -78,7 +80,7 @@ export function TokensPanel() {
   return (
     <div style={s.root}>
       {/* Category tabs */}
-      <div style={s.cats} role="tablist" aria-label="Token categories">
+      <div style={s.cats} role="tablist" aria-label={t("tokensPanel.categoriesAriaLabel")}>
         {CATEGORIES.map(cat => (
           <button
             key={cat.id}
@@ -91,13 +93,13 @@ export function TokensPanel() {
               borderColor: category === cat.id ? "#4f46e5" : "#374151",
             }}
             onClick={() => setCategory(cat.id)}
-          >{cat.emoji} {cat.label}</button>
+          >{cat.emoji} {t(`tokensPanel.categories.${cat.id}`)}</button>
         ))}
       </div>
 
       {/* Token list */}
       <div style={s.list} role="list">
-        {tokens.length === 0 && <div style={s.empty}>No {category} tokens</div>}
+        {tokens.length === 0 && <div style={s.empty}>{t("tokensPanel.empty", { category: t(`tokensPanel.categories.${category}`) })}</div>}
         {tokens.map(token => {
           const preview = tokenPreview(token);
           return (
@@ -108,7 +110,7 @@ export function TokensPanel() {
               }
               <span style={s.tokenName}>{token.name}</span>
               <span style={s.tokenVal}>{tokenValueLabel(token)}</span>
-              <button style={s.delBtn} onClick={() => deleteToken(token.id)} aria-label={`Delete ${token.name}`}>✕</button>
+              <button style={s.delBtn} onClick={() => deleteToken(token.id)} aria-label={t("tokensPanel.deleteTokenAriaLabel", { name: token.name })}>✕</button>
             </div>
           );
         })}
@@ -118,11 +120,11 @@ export function TokensPanel() {
       <div style={s.addBar}>
         <input
           style={{ ...s.addIn, flex: "0 0 90px" }}
-          placeholder="Name"
+          placeholder={t("tokensPanel.namePlaceholder")}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && addToken()}
-          aria-label="New token name"
+          aria-label={t("tokensPanel.newTokenNameAriaLabel")}
         />
         {category === "color" || category === "gradient" ? (
           <input
@@ -130,19 +132,19 @@ export function TokensPanel() {
             value={newValue}
             onChange={e => setNewValue(e.target.value)}
             style={{ width: "28px", height: "28px", padding: 0, border: "none", cursor: "pointer", borderRadius: "4px", flexShrink: 0 }}
-            aria-label="Token color value"
+            aria-label={t("tokensPanel.tokenColorValueAriaLabel")}
           />
         ) : (
           <input
             style={s.addIn}
-            placeholder="Value"
+            placeholder={t("tokensPanel.valuePlaceholder")}
             value={newValue}
             onChange={e => setNewValue(e.target.value)}
             onKeyDown={e => e.key === "Enter" && addToken()}
-            aria-label="Token value"
+            aria-label={t("tokensPanel.tokenValueAriaLabel")}
           />
         )}
-        <button style={s.addBtn} onClick={addToken} aria-label="Add token">Add</button>
+        <button style={s.addBtn} onClick={addToken} aria-label={t("tokensPanel.addTokenAriaLabel")}>{t("tokensPanel.add")}</button>
       </div>
     </div>
   );

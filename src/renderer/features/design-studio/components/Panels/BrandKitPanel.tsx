@@ -3,6 +3,7 @@
  * Reads from state.brandKit and dispatches SET_BRAND_KIT on changes.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useDesign } from "../../stores/designStore";
 import type { BrandKit, BrandColor, BrandFont, BrandLogo } from "../../types/canvas.types";
 
@@ -27,6 +28,7 @@ const s: Record<string, React.CSSProperties> = {
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 export function BrandKitPanel() {
+  const { t } = useTranslation("designStudio");
   const { state, dispatch } = useDesign();
   const kit = state.brandKit as BrandKit;
 
@@ -46,7 +48,7 @@ export function BrandKitPanel() {
 
   // Fonts
   const addFont = () => {
-    const family = window.prompt("Font family (e.g. 'Inter, sans-serif'):");
+    const family = window.prompt(t("brandKitPanel.fontFamilyPrompt"));
     if (!family) return;
     const name = family.split(",")[0].trim();
     update({ fonts: [...kit.fonts, { id: uid(), name, family, weights: [400, 700] }] });
@@ -78,8 +80,8 @@ export function BrandKitPanel() {
       {/* Colors */}
       <div style={s.section}>
         <div style={s.secTitle}>
-          <span>Brand Colors</span>
-          <button style={s.addBtn} onClick={() => setAddingColor(v => !v)} aria-label="Add color">+</button>
+          <span>{t("brandKitPanel.brandColors")}</span>
+          <button style={s.addBtn} onClick={() => setAddingColor(v => !v)} aria-label={t("brandKitPanel.addColorAriaLabel")}>+</button>
         </div>
         <div style={s.colorGrid}>
           {kit.colors.map((c: BrandColor) => (
@@ -87,7 +89,7 @@ export function BrandKitPanel() {
               <button
                 style={s.swatchDel}
                 onClick={() => removeColor(c.id)}
-                aria-label={`Remove ${c.name}`}
+                aria-label={t("brandKitPanel.removeColorAriaLabel", { name: c.name })}
               >✕</button>
             </div>
           ))}
@@ -98,36 +100,36 @@ export function BrandKitPanel() {
                 value={newColor}
                 onChange={e => setNewColor(e.target.value)}
                 style={{ width: "32px", height: "32px", padding: 0, border: "none", cursor: "pointer", borderRadius: "6px" }}
-                aria-label="Pick color"
+                aria-label={t("brandKitPanel.pickColorAriaLabel")}
               />
               <button
                 style={{ padding: "4px 8px", fontSize: "12px", background: "#4f46e5", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
                 onClick={addColor}
-              >Add</button>
+              >{t("brandKitPanel.add")}</button>
             </div>
           ) : (
-            <button style={s.addColorBtn} onClick={() => setAddingColor(true)} aria-label="Add brand color">+</button>
+            <button style={s.addColorBtn} onClick={() => setAddingColor(true)} aria-label={t("brandKitPanel.addBrandColorAriaLabel")}>+</button>
           )}
         </div>
         {!kit.colors.length && !addingColor && (
-          <div style={s.emptyNote}>No brand colors yet</div>
+          <div style={s.emptyNote}>{t("brandKitPanel.noBrandColors")}</div>
         )}
       </div>
 
       {/* Fonts */}
       <div style={s.section}>
         <div style={s.secTitle}>
-          <span>Brand Fonts</span>
-          <button style={s.addBtn} onClick={addFont} aria-label="Add font">+</button>
+          <span>{t("brandKitPanel.brandFonts")}</span>
+          <button style={s.addBtn} onClick={addFont} aria-label={t("brandKitPanel.addFontAriaLabel")}>+</button>
         </div>
-        {kit.fonts.length === 0 && <div style={s.emptyNote}>No brand fonts yet</div>}
+        {kit.fonts.length === 0 && <div style={s.emptyNote}>{t("brandKitPanel.noBrandFonts")}</div>}
         {kit.fonts.map((f: BrandFont) => (
           <div key={f.id} style={s.fontItem}>
             <div>
               <div style={{ ...s.fontName, fontFamily: f.family }}>{f.name}</div>
               <div style={s.fontSub}>{f.weights.join(", ")}</div>
             </div>
-            <button style={s.delBtn} onClick={() => removeFont(f.id)} aria-label={`Remove ${f.name}`}>✕</button>
+            <button style={s.delBtn} onClick={() => removeFont(f.id)} aria-label={t("brandKitPanel.removeFontAriaLabel", { name: f.name })}>✕</button>
           </div>
         ))}
       </div>
@@ -135,15 +137,15 @@ export function BrandKitPanel() {
       {/* Logos */}
       <div style={s.section}>
         <div style={s.secTitle}>
-          <span>Logos</span>
-          <button style={s.addBtn} onClick={addLogo} aria-label="Upload logo">+</button>
+          <span>{t("brandKitPanel.logos")}</span>
+          <button style={s.addBtn} onClick={addLogo} aria-label={t("brandKitPanel.uploadLogoAriaLabel")}>+</button>
         </div>
-        {kit.logos.length === 0 && <div style={s.emptyNote}>No logos yet</div>}
+        {kit.logos.length === 0 && <div style={s.emptyNote}>{t("brandKitPanel.noLogosYet")}</div>}
         {kit.logos.map((l: BrandLogo) => (
           <div key={l.id} style={s.logoItem}>
             <img src={l.src} style={s.logoThumb} alt={l.name} />
             <span style={{ flex: 1, fontSize: "12px", color: "#d1d5db", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
-            <button style={s.delBtn} onClick={() => removeLogo(l.id)} aria-label={`Remove ${l.name}`}>✕</button>
+            <button style={s.delBtn} onClick={() => removeLogo(l.id)} aria-label={t("brandKitPanel.removeLogoAriaLabel", { name: l.name })}>✕</button>
           </div>
         ))}
       </div>

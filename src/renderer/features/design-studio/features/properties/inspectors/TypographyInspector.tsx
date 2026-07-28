@@ -3,6 +3,7 @@
  * Only shown when a text object is selected.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Canvas as FabricCanvas, IText } from "fabric";
 import { getMeta } from "../../../utils/fabricUtils";
 import { commandManager } from "../../../core/commands/CommandManager";
@@ -28,17 +29,18 @@ const SYSTEM_FONTS = [
 ];
 
 const WEIGHTS = [
-  { label: "Thin",     value: 100 },
-  { label: "Light",    value: 300 },
-  { label: "Regular",  value: 400 },
-  { label: "Medium",   value: 500 },
-  { label: "SemiBold", value: 600 },
-  { label: "Bold",     value: 700 },
-  { label: "ExtraBold",value: 800 },
-  { label: "Black",    value: 900 },
+  { jsonKey: "thin",     value: 100 },
+  { jsonKey: "light",    value: 300 },
+  { jsonKey: "regular",  value: 400 },
+  { jsonKey: "medium",   value: 500 },
+  { jsonKey: "semiBold", value: 600 },
+  { jsonKey: "bold",     value: 700 },
+  { jsonKey: "extraBold",value: 800 },
+  { jsonKey: "black",    value: 900 },
 ];
 
 export function TypographyInspector({ getCanvas, selectedIds }: Props) {
+  const { t } = useTranslation("designStudio");
   const [textObjs, setTextObjs] = useState<IText[]>([]);
   const [fontFamily,   setFontFamily]   = useState("Inter, sans-serif");
   const [fontSize,     setFontSize]     = useState(16);
@@ -89,10 +91,10 @@ export function TypographyInspector({ getCanvas, selectedIds }: Props) {
 
   return (
     <div style={{ padding: "12px", borderTop: "1px solid #1f2937" }}>
-      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Typography</div>
+      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("inspectors.typography.header")}</div>
 
       <div style={{ marginBottom: "8px" }}>
-        <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>Font Family</div>
+        <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>{t("inspectors.typography.fontFamily")}</div>
         <select style={sel} value={fontFamily} onChange={e => { setFontFamily(e.target.value); void applyFont({ fontFamily: e.target.value }); }}>
           {SYSTEM_FONTS.map(f => <option key={f} value={f}>{f.split(",")[0]}</option>)}
         </select>
@@ -100,15 +102,15 @@ export function TypographyInspector({ getCanvas, selectedIds }: Props) {
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>Size</div>
+          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>{t("inspectors.typography.size")}</div>
           <input style={inp} type="number" min={6} max={400} value={fontSize}
             onChange={e => setFontSize(+e.target.value)}
             onBlur={e => void applyFont({ fontSize: +e.target.value })} />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>Weight</div>
+          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>{t("inspectors.typography.weight")}</div>
           <select style={sel} value={fontWeight} onChange={e => { setFontWeight(+e.target.value); void applyFont({ fontWeight: +e.target.value }); }}>
-            {WEIGHTS.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
+            {WEIGHTS.map(w => <option key={w.value} value={w.value}>{t(`inspectors.typography.weights.${w.jsonKey}`)}</option>)}
           </select>
         </div>
       </div>
@@ -123,7 +125,7 @@ export function TypographyInspector({ getCanvas, selectedIds }: Props) {
 
       <div style={{ display: "flex", gap: "8px" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>Line H</div>
+          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>{t("inspectors.typography.lineHeight")}</div>
           <input style={inp} type="number" step="0.1" min={0.5} max={4} value={lineHeight}
             onChange={e => setLineHeight(+e.target.value)}
             onBlur={e => void applyFont({ lineHeight: +e.target.value })} />

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import styles from "./TopToolbar.module.css";
 
 interface Props {
@@ -23,12 +24,13 @@ export function TopToolbar({
   onZoomIn, onZoomOut, onZoomReset,
   onExport, onSave,
 }: Props) {
+  const { t } = useTranslation("designStudio");
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
         <span className={styles.projectName}>
           {projectName}
-          {unsaved && <span className={styles.dot} title="Unsaved changes" />}
+          {unsaved && <span className={styles.dot} title={t("topToolbar.unsavedChanges")} />}
         </span>
       </div>
 
@@ -37,8 +39,8 @@ export function TopToolbar({
           className={styles.btn}
           onClick={onUndo}
           disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
-          aria-label="Undo"
+          title={t("topToolbar.undoTitle")}
+          aria-label={t("topToolbar.undoAriaLabel")}
         >
           ↩
         </button>
@@ -46,27 +48,27 @@ export function TopToolbar({
           className={styles.btn}
           onClick={onRedo}
           disabled={!canRedo}
-          title="Redo (Ctrl+Y)"
-          aria-label="Redo"
+          title={t("topToolbar.redoTitle")}
+          aria-label={t("topToolbar.redoAriaLabel")}
         >
           ↪
         </button>
 
         <div className={styles.divider} />
 
-        <button className={styles.btn} onClick={onZoomOut} title="Zoom out (Ctrl+-)">−</button>
-        <button className={styles.zoomLabel} onClick={onZoomReset} title="Reset zoom (Ctrl+0)">
+        <button className={styles.btn} onClick={onZoomOut} title={t("topToolbar.zoomOutTitle")}>−</button>
+        <button className={styles.zoomLabel} onClick={onZoomReset} title={t("topToolbar.resetZoomTitle")}>
           {Math.round(zoom * 100)}%
         </button>
-        <button className={styles.btn} onClick={onZoomIn} title="Zoom in (Ctrl+=)">+</button>
+        <button className={styles.btn} onClick={onZoomIn} title={t("topToolbar.zoomInTitle")}>+</button>
       </div>
 
       <div className={styles.right}>
-        <button className={styles.btnSecondary} onClick={onSave} title="Save">
-          Save
+        <button className={styles.btnSecondary} onClick={onSave} title={t("topToolbar.save")}>
+          {t("topToolbar.save")}
         </button>
-        <button className={styles.btnPrimary} onClick={onExport} title="Export">
-          Export
+        <button className={styles.btnPrimary} onClick={onExport} title={t("topToolbar.export")}>
+          {t("topToolbar.export")}
         </button>
       </div>
     </header>

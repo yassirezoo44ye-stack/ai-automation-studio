@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Asset, AssetType } from "../../types/canvas.types";
 import {
   listAssets,
@@ -13,14 +14,11 @@ interface Props {
   onInsert: (src: string) => void;
 }
 
-const TABS: { id: AssetType | "all"; label: string }[] = [
-  { id: "all",   label: "All"    },
-  { id: "image", label: "Images" },
-  { id: "svg",   label: "SVG"    },
-  { id: "video", label: "Video"  },
-];
+const TAB_IDS: (AssetType | "all")[] = ["all", "image", "svg", "video"];
+const TAB_JSON_KEY: Record<string, string> = { all: "all", image: "images", svg: "svg", video: "video" };
 
 export function AssetsPanel({ onInsert }: Props) {
+  const { t } = useTranslation("designStudio");
   const [assets,   setAssets]   = useState<Asset[]>([]);
   const [tab,      setTab]      = useState<AssetType | "all">("all");
   const [query,    setQuery]    = useState("");
@@ -64,9 +62,9 @@ export function AssetsPanel({ onInsert }: Props) {
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
-        <span>Assets</span>
-        <label className={styles.uploadBtn} title="Upload files">
-          + Upload
+        <span>{t("assetsPanel.header")}</span>
+        <label className={styles.uploadBtn} title={t("assetsPanel.uploadTitle")}>
+          + {t("assetsPanel.upload")}
           <input
             type="file"
             multiple
@@ -78,27 +76,27 @@ export function AssetsPanel({ onInsert }: Props) {
       </div>
 
       <div className={styles.tabs}>
-        {TABS.map(t => (
+        {TAB_IDS.map(id => (
           <button
-            key={t.id}
-            className={`${styles.tab} ${tab === t.id ? styles.active : ""}`}
-            onClick={() => setTab(t.id)}
+            key={id}
+            className={`${styles.tab} ${tab === id ? styles.active : ""}`}
+            onClick={() => setTab(id)}
           >
-            {t.label}
+            {t(`assetsPanel.tabs.${TAB_JSON_KEY[id]}`)}
           </button>
         ))}
       </div>
 
       <input
         className={styles.search}
-        placeholder="Search assets…"
+        placeholder={t("assetsPanel.searchPlaceholder")}
         value={query}
         onChange={e => setQuery(e.target.value)}
       />
 
-      {loading && <p className={styles.status}>Loading…</p>}
+      {loading && <p className={styles.status}>{t("assetsPanel.loading")}</p>}
       {!loading && filtered.length === 0 && (
-        <p className={styles.status}>No assets found. Upload files to get started.</p>
+        <p className={styles.status}>{t("assetsPanel.empty")}</p>
       )}
 
       <div className={styles.grid}>
@@ -113,21 +111,21 @@ export function AssetsPanel({ onInsert }: Props) {
               <button
                 className={styles.action}
                 onClick={() => onInsert(asset.src)}
-                title="Insert"
+                title={t("assetsPanel.insertTitle")}
               >
                 +
               </button>
               <button
                 className={styles.action}
                 onClick={() => void handleFav(asset.id)}
-                title={asset.isFavorite ? "Remove favourite" : "Favourite"}
+                title={asset.isFavorite ? t("assetsPanel.removeFavourite") : t("assetsPanel.favourite")}
               >
                 {asset.isFavorite ? "★" : "☆"}
               </button>
               <button
                 className={styles.action}
                 onClick={() => void handleDelete(asset.id)}
-                title="Delete"
+                title={t("assetsPanel.delete")}
               >
                 ✕
               </button>

@@ -3,6 +3,7 @@
  * Reads selection from Fabric canvas; applies changes through Commands.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Canvas as FabricCanvas } from "fabric";
 import { commandManager } from "../../../core/commands/CommandManager";
 import { MoveObjectCommand } from "../../../core/commands/commands/MoveObject";
@@ -40,6 +41,7 @@ function getActiveProps(canvas: FabricCanvas): ObjectProps | null {
 }
 
 export function PositionInspector({ getCanvas, selectedIds }: Props) {
+  const { t } = useTranslation("designStudio");
   const [props, setProps] = useState<ObjectProps | null>(null);
 
   useEffect(() => {
@@ -81,7 +83,7 @@ export function PositionInspector({ getCanvas, selectedIds }: Props) {
   if (!props) {
     return (
       <div style={{ padding: "12px", color: "#9ca3af", fontSize: "12px", textAlign: "center" }}>
-        No object selected
+        {t("inspectors.position.emptyState")}
       </div>
     );
   }
@@ -110,7 +112,7 @@ export function PositionInspector({ getCanvas, selectedIds }: Props) {
 
   return (
     <div style={{ padding: "12px" }}>
-      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Position</div>
+      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("inspectors.position.header")}</div>
       <div style={row}>{group("X", "x")}{group("Y", "y")}</div>
       <div style={row}>{group("W", "width")}{group("H", "height")}</div>
       <div style={row}>{group("°", "angle")}{group("%", "opacity")}</div>

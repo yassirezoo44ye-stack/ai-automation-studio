@@ -3,6 +3,7 @@
  * Supports page selection, rename, duplicate, reorder (up/down), and delete.
  */
 import { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useDesign } from "../../stores/designStore";
 
 const s: Record<string, React.CSSProperties> = {
@@ -22,6 +23,7 @@ const s: Record<string, React.CSSProperties> = {
 };
 
 export function PagesPanel() {
+  const { t } = useTranslation("designStudio");
   const { state, dispatch, setPage, duplicatePage, removePage, reorderPage, renamePage } = useDesign();
   const { pages, currentPageId } = state.project;
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function PagesPanel() {
       type: "ADD_PAGE",
       page: {
         id: `p_${Date.now()}`,
-        name: `Page ${pages.length + 1}`,
+        name: t("pagesPanel.defaultPageName", { num: pages.length + 1 }),
         width: 1280,
         height: 720,
         backgroundColor: "#ffffff",
@@ -57,8 +59,8 @@ export function PagesPanel() {
   return (
     <div style={s.root}>
       <div style={s.header}>
-        <span style={s.title}>Pages ({pages.length})</span>
-        <button style={s.addBtn} onClick={addPage} title="Add page">+</button>
+        <span style={s.title}>{t("pagesPanel.title", { count: pages.length })}</span>
+        <button style={s.addBtn} onClick={addPage} title={t("pagesPanel.addPage")}>+</button>
       </div>
 
       <div style={s.list}>
@@ -74,7 +76,7 @@ export function PagesPanel() {
               }}
               onClick={() => setPage(page.id)}
               onDoubleClick={() => startRename(page.id, page.name)}
-              aria-label={`Page ${idx + 1}: ${page.name}`}
+              aria-label={t("pagesPanel.pageAriaLabel", { num: idx + 1, name: page.name })}
               role="button"
               tabIndex={0}
               onKeyDown={e => e.key === "Enter" && setPage(page.id)}
@@ -98,7 +100,7 @@ export function PagesPanel() {
                     onBlur={commitRename}
                     onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setEditingId(null); }}
                     onClick={e => e.stopPropagation()}
-                    aria-label="Rename page"
+                    aria-label={t("pagesPanel.renamePageAriaLabel")}
                   />
                 ) : (
                   <div style={s.name} title={page.name}>{page.name}</div>
@@ -110,30 +112,30 @@ export function PagesPanel() {
               <div style={s.actions} onClick={e => e.stopPropagation()}>
                 <button
                   style={s.btn}
-                  title="Move up"
+                  title={t("pagesPanel.moveUp")}
                   disabled={idx === 0}
                   onClick={() => reorderPage(idx, idx - 1)}
-                  aria-label="Move page up"
+                  aria-label={t("pagesPanel.movePageUpAriaLabel")}
                 >↑</button>
                 <button
                   style={s.btn}
-                  title="Move down"
+                  title={t("pagesPanel.moveDown")}
                   disabled={idx === pages.length - 1}
                   onClick={() => reorderPage(idx, idx + 1)}
-                  aria-label="Move page down"
+                  aria-label={t("pagesPanel.movePageDownAriaLabel")}
                 >↓</button>
                 <button
                   style={s.btn}
-                  title="Duplicate"
+                  title={t("pagesPanel.duplicate")}
                   onClick={() => duplicatePage(page.id)}
-                  aria-label="Duplicate page"
+                  aria-label={t("pagesPanel.duplicatePageAriaLabel")}
                 >⧉</button>
                 <button
                   style={{ ...s.btn, color: pages.length <= 1 ? "#374151" : "#ef4444" }}
-                  title="Delete"
+                  title={t("pagesPanel.delete")}
                   disabled={pages.length <= 1}
                   onClick={() => removePage(page.id)}
-                  aria-label="Delete page"
+                  aria-label={t("pagesPanel.deletePageAriaLabel")}
                 >✕</button>
               </div>
             </div>

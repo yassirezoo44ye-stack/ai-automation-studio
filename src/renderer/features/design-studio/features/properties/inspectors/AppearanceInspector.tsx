@@ -2,6 +2,7 @@
  * AppearanceInspector — fill color, stroke color, stroke width.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Canvas as FabricCanvas } from "fabric";
 import { commandManager } from "../../../core/commands/CommandManager";
 import { ChangeColorCommand } from "../../../core/commands/commands/ChangeColor";
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function AppearanceInspector({ getCanvas, selectedIds }: Props) {
+  const { t } = useTranslation("designStudio");
   const [fill,        setFill]        = useState("#4f46e5");
   const [stroke,      setStroke]      = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(0);
@@ -53,10 +55,10 @@ export function AppearanceInspector({ getCanvas, selectedIds }: Props) {
 
   return (
     <div style={{ padding: "12px", borderTop: "1px solid #1f2937" }}>
-      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Appearance</div>
+      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("inspectors.appearance.header")}</div>
 
       <div style={row}>
-        <span style={lbl}>Fill</span>
+        <span style={lbl}>{t("inspectors.appearance.fill")}</span>
         <input type="color" style={{ ...swatch, padding: 0 }} value={fill}
           onChange={e => setFill(e.target.value)}
           onBlur={e => void applyColor("fill", e.target.value)} />
@@ -66,7 +68,7 @@ export function AppearanceInspector({ getCanvas, selectedIds }: Props) {
       </div>
 
       <div style={row}>
-        <span style={lbl}>Stroke</span>
+        <span style={lbl}>{t("inspectors.appearance.stroke")}</span>
         <input type="color" style={{ ...swatch, padding: 0 }} value={stroke}
           onChange={e => setStroke(e.target.value)}
           onBlur={e => void applyColor("stroke", e.target.value)} />
@@ -76,7 +78,7 @@ export function AppearanceInspector({ getCanvas, selectedIds }: Props) {
       </div>
 
       <div style={row}>
-        <span style={lbl}>Width</span>
+        <span style={lbl}>{t("inspectors.appearance.width")}</span>
         <input style={{ ...inp, flex: "0 0 60px" }} type="number" min={0} max={50} value={strokeWidth}
           onChange={e => setStrokeWidth(+e.target.value)}
           onBlur={e => applyStrokeWidth(+e.target.value)} />

@@ -80,7 +80,7 @@ export function SandboxPage() {
     } catch {
       toast(t("toast.loadWorkersFailed"), "err");
     }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   const loadSecurityEvents = useCallback(async () => {
     if (!currentOrgId) { setSecurityEvents([]); return; }
@@ -91,7 +91,7 @@ export function SandboxPage() {
     } catch {
       toast(t("toast.loadSecurityEventsFailed"), "err");
     }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   const loadPermissionRequests = useCallback(async () => {
     if (!currentOrgId) { setPermissionRequests([]); return; }
@@ -102,7 +102,7 @@ export function SandboxPage() {
     } catch {
       toast(t("toast.loadPermissionRequestsFailed"), "err");
     }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   useEffect(() => {
     void Promise.resolve().then(() => {

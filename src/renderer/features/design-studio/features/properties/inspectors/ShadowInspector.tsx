@@ -2,6 +2,7 @@
  * ShadowInspector — box shadow (offsetX, offsetY, blur, color) for selected objects.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Canvas as FabricCanvas } from "fabric";
 import { Shadow } from "fabric";
 
@@ -13,6 +14,7 @@ interface Props {
 interface ShadowProps { color: string; offsetX: number; offsetY: number; blur: number }
 
 export function ShadowInspector({ getCanvas, selectedIds }: Props) {
+  const { t } = useTranslation("designStudio");
   const [enabled, setEnabled]   = useState(false);
   const [shadow,  setShadow]    = useState<ShadowProps>({ color: "rgba(0,0,0,0.2)", offsetX: 4, offsetY: 4, blur: 8 });
 
@@ -61,7 +63,7 @@ export function ShadowInspector({ getCanvas, selectedIds }: Props) {
   return (
     <div style={{ padding: "12px", borderTop: "1px solid #1f2937" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-        <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>Shadow</div>
+        <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("inspectors.shadow.header")}</div>
         <input type="checkbox" checked={enabled} onChange={e => {
           setEnabled(e.target.checked);
           apply(e.target.checked ? shadow : null);
@@ -71,7 +73,7 @@ export function ShadowInspector({ getCanvas, selectedIds }: Props) {
       {enabled && (
         <>
           <div style={row}>
-            <span style={lbl}>Color</span>
+            <span style={lbl}>{t("inspectors.shadow.color")}</span>
             <input style={{ ...inp, flex: "0 0 28px", padding: 0, height: "28px" }} type="color" value={shadow.color.startsWith("rgba") ? "#000000" : shadow.color}
               onChange={e => updateShadow({ color: e.target.value })} />
             <input style={inp} type="text" value={shadow.color}
@@ -84,7 +86,7 @@ export function ShadowInspector({ getCanvas, selectedIds }: Props) {
             <input style={inp} type="number" value={shadow.offsetY} onChange={e => updateShadow({ offsetY: +e.target.value })} />
           </div>
           <div style={row}>
-            <span style={lbl}>Blur</span>
+            <span style={lbl}>{t("inspectors.shadow.blur")}</span>
             <input style={inp} type="number" min={0} value={shadow.blur} onChange={e => updateShadow({ blur: +e.target.value })} />
           </div>
         </>
