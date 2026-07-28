@@ -51,12 +51,21 @@ export interface AgentStats {
   last_called : number | null;
 }
 
+export interface AgentLiveStatus {
+  status        : "idle" | "running";
+  running_since?: number;
+  duration_s?   : number;
+  success?      : boolean;
+  duration_ms?  : number;
+}
+
 export interface AgentInfo {
   name        : string;
   description : string;
   group       : string;
   hints       : Record<string, unknown>;
   stats       : AgentStats;
+  live        : AgentLiveStatus;
 }
 
 export interface MemoryRecord {

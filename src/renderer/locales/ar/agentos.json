@@ -23,7 +23,8 @@
     "agentVotes": "أصوات الوكلاء:"
   },
   "agentGrid": {
-    "title": "⚡ الوكلاء المسجّلون ({{count}})"
+    "title": "⚡ الوكلاء المسجّلون ({{count}})",
+    "running": "قيد التشغيل"
   },
   "executionLog": {
     "title": "📋 ذاكرة التنفيذ ({{count}})",

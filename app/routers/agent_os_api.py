@@ -164,14 +164,19 @@ async def agentos_agents(request: Request):
     tenant's custom agents."""
     from app.agents.kernel import get_agent_kernel
     from app.agents.memory import get_memory
+    from app.agents.liveness import snapshot as liveness_snapshot
     from app.tenancy.context import optional_org_id
     kernel = get_agent_kernel()
     memory = get_memory()
     org_id = await optional_org_id(request)
+    running = liveness_snapshot()
     agents = []
     for ag in kernel.visible_agents(org_id):
         stats = memory.stats(ag.name)
-        agents.append({**ag.to_dict(), "stats": stats.to_dict()})
+        agents.append({
+            **ag.to_dict(), "stats": stats.to_dict(),
+            "live": running.get(ag.name, {"status": "idle"}),
+        })
     return {"count": len(agents), "agents": agents}
 
 

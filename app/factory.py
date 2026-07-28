@@ -202,6 +202,11 @@ async def lifespan(app: FastAPI):
     from app.core.presence import wire_presence_fanout
     await wire_presence_fanout()
 
+    # ── AgentOS liveness — bridges agent.started/agent.finished onto the
+    # /ws/system broadcast so the AgentOS UI updates live (app/agents/liveness.py).
+    from app.agents.liveness import wire_agent_liveness
+    wire_agent_liveness()
+
     # ── Background job queue (Redis-backed when available) ──────────────────
     from app.core.jobs import get_job_queue
     get_job_queue(cache=cache)

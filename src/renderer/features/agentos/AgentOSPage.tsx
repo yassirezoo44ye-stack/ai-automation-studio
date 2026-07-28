@@ -4,6 +4,7 @@ import { agentOsApi } from "./api";
 import { apiFetch } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
+import { useAgentLiveness } from "../../shared/hooks/useAgentLiveness";
 import type { AgentResult, AgentInfo, MemoryRecord, SystemStatus, Suggestion, DeliberationBid } from "./api";
 
 // ── Layout-only styles (no shared primitive fits these — page chrome and the
@@ -186,7 +187,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
 
 // ── Agent Grid ────────────────────────────────────────────────────────────────
 
-function AgentGrid({ agents }: { agents: AgentInfo[] }) {
+function AgentGrid({ agents, isRunning }: { agents: AgentInfo[]; isRunning: (name: string) => boolean }) {
   const { t } = useTranslation("agentos");
   const groups: Record<string, AgentInfo[]> = {};
   for (const a of agents) groups[a.group] = [...(groups[a.group] ?? []), a];
@@ -204,14 +205,25 @@ function AgentGrid({ agents }: { agents: AgentInfo[] }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
             {items.map(a => {
               const rateKind = a.stats.success_rate >= 0.8 ? "green" : a.stats.success_rate >= 0.5 ? "yellow" : "red";
+              const running = isRunning(a.name);
               return (
                 <div key={a.name} style={{
                   padding: "10px 12px", borderRadius: 8,
-                  background: "var(--bg-base)", border: "1px solid var(--border)",
+                  background: "var(--bg-base)",
+                  border: `1px solid ${running ? "var(--accent)" : "var(--border)"}`,
+                  transition: "border-color .2s",
                 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                      background: running ? "var(--accent)" : "var(--t5)",
+                      animation: running ? "fadeIn .6s ease-in-out infinite alternate" : undefined,
+                    }} />
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</span>
-                    {a.stats.call_count > 0 && (
+                    {running && (
+                      <span className="badge badge-purple">{t("agentGrid.running")}</span>
+                    )}
+                    {!running && a.stats.call_count > 0 && (
                       <span className={`badge badge-${rateKind}`}>{(a.stats.success_rate * 100).toFixed(0)}%</span>
                     )}
                   </div>
@@ -447,6 +459,12 @@ export function AgentOSPage() {
   const [status, setStatus]         = useState<SystemStatus | null>(null);
   const [perfData, setPerfData]     = useState<PerfData | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const { runningDeltas } = useAgentLiveness();
+  const isAgentRunning = useCallback(
+    (name: string) => runningDeltas.get(name)
+      ?? agents.find(a => a.name === name)?.live.status === "running",
+    [runningDeltas, agents],
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -536,7 +554,7 @@ export function AgentOSPage() {
             {results.map((r, i) => <ResultBox key={i} result={r} />)}
           </>
         )}
-        {tab === "agents" && <AgentGrid agents={agents} />}
+        {tab === "agents" && <AgentGrid agents={agents} isRunning={isAgentRunning} />}
         {tab === "memory" && <ExecutionLog records={records} />}
         {tab === "evolution" && (
           <EvolutionPanel

@@ -23,7 +23,8 @@
     "agentVotes": "Agent votes:"
   },
   "agentGrid": {
-    "title": "⚡ Registered Agents ({{count}})"
+    "title": "⚡ Registered Agents ({{count}})",
+    "running": "RUNNING"
   },
   "executionLog": {
     "title": "📋 Execution Memory ({{count}})",

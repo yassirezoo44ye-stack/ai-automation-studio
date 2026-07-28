@@ -216,11 +216,23 @@ async def job_ws(ws: WebSocket, job_id: str):
         manager.disconnect(ws, topic)
 
 
-# ── System broadcast (admin) ──────────────────────────────────────────────────
+# ── System broadcast (authenticated) ────────────────────────────────────────
 
 @router.websocket("/ws/system")
 async def system_ws(ws: WebSocket):
-    """System-wide broadcast channel. Receives all agent + job events."""
+    """System-wide broadcast channel — currently carries AgentOS agent
+    liveness (see app/agents/liveness.py's "agent.started"/"agent.finished"
+    bridge; frame shape {"agent": name, "status": "running"|"idle", ...}).
+    Any authenticated user may connect: agent names/timings aren't
+    per-tenant secret, but the channel still requires a valid session so
+    it isn't wide open to anyone on the internet, matching every other
+    WS endpoint here that carries live operational data."""
+    token   = ws.query_params.get("token", "")
+    user_id = _user_id_from_ws_token(token)
+    if not user_id:
+        await ws.close(code=4401, reason="unauthorized")
+        return
+
     topic = "system"
     await manager.connect(ws, topic)
     hb    = asyncio.create_task(_heartbeat(ws))
