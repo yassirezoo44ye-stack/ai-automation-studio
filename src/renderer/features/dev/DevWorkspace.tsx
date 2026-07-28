@@ -6,6 +6,7 @@
  * The "design" tab has been removed — Design Studio is a first-class nav destination.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -27,6 +28,7 @@ function isHtml(fs: { path: string }[]) {
 }
 
 export function DevWorkspace() {
+  const { t } = useTranslation("dev");
   const toast = useToast();
   const [tab, setTab] = useState<DevTab>("generate");
 
@@ -66,12 +68,12 @@ export function DevWorkspace() {
   }, [projectId]);
 
   const clearWorkspace = async () => {
-    if (!confirm("Clear all files in this workspace?")) return;
+    if (!confirm(t("header.confirmClear"))) return;
     await apiFetch(`/api/projects/${projectId}/files`, { method: "DELETE" });
     setFiles([]); setExistingFiles([]); setActiveFile(null);
     setRunOutput(""); setRunCmd(""); setRunError(null);
     if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }
-    toast("Workspace cleared");
+    toast(t("header.toastCleared"));
   };
 
   const downloadZip = async () => {
@@ -119,11 +121,11 @@ export function DevWorkspace() {
 
   // Flow order: Generate → Preview → Files → Terminal → Package
   const TABS: [DevTab, string][] = [
-    ["generate", "Generate"],
-    ["preview",  "Preview"],
-    ["files",    `Files${allFiles.length ? ` (${allFiles.length})` : ""}`],
-    ["run",      "Terminal"],
-    ["package",  "Package"],
+    ["generate", t("tabs.generate")],
+    ["preview",  t("tabs.preview")],
+    ["files",    allFiles.length ? t("tabs.filesWithCount", { count: allFiles.length }) : t("tabs.files")],
+    ["run",      t("tabs.run")],
+    ["package",  t("tabs.package")],
   ];
 
   return (
@@ -131,11 +133,11 @@ export function DevWorkspace() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={S.headerTitle}>Dev Workspace</span>
-          {buildState === "building" && <StatusBadge kind="info"    label="Building…"   />}
-          {buildState === "done"     && <StatusBadge kind="success"  label="Built"       />}
-          {buildState === "error"    && <StatusBadge kind="error"    label="Build failed" />}
-          {running                   && <StatusBadge kind="warning"  label="Running"     />}
+          <span style={S.headerTitle}>{t("header.title")}</span>
+          {buildState === "building" && <StatusBadge kind="info"    label={t("header.status.building")}   />}
+          {buildState === "done"     && <StatusBadge kind="success"  label={t("header.status.built")}       />}
+          {buildState === "error"    && <StatusBadge kind="error"    label={t("header.status.buildFailed")} />}
+          {running                   && <StatusBadge kind="warning"  label={t("header.status.running")}     />}
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -143,9 +145,9 @@ export function DevWorkspace() {
             value={projectId}
             onChange={e => setProjectId(e.target.value)}
             className="g-input" style={{ width: "auto" }}
-            aria-label="Active project"
+            aria-label={t("header.activeProjectLabel")}
           >
-            <option value="demo">Demo Project</option>
+            <option value="demo">{t("header.demoProject")}</option>
             {projects
               .filter(p => p.id !== "00000000-0000-0000-0000-000000000001")
               .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -153,8 +155,8 @@ export function DevWorkspace() {
 
           {allFiles.length > 0 && (
             <>
-              <GoldButton variant="ghost" onClick={downloadZip}   style={{ fontSize: 12, padding: "6px 12px" }}>⬇ ZIP</GoldButton>
-              <GoldButton variant="ghost" onClick={clearWorkspace} style={{ fontSize: 12, padding: "6px 12px" }}>🗑 Clear</GoldButton>
+              <GoldButton variant="ghost" onClick={downloadZip}   style={{ fontSize: 12, padding: "6px 12px" }}>{t("header.downloadZip")}</GoldButton>
+              <GoldButton variant="ghost" onClick={clearWorkspace} style={{ fontSize: 12, padding: "6px 12px" }}>{t("header.clearWorkspace")}</GoldButton>
             </>
           )}
         </div>
@@ -167,7 +169,7 @@ export function DevWorkspace() {
         style={{ display: "flex", borderBottom: "1px solid var(--border)", background: "var(--bg-hover)", padding: "0 16px" }}
         // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
         role="tablist"
-        aria-label="Dev workspace tabs"
+        aria-label={t("tabsAriaLabel")}
       >
         {TABS.map(([id, label]) => (
           <button

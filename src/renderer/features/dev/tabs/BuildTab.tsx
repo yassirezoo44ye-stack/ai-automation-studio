@@ -4,6 +4,7 @@
  * All API calls go through the shared apiFetch/parseJSON layer.
  */
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { authH, API, parseJSON } from "../../../shared/utils/api";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import { GoldButton } from "../../../shared/ui/gold";
@@ -37,12 +38,13 @@ export function BuildTab({
   onPrompt, onStateChange, onStatus, onDescription,
   onFileAppend, onBuildDone, onSwitchTab, onOpenPreview, onExportZip, onToast,
 }: BuildTabProps) {
+  const { t } = useTranslation("dev");
   const abortRef = useRef<AbortController | null>(null);
 
   const build = async () => {
     if (!buildPrompt.trim() || buildState === "building") return;
     onStateChange("building");
-    onStatus("Connecting to Claude…");
+    onStatus(t("buildTab.connecting"));
     onDescription("");
     const accumulated: BuildFile[] = [];
 
@@ -84,18 +86,18 @@ export function BuildTab({
             const f = { path: ev.path as string, content: ev.content as string };
             accumulated.push(f);
             onFileAppend(f);
-            onStatus(`Writing ${ev.path}…`);
+            onStatus(t("buildTab.writingFile", { path: ev.path }));
           } else if (ev.type === "done") {
             onDescription(ev.description as string);
             onStateChange("done");
-            onStatus(`Built ${(ev.files as unknown[]).length} files`);
+            onStatus(t("buildTab.builtFiles", { count: (ev.files as unknown[]).length }));
             onBuildDone(accumulated);
-            onToast(`Built: ${(ev.description as string) || `${(ev.files as unknown[]).length} files`}`);
+            onToast(t("buildTab.builtToast", { description: (ev.description as string) || t("buildTab.builtFiles", { count: (ev.files as unknown[]).length }) }));
             // Stay on Generate — the Installation panel renders below the
             // button and auto-scrolls into view as the first actionable step.
           } else if (ev.type === "error") {
             onStateChange("error");
-            onStatus(`Error: ${ev.message}`);
+            onStatus(t("buildTab.errorPrefix", { message: ev.message }));
             onToast(ev.message as string, "err");
           }
           // heartbeat: no-op
@@ -104,7 +106,7 @@ export function BuildTab({
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
         onStateChange("error");
-        onStatus(`Error: ${(err as Error).message}`);
+        onStatus(t("buildTab.errorPrefix", { message: (err as Error).message }));
       } else {
         onStateChange("idle");
         onStatus("");
@@ -118,14 +120,14 @@ export function BuildTab({
     <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
       <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
-          <div className="g-label">What do you want to build?</div>
+          <div className="g-label">{t("buildTab.promptLabel")}</div>
           <textarea
             value={buildPrompt}
             onChange={e => onPrompt(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && e.ctrlKey) void build(); }}
-            placeholder={"Describe your app in detail…\n\nCtrl+Enter to build"}
+            placeholder={t("buildTab.promptPlaceholder")}
             className="g-input" style={{ minHeight: 140, resize: "vertical", fontFamily: "inherit" }}
-            aria-label="Build prompt"
+            aria-label={t("buildTab.promptAriaLabel")}
           />
         </div>
 
@@ -133,21 +135,21 @@ export function BuildTab({
           onClick={buildState === "building" ? stop : () => void build()}
           disabled={!buildPrompt.trim() && buildState !== "building"}
           style={{ flex: 1 }}
-          title={buildState === "building" ? "Stop build" : "Generate app"}
+          title={buildState === "building" ? t("buildTab.stopTitle") : t("buildTab.generateTitle")}
         >
-          {buildState === "building" ? "⏹ Stop" : "✦ Generate"}
+          {buildState === "building" ? t("buildTab.stopButton") : t("buildTab.generateButton")}
         </GoldButton>
 
         {buildState === "error" && status && (
           <div style={{ margin: "10px 12px", padding: "12px 14px", borderRadius: 12, background: "var(--red-dim)", border: "1px solid var(--red)", fontSize: 12, color: "var(--red)", lineHeight: 1.6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, marginBottom: 6, fontSize: 12 }}>⚠ Build error</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, marginBottom: 6, fontSize: 12 }}>{t("buildTab.buildErrorTitle")}</div>
             {status.replace(/^Error:\s*/, "")}
           </div>
         )}
 
         {buildState === "building" && status && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <StatusBadge kind="info" label="Building" />
+            <StatusBadge kind="info" label={t("buildTab.building")} />
             <span style={{ fontSize: 12, color: "var(--green)" }}>{status}</span>
           </div>
         )}
@@ -174,15 +176,15 @@ export function BuildTab({
         )}
 
         <div>
-          <div className="g-label">TEMPLATES</div>
+          <div className="g-label">{t("buildTab.templatesLabel")}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-            {BUILD_TEMPLATES.map(t => (
+            {BUILD_TEMPLATES.map(tpl => (
               <GoldButton
-                key={t.label}
+                key={tpl.label}
                 variant="ghost"
-                onClick={() => onPrompt(t.prompt)}
+                onClick={() => onPrompt(tpl.prompt)}
                 style={{ fontSize: 12 }}
-              >{t.label}</GoldButton>
+              >{tpl.label}</GoldButton>
             ))}
           </div>
         </div>

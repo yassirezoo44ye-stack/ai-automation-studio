@@ -6,6 +6,8 @@
  * for Node projects, one-click copy, command download, and quick actions.
  */
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type { BuildFile } from "../../../shared/types";
 
 // ── Project-type detection ────────────────────────────────────────────────────
@@ -14,7 +16,6 @@ export type ProjectKind = "node" | "fastapi" | "python" | "docker" | "static" | 
 
 export interface DetectedProject {
   kind: ProjectKind;
-  label: string;
   icon: string;
   hasDocker: boolean;
 }
@@ -28,23 +29,27 @@ function detectProject(files: BuildFile[]): DetectedProject {
   const hasDocker = has("docker-compose.yml") || has("docker-compose.yaml") || has("compose.yml") || has("compose.yaml");
 
   if (has("package.json"))
-    return { kind: "node", label: "Node.js", icon: "📦", hasDocker };
+    return { kind: "node", icon: "📦", hasDocker };
 
   if (has("requirements.txt") || paths.some(p => p.endsWith(".py"))) {
     const pyText = files.filter(f => f.path.endsWith(".py")).map(f => f.content).join("\n")
                  + content("requirements.txt");
     if (/fastapi|uvicorn/i.test(pyText))
-      return { kind: "fastapi", label: "FastAPI", icon: "⚡", hasDocker };
-    return { kind: "python", label: "Python", icon: "🐍", hasDocker };
+      return { kind: "fastapi", icon: "⚡", hasDocker };
+    return { kind: "python", icon: "🐍", hasDocker };
   }
 
   if (hasDocker || has("dockerfile"))
-    return { kind: "docker", label: "Docker", icon: "🐳", hasDocker: true };
+    return { kind: "docker", icon: "🐳", hasDocker: true };
 
   if (paths.some(p => p.endsWith(".html")))
-    return { kind: "static", label: "Static HTML", icon: "🌐", hasDocker };
+    return { kind: "static", icon: "🌐", hasDocker };
 
-  return { kind: "unknown", label: "Project", icon: "📁", hasDocker };
+  return { kind: "unknown", icon: "📁", hasDocker };
+}
+
+function projectLabel(t: TFunction<"dev">, kind: ProjectKind): string {
+  return t(`installationPanel.projectKinds.${kind}`);
 }
 
 // ── Command sets ──────────────────────────────────────────────────────────────
@@ -60,20 +65,21 @@ const PM_COMMANDS: Record<PM, string[]> = {
 
 const PM_ICONS: Record<PM, string> = { npm: "📕", pnpm: "🟡", yarn: "🧶", bun: "🥟" };
 
-function commandsFor(project: DetectedProject, pm: PM, entryPy: string): string[] {
+function commandsFor(t: TFunction<"dev">, project: DetectedProject, pm: PM, entryPy: string): string[] {
   switch (project.kind) {
     case "node":    return PM_COMMANDS[pm];
     case "fastapi": return ["pip install -r requirements.txt", `uvicorn ${entryPy.replace(/\.py$/, "")}:app --reload`];
     case "python":  return ["pip install -r requirements.txt", `python ${entryPy}`];
     case "docker":  return ["docker compose up --build"];
-    case "static":  return ["# No installation needed — open in the Preview tab", "# or serve locally:", "npx serve ."];
-    default:        return ["# Explore the generated files to get started"];
+    case "static":  return [t("installationPanel.commands.staticNoInstall"), t("installationPanel.commands.staticServeLocally"), "npx serve ."];
+    default:        return [t("installationPanel.commands.unknownExplore")];
   }
 }
 
 // ── Copy button ───────────────────────────────────────────────────────────────
 
 function CopyBtn({ text }: { text: string }) {
+  const { t } = useTranslation("dev");
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -83,7 +89,7 @@ function CopyBtn({ text }: { text: string }) {
           setTimeout(() => setCopied(false), 1600);
         });
       }}
-      aria-label="Copy commands"
+      aria-label={t("installationPanel.copyAriaLabel")}
       style={{
         display: "inline-flex", alignItems: "center", gap: 6,
         padding: "6px 14px", borderRadius: 8, cursor: "pointer",
@@ -98,12 +104,12 @@ function CopyBtn({ text }: { text: string }) {
       {copied ? (
         <>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-          Copied
+          {t("installationPanel.copiedButton")}
         </>
       ) : (
         <>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          Copy
+          {t("installationPanel.copyButton")}
         </>
       )}
     </button>
@@ -147,6 +153,7 @@ interface InstallationPanelProps {
 export function InstallationPanel({
   files, onOpenPreview, onViewFiles, onOpenTerminal, onOpenPackage, onExportZip,
 }: InstallationPanelProps) {
+  const { t } = useTranslation("dev");
   const project = useMemo(() => detectProject(files), [files]);
   const [pm, setPm] = useState<PM>("npm");
   const [entered, setEntered] = useState(false);
@@ -159,21 +166,22 @@ export function InstallationPanel({
         ?? py[0] ?? "main.py";
   }, [files]);
 
-  const commands = commandsFor(project, pm, entryPy);
+  const commands = commandsFor(t, project, pm, entryPy);
   const isNode   = project.kind === "node";
+  const label    = projectLabel(t, project.kind);
 
   // Auto-scroll + entrance animation on mount
   useEffect(() => {
-    const t = requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       setEntered(true);
       panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
-    return () => cancelAnimationFrame(t);
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   const downloadCommands = () => {
     const all = [
-      `# ${project.label} — installation & run`,
+      t("installationPanel.installFileHeader", { label }),
       "",
       ...(isNode
         ? (Object.keys(PM_COMMANDS) as PM[]).flatMap(p => [`## ${p}`, ...PM_COMMANDS[p], ""])
@@ -208,7 +216,7 @@ export function InstallationPanel({
         display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
       }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: "var(--t1)", display: "flex", alignItems: "center", gap: 8 }}>
-          📦 Installation
+          {t("installationPanel.title")}
         </span>
         <span style={{
           display: "inline-flex", alignItems: "center", gap: 6,
@@ -218,7 +226,7 @@ export function InstallationPanel({
           animation: entered ? "pulseOnce .9s ease" : undefined,
         }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-          Project Generated Successfully
+          {t("installationPanel.successBadge")}
         </span>
         <span style={{
           marginLeft: "auto", fontSize: 11, fontWeight: 600,
@@ -226,7 +234,7 @@ export function InstallationPanel({
           background: "rgba(108,142,247,.12)", color: "#8fa8f8",
           border: "1px solid rgba(108,142,247,.28)",
         }}>
-          {project.icon} {project.label}
+          {project.icon} {label}
         </span>
       </div>
 
@@ -234,7 +242,7 @@ export function InstallationPanel({
 
         {/* Package-manager tabs (Node only) */}
         {isNode && (
-          <div role="tablist" aria-label="Package manager" className="pill-tabs" style={{ width: "fit-content", maxWidth: "100%", flexWrap: "wrap" }}>
+          <div role="tablist" aria-label={t("installationPanel.packageManagerAriaLabel")} className="pill-tabs" style={{ width: "fit-content", maxWidth: "100%", flexWrap: "wrap" }}>
             {(Object.keys(PM_COMMANDS) as PM[]).map(p => (
               <button
                 key={p}
@@ -259,7 +267,7 @@ export function InstallationPanel({
             borderBottom: "1px solid rgba(255,255,255,.05)", background: "rgba(255,255,255,.02)",
           }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", letterSpacing: "0.5px" }}>
-              {isNode ? pm.toUpperCase() : project.label.toUpperCase()} · TERMINAL
+              {isNode ? pm.toUpperCase() : label.toUpperCase()} · {t("installationPanel.terminalSuffix")}
             </span>
             <CopyBtn text={commands.filter(c => !c.startsWith("#")).join("\n")} />
           </div>
@@ -288,7 +296,7 @@ export function InstallationPanel({
               borderBottom: "1px solid rgba(59,130,246,.15)",
             }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "#60a5fa", letterSpacing: "0.5px" }}>
-                🐳 DOCKER (ALTERNATIVE)
+                {t("installationPanel.dockerAlternative")}
               </span>
               <CopyBtn text="docker compose up --build" />
             </div>
@@ -315,21 +323,21 @@ export function InstallationPanel({
           }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download Commands (INSTALL.md)
+          {t("installationPanel.downloadCommands")}
         </button>
 
         {/* Quick actions */}
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--t4)", letterSpacing: "0.8px", marginBottom: 10 }}>
-            QUICK ACTIONS
+            {t("installationPanel.quickActionsLabel")}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <QuickAction icon="👁"  label="Open Preview"  onClick={onOpenPreview} />
-            <QuickAction icon="✏️" label="Open Editor"   onClick={onViewFiles} />
-            <QuickAction icon="📂" label="View Files"    onClick={onViewFiles} />
-            <QuickAction icon="⌨️" label="Open Terminal" onClick={onOpenTerminal} />
-            <QuickAction icon="🗜" label="Export ZIP"    onClick={onExportZip} />
-            <QuickAction icon="📦" label="Package"       onClick={onOpenPackage} />
+            <QuickAction icon="👁"  label={t("installationPanel.quickActions.openPreview")}  onClick={onOpenPreview} />
+            <QuickAction icon="✏️" label={t("installationPanel.quickActions.openEditor")}   onClick={onViewFiles} />
+            <QuickAction icon="📂" label={t("installationPanel.quickActions.viewFiles")}    onClick={onViewFiles} />
+            <QuickAction icon="⌨️" label={t("installationPanel.quickActions.openTerminal")} onClick={onOpenTerminal} />
+            <QuickAction icon="🗜" label={t("installationPanel.quickActions.exportZip")}    onClick={onExportZip} />
+            <QuickAction icon="📦" label={t("installationPanel.quickActions.package")}       onClick={onOpenPackage} />
           </div>
         </div>
       </div>

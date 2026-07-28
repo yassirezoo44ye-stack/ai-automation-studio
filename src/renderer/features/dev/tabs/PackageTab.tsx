@@ -4,6 +4,7 @@
  * Uses /api/package/* endpoints and renders streaming build logs.
  */
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON, authH, API } from "../../../shared/utils/api";
 import { GoldButton } from "../../../shared/ui/gold";
 import type { Project } from "../../../shared/types";
@@ -44,6 +45,7 @@ interface PackageTabProps {
 }
 
 export function PackageTab({ projects, projectId: defaultProjectId, onToast }: PackageTabProps) {
+  const { t } = useTranslation("dev");
   const [projectId, setProjectId] = useState(defaultProjectId);
   const [target, setTarget]       = useState<PackTarget>("exe");
   const [lang, setLang]           = useState<PackLang>("python");
@@ -103,13 +105,13 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
       picked.forEach(f => fd.append("files", f));
       const r = await fetch(`${API}/api/projects/${projectId}/upload`, { method: "POST", body: fd });
       const data = await parseJSON<{ count: number }>(r, `/api/projects/${projectId}/upload`);
-      onToast(`Uploaded ${data.count} file(s)`, "ok");
+      onToast(t("packageTab.uploadedToast", { count: data.count }), "ok");
       const path = `/api/projects/${projectId}/files`;
       const fr = await apiFetch(path);
       const fd2 = await parseJSON<{ files?: { path: string; size: number }[] }>(fr, path);
       setFiles(fd2.files ?? []);
     } catch (e) {
-      onToast(`Upload failed: ${(e as Error).message}`, "err");
+      onToast(t("packageTab.uploadFailedToast", { message: (e as Error).message }), "err");
     } finally {
       setUploading(false);
       if (uploadRef.current) uploadRef.current.value = "";
@@ -121,7 +123,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
     setState("building");
     setLogs([]);
     setDownload("");
-    addLog("Connecting to build server…");
+    addLog(t("packageTab.connecting"));
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -135,7 +137,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
       });
 
       if (!res.ok || !res.body) {
-        addLog(`HTTP ${res.status} — check backend logs`, "err");
+        addLog(t("packageTab.httpError", { status: res.status }), "err");
         setState("error");
         return;
       }
@@ -157,13 +159,13 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
           try { ev = JSON.parse(line.slice(6)); } catch { continue; }
 
           if (ev.type === "log")   addLog(ev.text as string, (ev.level as LogEntry["kind"]) ?? "info");
-          if (ev.type === "done")  { setState("done"); setDownload(ev.download_url as string); addLog("✓ Package ready", "ok"); }
+          if (ev.type === "done")  { setState("done"); setDownload(ev.download_url as string); addLog(t("packageTab.packageReady"), "ok"); }
           if (ev.type === "error") { setState("error"); addLog(ev.text as string ?? ev.message as string, "err"); }
         }
       }
     } catch (e: unknown) {
       if ((e as Error).name !== "AbortError") {
-        addLog(`Error: ${(e as Error).message}`, "err");
+        addLog(t("packageTab.errorPrefix", { message: (e as Error).message }), "err");
         setState("error");
       } else {
         setState("idle");
@@ -177,14 +179,14 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
 
         {/* Project */}
         <div>
-          <div className="g-label">Project</div>
+          <div className="g-label">{t("packageTab.projectLabel")}</div>
           <select
             value={projectId}
             onChange={e => setProjectId(e.target.value)}
             className="g-input" style={{ marginTop: 4 }}
-            aria-label="Select project"
+            aria-label={t("packageTab.selectProjectAriaLabel")}
           >
-            <option value="demo">Demo Project</option>
+            <option value="demo">{t("header.demoProject")}</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
@@ -192,7 +194,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {/* Language + Target */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <div className="g-label">Runtime</div>
+            <div className="g-label">{t("packageTab.runtimeLabel")}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               {LANGS.map(l => (
                 <GoldButton
@@ -200,22 +202,22 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
                   variant={lang === l.id ? "primary" : "ghost"}
                   onClick={() => handleLangChange(l.id)}
                   style={{ flex: 1, fontSize: 12 }}
-                  title={l.desc}
-                >{l.icon} {l.label}</GoldButton>
+                  title={t(`packageTab.langs.${l.id}.desc`)}
+                >{l.icon} {t(`packageTab.langs.${l.id}.label`)}</GoldButton>
               ))}
             </div>
           </div>
           {lang !== "docker" && (
             <div style={{ flex: "0 0 auto" }}>
-              <div className="g-label">Target</div>
+              <div className="g-label">{t("packageTab.targetLabel")}</div>
               <select
                 value={target}
                 onChange={e => setTarget(e.target.value as PackTarget)}
                 className="g-input" style={{ marginTop: 4 }}
-                aria-label="Package target"
+                aria-label={t("packageTab.packageTargetAriaLabel")}
               >
-                {TARGETS_FOR[lang].map(t => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
+                {TARGETS_FOR[lang].map(tg => (
+                  <option key={tg.id} value={tg.id}>{t(`packageTab.targets.${tg.id}`)}</option>
                 ))}
               </select>
             </div>
@@ -225,16 +227,14 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {lang === "web" && target === "exe" && (
           <div style={{ padding: "10px 14px", background: "var(--accent-dim)", borderRadius: 8,
                         border: "1px solid var(--accent-border)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
-            ⚡ <strong>Web → Windows .exe</strong> — يتم تغليف تطبيق الويب داخل Electron
-            ثم بناؤه كمثبِّت NSIS قابل للتوزيع.
+            {t("packageTab.webExeHint")}
           </div>
         )}
 
         {lang === "docker" && (
           <div style={{ padding: "10px 14px", background: "var(--blue-dim)", borderRadius: 8,
                         border: "1px solid rgba(108,142,247,0.25)", fontSize: 12, color: "var(--t2)", lineHeight: 1.6 }}>
-            🐳 <strong>Full-Stack Deploy Package</strong> — يجمع كل ملفات المشروع مع سكربتات النشر وملف
-            {" "}<code>.env.example</code> وتعليمات Docker Compose كاملة.
+            {t("packageTab.dockerHint")}
           </div>
         )}
 
@@ -242,7 +242,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {pfLoading && (
           <div style={{ fontSize: 12, color: "var(--t4)", display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--ta)", animation: "fadeIn .6s ease-in-out infinite alternate" }} />
-            Checking build environment…
+            {t("packageTab.checkingEnv")}
           </div>
         )}
 
@@ -254,14 +254,14 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: preflight.checks.length ? 8 : 0 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: preflight.ok ? "var(--green)" : "var(--red)" }}>
-                {preflight.ok ? "✓ Build environment ready" : "⚠ Build environment not ready"}
+                {preflight.ok ? t("packageTab.envReady") : t("packageTab.envNotReady")}
               </span>
               <button
                 onClick={checkPreflight}
                 style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--t4)", padding: "2px 6px" }}
-                aria-label="Recheck environment"
-                title="Recheck"
-              >↻ Recheck</button>
+                aria-label={t("packageTab.recheckAriaLabel")}
+                title={t("packageTab.recheckTitle")}
+              >{t("packageTab.recheck")}</button>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {preflight.checks.map(c => (
@@ -290,21 +290,21 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {/* App metadata */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 2 }}>
-            <div className="g-label">App Name</div>
+            <div className="g-label">{t("packageTab.appNameLabel")}</div>
             <input value={appName} onChange={e => setAppName(e.target.value)}
-              className="g-input" style={{ marginTop: 4 }} aria-label="App name" />
+              className="g-input" style={{ marginTop: 4 }} aria-label={t("packageTab.appNameAriaLabel")} />
           </div>
           <div style={{ flex: 1 }}>
-            <div className="g-label">Version</div>
+            <div className="g-label">{t("packageTab.versionLabel")}</div>
             <input value={appVersion} onChange={e => setVersion(e.target.value)}
-              className="g-input" style={{ marginTop: 4 }} aria-label="App version" />
+              className="g-input" style={{ marginTop: 4 }} aria-label={t("packageTab.versionAriaLabel")} />
           </div>
           {lang !== "docker" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "flex-end" }}>
-              <div className="g-label">One-file</div>
+              <div className="g-label">{t("packageTab.oneFileLabel")}</div>
               <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                <input type="checkbox" checked={oneFile} onChange={e => setOneFile(e.target.checked)} aria-label="Bundle as one file" />
-                <span style={{ fontSize: 12, color: "var(--t3)" }}>Bundle</span>
+                <input type="checkbox" checked={oneFile} onChange={e => setOneFile(e.target.checked)} aria-label={t("packageTab.oneFileAriaLabel")} />
+                <span style={{ fontSize: 12, color: "var(--t3)" }}>{t("packageTab.bundle")}</span>
               </label>
             </div>
           )}
@@ -313,14 +313,14 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
         {/* Files */}
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-            <label className="g-label">Files ({files.length})</label>
+            <label className="g-label">{t("packageTab.filesLabel", { count: files.length })}</label>
             <GoldButton
               variant="ghost"
               onClick={() => uploadRef.current?.click()}
               disabled={uploading}
               style={{ fontSize: 12, padding: "4px 10px" }}
-            >{uploading ? "Uploading…" : "⬆ Upload"}</GoldButton>
-            <input ref={uploadRef} type="file" multiple style={{ display: "none" }} onChange={uploadFiles} aria-label="Upload files" />
+            >{uploading ? t("packageTab.uploading") : t("packageTab.upload")}</GoldButton>
+            <input ref={uploadRef} type="file" multiple style={{ display: "none" }} onChange={uploadFiles} aria-label={t("packageTab.uploadAriaLabel")} />
           </div>
           {files.length > 0 && (
             <div style={{ background: "var(--bg-hover)", borderRadius: 8, border: "1px solid var(--border)", maxHeight: 120, overflowY: "auto", padding: "4px 0" }}>
@@ -344,19 +344,19 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
                   onClick={state === "building" ? () => abortRef.current?.abort() : () => void pack()}
                   disabled={envBlocked}
                   style={{ flex: 1 }}
-                  title={envBlocked ? "Fix the missing tools above, or Recheck once installed" : (state === "building" ? "Stop packaging" : "Package app")}
+                  title={envBlocked ? t("packageTab.envBlockedTitle") : (state === "building" ? t("packageTab.stopTitle") : t("packageTab.packageTitle"))}
                 >
-                  {state === "building" ? "⏹ Stop" : envBlocked ? "⚠ Environment Not Ready" : "⚙ Package App"}
+                  {state === "building" ? t("packageTab.stopButton") : envBlocked ? t("packageTab.envNotReadyButton") : t("packageTab.packageButton")}
                 </GoldButton>
                 {downloadUrl && (
                   <a href={downloadUrl} download className="g-btn g-btn--ghost" style={{ padding: "0 18px", display: "flex", alignItems: "center", textDecoration: "none" }}>
-                    ⬇ Download
+                    {t("packageTab.download")}
                   </a>
                 )}
               </div>
               {envBlocked && (
                 <span style={{ fontSize: 11, color: "var(--t4)" }}>
-                  Install the missing tools on the build server, then hit Recheck above.
+                  {t("packageTab.envBlockedHint")}
                 </span>
               )}
             </div>

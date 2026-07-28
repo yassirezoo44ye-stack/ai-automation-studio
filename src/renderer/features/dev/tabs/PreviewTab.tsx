@@ -1,6 +1,7 @@
 /**
  * PreviewTab — iframe sandbox for HTML projects and server previews.
  */
+import { useTranslation } from "react-i18next";
 import { GoldButton } from "../../../shared/ui/gold";
 
 interface PreviewTabProps {
@@ -10,12 +11,13 @@ interface PreviewTabProps {
 }
 
 export function PreviewTab({ previewUrl, canOpenPreview, onOpenPreview }: PreviewTabProps) {
+  const { t } = useTranslation("dev");
   if (previewUrl) {
     return (
       <iframe
         src={previewUrl}
         style={{ flex: 1, border: "none", background: "#fff", width: "100%", height: "100%" }}
-        title="App preview"
+        title={t("previewTab.iframeTitle")}
         sandbox={previewUrl.startsWith("blob:") ? "allow-scripts allow-same-origin" : undefined}
       />
     );
@@ -32,14 +34,14 @@ export function PreviewTab({ previewUrl, canOpenPreview, onOpenPreview }: Previe
         <line x1="12" y1="17" x2="12" y2="21"/>
       </svg>
       <div style={{ fontSize: 14, color: "var(--t4)", textAlign: "center" }}>
-        No preview available
+        {t("previewTab.noPreview")}
       </div>
       <div style={{ fontSize: 12, color: "var(--t5)", textAlign: "center", maxWidth: 300 }}>
-        Build an HTML project and run it, or click below if a static preview is available.
+        {t("previewTab.noPreviewHint")}
       </div>
       {canOpenPreview && (
         <GoldButton onClick={onOpenPreview} style={{ fontSize: 13 }}>
-          Open HTML Preview
+          {t("previewTab.openHtmlPreview")}
         </GoldButton>
       )}
     </div>

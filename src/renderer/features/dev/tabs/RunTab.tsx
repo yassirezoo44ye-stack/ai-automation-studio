@@ -3,6 +3,7 @@
  * Handles run/stop lifecycle, error display, and server-preview detection.
  */
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, authH } from "../../../shared/utils/api";
 import { GoldButton } from "../../../shared/ui/gold";
 import type { BuildFile } from "../../../shared/types";
@@ -41,6 +42,7 @@ export function RunTab({
   projectId, files, hasFiles, runCmd, runOutput, running, runError,
   onCmd, onOutput, onRunning, onError, onPreviewUrl, onSwitchTab, currentPreviewUrl,
 }: RunTabProps) {
+  const { t } = useTranslation("dev");
   const abortRef = useRef<AbortController | null>(null);
 
   const run = async () => {
@@ -48,7 +50,7 @@ export function RunTab({
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     onRunning(true);
-    onOutput("▶ Starting…\n");
+    onOutput(t("runTab.starting"));
     onError(null);
     onSwitchTab("run");
 
@@ -166,13 +168,12 @@ export function RunTab({
         <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" style={{ color: "var(--ta)" }}>
           <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
         </svg>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>Nothing to run yet</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>{t("runTab.emptyTitle")}</div>
         <p style={{ fontSize: 13, color: "var(--t4)", maxWidth: 320, textAlign: "center", margin: 0, lineHeight: 1.6 }}>
-          This workspace is empty. Generate a project first — the Terminal will
-          auto-detect the right command and run it here.
+          {t("runTab.emptyHint")}
         </p>
         <GoldButton onClick={() => onSwitchTab("generate")} style={{ padding: "9px 22px" }}>
-          ✦ Go to Generate
+          {t("runTab.goToGenerate")}
         </GoldButton>
       </div>
     );
@@ -190,21 +191,21 @@ export function RunTab({
           value={runCmd}
           onChange={e => onCmd(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") void run(); }}
-          placeholder="auto-detect (or: python main.py)"
+          placeholder={t("runTab.cmdPlaceholder")}
           style={{
             flex: 1, background: "none", border: "none",
             color: "var(--t2)", fontSize: 13, fontFamily: "var(--font-mono)", outline: "none",
           }}
-          aria-label="Run command"
+          aria-label={t("runTab.cmdAriaLabel")}
         />
         {running
           ? (
             <GoldButton variant="ghost" onClick={stop} style={{ padding: "5px 14px", fontSize: 12 }}>
-              ⏹ Stop
+              {t("runTab.stopButton")}
             </GoldButton>
           ) : (
             <GoldButton onClick={() => void run()} style={{ padding: "5px 14px", fontSize: 12 }}>
-              Run ▶
+              {t("runTab.runButton")}
             </GoldButton>
           )
         }
@@ -213,7 +214,7 @@ export function RunTab({
             variant="ghost"
             onClick={() => onSwitchTab("preview")}
             style={{ padding: "5px 12px", fontSize: 12 }}
-          >🌐 Preview</GoldButton>
+          >{t("runTab.previewButton")}</GoldButton>
         )}
       </div>
 
@@ -228,7 +229,7 @@ export function RunTab({
           lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-all",
           background: "#040506",
         }}>
-          {runOutput || "Output will appear here…"}
+          {runOutput || t("runTab.outputPlaceholder")}
         </pre>
 
         {runError && (
@@ -242,7 +243,7 @@ export function RunTab({
             {runError.fix.length > 0 && (
               <div>
                 <div style={{ color: "var(--t4)", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-                  Fix Suggestions
+                  {t("runTab.fixSuggestions")}
                 </div>
                 {runError.fix.map((step, i) => (
                   <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4, fontSize: 12, color: "var(--t2)" }}>

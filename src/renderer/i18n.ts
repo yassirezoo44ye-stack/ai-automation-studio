@@ -35,6 +35,8 @@ import billingEn from "./locales/en/billing.json";
 import billingAr from "./locales/ar/billing.json";
 import agentosEn from "./locales/en/agentos.json";
 import agentosAr from "./locales/ar/agentos.json";
+import devEn from "./locales/en/dev.json";
+import devAr from "./locales/ar/dev.json";
 
 void i18next.use(initReactI18next).init({
   resources: {
@@ -42,13 +44,13 @@ void i18next.use(initReactI18next).init({
       common: commonEn, home: homeEn, settings: settingsEn, auth: authEn, social: socialEn,
       organizations: organizationsEn, sandbox: sandboxEn, plugins: pluginsEn, automation: automationEn,
       marketplace: marketplaceEn, aiRouting: aiRoutingEn, observability: observabilityEn, ai: aiEn,
-      designStudio: designStudioEn, teams: teamsEn, billing: billingEn, agentos: agentosEn,
+      designStudio: designStudioEn, teams: teamsEn, billing: billingEn, agentos: agentosEn, dev: devEn,
     },
     ar: {
       common: commonAr, home: homeAr, settings: settingsAr, auth: authAr, social: socialAr,
       organizations: organizationsAr, sandbox: sandboxAr, plugins: pluginsAr, automation: automationAr,
       marketplace: marketplaceAr, aiRouting: aiRoutingAr, observability: observabilityAr, ai: aiAr,
-      designStudio: designStudioAr, teams: teamsAr, billing: billingAr, agentos: agentosAr,
+      designStudio: designStudioAr, teams: teamsAr, billing: billingAr, agentos: agentosAr, dev: devAr,
     },
   },
   lng: "en",
@@ -56,7 +58,7 @@ void i18next.use(initReactI18next).init({
   defaultNS: "common",
   ns: [
     "common", "home", "settings", "auth", "social", "organizations", "sandbox", "plugins",
-    "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos",
+    "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos", "dev",
   ],
   interpolation: { escapeValue: false },
   returnEmptyString: false,

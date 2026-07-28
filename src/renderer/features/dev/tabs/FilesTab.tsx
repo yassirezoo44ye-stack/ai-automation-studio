@@ -1,6 +1,7 @@
 /**
  * FilesTab — dual-pane file tree + code viewer.
  */
+import { useTranslation } from "react-i18next";
 import { fileIcon } from "../../../utils/files";
 import type { BuildFile } from "../../../shared/types";
 
@@ -17,16 +18,17 @@ const TREE_ITEM: React.CSSProperties = {
 };
 
 export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
+  const { t } = useTranslation("dev");
   return (
     <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
       {/* File tree */}
       <nav
         style={{ width: 220, borderRight: "1px solid var(--border)", overflowY: "auto", background: "var(--bg-panel)", flexShrink: 0 }}
-        aria-label="File tree"
+        aria-label={t("filesTab.treeAriaLabel")}
       >
         {files.length === 0 && (
           <div style={{ padding: "40px 16px", fontSize: 12, color: "var(--t5)", textAlign: "center" }}>
-            No files yet
+            {t("filesTab.noFiles")}
           </div>
         )}
         {files.map(f => {
@@ -68,7 +70,7 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
               position: "sticky", top: 0, background: "#080a0f", zIndex: 1,
             }}>
               <span>{fileIcon(activeFile.path)} {activeFile.path}</span>
-              <span>{activeFile.content.split("\n").length} lines</span>
+              <span>{t("filesTab.lines", { count: activeFile.content.split("\n").length })}</span>
             </div>
             <pre style={{
               margin: 0, padding: "16px 20px", fontSize: 13,
@@ -87,7 +89,7 @@ export function FilesTab({ files, activeFile, onSelect }: FilesTabProps) {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
             </svg>
-            <span style={{ fontSize: 13 }}>Select a file from the tree</span>
+            <span style={{ fontSize: 13 }}>{t("filesTab.selectFile")}</span>
           </div>
         )}
       </div>
