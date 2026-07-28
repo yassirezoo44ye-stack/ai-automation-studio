@@ -1,0 +1,75 @@
+{
+  "title": "AgentOS",
+  "badges": { "autonomous": "AUTONOMOUS", "llmReady": "LLM ✓" },
+  "refresh": "↻ Refresh",
+  "tabs": {
+    "terminal": "Terminal",
+    "agents": "Agents ({{count}})",
+    "memory": "Memory ({{count}})",
+    "evolution": "Evolution",
+    "performance": "Performance",
+    "jobs": "Jobs"
+  },
+  "terminal": {
+    "title": "🧠 Natural Language Terminal",
+    "modes": { "run": "run", "deliberate": "deliberate", "plan": "plan" },
+    "placeholder": {
+      "plan": "Describe your goal: build and deploy a web scraper",
+      "deliberate": "Describe a task — agents will vote on who handles it",
+      "run": "Natural language: analyze my project / deploy to production / evolve run"
+    },
+    "runButton": "Run",
+    "running": "…",
+    "agentVotes": "Agent votes:"
+  },
+  "agentGrid": {
+    "title": "⚡ Registered Agents ({{count}})"
+  },
+  "executionLog": {
+    "title": "📋 Execution Memory ({{count}})",
+    "empty": "No executions yet — run a command above."
+  },
+  "evolutionPanel": {
+    "title": "🧬 Self-Evolution Engine",
+    "evolveButton": "▶ Evolve",
+    "evolving": "Evolving…",
+    "suggestButton": "Suggest",
+    "suggesting": "…",
+    "stats": { "agents": "Agents", "executions": "Executions", "loopTicks": "Loop ticks", "evolutions": "Evolutions", "llm": "LLM" },
+    "suggestedImprovements": "Suggested improvements:",
+    "generateAgent": "Generate new agent:",
+    "generatePlaceholder": "a rate-limiting agent that tracks API calls per user",
+    "generateButton": "Generate",
+    "generating": "…"
+  },
+  "performancePanel": {
+    "title": "📊 Performance",
+    "empty": "Run some commands to see performance data.",
+    "errorRate": "{{pct}}% error rate",
+    "underperforming": "⚠ Underperforming: {{names}} — run \"Evolve\" to fix"
+  },
+  "jobsMonitor": {
+    "title": "⚙ Background Jobs",
+    "stats": { "total": "total", "active": "active", "dead": "dead" },
+    "loading": "Loading…",
+    "empty": "No jobs yet — jobs created via the API appear here.",
+    "cancel": "Cancel",
+    "status": {
+      "pending": "pending",
+      "running": "running",
+      "completed": "completed",
+      "failed": "failed",
+      "cancelled": "cancelled"
+    }
+  },
+  "toast": {
+    "resultSuccess": "✓ {{agent}}: done",
+    "resultFailed": "✗ {{error}}",
+    "resultFailedDefault": "failed",
+    "evolved": "Evolved: {{list}}",
+    "allStable": "All agents stable",
+    "suggestionsReady": "{{count}} suggestion(s) ready",
+    "agentCreated": "Agent created: {{name}}",
+    "generateFailedDefault": "Generate failed"
+  }
+}

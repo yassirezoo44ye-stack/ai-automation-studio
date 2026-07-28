@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { agentOsApi } from "./api";
 import { apiFetch } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
@@ -90,6 +91,7 @@ function ResultBox({ result }: { result: AgentResult }) {
 // ── Command Terminal ──────────────────────────────────────────────────────────
 
 function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
+  const { t } = useTranslation("agentos");
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [mode, setMode]             = useState<"run" | "deliberate" | "plan">("run");
@@ -130,11 +132,11 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   return (
     <GlassCard lift={false}>
       <div style={S.cardHeader}>
-        <span>🧠 Natural Language Terminal</span>
+        <span>{t("terminal.title")}</span>
         <div style={S.row}>
           {(["run", "deliberate", "plan"] as const).map(m => (
             <GoldButton key={m} variant={mode === m ? "primary" : "ghost"} onClick={() => setMode(m)} style={{ padding: "5px 12px", fontSize: 12 }}>
-              {m}
+              {t(`terminal.modes.${m}`)}
             </GoldButton>
           ))}
         </div>
@@ -145,22 +147,18 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={onKey}
-          placeholder={
-            mode === "plan"      ? "Describe your goal: build and deploy a web scraper" :
-            mode === "deliberate"? "Describe a task — agents will vote on who handles it" :
-            "Natural language: analyze my project / deploy to production / evolve run"
-          }
+          placeholder={t(`terminal.placeholder.${mode}`)}
           className="g-input"
           style={{ minHeight: 60, resize: "vertical" }}
           autoFocus
         />
         <GoldButton onClick={submit} disabled={loading}>
-          {loading ? "…" : "Run"}
+          {loading ? t("terminal.running") : t("terminal.runButton")}
         </GoldButton>
       </div>
       {mode === "deliberate" && delib && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 12, color: "var(--t3)", marginBottom: 8 }}>Agent votes:</div>
+          <div style={{ fontSize: 12, color: "var(--t3)", marginBottom: 8 }}>{t("terminal.agentVotes")}</div>
           {delib.bids.slice(0, 5).map(b => (
             <div key={b.agent} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
               <span style={{ width: 90, fontSize: 12, fontWeight: b.agent === delib.winner ? 700 : 400,
@@ -189,13 +187,14 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
 // ── Agent Grid ────────────────────────────────────────────────────────────────
 
 function AgentGrid({ agents }: { agents: AgentInfo[] }) {
+  const { t } = useTranslation("agentos");
   const groups: Record<string, AgentInfo[]> = {};
   for (const a of agents) groups[a.group] = [...(groups[a.group] ?? []), a];
 
   return (
     <GlassCard lift={false}>
       <div style={S.cardHeader}>
-        <span>⚡ Registered Agents ({agents.length})</span>
+        <span>{t("agentGrid.title", { count: agents.length })}</span>
       </div>
       {Object.entries(groups).map(([group, items]) => (
         <div key={group} style={{ marginBottom: 16 }}>
@@ -240,15 +239,16 @@ function AgentGrid({ agents }: { agents: AgentInfo[] }) {
 // ── Execution Log ─────────────────────────────────────────────────────────────
 
 function ExecutionLog({ records }: { records: MemoryRecord[] }) {
+  const { t } = useTranslation("agentos");
   return (
     <GlassCard lift={false}>
       <div style={S.cardHeader}>
-        <span>📋 Execution Memory ({records.length})</span>
+        <span>{t("executionLog.title", { count: records.length })}</span>
       </div>
       <div style={{ maxHeight: 320, overflowY: "auto" }}>
         {records.length === 0 ? (
           <div style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
-            No executions yet — run a command above.
+            {t("executionLog.empty")}
           </div>
         ) : records.map((r, i) => (
           <div key={i} style={{
@@ -289,6 +289,7 @@ function EvolutionPanel({
   onSuggest: () => Promise<void>;
   onGenerate: (desc: string) => Promise<void>;
 }) {
+  const { t } = useTranslation("agentos");
   const [genDesc, setGenDesc]   = useState("");
   const [loading, setLoading]   = useState<string | null>(null);
 
@@ -299,24 +300,24 @@ function EvolutionPanel({
   return (
     <GlassCard lift={false}>
       <div style={S.cardHeader}>
-        <span>🧬 Self-Evolution Engine</span>
+        <span>{t("evolutionPanel.title")}</span>
         <div style={S.row}>
           <GoldButton onClick={() => run("evolve", onEvolve)} disabled={loading === "evolve"}>
-            {loading === "evolve" ? "Evolving…" : "▶ Evolve"}
+            {loading === "evolve" ? t("evolutionPanel.evolving") : t("evolutionPanel.evolveButton")}
           </GoldButton>
           <GoldButton variant="ghost" onClick={() => run("suggest", onSuggest)} disabled={loading === "suggest"}>
-            {loading === "suggest" ? "…" : "Suggest"}
+            {loading === "suggest" ? t("evolutionPanel.suggesting") : t("evolutionPanel.suggestButton")}
           </GoldButton>
         </div>
       </div>
       {/* Stats row */}
       {status && (
         <div style={{ display: "flex", gap: 24, marginBottom: 16, flexWrap: "wrap" as const }}>
-          <StatPill label="Agents"     value={status.agents} />
-          <StatPill label="Executions" value={status.memory_count} />
-          <StatPill label="Loop ticks" value={status.loop_stats?.tick_count ?? 0} color="var(--accent)" />
-          <StatPill label="Evolutions" value={status.loop_stats?.evolution_cycles ?? 0} color="var(--yellow)" />
-          <StatPill label="LLM" value={status.llm_available ? "✓" : "✗"}
+          <StatPill label={t("evolutionPanel.stats.agents")}     value={status.agents} />
+          <StatPill label={t("evolutionPanel.stats.executions")} value={status.memory_count} />
+          <StatPill label={t("evolutionPanel.stats.loopTicks")} value={status.loop_stats?.tick_count ?? 0} color="var(--accent)" />
+          <StatPill label={t("evolutionPanel.stats.evolutions")} value={status.loop_stats?.evolution_cycles ?? 0} color="var(--yellow)" />
+          <StatPill label={t("evolutionPanel.stats.llm")} value={status.llm_available ? "✓" : "✗"}
                     color={status.llm_available ? "var(--green)" : "var(--red)"} />
         </div>
       )}
@@ -325,7 +326,7 @@ function EvolutionPanel({
       {suggestions.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 8 }}>
-            Suggested improvements:
+            {t("evolutionPanel.suggestedImprovements")}
           </div>
           {suggestions.map(s => {
             const priorityKind = s.priority >= 0.7 ? "red" : s.priority >= 0.4 ? "yellow" : "green";
@@ -356,21 +357,21 @@ function EvolutionPanel({
       {/* Generate agent */}
       <div>
         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 8 }}>
-          Generate new agent:
+          {t("evolutionPanel.generateAgent")}
         </div>
         <div style={S.row}>
           <input
             value={genDesc}
             onChange={e => setGenDesc(e.target.value)}
             onKeyDown={e => e.key === "Enter" && genDesc.trim() && run("gen", () => onGenerate(genDesc))}
-            placeholder="a rate-limiting agent that tracks API calls per user"
+            placeholder={t("evolutionPanel.generatePlaceholder")}
             className="g-input"
           />
           <GoldButton
             onClick={() => genDesc.trim() && run("gen", () => onGenerate(genDesc).then(() => setGenDesc("")))}
             disabled={loading === "gen" || !genDesc.trim()}
           >
-            {loading === "gen" ? "…" : "Generate"}
+            {loading === "gen" ? t("evolutionPanel.generating") : t("evolutionPanel.generateButton")}
           </GoldButton>
         </div>
       </div>
@@ -383,15 +384,16 @@ function EvolutionPanel({
 type PerfData = Awaited<ReturnType<typeof agentOsApi.performance>>;
 
 function PerformancePanel({ stats }: { stats: PerfData | null }) {
+  const { t } = useTranslation("agentos");
   const agentStats = stats?.agent_stats ?? [];
   const errorRate  = stats?.global_error_rate ?? 0;
   const underperf  = stats?.underperforming_agents ?? [];
 
   if (!agentStats.length) return (
     <GlassCard lift={false}>
-      <div style={S.cardHeader}><span>📊 Performance</span></div>
+      <div style={S.cardHeader}><span>{t("performancePanel.title")}</span></div>
       <p style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "16px 0" }}>
-        Run some commands to see performance data.
+        {t("performancePanel.empty")}
       </p>
     </GlassCard>
   );
@@ -401,14 +403,14 @@ function PerformancePanel({ stats }: { stats: PerfData | null }) {
   return (
     <GlassCard lift={false}>
       <div style={S.cardHeader}>
-        <span>📊 Performance</span>
-        <span className={`badge badge-${errorKind}`}>{(errorRate * 100).toFixed(0)}% error rate</span>
+        <span>{t("performancePanel.title")}</span>
+        <span className={`badge badge-${errorKind}`}>{t("performancePanel.errorRate", { pct: (errorRate * 100).toFixed(0) })}</span>
       </div>
       {underperf.length > 0 && (
         <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 8,
                       background: "var(--red-dim)", border: "1px solid var(--red)" }}>
           <span style={{ fontSize: 12, color: "var(--red)", fontWeight: 600 }}>
-            ⚠ Underperforming: {underperf.join(", ")} — run "Evolve" to fix
+            {t("performancePanel.underperforming", { names: underperf.join(", ") })}
           </span>
         </div>
       )}
@@ -436,6 +438,7 @@ function PerformancePanel({ stats }: { stats: PerfData | null }) {
 type Tab = "terminal" | "agents" | "memory" | "evolution" | "performance" | "jobs";
 
 export function AgentOSPage() {
+  const { t } = useTranslation("agentos");
   const toast = useToast();
   const [tab, setTab]               = useState<Tab>("terminal");
   const [results, setResults]       = useState<AgentResult[]>([]);
@@ -468,40 +471,40 @@ export function AgentOSPage() {
 
   const handleResult = useCallback((r: AgentResult) => {
     setResults(prev => [r, ...prev].slice(0, 20));
-    toast(r.success ? `✓ ${r.agent}: done` : `✗ ${r.error ?? "failed"}`, r.success ? "ok" : "err");
+    toast(r.success ? t("toast.resultSuccess", { agent: r.agent }) : t("toast.resultFailed", { error: r.error ?? t("toast.resultFailedDefault") }), r.success ? "ok" : "err");
     setTimeout(refresh, 500);
-  }, [refresh, toast]);
+  }, [refresh, toast, t]);
 
   const handleEvolve = async () => {
     const res = await agentOsApi.evolve();
     const evolved = (res.evolved as string[] | undefined) ?? [];
-    toast(evolved.length ? `Evolved: ${evolved.join(", ")}` : "All agents stable", "ok");
+    toast(evolved.length ? t("toast.evolved", { list: evolved.join(", ") }) : t("toast.allStable"), "ok");
     refresh();
   };
 
   const handleSuggest = async () => {
     const res = await agentOsApi.suggest(3);
     setSuggestions(res.suggestions);
-    toast(`${res.count} suggestion(s) ready`, "ok");
+    toast(t("toast.suggestionsReady", { count: res.count }), "ok");
   };
 
   const handleGenerate = async (desc: string) => {
     const res = await agentOsApi.generate(desc);
     if (res.status === "created") {
-      toast(`Agent created: ${res.agent_name}`, "ok");
+      toast(t("toast.agentCreated", { name: res.agent_name }), "ok");
       refresh();
     } else {
-      toast(res.error ?? "Generate failed", "err");
+      toast(res.error ?? t("toast.generateFailedDefault"), "err");
     }
   };
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: "terminal",    label: "Terminal" },
-    { id: "agents",      label: `Agents (${agents.length})` },
-    { id: "memory",      label: `Memory (${records.length})` },
-    { id: "evolution",   label: "Evolution" },
-    { id: "performance", label: "Performance" },
-    { id: "jobs",        label: "Jobs" },
+    { id: "terminal",    label: t("tabs.terminal") },
+    { id: "agents",      label: t("tabs.agents", { count: agents.length }) },
+    { id: "memory",      label: t("tabs.memory", { count: records.length }) },
+    { id: "evolution",   label: t("tabs.evolution") },
+    { id: "performance", label: t("tabs.performance") },
+    { id: "jobs",        label: t("tabs.jobs") },
   ];
 
   return (
@@ -509,17 +512,17 @@ export function AgentOSPage() {
       {/* Header */}
       <div style={S.header}>
         <div style={S.headerTop}>
-          <div style={S.title}>AgentOS</div>
-          <span className="badge badge-purple">AUTONOMOUS</span>
-          {status?.llm_available && <span className="badge badge-purple">LLM ✓</span>}
+          <div style={S.title}>{t("title")}</div>
+          <span className="badge badge-purple">{t("badges.autonomous")}</span>
+          {status?.llm_available && <span className="badge badge-purple">{t("badges.llmReady")}</span>}
           <GoldButton variant="ghost" onClick={refresh} style={{ marginLeft: "auto", padding: "5px 12px", fontSize: 12 }}>
-            ↻ Refresh
+            {t("refresh")}
           </GoldButton>
         </div>
         <div style={S.tabs}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={S.tab(tab === t.id)}>
-              {t.label}
+          {TABS.map(tabDef => (
+            <button key={tabDef.id} onClick={() => setTab(tabDef.id)} style={S.tab(tab === tabDef.id)}>
+              {tabDef.label}
             </button>
           ))}
         </div>
@@ -562,6 +565,7 @@ function JobsMonitor() {
   // Matches JobQueue.stats()'s actual shape (app/core/jobs/queue.py) — counts
   // is a nested per-status map, not a flat Record<string, number>.
   type JobStats = { total: number; active: number; dead: number; counts: Record<string, number> };
+  const { t } = useTranslation("agentos");
   const [jobs, setJobs]       = useState<Job[]>([]);
   const [stats, setStats]     = useState<JobStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -608,7 +612,7 @@ function JobsMonitor() {
   return (
     <GlassCard lift={false}>
       <div style={S.cardHeader}>
-        <span>⚙ Background Jobs</span>
+        <span>{t("jobsMonitor.title")}</span>
         <GoldButton variant="ghost" onClick={load} disabled={loading} style={{ padding: "4px 10px", fontSize: 11 }}>
           {loading ? "…" : "↻"}
         </GoldButton>
@@ -616,27 +620,27 @@ function JobsMonitor() {
       {/* Stats row */}
       {stats && (
         <div style={{ display: "flex", gap: 20, marginBottom: 16, flexWrap: "wrap" as const }}>
-          <StatPill label="total" value={stats.total} />
-          <StatPill label="active" value={stats.active} color="var(--blue)" />
-          <StatPill label="dead" value={stats.dead} color="var(--red)" />
+          <StatPill label={t("jobsMonitor.stats.total")} value={stats.total} />
+          <StatPill label={t("jobsMonitor.stats.active")} value={stats.active} color="var(--blue)" />
+          <StatPill label={t("jobsMonitor.stats.dead")} value={stats.dead} color="var(--red)" />
           {Object.entries(stats.counts).map(([k, v]) => (
-            <StatPill key={k} label={k} value={v} color={STATUS_COLOR[k] ?? "var(--accent)"} />
+            <StatPill key={k} label={t(`jobsMonitor.status.${k}`, { defaultValue: k })} value={v} color={STATUS_COLOR[k] ?? "var(--accent)"} />
           ))}
         </div>
       )}
 
       {loading ? (
-        <div style={{ color: "var(--t3)", fontSize: 13 }}>Loading…</div>
+        <div style={{ color: "var(--t3)", fontSize: 13 }}>{t("jobsMonitor.loading")}</div>
       ) : jobs.length === 0 ? (
         <div style={{ color: "var(--t3)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
-          No jobs yet — jobs created via the API appear here.
+          {t("jobsMonitor.empty")}
         </div>
       ) : jobs.map(job => (
         <div key={job.job_id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)", display: "flex", gap: 12, alignItems: "center" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>{job.kind}</span>
-              <span className={`badge badge-${STATUS_KIND[job.status] ?? "muted"}`}>{job.status}</span>
+              <span className={`badge badge-${STATUS_KIND[job.status] ?? "muted"}`}>{t(`jobsMonitor.status.${job.status}`, { defaultValue: job.status })}</span>
               <span style={{ fontSize: 10, color: "var(--t4)" }}>{elapsed(job, now)}</span>
             </div>
             {job.status === "running" && (
@@ -649,7 +653,7 @@ function JobsMonitor() {
           <span style={{ ...S.mono, fontSize: 10, color: "var(--t5)", flexShrink: 0 }}>{job.job_id.slice(0, 8)}…</span>
           {(job.status === "pending" || job.status === "running") && (
             <GoldButton variant="danger" onClick={() => cancel(job.job_id)} style={{ padding: "3px 10px", fontSize: 11 }}>
-              Cancel
+              {t("jobsMonitor.cancel")}
             </GoldButton>
           )}
         </div>

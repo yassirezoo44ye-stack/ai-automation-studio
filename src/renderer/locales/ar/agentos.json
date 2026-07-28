@@ -1,0 +1,75 @@
+{
+  "title": "AgentOS",
+  "badges": { "autonomous": "مستقل", "llmReady": "LLM ✓" },
+  "refresh": "↻ تحديث",
+  "tabs": {
+    "terminal": "الطرفية",
+    "agents": "الوكلاء ({{count}})",
+    "memory": "الذاكرة ({{count}})",
+    "evolution": "التطوّر",
+    "performance": "الأداء",
+    "jobs": "المهام"
+  },
+  "terminal": {
+    "title": "🧠 طرفية اللغة الطبيعية",
+    "modes": { "run": "تشغيل", "deliberate": "تداول", "plan": "تخطيط" },
+    "placeholder": {
+      "plan": "صف هدفك: بناء ونشر أداة استخلاص ويب",
+      "deliberate": "صف مهمة — سيصوّت الوكلاء على من يتولاها",
+      "run": "لغة طبيعية: حلّل مشروعي / انشر إلى الإنتاج / شغّل التطوّر"
+    },
+    "runButton": "تشغيل",
+    "running": "…",
+    "agentVotes": "أصوات الوكلاء:"
+  },
+  "agentGrid": {
+    "title": "⚡ الوكلاء المسجّلون ({{count}})"
+  },
+  "executionLog": {
+    "title": "📋 ذاكرة التنفيذ ({{count}})",
+    "empty": "لا تنفيذات بعد — شغّل أمرًا أعلاه."
+  },
+  "evolutionPanel": {
+    "title": "🧬 محرك التطوّر الذاتي",
+    "evolveButton": "▶ تطوّر",
+    "evolving": "جارٍ التطوّر…",
+    "suggestButton": "اقتراح",
+    "suggesting": "…",
+    "stats": { "agents": "الوكلاء", "executions": "التنفيذات", "loopTicks": "دورات الحلقة", "evolutions": "التطوّرات", "llm": "LLM" },
+    "suggestedImprovements": "تحسينات مقترحة:",
+    "generateAgent": "توليد وكيل جديد:",
+    "generatePlaceholder": "وكيل للحد من المعدل يتتبّع استدعاءات API لكل مستخدم",
+    "generateButton": "توليد",
+    "generating": "…"
+  },
+  "performancePanel": {
+    "title": "📊 الأداء",
+    "empty": "شغّل بعض الأوامر لعرض بيانات الأداء.",
+    "errorRate": "{{pct}}% معدّل الأخطاء",
+    "underperforming": "⚠ أداء ضعيف: {{names}} — شغّل \"تطوّر\" لإصلاح ذلك"
+  },
+  "jobsMonitor": {
+    "title": "⚙ المهام الخلفية",
+    "stats": { "total": "الإجمالي", "active": "نشطة", "dead": "متوقفة" },
+    "loading": "جارٍ التحميل…",
+    "empty": "لا مهام بعد — تظهر هنا المهام التي تُنشأ عبر الواجهة البرمجية.",
+    "cancel": "إلغاء",
+    "status": {
+      "pending": "قيد الانتظار",
+      "running": "قيد التشغيل",
+      "completed": "مكتملة",
+      "failed": "فشلت",
+      "cancelled": "أُلغيت"
+    }
+  },
+  "toast": {
+    "resultSuccess": "✓ {{agent}}: تم",
+    "resultFailed": "✗ {{error}}",
+    "resultFailedDefault": "فشل",
+    "evolved": "تم التطوير: {{list}}",
+    "allStable": "جميع الوكلاء مستقرون",
+    "suggestionsReady": "{{count}} اقتراح (اقتراحات) جاهزة",
+    "agentCreated": "تم إنشاء الوكيل: {{name}}",
+    "generateFailedDefault": "فشل التوليد"
+  }
+}
