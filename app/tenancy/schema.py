@@ -150,6 +150,22 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
     muted_categories TEXT[] NOT NULL DEFAULT '{}',
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- team_id NULL = the organization's org-wide "General" room; a non-NULL
+-- team_id scopes the message to that team's own room. One table serves
+-- both room kinds rather than two near-identical tables.
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    team_id         UUID REFERENCES teams(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body            TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    edited_at       TIMESTAMPTZ,
+    deleted_at      TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_org_room
+    ON chat_messages(organization_id, team_id, created_at DESC) WHERE deleted_at IS NULL;
 """
 
 # Resource-based permission matrix: role -> [(resource, action)].

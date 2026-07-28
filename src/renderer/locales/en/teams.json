@@ -2,7 +2,8 @@
   "header": {
     "title": "Teams — {{orgName}}",
     "newTeam": "+ New Team",
-    "inviteMember": "+ Invite Member"
+    "inviteMember": "+ Invite Member",
+    "generalChat": "💬 General Chat"
   },
   "sections": {
     "teams": "Teams",
@@ -78,5 +79,19 @@
   "presence": {
     "online": "Online",
     "offline": "Offline"
+  },
+  "chat": {
+    "generalRoomTitle": "💬 General",
+    "teamRoomTitle": "💬 Team chat",
+    "connection": {
+      "connecting": "Connecting…",
+      "live": "Live",
+      "reconnecting": "Reconnecting…",
+      "offline": "Offline"
+    },
+    "empty": "No messages yet — say hello.",
+    "placeholder": "Message…",
+    "send": "Send",
+    "chatButton": "💬 Chat"
   }
 }

@@ -12,6 +12,7 @@ import { S } from "../../styles/theme";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { useOrgPresence } from "../../shared/hooks/useOrgPresence";
+import { TeamChatPanel } from "./components/TeamChatPanel";
 
 type Role = "owner" | "admin" | "manager" | "developer" | "operator" | "viewer";
 
@@ -65,6 +66,8 @@ export function TeamsPage() {
   const [teamMembers, setTeamMembers] = useState<Record<string, TeamMember[]>>({});
   const [teamMembersLoading, setTeamMembersLoading] = useState<string | null>(null);
   const [addMemberUserId, setAddMemberUserId] = useState("");
+  const [showGeneralChat, setShowGeneralChat] = useState(false);
+  const [chatTeam, setChatTeam] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!currentOrgId) { setMembers([]); setLoading(false); return; }
@@ -103,7 +106,10 @@ export function TeamsPage() {
   useEffect(() => { void Promise.resolve().then(loadTeams); }, [loadTeams]);
   // Collapse expanded team state when the org changes — render-time adjustment.
   const [prevTeamsOrg, setPrevTeamsOrg] = useState(currentOrgId);
-  if (prevTeamsOrg !== currentOrgId) { setPrevTeamsOrg(currentOrgId); setExpandedTeam(null); setTeamMembers({}); }
+  if (prevTeamsOrg !== currentOrgId) {
+    setPrevTeamsOrg(currentOrgId); setExpandedTeam(null); setTeamMembers({});
+    setShowGeneralChat(false); setChatTeam(null);
+  }
 
   const createTeam = async () => {
     if (!currentOrgId || !newTeamName.trim()) return;
@@ -135,6 +141,7 @@ export function TeamsPage() {
       if (!r.ok) throw new Error();
       setTeams(prev => prev.filter(tm => tm.id !== teamId));
       if (expandedTeam === teamId) setExpandedTeam(null);
+      if (chatTeam === teamId) setChatTeam(null);
       toast(t("teamsList.deletedToast"), "ok");
     } catch { toast(t("teamsList.deleteFailedToast"), "err"); }
     finally { setTeamBusy(null); }
@@ -253,12 +260,19 @@ export function TeamsPage() {
       <header style={S.header}>
         <span style={S.headerTitle}>{t("header.title", { orgName: currentOrg?.name ?? "…" })}</span>
         <div style={{ display: "flex", gap: 8 }}>
+          <GoldButton variant="ghost" onClick={() => setShowGeneralChat(v => !v)}>{t("header.generalChat")}</GoldButton>
           <GoldButton variant="ghost" onClick={() => setCreatingTeam(v => !v)}>{t("header.newTeam")}</GoldButton>
           <GoldButton onClick={() => setInviting(v => !v)}>{t("header.inviteMember")}</GoldButton>
         </div>
       </header>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        {showGeneralChat && (
+          <div style={{ marginBottom: 20 }}>
+            <TeamChatPanel organizationId={currentOrgId} teamId={null} />
+          </div>
+        )}
+
         <div className="section-label" style={{ marginBottom: 8 }}>{t("sections.teams")}</div>
         {creatingTeam && (
           <GlassCard lift={false} style={{ marginBottom: 12 }}>
@@ -322,10 +336,20 @@ export function TeamsPage() {
                       style={{ padding: "5px 12px", fontSize: 11 }}
                     >{isOpen ? t("teamsList.hideButton") : t("teamsList.membersButton")}</GoldButton>
                     <GoldButton
+                      variant="ghost" onClick={() => setChatTeam(prev => prev === team.id ? null : team.id)}
+                      style={{ padding: "5px 12px", fontSize: 11 }}
+                    >{t("chat.chatButton")}</GoldButton>
+                    <GoldButton
                       variant="danger" onClick={() => void deleteTeam(team.id)} disabled={teamBusy === team.id}
                       style={{ padding: "5px 12px", fontSize: 11 }}
                     >{t("teamsList.delete")}</GoldButton>
                   </div>
+
+                  {chatTeam === team.id && (
+                    <div style={{ marginTop: 10 }}>
+                      <TeamChatPanel organizationId={currentOrgId} teamId={team.id} />
+                    </div>
+                  )}
 
                   {isOpen && (
                     <div style={{ marginTop: 10, marginLeft: 4, paddingLeft: 12, borderLeft: "2px solid var(--border)" }}>

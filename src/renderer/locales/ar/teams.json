@@ -2,7 +2,8 @@
   "header": {
     "title": "الفرق — {{orgName}}",
     "newTeam": "+ فريق جديد",
-    "inviteMember": "+ دعوة عضو"
+    "inviteMember": "+ دعوة عضو",
+    "generalChat": "💬 الدردشة العامة"
   },
   "sections": {
     "teams": "الفرق",
@@ -78,5 +79,19 @@
   "presence": {
     "online": "متصل",
     "offline": "غير متصل"
+  },
+  "chat": {
+    "generalRoomTitle": "💬 عام",
+    "teamRoomTitle": "💬 دردشة الفريق",
+    "connection": {
+      "connecting": "جارٍ الاتصال…",
+      "live": "متصل",
+      "reconnecting": "جارٍ إعادة الاتصال…",
+      "offline": "غير متصل"
+    },
+    "empty": "لا توجد رسائل بعد — ابدأ المحادثة.",
+    "placeholder": "رسالة…",
+    "send": "إرسال",
+    "chatButton": "💬 دردشة"
   }
 }

@@ -310,3 +310,83 @@ async def notifications_ws(ws: WebSocket):
         # should flip them offline.
         if manager.subscriber_count(topic) == 0:
             await presence.mark_offline(user_id)
+
+
+# ── Team chat stream ─────────────────────────────────────────────────────────
+
+async def _resolve_chat_room(room_key: str) -> str | None:
+    """room_key is `org:{org_id}` (the org-wide "General" room) or
+    `team:{team_id}` (a specific team's room). Returns the organization_id
+    the room belongs to, or None if room_key is malformed or the team
+    doesn't exist — either way the caller closes the connection."""
+    import uuid as uuid_mod
+
+    if room_key.startswith("org:"):
+        org_id = room_key[len("org:"):]
+        try:
+            uuid_mod.UUID(org_id)
+        except ValueError:
+            return None
+        return org_id
+
+    if room_key.startswith("team:"):
+        team_id = room_key[len("team:"):]
+        try:
+            uuid_mod.UUID(team_id)
+        except ValueError:
+            return None
+        from app.core.db import get_pool
+        async with get_pool().acquire() as conn:
+            org_id = await conn.fetchval(
+                "SELECT organization_id FROM teams WHERE id=$1 AND deleted_at IS NULL",
+                uuid_mod.UUID(team_id),
+            )
+        return str(org_id) if org_id else None
+
+    return None
+
+
+@router.websocket("/ws/chat/{room_key}")
+async def chat_ws(ws: WebSocket, room_key: str):
+    """Live delivery for Teams/Organizations chat (app/core/chat/). New
+    messages arrive as {"type": "event", "topic": "chat:{room_key}",
+    "data": <message>} — posting itself happens over REST
+    (POST /api/orgs/{org_id}/chat/messages or .../teams/{team_id}/chat/
+    messages), which broadcasts here after persisting. Clients should fetch
+    the REST history endpoint on connect/reconnect to backfill."""
+    token   = ws.query_params.get("token", "")
+    user_id = _user_id_from_ws_token(token)
+    if not user_id:
+        await ws.close(code=4401, reason="unauthorized")
+        return
+
+    org_id = await _resolve_chat_room(room_key)
+    if org_id is None:
+        await ws.close(code=4404, reason="room not found")
+        return
+
+    from app.tenancy import get_tenancy_service
+    role = await get_tenancy_service().get_member_role(org_id, user_id)
+    if role is None:
+        await ws.close(code=4403, reason="not a member of this organization")
+        return
+
+    topic = f"chat:{room_key}"
+    await manager.connect(ws, topic)
+    hb    = asyncio.create_task(_heartbeat(ws))
+
+    try:
+        await manager.send(ws, {"type": "connected", "topic": topic})
+        while True:
+            try:
+                raw = await asyncio.wait_for(ws.receive_text(), timeout=300)
+                msg = json.loads(raw)
+                if msg.get("type") == "ping":
+                    await manager.send(ws, {"type": "pong"})
+            except asyncio.TimeoutError:
+                await manager.send(ws, {"type": "ping"})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        hb.cancel()
+        manager.disconnect(ws, topic)
