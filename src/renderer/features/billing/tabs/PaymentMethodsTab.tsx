@@ -5,6 +5,7 @@
  * Portal — no card form is built here (see SubscriptionTab's portal button).
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 import { GoldButton, GlassCard } from "../../../shared/ui/gold";
@@ -17,6 +18,7 @@ interface PaymentMethod {
 }
 
 export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
+  const { t } = useTranslation("billing");
   const toast = useToast();
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,11 +35,11 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
       const d = await parseJSON<{ payment_methods: PaymentMethod[] }>(r, "/billing/payment-methods");
       setMethods(d.payment_methods);
     } catch {
-      toast("Could not load payment methods", "err");
+      toast(t("paymentMethodsTab.loadFailedToast"), "err");
       setMethods([]);
       setError(true);
     } finally { setLoading(false); }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
@@ -48,9 +50,9 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
       if (!r.ok) throw new Error();
       const d = await parseJSON<{ payment_methods: PaymentMethod[] }>(r, "sync");
       setMethods(d.payment_methods);
-      toast("Payment methods refreshed", "ok");
+      toast(t("paymentMethodsTab.refreshedToast"), "ok");
     } catch {
-      toast("Failed to refresh payment methods", "err");
+      toast(t("paymentMethodsTab.refreshFailedToast"), "err");
     } finally { setSyncing(false); }
   };
 
@@ -60,7 +62,7 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
       const r = await apiFetch(`/api/orgs/${currentOrgId}/billing/portal`, { method: "POST" });
       if (!r.ok) {
         const e = await parseJSON<{ detail?: string }>(r, "portal").catch(() => ({ detail: undefined }));
-        throw new Error(e.detail || "Could not open billing portal");
+        throw new Error(e.detail || t("paymentMethodsTab.portalOpenFailed"));
       }
       const d = await parseJSON<{ url: string }>(r, "portal");
       window.location.href = d.url;
@@ -74,10 +76,10 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <GoldButton variant="ghost" onClick={() => void sync()} disabled={syncing}>
-          {syncing ? "Refreshing…" : "Refresh"}
+          {syncing ? t("paymentMethodsTab.refreshing") : t("paymentMethodsTab.refresh")}
         </GoldButton>
         <GoldButton onClick={() => void openPortal()} disabled={openingPortal}>
-          {openingPortal ? "Opening…" : "Manage in Stripe Portal"}
+          {openingPortal ? t("paymentMethodsTab.opening") : t("paymentMethodsTab.manageInStripe")}
         </GoldButton>
       </div>
 
@@ -86,15 +88,15 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
       ) : error ? (
         <EmptyState
           icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-          title="Could not load payment methods"
-          description="Something went wrong reaching the server."
-          action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+          title={t("paymentMethodsTab.loadErrorTitle")}
+          description={t("paymentMethodsTab.loadErrorDescription")}
+          action={<GoldButton variant="ghost" onClick={() => void load()}>{t("paymentMethodsTab.retry")}</GoldButton>}
         />
       ) : methods.length === 0 ? (
         <EmptyState
           icon={<span style={{ fontSize: 40 }}>💳</span>}
-          title="No payment method on file"
-          description="Add one from the Stripe Portal above."
+          title={t("paymentMethodsTab.emptyTitle")}
+          description={t("paymentMethodsTab.emptyDescription")}
         />
       ) : (
         <GlassCard lift={false}>
@@ -105,13 +107,13 @@ export function PaymentMethodsTab({ currentOrgId }: { currentOrgId: string }) {
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", textTransform: "capitalize" }}>
-                  {m.brand ?? "Card"} •••• {m.last4 ?? "----"}
+                  {m.brand ?? t("paymentMethodsTab.cardFallback")} •••• {m.last4 ?? "----"}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--t4)" }}>
-                  {m.exp_month && m.exp_year ? `Expires ${m.exp_month}/${m.exp_year}` : ""}
+                  {m.exp_month && m.exp_year ? t("paymentMethodsTab.expires", { month: m.exp_month, year: m.exp_year }) : ""}
                 </div>
               </div>
-              {m.is_default && <StatusBadge kind="success" label="Default" />}
+              {m.is_default && <StatusBadge kind="success" label={t("paymentMethodsTab.default")} />}
             </div>
           ))}
         </GlassCard>

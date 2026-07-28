@@ -1,0 +1,78 @@
+{
+  "header": {
+    "title": "الفرق — {{orgName}}",
+    "newTeam": "+ فريق جديد",
+    "inviteMember": "+ دعوة عضو"
+  },
+  "sections": {
+    "teams": "الفرق",
+    "members": "الأعضاء"
+  },
+  "noOrg": {
+    "title": "لم يتم اختيار منظمة",
+    "descriptionNoOrgs": "أنشئ منظمة أولاً.",
+    "descriptionHasOrgs": "اختر واحدة من صفحة المنظمات."
+  },
+  "newTeamForm": {
+    "title": "فريق جديد",
+    "namePlaceholder": "اسم الفريق",
+    "descPlaceholder": "الوصف (اختياري)",
+    "creating": "جارٍ الإنشاء…",
+    "create": "إنشاء",
+    "cancel": "إلغاء"
+  },
+  "teamsList": {
+    "loadErrorTitle": "تعذّر تحميل الفرق",
+    "loadErrorDescription": "حدث خطأ أثناء الاتصال بالخادم.",
+    "retry": "إعادة المحاولة",
+    "empty": "لا توجد فرق بعد — أنشئ فريقاً لتجميع الأعضاء للوصول إلى المشاريع.",
+    "membersButton": "الأعضاء",
+    "hideButton": "إخفاء",
+    "delete": "حذف",
+    "confirmDelete": "هل تريد حذف هذا الفريق؟",
+    "createdToast": "تم إنشاء فريق {{name}}",
+    "createFailedDefault": "فشل إنشاء الفريق",
+    "deletedToast": "تم حذف الفريق",
+    "deleteFailedToast": "فشل حذف الفريق"
+  },
+  "teamMembers": {
+    "empty": "لا يوجد أعضاء في هذا الفريق بعد.",
+    "remove": "إزالة",
+    "addPlaceholder": "إضافة عضو…",
+    "add": "إضافة",
+    "loadFailedToast": "تعذّر تحميل أعضاء الفريق",
+    "addedToast": "تمت إضافة العضو إلى الفريق",
+    "addFailedDefault": "فشلت إضافة العضو",
+    "removedToast": "تمت إزالة العضو من الفريق",
+    "removeFailedToast": "فشلت إزالة عضو الفريق"
+  },
+  "inviteForm": {
+    "title": "دعوة عبر البريد الإلكتروني",
+    "emailPlaceholder": "teammate@company.com",
+    "sending": "جارٍ الإرسال…",
+    "sendInvite": "إرسال الدعوة",
+    "cancel": "إلغاء",
+    "invitedToast": "تمت دعوة {{email}}",
+    "sendFailedDefault": "فشل إرسال الدعوة"
+  },
+  "membersList": {
+    "loadFailedTitle": "تعذّر تحميل الأعضاء",
+    "loadFailedDescription": "حدث خطأ أثناء الاتصال بالخادم.",
+    "retry": "إعادة المحاولة",
+    "empty": "لا يوجد أعضاء بعد",
+    "roleUpdatedToast": "تم تحديث الدور",
+    "roleUpdateFailedToast": "فشل تحديث الدور",
+    "confirmRemove": "هل تريد إزالة هذا العضو من المنظمة؟",
+    "removedToast": "تمت إزالة العضو",
+    "removeFailedToast": "فشلت إزالة العضو",
+    "loadMembersFailedToast": "تعذّر تحميل الأعضاء"
+  },
+  "roles": {
+    "owner": "مالك",
+    "admin": "مدير",
+    "manager": "مشرف",
+    "developer": "مطوّر",
+    "operator": "مُشغّل",
+    "viewer": "مُشاهد"
+  }
+}

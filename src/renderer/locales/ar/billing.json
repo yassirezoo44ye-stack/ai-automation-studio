@@ -1,0 +1,103 @@
+{
+  "noOrg": {
+    "title": "لم يتم اختيار منظمة",
+    "descriptionNoOrgs": "أنشئ منظمة أولاً.",
+    "descriptionHasOrgs": "اختر واحدة من صفحة المنظمات."
+  },
+  "header": {
+    "title": "الفوترة — {{orgName}}"
+  },
+  "tabsAriaLabel": "أقسام الفوترة",
+  "tabs": {
+    "subscription": "الاشتراك",
+    "usage": "الاستخدام",
+    "invoices": "الفواتير",
+    "payment_methods": "طرق الدفع",
+    "history": "سجل الفوترة"
+  },
+  "toast": {
+    "loadFailed": "تعذّر تحميل بيانات الفوترة"
+  },
+  "subscriptionTab": {
+    "manageTitle": "إدارة اشتراكك",
+    "manageDescription": "غيّر الخطة، حدّث طريقة الدفع، أو ألغِ الاشتراك — تتم إدارتها بأمان عبر Stripe.",
+    "opening": "جارٍ الفتح…",
+    "manageInStripe": "الإدارة عبر بوابة Stripe",
+    "plansLabel": "الخطط",
+    "tokensSeats": "{{tokens}} توكن · {{seats}} مقعد",
+    "trialDays": " · تجربة {{days}} يوم",
+    "custom": "مخصص",
+    "free": "مجاني",
+    "perMonth": "/شهر",
+    "currentPlan": "الخطة الحالية",
+    "redirecting": "جارٍ التحويل…",
+    "upgrade": "ترقية",
+    "contactSales": "تواصل مع المبيعات",
+    "priceNotConfigured": "لم يتم إعداد سعر Stripe",
+    "unavailable": "غير متاح",
+    "checkoutFailed": "فشل الدفع",
+    "portalOpenFailed": "تعذّر فتح بوابة الفوترة"
+  },
+  "usageTab": {
+    "title": "الاستخدام لهذه الفترة ({{period}})",
+    "metrics": {
+      "tokens": "توكنات الذكاء الاصطناعي",
+      "workflow_executions": "تشغيلات سير العمل",
+      "api_requests": "طلبات API",
+      "storage_mb": "التخزين (MB)",
+      "embeddings": "المتجهات (Embeddings)",
+      "marketplace_purchases": "مشتريات المتجر",
+      "seats": "المقاعد",
+      "active_users": "المستخدمون النشطون",
+      "running_agents": "الوكلاء قيد التشغيل"
+    }
+  },
+  "invoicesTab": {
+    "loadFailedToast": "تعذّر تحميل الفواتير",
+    "loadErrorTitle": "تعذّر تحميل الفواتير",
+    "loadErrorDescription": "حدث خطأ أثناء الاتصال بالخادم.",
+    "retry": "إعادة المحاولة",
+    "emptyTitle": "لا توجد فواتير بعد",
+    "emptyDescription": "تظهر الفواتير هنا بمجرد اشتراكك في خطة مدفوعة.",
+    "view": "عرض"
+  },
+  "paymentMethodsTab": {
+    "loadFailedToast": "تعذّر تحميل طرق الدفع",
+    "refreshing": "جارٍ التحديث…",
+    "refresh": "تحديث",
+    "opening": "جارٍ الفتح…",
+    "manageInStripe": "الإدارة عبر بوابة Stripe",
+    "refreshedToast": "تم تحديث طرق الدفع",
+    "refreshFailedToast": "فشل تحديث طرق الدفع",
+    "portalOpenFailed": "تعذّر فتح بوابة الفوترة",
+    "loadErrorTitle": "تعذّر تحميل طرق الدفع",
+    "loadErrorDescription": "حدث خطأ أثناء الاتصال بالخادم.",
+    "retry": "إعادة المحاولة",
+    "emptyTitle": "لا توجد طريقة دفع مسجّلة",
+    "emptyDescription": "أضف واحدة من بوابة Stripe أعلاه.",
+    "cardFallback": "بطاقة",
+    "expires": "تنتهي في {{month}}/{{year}}",
+    "default": "افتراضية"
+  },
+  "historyTab": {
+    "loadFailedToast": "تعذّر تحميل سجل الفوترة",
+    "loadErrorTitle": "تعذّر تحميل سجل الفوترة",
+    "loadErrorDescription": "حدث خطأ أثناء الاتصال بالخادم.",
+    "retry": "إعادة المحاولة",
+    "creditBalance": "رصيد الحساب",
+    "emptyTitle": "لا يوجد سجل فوترة بعد",
+    "payment": "دفعة — {{amount}} {{currency}}",
+    "credit": "رصيد — {{amount}} ({{reason}})"
+  },
+  "status": {
+    "paid": "مدفوعة",
+    "open": "مفتوحة",
+    "draft": "مسودة",
+    "uncollectible": "غير قابلة للتحصيل",
+    "void": "ملغاة",
+    "succeeded": "ناجحة",
+    "pending": "قيد الانتظار",
+    "failed": "فاشلة",
+    "refunded": "مستردة"
+  }
+}

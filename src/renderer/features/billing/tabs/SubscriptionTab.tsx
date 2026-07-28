@@ -3,6 +3,7 @@
  * Data: GET /api/plans, POST /api/orgs/{id}/billing/checkout, POST .../billing/portal
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 import { GoldButton, GlassCard } from "../../../shared/ui/gold";
@@ -29,6 +30,7 @@ export function SubscriptionTab({
 }: {
   currentOrgId: string; billing: BillingSummary | null; plans: PlanDTO[];
 }) {
+  const { t } = useTranslation("billing");
   const toast = useToast();
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
@@ -41,7 +43,7 @@ export function SubscriptionTab({
       });
       if (!r.ok) {
         const e = await parseJSON<{ detail?: string }>(r, "checkout").catch(() => ({ detail: undefined }));
-        throw new Error(e.detail || "Checkout failed");
+        throw new Error(e.detail || t("subscriptionTab.checkoutFailed"));
       }
       const d = await parseJSON<{ url: string }>(r, "checkout");
       window.location.assign(d.url);
@@ -57,7 +59,7 @@ export function SubscriptionTab({
       const r = await apiFetch(`/api/orgs/${currentOrgId}/billing/portal`, { method: "POST" });
       if (!r.ok) {
         const e = await parseJSON<{ detail?: string }>(r, "portal").catch(() => ({ detail: undefined }));
-        throw new Error(e.detail || "Could not open billing portal");
+        throw new Error(e.detail || t("subscriptionTab.portalOpenFailed"));
       }
       const d = await parseJSON<{ url: string }>(r, "portal");
       window.location.href = d.url;
@@ -72,19 +74,19 @@ export function SubscriptionTab({
       {billing && billing.plan !== "free" && (
         <GlassCard style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>Manage your subscription</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{t("subscriptionTab.manageTitle")}</div>
             <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 2 }}>
-              Change plan, update your payment method, or cancel — handled securely by Stripe.
+              {t("subscriptionTab.manageDescription")}
             </div>
           </div>
           <GoldButton variant="ghost" onClick={() => void openPortal()} disabled={openingPortal}>
-            {openingPortal ? "Opening…" : "Manage in Stripe Portal"}
+            {openingPortal ? t("subscriptionTab.opening") : t("subscriptionTab.manageInStripe")}
           </GoldButton>
         </GlassCard>
       )}
 
       <div>
-        <div className="section-label" style={{ marginBottom: 12 }}>PLANS</div>
+        <div className="section-label" style={{ marginBottom: 12 }}>{t("subscriptionTab.plansLabel")}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12 }}>
           {plans.map(p => {
             const isCurrent = p.id === billing?.plan;
@@ -96,24 +98,24 @@ export function SubscriptionTab({
               >
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>{p.name}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", marginBottom: 10 }}>
-                  {p.price_monthly_usd > 0 ? `$${p.price_monthly_usd}` : p.id === "enterprise" ? "Custom" : "Free"}
-                  {p.price_monthly_usd > 0 && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--t4)" }}>/mo</span>}
+                  {p.price_monthly_usd > 0 ? `$${p.price_monthly_usd}` : p.id === "enterprise" ? t("subscriptionTab.custom") : t("subscriptionTab.free")}
+                  {p.price_monthly_usd > 0 && <span style={{ fontSize: 11, fontWeight: 400, color: "var(--t4)" }}>{t("subscriptionTab.perMonth")}</span>}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 14, lineHeight: 1.6 }}>
-                  {fmt(p.limits.tokens)} tokens · {fmt(p.limits.seats)} seats
-                  {p.trial_days > 0 && !isCurrent && <> · {p.trial_days}-day trial</>}
+                  {t("subscriptionTab.tokensSeats", { tokens: fmt(p.limits.tokens), seats: fmt(p.limits.seats) })}
+                  {p.trial_days > 0 && !isCurrent && t("subscriptionTab.trialDays", { days: p.trial_days })}
                 </div>
                 {isCurrent ? (
-                  <GoldButton variant="ghost" disabled style={{ width: "100%" }}>Current Plan</GoldButton>
+                  <GoldButton variant="ghost" disabled style={{ width: "100%" }}>{t("subscriptionTab.currentPlan")}</GoldButton>
                 ) : purchasable ? (
                   <GoldButton onClick={() => void upgrade(p.id)} disabled={!!upgrading} style={{ width: "100%" }}>
-                    {upgrading === p.id ? "Redirecting…" : "Upgrade"}
+                    {upgrading === p.id ? t("subscriptionTab.redirecting") : t("subscriptionTab.upgrade")}
                   </GoldButton>
                 ) : p.id === "enterprise" ? (
-                  <GoldButton variant="ghost" disabled style={{ width: "100%" }}>Contact Sales</GoldButton>
+                  <GoldButton variant="ghost" disabled style={{ width: "100%" }}>{t("subscriptionTab.contactSales")}</GoldButton>
                 ) : (
-                  <GoldButton variant="ghost" disabled title="Stripe price not configured" style={{ width: "100%" }}>
-                    Unavailable
+                  <GoldButton variant="ghost" disabled title={t("subscriptionTab.priceNotConfigured")} style={{ width: "100%" }}>
+                    {t("subscriptionTab.unavailable")}
                   </GoldButton>
                 )}
               </GlassCard>

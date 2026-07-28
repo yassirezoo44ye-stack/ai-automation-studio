@@ -4,6 +4,7 @@
  * fetched here and passed down; each tab fetches its own history data).
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
@@ -29,15 +30,10 @@ interface BillingDTO {
 
 type Tab = "subscription" | "usage" | "invoices" | "payment_methods" | "history";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "subscription", label: "Subscription" },
-  { id: "usage", label: "Usage" },
-  { id: "invoices", label: "Invoices" },
-  { id: "payment_methods", label: "Payment Methods" },
-  { id: "history", label: "Billing History" },
-];
+const TAB_IDS: Tab[] = ["subscription", "usage", "invoices", "payment_methods", "history"];
 
 export function BillingPage() {
+  const { t } = useTranslation("billing");
   const toast = useToast();
   const { currentOrgId, currentOrg, orgs } = useOrg();
   const [billing, setBilling] = useState<BillingDTO | null>(null);
@@ -56,9 +52,9 @@ export function BillingPage() {
       if (br.ok) setBilling(await parseJSON<BillingDTO>(br, "/api/orgs/{id}/billing"));
       if (pr.ok) setPlans((await parseJSON<{ plans: PlanDTO[] }>(pr, "/api/plans")).plans);
     } catch {
-      toast("Could not load billing info", "err");
+      toast(t("toast.loadFailed"), "err");
     } finally { setLoading(false); }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
   // Reset the tab when the org changes — during render, per React's
@@ -70,8 +66,8 @@ export function BillingPage() {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>💳</span>}
-        title="No organization selected"
-        description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+        title={t("noOrg.title")}
+        description={orgs.length === 0 ? t("noOrg.descriptionNoOrgs") : t("noOrg.descriptionHasOrgs")}
       />
     );
   }
@@ -79,7 +75,7 @@ export function BillingPage() {
   return (
     <>
       <header style={S.header}>
-        <span style={S.headerTitle}>Billing — {currentOrg?.name ?? "…"}</span>
+        <span style={S.headerTitle}>{t("header.title", { orgName: currentOrg?.name ?? "…" })}</span>
         {billing && (
           <StatusBadge
             kind={billing.has_access ? "success" : "warning"}
@@ -88,21 +84,21 @@ export function BillingPage() {
         )}
       </header>
 
-      <div role="tablist" aria-label="Billing sections" style={{ display: "flex", gap: 6, padding: "12px 24px 0" }}>
-        {TABS.map(t => (
+      <div role="tablist" aria-label={t("tabsAriaLabel")} style={{ display: "flex", gap: 6, padding: "12px 24px 0" }}>
+        {TAB_IDS.map(id => (
           <button
-            key={t.id}
+            key={id}
             type="button"
             role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
             style={{
               padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-              background: tab === t.id ? "var(--accent-dim)" : "var(--bg-card)",
-              color: tab === t.id ? "var(--accent-2)" : "var(--t4)",
+              background: tab === id ? "var(--accent-dim)" : "var(--bg-card)",
+              color: tab === id ? "var(--accent-2)" : "var(--t4)",
             }}
           >
-            {t.label}
+            {t(`tabs.${id}`)}
           </button>
         ))}
       </div>

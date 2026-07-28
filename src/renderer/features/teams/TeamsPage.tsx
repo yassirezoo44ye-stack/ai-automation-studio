@@ -4,6 +4,7 @@
  *       GET/POST/PATCH/DELETE /api/orgs/{id}/teams*
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
@@ -38,6 +39,7 @@ const ROLE_BG: Record<Role, string> = {
 };
 
 export function TeamsPage() {
+  const { t } = useTranslation("teams");
   const toast = useToast();
   const { currentOrgId, currentOrg, orgs } = useOrg();
   const [members, setMembers] = useState<Member[]>([]);
@@ -72,11 +74,11 @@ export function TeamsPage() {
       const d = await parseJSON<{ members: Member[] }>(r, "/api/orgs/{id}/members");
       setMembers(d.members);
     } catch {
-      toast("Could not load members", "err");
+      toast(t("membersList.loadMembersFailedToast"), "err");
       setMembers([]);
       setMembersError(true);
     } finally { setLoading(false); }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
@@ -90,11 +92,11 @@ export function TeamsPage() {
       const d = await parseJSON<{ teams: Team[] }>(r, "/api/orgs/{id}/teams");
       setTeams(d.teams);
     } catch {
-      toast("Could not load teams", "err");
+      toast(t("teamsList.loadErrorTitle"), "err");
       setTeams([]);
       setTeamsError(true);
     } finally { setTeamsLoading(false); }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   useEffect(() => { void Promise.resolve().then(loadTeams); }, [loadTeams]);
   // Collapse expanded team state when the org changes — render-time adjustment.
@@ -111,28 +113,28 @@ export function TeamsPage() {
       });
       if (!r.ok) {
         const e = await parseJSON<{ detail?: string }>(r, "create team").catch(() => ({ detail: undefined }));
-        throw new Error(e.detail || "Failed to create team");
+        throw new Error(e.detail || t("teamsList.createFailedDefault"));
       }
       const team = await parseJSON<Team>(r, "create team");
       setTeams(prev => [...prev, team]);
-      toast(`Created team ${team.name}`, "ok");
+      toast(t("teamsList.createdToast", { name: team.name }), "ok");
       setNewTeamName(""); setNewTeamDesc(""); setCreatingTeam(false);
     } catch (e) {
-      toast((e as Error).message || "Failed to create team", "err");
+      toast((e as Error).message || t("teamsList.createFailedDefault"), "err");
     } finally { setTeamSaving(false); }
   };
 
   const deleteTeam = async (teamId: string) => {
     if (!currentOrgId) return;
-    if (!confirm("Delete this team?")) return;
+    if (!confirm(t("teamsList.confirmDelete"))) return;
     setTeamBusy(teamId);
     try {
       const r = await apiFetch(`/api/orgs/${currentOrgId}/teams/${teamId}`, { method: "DELETE" });
       if (!r.ok) throw new Error();
-      setTeams(prev => prev.filter(t => t.id !== teamId));
+      setTeams(prev => prev.filter(tm => tm.id !== teamId));
       if (expandedTeam === teamId) setExpandedTeam(null);
-      toast("Team deleted", "ok");
-    } catch { toast("Failed to delete team", "err"); }
+      toast(t("teamsList.deletedToast"), "ok");
+    } catch { toast(t("teamsList.deleteFailedToast"), "err"); }
     finally { setTeamBusy(null); }
   };
 
@@ -146,7 +148,7 @@ export function TeamsPage() {
       if (!r.ok) throw new Error();
       const d = await parseJSON<{ members: TeamMember[] }>(r, "team members");
       setTeamMembers(prev => ({ ...prev, [teamId]: d.members }));
-    } catch { toast("Could not load team members", "err"); }
+    } catch { toast(t("teamMembers.loadFailedToast"), "err"); }
     finally { setTeamMembersLoading(null); }
   };
 
@@ -159,7 +161,7 @@ export function TeamsPage() {
       });
       if (!r.ok) {
         const e = await parseJSON<{ detail?: string }>(r, "add team member").catch(() => ({ detail: undefined }));
-        throw new Error(e.detail || "Failed to add member");
+        throw new Error(e.detail || t("teamMembers.addFailedDefault"));
       }
       // Re-fetch from the server rather than synthesizing a row locally —
       // the add endpoint only returns {team_id, user_id}, and the local
@@ -171,9 +173,9 @@ export function TeamsPage() {
         setTeamMembers(prev => ({ ...prev, [teamId]: d.members }));
       }
       setAddMemberUserId("");
-      toast("Member added to team", "ok");
+      toast(t("teamMembers.addedToast"), "ok");
     } catch (e) {
-      toast((e as Error).message || "Failed to add member", "err");
+      toast((e as Error).message || t("teamMembers.addFailedDefault"), "err");
     } finally { setTeamBusy(null); }
   };
 
@@ -184,8 +186,8 @@ export function TeamsPage() {
       const r = await apiFetch(`/api/orgs/${currentOrgId}/teams/${teamId}/members/${userId}`, { method: "DELETE" });
       if (!r.ok) throw new Error();
       setTeamMembers(prev => ({ ...prev, [teamId]: (prev[teamId] || []).filter(m => m.user_id !== userId) }));
-      toast("Member removed from team", "ok");
-    } catch { toast("Failed to remove team member", "err"); }
+      toast(t("teamMembers.removedToast"), "ok");
+    } catch { toast(t("teamMembers.removeFailedToast"), "err"); }
     finally { setTeamBusy(null); }
   };
 
@@ -198,12 +200,12 @@ export function TeamsPage() {
       });
       if (!r.ok) {
         const e = await parseJSON<{ detail?: string }>(r, "invite").catch(() => ({ detail: undefined }));
-        throw new Error(e.detail || "Failed to send invitation");
+        throw new Error(e.detail || t("inviteForm.sendFailedDefault"));
       }
-      toast(`Invited ${inviteEmail.trim()}`, "ok");
+      toast(t("inviteForm.invitedToast", { email: inviteEmail.trim() }), "ok");
       setInviteEmail(""); setInviting(false);
     } catch (e) {
-      toast((e as Error).message || "Failed to send invitation", "err");
+      toast((e as Error).message || t("inviteForm.sendFailedDefault"), "err");
     } finally { setSaving(false); }
   };
 
@@ -216,21 +218,21 @@ export function TeamsPage() {
       });
       if (!r.ok) throw new Error();
       setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role } : m));
-      toast("Role updated", "ok");
-    } catch { toast("Failed to update role", "err"); }
+      toast(t("membersList.roleUpdatedToast"), "ok");
+    } catch { toast(t("membersList.roleUpdateFailedToast"), "err"); }
     finally { setBusy(null); }
   };
 
   const removeMember = async (userId: string) => {
     if (!currentOrgId) return;
-    if (!confirm("Remove this member from the organization?")) return;
+    if (!confirm(t("membersList.confirmRemove"))) return;
     setBusy(userId);
     try {
       const r = await apiFetch(`/api/orgs/${currentOrgId}/members/${userId}`, { method: "DELETE" });
       if (!r.ok) throw new Error();
       setMembers(prev => prev.filter(m => m.user_id !== userId));
-      toast("Member removed", "ok");
-    } catch { toast("Failed to remove member", "err"); }
+      toast(t("membersList.removedToast"), "ok");
+    } catch { toast(t("membersList.removeFailedToast"), "err"); }
     finally { setBusy(null); }
   };
 
@@ -238,8 +240,8 @@ export function TeamsPage() {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>👥</span>}
-        title="No organization selected"
-        description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+        title={t("noOrg.title")}
+        description={orgs.length === 0 ? t("noOrg.descriptionNoOrgs") : t("noOrg.descriptionHasOrgs")}
       />
     );
   }
@@ -247,33 +249,33 @@ export function TeamsPage() {
   return (
     <>
       <header style={S.header}>
-        <span style={S.headerTitle}>Teams — {currentOrg?.name ?? "…"}</span>
+        <span style={S.headerTitle}>{t("header.title", { orgName: currentOrg?.name ?? "…" })}</span>
         <div style={{ display: "flex", gap: 8 }}>
-          <GoldButton variant="ghost" onClick={() => setCreatingTeam(v => !v)}>+ New Team</GoldButton>
-          <GoldButton onClick={() => setInviting(v => !v)}>+ Invite Member</GoldButton>
+          <GoldButton variant="ghost" onClick={() => setCreatingTeam(v => !v)}>{t("header.newTeam")}</GoldButton>
+          <GoldButton onClick={() => setInviting(v => !v)}>{t("header.inviteMember")}</GoldButton>
         </div>
       </header>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
-        <div className="section-label" style={{ marginBottom: 8 }}>Teams</div>
+        <div className="section-label" style={{ marginBottom: 8 }}>{t("sections.teams")}</div>
         {creatingTeam && (
           <GlassCard lift={false} style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>New Team</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>{t("newTeamForm.title")}</div>
             <div style={{ display: "flex", gap: 10 }}>
               <input
                 value={newTeamName} onChange={e => setNewTeamName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && void createTeam()}
-                placeholder="Team name" className="g-input" style={{ flex: 1 }} autoFocus
+                placeholder={t("newTeamForm.namePlaceholder")} className="g-input" style={{ flex: 1 }} autoFocus
               />
               <input
                 value={newTeamDesc} onChange={e => setNewTeamDesc(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && void createTeam()}
-                placeholder="Description (optional)" className="g-input" style={{ flex: 2 }}
+                placeholder={t("newTeamForm.descPlaceholder")} className="g-input" style={{ flex: 2 }}
               />
               <GoldButton onClick={() => void createTeam()} disabled={teamSaving || !newTeamName.trim()}>
-                {teamSaving ? "Creating…" : "Create"}
+                {teamSaving ? t("newTeamForm.creating") : t("newTeamForm.create")}
               </GoldButton>
-              <GoldButton variant="ghost" onClick={() => { setCreatingTeam(false); setNewTeamName(""); setNewTeamDesc(""); }}>Cancel</GoldButton>
+              <GoldButton variant="ghost" onClick={() => { setCreatingTeam(false); setNewTeamName(""); setNewTeamDesc(""); }}>{t("newTeamForm.cancel")}</GoldButton>
             </div>
           </GlassCard>
         )}
@@ -286,60 +288,60 @@ export function TeamsPage() {
           <div style={{ marginBottom: 20 }}>
             <EmptyState
               icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-              title="Could not load teams"
-              description="Something went wrong reaching the server."
-              action={<GoldButton variant="ghost" onClick={() => void loadTeams()}>Retry</GoldButton>}
+              title={t("teamsList.loadErrorTitle")}
+              description={t("teamsList.loadErrorDescription")}
+              action={<GoldButton variant="ghost" onClick={() => void loadTeams()}>{t("teamsList.retry")}</GoldButton>}
             />
           </div>
         ) : teams.length === 0 ? (
           <GlassCard lift={false} style={{ marginBottom: 20, textAlign: "center", color: "var(--t4)", fontSize: 12, padding: 20 }}>
-            No teams yet — create one to group members for project access.
+            {t("teamsList.empty")}
           </GlassCard>
         ) : (
           <GlassCard lift={false} style={{ marginBottom: 20 }}>
-            {teams.map((t, i) => {
-              const isOpen = expandedTeam === t.id;
-              const tm = teamMembers[t.id] || [];
+            {teams.map((team, i) => {
+              const isOpen = expandedTeam === team.id;
+              const tm = teamMembers[team.id] || [];
               const availableToAdd = members.filter(m => !tm.some(x => x.user_id === m.user_id));
               return (
-                <div key={t.id} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", padding: "12px 4px" }}>
+                <div key={team.id} style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none", padding: "12px 4px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div
                       role="button" tabIndex={0}
-                      onClick={() => void toggleTeam(t.id)}
-                      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void toggleTeam(t.id); } }}
+                      onClick={() => void toggleTeam(team.id)}
+                      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void toggleTeam(team.id); } }}
                       style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
                     >
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{t.name}</div>
-                      {t.description && <div style={{ fontSize: 11, color: "var(--t4)" }}>{t.description}</div>}
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{team.name}</div>
+                      {team.description && <div style={{ fontSize: 11, color: "var(--t4)" }}>{team.description}</div>}
                     </div>
                     <GoldButton
-                      variant="ghost" onClick={() => void toggleTeam(t.id)}
+                      variant="ghost" onClick={() => void toggleTeam(team.id)}
                       style={{ padding: "5px 12px", fontSize: 11 }}
-                    >{isOpen ? "Hide" : "Members"}</GoldButton>
+                    >{isOpen ? t("teamsList.hideButton") : t("teamsList.membersButton")}</GoldButton>
                     <GoldButton
-                      variant="danger" onClick={() => void deleteTeam(t.id)} disabled={teamBusy === t.id}
+                      variant="danger" onClick={() => void deleteTeam(team.id)} disabled={teamBusy === team.id}
                       style={{ padding: "5px 12px", fontSize: 11 }}
-                    >Delete</GoldButton>
+                    >{t("teamsList.delete")}</GoldButton>
                   </div>
 
                   {isOpen && (
                     <div style={{ marginTop: 10, marginLeft: 4, paddingLeft: 12, borderLeft: "2px solid var(--border)" }}>
-                      {teamMembersLoading === t.id ? (
+                      {teamMembersLoading === team.id ? (
                         <div className="skeleton" style={{ height: 32, borderRadius: 8 }} />
                       ) : (
                         <>
                           {tm.length === 0 && (
-                            <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 8 }}>No members in this team yet.</div>
+                            <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 8 }}>{t("teamMembers.empty")}</div>
                           )}
                           {tm.map(m => (
                             <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
                               <span style={{ fontSize: 12, color: "var(--t1)", flex: 1 }}>{m.name || m.email}</span>
                               <GoldButton
-                                variant="danger" onClick={() => void removeTeamMember(t.id, m.user_id)}
-                                disabled={teamBusy === `${t.id}:${m.user_id}`}
+                                variant="danger" onClick={() => void removeTeamMember(team.id, m.user_id)}
+                                disabled={teamBusy === `${team.id}:${m.user_id}`}
                                 style={{ padding: "3px 10px", fontSize: 10 }}
-                              >Remove</GoldButton>
+                              >{t("teamMembers.remove")}</GoldButton>
                             </div>
                           ))}
                           {availableToAdd.length > 0 && (
@@ -349,16 +351,16 @@ export function TeamsPage() {
                                 onChange={e => setAddMemberUserId(e.target.value)}
                                 className="g-input" style={{ flex: 1, fontSize: 11, padding: "5px 10px" }}
                               >
-                                <option value="">Add member…</option>
+                                <option value="">{t("teamMembers.addPlaceholder")}</option>
                                 {availableToAdd.map(m => (
                                   <option key={m.user_id} value={m.user_id}>{m.name || m.email}</option>
                                 ))}
                               </select>
                               <GoldButton
-                                variant="ghost" onClick={() => void addTeamMember(t.id)}
-                                disabled={!addMemberUserId || teamBusy === t.id}
+                                variant="ghost" onClick={() => void addTeamMember(team.id)}
+                                disabled={!addMemberUserId || teamBusy === team.id}
                                 style={{ padding: "5px 12px", fontSize: 11 }}
-                              >Add</GoldButton>
+                              >{t("teamMembers.add")}</GoldButton>
                             </div>
                           )}
                         </>
@@ -371,23 +373,23 @@ export function TeamsPage() {
           </GlassCard>
         )}
 
-        <div className="section-label" style={{ marginBottom: 8 }}>Members</div>
+        <div className="section-label" style={{ marginBottom: 8 }}>{t("sections.members")}</div>
         {inviting && (
           <GlassCard lift={false} style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Invite by Email</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>{t("inviteForm.title")}</div>
             <div style={{ display: "flex", gap: 10 }}>
               <input
                 value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && void invite()}
-                placeholder="teammate@company.com" type="email" className="g-input" style={{ flex: 1 }} autoFocus
+                placeholder={t("inviteForm.emailPlaceholder")} type="email" className="g-input" style={{ flex: 1 }} autoFocus
               />
               <select value={inviteRole} onChange={e => setInviteRole(e.target.value as Role)} className="g-input" style={{ width: "auto" }}>
-                {ROLES.filter(r => r !== "owner").map(r => <option key={r} value={r}>{r}</option>)}
+                {ROLES.filter(r => r !== "owner").map(r => <option key={r} value={r}>{t(`roles.${r}`)}</option>)}
               </select>
               <GoldButton onClick={() => void invite()} disabled={saving || !inviteEmail.trim()}>
-                {saving ? "Sending…" : "Send Invite"}
+                {saving ? t("inviteForm.sending") : t("inviteForm.sendInvite")}
               </GoldButton>
-              <GoldButton variant="ghost" onClick={() => { setInviting(false); setInviteEmail(""); }}>Cancel</GoldButton>
+              <GoldButton variant="ghost" onClick={() => { setInviting(false); setInviteEmail(""); }}>{t("inviteForm.cancel")}</GoldButton>
             </div>
           </GlassCard>
         )}
@@ -399,12 +401,12 @@ export function TeamsPage() {
         ) : membersError ? (
           <EmptyState
             icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-            title="Could not load members"
-            description="Something went wrong reaching the server."
-            action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+            title={t("membersList.loadFailedTitle")}
+            description={t("membersList.loadFailedDescription")}
+            action={<GoldButton variant="ghost" onClick={() => void load()}>{t("membersList.retry")}</GoldButton>}
           />
         ) : members.length === 0 ? (
-          <EmptyState icon={<span style={{ fontSize: 40 }}>👥</span>} title="No members yet" />
+          <EmptyState icon={<span style={{ fontSize: 40 }}>👥</span>} title={t("membersList.empty")} />
         ) : (
           <GlassCard lift={false}>
             {members.map((m, i) => (
@@ -429,7 +431,7 @@ export function TeamsPage() {
                   color: ROLE_COLOR[m.role], background: ROLE_BG[m.role],
                   border: `1px solid ${ROLE_BG[m.role]}`,
                 }}>
-                  {m.role}
+                  {t(`roles.${m.role}`)}
                 </span>
                 {m.role !== "owner" && (
                   <>
@@ -438,12 +440,12 @@ export function TeamsPage() {
                       onChange={e => void changeRole(m.user_id, e.target.value as Role)}
                       className="g-input" style={{ width: "auto", fontSize: 11, padding: "5px 10px" }}
                     >
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      {ROLES.map(r => <option key={r} value={r}>{t(`roles.${r}`)}</option>)}
                     </select>
                     <GoldButton
                       variant="danger" onClick={() => void removeMember(m.user_id)} disabled={busy === m.user_id}
                       style={{ padding: "5px 12px", fontSize: 11 }}
-                    >Remove</GoldButton>
+                    >{t("teamMembers.remove")}</GoldButton>
                   </>
                 )}
               </div>

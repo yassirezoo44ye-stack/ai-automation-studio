@@ -3,6 +3,7 @@
  * Data: GET /api/orgs/{id}/billing/payments, GET .../billing/credits
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 import { GoldButton, GlassCard } from "../../../shared/ui/gold";
@@ -25,6 +26,7 @@ const STATUS_KIND: Record<string, StatusBadgeKind> = {
 };
 
 export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
+  const { t } = useTranslation("billing");
   const toast = useToast();
   const [balance, setBalance] = useState<number | null>(null);
   const [rows, setRows] = useState<HistoryRow[]>([]);
@@ -50,11 +52,11 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
       ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
       setRows(combined);
     } catch {
-      toast("Could not load billing history", "err");
+      toast(t("historyTab.loadFailedToast"), "err");
       setRows([]);
       setError(true);
     } finally { setLoading(false); }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
@@ -70,9 +72,9 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-        title="Could not load billing history"
-        description="Something went wrong reaching the server."
-        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+        title={t("historyTab.loadErrorTitle")}
+        description={t("historyTab.loadErrorDescription")}
+        action={<GoldButton variant="ghost" onClick={() => void load()}>{t("historyTab.retry")}</GoldButton>}
       />
     );
   }
@@ -81,13 +83,13 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {balance !== null && balance > 0 && (
         <GlassCard lift={false} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 13, color: "var(--t2)" }}>Account credit balance</span>
+          <span style={{ fontSize: 13, color: "var(--t2)" }}>{t("historyTab.creditBalance")}</span>
           <span style={{ fontSize: 16, fontWeight: 700, color: "var(--green)" }}>${balance.toFixed(2)}</span>
         </GlassCard>
       )}
 
       {rows.length === 0 ? (
-        <EmptyState icon={<span style={{ fontSize: 40 }}>📜</span>} title="No billing history yet" />
+        <EmptyState icon={<span style={{ fontSize: 40 }}>📜</span>} title={t("historyTab.emptyTitle")} />
       ) : (
         <GlassCard lift={false}>
           {rows.map((row, i) => (
@@ -98,8 +100,8 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>
                   {row.kind === "payment"
-                    ? `Payment — $${(row.data.amount_cents / 100).toFixed(2)} ${row.data.currency.toUpperCase()}`
-                    : `Credit — $${row.data.amount_usd.toFixed(2)} (${row.data.reason})`}
+                    ? t("historyTab.payment", { amount: `$${(row.data.amount_cents / 100).toFixed(2)}`, currency: row.data.currency.toUpperCase() })
+                    : t("historyTab.credit", { amount: `$${row.data.amount_usd.toFixed(2)}`, reason: row.data.reason })}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--t4)" }}>
                   {new Date(row.at).toLocaleString()}
@@ -107,7 +109,7 @@ export function BillingHistoryTab({ currentOrgId }: { currentOrgId: string }) {
                 </div>
               </div>
               {row.kind === "payment" && (
-                <StatusBadge kind={STATUS_KIND[row.data.status] ?? "neutral"} label={row.data.status} />
+                <StatusBadge kind={STATUS_KIND[row.data.status] ?? "neutral"} label={t(`status.${row.data.status}`, { defaultValue: row.data.status })} />
               )}
             </div>
           ))}

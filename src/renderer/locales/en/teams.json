@@ -1,0 +1,78 @@
+{
+  "header": {
+    "title": "Teams — {{orgName}}",
+    "newTeam": "+ New Team",
+    "inviteMember": "+ Invite Member"
+  },
+  "sections": {
+    "teams": "Teams",
+    "members": "Members"
+  },
+  "noOrg": {
+    "title": "No organization selected",
+    "descriptionNoOrgs": "Create an organization first.",
+    "descriptionHasOrgs": "Pick one from the Organizations page."
+  },
+  "newTeamForm": {
+    "title": "New Team",
+    "namePlaceholder": "Team name",
+    "descPlaceholder": "Description (optional)",
+    "creating": "Creating…",
+    "create": "Create",
+    "cancel": "Cancel"
+  },
+  "teamsList": {
+    "loadErrorTitle": "Could not load teams",
+    "loadErrorDescription": "Something went wrong reaching the server.",
+    "retry": "Retry",
+    "empty": "No teams yet — create one to group members for project access.",
+    "membersButton": "Members",
+    "hideButton": "Hide",
+    "delete": "Delete",
+    "confirmDelete": "Delete this team?",
+    "createdToast": "Created team {{name}}",
+    "createFailedDefault": "Failed to create team",
+    "deletedToast": "Team deleted",
+    "deleteFailedToast": "Failed to delete team"
+  },
+  "teamMembers": {
+    "empty": "No members in this team yet.",
+    "remove": "Remove",
+    "addPlaceholder": "Add member…",
+    "add": "Add",
+    "loadFailedToast": "Could not load team members",
+    "addedToast": "Member added to team",
+    "addFailedDefault": "Failed to add member",
+    "removedToast": "Member removed from team",
+    "removeFailedToast": "Failed to remove team member"
+  },
+  "inviteForm": {
+    "title": "Invite by Email",
+    "emailPlaceholder": "teammate@company.com",
+    "sending": "Sending…",
+    "sendInvite": "Send Invite",
+    "cancel": "Cancel",
+    "invitedToast": "Invited {{email}}",
+    "sendFailedDefault": "Failed to send invitation"
+  },
+  "membersList": {
+    "loadFailedTitle": "Could not load members",
+    "loadFailedDescription": "Something went wrong reaching the server.",
+    "retry": "Retry",
+    "empty": "No members yet",
+    "roleUpdatedToast": "Role updated",
+    "roleUpdateFailedToast": "Failed to update role",
+    "confirmRemove": "Remove this member from the organization?",
+    "removedToast": "Member removed",
+    "removeFailedToast": "Failed to remove member",
+    "loadMembersFailedToast": "Could not load members"
+  },
+  "roles": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "manager": "Manager",
+    "developer": "Developer",
+    "operator": "Operator",
+    "viewer": "Viewer"
+  }
+}

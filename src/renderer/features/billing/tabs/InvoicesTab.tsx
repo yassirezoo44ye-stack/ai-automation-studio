@@ -3,6 +3,7 @@
  * Data: GET /api/orgs/{id}/billing/invoices
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 import { GoldButton, GlassCard } from "../../../shared/ui/gold";
@@ -26,6 +27,7 @@ function money(cents: number, currency: string): string {
 }
 
 export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
+  const { t } = useTranslation("billing");
   const toast = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,11 +42,11 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
       const d = await parseJSON<{ invoices: Invoice[] }>(r, "/billing/invoices");
       setInvoices(d.invoices);
     } catch {
-      toast("Could not load invoices", "err");
+      toast(t("invoicesTab.loadFailedToast"), "err");
       setInvoices([]);
       setError(true);
     } finally { setLoading(false); }
-  }, [currentOrgId, toast]);
+  }, [currentOrgId, toast, t]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
@@ -60,9 +62,9 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-        title="Could not load invoices"
-        description="Something went wrong reaching the server."
-        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+        title={t("invoicesTab.loadErrorTitle")}
+        description={t("invoicesTab.loadErrorDescription")}
+        action={<GoldButton variant="ghost" onClick={() => void load()}>{t("invoicesTab.retry")}</GoldButton>}
       />
     );
   }
@@ -71,8 +73,8 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>🧾</span>}
-        title="No invoices yet"
-        description="Invoices appear here once you're on a paid plan."
+        title={t("invoicesTab.emptyTitle")}
+        description={t("invoicesTab.emptyDescription")}
       />
     );
   }
@@ -92,13 +94,13 @@ export function InvoicesTab({ currentOrgId }: { currentOrgId: string }) {
               {new Date(inv.created_at).toLocaleDateString()}
             </div>
           </div>
-          <StatusBadge kind={STATUS_KIND[inv.status] ?? "neutral"} label={inv.status} />
+          <StatusBadge kind={STATUS_KIND[inv.status] ?? "neutral"} label={t(`status.${inv.status}`, { defaultValue: inv.status })} />
           {(inv.hosted_invoice_url || inv.invoice_pdf_url) && (
             <a
               href={inv.hosted_invoice_url ?? inv.invoice_pdf_url ?? "#"} target="_blank" rel="noreferrer"
               className="g-btn g-btn--ghost"
               style={{ padding: "5px 12px", fontSize: 11, textDecoration: "none" }}
-            >View</a>
+            >{t("invoicesTab.view")}</a>
           )}
         </div>
       ))}

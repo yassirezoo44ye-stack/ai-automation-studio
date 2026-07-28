@@ -1,0 +1,103 @@
+{
+  "noOrg": {
+    "title": "No organization selected",
+    "descriptionNoOrgs": "Create an organization first.",
+    "descriptionHasOrgs": "Pick one from the Organizations page."
+  },
+  "header": {
+    "title": "Billing — {{orgName}}"
+  },
+  "tabsAriaLabel": "Billing sections",
+  "tabs": {
+    "subscription": "Subscription",
+    "usage": "Usage",
+    "invoices": "Invoices",
+    "payment_methods": "Payment Methods",
+    "history": "Billing History"
+  },
+  "toast": {
+    "loadFailed": "Could not load billing info"
+  },
+  "subscriptionTab": {
+    "manageTitle": "Manage your subscription",
+    "manageDescription": "Change plan, update your payment method, or cancel — handled securely by Stripe.",
+    "opening": "Opening…",
+    "manageInStripe": "Manage in Stripe Portal",
+    "plansLabel": "PLANS",
+    "tokensSeats": "{{tokens}} tokens · {{seats}} seats",
+    "trialDays": " · {{days}}-day trial",
+    "custom": "Custom",
+    "free": "Free",
+    "perMonth": "/mo",
+    "currentPlan": "Current Plan",
+    "redirecting": "Redirecting…",
+    "upgrade": "Upgrade",
+    "contactSales": "Contact Sales",
+    "priceNotConfigured": "Stripe price not configured",
+    "unavailable": "Unavailable",
+    "checkoutFailed": "Checkout failed",
+    "portalOpenFailed": "Could not open billing portal"
+  },
+  "usageTab": {
+    "title": "Usage this period ({{period}})",
+    "metrics": {
+      "tokens": "AI Tokens",
+      "workflow_executions": "Workflow Runs",
+      "api_requests": "API Requests",
+      "storage_mb": "Storage (MB)",
+      "embeddings": "Embeddings",
+      "marketplace_purchases": "Marketplace Purchases",
+      "seats": "Seats",
+      "active_users": "Active Users",
+      "running_agents": "Running Agents"
+    }
+  },
+  "invoicesTab": {
+    "loadFailedToast": "Could not load invoices",
+    "loadErrorTitle": "Could not load invoices",
+    "loadErrorDescription": "Something went wrong reaching the server.",
+    "retry": "Retry",
+    "emptyTitle": "No invoices yet",
+    "emptyDescription": "Invoices appear here once you're on a paid plan.",
+    "view": "View"
+  },
+  "paymentMethodsTab": {
+    "loadFailedToast": "Could not load payment methods",
+    "refreshing": "Refreshing…",
+    "refresh": "Refresh",
+    "opening": "Opening…",
+    "manageInStripe": "Manage in Stripe Portal",
+    "refreshedToast": "Payment methods refreshed",
+    "refreshFailedToast": "Failed to refresh payment methods",
+    "portalOpenFailed": "Could not open billing portal",
+    "loadErrorTitle": "Could not load payment methods",
+    "loadErrorDescription": "Something went wrong reaching the server.",
+    "retry": "Retry",
+    "emptyTitle": "No payment method on file",
+    "emptyDescription": "Add one from the Stripe Portal above.",
+    "cardFallback": "Card",
+    "expires": "Expires {{month}}/{{year}}",
+    "default": "Default"
+  },
+  "historyTab": {
+    "loadFailedToast": "Could not load billing history",
+    "loadErrorTitle": "Could not load billing history",
+    "loadErrorDescription": "Something went wrong reaching the server.",
+    "retry": "Retry",
+    "creditBalance": "Account credit balance",
+    "emptyTitle": "No billing history yet",
+    "payment": "Payment — {{amount}} {{currency}}",
+    "credit": "Credit — {{amount}} ({{reason}})"
+  },
+  "status": {
+    "paid": "paid",
+    "open": "open",
+    "draft": "draft",
+    "uncollectible": "uncollectible",
+    "void": "void",
+    "succeeded": "succeeded",
+    "pending": "pending",
+    "failed": "failed",
+    "refunded": "refunded"
+  }
+}
