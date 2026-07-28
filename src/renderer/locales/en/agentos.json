@@ -20,7 +20,11 @@
     },
     "runButton": "Run",
     "running": "…",
-    "agentVotes": "Agent votes:"
+    "agentVotes": "Agent votes:",
+    "liveSteps": {
+      "title": "🖥 Live computer",
+      "waiting": "Connecting…"
+    }
   },
   "agentGrid": {
     "title": "⚡ Registered Agents ({{count}})",

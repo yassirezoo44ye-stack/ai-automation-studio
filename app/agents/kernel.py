@@ -174,10 +174,22 @@ class AgentKernel:
         project_id : Optional[str] = None,
         deliberate : bool = False,
         organization_id: Optional[str] = None,
+        run_id     : Optional[str] = None,
     ) -> AgentResult:
         """
         Full pipeline: parse → route → (vote) → execute → reflect.
+
+        run_id correlates this invocation's live step narration (see
+        AgentContext.step()) with whichever client is watching for it —
+        callers that care about live progress (the AgentOS "live computer"
+        UI) generate one client-side and pass it in *before* firing this
+        request, since it's the only way to know the id in time to start
+        listening for steps before this synchronous call returns. Callers
+        that don't care leave it unset and one is generated for them.
         """
+        import uuid
+        run_id = run_id or uuid.uuid4().hex[:12]
+
         tracer = get_tracer()
         with tracer.start_span("agent.run", service="agent_kernel") as span:
             for key, val in current_tags().items():
@@ -252,14 +264,16 @@ class AgentKernel:
                     workspace  = workspace,
                     project_id = project_id,
                     organization_id = organization_id,
+                    run_id     = run_id,
                 )
                 await _publish_agent_event(
                     "agent.started", intent_name, user_id=user_id, organization_id=organization_id,
+                    run_id=run_id,
                 )
                 result = await agent.run(ctx)
                 await _publish_agent_event(
                     "agent.finished", intent_name, user_id=user_id, organization_id=organization_id,
-                    success=result.success, duration_ms=result.duration_ms,
+                    success=result.success, duration_ms=result.duration_ms, run_id=run_id,
                 )
                 if not result.success:
                     span.set_tag("error", result.error or "agent_failed")

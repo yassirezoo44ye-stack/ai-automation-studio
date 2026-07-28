@@ -43,6 +43,7 @@ class BuildAgent(EvolvableAgent):
         if not ws.exists():
             return AgentResult.fail(self.name, f"Workspace not found: {workspace}")
 
+        await ctx.step(f"Detecting build system in {ws.name}…", "info")
         cmd = _detect_build_cmd(ws)
         if cmd is None:
             return AgentResult.fail(
@@ -52,6 +53,7 @@ class BuildAgent(EvolvableAgent):
             )
 
         try:
+            await ctx.step(f"Running: {' '.join(cmd)}", "terminal", command=cmd)
             # asyncio subprocess, not subprocess.run — a sync call here
             # blocks the entire event loop (every request on this server)
             # for up to 300 seconds while a build runs.
@@ -72,6 +74,10 @@ class BuildAgent(EvolvableAgent):
             stderr  = (stderr_b or b"").decode("utf-8", errors="replace")
             success = proc.returncode == 0
             output  = stdout + stderr
+            await ctx.step(
+                "Build succeeded" if success else f"Build exited {proc.returncode}",
+                "info" if success else "error",
+            )
             return AgentResult(
                 agent   = self.name,
                 success = success,

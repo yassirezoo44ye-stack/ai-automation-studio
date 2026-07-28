@@ -35,16 +35,17 @@ class DeployAgent(EvolvableAgent):
         # Detect deploy target
         if target == "auto":
             target = _detect_target(ws)
+            await ctx.step(f"Auto-detected deploy target: {target}", "info")
 
         steps: list[str] = []
 
         try:
             if target == "zip":
-                result = await self._zip_deploy(ws, steps)
+                result = await self._zip_deploy(ws, steps, ctx)
             elif target == "render":
-                result = await self._render_deploy(ws, steps)
+                result = await self._render_deploy(ws, steps, ctx)
             elif target == "docker":
-                result = await self._docker_deploy(ws, steps)
+                result = await self._docker_deploy(ws, steps, ctx)
             else:
                 return AgentResult.fail(
                     self.name, f"Unknown deploy target: {target}",
@@ -55,16 +56,23 @@ class DeployAgent(EvolvableAgent):
             return AgentResult.fail(self.name, str(exc),
                                     data={"steps": steps, "workspace": str(ws)})
 
-    async def _zip_deploy(self, ws: Path, steps: list) -> AgentResult:
+    async def _note(self, steps: list, ctx: AgentContext, text: str, kind: str = "info") -> None:
+        """Record a step both in the final result's `steps` list (unchanged
+        contract) and live over ctx.step() (new) — one call site instead of
+        every caller doing both."""
+        steps.append(text)
+        await ctx.step(text, kind)
+
+    async def _zip_deploy(self, ws: Path, steps: list, ctx: AgentContext) -> AgentResult:
         import shutil
         import uuid
         out_dir = WORKSPACES / "deploys"
         out_dir.mkdir(parents=True, exist_ok=True)
         zip_path = out_dir / f"{ws.name}_{uuid.uuid4().hex[:8]}.zip"
 
-        steps.append(f"Creating zip archive: {zip_path.name}")
+        await self._note(steps, ctx, f"Creating zip archive: {zip_path.name}", "file")
         shutil.make_archive(str(zip_path.with_suffix("")), "zip", ws)
-        steps.append(f"Archive size: {zip_path.stat().st_size / 1024:.1f} KB")
+        await self._note(steps, ctx, f"Archive size: {zip_path.stat().st_size / 1024:.1f} KB")
 
         return AgentResult.ok(
             self.name,
@@ -72,7 +80,7 @@ class DeployAgent(EvolvableAgent):
             data={"zip": str(zip_path), "steps": steps},
         )
 
-    async def _render_deploy(self, ws: Path, steps: list) -> AgentResult:
+    async def _render_deploy(self, ws: Path, steps: list, ctx: AgentContext) -> AgentResult:
         render_yaml = ws / "render.yaml"
         if not render_yaml.exists():
             return AgentResult.fail(
@@ -80,23 +88,23 @@ class DeployAgent(EvolvableAgent):
                 "render.yaml not found — create it first",
                 data={"steps": steps},
             )
-        steps.append("render.yaml detected")
-        steps.append("Note: Render deployment requires Render CLI — push to GitHub to trigger auto-deploy")
+        await self._note(steps, ctx, "render.yaml detected", "file")
+        await self._note(steps, ctx, "Note: Render deployment requires Render CLI — push to GitHub to trigger auto-deploy")
         return AgentResult.ok(
             self.name,
             "Render deployment configured. Push to GitHub to trigger deploy.",
             data={"steps": steps, "render_yaml": str(render_yaml)},
         )
 
-    async def _docker_deploy(self, ws: Path, steps: list) -> AgentResult:
+    async def _docker_deploy(self, ws: Path, steps: list, ctx: AgentContext) -> AgentResult:
         dockerfile = ws / "Dockerfile"
         if not dockerfile.exists():
             return AgentResult.fail(
                 self.name, "Dockerfile not found",
                 data={"steps": steps},
             )
-        steps.append("Dockerfile detected")
-        steps.append("Docker build would require: docker build -t <name> .")
+        await self._note(steps, ctx, "Dockerfile detected", "file")
+        await self._note(steps, ctx, "Docker build would require: docker build -t <name> .")
         return AgentResult.ok(
             self.name,
             "Docker deployment ready. Run: docker build -t <name> . && docker run <name>",

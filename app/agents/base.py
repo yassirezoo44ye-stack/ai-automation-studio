@@ -121,9 +121,32 @@ class AgentContext:
     project_id : Optional[str] = None
     organization_id: Optional[str] = None
     extra      : dict = field(default_factory=dict)
+    # Correlates this specific invocation's live step narration (see
+    # step() below) — distinct from trace_id, which is for OTel spans,
+    # not the AgentOS "live computer" UI. Set by AgentKernel.run() before
+    # execute() is ever called; agents never generate their own.
+    run_id     : str = ""
     # Tracing / observability
     trace_id   : Optional[str] = None
     span_id    : Optional[str] = None
+
+    # Set by EvolvableAgent.run() right before execute() so step() can
+    # report which agent it's narrating for without every call site
+    # having to pass the name in explicitly.
+    _agent_name_hint: str = field(default="", repr=False, compare=False)
+
+    async def step(self, description: str, kind: str = "info", **data) -> None:
+        """Narrate a live sub-step of this run — e.g. "Running npm build",
+        "Reading config.json" — broadcast immediately so a "live computer"
+        view can show what the agent is doing as it happens, not just the
+        final AgentResult once execute() returns. Purely additive and
+        best-effort: agents call this for UX, never for control flow, and
+        a broadcast failure must never surface as an agent error."""
+        try:
+            from app.agents.liveness import publish_step
+            await publish_step(self.run_id, self._agent_name_hint, description, kind, **data)
+        except Exception:
+            pass
 
 
 # ── Result ────────────────────────────────────────────────────────────────────
@@ -333,6 +356,7 @@ class EvolvableAgent(ABC):
                 "Validation failed: " + "; ".join(validation.errors),
             )
 
+        ctx._agent_name_hint = self.name
         t0 = time.perf_counter()
         try:
             result = await asyncio.wait_for(self.execute(ctx), timeout=self.permissions.max_execution_seconds)

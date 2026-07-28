@@ -51,36 +51,58 @@ class TestAgentLivenessBridge:
         fake_ws.broadcast = AsyncMock()
 
         with patch("app.routers.ws.manager", fake_ws):
-            run(liveness._on_agent_event(_FakeEvent("agent.started", {"agent": "analyze"})))
+            run(liveness._on_agent_event(_FakeEvent("agent.started", {"agent": "analyze", "run_id": "r1"})))
 
         assert liveness.is_running("analyze") is True
-        fake_ws.broadcast.assert_awaited_once_with("system", {"agent": "analyze", "status": "running"})
+        fake_ws.broadcast.assert_awaited_once_with(
+            "system", {"agent": "analyze", "status": "running", "run_id": "r1"},
+        )
 
     def test_agent_finished_clears_running_and_broadcasts_result(self):
         import app.agents.liveness as liveness
-        liveness._running["analyze"] = 0.0
+        liveness._running["analyze"] = {"r1": 0.0}
         fake_ws = MagicMock()
         fake_ws.broadcast = AsyncMock()
 
         with patch("app.routers.ws.manager", fake_ws):
             run(liveness._on_agent_event(_FakeEvent(
-                "agent.finished", {"agent": "analyze", "success": True, "duration_ms": 42},
+                "agent.finished", {"agent": "analyze", "run_id": "r1", "success": True, "duration_ms": 42},
             )))
 
         assert liveness.is_running("analyze") is False
         frame = fake_ws.broadcast.call_args.args[1]
-        assert frame == {"agent": "analyze", "status": "idle", "success": True, "duration_ms": 42}
+        assert frame == {
+            "agent": "analyze", "status": "idle", "run_id": "r1",
+            "success": True, "duration_ms": 42,
+        }
+
+    def test_second_concurrent_run_finishing_leaves_agent_marked_running(self):
+        """Two concurrent runs of the same agent — the first to finish must
+        not flip the agent to idle while the second is still in flight."""
+        import app.agents.liveness as liveness
+        liveness._running["analyze"] = {"r1": 0.0, "r2": 1.0}
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+
+        with patch("app.routers.ws.manager", fake_ws):
+            run(liveness._on_agent_event(_FakeEvent(
+                "agent.finished", {"agent": "analyze", "run_id": "r1", "success": True, "duration_ms": 10},
+            )))
+
+        assert liveness.is_running("analyze") is True
+        frame = fake_ws.broadcast.call_args.args[1]
+        assert frame["status"] == "running"
 
     def test_finished_for_never_started_agent_is_a_noop_not_a_crash(self):
         """A finished event without a matching started (e.g. this process
-        restarted mid-run) must not raise — pop(name, None) handles it."""
+        restarted mid-run) must not raise — pop(run_id, None) handles it."""
         import app.agents.liveness as liveness
         fake_ws = MagicMock()
         fake_ws.broadcast = AsyncMock()
 
         with patch("app.routers.ws.manager", fake_ws):
             run(liveness._on_agent_event(_FakeEvent(
-                "agent.finished", {"agent": "ghost", "success": False, "duration_ms": 0},
+                "agent.finished", {"agent": "ghost", "run_id": "r-missing", "success": False, "duration_ms": 0},
             )))
 
         assert liveness.is_running("ghost") is False
@@ -91,9 +113,20 @@ class TestAgentLivenessBridge:
         fake_ws.broadcast = AsyncMock()
 
         with patch("app.routers.ws.manager", fake_ws):
-            run(liveness._on_agent_event(_FakeEvent("agent.started", {})))
+            run(liveness._on_agent_event(_FakeEvent("agent.started", {"run_id": "r1"})))
 
         fake_ws.broadcast.assert_not_awaited()
+
+    def test_event_without_run_id_is_ignored(self):
+        import app.agents.liveness as liveness
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+
+        with patch("app.routers.ws.manager", fake_ws):
+            run(liveness._on_agent_event(_FakeEvent("agent.started", {"agent": "analyze"})))
+
+        fake_ws.broadcast.assert_not_awaited()
+        assert liveness.is_running("analyze") is False
 
     def test_unrelated_event_type_is_ignored(self):
         import app.agents.liveness as liveness
@@ -151,7 +184,7 @@ class TestAgentLivenessBridge:
 class TestAgentLivenessSnapshot:
     def test_snapshot_reports_only_running_agents(self):
         import app.agents.liveness as liveness
-        liveness._running["busy_agent"] = 0.0
+        liveness._running["busy_agent"] = {"r1": 0.0}
         snap = liveness.snapshot()
         assert "busy_agent" in snap
         assert snap["busy_agent"]["status"] == "running"

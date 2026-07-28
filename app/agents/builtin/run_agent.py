@@ -8,6 +8,14 @@ from app.agents.base import AgentContext, AgentPermissions, AgentResult, Evolvab
 
 log = logging.getLogger(__name__)
 
+# app.execution.platform.events.TypedEvent subclasses whose event_type
+# marks a hard failure — see that module's ClassVar[str] event_type on
+# each subclass. There is no literal "error" type.
+_FAILURE_EVENT_TYPES = frozenset({
+    "validation_failed", "install_failed", "build_failed",
+    "execution_failed", "unsupported",
+})
+
 
 class RunAgent(EvolvableAgent):
     name        = "run"
@@ -41,13 +49,25 @@ class RunAgent(EvolvableAgent):
             execution_id = str(uuid.uuid4())
             engine = UnifiedExecutionEngine()
 
+            await ctx.step(f"Starting {ws.name}…", "terminal", workspace=str(ws))
+
             events: list[dict] = []
-            async for event in engine.run(ws, project_id, execution_id):
+            async for raw_event in engine.run(ws, project_id, execution_id):
+                # engine.run() yields TypedEvent dataclass instances, not
+                # dicts — to_sse_dict() is the documented way to get a plain
+                # dict view (see app/execution/platform/events.py).
+                event = raw_event.to_sse_dict()
                 events.append(event)
-                if event.get("type") == "error":
+                # Forward the engine's own progress narration live — this is
+                # the same event stream DevWorkspace's RunTab already renders
+                # after the fact; ctx.step() is what makes it live instead.
+                narration = event.get("message") or event.get("line") or event.get("type")
+                if narration:
+                    await ctx.step(str(narration), "terminal")
+                if event.get("type") in _FAILURE_EVENT_TYPES:
                     return AgentResult.fail(
                         self.name,
-                        event.get("message", "execution error"),
+                        event.get("message", f"execution failed: {event.get('type')}"),
                         data={"events": events[-10:], "workspace": str(ws)},
                     )
 

@@ -20,7 +20,11 @@
     },
     "runButton": "تشغيل",
     "running": "…",
-    "agentVotes": "أصوات الوكلاء:"
+    "agentVotes": "أصوات الوكلاء:",
+    "liveSteps": {
+      "title": "🖥 الحاسوب الحي",
+      "waiting": "جارٍ الاتصال…"
+    }
   },
   "agentGrid": {
     "title": "⚡ الوكلاء المسجّلون ({{count}})",

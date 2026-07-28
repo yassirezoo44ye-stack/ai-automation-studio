@@ -47,6 +47,12 @@ class RunRequest(BaseModel):
     caller     : str = "api"
     user_id    : Optional[str] = None
     deliberate : bool = False
+    # Client-generated, so a "live computer" viewer can start listening for
+    # this run's narrated steps (see app/agents/liveness.py's publish_step)
+    # before firing this request — the id has to be known ahead of time,
+    # since this call blocks until the agent finishes. Left unset by
+    # callers that don't need live progress; one is generated for them.
+    run_id     : Optional[str] = None
 
 
 class CollaborateRequest(BaseModel):
@@ -98,6 +104,7 @@ async def agentos_run(req: RunRequest, request: Request):
         project_id = req.project_id,
         deliberate = req.deliberate,
         organization_id = await optional_org_id(request),
+        run_id     = req.run_id,
     )
     return result.to_dict()
 

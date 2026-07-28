@@ -128,8 +128,12 @@ export interface DeliberateResult {
 // ── API calls ────────────────────────────────────────────────────────────────
 
 export const agentOsApi = {
-  run: (input: string, workspace?: string) =>
-    post<AgentResult>("/run", { input, workspace }),
+  // run_id: client-generated, so the caller can subscribe to this run's
+  // live narrated steps (see useAgentRunSteps) before firing the request —
+  // it has to be known ahead of time, since this call blocks until the
+  // agent finishes (see app/agents/kernel.py's AgentKernel.run() docstring).
+  run: (input: string, workspace?: string, run_id?: string) =>
+    post<AgentResult>("/run", { input, workspace, run_id }),
 
   collaborate: (tasks: string[], parallel = false) =>
     post<{ tasks: string[]; results: AgentResult[]; success: boolean }>(

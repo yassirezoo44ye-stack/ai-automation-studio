@@ -5,6 +5,7 @@ import { apiFetch } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import { useAgentLiveness } from "../../shared/hooks/useAgentLiveness";
+import { useAgentRunSteps } from "../../shared/hooks/useAgentRunSteps";
 import type { AgentResult, AgentInfo, MemoryRecord, SystemStatus, Suggestion, DeliberationBid } from "./api";
 
 // ── Layout-only styles (no shared primitive fits these — page chrome and the
@@ -91,13 +92,24 @@ function ResultBox({ result }: { result: AgentResult }) {
 
 // ── Command Terminal ──────────────────────────────────────────────────────────
 
+const STEP_ICONS: Record<string, string> = {
+  info: "•", terminal: "▶", success: "✓", error: "✗", warning: "⚠",
+};
+
 function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const { t } = useTranslation("agentos");
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [mode, setMode]             = useState<"run" | "deliberate" | "plan">("run");
   const [delib, setDelib]           = useState<{ bids: DeliberationBid[]; winner: string } | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { steps } = useAgentRunSteps(activeRunId);
+  const stepsEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    stepsEndRef.current?.scrollIntoView({ block: "nearest" });
+  }, [steps]);
 
   const submit = useCallback(async () => {
     const val = input.trim();
@@ -116,7 +128,9 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           data: { results: res.results }, duration_ms: 0,
         });
       } else {
-        const res = await agentOsApi.run(val);
+        const runId = crypto.randomUUID();
+        setActiveRunId(runId);
+        const res = await agentOsApi.run(val, undefined, runId);
         onResult(res);
       }
     } catch (e: unknown) {
@@ -157,6 +171,31 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           {loading ? t("terminal.running") : t("terminal.runButton")}
         </GoldButton>
       </div>
+      {mode === "run" && loading && (
+        <div style={{
+          marginTop: 14, padding: "10px 12px", borderRadius: 8,
+          background: "var(--bg-base)", border: "1px solid var(--border)",
+          maxHeight: 180, overflowY: "auto",
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>
+            {t("terminal.liveSteps.title")}
+          </div>
+          {steps.length === 0 ? (
+            <div style={{ ...S.mono, color: "var(--t3)" }}>{t("terminal.liveSteps.waiting")}</div>
+          ) : (
+            steps.map((s, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", marginBottom: 4 }}>
+                <span style={{ color: "var(--accent)", fontSize: 12, flexShrink: 0 }}>
+                  {STEP_ICONS[s.kind] ?? STEP_ICONS.info}
+                </span>
+                <span style={{ ...S.mono, color: "var(--t1)" }}>{s.step}</span>
+              </div>
+            ))
+          )}
+          <div ref={stepsEndRef} />
+        </div>
+      )}
+
       {mode === "deliberate" && delib && (
         <div style={{ marginTop: 14 }}>
           <div style={{ fontSize: 12, color: "var(--t3)", marginBottom: 8 }}>{t("terminal.agentVotes")}</div>
