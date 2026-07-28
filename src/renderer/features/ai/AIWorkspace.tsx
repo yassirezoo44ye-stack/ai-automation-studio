@@ -4,6 +4,7 @@
  * All tab logic lives in ./tabs/*.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { S } from "../../styles/theme";
@@ -15,6 +16,7 @@ import { AgentsTab } from "./tabs/AgentsTab";
 type AITab = "chat" | "agents";
 
 export function AIWorkspace() {
+  const { t } = useTranslation("ai");
   const toast   = useToast();
   const [tab, setTab] = useState<AITab>("chat");
 
@@ -29,9 +31,9 @@ export function AIWorkspace() {
     try {
       const r = await apiFetch("/api/agents");
       setAgents(await parseJSON<Agent[]>(r, "/api/agents"));
-    } catch { toast("Could not load agents", "err"); }
+    } catch { toast(t("workspace.loadAgentsError"), "err"); }
     finally { setLoadingAgents(false); }
-  }, [toast]);
+  }, [toast, t]);
 
   useEffect(() => {
     apiFetch("/api/projects")
@@ -46,13 +48,13 @@ export function AIWorkspace() {
     setTab("chat");
   };
 
-  const TABS: [AITab, string][] = [["chat", "Chat"], ["agents", "Agents"]];
+  const TABS: [AITab, string][] = [["chat", t("workspace.tabs.chat")], ["agents", t("workspace.tabs.agents")]];
 
   return (
     <>
       <header style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={S.headerTitle}>AI Workspace</span>
+          <span style={S.headerTitle}>{t("workspace.title")}</span>
           <div className="pill-tabs">
             {TABS.map(([id, label]) => (
               <button
@@ -67,7 +69,7 @@ export function AIWorkspace() {
         </div>
         {tab === "agents" && (
           <GoldButton onClick={() => { setChatAgentId(null); setTab("agents"); }}>
-            + New Agent
+            {t("workspace.newAgent")}
           </GoldButton>
         )}
       </header>

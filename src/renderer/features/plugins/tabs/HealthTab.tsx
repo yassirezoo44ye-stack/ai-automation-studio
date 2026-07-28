@@ -3,6 +3,7 @@
  * Data: GET /plugins/installed/{id}/health, GET /plugins/installed/{id}/logs
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 
 interface LogEntry { event: string; message: string | null; created_at: string }
@@ -12,6 +13,7 @@ const EVENT_COLOR: Record<string, string> = {
 };
 
 export function HealthTab({ installationId, status }: { installationId: string; status: string }) {
+  const { t } = useTranslation("plugins");
   const [logs, setLogs] = useState<LogEntry[] | null>(null);
 
   // Reset while switching installations — render-time state adjustment.
@@ -34,24 +36,24 @@ export function HealthTab({ installationId, status }: { installationId: string; 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 12, color: "var(--t4)" }}>Status:</span>
+        <span style={{ fontSize: 12, color: "var(--t4)" }}>{t("healthTab.statusLabel")}</span>
         <span style={{
           fontSize: 12, fontWeight: 700, textTransform: "uppercase",
           color: status === "enabled" ? "var(--green)" : status === "failed" ? "var(--red)" : "var(--t3)",
         }}>
-          {status}
+          {t(`status.${status}`, { defaultValue: status })}
         </span>
       </div>
       {logs === null ? (
-        <div style={{ fontSize: 12, color: "var(--t4)" }}>Loading logs…</div>
+        <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("healthTab.loading")}</div>
       ) : logs.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--t4)" }}>No events recorded yet.</div>
+        <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("healthTab.empty")}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {logs.map((l, i) => (
             <div key={i} style={{ display: "flex", gap: 10, fontSize: 12, borderTop: i > 0 ? "1px solid var(--border)" : "none", paddingTop: i > 0 ? 6 : 0 }}>
               <span style={{ color: EVENT_COLOR[l.event] ?? "var(--t4)", fontWeight: 700, textTransform: "uppercase", fontSize: 10, minWidth: 50 }}>
-                {l.event}
+                {t(`events.${l.event}`, { defaultValue: l.event })}
               </span>
               <span style={{ color: "var(--t3)", flex: 1 }}>{l.message}</span>
               <span style={{ color: "var(--t5)", fontSize: 11 }}>{new Date(l.created_at).toLocaleString()}</span>

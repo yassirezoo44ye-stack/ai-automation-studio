@@ -7,6 +7,7 @@ import { C } from "../../../shared/lib/theme";
  *       POST /marketplace/listings/{id}/rollback
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 
@@ -23,6 +24,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
   canManage: boolean;
   onRolledBack: () => void;
 }) {
+  const { t } = useTranslation("marketplace");
   const toast = useToast();
   const [versions, setVersions] = useState<VersionEntry[] | null>(null);
   const [changelogs, setChangelogs] = useState<Record<string, ChangelogEntry[]>>({});
@@ -63,17 +65,17 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
         body: JSON.stringify({ target_version: version }),
       });
       if (!r.ok) throw new Error();
-      toast(`Rolled back to v${version}`, "ok");
+      toast(t("versions.toastRolledBack", { version }), "ok");
       onRolledBack();
     } catch {
-      toast("Rollback failed", "err");
+      toast(t("versions.toastRollbackFailed"), "err");
     } finally {
       setRollingBack(null);
     }
   };
 
-  if (versions === null) return <div style={{ fontSize: 12, color: "var(--t4)" }}>Loading versions…</div>;
-  if (versions.length === 0) return <div style={{ fontSize: 12, color: "var(--t4)" }}>No version history yet.</div>;
+  if (versions === null) return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("versions.loading")}</div>;
+  if (versions.length === 0) return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("versions.empty")}</div>;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -84,7 +86,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
               <span style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>v{v.version}</span>
               {v.version === currentVersion && (
                 <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: "rgba(52,211,153,.12)", padding: "1px 6px", borderRadius: 99 }}>
-                  CURRENT
+                  {t("versions.current")}
                 </span>
               )}
             </div>
@@ -98,7 +100,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
                   cursor: rollingBack === v.version ? "wait" : "pointer", whiteSpace: "nowrap",
                 }}
               >
-                {rollingBack === v.version ? "…" : "Rollback to this version"}
+                {rollingBack === v.version ? "…" : t("versions.rollback")}
               </button>
             )}
           </div>
@@ -107,7 +109,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
             onClick={() => void loadChangelog(v.version)}
             style={{ marginTop: 6, background: "none", border: "none", color: "var(--accent-2)", fontSize: 11, cursor: "pointer", padding: 0 }}
           >
-            {changelogs[v.version] ? null : "Show structured changelog"}
+            {changelogs[v.version] ? null : t("versions.showChangelog")}
           </button>
           {changelogs[v.version] && changelogs[v.version].length > 0 && (
             <ul style={{ margin: "6px 0 0", paddingLeft: 16 }}>
@@ -122,7 +124,7 @@ export function VersionsTab({ listingId, currentVersion, canManage, onRolledBack
             </ul>
           )}
           {changelogs[v.version] && changelogs[v.version].length === 0 && (
-            <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 4 }}>No structured changelog entries for this version.</div>
+            <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 4 }}>{t("versions.noChangelogEntries")}</div>
           )}
         </div>
       ))}

@@ -4,6 +4,7 @@
  * an Approve action when a sensitive capability is awaiting admin sign-off.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 import { GoldButton } from "../../../shared/ui/gold";
@@ -16,6 +17,7 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
   approved: boolean;
   onApproved: () => void;
 }) {
+  const { t } = useTranslation("plugins");
   const toast = useToast();
   const [approving, setApproving] = useState(false);
   const hasSensitive = permissions.some(p => SENSITIVE.has(p));
@@ -25,17 +27,17 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
     try {
       const r = await apiFetch(`/plugins/installed/${installationId}/approve`, { method: "POST" });
       if (!r.ok) throw new Error();
-      toast("Plugin approved", "ok");
+      toast(t("permissionsTab.approved"), "ok");
       onApproved();
     } catch {
-      toast("Approval failed", "err");
+      toast(t("permissionsTab.approveFailed"), "err");
     } finally {
       setApproving(false);
     }
   };
 
   if (permissions.length === 0) {
-    return <div style={{ fontSize: 12, color: "var(--t4)" }}>This plugin declares no special permissions.</div>;
+    return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("permissionsTab.none")}</div>;
   }
 
   return (
@@ -47,10 +49,10 @@ export function PermissionsTab({ installationId, permissions, approved, onApprov
           borderRadius: 10, padding: "10px 14px",
         }}>
           <span style={{ fontSize: 12, color: "var(--yellow)" }}>
-            This plugin declares sensitive capabilities and is disabled until approved.
+            {t("permissionsTab.sensitiveWarning")}
           </span>
           <GoldButton onClick={() => void approve()} disabled={approving} style={{ padding: "5px 14px" }}>
-            {approving ? "…" : "Approve"}
+            {approving ? "…" : t("permissionsTab.approve")}
           </GoldButton>
         </div>
       )}

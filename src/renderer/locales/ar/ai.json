@@ -1,0 +1,106 @@
+{
+  "workspace": {
+    "title": "مساحة عمل الذكاء الاصطناعي",
+    "tabs": { "chat": "محادثة", "agents": "الوكلاء" },
+    "newAgent": "+ وكيل جديد",
+    "loadAgentsError": "تعذر تحميل الوكلاء"
+  },
+  "agentsTab": {
+    "form": {
+      "avatarLabel": "الصورة الرمزية",
+      "nameLabel": "الاسم *",
+      "namePlaceholder": "وكيلي",
+      "descriptionLabel": "الوصف",
+      "descriptionPlaceholder": "ماذا يفعل هذا الوكيل؟",
+      "systemPromptLabel": "توجيه النظام *",
+      "systemPromptPlaceholder": "أنت خبير في…",
+      "modelLabel": "النموذج",
+      "modelSonnet": "Sonnet 4.6 (موصى به)",
+      "modelOpus": "Opus 4.8 (الأكثر قدرة)",
+      "modelHaiku": "Haiku 4.5 (الأسرع)",
+      "temperatureLabel": "درجة الحرارة",
+      "saving": "جارٍ الحفظ…",
+      "save": "حفظ الوكيل",
+      "cancel": "إلغاء"
+    },
+    "toast": {
+      "updated": "تم تحديث الوكيل",
+      "created": "تم إنشاء الوكيل",
+      "saveFailed": "فشل الحفظ",
+      "deleted": "تم حذف {{name}}"
+    },
+    "deleteConfirm": "حذف الوكيل \"{{name}}\"؟",
+    "empty": {
+      "title": "لا يوجد وكلاء بعد",
+      "description": "أنشئ وكيلك الأول أو ابدأ من قالب أدناه",
+      "newAgent": "+ وكيل جديد"
+    },
+    "myAgentsLabel": "وكلائي",
+    "card": {
+      "chat": "محادثة",
+      "edit": "تعديل",
+      "delete": "حذف",
+      "messageCount": "{{count}} رسالة",
+      "ready": "جاهز"
+    },
+    "templates": {
+      "label": "قوالب البدء السريع",
+      "badge": "قالب",
+      "useTemplate": "استخدام القالب"
+    }
+  },
+  "chatTab": {
+    "sidebar": {
+      "demoProject": "مشروع تجريبي",
+      "defaultAgent": "🤖 Claude (افتراضي)",
+      "newChat": "+ محادثة جديدة",
+      "exportTitle": "تصدير كملف Markdown",
+      "extractTasksTitle": "استخراج المهام",
+      "searchPlaceholder": "ابحث…",
+      "deleting": "جارٍ الحذف…",
+      "deleteConversation": "حذف المحادثة",
+      "loading": "جارٍ تحميل المحادثات…",
+      "loadError": "فشل تحميل المحادثات.",
+      "emptyTitle": "لا توجد محادثات بعد",
+      "emptyDesc": "ابدأ محادثة جديدة لتظهر هنا.",
+      "noMatchesTitle": "لا توجد نتائج",
+      "noMatchesDesc": "لم يتم العثور على شيء لـ \"{{query}}\"."
+    },
+    "tasksBar": {
+      "label": "المهام",
+      "loadError": "فشل تحميل المهام."
+    },
+    "messages": {
+      "loading": "جارٍ تحميل المحادثة…",
+      "loadError": "فشل تحميل هذه المحادثة.",
+      "emptyAgentName": "Axon AI",
+      "emptyDescription": "ابدأ محادثة أو اختر واحدة من الشريط الجانبي.",
+      "suggestion1": "اكتب كود Python",
+      "suggestion2": "اشرح مفهومًا",
+      "suggestion3": "أصلح الخطأ في الكود",
+      "suggestion4": "أنشئ تطبيق ويب",
+      "you": "أنت",
+      "assistantFallback": "Claude",
+      "now": "الآن",
+      "streamErrorPrefix": "⚠️ {{message}}"
+    },
+    "input": {
+      "placeholder": "رسالة… (Enter للإرسال، Shift+Enter لسطر جديد)"
+    },
+    "toast": {
+      "extractedTasks_zero": "لم يتم استخراج أي مهام",
+      "extractedTasks_one": "تم استخراج مهمة واحدة",
+      "extractedTasks_two": "تم استخراج مهمتين",
+      "extractedTasks_few": "تم استخراج {{count}} مهام",
+      "extractedTasks_many": "تم استخراج {{count}} مهمة",
+      "extractedTasks_other": "تم استخراج {{count}} مهمة",
+      "noTasksFound": "لم يتم العثور على مهام واضحة",
+      "extractTasksFailed": "فشل استخراج المهام",
+      "updateTaskFailed": "فشل تحديث المهمة — جارٍ التراجع",
+      "deleteConversationFailed": "فشل حذف المحادثة",
+      "exportedMarkdown": "تم التصدير كملف Markdown",
+      "exportFailed": "فشل التصدير",
+      "backendOffline": "⚠️ الخادم غير متصل"
+    }
+  }
+}

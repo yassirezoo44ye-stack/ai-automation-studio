@@ -1,0 +1,289 @@
+{
+  "shell": {
+    "panelTabsAriaLabel": "لوحات التصميم",
+    "sidePanels": {
+      "layers": "الطبقات",
+      "assets": "الأصول",
+      "templates": "القوالب",
+      "pages": "الصفحات",
+      "brand": "العلامة التجارية",
+      "components": "المكوّنات",
+      "tokens": "الرموز التصميمية",
+      "history": "السجل",
+      "ai": "الذكاء الاصطناعي"
+    },
+    "propertiesHeading": "الخصائص",
+    "pageNavAriaLabel": "التنقل بين الصفحات",
+    "pageAriaLabel": "{{name}} (صفحة {{num}})",
+    "addPage": "إضافة صفحة",
+    "addNewPageAriaLabel": "إضافة صفحة جديدة",
+    "defaultPageName": "صفحة {{num}}"
+  },
+  "propertiesPanel": {
+    "emptyState": "اختر عنصرًا لتحرير خصائصه."
+  },
+  "templatesPanel": {
+    "header": "القوالب",
+    "searchPlaceholder": "ابحث في القوالب…",
+    "cardTitle": "{{name}} — {{width}}×{{height}}"
+  },
+  "historyPanel": {
+    "title": "السجل ({{count}})",
+    "listAriaLabel": "سجل الأوامر",
+    "empty": "لا يوجد سجل بعد",
+    "undo": "تراجع",
+    "undoAriaLabel": "تراجع",
+    "redo": "إعادة",
+    "redoAriaLabel": "إعادة"
+  },
+  "layersPanel": {
+    "header": "الطبقات",
+    "empty": "لا توجد عناصر بعد. أضف أشكالًا أو نصًا لرؤية الطبقات.",
+    "listAriaLabel": "الطبقات",
+    "hide": "إخفاء",
+    "show": "إظهار",
+    "hideLayerAriaLabel": "إخفاء الطبقة",
+    "showLayerAriaLabel": "إظهار الطبقة",
+    "defaultObjectName": "عنصر",
+    "lock": "قفل",
+    "unlock": "فتح القفل",
+    "lockLayerAriaLabel": "قفل الطبقة",
+    "unlockLayerAriaLabel": "فتح قفل الطبقة"
+  },
+  "componentsPanel": {
+    "categories": {
+      "all": "الكل",
+      "button": "زر",
+      "card": "بطاقة",
+      "header": "رأس الصفحة",
+      "footer": "تذييل الصفحة",
+      "icon": "أيقونة",
+      "chart": "مخطط",
+      "table": "جدول"
+    },
+    "searchPlaceholder": "ابحث في المكوّنات…",
+    "searchAriaLabel": "ابحث في المكوّنات",
+    "categoriesAriaLabel": "فئات المكوّنات",
+    "empty": "لم يتم العثور على مكوّنات",
+    "insertTitle": "إدراج {{name}}"
+  },
+  "assetsPanel": {
+    "tabs": {
+      "all": "الكل",
+      "images": "الصور",
+      "svg": "SVG",
+      "video": "الفيديو"
+    },
+    "header": "الأصول",
+    "uploadTitle": "رفع الملفات",
+    "upload": "رفع",
+    "searchPlaceholder": "ابحث في الأصول…",
+    "loading": "جارٍ التحميل…",
+    "empty": "لم يتم العثور على أصول. ارفع ملفات للبدء.",
+    "insertTitle": "إدراج",
+    "favourite": "إضافة إلى المفضلة",
+    "removeFavourite": "إزالة من المفضلة",
+    "delete": "حذف"
+  },
+  "pagesPanel": {
+    "title": "الصفحات ({{count}})",
+    "addPage": "إضافة صفحة",
+    "pageAriaLabel": "صفحة {{num}}: {{name}}",
+    "renamePageAriaLabel": "إعادة تسمية الصفحة",
+    "moveUp": "تحريك لأعلى",
+    "movePageUpAriaLabel": "تحريك الصفحة لأعلى",
+    "moveDown": "تحريك لأسفل",
+    "movePageDownAriaLabel": "تحريك الصفحة لأسفل",
+    "duplicate": "استنساخ",
+    "duplicatePageAriaLabel": "استنساخ الصفحة",
+    "delete": "حذف",
+    "deletePageAriaLabel": "حذف الصفحة",
+    "defaultPageName": "صفحة {{num}}"
+  },
+  "tokensPanel": {
+    "categories": {
+      "color": "الألوان",
+      "gradient": "التدرجات",
+      "typography": "الطباعة",
+      "spacing": "المسافات",
+      "radius": "الانحناء",
+      "shadow": "الظل",
+      "border": "الحدود",
+      "effect": "التأثيرات"
+    },
+    "categoriesAriaLabel": "فئات الرموز التصميمية",
+    "empty": "لا توجد رموز {{category}}",
+    "newTokenNameAriaLabel": "اسم الرمز الجديد",
+    "namePlaceholder": "الاسم",
+    "tokenColorValueAriaLabel": "قيمة لون الرمز",
+    "valuePlaceholder": "القيمة",
+    "tokenValueAriaLabel": "قيمة الرمز",
+    "add": "إضافة",
+    "addTokenAriaLabel": "إضافة رمز",
+    "deleteTokenAriaLabel": "حذف {{name}}"
+  },
+  "brandKitPanel": {
+    "brandColors": "ألوان العلامة التجارية",
+    "addColorAriaLabel": "إضافة لون",
+    "removeColorAriaLabel": "إزالة {{name}}",
+    "pickColorAriaLabel": "اختيار لون",
+    "add": "إضافة",
+    "addBrandColorAriaLabel": "إضافة لون للعلامة التجارية",
+    "noBrandColors": "لا توجد ألوان للعلامة التجارية بعد",
+    "brandFonts": "خطوط العلامة التجارية",
+    "addFontAriaLabel": "إضافة خط",
+    "noBrandFonts": "لا توجد خطوط للعلامة التجارية بعد",
+    "fontFamilyPrompt": "عائلة الخط (مثال: 'Inter, sans-serif'):",
+    "removeFontAriaLabel": "إزالة {{name}}",
+    "logos": "الشعارات",
+    "uploadLogoAriaLabel": "رفع شعار",
+    "noLogosYet": "لا توجد شعارات بعد",
+    "removeLogoAriaLabel": "إزالة {{name}}"
+  },
+  "aiPanel": {
+    "tabs": {
+      "image": "صورة",
+      "palette": "لوحة الألوان",
+      "fonts": "الخطوط",
+      "suggestions": "أفكار"
+    },
+    "toolsAriaLabel": "أدوات الذكاء الاصطناعي",
+    "describeImage": "صف الصورة التي تريدها",
+    "imagePromptPlaceholder": "شعار بسيط بخلفية بيضاء…",
+    "imagePromptAriaLabel": "وصف الصورة",
+    "generating": "جارٍ الإنشاء…",
+    "generateImage": "إنشاء صورة",
+    "addToCanvasTitle": "انقر للإضافة إلى اللوحة",
+    "addGeneratedImageAriaLabel": "إضافة الصورة المُنشأة {{num}} إلى اللوحة",
+    "generatedImageAlt": "صورة مُنشأة {{num}}",
+    "describeBrand": "صف علامتك التجارية أو الحالة المزاجية",
+    "palettePromptPlaceholder": "محيط هادئ واحترافي…",
+    "palettePromptAriaLabel": "وصف لوحة الألوان",
+    "generatePalette": "إنشاء لوحة ألوان",
+    "colorSwatchTitle": "{{name}}: {{hex}}",
+    "style": "النمط",
+    "fontStyleAriaLabel": "نمط الخط",
+    "fontStyles": {
+      "modern": "عصري",
+      "classic": "كلاسيكي",
+      "playful": "مرح",
+      "minimal": "بسيط",
+      "bold": "جريء"
+    },
+    "pairing": "جارٍ المطابقة…",
+    "getFontPairings": "الحصول على توليفات خطوط",
+    "bodyLabel": "النص: {{family}} · {{label}}",
+    "suggestionsDescription": "يحلّل هذا لوحتك الحالية ويقترح تحسينات.",
+    "analyzing": "جارٍ التحليل…",
+    "analyzeCanvas": "تحليل اللوحة",
+    "thinking": "جارٍ التفكير…",
+    "requestFailed": "فشل الطلب"
+  },
+  "leftToolbar": {
+    "ariaLabel": "أدوات الرسم",
+    "toolTitleWithShortcut": "{{label}} ({{shortcut}})",
+    "tools": {
+      "select": "تحديد",
+      "pan": "تحريك",
+      "text": "نص",
+      "rectangle": "مستطيل",
+      "ellipse": "بيضاوي",
+      "triangle": "مثلث",
+      "line": "خط",
+      "pen": "قلم",
+      "image": "صورة",
+      "colorPick": "اختيار لون",
+      "crop": "قص"
+    }
+  },
+  "topToolbar": {
+    "unsavedChanges": "تغييرات غير محفوظة",
+    "undoTitle": "تراجع (Ctrl+Z)",
+    "undoAriaLabel": "تراجع",
+    "redoTitle": "إعادة (Ctrl+Y)",
+    "redoAriaLabel": "إعادة",
+    "zoomOutTitle": "تصغير (Ctrl+-)",
+    "resetZoomTitle": "إعادة ضبط التكبير (Ctrl+0)",
+    "zoomInTitle": "تكبير (Ctrl+=)",
+    "save": "حفظ",
+    "export": "تصدير"
+  },
+  "exportModal": {
+    "dialogAriaLabel": "تصدير التصميم",
+    "title": "تصدير التصميم",
+    "closeAriaLabel": "إغلاق",
+    "format": "الصيغة",
+    "formats": {
+      "png": { "desc": "جودة عالية، خلفية شفافة" },
+      "jpg": { "desc": "حجم ملف أصغر، بدون شفافية" },
+      "svg": { "desc": "متجهات قابلة للتحجيم، جاهزة للويب" },
+      "json": { "desc": "ملف تصميم قابل للتحرير" }
+    },
+    "scale": "المقياس",
+    "quality": "الجودة: {{quality}}%",
+    "cancel": "إلغاء",
+    "exporting": "جارٍ التصدير…",
+    "exportFormat": "تصدير {{format}}"
+  },
+  "inspectors": {
+    "border": {
+      "header": "الحدود",
+      "radius": "الانحناء"
+    },
+    "effects": {
+      "header": "التأثيرات",
+      "opacity": "العتامة",
+      "blend": "المزج",
+      "blendModes": {
+        "normal": "عادي",
+        "multiply": "ضرب",
+        "screen": "شاشة",
+        "overlay": "تراكب",
+        "darken": "تعتيم",
+        "lighten": "تفتيح",
+        "colorDodge": "تفتيح اللون",
+        "colorBurn": "حرق اللون",
+        "hardLight": "ضوء قوي",
+        "softLight": "ضوء ناعم",
+        "difference": "الفرق",
+        "exclusion": "استبعاد",
+        "hue": "التدرج اللوني",
+        "saturation": "التشبع",
+        "color": "اللون",
+        "luminosity": "الإضاءة"
+      }
+    },
+    "appearance": {
+      "header": "المظهر",
+      "fill": "التعبئة",
+      "stroke": "الحد الخارجي",
+      "width": "السُّمك"
+    },
+    "shadow": {
+      "header": "الظل",
+      "color": "اللون",
+      "blur": "التمويه"
+    },
+    "position": {
+      "header": "الموضع",
+      "emptyState": "لم يتم تحديد أي عنصر"
+    },
+    "typography": {
+      "header": "الطباعة",
+      "fontFamily": "عائلة الخط",
+      "size": "الحجم",
+      "weight": "الوزن",
+      "weights": {
+        "thin": "رفيع",
+        "light": "خفيف",
+        "regular": "عادي",
+        "medium": "متوسط",
+        "semiBold": "شبه عريض",
+        "bold": "عريض",
+        "extraBold": "عريض جدًا",
+        "black": "أسود"
+      },
+      "lineHeight": "ارتفاع السطر"
+    }
+  }
+}

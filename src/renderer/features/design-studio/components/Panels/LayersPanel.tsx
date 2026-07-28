@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Canvas as FabricCanvas } from "fabric";
 import type { DesignState } from "../../types/canvas.types";
 import { getMeta, setLocked, setVisible } from "../../utils/fabricUtils";
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function LayersPanel({ state, getCanvas, onSelect }: Props) {
+  const { t } = useTranslation("designStudio");
   const canvas = getCanvas();
   const objects = canvas ? [...canvas.getObjects()].reverse() : [];
 
@@ -35,19 +37,19 @@ export function LayersPanel({ state, getCanvas, onSelect }: Props) {
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
-        <span>Layers</span>
+        <span>{t("layersPanel.header")}</span>
         <span className={styles.count}>{objects.length}</span>
       </div>
 
       {objects.length === 0 && (
-        <p className={styles.empty}>No elements yet. Add shapes or text to see layers.</p>
+        <p className={styles.empty}>{t("layersPanel.empty")}</p>
       )}
 
-      <ul className={styles.list} role="listbox" aria-label="Layers">
+      <ul className={styles.list} role="listbox" aria-label={t("layersPanel.listAriaLabel")}>
         {objects.map(obj => {
           const meta      = getMeta(obj);
           const id        = meta?.id        ?? obj.type ?? "obj";
-          const name      = meta?.name      ?? "Object";
+          const name      = meta?.name      ?? t("layersPanel.defaultObjectName");
           const locked    = meta?.locked    ?? false;
           const visible   = meta?.visible   ?? true;
           const isSelected = state.selectedIds.includes(id);
@@ -65,8 +67,8 @@ export function LayersPanel({ state, getCanvas, onSelect }: Props) {
               <button
                 className={styles.iconBtn}
                 onClick={e => { e.stopPropagation(); handleVisibility(id, !visible); }}
-                title={visible ? "Hide" : "Show"}
-                aria-label={visible ? "Hide layer" : "Show layer"}
+                title={visible ? t("layersPanel.hide") : t("layersPanel.show")}
+                aria-label={visible ? t("layersPanel.hideLayerAriaLabel") : t("layersPanel.showLayerAriaLabel")}
               >
                 {visible ? "👁" : "⊘"}
               </button>
@@ -77,8 +79,8 @@ export function LayersPanel({ state, getCanvas, onSelect }: Props) {
               <button
                 className={styles.iconBtn}
                 onClick={e => { e.stopPropagation(); handleLock(id, !locked); }}
-                title={locked ? "Unlock" : "Lock"}
-                aria-label={locked ? "Unlock layer" : "Lock layer"}
+                title={locked ? t("layersPanel.unlock") : t("layersPanel.lock")}
+                aria-label={locked ? t("layersPanel.unlockLayerAriaLabel") : t("layersPanel.lockLayerAriaLabel")}
               >
                 {locked ? "🔒" : "🔓"}
               </button>

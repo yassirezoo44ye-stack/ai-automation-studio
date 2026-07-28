@@ -1,0 +1,87 @@
+{
+  "header": {
+    "title": "الأتمتة",
+    "newTask": "+ مهمة جديدة"
+  },
+  "tabs": {
+    "tasks": "المهام",
+    "workflows": "سير العمل"
+  },
+  "taskCard": {
+    "markDone": "وضع علامة مكتملة",
+    "markPending": "وضع علامة قيد الانتظار",
+    "due": "الموعد {{date}}",
+    "start": "بدء",
+    "delete": "حذف"
+  },
+  "status": {
+    "pending": "قيد الانتظار",
+    "in_progress": "قيد التنفيذ",
+    "done": "مكتملة"
+  },
+  "newTaskForm": {
+    "title": "مهمة جديدة",
+    "titlePlaceholder": "عنوان المهمة *",
+    "priorityLow": "منخفضة",
+    "priorityMedium": "متوسطة",
+    "priorityHigh": "عالية",
+    "create": "إنشاء المهمة",
+    "creating": "جارٍ الإنشاء…"
+  },
+  "filters": {
+    "all": "الكل ({{count}})",
+    "pending": "قيد الانتظار ({{count}})",
+    "active": "نشطة ({{count}})",
+    "done": "مكتملة ({{count}})"
+  },
+  "toolbar": {
+    "searchPlaceholder": "ابحث في المهام…"
+  },
+  "emptyTasks": {
+    "titleDefault": "لا توجد مهام",
+    "titleFiltered": "لا توجد مهام بحالة \"{{status}}\"",
+    "description": "أنشئ مهمة أو استخرجها من محادثة مع الذكاء الاصطناعي."
+  },
+  "workflows": {
+    "activeRuns": "عمليات سير العمل النشطة",
+    "refresh": "↻ تحديث",
+    "empty": "لا توجد عمليات نشطة — ابدأ سير عمل أدناه.",
+    "stepsProgress": "{{done}}/{{total}} خطوة",
+    "status": {
+      "running": "قيد التشغيل",
+      "completed": "مكتمل",
+      "failed": "فشل",
+      "pending": "قيد الانتظار"
+    },
+    "templatesLabel": "قوالب سير العمل",
+    "run": "▶ تشغيل",
+    "starting": "جارٍ البدء…",
+    "trigger": "عند الطلب",
+    "templates": {
+      "sequential": { "name": "خط أنابيب تسلسلي", "desc": "تشغيل الخطوات واحدة تلو الأخرى — جلب ← معالجة ← تخزين" },
+      "parallel": { "name": "توزيع متوازٍ", "desc": "تنفيذ خطوات مستقلة في آن واحد لزيادة السرعة" },
+      "approval": { "name": "إشراف بشري", "desc": "التوقف عند نقاط التفتيش للمراجعة والموافقة اليدوية" },
+      "saga": { "name": "ساغا (تعويضية)", "desc": "معاملة موزعة مع تراجع تلقائي عند الفشل" }
+    }
+  },
+  "approvals": {
+    "title": "الموافقات المعلقة",
+    "empty": "لا توجد موافقات معلقة.",
+    "runId": "التشغيل {{id}}…",
+    "approve": "موافقة",
+    "reject": "رفض",
+    "toast": {
+      "approved": "تمت الموافقة على الخطوة",
+      "rejected": "تم رفض الخطوة",
+      "approveFailed": "فشلت الموافقة",
+      "rejectFailed": "فشل الرفض"
+    }
+  },
+  "toast": {
+    "loadTasksFailed": "تعذر تحميل المهام",
+    "createTaskFailed": "فشل إنشاء المهمة",
+    "taskCreated": "تم إنشاء المهمة",
+    "workflowStarted": "بدأ سير العمل — معرّف التشغيل: {{runId}}",
+    "workflowStartFailed": "فشل بدء سير العمل"
+  }
+}

@@ -1,0 +1,289 @@
+{
+  "shell": {
+    "panelTabsAriaLabel": "Design panels",
+    "sidePanels": {
+      "layers": "Layers",
+      "assets": "Assets",
+      "templates": "Templates",
+      "pages": "Pages",
+      "brand": "Brand",
+      "components": "Components",
+      "tokens": "Tokens",
+      "history": "History",
+      "ai": "AI"
+    },
+    "propertiesHeading": "Properties",
+    "pageNavAriaLabel": "Page navigation",
+    "pageAriaLabel": "{{name}} (page {{num}})",
+    "addPage": "Add page",
+    "addNewPageAriaLabel": "Add new page",
+    "defaultPageName": "Page {{num}}"
+  },
+  "propertiesPanel": {
+    "emptyState": "Select an object to edit its properties."
+  },
+  "templatesPanel": {
+    "header": "Templates",
+    "searchPlaceholder": "Search templates…",
+    "cardTitle": "{{name}} — {{width}}×{{height}}"
+  },
+  "historyPanel": {
+    "title": "History ({{count}})",
+    "listAriaLabel": "Command history",
+    "empty": "No history yet",
+    "undo": "Undo",
+    "undoAriaLabel": "Undo",
+    "redo": "Redo",
+    "redoAriaLabel": "Redo"
+  },
+  "layersPanel": {
+    "header": "Layers",
+    "empty": "No elements yet. Add shapes or text to see layers.",
+    "listAriaLabel": "Layers",
+    "hide": "Hide",
+    "show": "Show",
+    "hideLayerAriaLabel": "Hide layer",
+    "showLayerAriaLabel": "Show layer",
+    "defaultObjectName": "Object",
+    "lock": "Lock",
+    "unlock": "Unlock",
+    "lockLayerAriaLabel": "Lock layer",
+    "unlockLayerAriaLabel": "Unlock layer"
+  },
+  "componentsPanel": {
+    "categories": {
+      "all": "All",
+      "button": "Button",
+      "card": "Card",
+      "header": "Header",
+      "footer": "Footer",
+      "icon": "Icon",
+      "chart": "Chart",
+      "table": "Table"
+    },
+    "searchPlaceholder": "Search components…",
+    "searchAriaLabel": "Search components",
+    "categoriesAriaLabel": "Component categories",
+    "empty": "No components found",
+    "insertTitle": "Insert {{name}}"
+  },
+  "assetsPanel": {
+    "tabs": {
+      "all": "All",
+      "images": "Images",
+      "svg": "SVG",
+      "video": "Video"
+    },
+    "header": "Assets",
+    "uploadTitle": "Upload files",
+    "upload": "Upload",
+    "searchPlaceholder": "Search assets…",
+    "loading": "Loading…",
+    "empty": "No assets found. Upload files to get started.",
+    "insertTitle": "Insert",
+    "favourite": "Favourite",
+    "removeFavourite": "Remove favourite",
+    "delete": "Delete"
+  },
+  "pagesPanel": {
+    "title": "Pages ({{count}})",
+    "addPage": "Add page",
+    "pageAriaLabel": "Page {{num}}: {{name}}",
+    "renamePageAriaLabel": "Rename page",
+    "moveUp": "Move up",
+    "movePageUpAriaLabel": "Move page up",
+    "moveDown": "Move down",
+    "movePageDownAriaLabel": "Move page down",
+    "duplicate": "Duplicate",
+    "duplicatePageAriaLabel": "Duplicate page",
+    "delete": "Delete",
+    "deletePageAriaLabel": "Delete page",
+    "defaultPageName": "Page {{num}}"
+  },
+  "tokensPanel": {
+    "categories": {
+      "color": "Colors",
+      "gradient": "Gradients",
+      "typography": "Typography",
+      "spacing": "Spacing",
+      "radius": "Radius",
+      "shadow": "Shadow",
+      "border": "Border",
+      "effect": "Effects"
+    },
+    "categoriesAriaLabel": "Token categories",
+    "empty": "No {{category}} tokens",
+    "newTokenNameAriaLabel": "New token name",
+    "namePlaceholder": "Name",
+    "tokenColorValueAriaLabel": "Token color value",
+    "valuePlaceholder": "Value",
+    "tokenValueAriaLabel": "Token value",
+    "add": "Add",
+    "addTokenAriaLabel": "Add token",
+    "deleteTokenAriaLabel": "Delete {{name}}"
+  },
+  "brandKitPanel": {
+    "brandColors": "Brand Colors",
+    "addColorAriaLabel": "Add color",
+    "removeColorAriaLabel": "Remove {{name}}",
+    "pickColorAriaLabel": "Pick color",
+    "add": "Add",
+    "addBrandColorAriaLabel": "Add brand color",
+    "noBrandColors": "No brand colors yet",
+    "brandFonts": "Brand Fonts",
+    "addFontAriaLabel": "Add font",
+    "noBrandFonts": "No brand fonts yet",
+    "fontFamilyPrompt": "Font family (e.g. 'Inter, sans-serif'):",
+    "removeFontAriaLabel": "Remove {{name}}",
+    "logos": "Logos",
+    "uploadLogoAriaLabel": "Upload logo",
+    "noLogosYet": "No logos yet",
+    "removeLogoAriaLabel": "Remove {{name}}"
+  },
+  "aiPanel": {
+    "tabs": {
+      "image": "Image",
+      "palette": "Palette",
+      "fonts": "Fonts",
+      "suggestions": "Ideas"
+    },
+    "toolsAriaLabel": "AI tools",
+    "describeImage": "Describe your image",
+    "imagePromptPlaceholder": "A minimalist logo on white background…",
+    "imagePromptAriaLabel": "Image prompt",
+    "generating": "Generating…",
+    "generateImage": "Generate Image",
+    "addToCanvasTitle": "Click to add to canvas",
+    "addGeneratedImageAriaLabel": "Add generated image {{num}} to canvas",
+    "generatedImageAlt": "Generated {{num}}",
+    "describeBrand": "Describe your brand or mood",
+    "palettePromptPlaceholder": "Ocean, calm, professional…",
+    "palettePromptAriaLabel": "Palette prompt",
+    "generatePalette": "Generate Palette",
+    "colorSwatchTitle": "{{name}}: {{hex}}",
+    "style": "Style",
+    "fontStyleAriaLabel": "Font style",
+    "fontStyles": {
+      "modern": "Modern",
+      "classic": "Classic",
+      "playful": "Playful",
+      "minimal": "Minimal",
+      "bold": "Bold"
+    },
+    "pairing": "Pairing…",
+    "getFontPairings": "Get Font Pairings",
+    "bodyLabel": "Body: {{family}} · {{label}}",
+    "suggestionsDescription": "Analyzes your current canvas and suggests improvements.",
+    "analyzing": "Analyzing…",
+    "analyzeCanvas": "Analyze Canvas",
+    "thinking": "Thinking…",
+    "requestFailed": "Request failed"
+  },
+  "leftToolbar": {
+    "ariaLabel": "Drawing tools",
+    "toolTitleWithShortcut": "{{label}} ({{shortcut}})",
+    "tools": {
+      "select": "Select",
+      "pan": "Pan",
+      "text": "Text",
+      "rectangle": "Rectangle",
+      "ellipse": "Ellipse",
+      "triangle": "Triangle",
+      "line": "Line",
+      "pen": "Pen",
+      "image": "Image",
+      "colorPick": "Color Pick",
+      "crop": "Crop"
+    }
+  },
+  "topToolbar": {
+    "unsavedChanges": "Unsaved changes",
+    "undoTitle": "Undo (Ctrl+Z)",
+    "undoAriaLabel": "Undo",
+    "redoTitle": "Redo (Ctrl+Y)",
+    "redoAriaLabel": "Redo",
+    "zoomOutTitle": "Zoom out (Ctrl+-)",
+    "resetZoomTitle": "Reset zoom (Ctrl+0)",
+    "zoomInTitle": "Zoom in (Ctrl+=)",
+    "save": "Save",
+    "export": "Export"
+  },
+  "exportModal": {
+    "dialogAriaLabel": "Export design",
+    "title": "Export Design",
+    "closeAriaLabel": "Close",
+    "format": "Format",
+    "formats": {
+      "png": { "desc": "High quality, transparent background" },
+      "jpg": { "desc": "Smaller file, no transparency" },
+      "svg": { "desc": "Scalable vector, web-ready" },
+      "json": { "desc": "Editable design file" }
+    },
+    "scale": "Scale",
+    "quality": "Quality: {{quality}}%",
+    "cancel": "Cancel",
+    "exporting": "Exporting…",
+    "exportFormat": "Export {{format}}"
+  },
+  "inspectors": {
+    "border": {
+      "header": "Border",
+      "radius": "Radius"
+    },
+    "effects": {
+      "header": "Effects",
+      "opacity": "Opacity",
+      "blend": "Blend",
+      "blendModes": {
+        "normal": "Normal",
+        "multiply": "Multiply",
+        "screen": "Screen",
+        "overlay": "Overlay",
+        "darken": "Darken",
+        "lighten": "Lighten",
+        "colorDodge": "Color Dodge",
+        "colorBurn": "Color Burn",
+        "hardLight": "Hard Light",
+        "softLight": "Soft Light",
+        "difference": "Difference",
+        "exclusion": "Exclusion",
+        "hue": "Hue",
+        "saturation": "Saturation",
+        "color": "Color",
+        "luminosity": "Luminosity"
+      }
+    },
+    "appearance": {
+      "header": "Appearance",
+      "fill": "Fill",
+      "stroke": "Stroke",
+      "width": "Width"
+    },
+    "shadow": {
+      "header": "Shadow",
+      "color": "Color",
+      "blur": "Blur"
+    },
+    "position": {
+      "header": "Position",
+      "emptyState": "No object selected"
+    },
+    "typography": {
+      "header": "Typography",
+      "fontFamily": "Font Family",
+      "size": "Size",
+      "weight": "Weight",
+      "weights": {
+        "thin": "Thin",
+        "light": "Light",
+        "regular": "Regular",
+        "medium": "Medium",
+        "semiBold": "SemiBold",
+        "bold": "Bold",
+        "extraBold": "ExtraBold",
+        "black": "Black"
+      },
+      "lineHeight": "Line H"
+    }
+  }
+}

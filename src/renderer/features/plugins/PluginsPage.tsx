@@ -11,6 +11,7 @@
  *       /plugins/installed/{id}/*.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
@@ -45,6 +46,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function PluginsPage() {
+  const { t } = useTranslation("plugins");
   const toast = useToast();
   const { currentOrgId, orgs } = useOrg();
   const { setPage } = useAppContext();
@@ -63,7 +65,7 @@ export function PluginsPage() {
       if (!r.ok) throw new Error();
       setInstalled(await parseJSON<Installation[]>(r, "/plugins/installed"));
     } catch {
-      toast("Could not load installed plugins", "err");
+      toast(t("toast.loadInstalledFailed"), "err");
     }
   }, [currentOrgId, toast]);
 
@@ -74,7 +76,7 @@ export function PluginsPage() {
       const d = await parseJSON<{ items: AvailablePlugin[] }>(r, "/marketplace/listings");
       setAvailable(d.items ?? []);
     } catch {
-      toast("Could not load available plugins", "err");
+      toast(t("toast.loadAvailableFailed"), "err");
     }
   }, [toast]);
 
@@ -86,19 +88,19 @@ export function PluginsPage() {
   }, [loadInstalled, loadAvailable]);
 
   const install = async (listingId: string) => {
-    if (!currentOrgId) { toast("Select an organization first", "err"); return; }
+    if (!currentOrgId) { toast(t("toast.selectOrgFirst"), "err"); return; }
     setBusy(listingId);
     try {
       const r = await apiFetch(`/marketplace/listings/${listingId}/install`, { method: "POST" });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        throw new Error(body?.detail ?? "Install failed");
+        throw new Error(body?.detail ?? t("toast.installFailed"));
       }
-      toast("Plugin installed", "ok");
+      toast(t("toast.installed"), "ok");
       setTopTab("installed");
       await loadInstalled();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Install failed", "err");
+      toast(e instanceof Error ? e.message : t("toast.installFailed"), "err");
     } finally {
       setBusy(null);
     }
@@ -107,15 +109,16 @@ export function PluginsPage() {
   const toggleEnabled = async (inst: Installation) => {
     setBusy(inst.id);
     const action = inst.status === "enabled" ? "disable" : "enable";
+    const actionLabel = action === "disable" ? t("actions.disable") : t("actions.enable");
     try {
       const r = await apiFetch(`/plugins/installed/${inst.id}/${action}`, { method: "POST" });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        throw new Error(body?.detail ?? `${action} failed`);
+        throw new Error(body?.detail ?? t("toast.actionFailed", { action: actionLabel }));
       }
       await loadInstalled();
     } catch (e) {
-      toast(e instanceof Error ? e.message : `${action} failed`, "err");
+      toast(e instanceof Error ? e.message : t("toast.actionFailed", { action: actionLabel }), "err");
     } finally {
       setBusy(null);
     }
@@ -126,11 +129,11 @@ export function PluginsPage() {
     try {
       const r = await apiFetch(`/plugins/installed/${inst.id}`, { method: "DELETE" });
       if (!r.ok) throw new Error();
-      toast("Plugin uninstalled", "ok");
+      toast(t("toast.uninstalled"), "ok");
       if (expandedId === inst.id) setExpandedId(null);
       await loadInstalled();
     } catch {
-      toast("Uninstall failed", "err");
+      toast(t("toast.uninstallFailed"), "err");
     } finally {
       setBusy(null);
     }
@@ -145,9 +148,9 @@ export function PluginsPage() {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>🧩</span>}
-        title="No organization selected"
-        description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
-        action={<GoldButton onClick={() => setPage("organizations")}>Go to Organizations</GoldButton>}
+        title={t("noOrg.title")}
+        description={orgs.length === 0 ? t("noOrg.descriptionNoOrgs") : t("noOrg.descriptionHasOrgs")}
+        action={<GoldButton onClick={() => setPage("organizations")}>{t("noOrg.action")}</GoldButton>}
       />
     );
   }
@@ -161,16 +164,16 @@ export function PluginsPage() {
         background: "var(--bg-surface)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 14,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px", color: "var(--t1)" }}>Plugins</span>
+          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px", color: "var(--t1)" }}>{t("header.title")}</span>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          {(["installed", "available"] as TopTab[]).map(t => (
-            <button key={t} onClick={() => setTopTab(t)} style={{
+          {(["installed", "available"] as TopTab[]).map(tabId => (
+            <button key={tabId} onClick={() => setTopTab(tabId)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: topTab === t ? "var(--accent-dim)" : "var(--bg-hover)",
-              color: topTab === t ? "var(--accent-2)" : "var(--t4)", textTransform: "capitalize",
+              background: topTab === tabId ? "var(--accent-dim)" : "var(--bg-hover)",
+              color: topTab === tabId ? "var(--accent-2)" : "var(--t4)",
             }}>
-              {t} {t === "installed" ? `(${installed.length})` : ""}
+              {t(`tabs.${tabId}`)} {tabId === "installed" ? `(${installed.length})` : ""}
             </button>
           ))}
         </div>
@@ -185,8 +188,8 @@ export function PluginsPage() {
           installed.length === 0 ? (
             <EmptyState
               icon={<span style={{ fontSize: 48 }}>🧩</span>}
-              title="No plugins installed"
-              description="Browse the Available tab to install one."
+              title={t("installedList.empty.title")}
+              description={t("installedList.empty.description")}
             />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -197,26 +200,26 @@ export function PluginsPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{inst.manifest?.name ?? inst.plugin_id}</span>
                         <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: STATUS_COLOR[inst.status] ?? "var(--t4)" }}>
-                          {inst.status}
+                          {t(`status.${inst.status}`, { defaultValue: inst.status })}
                         </span>
                       </div>
                       <div style={{ fontSize: 11, color: "var(--t4)" }}>v{inst.version} · {inst.plugin_id}</div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <GoldButton variant="ghost" onClick={() => toggleDetails(inst.id)} style={{ padding: "6px 12px", fontSize: 12 }}>
-                        {expandedId === inst.id ? "Hide" : "Details"}
+                        {expandedId === inst.id ? t("actions.hide") : t("actions.details")}
                       </GoldButton>
                       <GoldButton
                         variant="ghost" onClick={() => void toggleEnabled(inst)} disabled={busy === inst.id}
                         style={{ padding: "6px 12px", fontSize: 12 }}
                       >
-                        {inst.status === "enabled" ? "Disable" : "Enable"}
+                        {inst.status === "enabled" ? t("actions.disable") : t("actions.enable")}
                       </GoldButton>
                       <GoldButton
                         variant="danger" onClick={() => void uninstall(inst)} disabled={busy === inst.id}
                         style={{ padding: "6px 12px", fontSize: 12 }}
                       >
-                        Uninstall
+                        {t("actions.uninstall")}
                       </GoldButton>
                     </div>
                   </div>
@@ -224,13 +227,13 @@ export function PluginsPage() {
                   {expandedId === inst.id && (
                     <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
                       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                        {(["config", "permissions", "health", "versions"] as DetailTab[]).map(t => (
-                          <button key={t} onClick={() => setDetailTab(t)} style={{
+                        {(["config", "permissions", "health", "versions"] as DetailTab[]).map(dt => (
+                          <button key={dt} onClick={() => setDetailTab(dt)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            background: detailTab === t ? "var(--accent-dim)" : "var(--bg-hover)",
-                            color: detailTab === t ? "var(--accent-2)" : "var(--t4)", textTransform: "capitalize",
+                            background: detailTab === dt ? "var(--accent-dim)" : "var(--bg-hover)",
+                            color: detailTab === dt ? "var(--accent-2)" : "var(--t4)",
                           }}>
-                            {t}
+                            {t(`detailTabs.${dt}`)}
                           </button>
                         ))}
                       </div>
@@ -260,7 +263,7 @@ export function PluginsPage() {
           )
         ) : (
           available.length === 0 ? (
-            <EmptyState icon={<span style={{ fontSize: 48 }}>🧩</span>} title="No plugins published yet" />
+            <EmptyState icon={<span style={{ fontSize: 48 }}>🧩</span>} title={t("available.empty")} />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
               {available.map(p => {
@@ -269,17 +272,17 @@ export function PluginsPage() {
                 <GlassCard key={p.id} lift={false} style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{p.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--t4)" }}>by {p.author} · v{p.version}</div>
+                    <div style={{ fontSize: 11, color: "var(--t4)" }}>{t("available.byAuthor", { author: p.author, version: p.version })}</div>
                   </div>
                   <p style={{ fontSize: 12, color: "var(--t3)", margin: 0, lineHeight: 1.5 }}>{p.description}</p>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
-                    <span style={{ fontSize: 11, color: "var(--t5)" }}>{p.installs.toLocaleString()} installs</span>
+                    <span style={{ fontSize: 11, color: "var(--t5)" }}>{t("available.installs", { count: p.installs })}</span>
                     <GoldButton
                       variant={alreadyInstalled ? "ghost" : "primary"}
                       onClick={() => (alreadyInstalled ? setTopTab("installed") : void install(p.id))}
                       disabled={busy === p.id}
                     >
-                      {busy === p.id ? "…" : alreadyInstalled ? "Installed" : "Install"}
+                      {busy === p.id ? "…" : alreadyInstalled ? t("available.installed") : t("available.install")}
                     </GoldButton>
                   </div>
                 </GlassCard>

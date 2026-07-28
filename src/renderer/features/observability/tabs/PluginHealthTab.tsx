@@ -7,6 +7,7 @@
  * Data: GET /api/diagnostics/health, GET /api/diagnostics/services.
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { GlassCard } from "../../../shared/ui/gold";
 import { CardGrid, ErrorNote, ProbeCard, Skeletons } from "../components";
@@ -17,6 +18,7 @@ const SERVICE_COLOR: Record<string, string> = {
 };
 
 export function PluginHealthTab() {
+  const { t } = useTranslation("observability");
   const [health, setHealth] = useState<HealthReport | null>(null);
   const [services, setServices] = useState<ServiceStatus[] | null>(null);
   const [error, setError] = useState(false);
@@ -41,7 +43,7 @@ export function PluginHealthTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !health) return <ErrorNote onRetry={() => void load()}>Could not load plugin/service health.</ErrorNote>;
+  if (error && !health) return <ErrorNote onRetry={() => void load()}>{t("pluginsTab.loadError")}</ErrorNote>;
   if (!health || !services) return <Skeletons n={3} />;
 
   const pluginProbe = health.probes.find(p => p.name === "plugin_loader");
@@ -50,16 +52,16 @@ export function PluginHealthTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {pluginProbe && (
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Plugin loader</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>{t("pluginsTab.pluginLoader")}</div>
           <CardGrid><ProbeCard probe={pluginProbe} /></CardGrid>
           <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5, marginTop: 10 }}>
-            For per-plugin install detail, see the <span style={{ color: "var(--accent-2)" }}>Plugins</span> page.
+            {t("pluginsTab.descriptionPrefix")} <span style={{ color: "var(--accent-2)" }}>{t("pluginsTab.linkLabel")}</span> {t("pluginsTab.descriptionSuffix")}
           </div>
         </div>
       )}
 
       <div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Background services</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>{t("pluginsTab.backgroundServices")}</div>
         <GlassCard lift={false}>
           {services.map((s, i) => (
             <div key={s.name} style={{
@@ -67,11 +69,11 @@ export function PluginHealthTab() {
               padding: "10px 4px", borderTop: i > 0 ? "1px solid var(--border)" : "none",
             }}>
               <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 70, color: SERVICE_COLOR[s.state] ?? "var(--t4)" }}>
-                {s.state}
+                {t(`pluginsTab.serviceStates.${s.state}`, { defaultValue: s.state })}
               </span>
               <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", flex: 1 }}>{s.name}</span>
-              <span style={{ fontSize: 11, color: "var(--t4)" }}>uptime {(s.uptime_s / 60).toFixed(0)}m</span>
-              <span style={{ fontSize: 11, color: "var(--t4)" }}>restarts {s.restarts}</span>
+              <span style={{ fontSize: 11, color: "var(--t4)" }}>{t("pluginsTab.uptimeLabel", { minutes: (s.uptime_s / 60).toFixed(0) })}</span>
+              <span style={{ fontSize: 11, color: "var(--t4)" }}>{t("pluginsTab.restartsLabel", { count: s.restarts })}</span>
               {s.error && <span style={{ fontSize: 11, color: "var(--red)" }}>{s.error}</span>}
             </div>
           ))}

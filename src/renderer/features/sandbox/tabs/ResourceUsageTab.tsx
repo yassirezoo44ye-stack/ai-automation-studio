@@ -7,6 +7,7 @@
  * Data: GET /sandbox/workers/{id}/resource-usage
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { GlassCard } from "../../../shared/ui/gold";
 
@@ -19,6 +20,7 @@ interface ResourceUsage {
 }
 
 export function ResourceUsageTab({ workerId }: { workerId: string }) {
+  const { t } = useTranslation("sandbox");
   const [usage, setUsage] = useState<ResourceUsage | null>(null);
 
   // Reset while switching workers — render-time state adjustment.
@@ -39,14 +41,14 @@ export function ResourceUsageTab({ workerId }: { workerId: string }) {
   }, [workerId]);
 
   if (usage === null) {
-    return <div style={{ fontSize: 12, color: "var(--t4)" }}>Loading…</div>;
+    return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("resourceUsage.loading")}</div>;
   }
 
   const cells: [string, string][] = [
-    ["Backend", usage.backend],
-    ["Status", usage.status],
-    ["CPU seconds used", usage.cpu_seconds_used != null ? usage.cpu_seconds_used.toFixed(2) : "—"],
-    ["Peak memory (MB)", usage.memory_mb_peak != null ? usage.memory_mb_peak.toFixed(1) : "—"],
+    [t("resourceUsage.backend"), usage.backend],
+    [t("resourceUsage.status"), t(`status.${usage.status}`, { defaultValue: usage.status })],
+    [t("resourceUsage.cpuSeconds"), usage.cpu_seconds_used != null ? usage.cpu_seconds_used.toFixed(2) : "—"],
+    [t("resourceUsage.peakMemory"), usage.memory_mb_peak != null ? usage.memory_mb_peak.toFixed(1) : "—"],
   ];
 
   return (

@@ -5,11 +5,13 @@
  * Data: GET /api/diagnostics/metrics.
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { CardGrid, ErrorNote, MetricCard, Skeletons } from "../components";
 import type { MetricsSnapshot } from "../types";
 
 export function SandboxMonitoringTab() {
+  const { t } = useTranslation("observability");
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [error, setError] = useState(false);
 
@@ -30,7 +32,7 @@ export function SandboxMonitoringTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load sandbox metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>{t("sandboxTab.loadError")}</ErrorNote>;
   if (!metrics) return <Skeletons n={2} />;
 
   const g = metrics.gauges;
@@ -38,14 +40,14 @@ export function SandboxMonitoringTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5 }}>
-        For per-worker logs and permission requests, see the{" "}
-        <span style={{ color: "var(--accent-2)" }}>Sandbox</span> page.
+        {t("sandboxTab.descriptionPrefix")}{" "}
+        <span style={{ color: "var(--accent-2)" }}>{t("sandboxTab.linkLabel")}</span> {t("sandboxTab.descriptionSuffix")}
       </div>
       <CardGrid>
-        <MetricCard label="Running workers" value={g.sandbox_running_workers ?? 0} />
-        <MetricCard label="Crashed workers" value={g.sandbox_execution_failures ?? 0} />
-        <MetricCard label="CPU seconds (running)" value={(g.sandbox_cpu_seconds ?? 0).toFixed(1)} />
-        <MetricCard label="Memory (running)" value={g.sandbox_memory_mb ?? 0} suffix=" MB" />
+        <MetricCard label={t("sandboxTab.runningWorkers")} value={g.sandbox_running_workers ?? 0} />
+        <MetricCard label={t("sandboxTab.crashedWorkers")} value={g.sandbox_execution_failures ?? 0} />
+        <MetricCard label={t("sandboxTab.cpuSecondsRunning")} value={(g.sandbox_cpu_seconds ?? 0).toFixed(1)} />
+        <MetricCard label={t("sandboxTab.memoryRunning")} value={g.sandbox_memory_mb ?? 0} suffix=" MB" />
       </CardGrid>
     </div>
   );

@@ -1,0 +1,83 @@
+{
+  "header": {
+    "title": "Plugins"
+  },
+  "noOrg": {
+    "title": "No organization selected",
+    "descriptionNoOrgs": "Create an organization first.",
+    "descriptionHasOrgs": "Pick one from the Organizations page.",
+    "action": "Go to Organizations"
+  },
+  "tabs": {
+    "installed": "Installed",
+    "available": "Available"
+  },
+  "detailTabs": {
+    "config": "Config",
+    "permissions": "Permissions",
+    "health": "Health",
+    "versions": "Versions"
+  },
+  "status": {
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "failed": "Failed",
+    "installed": "Installed",
+    "uninstalled": "Uninstalled"
+  },
+  "actions": {
+    "enable": "Enable",
+    "disable": "Disable",
+    "uninstall": "Uninstall",
+    "details": "Details",
+    "hide": "Hide"
+  },
+  "installedList": {
+    "empty": {
+      "title": "No plugins installed",
+      "description": "Browse the Available tab to install one."
+    }
+  },
+  "available": {
+    "empty": "No plugins published yet",
+    "byAuthor": "by {{author}} · v{{version}}",
+    "installs": "{{count}} installs",
+    "installed": "Installed",
+    "install": "Install"
+  },
+  "events": {
+    "load": "Load",
+    "unload": "Unload",
+    "reload": "Reload",
+    "error": "Error",
+    "tick": "Tick"
+  },
+  "healthTab": {
+    "statusLabel": "Status:",
+    "loading": "Loading logs…",
+    "empty": "No events recorded yet."
+  },
+  "configTab": {
+    "invalidJson": "Invalid JSON",
+    "saveFailed": "Save failed",
+    "saved": "Configuration saved",
+    "save": "Save Configuration"
+  },
+  "permissionsTab": {
+    "none": "This plugin declares no special permissions.",
+    "sensitiveWarning": "This plugin declares sensitive capabilities and is disabled until approved.",
+    "approve": "Approve",
+    "approved": "Plugin approved",
+    "approveFailed": "Approval failed"
+  },
+  "toast": {
+    "loadInstalledFailed": "Could not load installed plugins",
+    "loadAvailableFailed": "Could not load available plugins",
+    "selectOrgFirst": "Select an organization first",
+    "installed": "Plugin installed",
+    "installFailed": "Install failed",
+    "actionFailed": "{{action}} failed",
+    "uninstalled": "Plugin uninstalled",
+    "uninstallFailed": "Uninstall failed"
+  }
+}

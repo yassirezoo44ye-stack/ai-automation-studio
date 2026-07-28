@@ -14,6 +14,7 @@ import { C } from "../../shared/lib/theme";
  * not `item_type`/`price`/`rating_avg`/`install_count`).
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
@@ -53,15 +54,15 @@ interface Category { slug: string; label: string; icon: string; description: str
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const TYPE_META: Record<ItemType, { label: string; icon: string; color: string }> = {
-  agent:       { label: "Agent",       icon: "🤖", color: C.blue },
-  plugin:      { label: "Plugin",      icon: "🔌", color: C.purple },
-  theme:       { label: "Theme",       icon: "🎨", color: C.pink },
-  template:    { label: "Template",    icon: "📄", color: C.green },
-  prompt_pack: { label: "Prompts",     icon: "💬", color: C.amber },
-  workflow:    { label: "Workflow",    icon: "⚡", color: "#22d3ee" },
-  dataset:     { label: "Dataset",     icon: "📊", color: C.orange },
-  model:       { label: "Model",       icon: "🧠", color: "#e879f9" },
+const TYPE_META: Record<ItemType, { icon: string; color: string }> = {
+  agent:       { icon: "🤖", color: C.blue },
+  plugin:      { icon: "🔌", color: C.purple },
+  theme:       { icon: "🎨", color: C.pink },
+  template:    { icon: "📄", color: C.green },
+  prompt_pack: { icon: "💬", color: C.amber },
+  workflow:    { icon: "⚡", color: "#22d3ee" },
+  dataset:     { icon: "📊", color: C.orange },
+  model:       { icon: "🧠", color: "#e879f9" },
 };
 
 function Stars({ rating, count }: { rating: number; count: number }) {
@@ -75,9 +76,10 @@ function Stars({ rating, count }: { rating: number; count: number }) {
 }
 
 function PriceBadge({ priceUsd }: { priceUsd: number }) {
+  const { t } = useTranslation("marketplace");
   if (priceUsd === 0) return (
     <span style={{ fontSize: 12, fontWeight: 700, color: C.green, background: "rgba(52,211,153,.12)", padding: "2px 8px", borderRadius: 99, border: "1px solid rgba(52,211,153,.25)" }}>
-      Free
+      {t("price.free")}
     </span>
   );
   return (
@@ -98,7 +100,9 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
   installed: boolean;
   expanded: boolean;
 }) {
-  const meta = TYPE_META[item.type] ?? { label: item.type, icon: "📦", color: "var(--ta)" };
+  const { t } = useTranslation("marketplace");
+  const meta = TYPE_META[item.type] ?? { icon: "📦", color: "var(--ta)" };
+  const typeLabel = t(`types.${item.type}`, { defaultValue: item.type });
 
   return (
     <GlassCard
@@ -129,7 +133,7 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
             background: "var(--bg-elevated)", color: "var(--t3)",
             padding: "2px 8px", borderRadius: 99,
           }}>
-            {item.visibility.toUpperCase()}
+            {t(`visibility.${item.visibility}`, { defaultValue: item.visibility.toUpperCase() })}
           </span>
         )}
       </div>
@@ -147,7 +151,7 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
               </svg>
             )}
           </div>
-          <div style={{ fontSize: 11, color: "var(--t4)" }}>by {item.author} · v{item.version}</div>
+          <div style={{ fontSize: 11, color: "var(--t4)" }}>{t("card.byAuthor", { author: item.author, version: item.version })}</div>
         </div>
 
         {/* Description */}
@@ -165,7 +169,7 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
               fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 99,
               background: `${meta.color}15`, color: meta.color, border: `1px solid ${meta.color}25`,
             }}>
-              {meta.icon} {meta.label}
+              {meta.icon} {typeLabel}
             </span>
             {item.tags.slice(0, 3).map(t => (
               <span key={t} style={{
@@ -184,21 +188,21 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <Stars rating={item.rating} count={item.rating_count} />
             <span style={{ fontSize: 11, color: "var(--t5)" }}>
-              {item.installs.toLocaleString()} installs
+              {t("card.installs", { count: item.installs.toLocaleString() })}
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <GoldButton variant="ghost" onClick={() => onToggleDetails(item.id)}>
-              {expanded ? "Hide" : "Details"}
+              {expanded ? t("card.hide") : t("card.details")}
             </GoldButton>
             <PriceBadge priceUsd={item.price_usd} />
             {installed ? (
               <GoldButton variant="ghost" disabled={installing} onClick={() => onUninstall(item.id)}>
-                {installing ? "…" : "Uninstall"}
+                {installing ? "…" : t("card.uninstall")}
               </GoldButton>
             ) : (
               <GoldButton variant="primary" disabled={installing} onClick={() => onInstall(item.id)}>
-                {installing ? "…" : item.price_usd === 0 ? "Install" : "Buy"}
+                {installing ? "…" : item.price_usd === 0 ? t("card.install") : t("card.buy")}
               </GoldButton>
             )}
           </div>
@@ -211,9 +215,6 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
 // ── Detail panel (Versions / Dependencies / Reviews / Publisher tabs) ────────
 
 type DetailTab = "versions" | "dependencies" | "reviews" | "publisher";
-const DETAIL_TABS: [DetailTab, string][] = [
-  ["versions", "Versions"], ["dependencies", "Dependencies"], ["reviews", "Reviews"], ["publisher", "Publisher"],
-];
 
 function DetailPanel({ item, onClose, canManage, onRolledBack }: {
   item: Listing;
@@ -221,7 +222,12 @@ function DetailPanel({ item, onClose, canManage, onRolledBack }: {
   canManage: boolean;
   onRolledBack: () => void;
 }) {
+  const { t } = useTranslation("marketplace");
   const [tab, setTab] = useState<DetailTab>("versions");
+  const DETAIL_TABS: [DetailTab, string][] = [
+    ["versions", t("detailPanel.tabVersions")], ["dependencies", t("detailPanel.tabDependencies")],
+    ["reviews", t("detailPanel.tabReviews")], ["publisher", t("detailPanel.tabPublisher")],
+  ];
 
   return (
     <div style={{
@@ -260,6 +266,7 @@ function CategoryBar({ categories, active, onChange }: {
   active: string;
   onChange: (c: string) => void;
 }) {
+  const { t } = useTranslation("marketplace");
   return (
     <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, flexShrink: 0 }}>
       <button
@@ -273,7 +280,7 @@ function CategoryBar({ categories, active, onChange }: {
           border: active === "all" ? "1px solid var(--accent-border)" : "1px solid transparent",
         }}
       >
-        All
+        {t("categoryBar.all")}
       </button>
       {categories.map(c => {
         const isActive = active === c.slug;
@@ -306,6 +313,7 @@ function CategoryBar({ categories, active, onChange }: {
 type SortBy = "verified" | "rating" | "installs" | "newest";
 
 export function MarketplacePage() {
+  const { t } = useTranslation("marketplace");
   const toast = useToast();
   const { currentOrgId } = useOrg();
   const [listings, setListings]     = useState<Listing[]>([]);
@@ -337,11 +345,11 @@ export function MarketplacePage() {
       }
       setListings(d.items ?? []);
     } catch {
-      toast("Could not load marketplace", "err");
+      toast(t("toast.loadFailed"), "err");
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, t]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -366,19 +374,19 @@ export function MarketplacePage() {
   };
 
   const handleInstall = async (id: string) => {
-    if (!currentOrgId) { toast("Select an organization first", "err"); return; }
+    if (!currentOrgId) { toast(t("toast.selectOrgFirst"), "err"); return; }
     setInstalling(p => ({ ...p, [id]: true }));
     try {
       const r = await apiFetch(`/marketplace/listings/${id}/install`, { method: "POST" });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        throw new Error(body?.detail ?? "Installation failed");
+        throw new Error(body?.detail ?? t("toast.installFailed"));
       }
-      toast("Installed successfully!", "ok");
+      toast(t("toast.installed"), "ok");
       setInstalledIds(prev => new Set(prev).add(id));
       void load(search, category);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Installation failed", "err");
+      toast(e instanceof Error ? e.message : t("toast.installFailed"), "err");
     } finally {
       setInstalling(p => ({ ...p, [id]: false }));
     }
@@ -390,10 +398,10 @@ export function MarketplacePage() {
     try {
       const r = await apiFetch(`/marketplace/listings/${id}/uninstall`, { method: "POST" });
       if (!r.ok) throw new Error();
-      toast("Uninstalled", "ok");
+      toast(t("toast.uninstalled"), "ok");
       setInstalledIds(prev => { const next = new Set(prev); next.delete(id); return next; });
     } catch {
-      toast("Uninstall failed", "err");
+      toast(t("toast.uninstallFailed"), "err");
     } finally {
       setInstalling(p => ({ ...p, [id]: false }));
     }
@@ -411,10 +419,10 @@ export function MarketplacePage() {
   });
 
   const SORT_OPTIONS: [SortBy, string][] = [
-    ["verified", "Verified"],
-    ["rating",   "Top Rated"],
-    ["installs", "Most Used"],
-    ["newest",   "Newest"],
+    ["verified", t("header.sortVerified")],
+    ["rating",   t("header.sortTopRated")],
+    ["installs", t("header.sortMostUsed")],
+    ["newest",   t("header.sortNewest")],
   ];
 
   const expandedItem = expandedId ? listings.find(l => l.id === expandedId) ?? null : null;
@@ -428,11 +436,11 @@ export function MarketplacePage() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px", color: "var(--t1)" }}>
-            Marketplace
+            {t("header.title")}
           </span>
           <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
                          background: "var(--accent-dim)", color: "var(--accent-2)", border: "1px solid var(--accent-border)" }}>
-            {listings.length} items
+            {t("header.itemCount", { count: listings.length })}
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
             {SORT_OPTIONS.map(([id, label]) => (
@@ -455,7 +463,7 @@ export function MarketplacePage() {
           <input
             value={search}
             onChange={e => handleSearch(e.target.value)}
-            placeholder="Search agents, plugins, workflows, themes…"
+            placeholder={t("header.searchPlaceholder")}
             style={{
               width: "100%", padding: "13px 18px 13px 46px", fontSize: 15,
               background: "var(--bg-base)", border: "1px solid var(--border)",
@@ -494,8 +502,8 @@ export function MarketplacePage() {
         ) : sorted.length === 0 ? (
           <EmptyState
             icon={<span style={{ fontSize: 48 }}>🔍</span>}
-            title={search ? `No results for "${search}"` : "No listings yet"}
-            description={search ? "Try a different search term or browse by category." : "Be the first to publish to the marketplace."}
+            title={search ? t("empty.noResultsTitle", { search }) : t("empty.noListingsTitle")}
+            description={search ? t("empty.noResultsDesc") : t("empty.noListingsDesc")}
           />
         ) : (
           <motion.div

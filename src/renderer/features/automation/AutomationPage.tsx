@@ -4,6 +4,7 @@
  * Data: /api/tasks, /api/agents, /workflows/*
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON, authH } from "../../utils/api";
@@ -28,23 +29,23 @@ const PRIORITY_DOT: Record<TaskPriority, string> = {
   high:   C.red,
 };
 
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  pending:     "Pending",
-  in_progress: "In Progress",
-  done:        "Done",
-};
-
 function TaskCard({ task, onStatusChange, onDelete }: {
   task: Task;
   onStatusChange: (id: string, status: TaskStatus) => void;
   onDelete: (id: string) => void;
 }) {
+  const { t } = useTranslation("automation");
+  const STATUS_LABEL: Record<TaskStatus, string> = {
+    pending:     t("status.pending"),
+    in_progress: t("status.in_progress"),
+    done:        t("status.done"),
+  };
   return (
     <GlassCard style={{ padding: "14px 18px", display: "flex", gap: 12, alignItems: "flex-start" }}>
       <button
         onClick={() => onStatusChange(task.id, task.status === "done" ? "pending" : "done")}
         style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 2, color: task.status === "done" ? C.green : "rgba(255,255,255,0.2)", flexShrink: 0 }}
-        aria-label={task.status === "done" ? "Mark pending" : "Mark done"}
+        aria-label={task.status === "done" ? t("taskCard.markPending") : t("taskCard.markDone")}
       >
         {task.status === "done"
           ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -66,7 +67,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
             {STATUS_LABEL[task.status]}
           </span>
           {task.due_date && (
-            <span style={{ fontSize: 11, color: "var(--t5)" }}>Due {relTime(task.due_date)}</span>
+            <span style={{ fontSize: 11, color: "var(--t5)" }}>{t("taskCard.due", { date: relTime(task.due_date) })}</span>
           )}
           {task.category && (
             <span style={{ fontSize: 11, color: "var(--accent-2)", background: "var(--accent-dim)", padding: "1px 7px", borderRadius: 99 }}>{task.category}</span>
@@ -78,12 +79,12 @@ function TaskCard({ task, onStatusChange, onDelete }: {
         {task.status !== "in_progress" && task.status !== "done" && (
           <button
             onClick={() => onStatusChange(task.id, "in_progress")}
-            className="btn-icon" title="Start" style={{ width: 28, height: 28 }}
+            className="btn-icon" title={t("taskCard.start")} style={{ width: 28, height: 28 }}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </button>
         )}
-        <button onClick={() => onDelete(task.id)} className="btn-icon" title="Delete" style={{ width: 28, height: 28, color: C.redSoft }}>
+        <button onClick={() => onDelete(task.id)} className="btn-icon" title={t("taskCard.delete")} style={{ width: 28, height: 28, color: C.redSoft }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
         </button>
       </div>
@@ -92,6 +93,7 @@ function TaskCard({ task, onStatusChange, onDelete }: {
 }
 
 export function AutomationPage() {
+  const { t } = useTranslation("automation");
   const toast = useToast();
   const [tab, setTab]         = useState<AutoTab>("tasks");
   const [tasks, setTasks]     = useState<Task[]>([]);
@@ -116,9 +118,9 @@ export function AutomationPage() {
       const r = await apiFetch("/api/tasks?sort=created_at&limit=100");
       const d = await parseJSON<{ tasks?: Task[] }>(r, "/api/tasks");
       setTasks(d.tasks ?? []);
-    } catch { toast("Could not load tasks", "err"); }
+    } catch { toast(t("toast.loadTasksFailed"), "err"); }
     finally { setLoading(false); }
-  }, [toast]);
+  }, [toast, t]);
 
   const loadWorkflows = useCallback(async () => {
     setWfLoading(true);
@@ -135,9 +137,9 @@ export function AutomationPage() {
       const r = await apiFetch("/api/workflows/demo", { method: "POST", body: JSON.stringify({ kind }) });
       if (!r.ok) throw new Error();
       const d = await r.json();
-      toast(`Workflow started — run_id: ${d.run_id}`, "ok");
+      toast(t("toast.workflowStarted", { runId: d.run_id }), "ok");
       setTimeout(loadWorkflows, 800);
-    } catch { toast("Failed to start workflow", "err"); }
+    } catch { toast(t("toast.workflowStartFailed"), "err"); }
     finally { setRunningDemo(null); }
   };
 
@@ -159,8 +161,8 @@ export function AutomationPage() {
         body: JSON.stringify({ title: newTitle.trim(), priority: newPriority }),
       });
       if (!r.ok) throw new Error();
-      setNewTitle(""); setCreating(false); loadTasks(); toast("Task created");
-    } catch { toast("Failed to create task", "err"); }
+      setNewTitle(""); setCreating(false); loadTasks(); toast(t("toast.taskCreated"));
+    } catch { toast(t("toast.createTaskFailed"), "err"); }
     finally { setSaving(false); }
   }
 
@@ -191,19 +193,19 @@ export function AutomationPage() {
     done:        tasks.filter(t => t.status === "done").length,
   };
 
-  const TABS: [AutoTab, string][] = [["tasks", "Tasks"], ["workflows", "Workflows"]];
+  const TABS: [AutoTab, string][] = [["tasks", t("tabs.tasks")], ["workflows", t("tabs.workflows")]];
   const FILTERS: [TaskStatus | "all", string][] = [
-    ["all", `All (${counts.all})`],
-    ["pending", `Pending (${counts.pending})`],
-    ["in_progress", `Active (${counts.in_progress})`],
-    ["done", `Done (${counts.done})`],
+    ["all", t("filters.all", { count: counts.all })],
+    ["pending", t("filters.pending", { count: counts.pending })],
+    ["in_progress", t("filters.active", { count: counts.in_progress })],
+    ["done", t("filters.done", { count: counts.done })],
   ];
 
   return (
     <>
       <header style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={S.headerTitle}>Automation</span>
+          <span style={S.headerTitle}>{t("header.title")}</span>
           <div style={{ display: "flex", gap: 4, background: "var(--bg-card)", borderRadius: 12, padding: 4 }}>
             {TABS.map(([id, label]) => (
               <button key={id} onClick={() => setTab(id)} role="tab" aria-selected={tab === id} style={{
@@ -217,7 +219,7 @@ export function AutomationPage() {
           </div>
         </div>
         {tab === "tasks" && (
-          <GoldButton onClick={() => setCreating(c => !c)}>+ New Task</GoldButton>
+          <GoldButton onClick={() => setCreating(c => !c)}>{t("header.newTask")}</GoldButton>
         )}
       </header>
 
@@ -227,22 +229,22 @@ export function AutomationPage() {
           {/* New task form */}
           {creating && (
             <GlassCard style={{ marginBottom: 20, animation: "slideUp .2s ease" }}>
-              <div style={{ ...S.cardTitle, marginBottom: 12 }}>New Task</div>
+              <div style={{ ...S.cardTitle, marginBottom: 12 }}>{t("newTaskForm.title")}</div>
               <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                 <input
                   value={newTitle} onChange={e => setNewTitle(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && void createTask()}
-                  placeholder="Task title *" style={{ ...S.textInput, flex: 1 }} autoFocus
+                  placeholder={t("newTaskForm.titlePlaceholder")} style={{ ...S.textInput, flex: 1 }} autoFocus
                 />
                 <select value={newPriority} onChange={e => setNewPriority(e.target.value as TaskPriority)} style={{ ...S.textInput, width: "auto" }}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
+                  <option value="low">{t("newTaskForm.priorityLow")}</option>
+                  <option value="medium">{t("newTaskForm.priorityMedium")}</option>
+                  <option value="high">{t("newTaskForm.priorityHigh")}</option>
                 </select>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <GoldButton onClick={() => void createTask()} disabled={saving || !newTitle.trim()}>{saving ? "Creating…" : "Create Task"}</GoldButton>
-                <GoldButton variant="ghost" onClick={() => { setCreating(false); setNewTitle(""); }}>Cancel</GoldButton>
+                <GoldButton onClick={() => void createTask()} disabled={saving || !newTitle.trim()}>{saving ? t("newTaskForm.creating") : t("newTaskForm.create")}</GoldButton>
+                <GoldButton variant="ghost" onClick={() => { setCreating(false); setNewTitle(""); }}>{t("common:actions.cancel")}</GoldButton>
               </div>
             </GlassCard>
           )}
@@ -261,7 +263,7 @@ export function AutomationPage() {
             </div>
             <div style={{ position: "relative", display: "flex", alignItems: "center", flex: 1, maxWidth: 220, marginLeft: "auto" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ position: "absolute", left: 10, color: "var(--t4)", pointerEvents: "none" }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tasks…" style={{ ...S.textInput, paddingLeft: 30, fontSize: 12 }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("toolbar.searchPlaceholder")} style={{ ...S.textInput, paddingLeft: 30, fontSize: 12 }} />
             </div>
           </div>
 
@@ -275,9 +277,9 @@ export function AutomationPage() {
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ color: "var(--ta)" }}>
                 <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
               </svg>
-              <h3>No tasks{filter !== "all" ? ` with status "${filter}"` : ""}</h3>
-              <p>Create a task or extract them from an AI conversation.</p>
-              <GoldButton onClick={() => setCreating(true)}>+ New Task</GoldButton>
+              <h3>{filter !== "all" ? t("emptyTasks.titleFiltered", { status: filter }) : t("emptyTasks.titleDefault")}</h3>
+              <p>{t("emptyTasks.description")}</p>
+              <GoldButton onClick={() => setCreating(true)}>{t("header.newTask")}</GoldButton>
             </div>
           ) : (
             <motion.div
@@ -302,21 +304,22 @@ export function AutomationPage() {
           {/* Active runs */}
           <GlassCard lift={false}>
             <div style={{ ...S.cardTitle, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span>Active Workflow Runs</span>
+              <span>{t("workflows.activeRuns")}</span>
               <GoldButton variant="ghost" onClick={loadWorkflows} disabled={wfLoading}>
-                {wfLoading ? "…" : "↻ Refresh"}
+                {wfLoading ? "…" : t("workflows.refresh")}
               </GoldButton>
             </div>
             <div style={{ padding: "0 0 4px" }}>
               {wfLoading ? (
                 <div style={{ padding: "16px 18px" }}><div className="skeleton" style={{ height: 40, borderRadius: 8 }} /></div>
               ) : wfRuns.length === 0 ? (
-                <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>No active runs — start a workflow below.</div>
+                <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>{t("workflows.empty")}</div>
               ) : wfRuns.map(run => {
                 const pct = run.steps_total > 0 ? Math.round((run.steps_done / run.steps_total) * 100) : 0;
                 const running = run.status === "running";
                 const statusColor: Record<string, string> = { running: "var(--accent-2)", completed: C.green, failed: C.red, pending: C.amber };
                 const color = statusColor[run.status] ?? "var(--t4)";
+                const statusLabel = t(`workflows.status.${run.status}`, { defaultValue: run.status });
                 return (
                   <div key={run.run_id} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -331,10 +334,10 @@ export function AutomationPage() {
                             transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
                           />
                         )}
-                        {run.status}
+                        {statusLabel}
                       </span>
                       <span style={{ fontSize: 11, color: "var(--t4)" }}>
-                        {run.steps_done}/{run.steps_total} steps
+                        {t("workflows.stepsProgress", { done: run.steps_done, total: run.steps_total })}
                       </span>
                     </div>
                     <div style={{ height: 4, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
@@ -349,17 +352,17 @@ export function AutomationPage() {
 
           {/* Workflow templates → run via real API */}
           <div>
-            <div className="section-label" style={{ marginBottom: 12 }}>WORKFLOW TEMPLATES</div>
+            <div className="section-label" style={{ marginBottom: 12 }}>{t("workflows.templatesLabel")}</div>
             <motion.div
               style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}
               initial="hidden" animate="show"
               variants={{ show: { transition: { staggerChildren: 0.05 } } }}
             >
               {([
-                { kind: "sequential", name: "Sequential Pipeline", desc: "Run steps one after another — fetch → process → store", icon: "📋", trigger: "On demand" },
-                { kind: "parallel",   name: "Parallel Fan-out",    desc: "Execute independent steps simultaneously for speed",   icon: "⚡", trigger: "On demand" },
-                { kind: "approval",   name: "Human-in-the-Loop",   desc: "Pause at checkpoints for manual review and approval",  icon: "👤", trigger: "On demand" },
-                { kind: "saga",       name: "Saga (Compensating)", desc: "Distributed transaction with automatic rollback",      icon: "🔄", trigger: "On demand" },
+                { kind: "sequential", name: t("workflows.templates.sequential.name"), desc: t("workflows.templates.sequential.desc"), icon: "📋" },
+                { kind: "parallel",   name: t("workflows.templates.parallel.name"),   desc: t("workflows.templates.parallel.desc"),   icon: "⚡" },
+                { kind: "approval",   name: t("workflows.templates.approval.name"),   desc: t("workflows.templates.approval.desc"),   icon: "👤" },
+                { kind: "saga",       name: t("workflows.templates.saga.name"),       desc: t("workflows.templates.saga.desc"),       icon: "🔄" },
               ] as const).map(wf => (
                 <motion.div key={wf.kind} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
                   <GlassCard style={{ cursor: runningDemo ? "wait" : "default" }}>
@@ -372,10 +375,10 @@ export function AutomationPage() {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <span style={{ fontSize: 10, color: "var(--accent-2)", fontWeight: 500, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", borderRadius: 20, padding: "2px 8px" }}>
-                        {wf.trigger}
+                        {t("workflows.trigger")}
                       </span>
                       <GoldButton onClick={() => runDemoWorkflow(wf.kind)} disabled={!!runningDemo}>
-                        {runningDemo === wf.kind ? "Starting…" : "▶ Run"}
+                        {runningDemo === wf.kind ? t("workflows.starting") : t("workflows.run")}
                       </GoldButton>
                     </div>
                   </GlassCard>
@@ -386,7 +389,7 @@ export function AutomationPage() {
 
           {/* Pending approvals */}
           <GlassCard lift={false}>
-            <div style={S.cardTitle}>Pending Approvals</div>
+            <div style={S.cardTitle}>{t("approvals.title")}</div>
             <ApprovalsList />
           </GlassCard>
         </div>
@@ -397,6 +400,7 @@ export function AutomationPage() {
 
 function ApprovalsList() {
   type Approval = { run_id: string; step_id: string; step_name: string; requested_at: number };
+  const { t } = useTranslation("automation");
   const toast = useToast();
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -415,14 +419,14 @@ function ApprovalsList() {
     try {
       const r = await apiFetch(`/api/workflows/approvals/${run_id}/${step_id}/${action}`, { method: "POST" });
       if (!r.ok) throw new Error();
-      toast(`Step ${action}d`, "ok");
+      toast(action === "approve" ? t("approvals.toast.approved") : t("approvals.toast.rejected"), "ok");
       setApprovals(p => p.filter(a => !(a.run_id === run_id && a.step_id === step_id)));
-    } catch { toast(`Failed to ${action}`, "err"); }
+    } catch { toast(action === "approve" ? t("approvals.toast.approveFailed") : t("approvals.toast.rejectFailed"), "err"); }
     finally { setBusy(null); }
   };
 
   if (approvals.length === 0) return (
-    <div style={{ padding: "12px 18px", color: "var(--t4)", fontSize: 13 }}>No pending approvals.</div>
+    <div style={{ padding: "12px 18px", color: "var(--t4)", fontSize: 13 }}>{t("approvals.empty")}</div>
   );
 
   return (
@@ -431,18 +435,18 @@ function ApprovalsList() {
         <div key={`${a.run_id}:${a.step_id}`} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{a.step_name}</div>
-            <div style={{ fontSize: 11, color: "var(--t4)" }}>run {a.run_id.slice(0, 8)}…</div>
+            <div style={{ fontSize: 11, color: "var(--t4)" }}>{t("approvals.runId", { id: a.run_id.slice(0, 8) })}</div>
           </div>
           <button
             onClick={() => decide(a.run_id, a.step_id, "approve")}
             disabled={!!busy}
             style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: C.greenBright, color: "#fff" }}
-          >Approve</button>
+          >{t("approvals.approve")}</button>
           <button
             onClick={() => decide(a.run_id, a.step_id, "reject")}
             disabled={!!busy}
             style={{ padding: "5px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: C.red, color: "#fff" }}
-          >Reject</button>
+          >{t("approvals.reject")}</button>
         </div>
       ))}
     </div>

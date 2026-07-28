@@ -1,0 +1,145 @@
+{
+  "page": {
+    "title": "المراقبة",
+    "subtitle": "الصحة، والمقاييس، والتتبّع، والتنبيهات، والتدقيق — كل حالة المنصة في مكان واحد"
+  },
+  "tabs": {
+    "system": "النظام",
+    "ai": "تحليلات الذكاء الاصطناعي",
+    "workflow": "سير العمل",
+    "marketplace": "المتجر",
+    "billing": "الفوترة",
+    "plugins": "صحة الإضافات",
+    "sandbox": "وضع الحماية",
+    "events": "ناقل الأحداث",
+    "security": "الأمان والتدقيق",
+    "alerts": "التنبيهات والتتبّع"
+  },
+  "common": {
+    "statusLabels": {
+      "healthy": "سليم",
+      "degraded": "متدهور",
+      "unhealthy": "غير سليم",
+      "unknown": "غير معروف"
+    },
+    "loadErrorTitle": "تعذر تحميل هذه البيانات",
+    "retry": "إعادة المحاولة",
+    "emptyDefault": "لا يوجد شيء هنا بعد"
+  },
+  "systemTab": {
+    "loadError": "تعذر تحميل صحة النظام.",
+    "overallStatus": "الحالة العامة",
+    "uptimeLabel": "مدة التشغيل {{hours}} س",
+    "resourceUsage": "استخدام الموارد",
+    "cpu": "المعالج",
+    "memoryRss": "الذاكرة (RSS)",
+    "diskUsed": "المساحة المستخدمة",
+    "openFds": "واصفات الملفات المفتوحة",
+    "networkSent": "بيانات الشبكة المُرسَلة",
+    "networkReceived": "بيانات الشبكة المُستلَمة",
+    "httpTraffic": "حركة HTTP",
+    "totalRequests": "إجمالي الطلبات",
+    "errors5xx": "أخطاء 5xx",
+    "avgLatency": "متوسط زمن الاستجابة",
+    "p95Latency": "زمن الاستجابة P95"
+  },
+  "aiTab": {
+    "loadError": "تعذر تحميل مقاييس الذكاء الاصطناعي.",
+    "descriptionPrefix": "إجماليات مجمّعة عبر جميع المزوّدين منذ بدء تشغيل العملية. لتفصيل التكلفة حسب المزوّد/النموذج، انظر تبويب",
+    "linkLabel": "توجيه الذكاء الاصطناعي ← تحليلات التكلفة",
+    "descriptionSuffix": ".",
+    "totalRequests": "إجمالي الطلبات",
+    "inputTokens": "رموز الإدخال",
+    "outputTokens": "رموز الإخراج",
+    "totalSpend": "إجمالي الإنفاق",
+    "providerFailures": "أعطال المزوّدين",
+    "activeStreams": "التدفقات النشطة",
+    "avgLatency": "متوسط زمن الاستجابة",
+    "p95Latency": "زمن الاستجابة P95",
+    "p99Latency": "زمن الاستجابة P99"
+  },
+  "workflowTab": {
+    "loadError": "تعذر تحميل مقاييس سير العمل.",
+    "totalRuns": "إجمالي التشغيلات",
+    "currentlyActive": "نشطة حاليًا",
+    "successful": "ناجحة",
+    "failed": "فاشلة",
+    "successRate": "نسبة النجاح"
+  },
+  "marketplaceTab": {
+    "loadError": "تعذر تحميل مقاييس المتجر.",
+    "storeBackend": "نظام تخزين المتجر",
+    "installs": "التثبيتات",
+    "publishes": "عمليات النشر"
+  },
+  "billingTab": {
+    "loadError": "تعذر تحميل مقاييس الفوترة.",
+    "billingSubsystem": "نظام الفوترة",
+    "descriptionPrefix": "للإيرادات والفواتير والاشتراكات الخاصة بالمنظمة، انظر صفحة",
+    "linkLabel": "الفوترة",
+    "descriptionSuffix": ".",
+    "billingEventsProcessed": "أحداث الفوترة المُعالَجة"
+  },
+  "pluginsTab": {
+    "loadError": "تعذر تحميل صحة الإضافات/الخدمات.",
+    "pluginLoader": "محمّل الإضافات",
+    "descriptionPrefix": "لتفاصيل تثبيت كل إضافة، انظر صفحة",
+    "linkLabel": "الإضافات",
+    "descriptionSuffix": ".",
+    "backgroundServices": "الخدمات الخلفية",
+    "uptimeLabel": "مدة التشغيل {{minutes}} د",
+    "restartsLabel": "عمليات إعادة التشغيل {{count}}",
+    "serviceStates": {
+      "running": "قيد التشغيل",
+      "starting": "قيد البدء",
+      "stopped": "متوقفة",
+      "stopping": "قيد الإيقاف",
+      "failed": "فشلت"
+    }
+  },
+  "sandboxTab": {
+    "loadError": "تعذر تحميل مقاييس وضع الحماية.",
+    "descriptionPrefix": "لسجلات كل عامل معالجة وطلبات الأذونات، انظر صفحة",
+    "linkLabel": "وضع الحماية",
+    "descriptionSuffix": ".",
+    "runningWorkers": "عمال المعالجة النشطون",
+    "crashedWorkers": "عمال المعالجة المتعطلون",
+    "cpuSecondsRunning": "ثواني المعالج (قيد التشغيل)",
+    "memoryRunning": "الذاكرة (قيد التشغيل)"
+  },
+  "eventsTab": {
+    "loadError": "تعذر تحميل حالة ناقل الأحداث.",
+    "probeNotRegistered": "مسبار ناقل الأحداث غير مسجَّل.",
+    "backendLabel": "نظام التخزين: {{backend}}",
+    "backendUnknown": "غير معروف",
+    "activeSubscriptions": "الاشتراكات النشطة",
+    "replayBufferSize": "حجم مخزن إعادة التشغيل",
+    "deadLetters": "الرسائل الميتة",
+    "subscriptionsByPattern": "الاشتراكات حسب النمط"
+  },
+  "securityTab": {
+    "activityTitle": "النشاط",
+    "groupSecurity": "الأمان",
+    "groupOrganization": "المنظمة",
+    "groupOrganizationSelectOrg": "المنظمة (اختر منظمة)",
+    "emptyMessage": "لا يوجد نشاط أمان أو نشاط للمنظمة مسجَّل بعد."
+  },
+  "alertsTab": {
+    "loadError": "تعذر تحميل بيانات التنبيهات/التتبّع.",
+    "subTabRules": "القواعد ({{count}})",
+    "subTabHistory": "السجل",
+    "subTabHistoryOpen": "السجل — {{count}} مفتوح",
+    "subTabTraces": "التتبّعات ({{count}})",
+    "noRules": "لا توجد قواعد تنبيه مُهيّأة.",
+    "noAlertsFired": "لم يُطلق أي تنبيه.",
+    "noTraces": "لا توجد تتبّعات مسجَّلة بعد.",
+    "saving": "…",
+    "ruleEnabled": "مفعّلة",
+    "ruleDisabled": "معطّلة",
+    "toastRuleEnabled": "تم تفعيل القاعدة",
+    "toastRuleDisabled": "تم تعطيل القاعدة",
+    "toastToggleFailed": "تعذر تبديل حالة القاعدة",
+    "historyStatusResolved": "تم الحل",
+    "historyStatusOpen": "مفتوح"
+  }
+}

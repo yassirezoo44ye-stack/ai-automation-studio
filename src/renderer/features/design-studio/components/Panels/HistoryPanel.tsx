@@ -3,6 +3,7 @@
  * Subscribes to CommandExecuted/Undone/Redone design bus events to stay live.
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { commandManager } from "../../core/commands/CommandManager";
 import { designBus } from "../../core/events/DesignEventBus";
 
@@ -20,6 +21,7 @@ const s: Record<string, React.CSSProperties> = {
 };
 
 export function HistoryPanel() {
+  const { t } = useTranslation("designStudio");
   const [entries, setEntries] = useState(() => commandManager.history());
 
   const refresh = () => {
@@ -37,10 +39,10 @@ export function HistoryPanel() {
 
   return (
     <div style={s.root}>
-      <div style={s.header}>History ({entries.length})</div>
+      <div style={s.header}>{t("historyPanel.title", { count: entries.length })}</div>
 
-      <div style={s.list} role="list" aria-label="Command history">
-        {entries.length === 0 && <div style={s.empty}>No history yet</div>}
+      <div style={s.list} role="list" aria-label={t("historyPanel.listAriaLabel")}>
+        {entries.length === 0 && <div style={s.empty}>{t("historyPanel.empty")}</div>}
         {entries.map((entry, idx) => (
           <div
             key={idx}
@@ -66,14 +68,14 @@ export function HistoryPanel() {
           style={{ ...s.footerBtn, opacity: commandManager.canUndo() ? 1 : 0.4 }}
           disabled={!commandManager.canUndo()}
           onClick={() => commandManager.undo(null as never)}
-          aria-label="Undo"
-        >↩ Undo</button>
+          aria-label={t("historyPanel.undoAriaLabel")}
+        >↩ {t("historyPanel.undo")}</button>
         <button
           style={{ ...s.footerBtn, opacity: commandManager.canRedo() ? 1 : 0.4 }}
           disabled={!commandManager.canRedo()}
           onClick={() => commandManager.redo(null as never)}
-          aria-label="Redo"
-        >↪ Redo</button>
+          aria-label={t("historyPanel.redoAriaLabel")}
+        >↪ {t("historyPanel.redo")}</button>
       </div>
     </div>
   );

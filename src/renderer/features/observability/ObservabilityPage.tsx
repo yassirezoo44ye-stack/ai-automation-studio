@@ -9,6 +9,7 @@
  * tabs here link out rather than duplicating those views.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { S } from "../../styles/theme";
 import { GoldButton } from "../../shared/ui/gold";
 import { SystemOverviewTab } from "./tabs/SystemOverviewTab";
@@ -26,38 +27,28 @@ type Tab =
   | "system" | "ai" | "workflow" | "marketplace" | "billing"
   | "plugins" | "sandbox" | "events" | "security" | "alerts";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "system",      label: "System" },
-  { id: "ai",           label: "AI Analytics" },
-  { id: "workflow",     label: "Workflow" },
-  { id: "marketplace",  label: "Marketplace" },
-  { id: "billing",      label: "Billing" },
-  { id: "plugins",      label: "Plugin Health" },
-  { id: "sandbox",      label: "Sandbox" },
-  { id: "events",       label: "Event Bus" },
-  { id: "security",     label: "Security & Audit" },
-  { id: "alerts",       label: "Alerts & Traces" },
-];
+const TAB_IDS: Tab[] = ["system", "ai", "workflow", "marketplace", "billing", "plugins", "sandbox", "events", "security", "alerts"];
 
 export function ObservabilityPage() {
+  const { t } = useTranslation("observability");
   const [tab, setTab] = useState<Tab>("system");
 
   return (
     <>
       <header style={S.header}>
-        <span style={S.headerTitle}>Observability</span>
-        <span style={S.headerSub}>Health, metrics, tracing, alerting, and audit — one place for platform state</span>
+        <span style={S.headerTitle}>{t("page.title")}</span>
+        <span style={S.headerSub}>{t("page.subtitle")}</span>
       </header>
 
       <div style={{ display: "flex", gap: 6, padding: "12px 24px 0", flexWrap: "wrap" }}>
-        {TABS.map(t => (
+        {TAB_IDS.map(id => (
           <GoldButton
-            key={t.id}
-            variant={tab === t.id ? "primary" : "ghost"}
-            onClick={() => setTab(t.id)}
+            key={id}
+            variant={tab === id ? "primary" : "ghost"}
+            onClick={() => setTab(id)}
             style={{ padding: "7px 14px", fontSize: 12 }}
           >
-            {t.label}
+            {t(`tabs.${id}`)}
           </GoldButton>
         ))}
       </div>

@@ -5,6 +5,7 @@
  */
 import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
+import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
@@ -31,6 +32,7 @@ interface ChatTabProps {
 }
 
 export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
+  const { t } = useTranslation("ai");
   const toast = useToast();
   const [projectId, setProjectId] = useState("demo");
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
@@ -124,29 +126,29 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       const path = `/api/tasks/from-conversation/${activeConv}`;
       const d = await apiJSON<{ created?: unknown[] }>(path, { method: "POST" });
       const n = d.created?.length ?? 0;
-      toast(n > 0 ? `Extracted ${n} task${n !== 1 ? "s" : ""}` : "No clear tasks found", n > 0 ? "ok" : "info");
+      toast(n > 0 ? t("chatTab.toast.extractedTasks", { count: n }) : t("chatTab.toast.noTasksFound"), n > 0 ? "ok" : "info");
       if (n > 0) { setShowTasks(true); loadInlineTasks(); }
     } catch (err) {
-      toast(describeError(err, "Failed to extract tasks"), "err");
+      toast(describeError(err, t("chatTab.toast.extractTasksFailed")), "err");
     } finally {
       setExtracting(false);
     }
   }
 
-  async function setTaskStatus(t: Task, status: string) {
-    if (pendingTaskIds.has(t.id)) return; // prevent duplicate submissions for this task
-    setPendingTaskIds(prev => new Set(prev).add(t.id));
-    setInlineTasks(prev => prev.map(x => x.id === t.id ? { ...x, status: status as Task["status"] } : x));
+  async function setTaskStatus(task: Task, status: string) {
+    if (pendingTaskIds.has(task.id)) return; // prevent duplicate submissions for this task
+    setPendingTaskIds(prev => new Set(prev).add(task.id));
+    setInlineTasks(prev => prev.map(x => x.id === task.id ? { ...x, status: status as Task["status"] } : x));
     try {
-      await apiFetch(`/api/tasks/${t.id}`, {
+      await apiFetch(`/api/tasks/${task.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
     } catch (err) {
-      toast(describeError(err, "Failed to update task — reverting"), "err");
+      toast(describeError(err, t("chatTab.toast.updateTaskFailed")), "err");
       loadInlineTasks(); // resync with server truth after the optimistic update failed
     } finally {
-      setPendingTaskIds(prev => { const next = new Set(prev); next.delete(t.id); return next; });
+      setPendingTaskIds(prev => { const next = new Set(prev); next.delete(task.id); return next; });
     }
   }
 
@@ -160,7 +162,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       if (activeConv === cid) { setActiveConv(null); setMessages([]); }
       loadConvs();
     } catch (err) {
-      toast(describeError(err, "Failed to delete conversation"), "err");
+      toast(describeError(err, t("chatTab.toast.deleteConversationFailed")), "err");
     } finally {
       setDeletingIds(prev => { const next = new Set(prev); next.delete(cid); return next; });
     }
@@ -175,9 +177,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       const blob = await r.blob();
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "conversation.md"; a.click();
       URL.revokeObjectURL(a.href);
-      toast("Exported as Markdown");
+      toast(t("chatTab.toast.exportedMarkdown"));
     } catch (err) {
-      toast(describeError(err, "Export failed"), "err");
+      toast(describeError(err, t("chatTab.toast.exportFailed")), "err");
     } finally {
       setExporting(false);
     }
@@ -228,7 +230,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             loadConvs();
           }
           else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
-          else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: `⚠️ ${ev.message}` } : m)); closed = true; break; }
+          else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
           else if (ev.type === "done")   { loadConvs(); closed = true; }
         }
         if (closed) break;
@@ -236,7 +238,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
         const msg = (err as Error).message ?? "";
-        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: msg.includes("fetch") ? "⚠️ Backend offline" : `⚠️ ${msg}` } : m));
+        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg }) } : m));
       }
     } finally { setStreaming(false); abortRef.current = null; }
   }
@@ -262,7 +264,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       <div style={{ width: 230, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--bg-panel)", backdropFilter: "blur(16px)", borderRight: "1px solid var(--border)" }}>
         <div style={{ padding: "10px 10px 6px", display: "flex", gap: 6 }}>
           <select value={projectId} onChange={e => setProjectId(e.target.value)} className="g-input" style={{ flex: 1, fontSize: 12, padding: "8px 12px" }}>
-            <option value="demo">Demo Project</option>
+            <option value="demo">{t("chatTab.sidebar.demoProject")}</option>
             {projects.filter(p => p.id !== "00000000-0000-0000-0000-000000000001").map(p => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
@@ -270,7 +272,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         </div>
         <div style={{ padding: "0 10px 6px" }}>
           <select value={agentId} onChange={e => setAgentId(e.target.value)} className="g-input" style={{ width: "100%", fontSize: 12, padding: "8px 12px" }}>
-            <option value="default">🤖 Claude (default)</option>
+            <option value="default">{t("chatTab.sidebar.defaultAgent")}</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>)}
           </select>
         </div>
@@ -279,21 +281,21 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
             style={{ flex: 1, fontSize: 12 }}
           >
-            + New Chat
+            {t("chatTab.sidebar.newChat")}
           </GoldButton>
           {activeConv && (
-            <button onClick={exportConv} disabled={exporting} title="Export as Markdown" className="btn-icon" style={{ width: 36 }}>
+            <button onClick={exportConv} disabled={exporting} title={t("chatTab.sidebar.exportTitle")} className="btn-icon" style={{ width: 36 }}>
               {exporting ? "…" : "↓"}
             </button>
           )}
           {activeConv && (
-            <button onClick={extractTasks} disabled={extracting} title="Extract tasks" className="btn-icon" style={{ width: 36 }}>
+            <button onClick={extractTasks} disabled={extracting} title={t("chatTab.sidebar.extractTasksTitle")} className="btn-icon" style={{ width: 36 }}>
               {extracting ? "…" : "✅"}
             </button>
           )}
         </div>
         <div style={{ padding: "0 8px 6px" }}>
-          <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search…" className="g-input" style={{ fontSize: 12, padding: "6px 10px" }} />
+          <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder={t("chatTab.sidebar.searchPlaceholder")} className="g-input" style={{ fontSize: 12, padding: "6px 10px" }} />
         </div>
         <div style={{ flex: 1, overflowY: "auto", position: "relative" }}>
           {convsStatus === "refreshing" && (
@@ -301,15 +303,15 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               <LoadingSpinner size={14} label="" />
             </div>
           )}
-          {convsStatus === "loading" && <LoadingSpinner label="Loading conversations…" />}
+          {convsStatus === "loading" && <LoadingSpinner label={t("chatTab.sidebar.loading")} />}
           {convsStatus === "error" && (
-            <ErrorState compact message={convsError ?? "Failed to load conversations."} suggestedFix={convsFix} onRetry={loadConvs} />
+            <ErrorState compact message={convsError ?? t("chatTab.sidebar.loadError")} suggestedFix={convsFix} onRetry={loadConvs} />
           )}
           {convsStatus === "empty" && (
-            <EmptyState compact title="No conversations yet" description="Start a new chat to see it here." />
+            <EmptyState compact title={t("chatTab.sidebar.emptyTitle")} description={t("chatTab.sidebar.emptyDesc")} />
           )}
           {(convsStatus === "success" || convsStatus === "refreshing") && filteredConvs.length === 0 && (
-            <EmptyState compact title="No matches" description={`Nothing found for "${searchQ}".`} />
+            <EmptyState compact title={t("chatTab.sidebar.noMatchesTitle")} description={t("chatTab.sidebar.noMatchesDesc", { query: searchQ })} />
           )}
           {filteredConvs.map(c => {
             const isDeleting = deletingIds.has(c.id);
@@ -333,8 +335,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     role="button" tabIndex={0}
                     onClick={e => { if (!isDeleting) deleteConv(e, c.id); }}
                     onKeyDown={e => { if (!isDeleting && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); void deleteConv(e, c.id); } }}
-                    title={isDeleting ? "Deleting…" : "Delete conversation"}
-                    aria-label={isDeleting ? "Deleting…" : "Delete conversation"}
+                    title={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
+                    aria-label={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
                     style={{ color: "var(--t5)", fontSize: 11, cursor: isDeleting ? "default" : "pointer" }}
                   >
                     {isDeleting ? "…" : "✕"}
@@ -352,10 +354,10 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             so "Extract tasks" always gives visible feedback instead of silently doing nothing. */}
         {showTasks && (inlineTasksStatus === "loading" || inlineTasksStatus === "error" || inlineTasks.length > 0) && (
           <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--accent-dim)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ta)", flexShrink: 0 }}>TASKS</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ta)", flexShrink: 0 }}>{t("chatTab.tasksBar.label")}</span>
             {inlineTasksStatus === "loading" && <LoadingSpinner size={14} label="" />}
             {inlineTasksStatus === "error" && (
-              <ErrorState compact message={inlineTasksError ?? "Failed to load tasks."} suggestedFix={inlineTasksFix} onRetry={loadInlineTasks} />
+              <ErrorState compact message={inlineTasksError ?? t("chatTab.tasksBar.loadError")} suggestedFix={inlineTasksFix} onRetry={loadInlineTasks} />
             )}
             {inlineTasksStatus !== "loading" && inlineTasksStatus !== "error" && inlineTasks.map(t => {
               const isPending = pendingTaskIds.has(t.id);
@@ -381,21 +383,21 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
         {/* Messages */}
         <div style={{ flex: 1, overflowY: "auto", padding: "32px 0", display: "flex", flexDirection: "column", gap: 0, position: "relative" }}>
-          {showMessagesLoading && <LoadingSpinner fullPage label="Loading conversation…" />}
+          {showMessagesLoading && <LoadingSpinner fullPage label={t("chatTab.messages.loading")} />}
           {showMessagesError && (
-            <ErrorState message={messagesError ?? "Failed to load this conversation."} suggestedFix={messagesFix} onRetry={reloadMessages} />
+            <ErrorState message={messagesError ?? t("chatTab.messages.loadError")} suggestedFix={messagesFix} onRetry={reloadMessages} />
           )}
           {!showMessagesLoading && !showMessagesError && messages.length === 0 && (
             <div style={{ margin: "auto", textAlign: "center", color: "var(--t5)", paddingBottom: 80, animation: "fadeIn .4s ease" }}>
               <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>{activeAgent ? activeAgent.name : "Axon AI"}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>{activeAgent ? activeAgent.name : t("chatTab.messages.emptyAgentName")}</div>
               <div style={{ fontSize: 14, color: "var(--t4)", maxWidth: 320, lineHeight: 1.65, marginTop: 6 }}>
-                {activeAgent?.description ?? "Start a conversation or pick one from the sidebar."}
+                {activeAgent?.description ?? t("chatTab.messages.emptyDescription")}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
-                {["Write Python code", "Explain a concept", "Debug my script", "Build a web app"].map(s => (
+                {[t("chatTab.messages.suggestion1"), t("chatTab.messages.suggestion2"), t("chatTab.messages.suggestion3"), t("chatTab.messages.suggestion4")].map(s => (
                   <GoldButton key={s} variant="ghost" onClick={() => setPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
                 ))}
               </div>
@@ -416,7 +418,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
-            placeholder="Message… (Enter to send, Shift+Enter for new line)"
+            placeholder={t("chatTab.input.placeholder")}
             className="g-input" style={{ flex: 1, maxHeight: 160, resize: "none" }} rows={1}
           />
           {streaming
@@ -434,6 +436,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 const MessageRow = memo(function MessageRow({ msg, isLast, agentName, agentAvatar }: {
   msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
 }) {
+  const { t } = useTranslation("ai");
   const rowStyle: CSSProperties = msg.role === "user"
     ? { display: "flex", gap: 14, alignItems: "flex-start", padding: "16px 32px", maxWidth: 900, width: "100%", alignSelf: "flex-end", flexDirection: "row-reverse", animation: "slideIn .22s ease" }
     : { display: "flex", gap: 14, alignItems: "flex-start", padding: "16px 32px", maxWidth: 900, width: "100%", animation: "slideIn .22s ease" };
@@ -451,8 +454,8 @@ const MessageRow = memo(function MessageRow({ msg, isLast, agentName, agentAvata
           color: msg.role === "user" ? "var(--t5)" : "var(--ta)",
           justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
         }}>
-          {msg.role === "user" ? "You" : (agentName ?? "Claude")}
-          <span style={{ fontSize: 10, color: "var(--t5)", fontWeight: 400 }}>{isLast ? "now" : ""}</span>
+          {msg.role === "user" ? t("chatTab.messages.you") : (agentName ?? t("chatTab.messages.assistantFallback"))}
+          <span style={{ fontSize: 10, color: "var(--t5)", fontWeight: 400 }}>{isLast ? t("chatTab.messages.now") : ""}</span>
         </div>
         {msg.role === "user" ? (
           <div style={{

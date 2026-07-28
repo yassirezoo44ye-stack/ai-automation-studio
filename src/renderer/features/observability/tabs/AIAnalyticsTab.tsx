@@ -7,11 +7,13 @@
  * Data: GET /api/diagnostics/metrics.
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { CardGrid, ErrorNote, MetricCard, Skeletons } from "../components";
 import type { MetricsSnapshot } from "../types";
 
 export function AIAnalyticsTab() {
+  const { t } = useTranslation("observability");
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [error, setError] = useState(false);
 
@@ -32,7 +34,7 @@ export function AIAnalyticsTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load AI metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>{t("aiTab.loadError")}</ErrorNote>;
   if (!metrics) return <Skeletons n={3} />;
 
   const c = metrics.counters;
@@ -42,20 +44,19 @@ export function AIAnalyticsTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5 }}>
-        Aggregate totals across every provider since the process started. For
-        per-provider/per-model cost breakdown, see the{" "}
-        <span style={{ color: "var(--accent-2)" }}>AI Routing → Cost Analytics</span> tab.
+        {t("aiTab.descriptionPrefix")}{" "}
+        <span style={{ color: "var(--accent-2)" }}>{t("aiTab.linkLabel")}</span> {t("aiTab.descriptionSuffix")}
       </div>
       <CardGrid>
-        <MetricCard label="Total requests" value={c.ai_requests_total ?? 0} />
-        <MetricCard label="Input tokens" value={c.ai_tokens_input_total ?? 0} />
-        <MetricCard label="Output tokens" value={c.ai_tokens_output_total ?? 0} />
-        <MetricCard label="Total spend" value={(c.ai_cost_usd_total ?? 0).toFixed(4)} suffix=" USD" />
-        <MetricCard label="Provider failures" value={c.ai_provider_failures_total ?? 0} />
-        <MetricCard label="Active streams" value={g.ai_active_streams ?? 0} />
-        <MetricCard label="Avg latency" value={lat?.avg ?? 0} suffix=" ms" />
-        <MetricCard label="P95 latency" value={lat?.p95 ?? 0} suffix=" ms" />
-        <MetricCard label="P99 latency" value={lat?.p99 ?? 0} suffix=" ms" />
+        <MetricCard label={t("aiTab.totalRequests")} value={c.ai_requests_total ?? 0} />
+        <MetricCard label={t("aiTab.inputTokens")} value={c.ai_tokens_input_total ?? 0} />
+        <MetricCard label={t("aiTab.outputTokens")} value={c.ai_tokens_output_total ?? 0} />
+        <MetricCard label={t("aiTab.totalSpend")} value={(c.ai_cost_usd_total ?? 0).toFixed(4)} suffix=" USD" />
+        <MetricCard label={t("aiTab.providerFailures")} value={c.ai_provider_failures_total ?? 0} />
+        <MetricCard label={t("aiTab.activeStreams")} value={g.ai_active_streams ?? 0} />
+        <MetricCard label={t("aiTab.avgLatency")} value={lat?.avg ?? 0} suffix=" ms" />
+        <MetricCard label={t("aiTab.p95Latency")} value={lat?.p95 ?? 0} suffix=" ms" />
+        <MetricCard label={t("aiTab.p99Latency")} value={lat?.p99 ?? 0} suffix=" ms" />
       </CardGrid>
     </div>
   );

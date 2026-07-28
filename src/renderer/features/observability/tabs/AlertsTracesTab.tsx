@@ -5,6 +5,7 @@
  *       GET /api/diagnostics/alerts/history, GET /api/diagnostics/traces.
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 import { GlassCard, GoldButton } from "../../../shared/ui/gold";
@@ -14,6 +15,7 @@ import type { AlertHistoryEntry, AlertRule, TraceSpan } from "../types";
 type SubTab = "rules" | "history" | "traces";
 
 export function AlertsTracesTab() {
+  const { t } = useTranslation("observability");
   const toast = useToast();
   const [sub, setSub] = useState<SubTab>("rules");
   const [rules, setRules] = useState<AlertRule[] | null>(null);
@@ -49,16 +51,16 @@ export function AlertsTracesTab() {
     try {
       const r = await apiFetch(`/api/diagnostics/alerts/rules/${rule.id}/toggle?enabled=${!rule.enabled}`, { method: "POST" });
       if (!r.ok) throw new Error();
-      toast(rule.enabled ? "Rule disabled" : "Rule enabled", "ok");
+      toast(rule.enabled ? t("alertsTab.toastRuleDisabled") : t("alertsTab.toastRuleEnabled"), "ok");
       await load();
     } catch {
-      toast("Could not toggle rule", "err");
+      toast(t("alertsTab.toastToggleFailed"), "err");
     } finally {
       setBusy(null);
     }
   };
 
-  if (error && !rules) return <ErrorNote onRetry={() => void load()}>Could not load alerting/tracing data.</ErrorNote>;
+  if (error && !rules) return <ErrorNote onRetry={() => void load()}>{t("alertsTab.loadError")}</ErrorNote>;
   if (!rules || !history || !traces) return <Skeletons n={3} />;
 
   const openCount = history.filter(h => !h.resolved_at).length;
@@ -67,9 +69,9 @@ export function AlertsTracesTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", gap: 6 }}>
         {([
-          ["rules", `Rules (${rules.length})`],
-          ["history", `History${openCount ? ` — ${openCount} open` : ""}`],
-          ["traces", `Traces (${traces.length})`],
+          ["rules", t("alertsTab.subTabRules", { count: rules.length })],
+          ["history", openCount ? t("alertsTab.subTabHistoryOpen", { count: openCount }) : t("alertsTab.subTabHistory")],
+          ["traces", t("alertsTab.subTabTraces", { count: traces.length })],
         ] as [SubTab, string][]).map(([id, label]) => (
           <GoldButton key={id} variant={sub === id ? "primary" : "ghost"} onClick={() => setSub(id)} style={{ padding: "6px 12px", fontSize: 11 }}>
             {label}
@@ -78,7 +80,7 @@ export function AlertsTracesTab() {
       </div>
 
       {sub === "rules" && (
-        rules.length === 0 ? <EmptyNote>No alert rules configured.</EmptyNote> : (
+        rules.length === 0 ? <EmptyNote>{t("alertsTab.noRules")}</EmptyNote> : (
           <GlassCard lift={false}>
             {rules.map((rule, i) => (
               <div key={rule.id} style={{
@@ -93,7 +95,7 @@ export function AlertsTracesTab() {
                   disabled={busy === rule.id}
                   style={{ padding: "4px 10px", fontSize: 11 }}
                 >
-                  {busy === rule.id ? "…" : rule.enabled ? "Enabled" : "Disabled"}
+                  {busy === rule.id ? t("alertsTab.saving") : rule.enabled ? t("alertsTab.ruleEnabled") : t("alertsTab.ruleDisabled")}
                 </GoldButton>
               </div>
             ))}
@@ -102,7 +104,7 @@ export function AlertsTracesTab() {
       )}
 
       {sub === "history" && (
-        history.length === 0 ? <EmptyNote>No alerts have fired.</EmptyNote> : (
+        history.length === 0 ? <EmptyNote>{t("alertsTab.noAlertsFired")}</EmptyNote> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {history.map(h => (
               <GlassCard
@@ -116,7 +118,7 @@ export function AlertsTracesTab() {
                   fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 60,
                   color: h.resolved_at ? "var(--t4)" : "var(--red)",
                 }}>
-                  {h.resolved_at ? "resolved" : "open"}
+                  {h.resolved_at ? t("alertsTab.historyStatusResolved") : t("alertsTab.historyStatusOpen")}
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{h.rule_name}</span>
                 <span style={{ fontSize: 11, color: "var(--t3)", flex: 1 }}>{h.message}</span>
@@ -128,7 +130,7 @@ export function AlertsTracesTab() {
       )}
 
       {sub === "traces" && (
-        traces.length === 0 ? <EmptyNote>No traces recorded yet.</EmptyNote> : (
+        traces.length === 0 ? <EmptyNote>{t("alertsTab.noTraces")}</EmptyNote> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {traces.map(t => (
               <GlassCard

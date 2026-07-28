@@ -10,12 +10,14 @@
  * ActivityTimeline component (see shared/ui/notifications).
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useOrg } from "../../../contexts/OrgContext";
 import { ActivityTimeline, type TimelineEntry } from "../../../shared/ui/notifications";
 import type { ActivityLogEntry, AuditLogEntry } from "../types";
 
 export function SecurityAuditTab() {
+  const { t } = useTranslation("observability");
   const { currentOrgId } = useOrg();
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -55,16 +57,16 @@ export function SecurityAuditTab() {
 
   return (
     <div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>Activity</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 12 }}>{t("securityTab.activityTitle")}</div>
       <ActivityTimeline
         entries={entries}
         groups={[
-          { id: "security", label: "Security" },
-          { id: "organization", label: currentOrgId ? "Organization" : "Organization (select an org)" },
+          { id: "security", label: t("securityTab.groupSecurity") },
+          { id: "organization", label: currentOrgId ? t("securityTab.groupOrganization") : t("securityTab.groupOrganizationSelectOrg") },
         ]}
         status={status}
         onRetry={() => void load()}
-        emptyMessage="No security or organization activity recorded yet."
+        emptyMessage={t("securityTab.emptyMessage")}
       />
     </div>
   );

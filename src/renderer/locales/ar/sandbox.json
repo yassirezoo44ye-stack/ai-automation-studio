@@ -1,0 +1,70 @@
+{
+  "header": {
+    "title": "بيئة الاختبار"
+  },
+  "noOrg": {
+    "title": "لم يتم اختيار مؤسسة",
+    "descriptionNoOrgs": "أنشئ مؤسسة أولًا.",
+    "descriptionHasOrgs": "اختر واحدة من صفحة المؤسسات.",
+    "action": "الذهاب إلى المؤسسات"
+  },
+  "topTabs": {
+    "workers": "العمليات",
+    "permissionRequests": "طلبات الأذونات",
+    "securityEvents": "أحداث الأمان"
+  },
+  "detailTabs": {
+    "logs": "السجلات",
+    "resourceUsage": "استخدام الموارد"
+  },
+  "status": {
+    "running": "قيد التشغيل",
+    "starting": "قيد البدء",
+    "stopped": "متوقفة",
+    "crashed": "معطّلة"
+  },
+  "severity": {
+    "info": "معلومة",
+    "warning": "تحذير",
+    "error": "خطأ"
+  },
+  "actions": {
+    "details": "التفاصيل",
+    "hide": "إخفاء",
+    "stop": "إيقاف",
+    "approve": "موافقة"
+  },
+  "workersList": {
+    "empty": {
+      "title": "لا توجد عمليات في بيئة الاختبار",
+      "description": "تظهر العمليات هنا عند تثبيت إضافة وتفعيلها من صفحة الإضافات."
+    },
+    "startedMeta": "{{backend}} · بدأت {{date}}"
+  },
+  "permissionRequests": {
+    "empty": "لا توجد طلبات أذونات معلقة"
+  },
+  "securityEvents": {
+    "empty": "لا توجد أحداث أمنية"
+  },
+  "resourceUsage": {
+    "loading": "جارٍ التحميل…",
+    "backend": "المحرك",
+    "status": "الحالة",
+    "cpuSeconds": "ثواني المعالج المستخدمة",
+    "peakMemory": "ذروة الذاكرة (ميجابايت)"
+  },
+  "logsTab": {
+    "loading": "جارٍ تحميل السجلات…",
+    "empty": "لا توجد أحداث مسجلة بعد."
+  },
+  "toast": {
+    "loadWorkersFailed": "تعذر تحميل عمليات بيئة الاختبار",
+    "loadSecurityEventsFailed": "تعذر تحميل أحداث الأمان",
+    "loadPermissionRequestsFailed": "تعذر تحميل طلبات الأذونات",
+    "workerStopped": "تم إيقاف العملية",
+    "stopFailed": "فشل الإيقاف",
+    "approved": "تمت الموافقة",
+    "approvalFailed": "فشلت الموافقة"
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "page": {
+    "title": "AI Routing",
+    "subtitle": "Providers, model catalog, budgets, and real spend from ai_usage_log"
+  },
+  "tabs": {
+    "providers": "Providers",
+    "models": "Models",
+    "budgets": "Budgets",
+    "cost": "Cost Analytics",
+    "usage": "Usage Reports"
+  },
+  "noOrgState": {
+    "title": "No organization selected",
+    "descriptionNoOrgs": "Create an organization first.",
+    "descriptionPickOne": "Pick one from the Organizations page."
+  },
+  "providersTab": {
+    "loadError": {
+      "title": "Could not load provider health",
+      "description": "Something went wrong reaching the server.",
+      "retry": "Retry"
+    },
+    "configured": "configured",
+    "notConfigured": "not configured",
+    "noDefaultModel": "no default model — set the API key to enable",
+    "circuitLabel": "Circuit:",
+    "circuitStates": {
+      "closed": "closed",
+      "open": "open",
+      "half_open": "half-open"
+    }
+  },
+  "modelsTab": {
+    "loadError": {
+      "title": "Could not load the model catalog",
+      "description": "Something went wrong reaching the server.",
+      "retry": "Retry"
+    },
+    "columns": {
+      "model": "Model",
+      "provider": "Provider",
+      "context": "Context",
+      "priceIn": "$/M in",
+      "priceOut": "$/M out",
+      "quality": "Quality",
+      "speed": "Speed",
+      "status": "Status"
+    },
+    "available": "available",
+    "deferred": "deferred"
+  },
+  "budgetsTab": {
+    "filters": {
+      "projectId": "Project ID",
+      "workflowId": "Workflow ID",
+      "agentId": "Agent ID",
+      "placeholder": "org-level",
+      "view": "View"
+    },
+    "loadError": {
+      "title": "Could not load budgets",
+      "description": "Something went wrong reaching the server.",
+      "retry": "Retry"
+    },
+    "scopedBudget": "Scoped budget",
+    "orgBudget": "Organization budget",
+    "metrics": {
+      "tokens": "AI Tokens",
+      "workflow_executions": "Workflow Runs",
+      "api_requests": "API Requests",
+      "storage_mb": "Storage (MB)",
+      "embeddings": "Embeddings",
+      "marketplace_purchases": "Marketplace Purchases",
+      "seats": "Seats",
+      "active_users": "Active Users",
+      "running_agents": "Running Agents"
+    },
+    "limitInvalid": "Limit must be -1 (unlimited) or a non-negative whole number",
+    "limitUpdated": "Limit updated",
+    "limitUpdateFailed": "Could not update limit",
+    "loadFailed": "Could not load budgets",
+    "save": "Save",
+    "saving": "…",
+    "cancel": "Cancel",
+    "edit": "Edit"
+  },
+  "costAnalyticsTab": {
+    "loadError": {
+      "title": "Could not load cost summary",
+      "description": "Something went wrong reaching the server.",
+      "retry": "Retry"
+    },
+    "totalSpend": "Total spend",
+    "recordedCalls": "Recorded calls",
+    "spendByProvider": "Spend by provider",
+    "noCalls": "No AI calls recorded yet.",
+    "spendingLimits": "Spending limits"
+  },
+  "usageReportsTab": {
+    "windows": {
+      "days7": "7 days",
+      "days30": "30 days",
+      "allTime": "All time"
+    },
+    "totalSpendLabel": {
+      "days7": "Total spend — 7 days",
+      "days30": "Total spend — 30 days",
+      "allTime": "Total spend — all time"
+    },
+    "loadError": {
+      "title": "Could not load the usage report",
+      "description": "Something went wrong reaching the server.",
+      "retry": "Retry"
+    },
+    "byProvider": "By provider",
+    "noCalls": "No AI calls recorded in this window.",
+    "columns": {
+      "provider": "Provider",
+      "spend": "Spend"
+    }
+  }
+}

@@ -5,6 +5,7 @@
  * Each inspector is self-contained and only renders when relevant.
  */
 import type { Canvas as FabricCanvas } from "fabric";
+import { useTranslation } from "react-i18next";
 import { PositionInspector }   from "../../features/properties/inspectors/PositionInspector";
 import { AppearanceInspector } from "../../features/properties/inspectors/AppearanceInspector";
 import { TypographyInspector } from "../../features/properties/inspectors/TypographyInspector";
@@ -18,6 +19,8 @@ interface Props {
 }
 
 export function PropertiesPanel({ getCanvas, selectedIds }: Props) {
+  const { t } = useTranslation("designStudio");
+
   if (!selectedIds.length) {
     return (
       <div style={{
@@ -27,7 +30,7 @@ export function PropertiesPanel({ getCanvas, selectedIds }: Props) {
         textAlign: "center",
         lineHeight: 1.5,
       }}>
-        Select an object to edit its properties.
+        {t("propertiesPanel.emptyState")}
       </div>
     );
   }

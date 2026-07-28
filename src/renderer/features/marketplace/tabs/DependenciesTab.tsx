@@ -3,6 +3,7 @@
  * constraints. Data: GET /marketplace/listings/{id}/dependencies
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 
 interface Dependency {
@@ -14,6 +15,7 @@ interface Dependency {
 }
 
 export function DependenciesTab({ listingId }: { listingId: string }) {
+  const { t } = useTranslation("marketplace");
   const [deps, setDeps] = useState<Dependency[] | null>(null);
   // Reset while switching listings — render-time state adjustment.
   const [prevListingId, setPrevListingId] = useState(listingId);
@@ -32,8 +34,8 @@ export function DependenciesTab({ listingId }: { listingId: string }) {
     return () => { alive = false; };
   }, [listingId]);
 
-  if (deps === null) return <div style={{ fontSize: 12, color: "var(--t4)" }}>Loading dependencies…</div>;
-  if (deps.length === 0) return <div style={{ fontSize: 12, color: "var(--t4)" }}>This listing has no dependencies.</div>;
+  if (deps === null) return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("dependencies.loading")}</div>;
+  if (deps.length === 0) return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("dependencies.empty")}</div>;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -53,7 +55,7 @@ export function DependenciesTab({ listingId }: { listingId: string }) {
               background: d.optional ? "var(--bg-card)" : "var(--accent-dim)",
               color: d.optional ? "var(--t4)" : "var(--accent-2)",
             }}>
-              {d.optional ? "OPTIONAL" : "REQUIRED"}
+              {d.optional ? t("dependencies.optional") : t("dependencies.required")}
             </span>
           </div>
         </div>

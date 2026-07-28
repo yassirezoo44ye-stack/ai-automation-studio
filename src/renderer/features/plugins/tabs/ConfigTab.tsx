@@ -7,11 +7,13 @@
  * out of scope for this phase.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 import { GoldButton } from "../../../shared/ui/gold";
 
 export function ConfigTab({ installationId, config }: { installationId: string; config: Record<string, unknown> }) {
+  const { t } = useTranslation("plugins");
   const toast = useToast();
   const [text, setText] = useState(() => JSON.stringify(config, null, 2));
   const [saving, setSaving] = useState(false);
@@ -21,7 +23,7 @@ export function ConfigTab({ installationId, config }: { installationId: string; 
     try {
       parsed = JSON.parse(text);
     } catch {
-      toast("Invalid JSON", "err");
+      toast(t("configTab.invalidJson"), "err");
       return;
     }
     setSaving(true);
@@ -32,11 +34,11 @@ export function ConfigTab({ installationId, config }: { installationId: string; 
       });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        throw new Error(body?.detail?.errors?.join("; ") ?? "Save failed");
+        throw new Error(body?.detail?.errors?.join("; ") ?? t("configTab.saveFailed"));
       }
-      toast("Configuration saved", "ok");
+      toast(t("configTab.saved"), "ok");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Save failed", "err");
+      toast(e instanceof Error ? e.message : t("configTab.saveFailed"), "err");
     } finally {
       setSaving(false);
     }
@@ -56,7 +58,7 @@ export function ConfigTab({ installationId, config }: { installationId: string; 
         }}
       />
       <GoldButton onClick={() => void save()} disabled={saving} style={{ alignSelf: "flex-start" }}>
-        {saving ? "…" : "Save Configuration"}
+        {saving ? "…" : t("configTab.save")}
       </GoldButton>
     </div>
   );

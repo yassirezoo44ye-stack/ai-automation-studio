@@ -4,6 +4,7 @@
  * PlatformProviderRegistry.health() + app/ai/circuit_breaker.py).
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { GlassCard, GoldButton } from "../../../shared/ui/gold";
 import { EmptyState } from "../../../shared/ui/EmptyState";
@@ -21,6 +22,7 @@ const CIRCUIT_COLOR: Record<string, string> = {
 };
 
 export function ProvidersTab() {
+  const { t } = useTranslation("aiRouting");
   const [providers, setProviders] = useState<Record<string, ProviderHealth> | null>(null);
   const [error, setError] = useState(false);
 
@@ -42,9 +44,9 @@ export function ProvidersTab() {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-        title="Could not load provider health"
-        description="Something went wrong reaching the server."
-        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+        title={t("providersTab.loadError.title")}
+        description={t("providersTab.loadError.description")}
+        action={<GoldButton variant="ghost" onClick={() => void load()}>{t("providersTab.loadError.retry")}</GoldButton>}
       />
     );
   }
@@ -63,18 +65,18 @@ export function ProvidersTab() {
         <GlassCard key={p.provider_id} lift={false}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>{p.provider_id}</span>
-            <StatusBadge kind={p.available ? "success" : "neutral"} label={p.available ? "configured" : "not configured"} />
+            <StatusBadge kind={p.available ? "success" : "neutral"} label={p.available ? t("providersTab.configured") : t("providersTab.notConfigured")} />
           </div>
           <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.5, marginBottom: 10 }}>
-            {p.default_model ?? "no default model — set the API key to enable"}
+            {p.default_model ?? t("providersTab.noDefaultModel")}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 11, color: "var(--t4)" }}>Circuit:</span>
+            <span style={{ fontSize: 11, color: "var(--t4)" }}>{t("providersTab.circuitLabel")}</span>
             <span style={{
               fontSize: 11, fontWeight: 700, textTransform: "uppercase",
               color: CIRCUIT_COLOR[p.circuit_state] ?? "var(--t4)",
             }}>
-              {p.circuit_state.replace("_", "-")}
+              {t(`providersTab.circuitStates.${p.circuit_state}`)}
             </span>
           </div>
         </GlassCard>

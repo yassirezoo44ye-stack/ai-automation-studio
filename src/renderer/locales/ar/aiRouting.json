@@ -1,0 +1,123 @@
+{
+  "page": {
+    "title": "توجيه الذكاء الاصطناعي",
+    "subtitle": "مزوّدو الخدمة، كتالوج النماذج، الميزانيات، والإنفاق الفعلي من ai_usage_log"
+  },
+  "tabs": {
+    "providers": "المزوّدون",
+    "models": "النماذج",
+    "budgets": "الميزانيات",
+    "cost": "تحليلات التكلفة",
+    "usage": "تقارير الاستخدام"
+  },
+  "noOrgState": {
+    "title": "لم يتم اختيار منظمة",
+    "descriptionNoOrgs": "أنشئ منظمة أولًا.",
+    "descriptionPickOne": "اختر واحدة من صفحة المنظمات."
+  },
+  "providersTab": {
+    "loadError": {
+      "title": "تعذر تحميل حالة المزوّدين",
+      "description": "حدث خطأ أثناء الاتصال بالخادم.",
+      "retry": "إعادة المحاولة"
+    },
+    "configured": "مهيّأ",
+    "notConfigured": "غير مهيّأ",
+    "noDefaultModel": "لا يوجد نموذج افتراضي — اضبط مفتاح API لتفعيله",
+    "circuitLabel": "القاطع:",
+    "circuitStates": {
+      "closed": "مغلق",
+      "open": "مفتوح",
+      "half_open": "نصف مفتوح"
+    }
+  },
+  "modelsTab": {
+    "loadError": {
+      "title": "تعذر تحميل كتالوج النماذج",
+      "description": "حدث خطأ أثناء الاتصال بالخادم.",
+      "retry": "إعادة المحاولة"
+    },
+    "columns": {
+      "model": "النموذج",
+      "provider": "المزوّد",
+      "context": "السياق",
+      "priceIn": "$/مليون (إدخال)",
+      "priceOut": "$/مليون (إخراج)",
+      "quality": "الجودة",
+      "speed": "السرعة",
+      "status": "الحالة"
+    },
+    "available": "متاح",
+    "deferred": "غير متاح"
+  },
+  "budgetsTab": {
+    "filters": {
+      "projectId": "معرّف المشروع",
+      "workflowId": "معرّف سير العمل",
+      "agentId": "معرّف الوكيل",
+      "placeholder": "على مستوى المنظمة",
+      "view": "عرض"
+    },
+    "loadError": {
+      "title": "تعذر تحميل الميزانيات",
+      "description": "حدث خطأ أثناء الاتصال بالخادم.",
+      "retry": "إعادة المحاولة"
+    },
+    "scopedBudget": "ميزانية محددة النطاق",
+    "orgBudget": "ميزانية المنظمة",
+    "metrics": {
+      "tokens": "رموز الذكاء الاصطناعي (Tokens)",
+      "workflow_executions": "تشغيلات سير العمل",
+      "api_requests": "طلبات API",
+      "storage_mb": "التخزين (ميجابايت)",
+      "embeddings": "المتجهات الدلالية (Embeddings)",
+      "marketplace_purchases": "مشتريات المتجر",
+      "seats": "المقاعد",
+      "active_users": "المستخدمون النشطون",
+      "running_agents": "الوكلاء قيد التشغيل"
+    },
+    "limitInvalid": "يجب أن يكون الحد -1 (غير محدود) أو رقمًا صحيحًا غير سالب",
+    "limitUpdated": "تم تحديث الحد",
+    "limitUpdateFailed": "تعذر تحديث الحد",
+    "loadFailed": "تعذر تحميل الميزانيات",
+    "save": "حفظ",
+    "saving": "…",
+    "cancel": "إلغاء",
+    "edit": "تعديل"
+  },
+  "costAnalyticsTab": {
+    "loadError": {
+      "title": "تعذر تحميل ملخص التكلفة",
+      "description": "حدث خطأ أثناء الاتصال بالخادم.",
+      "retry": "إعادة المحاولة"
+    },
+    "totalSpend": "إجمالي الإنفاق",
+    "recordedCalls": "الاستدعاءات المسجَّلة",
+    "spendByProvider": "الإنفاق حسب المزوّد",
+    "noCalls": "لا توجد استدعاءات ذكاء اصطناعي مسجَّلة بعد.",
+    "spendingLimits": "حدود الإنفاق"
+  },
+  "usageReportsTab": {
+    "windows": {
+      "days7": "7 أيام",
+      "days30": "30 يومًا",
+      "allTime": "كل الأوقات"
+    },
+    "totalSpendLabel": {
+      "days7": "إجمالي الإنفاق — 7 أيام",
+      "days30": "إجمالي الإنفاق — 30 يومًا",
+      "allTime": "إجمالي الإنفاق — كل الأوقات"
+    },
+    "loadError": {
+      "title": "تعذر تحميل تقرير الاستخدام",
+      "description": "حدث خطأ أثناء الاتصال بالخادم.",
+      "retry": "إعادة المحاولة"
+    },
+    "byProvider": "حسب المزوّد",
+    "noCalls": "لا توجد استدعاءات ذكاء اصطناعي مسجَّلة في هذه الفترة.",
+    "columns": {
+      "provider": "المزوّد",
+      "spend": "الإنفاق"
+    }
+  }
+}

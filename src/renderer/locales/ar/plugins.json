@@ -1,0 +1,83 @@
+{
+  "header": {
+    "title": "الإضافات"
+  },
+  "noOrg": {
+    "title": "لم يتم اختيار مؤسسة",
+    "descriptionNoOrgs": "أنشئ مؤسسة أولًا.",
+    "descriptionHasOrgs": "اختر واحدة من صفحة المؤسسات.",
+    "action": "الذهاب إلى المؤسسات"
+  },
+  "tabs": {
+    "installed": "المثبتة",
+    "available": "المتاحة"
+  },
+  "detailTabs": {
+    "config": "الإعدادات",
+    "permissions": "الأذونات",
+    "health": "الحالة الصحية",
+    "versions": "الإصدارات"
+  },
+  "status": {
+    "enabled": "مفعّلة",
+    "disabled": "معطّلة",
+    "failed": "فشلت",
+    "installed": "مثبتة",
+    "uninstalled": "أُلغي تثبيتها"
+  },
+  "actions": {
+    "enable": "تفعيل",
+    "disable": "تعطيل",
+    "uninstall": "إلغاء التثبيت",
+    "details": "التفاصيل",
+    "hide": "إخفاء"
+  },
+  "installedList": {
+    "empty": {
+      "title": "لا توجد إضافات مثبتة",
+      "description": "تصفّح تبويب المتاحة لتثبيت إحداها."
+    }
+  },
+  "available": {
+    "empty": "لم يتم نشر أي إضافات بعد",
+    "byAuthor": "بواسطة {{author}} · الإصدار {{version}}",
+    "installs": "{{count}} عملية تثبيت",
+    "installed": "مثبتة",
+    "install": "تثبيت"
+  },
+  "events": {
+    "load": "تحميل",
+    "unload": "إلغاء تحميل",
+    "reload": "إعادة تحميل",
+    "error": "خطأ",
+    "tick": "نبضة"
+  },
+  "healthTab": {
+    "statusLabel": "الحالة:",
+    "loading": "جارٍ تحميل السجلات…",
+    "empty": "لا توجد أحداث مسجلة بعد."
+  },
+  "configTab": {
+    "invalidJson": "JSON غير صالح",
+    "saveFailed": "فشل الحفظ",
+    "saved": "تم حفظ الإعدادات",
+    "save": "حفظ الإعدادات"
+  },
+  "permissionsTab": {
+    "none": "لا تعلن هذه الإضافة عن أي أذونات خاصة.",
+    "sensitiveWarning": "تعلن هذه الإضافة عن صلاحيات حساسة وهي معطّلة حتى تتم الموافقة عليها.",
+    "approve": "موافقة",
+    "approved": "تمت الموافقة على الإضافة",
+    "approveFailed": "فشلت الموافقة"
+  },
+  "toast": {
+    "loadInstalledFailed": "تعذر تحميل الإضافات المثبتة",
+    "loadAvailableFailed": "تعذر تحميل الإضافات المتاحة",
+    "selectOrgFirst": "اختر مؤسسة أولًا",
+    "installed": "تم تثبيت الإضافة",
+    "installFailed": "فشل التثبيت",
+    "actionFailed": "فشل {{action}}",
+    "uninstalled": "تم إلغاء تثبيت الإضافة",
+    "uninstallFailed": "فشل إلغاء التثبيت"
+  }
+}

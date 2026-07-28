@@ -1,0 +1,70 @@
+{
+  "header": {
+    "title": "Sandbox"
+  },
+  "noOrg": {
+    "title": "No organization selected",
+    "descriptionNoOrgs": "Create an organization first.",
+    "descriptionHasOrgs": "Pick one from the Organizations page.",
+    "action": "Go to Organizations"
+  },
+  "topTabs": {
+    "workers": "Workers",
+    "permissionRequests": "Permission Requests",
+    "securityEvents": "Security Events"
+  },
+  "detailTabs": {
+    "logs": "Logs",
+    "resourceUsage": "Resource Usage"
+  },
+  "status": {
+    "running": "Running",
+    "starting": "Starting",
+    "stopped": "Stopped",
+    "crashed": "Crashed"
+  },
+  "severity": {
+    "info": "Info",
+    "warning": "Warning",
+    "error": "Error"
+  },
+  "actions": {
+    "details": "Details",
+    "hide": "Hide",
+    "stop": "Stop",
+    "approve": "Approve"
+  },
+  "workersList": {
+    "empty": {
+      "title": "No sandbox workers",
+      "description": "Workers appear here when a plugin is installed and enabled from the Plugins page."
+    },
+    "startedMeta": "{{backend}} · started {{date}}"
+  },
+  "permissionRequests": {
+    "empty": "No pending permission requests"
+  },
+  "securityEvents": {
+    "empty": "No security events"
+  },
+  "resourceUsage": {
+    "loading": "Loading…",
+    "backend": "Backend",
+    "status": "Status",
+    "cpuSeconds": "CPU seconds used",
+    "peakMemory": "Peak memory (MB)"
+  },
+  "logsTab": {
+    "loading": "Loading logs…",
+    "empty": "No events recorded yet."
+  },
+  "toast": {
+    "loadWorkersFailed": "Could not load sandbox workers",
+    "loadSecurityEventsFailed": "Could not load security events",
+    "loadPermissionRequestsFailed": "Could not load permission requests",
+    "workerStopped": "Worker stopped",
+    "stopFailed": "Stop failed",
+    "approved": "Approved",
+    "approvalFailed": "Approval failed"
+  }
+}

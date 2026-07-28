@@ -5,6 +5,7 @@
  * uses for live provider selection, not a separate price table).
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { GlassCard, GoldButton } from "../../../shared/ui/gold";
 import { EmptyState } from "../../../shared/ui/EmptyState";
@@ -29,6 +30,7 @@ function fmtContext(n: number): string {
 }
 
 export function ModelsTab() {
+  const { t } = useTranslation("aiRouting");
   const [models, setModels] = useState<ModelRow[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -50,9 +52,9 @@ export function ModelsTab() {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-        title="Could not load the model catalog"
-        description="Something went wrong reaching the server."
-        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+        title={t("modelsTab.loadError.title")}
+        description={t("modelsTab.loadError.description")}
+        action={<GoldButton variant="ghost" onClick={() => void load()}>{t("modelsTab.loadError.retry")}</GoldButton>}
       />
     );
   }
@@ -65,14 +67,14 @@ export function ModelsTab() {
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--t4)", fontSize: 11, textTransform: "uppercase" }}>
-            <th style={{ padding: "0 10px 10px 0" }}>Model</th>
-            <th style={{ padding: "0 10px 10px" }}>Provider</th>
-            <th style={{ padding: "0 10px 10px" }}>Context</th>
-            <th style={{ padding: "0 10px 10px" }}>$/M in</th>
-            <th style={{ padding: "0 10px 10px" }}>$/M out</th>
-            <th style={{ padding: "0 10px 10px" }}>Quality</th>
-            <th style={{ padding: "0 10px 10px" }}>Speed</th>
-            <th style={{ padding: "0 0 10px" }}>Status</th>
+            <th style={{ padding: "0 10px 10px 0" }}>{t("modelsTab.columns.model")}</th>
+            <th style={{ padding: "0 10px 10px" }}>{t("modelsTab.columns.provider")}</th>
+            <th style={{ padding: "0 10px 10px" }}>{t("modelsTab.columns.context")}</th>
+            <th style={{ padding: "0 10px 10px" }}>{t("modelsTab.columns.priceIn")}</th>
+            <th style={{ padding: "0 10px 10px" }}>{t("modelsTab.columns.priceOut")}</th>
+            <th style={{ padding: "0 10px 10px" }}>{t("modelsTab.columns.quality")}</th>
+            <th style={{ padding: "0 10px 10px" }}>{t("modelsTab.columns.speed")}</th>
+            <th style={{ padding: "0 0 10px" }}>{t("modelsTab.columns.status")}</th>
           </tr>
         </thead>
         <tbody>
@@ -86,7 +88,7 @@ export function ModelsTab() {
               <td style={{ padding: "10px", color: "var(--t3)" }}>{Math.round(m.quality * 100)}%</td>
               <td style={{ padding: "10px", color: "var(--t3)" }}>{Math.round(m.speed * 100)}%</td>
               <td style={{ padding: "10px 0" }}>
-                <StatusBadge kind={m.available ? "success" : "neutral"} label={m.available ? "available" : "deferred"} />
+                <StatusBadge kind={m.available ? "success" : "neutral"} label={m.available ? t("modelsTab.available") : t("modelsTab.deferred")} />
               </td>
             </tr>
           ))}

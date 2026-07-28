@@ -4,11 +4,13 @@
  * Data: GET /api/diagnostics/metrics.
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { CardGrid, ErrorNote, MetricCard, Skeletons } from "../components";
 import type { MetricsSnapshot } from "../types";
 
 export function WorkflowAnalyticsTab() {
+  const { t } = useTranslation("observability");
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [error, setError] = useState(false);
 
@@ -29,7 +31,7 @@ export function WorkflowAnalyticsTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load workflow metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>{t("workflowTab.loadError")}</ErrorNote>;
   if (!metrics) return <Skeletons n={2} />;
 
   const c = metrics.counters;
@@ -40,11 +42,11 @@ export function WorkflowAnalyticsTab() {
 
   return (
     <CardGrid>
-      <MetricCard label="Total runs" value={total} />
-      <MetricCard label="Currently active" value={g.workflow_active_runs ?? 0} />
-      <MetricCard label="Successful" value={success} />
-      <MetricCard label="Failed" value={c.workflow_runs_failed ?? 0} />
-      <MetricCard label="Success rate" value={successRate.toFixed(1)} suffix="%" />
+      <MetricCard label={t("workflowTab.totalRuns")} value={total} />
+      <MetricCard label={t("workflowTab.currentlyActive")} value={g.workflow_active_runs ?? 0} />
+      <MetricCard label={t("workflowTab.successful")} value={success} />
+      <MetricCard label={t("workflowTab.failed")} value={c.workflow_runs_failed ?? 0} />
+      <MetricCard label={t("workflowTab.successRate")} value={successRate.toFixed(1)} suffix="%" />
     </CardGrid>
   );
 }

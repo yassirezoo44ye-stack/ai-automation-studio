@@ -5,11 +5,13 @@
  * (AI Routing consolidation) instead of always returning zeros.
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { costClient, type CostSummary } from "../../../core/ai/platform";
 import { GlassCard, GoldButton, KpiCard } from "../../../shared/ui/gold";
 import { EmptyState } from "../../../shared/ui/EmptyState";
 
 export function CostAnalyticsTab() {
+  const { t } = useTranslation("aiRouting");
   const [summary, setSummary] = useState<CostSummary | null>(null);
   const [error, setError] = useState(false);
 
@@ -29,9 +31,9 @@ export function CostAnalyticsTab() {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-        title="Could not load cost summary"
-        description="Something went wrong reaching the server."
-        action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+        title={t("costAnalyticsTab.loadError.title")}
+        description={t("costAnalyticsTab.loadError.description")}
+        action={<GoldButton variant="ghost" onClick={() => void load()}>{t("costAnalyticsTab.loadError.retry")}</GoldButton>}
       />
     );
   }
@@ -48,16 +50,16 @@ export function CostAnalyticsTab() {
             counter rounds to the nearest integer and would show "$0"
             for realistic sub-$1 AI spend. */}
         <GlassCard lift={false}>
-          <div style={{ fontSize: 13, color: "var(--t3)" }}>Total spend</div>
+          <div style={{ fontSize: 13, color: "var(--t3)" }}>{t("costAnalyticsTab.totalSpend")}</div>
           <div style={{ fontSize: 26, fontWeight: 700, color: "var(--t1)", marginTop: 4 }}>${summary.total_usd.toFixed(4)}</div>
         </GlassCard>
-        <KpiCard label="Recorded calls" value={summary.record_count} />
+        <KpiCard label={t("costAnalyticsTab.recordedCalls")} value={summary.record_count} />
       </div>
 
       <GlassCard lift={false}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 14 }}>Spend by provider</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 14 }}>{t("costAnalyticsTab.spendByProvider")}</div>
         {providers.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--t3)" }}>No AI calls recorded yet.</div>
+          <div style={{ fontSize: 13, color: "var(--t3)" }}>{t("costAnalyticsTab.noCalls")}</div>
         ) : (
           providers.map(([provider, usd]) => {
             const pct = summary.total_usd > 0 ? (usd / summary.total_usd) * 100 : 0;
@@ -78,7 +80,7 @@ export function CostAnalyticsTab() {
 
       {summary.limits.length > 0 && (
         <GlassCard lift={false}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 10 }}>Spending limits</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 10 }}>{t("costAnalyticsTab.spendingLimits")}</div>
           {summary.limits.map((l, i) => (
             <div key={i} style={{ fontSize: 12, color: "var(--t3)" }}>{l.scope}: ${l.limit_usd}</div>
           ))}

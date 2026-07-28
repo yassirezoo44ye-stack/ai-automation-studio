@@ -1,0 +1,102 @@
+{
+  "workspace": {
+    "title": "AI Workspace",
+    "tabs": { "chat": "Chat", "agents": "Agents" },
+    "newAgent": "+ New Agent",
+    "loadAgentsError": "Could not load agents"
+  },
+  "agentsTab": {
+    "form": {
+      "avatarLabel": "Avatar",
+      "nameLabel": "Name *",
+      "namePlaceholder": "My Agent",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "What does this agent do?",
+      "systemPromptLabel": "System Prompt *",
+      "systemPromptPlaceholder": "You are an expert in…",
+      "modelLabel": "Model",
+      "modelSonnet": "Sonnet 4.6 (recommended)",
+      "modelOpus": "Opus 4.8 (most capable)",
+      "modelHaiku": "Haiku 4.5 (fastest)",
+      "temperatureLabel": "Temperature",
+      "saving": "Saving…",
+      "save": "Save Agent",
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "updated": "Agent updated",
+      "created": "Agent created",
+      "saveFailed": "Failed to save",
+      "deleted": "Deleted {{name}}"
+    },
+    "deleteConfirm": "Delete agent \"{{name}}\"?",
+    "empty": {
+      "title": "No agents yet",
+      "description": "Create your first agent or start from a template below",
+      "newAgent": "+ New Agent"
+    },
+    "myAgentsLabel": "MY AGENTS",
+    "card": {
+      "chat": "Chat",
+      "edit": "Edit",
+      "delete": "Delete",
+      "messageCount": "{{count}} messages",
+      "ready": "Ready"
+    },
+    "templates": {
+      "label": "QUICK START TEMPLATES",
+      "badge": "Template",
+      "useTemplate": "Use template"
+    }
+  },
+  "chatTab": {
+    "sidebar": {
+      "demoProject": "Demo Project",
+      "defaultAgent": "🤖 Claude (default)",
+      "newChat": "+ New Chat",
+      "exportTitle": "Export as Markdown",
+      "extractTasksTitle": "Extract tasks",
+      "searchPlaceholder": "Search…",
+      "deleting": "Deleting…",
+      "deleteConversation": "Delete conversation",
+      "loading": "Loading conversations…",
+      "loadError": "Failed to load conversations.",
+      "emptyTitle": "No conversations yet",
+      "emptyDesc": "Start a new chat to see it here.",
+      "noMatchesTitle": "No matches",
+      "noMatchesDesc": "Nothing found for \"{{query}}\"."
+    },
+    "tasksBar": {
+      "label": "TASKS",
+      "loadError": "Failed to load tasks."
+    },
+    "messages": {
+      "loading": "Loading conversation…",
+      "loadError": "Failed to load this conversation.",
+      "emptyAgentName": "Axon AI",
+      "emptyDescription": "Start a conversation or pick one from the sidebar.",
+      "suggestion1": "Write Python code",
+      "suggestion2": "Explain a concept",
+      "suggestion3": "Debug my script",
+      "suggestion4": "Build a web app",
+      "you": "You",
+      "assistantFallback": "Claude",
+      "now": "now",
+      "streamErrorPrefix": "⚠️ {{message}}"
+    },
+    "input": {
+      "placeholder": "Message… (Enter to send, Shift+Enter for new line)"
+    },
+    "toast": {
+      "extractedTasks_one": "Extracted {{count}} task",
+      "extractedTasks_other": "Extracted {{count}} tasks",
+      "noTasksFound": "No clear tasks found",
+      "extractTasksFailed": "Failed to extract tasks",
+      "updateTaskFailed": "Failed to update task — reverting",
+      "deleteConversationFailed": "Failed to delete conversation",
+      "exportedMarkdown": "Exported as Markdown",
+      "exportFailed": "Export failed",
+      "backendOffline": "⚠️ Backend offline"
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "header": {
+    "title": "Automation",
+    "newTask": "+ New Task"
+  },
+  "tabs": {
+    "tasks": "Tasks",
+    "workflows": "Workflows"
+  },
+  "taskCard": {
+    "markDone": "Mark done",
+    "markPending": "Mark pending",
+    "due": "Due {{date}}",
+    "start": "Start",
+    "delete": "Delete"
+  },
+  "status": {
+    "pending": "Pending",
+    "in_progress": "In Progress",
+    "done": "Done"
+  },
+  "newTaskForm": {
+    "title": "New Task",
+    "titlePlaceholder": "Task title *",
+    "priorityLow": "Low",
+    "priorityMedium": "Medium",
+    "priorityHigh": "High",
+    "create": "Create Task",
+    "creating": "Creating…"
+  },
+  "filters": {
+    "all": "All ({{count}})",
+    "pending": "Pending ({{count}})",
+    "active": "Active ({{count}})",
+    "done": "Done ({{count}})"
+  },
+  "toolbar": {
+    "searchPlaceholder": "Search tasks…"
+  },
+  "emptyTasks": {
+    "titleDefault": "No tasks",
+    "titleFiltered": "No tasks with status \"{{status}}\"",
+    "description": "Create a task or extract them from an AI conversation."
+  },
+  "workflows": {
+    "activeRuns": "Active Workflow Runs",
+    "refresh": "↻ Refresh",
+    "empty": "No active runs — start a workflow below.",
+    "stepsProgress": "{{done}}/{{total}} steps",
+    "status": {
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "pending": "Pending"
+    },
+    "templatesLabel": "WORKFLOW TEMPLATES",
+    "run": "▶ Run",
+    "starting": "Starting…",
+    "trigger": "On demand",
+    "templates": {
+      "sequential": { "name": "Sequential Pipeline", "desc": "Run steps one after another — fetch → process → store" },
+      "parallel": { "name": "Parallel Fan-out", "desc": "Execute independent steps simultaneously for speed" },
+      "approval": { "name": "Human-in-the-Loop", "desc": "Pause at checkpoints for manual review and approval" },
+      "saga": { "name": "Saga (Compensating)", "desc": "Distributed transaction with automatic rollback" }
+    }
+  },
+  "approvals": {
+    "title": "Pending Approvals",
+    "empty": "No pending approvals.",
+    "runId": "run {{id}}…",
+    "approve": "Approve",
+    "reject": "Reject",
+    "toast": {
+      "approved": "Step approved",
+      "rejected": "Step rejected",
+      "approveFailed": "Failed to approve",
+      "rejectFailed": "Failed to reject"
+    }
+  },
+  "toast": {
+    "loadTasksFailed": "Could not load tasks",
+    "createTaskFailed": "Failed to create task",
+    "taskCreated": "Task created",
+    "workflowStarted": "Workflow started — run_id: {{runId}}",
+    "workflowStartFailed": "Failed to start workflow"
+  }
+}

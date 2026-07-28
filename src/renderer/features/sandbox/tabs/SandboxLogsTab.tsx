@@ -5,6 +5,7 @@
  * Data: GET /sandbox/workers/{id}/logs
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 
 interface SandboxEvent {
@@ -20,6 +21,7 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 export function SandboxLogsTab({ workerId }: { workerId: string }) {
+  const { t } = useTranslation("sandbox");
   const [logs, setLogs] = useState<SandboxEvent[] | null>(null);
 
   // Reset while switching workers — render-time state adjustment.
@@ -40,10 +42,10 @@ export function SandboxLogsTab({ workerId }: { workerId: string }) {
   }, [workerId]);
 
   if (logs === null) {
-    return <div style={{ fontSize: 12, color: "var(--t4)" }}>Loading logs…</div>;
+    return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("logsTab.loading")}</div>;
   }
   if (logs.length === 0) {
-    return <div style={{ fontSize: 12, color: "var(--t4)" }}>No events recorded yet.</div>;
+    return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("logsTab.empty")}</div>;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

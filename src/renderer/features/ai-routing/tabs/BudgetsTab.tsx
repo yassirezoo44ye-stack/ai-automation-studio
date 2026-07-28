@@ -6,6 +6,7 @@
  *       extended with the same scope params — app/routers/usage_api.py).
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 import { GlassCard, GoldButton } from "../../../shared/ui/gold";
@@ -17,12 +18,6 @@ interface BudgetsResponse {
   scope: { project_id: string | null; workflow_id: string | null; agent_id: string | null };
   metrics: Record<string, BudgetMetric>;
 }
-
-const METRIC_LABEL: Record<string, string> = {
-  tokens: "AI Tokens", workflow_executions: "Workflow Runs", api_requests: "API Requests",
-  storage_mb: "Storage (MB)", embeddings: "Embeddings", marketplace_purchases: "Marketplace Purchases",
-  seats: "Seats", active_users: "Active Users", running_agents: "Running Agents",
-};
 
 function fmt(n: number): string {
   if (n < 0) return "∞";
@@ -36,6 +31,7 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
   scope: { project_id: string; workflow_id: string; agent_id: string };
   onSaved: () => void;
 }) {
+  const { t } = useTranslation("aiRouting");
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(data.limit));
@@ -48,7 +44,7 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
     const trimmed = value.trim();
     const limit = Number(trimmed);
     if (trimmed === "" || !Number.isInteger(limit) || limit < -1) {
-      toast("Limit must be -1 (unlimited) or a non-negative whole number", "err");
+      toast(t("budgetsTab.limitInvalid"), "err");
       return;
     }
     setSaving(true);
@@ -58,11 +54,11 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
         body: JSON.stringify({ limit, ...scope }),
       });
       if (!r.ok) throw new Error();
-      toast("Limit updated", "ok");
+      toast(t("budgetsTab.limitUpdated"), "ok");
       setEditing(false);
       onSaved();
     } catch {
-      toast("Could not update limit", "err");
+      toast(t("budgetsTab.limitUpdateFailed"), "err");
     } finally {
       setSaving(false);
     }
@@ -71,7 +67,7 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>{METRIC_LABEL[metric] ?? metric}</span>
+        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>{t(`budgetsTab.metrics.${metric}`, { defaultValue: metric })}</span>
         {editing ? (
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <input
@@ -79,17 +75,17 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
               className="g-input" style={{ width: 90, padding: "4px 8px", fontSize: 11 }}
             />
             <GoldButton onClick={() => void save()} disabled={saving} style={{ padding: "4px 10px", fontSize: 11 }}>
-              {saving ? "…" : "Save"}
+              {saving ? t("budgetsTab.saving") : t("budgetsTab.save")}
             </GoldButton>
             <GoldButton variant="ghost" onClick={() => setEditing(false)} style={{ padding: "4px 10px", fontSize: 11 }}>
-              Cancel
+              {t("budgetsTab.cancel")}
             </GoldButton>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span style={{ fontSize: 11, color: "var(--t4)" }}>{fmt(data.used)} / {fmt(data.limit)}</span>
             <GoldButton variant="ghost" onClick={() => { setValue(String(data.limit)); setEditing(true); }} style={{ padding: "3px 9px", fontSize: 10 }}>
-              Edit
+              {t("budgetsTab.edit")}
             </GoldButton>
           </div>
         )}
@@ -102,6 +98,7 @@ function BudgetRow({ orgId, metric, data, scope, onSaved }: {
 }
 
 export function BudgetsTab({ orgId }: { orgId: string }) {
+  const { t } = useTranslation("aiRouting");
   const toast = useToast();
   const [budgets, setBudgets] = useState<BudgetsResponse | null>(null);
   const [error, setError] = useState(false);
@@ -121,10 +118,10 @@ export function BudgetsTab({ orgId }: { orgId: string }) {
       if (!r.ok) throw new Error();
       setBudgets(await parseJSON<BudgetsResponse>(r, "/api/ai/budgets"));
     } catch {
-      toast("Could not load budgets", "err");
+      toast(t("budgetsTab.loadFailed"), "err");
       setError(true);
     }
-  }, [projectId, workflowId, agentId, toast]);
+  }, [projectId, workflowId, agentId, toast, t]);
 
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
@@ -132,33 +129,33 @@ export function BudgetsTab({ orgId }: { orgId: string }) {
     <div>
       <GlassCard lift={false} style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div>
-          <label className="g-label" htmlFor="budgets-project-id">Project ID</label>
-          <input id="budgets-project-id" value={projectId} onChange={e => setProjectId(e.target.value)} placeholder="org-level" className="g-input" style={{ width: 160 }} />
+          <label className="g-label" htmlFor="budgets-project-id">{t("budgetsTab.filters.projectId")}</label>
+          <input id="budgets-project-id" value={projectId} onChange={e => setProjectId(e.target.value)} placeholder={t("budgetsTab.filters.placeholder")} className="g-input" style={{ width: 160 }} />
         </div>
         <div>
-          <label className="g-label" htmlFor="budgets-workflow-id">Workflow ID</label>
-          <input id="budgets-workflow-id" value={workflowId} onChange={e => setWorkflowId(e.target.value)} placeholder="org-level" className="g-input" style={{ width: 160 }} />
+          <label className="g-label" htmlFor="budgets-workflow-id">{t("budgetsTab.filters.workflowId")}</label>
+          <input id="budgets-workflow-id" value={workflowId} onChange={e => setWorkflowId(e.target.value)} placeholder={t("budgetsTab.filters.placeholder")} className="g-input" style={{ width: 160 }} />
         </div>
         <div>
-          <label className="g-label" htmlFor="budgets-agent-id">Agent ID</label>
-          <input id="budgets-agent-id" value={agentId} onChange={e => setAgentId(e.target.value)} placeholder="org-level" className="g-input" style={{ width: 160 }} />
+          <label className="g-label" htmlFor="budgets-agent-id">{t("budgetsTab.filters.agentId")}</label>
+          <input id="budgets-agent-id" value={agentId} onChange={e => setAgentId(e.target.value)} placeholder={t("budgetsTab.filters.placeholder")} className="g-input" style={{ width: 160 }} />
         </div>
-        <GoldButton variant="ghost" onClick={() => void load()} style={{ padding: "9px 16px" }}>View</GoldButton>
+        <GoldButton variant="ghost" onClick={() => void load()} style={{ padding: "9px 16px" }}>{t("budgetsTab.filters.view")}</GoldButton>
       </GlassCard>
 
       {error ? (
         <EmptyState
           icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-          title="Could not load budgets"
-          description="Something went wrong reaching the server."
-          action={<GoldButton variant="ghost" onClick={() => void load()}>Retry</GoldButton>}
+          title={t("budgetsTab.loadError.title")}
+          description={t("budgetsTab.loadError.description")}
+          action={<GoldButton variant="ghost" onClick={() => void load()}>{t("budgetsTab.loadError.retry")}</GoldButton>}
         />
       ) : !budgets ? (
         <div className="skeleton" style={{ height: 200, borderRadius: 16 }} />
       ) : (
         <GlassCard lift={false}>
           <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 14 }}>
-            {projectId || workflowId || agentId ? "Scoped budget" : "Organization budget"}
+            {projectId || workflowId || agentId ? t("budgetsTab.scopedBudget") : t("budgetsTab.orgBudget")}
           </div>
           {Object.entries(budgets.metrics).map(([metric, data]) => (
             <BudgetRow

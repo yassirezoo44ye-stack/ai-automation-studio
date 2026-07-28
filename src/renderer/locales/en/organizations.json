@@ -1,0 +1,38 @@
+{
+  "header": {
+    "title": "Organizations",
+    "newOrg": "+ New Organization"
+  },
+  "kindLabels": {
+    "personal": "Personal",
+    "organization": "Organization",
+    "enterprise": "Enterprise"
+  },
+  "createForm": {
+    "title": "New Organization",
+    "namePlaceholder": "Organization name",
+    "create": "Create",
+    "creating": "Creating…"
+  },
+  "empty": {
+    "title": "No organizations yet",
+    "description": "Create one to invite teammates and manage billing."
+  },
+  "orgCard": {
+    "meta": "{{kindLabel}} · {{plan}} plan",
+    "metaWithRole": "{{kindLabel}} · {{plan}} plan · {{role}}",
+    "active": "ACTIVE"
+  },
+  "activity": {
+    "title": "Recent Activity",
+    "loading": "Loading…",
+    "errorTitle": "Could not load activity",
+    "errorDescription": "Something went wrong reaching the server.",
+    "retry": "Retry",
+    "empty": "No activity yet."
+  },
+  "toast": {
+    "created": "Organization \"{{name}}\" created",
+    "createFailed": "Failed to create organization: {{message}}"
+  }
+}

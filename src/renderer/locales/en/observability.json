@@ -1,0 +1,145 @@
+{
+  "page": {
+    "title": "Observability",
+    "subtitle": "Health, metrics, tracing, alerting, and audit — one place for platform state"
+  },
+  "tabs": {
+    "system": "System",
+    "ai": "AI Analytics",
+    "workflow": "Workflow",
+    "marketplace": "Marketplace",
+    "billing": "Billing",
+    "plugins": "Plugin Health",
+    "sandbox": "Sandbox",
+    "events": "Event Bus",
+    "security": "Security & Audit",
+    "alerts": "Alerts & Traces"
+  },
+  "common": {
+    "statusLabels": {
+      "healthy": "healthy",
+      "degraded": "degraded",
+      "unhealthy": "unhealthy",
+      "unknown": "unknown"
+    },
+    "loadErrorTitle": "Could not load this data",
+    "retry": "Retry",
+    "emptyDefault": "Nothing here yet"
+  },
+  "systemTab": {
+    "loadError": "Could not load system health.",
+    "overallStatus": "Overall status",
+    "uptimeLabel": "uptime {{hours}}h",
+    "resourceUsage": "Resource usage",
+    "cpu": "CPU",
+    "memoryRss": "Memory (RSS)",
+    "diskUsed": "Disk used",
+    "openFds": "Open FDs",
+    "networkSent": "Network sent",
+    "networkReceived": "Network received",
+    "httpTraffic": "HTTP traffic",
+    "totalRequests": "Total requests",
+    "errors5xx": "5xx errors",
+    "avgLatency": "Avg latency",
+    "p95Latency": "P95 latency"
+  },
+  "aiTab": {
+    "loadError": "Could not load AI metrics.",
+    "descriptionPrefix": "Aggregate totals across every provider since the process started. For per-provider/per-model cost breakdown, see the",
+    "linkLabel": "AI Routing → Cost Analytics",
+    "descriptionSuffix": "tab.",
+    "totalRequests": "Total requests",
+    "inputTokens": "Input tokens",
+    "outputTokens": "Output tokens",
+    "totalSpend": "Total spend",
+    "providerFailures": "Provider failures",
+    "activeStreams": "Active streams",
+    "avgLatency": "Avg latency",
+    "p95Latency": "P95 latency",
+    "p99Latency": "P99 latency"
+  },
+  "workflowTab": {
+    "loadError": "Could not load workflow metrics.",
+    "totalRuns": "Total runs",
+    "currentlyActive": "Currently active",
+    "successful": "Successful",
+    "failed": "Failed",
+    "successRate": "Success rate"
+  },
+  "marketplaceTab": {
+    "loadError": "Could not load marketplace metrics.",
+    "storeBackend": "Store backend",
+    "installs": "Installs",
+    "publishes": "Publishes"
+  },
+  "billingTab": {
+    "loadError": "Could not load billing metrics.",
+    "billingSubsystem": "Billing subsystem",
+    "descriptionPrefix": "For org-scoped revenue, invoices, and subscriptions, see the",
+    "linkLabel": "Billing",
+    "descriptionSuffix": "page.",
+    "billingEventsProcessed": "Billing events processed"
+  },
+  "pluginsTab": {
+    "loadError": "Could not load plugin/service health.",
+    "pluginLoader": "Plugin loader",
+    "descriptionPrefix": "For per-plugin install detail, see the",
+    "linkLabel": "Plugins",
+    "descriptionSuffix": "page.",
+    "backgroundServices": "Background services",
+    "uptimeLabel": "uptime {{minutes}}m",
+    "restartsLabel": "restarts {{count}}",
+    "serviceStates": {
+      "running": "running",
+      "starting": "starting",
+      "stopped": "stopped",
+      "stopping": "stopping",
+      "failed": "failed"
+    }
+  },
+  "sandboxTab": {
+    "loadError": "Could not load sandbox metrics.",
+    "descriptionPrefix": "For per-worker logs and permission requests, see the",
+    "linkLabel": "Sandbox",
+    "descriptionSuffix": "page.",
+    "runningWorkers": "Running workers",
+    "crashedWorkers": "Crashed workers",
+    "cpuSecondsRunning": "CPU seconds (running)",
+    "memoryRunning": "Memory (running)"
+  },
+  "eventsTab": {
+    "loadError": "Could not load event bus status.",
+    "probeNotRegistered": "Event bus probe not registered.",
+    "backendLabel": "Backend: {{backend}}",
+    "backendUnknown": "unknown",
+    "activeSubscriptions": "Active subscriptions",
+    "replayBufferSize": "Replay buffer size",
+    "deadLetters": "Dead letters",
+    "subscriptionsByPattern": "Subscriptions by pattern"
+  },
+  "securityTab": {
+    "activityTitle": "Activity",
+    "groupSecurity": "Security",
+    "groupOrganization": "Organization",
+    "groupOrganizationSelectOrg": "Organization (select an org)",
+    "emptyMessage": "No security or organization activity recorded yet."
+  },
+  "alertsTab": {
+    "loadError": "Could not load alerting/tracing data.",
+    "subTabRules": "Rules ({{count}})",
+    "subTabHistory": "History",
+    "subTabHistoryOpen": "History — {{count}} open",
+    "subTabTraces": "Traces ({{count}})",
+    "noRules": "No alert rules configured.",
+    "noAlertsFired": "No alerts have fired.",
+    "noTraces": "No traces recorded yet.",
+    "saving": "…",
+    "ruleEnabled": "Enabled",
+    "ruleDisabled": "Disabled",
+    "toastRuleEnabled": "Rule enabled",
+    "toastRuleDisabled": "Rule disabled",
+    "toastToggleFailed": "Could not toggle rule",
+    "historyStatusResolved": "resolved",
+    "historyStatusOpen": "open"
+  }
+}

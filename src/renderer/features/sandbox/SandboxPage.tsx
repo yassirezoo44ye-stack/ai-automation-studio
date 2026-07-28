@@ -10,6 +10,7 @@
  *       GET /sandbox/permission-requests, POST .../stop, POST .../approve.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../shared/utils/api";
 import { useToast } from "../../contexts/toast";
 import { useOrg } from "../../contexts/OrgContext";
@@ -57,6 +58,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function SandboxPage() {
+  const { t } = useTranslation("sandbox");
   const toast = useToast();
   const { currentOrgId, orgs } = useOrg();
   const { setPage } = useAppContext();
@@ -76,7 +78,7 @@ export function SandboxPage() {
       if (!r.ok) throw new Error();
       setWorkers(await parseJSON<Worker[]>(r, "/sandbox/workers"));
     } catch {
-      toast("Could not load sandbox workers", "err");
+      toast(t("toast.loadWorkersFailed"), "err");
     }
   }, [currentOrgId, toast]);
 
@@ -87,7 +89,7 @@ export function SandboxPage() {
       if (!r.ok) throw new Error();
       setSecurityEvents(await parseJSON<SecurityEvent[]>(r, "/sandbox/security-events"));
     } catch {
-      toast("Could not load security events", "err");
+      toast(t("toast.loadSecurityEventsFailed"), "err");
     }
   }, [currentOrgId, toast]);
 
@@ -98,7 +100,7 @@ export function SandboxPage() {
       if (!r.ok) throw new Error();
       setPermissionRequests(await parseJSON<PermissionRequest[]>(r, "/sandbox/permission-requests"));
     } catch {
-      toast("Could not load permission requests", "err");
+      toast(t("toast.loadPermissionRequestsFailed"), "err");
     }
   }, [currentOrgId, toast]);
 
@@ -118,10 +120,10 @@ export function SandboxPage() {
     try {
       const r = await apiFetch(`/sandbox/workers/${w.id}/stop`, { method: "POST" });
       if (!r.ok) throw new Error();
-      toast("Worker stopped", "ok");
+      toast(t("toast.workerStopped"), "ok");
       await loadWorkers();
     } catch {
-      toast("Stop failed", "err");
+      toast(t("toast.stopFailed"), "err");
     } finally {
       setBusy(null);
     }
@@ -132,10 +134,10 @@ export function SandboxPage() {
     try {
       const r = await apiFetch(`/sandbox/permission-requests/${req.installation_id}/approve`, { method: "POST" });
       if (!r.ok) throw new Error();
-      toast("Approved", "ok");
+      toast(t("toast.approved"), "ok");
       refresh();
     } catch {
-      toast("Approval failed", "err");
+      toast(t("toast.approvalFailed"), "err");
     } finally {
       setBusy(null);
     }
@@ -150,9 +152,9 @@ export function SandboxPage() {
     return (
       <EmptyState
         icon={<span style={{ fontSize: 40 }}>🛡️</span>}
-        title="No organization selected"
-        description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
-        action={<GoldButton onClick={() => setPage("organizations")}>Go to Organizations</GoldButton>}
+        title={t("noOrg.title")}
+        description={orgs.length === 0 ? t("noOrg.descriptionNoOrgs") : t("noOrg.descriptionHasOrgs")}
+        action={<GoldButton onClick={() => setPage("organizations")}>{t("noOrg.action")}</GoldButton>}
       />
     );
   }
@@ -164,18 +166,18 @@ export function SandboxPage() {
         background: "var(--bg-surface)", flexShrink: 0, display: "flex", flexDirection: "column", gap: 14,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px", color: "var(--t1)" }}>Sandbox</span>
+          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.3px", color: "var(--t1)" }}>{t("header.title")}</span>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {([
-            ["workers", "Workers"], ["permission-requests", "Permission Requests"], ["security-events", "Security Events"],
-          ] as [TopTab, string][]).map(([t, label]) => (
-            <button key={t} onClick={() => setTopTab(t)} style={{
+            ["workers", t("topTabs.workers")], ["permission-requests", t("topTabs.permissionRequests")], ["security-events", t("topTabs.securityEvents")],
+          ] as [TopTab, string][]).map(([tabId, label]) => (
+            <button key={tabId} onClick={() => setTopTab(tabId)} style={{
               padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
-              background: topTab === t ? "var(--accent-dim)" : "var(--bg-hover)",
-              color: topTab === t ? "var(--accent-2)" : "var(--t4)",
+              background: topTab === tabId ? "var(--accent-dim)" : "var(--bg-hover)",
+              color: topTab === tabId ? "var(--accent-2)" : "var(--t4)",
             }}>
-              {label} {t === "workers" ? `(${workers.length})` : t === "permission-requests" ? `(${permissionRequests.length})` : ""}
+              {label} {tabId === "workers" ? `(${workers.length})` : tabId === "permission-requests" ? `(${permissionRequests.length})` : ""}
             </button>
           ))}
         </div>
@@ -190,8 +192,8 @@ export function SandboxPage() {
           workers.length === 0 ? (
             <EmptyState
               icon={<span style={{ fontSize: 48 }}>🛡️</span>}
-              title="No sandbox workers"
-              description="Workers appear here when a plugin is installed and enabled from the Plugins page."
+              title={t("workersList.empty.title")}
+              description={t("workersList.empty.description")}
             />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -202,16 +204,16 @@ export function SandboxPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{w.pid_or_container_id ?? w.id.slice(0, 8)}</span>
                         <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: STATUS_COLOR[w.status] ?? "var(--t4)" }}>
-                          {w.status}
+                          {t(`status.${w.status}`)}
                         </span>
                       </div>
                       <div style={{ fontSize: 11, color: "var(--t4)" }}>
-                        {w.backend} · started {new Date(w.started_at).toLocaleString()}
+                        {t("workersList.startedMeta", { backend: w.backend, date: new Date(w.started_at).toLocaleString() })}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <GoldButton variant="ghost" onClick={() => toggleDetails(w.id)} style={{ padding: "6px 12px", fontSize: 12 }}>
-                        {expandedId === w.id ? "Hide" : "Details"}
+                        {expandedId === w.id ? t("actions.hide") : t("actions.details")}
                       </GoldButton>
                       <GoldButton
                         variant="danger"
@@ -219,7 +221,7 @@ export function SandboxPage() {
                         disabled={busy === w.id || w.status === "stopped" || w.status === "crashed"}
                         style={{ padding: "6px 12px", fontSize: 12 }}
                       >
-                        {busy === w.id ? "…" : "Stop"}
+                        {busy === w.id ? "…" : t("actions.stop")}
                       </GoldButton>
                     </div>
                   </div>
@@ -227,13 +229,13 @@ export function SandboxPage() {
                   {expandedId === w.id && (
                     <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
                       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                        {(["logs", "resource-usage"] as DetailTab[]).map(t => (
-                          <button key={t} onClick={() => setDetailTab(t)} style={{
+                        {(["logs", "resource-usage"] as DetailTab[]).map(dt => (
+                          <button key={dt} onClick={() => setDetailTab(dt)} style={{
                             padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            background: detailTab === t ? "var(--accent-dim)" : "var(--bg-hover)",
-                            color: detailTab === t ? "var(--accent-2)" : "var(--t4)",
+                            background: detailTab === dt ? "var(--accent-dim)" : "var(--bg-hover)",
+                            color: detailTab === dt ? "var(--accent-2)" : "var(--t4)",
                           }}>
-                            {t === "logs" ? "Logs" : "Resource Usage"}
+                            {dt === "logs" ? t("detailTabs.logs") : t("detailTabs.resourceUsage")}
                           </button>
                         ))}
                       </div>
@@ -247,7 +249,7 @@ export function SandboxPage() {
           )
         ) : topTab === "permission-requests" ? (
           permissionRequests.length === 0 ? (
-            <EmptyState icon={<span style={{ fontSize: 48 }}>✅</span>} title="No pending permission requests" />
+            <EmptyState icon={<span style={{ fontSize: 48 }}>✅</span>} title={t("permissionRequests.empty")} />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {permissionRequests.map(req => (
@@ -267,7 +269,7 @@ export function SandboxPage() {
                     </div>
                   </div>
                   <GoldButton onClick={() => void approveRequest(req)} disabled={busy === req.installation_id}>
-                    {busy === req.installation_id ? "…" : "Approve"}
+                    {busy === req.installation_id ? "…" : t("actions.approve")}
                   </GoldButton>
                 </GlassCard>
               ))}
@@ -275,7 +277,7 @@ export function SandboxPage() {
           )
         ) : (
           securityEvents.length === 0 ? (
-            <EmptyState icon={<span style={{ fontSize: 48 }}>🛡️</span>} title="No security events" />
+            <EmptyState icon={<span style={{ fontSize: 48 }}>🛡️</span>} title={t("securityEvents.empty")} />
           ) : (
             <GlassCard lift={false}>
               {securityEvents.map((e, i) => (
@@ -287,7 +289,7 @@ export function SandboxPage() {
                     fontSize: 10, fontWeight: 700, textTransform: "uppercase", minWidth: 60,
                     color: e.severity === "error" ? "var(--red)" : e.severity === "warning" ? "var(--yellow)" : "var(--t4)",
                   }}>
-                    {e.severity}
+                    {t(`severity.${e.severity}`, { defaultValue: e.severity })}
                   </span>
                   <span style={{ fontSize: 12, color: "var(--t3)", flex: 1 }}>{e.message}</span>
                   <span style={{ fontSize: 11, color: "var(--t5)" }}>{new Date(e.created_at).toLocaleString()}</span>

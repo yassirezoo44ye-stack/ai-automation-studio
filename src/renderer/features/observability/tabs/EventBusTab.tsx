@@ -5,11 +5,13 @@
  * Data: GET /api/diagnostics/health.
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { CardGrid, ErrorNote, MetricCard, Skeletons, StatusBadge } from "../components";
 import type { HealthReport } from "../types";
 
 export function EventBusTab() {
+  const { t } = useTranslation("observability");
   const [health, setHealth] = useState<HealthReport | null>(null);
   const [error, setError] = useState(false);
 
@@ -30,11 +32,11 @@ export function EventBusTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !health) return <ErrorNote onRetry={() => void load()}>Could not load event bus status.</ErrorNote>;
+  if (error && !health) return <ErrorNote onRetry={() => void load()}>{t("eventsTab.loadError")}</ErrorNote>;
   if (!health) return <Skeletons n={1} />;
 
   const probe = health.probes.find(p => p.name === "event_bus");
-  if (!probe) return <ErrorNote>Event bus probe not registered.</ErrorNote>;
+  if (!probe) return <ErrorNote>{t("eventsTab.probeNotRegistered")}</ErrorNote>;
 
   const meta = probe.metadata as {
     backend?: string; subscriptions?: Record<string, number>; history_size?: number; dead_letters?: number;
@@ -44,17 +46,17 @@ export function EventBusTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>Backend: {meta.backend ?? "unknown"}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>{t("eventsTab.backendLabel", { backend: meta.backend ?? t("eventsTab.backendUnknown") })}</span>
         <StatusBadge status={probe.status} />
       </div>
       <CardGrid>
-        <MetricCard label="Active subscriptions" value={subCount} />
-        <MetricCard label="Replay buffer size" value={meta.history_size ?? 0} />
-        <MetricCard label="Dead letters" value={meta.dead_letters ?? 0} />
+        <MetricCard label={t("eventsTab.activeSubscriptions")} value={subCount} />
+        <MetricCard label={t("eventsTab.replayBufferSize")} value={meta.history_size ?? 0} />
+        <MetricCard label={t("eventsTab.deadLetters")} value={meta.dead_letters ?? 0} />
       </CardGrid>
       {meta.subscriptions && Object.keys(meta.subscriptions).length > 0 && (
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 10 }}>Subscriptions by pattern</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px", marginBottom: 10 }}>{t("eventsTab.subscriptionsByPattern")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {Object.entries(meta.subscriptions).map(([pattern, count]) => (
               <div key={pattern} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--t3)" }}>

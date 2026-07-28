@@ -5,11 +5,13 @@
  * Data: GET /api/diagnostics/metrics, GET /api/diagnostics/health.
  */
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { CardGrid, ErrorNote, MetricCard, Skeletons, StatusBadge } from "../components";
 import type { HealthReport, MetricsSnapshot } from "../types";
 
 export function MarketplaceAnalyticsTab() {
+  const { t } = useTranslation("observability");
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [health, setHealth] = useState<HealthReport | null>(null);
   const [error, setError] = useState(false);
@@ -34,7 +36,7 @@ export function MarketplaceAnalyticsTab() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>Could not load marketplace metrics.</ErrorNote>;
+  if (error && !metrics) return <ErrorNote onRetry={() => void load()}>{t("marketplaceTab.loadError")}</ErrorNote>;
   if (!metrics || !health) return <Skeletons n={2} />;
 
   const probe = health.probes.find(p => p.name === "marketplace");
@@ -43,14 +45,14 @@ export function MarketplaceAnalyticsTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {probe && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>Store backend</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px" }}>{t("marketplaceTab.storeBackend")}</span>
           <StatusBadge status={probe.status} />
           <span style={{ fontSize: 12, color: "var(--t4)" }}>{probe.message}</span>
         </div>
       )}
       <CardGrid>
-        <MetricCard label="Installs" value={metrics.counters.marketplace_installs_total ?? 0} />
-        <MetricCard label="Publishes" value={metrics.counters.marketplace_publishes_total ?? 0} />
+        <MetricCard label={t("marketplaceTab.installs")} value={metrics.counters.marketplace_installs_total ?? 0} />
+        <MetricCard label={t("marketplaceTab.publishes")} value={metrics.counters.marketplace_publishes_total ?? 0} />
       </CardGrid>
     </div>
   );

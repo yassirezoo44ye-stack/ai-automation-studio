@@ -1,0 +1,98 @@
+{
+  "types": {
+    "agent": "وكيل",
+    "plugin": "إضافة",
+    "theme": "سمة",
+    "template": "قالب",
+    "prompt_pack": "الموجهات",
+    "workflow": "سير عمل",
+    "dataset": "مجموعة بيانات",
+    "model": "نموذج"
+  },
+  "visibility": {
+    "public": "عام",
+    "private": "خاص",
+    "internal": "داخلي"
+  },
+  "price": {
+    "free": "مجاني"
+  },
+  "card": {
+    "byAuthor": "بواسطة {{author}} · الإصدار {{version}}",
+    "installs": "{{count}} عملية تثبيت",
+    "hide": "إخفاء",
+    "details": "التفاصيل",
+    "uninstall": "إلغاء التثبيت",
+    "install": "تثبيت",
+    "buy": "شراء"
+  },
+  "detailPanel": {
+    "tabVersions": "الإصدارات",
+    "tabDependencies": "التبعيات",
+    "tabReviews": "التقييمات",
+    "tabPublisher": "الناشر"
+  },
+  "categoryBar": {
+    "all": "الكل"
+  },
+  "header": {
+    "title": "المتجر",
+    "itemCount": "{{count}} عنصر",
+    "searchPlaceholder": "ابحث في الوكلاء والإضافات وسير العمل والسمات…",
+    "sortVerified": "موثّق",
+    "sortTopRated": "الأعلى تقييمًا",
+    "sortMostUsed": "الأكثر استخدامًا",
+    "sortNewest": "الأحدث"
+  },
+  "empty": {
+    "noResultsTitle": "لا نتائج لـ \"{{search}}\"",
+    "noListingsTitle": "لا توجد عناصر بعد",
+    "noResultsDesc": "جرّب كلمة بحث مختلفة أو تصفّح حسب الفئة.",
+    "noListingsDesc": "كن أول من ينشر في المتجر."
+  },
+  "toast": {
+    "loadFailed": "تعذر تحميل المتجر",
+    "selectOrgFirst": "اختر مؤسسة أولًا",
+    "installFailed": "فشل التثبيت",
+    "installed": "تم التثبيت بنجاح!",
+    "uninstalled": "تم إلغاء التثبيت",
+    "uninstallFailed": "فشل إلغاء التثبيت"
+  },
+  "dependencies": {
+    "loading": "جارٍ تحميل التبعيات…",
+    "empty": "لا توجد تبعيات لهذا العنصر.",
+    "optional": "اختياري",
+    "required": "مطلوب"
+  },
+  "publisher": {
+    "loading": "جارٍ تحميل بيانات الناشر…",
+    "legacyPrefix": "نُشر بواسطة",
+    "legacySuffix": "— لا يوجد ملف تعريف ناشر لهذا العنصر القديم.",
+    "verified": "موثّق",
+    "itemCount_zero": "لا توجد قوائم منشورة",
+    "itemCount_one": "قائمة واحدة منشورة",
+    "itemCount_two": "قائمتان منشورتان",
+    "itemCount_few": "{{count}} قوائم منشورة",
+    "itemCount_many": "{{count}} قائمة منشورة",
+    "itemCount_other": "{{count}} قائمة منشورة"
+  },
+  "reviews": {
+    "placeholder": "اترك تقييمًا…",
+    "submit": "إرسال",
+    "loading": "جارٍ تحميل التقييمات…",
+    "empty": "لا توجد تقييمات بعد — كن أول من يضيف تقييمًا.",
+    "toastSubmitted": "تم إرسال التقييم",
+    "toastSignIn": "سجّل الدخول لترك تقييم",
+    "toastFailed": "فشل إرسال التقييم"
+  },
+  "versions": {
+    "loading": "جارٍ تحميل الإصدارات…",
+    "empty": "لا يوجد سجل إصدارات بعد.",
+    "current": "الحالي",
+    "rollback": "التراجع إلى هذا الإصدار",
+    "toastRolledBack": "تم التراجع إلى الإصدار {{version}}",
+    "toastRollbackFailed": "فشل التراجع",
+    "showChangelog": "عرض سجل التغييرات المفصّل",
+    "noChangelogEntries": "لا توجد إدخالات سجل تغييرات مفصّلة لهذا الإصدار."
+  }
+}

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { DesignProvider, useDesign } from "./stores/designStore";
 import { apiFetch } from "../../utils/api";
 import { useFabricCanvas }           from "./hooks/useFabricCanvas";
@@ -26,6 +27,7 @@ import { findById }                  from "./utils/fabricUtils";
 import styles                        from "./DesignStudio.module.css";
 
 function DesignStudioInner() {
+  const { t } = useTranslation("designStudio");
   const { state, dispatch, setTool, setSelectedIds, setPanel } = useDesign();
   const [showExport, setShowExport] = useState(false);
   const designIdRef = useRef<string | null>(null);
@@ -164,15 +166,15 @@ function DesignStudioInner() {
   const currentPage = state.project.pages.find(p => p.id === state.project.currentPageId);
 
   const SIDE_PANELS: { id: PanelId; label: string }[] = [
-    { id: "layers",     label: "Layers"    },
-    { id: "assets",     label: "Assets"    },
-    { id: "templates",  label: "Templates" },
-    { id: "pages",      label: "Pages"     },
-    { id: "brand",      label: "Brand"     },
-    { id: "components", label: "Components"},
-    { id: "tokens",     label: "Tokens"    },
-    { id: "history",    label: "History"   },
-    { id: "ai",         label: "AI"        },
+    { id: "layers",     label: t("shell.sidePanels.layers")     },
+    { id: "assets",     label: t("shell.sidePanels.assets")     },
+    { id: "templates",  label: t("shell.sidePanels.templates")  },
+    { id: "pages",      label: t("shell.sidePanels.pages")      },
+    { id: "brand",      label: t("shell.sidePanels.brand")      },
+    { id: "components", label: t("shell.sidePanels.components") },
+    { id: "tokens",     label: t("shell.sidePanels.tokens")     },
+    { id: "history",    label: t("shell.sidePanels.history")    },
+    { id: "ai",         label: t("shell.sidePanels.ai")         },
   ];
 
   return (
@@ -201,7 +203,7 @@ function DesignStudioInner() {
 
         {/* Left panel tabs */}
         <div className={styles.leftPanel}>
-          <div className={styles.panelTabs} role="tablist" aria-label="Design panels">
+          <div className={styles.panelTabs} role="tablist" aria-label={t("shell.panelTabsAriaLabel")}>
             {SIDE_PANELS.map(p => (
               <button
                 key={p.id}
@@ -248,7 +250,7 @@ function DesignStudioInner() {
             className={styles.rightPanelHeader}
             role="heading"
             aria-level={2}
-          >Properties</div>
+          >{t("shell.propertiesHeading")}</div>
           <PropertiesPanel getCanvas={getCanvas} selectedIds={state.selectedIds} />
 
           {/* Minimap */}
@@ -264,14 +266,14 @@ function DesignStudioInner() {
       </div>
 
       {/* Page strip — quick page switcher at the bottom */}
-      <div className={styles.pageStrip} role="navigation" aria-label="Page navigation">
+      <div className={styles.pageStrip} role="navigation" aria-label={t("shell.pageNavAriaLabel")}>
         {state.project.pages.map((page, idx) => (
           <button
             key={page.id}
             className={`${styles.pageThumb} ${page.id === state.project.currentPageId ? styles.activePage : ""}`}
             onClick={() => dispatch({ type: "SET_PAGE", pageId: page.id })}
             title={page.name}
-            aria-label={`${page.name} (page ${idx + 1})`}
+            aria-label={t("shell.pageAriaLabel", { name: page.name, num: idx + 1 })}
             aria-current={page.id === state.project.currentPageId ? "page" : undefined}
           >
             {idx + 1}
@@ -279,9 +281,9 @@ function DesignStudioInner() {
         ))}
         <button
           className={styles.addPage}
-          onClick={() => dispatch({ type: "ADD_PAGE", page: { id: `p_${Date.now()}`, name: `Page ${state.project.pages.length + 1}`, width: 1280, height: 720, backgroundColor: "#ffffff", json: { version: "6.6.0", objects: [] }, thumbnail: "" } })}
-          title="Add page"
-          aria-label="Add new page"
+          onClick={() => dispatch({ type: "ADD_PAGE", page: { id: `p_${Date.now()}`, name: t("shell.defaultPageName", { num: state.project.pages.length + 1 }), width: 1280, height: 720, backgroundColor: "#ffffff", json: { version: "6.6.0", objects: [] }, thumbnail: "" } })}
+          title={t("shell.addPage")}
+          aria-label={t("shell.addNewPageAriaLabel")}
         >
           +
         </button>

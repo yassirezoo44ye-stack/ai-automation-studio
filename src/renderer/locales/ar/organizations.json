@@ -1,0 +1,38 @@
+{
+  "header": {
+    "title": "المؤسسات",
+    "newOrg": "+ مؤسسة جديدة"
+  },
+  "kindLabels": {
+    "personal": "شخصي",
+    "organization": "مؤسسة",
+    "enterprise": "مؤسسة كبرى"
+  },
+  "createForm": {
+    "title": "مؤسسة جديدة",
+    "namePlaceholder": "اسم المؤسسة",
+    "create": "إنشاء",
+    "creating": "جارٍ الإنشاء…"
+  },
+  "empty": {
+    "title": "لا توجد مؤسسات بعد",
+    "description": "أنشئ مؤسسة لدعوة زملائك وإدارة الفوترة."
+  },
+  "orgCard": {
+    "meta": "{{kindLabel}} · خطة {{plan}}",
+    "metaWithRole": "{{kindLabel}} · خطة {{plan}} · {{role}}",
+    "active": "نشطة"
+  },
+  "activity": {
+    "title": "النشاط الأخير",
+    "loading": "جارٍ التحميل…",
+    "errorTitle": "تعذر تحميل النشاط",
+    "errorDescription": "حدث خطأ أثناء الاتصال بالخادم.",
+    "retry": "إعادة المحاولة",
+    "empty": "لا يوجد نشاط بعد."
+  },
+  "toast": {
+    "created": "تم إنشاء مؤسسة \"{{name}}\"",
+    "createFailed": "فشل إنشاء المؤسسة: {{message}}"
+  }
+}

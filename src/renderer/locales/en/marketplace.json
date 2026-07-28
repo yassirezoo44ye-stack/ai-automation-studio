@@ -1,0 +1,94 @@
+{
+  "types": {
+    "agent": "Agent",
+    "plugin": "Plugin",
+    "theme": "Theme",
+    "template": "Template",
+    "prompt_pack": "Prompts",
+    "workflow": "Workflow",
+    "dataset": "Dataset",
+    "model": "Model"
+  },
+  "visibility": {
+    "public": "PUBLIC",
+    "private": "PRIVATE",
+    "internal": "INTERNAL"
+  },
+  "price": {
+    "free": "Free"
+  },
+  "card": {
+    "byAuthor": "by {{author}} · v{{version}}",
+    "installs": "{{count}} installs",
+    "hide": "Hide",
+    "details": "Details",
+    "uninstall": "Uninstall",
+    "install": "Install",
+    "buy": "Buy"
+  },
+  "detailPanel": {
+    "tabVersions": "Versions",
+    "tabDependencies": "Dependencies",
+    "tabReviews": "Reviews",
+    "tabPublisher": "Publisher"
+  },
+  "categoryBar": {
+    "all": "All"
+  },
+  "header": {
+    "title": "Marketplace",
+    "itemCount": "{{count}} items",
+    "searchPlaceholder": "Search agents, plugins, workflows, themes…",
+    "sortVerified": "Verified",
+    "sortTopRated": "Top Rated",
+    "sortMostUsed": "Most Used",
+    "sortNewest": "Newest"
+  },
+  "empty": {
+    "noResultsTitle": "No results for \"{{search}}\"",
+    "noListingsTitle": "No listings yet",
+    "noResultsDesc": "Try a different search term or browse by category.",
+    "noListingsDesc": "Be the first to publish to the marketplace."
+  },
+  "toast": {
+    "loadFailed": "Could not load marketplace",
+    "selectOrgFirst": "Select an organization first",
+    "installFailed": "Installation failed",
+    "installed": "Installed successfully!",
+    "uninstalled": "Uninstalled",
+    "uninstallFailed": "Uninstall failed"
+  },
+  "dependencies": {
+    "loading": "Loading dependencies…",
+    "empty": "This listing has no dependencies.",
+    "optional": "OPTIONAL",
+    "required": "REQUIRED"
+  },
+  "publisher": {
+    "loading": "Loading publisher…",
+    "legacyPrefix": "Published by",
+    "legacySuffix": "— no publisher profile on file for this legacy listing.",
+    "verified": "VERIFIED",
+    "itemCount_one": "{{count}} listing published",
+    "itemCount_other": "{{count}} listings published"
+  },
+  "reviews": {
+    "placeholder": "Leave a review…",
+    "submit": "Submit",
+    "loading": "Loading reviews…",
+    "empty": "No reviews yet — be the first.",
+    "toastSubmitted": "Review submitted",
+    "toastSignIn": "Sign in to leave a review",
+    "toastFailed": "Review submission failed"
+  },
+  "versions": {
+    "loading": "Loading versions…",
+    "empty": "No version history yet.",
+    "current": "CURRENT",
+    "rollback": "Rollback to this version",
+    "toastRolledBack": "Rolled back to v{{version}}",
+    "toastRollbackFailed": "Rollback failed",
+    "showChangelog": "Show structured changelog",
+    "noChangelogEntries": "No structured changelog entries for this version."
+  }
+}

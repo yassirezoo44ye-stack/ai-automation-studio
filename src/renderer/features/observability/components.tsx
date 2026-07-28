@@ -1,6 +1,7 @@
 // Small shared presentational pieces used by every tab in this feature —
 // avoids re-deriving the same status-color / card-grid markup 10 times.
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { GlassCard, GoldButton } from "../../shared/ui/gold";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { StatusBadge as SharedStatusBadge } from "../../shared/ui/StatusBadge";
@@ -11,7 +12,8 @@ const HEALTH_KIND = {
 } as const;
 
 export function StatusBadge({ status }: { status: HealthStatus }) {
-  return <SharedStatusBadge kind={HEALTH_KIND[status]} label={status} />;
+  const { t } = useTranslation("observability");
+  return <SharedStatusBadge kind={HEALTH_KIND[status]} label={t(`common.statusLabels.${status}`)} />;
 }
 
 export function ProbeCard({ probe }: { probe: ProbeResult }) {
@@ -57,18 +59,20 @@ export function Skeletons({ n = 3, height = 90 }: { n?: number; height?: number 
 }
 
 export function ErrorNote({ children, onRetry }: { children: ReactNode; onRetry?: () => void }) {
+  const { t } = useTranslation("observability");
   return (
     <EmptyState
       icon={<span style={{ fontSize: 40 }}>⚠️</span>}
-      title="Could not load this data"
+      title={t("common.loadErrorTitle")}
       description={typeof children === "string" ? children : undefined}
-      action={onRetry ? <GoldButton variant="ghost" onClick={onRetry}>Retry</GoldButton> : undefined}
+      action={onRetry ? <GoldButton variant="ghost" onClick={onRetry}>{t("common.retry")}</GoldButton> : undefined}
     />
   );
 }
 
 export function EmptyNote({ children }: { children: ReactNode }) {
+  const { t } = useTranslation("observability");
   return (
-    <EmptyState title={typeof children === "string" ? children : "Nothing here yet"} />
+    <EmptyState title={typeof children === "string" ? children : t("common.emptyDefault")} />
   );
 }

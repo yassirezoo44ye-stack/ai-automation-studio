@@ -5,6 +5,7 @@ import { C } from "../../../shared/lib/theme";
  * `author` field. Data: GET /marketplace/publishers/{org_id}
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 
 interface Publisher {
@@ -19,6 +20,7 @@ export function PublisherTab({ ownerOrganizationId, author }: {
   ownerOrganizationId: string | null;
   author: string;
 }) {
+  const { t } = useTranslation("marketplace");
   const [publisher, setPublisher] = useState<Publisher | null | undefined>(undefined);
 
   // Reset while switching listings/owners — render-time adjustment.
@@ -42,12 +44,12 @@ export function PublisherTab({ ownerOrganizationId, author }: {
     return () => { alive = false; };
   }, [ownerOrganizationId]);
 
-  if (publisher === undefined) return <div style={{ fontSize: 12, color: "var(--t4)" }}>Loading publisher…</div>;
+  if (publisher === undefined) return <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("publisher.loading")}</div>;
 
   if (publisher === null) {
     return (
       <div style={{ fontSize: 12, color: "var(--t4)" }}>
-        Published by <strong style={{ color: "var(--t2)" }}>{author}</strong> — no publisher profile on file for this legacy listing.
+        {t("publisher.legacyPrefix")} <strong style={{ color: "var(--t2)" }}>{author}</strong> {t("publisher.legacySuffix")}
       </div>
     );
   }
@@ -65,12 +67,12 @@ export function PublisherTab({ ownerOrganizationId, author }: {
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{publisher.display_name}</span>
           {publisher.verified && (
             <span style={{ fontSize: 10, fontWeight: 700, color: C.green, background: "rgba(52,211,153,.12)", padding: "1px 6px", borderRadius: 99 }}>
-              VERIFIED
+              {t("publisher.verified")}
             </span>
           )}
         </div>
         <div style={{ fontSize: 11, color: "var(--t4)" }}>
-          {publisher.item_count} listing{publisher.item_count === 1 ? "" : "s"} published
+          {t("publisher.itemCount", { count: publisher.item_count })}
         </div>
       </div>
     </div>

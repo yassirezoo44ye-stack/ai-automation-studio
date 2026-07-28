@@ -6,6 +6,7 @@ import { C } from "../../../shared/lib/theme";
  * Data: GET /marketplace/listings/{id}/reviews, POST /marketplace/reviews
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { useToast } from "../../../contexts/toast";
 
@@ -19,6 +20,7 @@ interface Review {
 }
 
 export function ReviewsTab({ listingId }: { listingId: string }) {
+  const { t } = useTranslation("marketplace");
   const toast = useToast();
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [rating, setRating] = useState(5);
@@ -51,14 +53,14 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
       });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
-        if (r.status === 401) throw new Error("Sign in to leave a review");
-        throw new Error(body?.detail ?? "Review submission failed");
+        if (r.status === 401) throw new Error(t("reviews.toastSignIn"));
+        throw new Error(body?.detail ?? t("reviews.toastFailed"));
       }
       setComment("");
-      toast("Review submitted", "ok");
+      toast(t("reviews.toastSubmitted"), "ok");
       await load();
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Review submission failed", "err");
+      toast(e instanceof Error ? e.message : t("reviews.toastFailed"), "err");
     } finally {
       setSubmitting(false);
     }
@@ -80,7 +82,7 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
         <input
           value={comment}
           onChange={e => setComment(e.target.value)}
-          placeholder="Leave a review…"
+          placeholder={t("reviews.placeholder")}
           style={{
             flex: 1, background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: 6,
             color: "var(--t1)", fontSize: 12, padding: "6px 10px", fontFamily: "inherit", outline: "none",
@@ -94,14 +96,14 @@ export function ReviewsTab({ listingId }: { listingId: string }) {
             background: "linear-gradient(135deg,var(--accent),var(--teal))", color: "#fff", fontSize: 12, fontWeight: 600,
           }}
         >
-          {submitting ? "…" : "Submit"}
+          {submitting ? "…" : t("reviews.submit")}
         </button>
       </div>
 
       {reviews === null ? (
-        <div style={{ fontSize: 12, color: "var(--t4)" }}>Loading reviews…</div>
+        <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("reviews.loading")}</div>
       ) : reviews.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--t4)" }}>No reviews yet — be the first.</div>
+        <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("reviews.empty")}</div>
       ) : (
         reviews.map(rv => (
           <div key={rv.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>

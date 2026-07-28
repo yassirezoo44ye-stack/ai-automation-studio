@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Template } from "../../types/canvas.types";
 import {
   listTemplates,
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function TemplatesPanel({ onApply }: Props) {
+  const { t } = useTranslation("designStudio");
   const [category, setCategory] = useState("All");
   const [query,    setQuery]    = useState("");
 
@@ -21,11 +23,11 @@ export function TemplatesPanel({ onApply }: Props) {
 
   return (
     <div className={styles.panel}>
-      <div className={styles.header}>Templates</div>
+      <div className={styles.header}>{t("templatesPanel.header")}</div>
 
       <input
         className={styles.search}
-        placeholder="Search templates…"
+        placeholder={t("templatesPanel.searchPlaceholder")}
         value={query}
         onChange={e => setQuery(e.target.value)}
       />
@@ -50,7 +52,7 @@ export function TemplatesPanel({ onApply }: Props) {
             key={tpl.id}
             className={styles.card}
             onClick={() => onApply(tpl)}
-            title={`${tpl.name} — ${tpl.width}×${tpl.height}`}
+            title={t("templatesPanel.cardTitle", { name: tpl.name, width: tpl.width, height: tpl.height })}
           >
             <div
               className={styles.thumb}

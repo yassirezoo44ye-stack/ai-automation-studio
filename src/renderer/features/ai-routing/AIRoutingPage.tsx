@@ -6,6 +6,7 @@
  * (core/ai/platform/CostClient.ts) rather than hand-rolling new fetches.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
 import { GoldButton } from "../../shared/ui/gold";
@@ -18,34 +19,35 @@ import { UsageReportsTab } from "./tabs/UsageReportsTab";
 
 type Tab = "providers" | "models" | "budgets" | "cost" | "usage";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "providers", label: "Providers" },
-  { id: "models", label: "Models" },
-  { id: "budgets", label: "Budgets" },
-  { id: "cost", label: "Cost Analytics" },
-  { id: "usage", label: "Usage Reports" },
-];
-
 export function AIRoutingPage() {
+  const { t } = useTranslation("aiRouting");
   const { currentOrgId, orgs } = useOrg();
   const [tab, setTab] = useState<Tab>("providers");
+
+  const TABS: { id: Tab; label: string }[] = [
+    { id: "providers", label: t("tabs.providers") },
+    { id: "models", label: t("tabs.models") },
+    { id: "budgets", label: t("tabs.budgets") },
+    { id: "cost", label: t("tabs.cost") },
+    { id: "usage", label: t("tabs.usage") },
+  ];
 
   return (
     <>
       <header style={S.header}>
-        <span style={S.headerTitle}>AI Routing</span>
-        <span style={S.headerSub}>Providers, model catalog, budgets, and real spend from ai_usage_log</span>
+        <span style={S.headerTitle}>{t("page.title")}</span>
+        <span style={S.headerSub}>{t("page.subtitle")}</span>
       </header>
 
       <div style={{ display: "flex", gap: 6, padding: "12px 24px 0" }}>
-        {TABS.map(t => (
+        {TABS.map(tabDef => (
           <GoldButton
-            key={t.id}
-            variant={tab === t.id ? "primary" : "ghost"}
-            onClick={() => setTab(t.id)}
+            key={tabDef.id}
+            variant={tab === tabDef.id ? "primary" : "ghost"}
+            onClick={() => setTab(tabDef.id)}
             style={{ padding: "7px 14px", fontSize: 12 }}
           >
-            {t.label}
+            {tabDef.label}
           </GoldButton>
         ))}
       </div>
@@ -61,8 +63,8 @@ export function AIRoutingPage() {
           ) : (
             <EmptyState
               icon={<span style={{ fontSize: 40 }}>💰</span>}
-              title="No organization selected"
-              description={orgs.length === 0 ? "Create an organization first." : "Pick one from the Organizations page."}
+              title={t("noOrgState.title")}
+              description={orgs.length === 0 ? t("noOrgState.descriptionNoOrgs") : t("noOrgState.descriptionPickOne")}
             />
           )
         ) : tab === "cost" ? (

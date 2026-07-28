@@ -3,6 +3,7 @@
  * Reads from componentLibrary singleton; inserts instances to canvas.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Canvas as FabricCanvas } from "fabric";
 import { componentLibrary } from "../../features/components/ComponentLibrary";
 
@@ -10,7 +11,7 @@ interface Props {
   getCanvas: () => FabricCanvas | null;
 }
 
-const CATEGORIES = ["All", "Button", "Card", "Header", "Footer", "Icon", "Chart", "Table"];
+const CATEGORIES = ["all", "button", "card", "header", "footer", "icon", "chart", "table"] as const;
 
 const s: Record<string, React.CSSProperties> = {
   root:     { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
@@ -27,13 +28,14 @@ const s: Record<string, React.CSSProperties> = {
 };
 
 export function ComponentsPanel({ getCanvas }: Props) {
+  const { t } = useTranslation("designStudio");
   const [query, setQuery]       = useState("");
-  const [category, setCategory] = useState("All");
+  const [category, setCategory] = useState<typeof CATEGORIES[number]>("all");
   const [components] = useState<ReturnType<typeof componentLibrary.all>>(() => componentLibrary.all());
 
   const filtered = components.filter(c => {
     const matchesQ   = !query || c.name.toLowerCase().includes(query.toLowerCase());
-    const matchesCat = category === "All" || c.category === category;
+    const matchesCat = category === "all" || c.category === category;
     return matchesQ && matchesCat;
   });
 
@@ -58,14 +60,14 @@ export function ComponentsPanel({ getCanvas }: Props) {
       <div style={s.search}>
         <input
           style={s.searchIn}
-          placeholder="Search components…"
+          placeholder={t("componentsPanel.searchPlaceholder")}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          aria-label="Search components"
+          aria-label={t("componentsPanel.searchAriaLabel")}
         />
       </div>
 
-      <div style={s.cats} role="tablist" aria-label="Component categories">
+      <div style={s.cats} role="tablist" aria-label={t("componentsPanel.categoriesAriaLabel")}>
         {CATEGORIES.map(cat => (
           <button
             key={cat}
@@ -78,12 +80,12 @@ export function ComponentsPanel({ getCanvas }: Props) {
               borderColor: category === cat ? "#4f46e5" : "#374151",
             }}
             onClick={() => setCategory(cat)}
-          >{cat}</button>
+          >{t(`componentsPanel.categories.${cat}`)}</button>
         ))}
       </div>
 
       {filtered.length === 0 ? (
-        <div style={s.empty}>No components found</div>
+        <div style={s.empty}>{t("componentsPanel.empty")}</div>
       ) : (
         <div style={s.grid}>
           {filtered.map(comp => (
@@ -98,7 +100,7 @@ export function ComponentsPanel({ getCanvas }: Props) {
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void insertComponent(comp.id); } }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = "#4f46e5")}
               onMouseLeave={e => (e.currentTarget.style.borderColor = "#374151")}
-              title={`Insert ${comp.name}`}
+              title={t("componentsPanel.insertTitle", { name: comp.name })}
             >
               <div style={{ height: "52px", background: "#111827", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ fontSize: "20px", color: "#4f46e5" }}>⬜</span>
