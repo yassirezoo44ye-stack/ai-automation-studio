@@ -67,6 +67,10 @@ _ALIASES: dict[str, str] = {
     # image
     "image":   "image", "imagine": "image", "draw":    "image",
     "picture": "image",
+
+    # browser
+    "browser": "browser", "browse":   "browser", "visit":  "browser",
+    "navigate": "browser", "goto":    "browser",
 }
 
 # Patterns for intent extraction from sentences
@@ -81,6 +85,7 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(status|health|stats|info)\b",          re.I), "status"),
     (re.compile(r"\b(search|google|lookup)\b",              re.I), "search"),
     (re.compile(r"\b(imagine|draw|illustrat)\b",            re.I), "image"),
+    (re.compile(r"\b(browse|browser|navigate to|visit)\b",  re.I), "browser"),
 ]
 
 
