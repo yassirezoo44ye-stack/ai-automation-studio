@@ -545,6 +545,96 @@ class TestPlanAndRun:
         assert "results" in result
         assert len(result["results"]) == 2
 
+    def test_plan_and_run_uses_the_caller_supplied_run_id_verbatim(self):
+        class MockPlan(EvolvableAgent):
+            name = "plan"
+            description = "test"
+            group = "test"
+            async def execute(self, ctx):
+                return AgentResult.ok("plan", "planned",
+                                      data={"tasks": ["echo step1"]})
+
+        self.kernel.register_agent(MockPlan())
+        seen_run_ids: list[str] = []
+        orig_run = self.kernel.run
+        async def spy_run(*args, **kwargs):
+            seen_run_ids.append(kwargs.get("run_id"))
+            return await orig_run(*args, **kwargs)
+        self.kernel.run = spy_run
+
+        _run(self.kernel.plan_and_run("do something", run_id="fixed-plan-id"))
+
+        # Both the decomposition call ("plan {goal}") and the single
+        # executed task must share the caller-supplied id.
+        assert seen_run_ids == ["fixed-plan-id", "fixed-plan-id"]
+
+    def test_plan_and_run_generates_a_run_id_when_none_supplied(self):
+        result = _run(self.kernel.plan_and_run("echo something"))
+        assert "results" in result  # no plan agent registered — just proves no crash
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# collaborate() / plan_and_run() run_id threading (Manus M2: live-narrated
+# autonomous plan execution — see app/agents/kernel.py's _publish_plan_step)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCollaborateRunIdThreading:
+    def setup_method(self):
+        self.kernel = _make_kernel()
+        self.kernel.register_agent(EchoAgent())
+        self.kernel.register_agent(FailAgent())
+        self.kernel._parser.update_agents(["echo", "fail"])
+
+    def test_sequential_collaborate_shares_one_run_id_across_every_task(self):
+        seen_run_ids: list[str] = []
+        orig_run = self.kernel.run
+        async def spy_run(*args, **kwargs):
+            seen_run_ids.append(kwargs.get("run_id"))
+            return await orig_run(*args, **kwargs)
+        self.kernel.run = spy_run
+
+        _run(self.kernel.collaborate(["echo a", "echo b"], parallel=False,
+                                     run_id="shared-id"))
+
+        assert seen_run_ids == ["shared-id", "shared-id"]
+
+    def test_parallel_collaborate_shares_one_run_id_across_every_task(self):
+        seen_run_ids: list[str] = []
+        orig_run = self.kernel.run
+        async def spy_run(*args, **kwargs):
+            seen_run_ids.append(kwargs.get("run_id"))
+            return await orig_run(*args, **kwargs)
+        self.kernel.run = spy_run
+
+        _run(self.kernel.collaborate(["echo a", "echo b"], parallel=True,
+                                     run_id="shared-parallel-id"))
+
+        assert seen_run_ids == ["shared-parallel-id", "shared-parallel-id"]
+
+    def test_collaborate_generates_its_own_run_id_when_none_supplied(self):
+        # Just proves this doesn't crash and produces a usable id — the
+        # actual generated value isn't asserted (it's a fresh uuid hex).
+        results = _run(self.kernel.collaborate(["echo a"], parallel=False))
+        assert len(results) == 1
+
+    def test_collaborate_narrates_each_step_and_a_failure_stop(self):
+        from unittest.mock import AsyncMock
+        with __import__("unittest.mock", fromlist=["patch"]).patch(
+            "app.agents.kernel._publish_plan_step", AsyncMock()
+        ) as fake_publish:
+            _run(self.kernel.collaborate(["fail", "echo after"], parallel=False,
+                                         run_id="narrated-id"))
+
+        calls = [c.args for c in fake_publish.call_args_list]
+        # One "Step 1/2: fail" narration before it runs, then a "Stopped"
+        # narration once it fails — the second task never gets its own
+        # step-start narration since collaborate() breaks out first.
+        assert calls[0][0] == "narrated-id"
+        assert "Step 1/2" in calls[0][1]
+        assert calls[-1][0] == "narrated-id"
+        assert "Stopped" in calls[-1][1]
+
+
 # TestAutonomyEngineOrgScoping moved to
 # tests/security/test_tenant_isolation.py as part of the Security Testing
 # phase's tests/security/ reorganization.

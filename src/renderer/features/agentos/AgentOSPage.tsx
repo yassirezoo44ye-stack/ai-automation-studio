@@ -122,7 +122,9 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
         setDelib({ bids: res.deliberation.bids, winner: res.deliberation.winner });
         onResult(res.result);
       } else if (mode === "plan") {
-        const res = await agentOsApi.plan(val);
+        const runId = crypto.randomUUID();
+        setActiveRunId(runId);
+        const res = await agentOsApi.plan(val, runId);
         onResult({
           agent: "plan", success: res.success, output: res.plan.join(" → "),
           data: { results: res.results }, duration_ms: 0,
@@ -171,7 +173,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           {loading ? t("terminal.running") : t("terminal.runButton")}
         </GoldButton>
       </div>
-      {mode === "run" && loading && (
+      {(mode === "run" || mode === "plan") && loading && (
         <div style={{
           marginTop: 14, padding: "10px 12px", borderRadius: 8,
           background: "var(--bg-base)", border: "1px solid var(--border)",

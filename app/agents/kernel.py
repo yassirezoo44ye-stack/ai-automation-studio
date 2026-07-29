@@ -50,6 +50,17 @@ async def _publish_agent_event(
         log.warning("event publish failed for agent=%s %s", agent_name, event_type, exc_info=True)
 
 
+async def _publish_plan_step(run_id: str, description: str, kind: str = "info") -> None:
+    """Narrates collaborate()'s own step boundaries (which task is running
+    next) onto the same /ws/system live-computer feed AgentContext.step()
+    uses — best-effort, same as _publish_agent_event above."""
+    try:
+        from app.agents.liveness import publish_step
+        await publish_step(run_id, "kernel", description, kind)
+    except Exception:
+        log.warning("plan step publish failed for run_id=%s", run_id, exc_info=True)
+
+
 class AgentKernel:
     """Agentic OS — central orchestrator."""
 
@@ -315,21 +326,32 @@ class AgentKernel:
         workspace : Optional[str] = None,
         parallel  : bool = False,
         organization_id: Optional[str] = None,
+        run_id    : Optional[str] = None,
     ) -> list[AgentResult]:
+        """
+        run_id is shared across every task's underlying kernel.run() call,
+        so a client watching one run_id (see run()'s docstring) sees the
+        whole multi-step pipeline narrated live, not just one sub-step.
+        """
+        import uuid
+        run_id = run_id or uuid.uuid4().hex[:12]
+
         if parallel:
             return list(await asyncio.gather(*[
                 self.run(t, caller=caller, user_id=user_id, workspace=workspace,
-                         organization_id=organization_id)
+                         organization_id=organization_id, run_id=run_id)
                 for t in tasks
             ]))
 
         results: list[AgentResult] = []
-        for task in tasks:
+        for i, task in enumerate(tasks):
+            await _publish_plan_step(run_id, f"Step {i + 1}/{len(tasks)}: {task}")
             r = await self.run(task, caller=caller, user_id=user_id, workspace=workspace,
-                               organization_id=organization_id)
+                               organization_id=organization_id, run_id=run_id)
             results.append(r)
             if not r.success:
                 log.warning("pipeline stopped at: %s", task)
+                await _publish_plan_step(run_id, f"Stopped: {task} failed", kind="error")
                 break
         return results
 
@@ -350,10 +372,21 @@ class AgentKernel:
         user_id   : Optional[str] = None,
         workspace : Optional[str] = None,
         organization_id: Optional[str] = None,
+        run_id    : Optional[str] = None,
     ) -> dict:
+        """
+        Decomposes goal into tasks, then executes them autonomously with no
+        per-step confirmation (see collaborate()). run_id is shared across
+        both the decomposition call and every executed task, so a client
+        watching one run_id sees the whole plan — from decomposition
+        through the last step — as one live narrated sequence.
+        """
+        import uuid
+        run_id = run_id or uuid.uuid4().hex[:12]
+
         plan_result = await self.run(f"plan {goal}", caller=caller,
                                      user_id=user_id, workspace=workspace,
-                                     organization_id=organization_id)
+                                     organization_id=organization_id, run_id=run_id)
         tasks = plan_result.data.get("tasks", [])
         if not tasks:
             return {
@@ -361,8 +394,10 @@ class AgentKernel:
                 "results": [plan_result.to_dict()],
                 "success": plan_result.success,
             }
+        await _publish_plan_step(run_id, f"Plan ready: {len(tasks)} step(s) — executing autonomously")
         results = await self.collaborate(tasks, caller=caller, user_id=user_id,
-                                         workspace=workspace, organization_id=organization_id)
+                                         workspace=workspace, organization_id=organization_id,
+                                         run_id=run_id)
         return {
             "plan"   : tasks,
             "results": [r.to_dict() for r in results],

@@ -60,12 +60,14 @@ class CollaborateRequest(BaseModel):
     parallel : bool      = False
     workspace: Optional[str] = None
     caller   : str = "api"
+    run_id   : Optional[str] = None
 
 
 class PlanRequest(BaseModel):
     goal     : str
     workspace: Optional[str] = None
     caller   : str = "api"
+    run_id   : Optional[str] = None
 
 
 class EvolveRequest(BaseModel):
@@ -120,6 +122,7 @@ async def agentos_collaborate(req: CollaborateRequest, request: Request):
         workspace = req.workspace,
         parallel  = req.parallel,
         organization_id = await optional_org_id(request),
+        run_id    = req.run_id,
     )
     return {
         "tasks"   : req.tasks,
@@ -136,6 +139,7 @@ async def agentos_plan(req: PlanRequest, request: Request):
     return await get_agent_kernel().plan_and_run(
         req.goal, caller=req.caller, workspace=req.workspace,
         organization_id=await optional_org_id(request),
+        run_id=req.run_id,
     )
 
 

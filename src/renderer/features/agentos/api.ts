@@ -140,9 +140,12 @@ export const agentOsApi = {
       "/collaborate", { tasks, parallel }
     ),
 
-  plan: (goal: string) =>
+  // run_id: same client-generated correlation id as run() above — lets a
+  // watcher see the whole autonomous plan (decomposition + every step)
+  // as one live narrated sequence instead of only the final summary.
+  plan: (goal: string, run_id?: string) =>
     post<{ plan: string[]; results: AgentResult[]; success: boolean }>(
-      "/plan", { goal }
+      "/plan", { goal, run_id }
     ),
 
   deliberate: (input: string) =>
