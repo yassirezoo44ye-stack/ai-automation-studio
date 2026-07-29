@@ -59,6 +59,10 @@ _ALIASES: dict[str, str] = {
 
     # agents
     "agents":  "agents", "list":    "agents",
+
+    # search
+    "search":  "search", "websearch": "search", "google": "search",
+    "lookup":  "search",
 }
 
 # Patterns for intent extraction from sentences
@@ -71,6 +75,7 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(evolv|optim|improv|upgrad|tune)\b",   re.I), "evolve"),
     (re.compile(r"\b(plan|decompose|strateg)\b",            re.I), "plan"),
     (re.compile(r"\b(status|health|stats|info)\b",          re.I), "status"),
+    (re.compile(r"\b(search|google|lookup)\b",              re.I), "search"),
 ]
 
 
