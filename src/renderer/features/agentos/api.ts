@@ -30,6 +30,24 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
   return res.json();
 }
 
+// Fetches the deliverable as a blob (so the Authorization header can ride
+// along, unlike a plain <a href>) and triggers a save-as via a throwaway
+// object URL — mirrors the standard blob-download pattern, no server
+// redirect or token-in-URL involved.
+async function downloadDeliverable(deliverableId: string, suggestedName: string): Promise<void> {
+  const res = await fetch(`${BASE}/deliverables/${deliverableId}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`deliverable download failed: ${res.status}`);
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url;
+  a.download = suggestedName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface AgentResult {
@@ -150,6 +168,8 @@ export const agentOsApi = {
 
   deliberate: (input: string) =>
     post<DeliberateResult>("/deliberate", { input }),
+
+  downloadDeliverable,
 
   status: () => get<SystemStatus>("/status"),
 

@@ -78,7 +78,21 @@ function SuccessBar({ rate, height = 6 }: { rate: number; height?: number }) {
 }
 
 function ResultBox({ result }: { result: AgentResult }) {
+  const { t } = useTranslation("agentos");
+  const toast = useToast();
   const border = result.success ? "var(--green)" : "var(--red)";
+  const deliverableId    = result.data?.deliverable_id as string | undefined;
+  const deliverableLabel = (result.data?.deliverable_label as string | undefined) ?? deliverableId;
+
+  const download = useCallback(async () => {
+    if (!deliverableId) return;
+    try {
+      await agentOsApi.downloadDeliverable(deliverableId, deliverableLabel ?? deliverableId);
+    } catch (e: unknown) {
+      toast(t("terminal.deliverable.downloadFailed", { error: String(e) }), "err");
+    }
+  }, [deliverableId, deliverableLabel, toast, t]);
+
   return (
     <GlassCard lift={false} style={{ marginTop: 12, background: result.success ? "var(--green-dim)" : "var(--red-dim)", border: `1px solid ${border}` }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
@@ -86,6 +100,11 @@ function ResultBox({ result }: { result: AgentResult }) {
         <span style={{ color: "var(--t3)", fontSize: 11 }}>{result.duration_ms.toFixed(0)}ms</span>
       </div>
       <pre style={{ ...S.mono, whiteSpace: "pre-wrap", margin: 0, color: "var(--t1)" }}>{result.output}</pre>
+      {deliverableId && (
+        <GoldButton variant="primary" onClick={download} style={{ marginTop: 10, padding: "6px 14px", fontSize: 12 }}>
+          {t("terminal.deliverable.download", { name: deliverableLabel })}
+        </GoldButton>
+      )}
     </GlassCard>
   );
 }

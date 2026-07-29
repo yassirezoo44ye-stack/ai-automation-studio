@@ -7,6 +7,9 @@ Core execution:
   POST /api/agentos/plan         Goal decomposition + execution
   POST /api/agentos/deliberate   Multi-agent voting + execution
 
+Deliverables:
+  GET  /api/agentos/deliverables/{id}  Download a file an agent produced
+
 System state:
   GET  /api/agentos/status       Full system status
   GET  /api/agentos/agents       Agent list + per-agent stats
@@ -31,8 +34,10 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+
+from app.routers.auth_users import get_current_user
 
 log    = logging.getLogger(__name__)
 router = APIRouter(tags=["agentos"])
@@ -156,6 +161,47 @@ async def agentos_deliberate(req: RunRequest, request: Request):
         organization_id = await optional_org_id(request),
     )
     return {"result": result.to_dict(), "deliberation": vote}
+
+
+# ── Deliverables ─────────────────────────────────────────────────────────────
+
+@router.get("/api/agentos/deliverables/{deliverable_id}")
+async def agentos_download_deliverable(
+    deliverable_id: str, request: Request, user: dict = Depends(get_current_user),
+):
+    """
+    Downloads a file an agent produced (e.g. DeployAgent's zip archive —
+    see app/agents/deliverables.py). Requires login; if the deliverable
+    was registered with an organization_id, the caller must be a verified
+    member of that same org (resolved the same way every other org-scoped
+    read in this router does) — otherwise this 404s exactly like a
+    nonexistent id, so a caller can't distinguish "wrong org" from
+    "doesn't exist".
+    """
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+
+    from app.agents import deliverables
+    from app.tenancy.context import optional_org_id
+
+    d = deliverables.get(deliverable_id)
+    if d is None:
+        raise HTTPException(404, "Deliverable not found")
+
+    if d["organization_id"]:
+        org_id = await optional_org_id(request)
+        if org_id != d["organization_id"]:
+            raise HTTPException(404, "Deliverable not found")
+
+    path = Path(d["path"])
+    if not path.exists():
+        raise HTTPException(404, "Deliverable file no longer exists")
+
+    return FileResponse(
+        str(path), filename=d["label"], media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{d["label"]}"'},
+    )
 
 
 # ── System state ──────────────────────────────────────────────────────────────

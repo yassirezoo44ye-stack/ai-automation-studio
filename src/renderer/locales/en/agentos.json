@@ -24,6 +24,10 @@
     "liveSteps": {
       "title": "🖥 Live computer",
       "waiting": "Connecting…"
+    },
+    "deliverable": {
+      "download": "⬇ Download {{name}}",
+      "downloadFailed": "Download failed: {{error}}"
     }
   },
   "agentGrid": {

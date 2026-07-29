@@ -24,6 +24,10 @@
     "liveSteps": {
       "title": "🖥 الحاسوب الحي",
       "waiting": "جارٍ الاتصال…"
+    },
+    "deliverable": {
+      "download": "⬇ تنزيل {{name}}",
+      "downloadFailed": "فشل التنزيل: {{error}}"
     }
   },
   "agentGrid": {

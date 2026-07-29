@@ -66,6 +66,7 @@ class DeployAgent(EvolvableAgent):
     async def _zip_deploy(self, ws: Path, steps: list, ctx: AgentContext) -> AgentResult:
         import shutil
         import uuid
+        from app.agents import deliverables
         out_dir = WORKSPACES / "deploys"
         out_dir.mkdir(parents=True, exist_ok=True)
         zip_path = out_dir / f"{ws.name}_{uuid.uuid4().hex[:8]}.zip"
@@ -74,10 +75,20 @@ class DeployAgent(EvolvableAgent):
         shutil.make_archive(str(zip_path.with_suffix("")), "zip", ws)
         await self._note(steps, ctx, f"Archive size: {zip_path.stat().st_size / 1024:.1f} KB")
 
+        deliverable_id = deliverables.register(
+            zip_path, run_id=ctx.run_id, agent=self.name, label=zip_path.name,
+            organization_id=ctx.organization_id,
+        )
+        result_data: dict = {"zip": str(zip_path), "steps": steps}
+        if deliverable_id:
+            result_data["deliverable_id"]    = deliverable_id
+            result_data["deliverable_label"] = zip_path.name
+            await self._note(steps, ctx, f"Deliverable ready for download: {zip_path.name}", "success")
+
         return AgentResult.ok(
             self.name,
             f"Deployed as zip: {zip_path.name}",
-            data={"zip": str(zip_path), "steps": steps},
+            data=result_data,
         )
 
     async def _render_deploy(self, ws: Path, steps: list, ctx: AgentContext) -> AgentResult:
