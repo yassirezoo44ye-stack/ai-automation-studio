@@ -125,3 +125,11 @@ explicitly deferred (adds paid infrastructure) rather than silently built.
 - **Fixing the Alembic revision chain** beyond migration 001.
 - **The remaining 104 ruff findings / any residual ESLint findings beyond
   today's clean state** — ratcheted, not fixed, per above.
+- **AgentOS's browser-automation tool's Chromium binary** — `Dockerfile`
+  installs the `playwright` Python package (it's in `requirements.txt`)
+  but never runs `playwright install chromium`, a separate ~300MB browser
+  download that would meaningfully grow the image on a starter-plan
+  service. Until that line is added to `Dockerfile`, the tool degrades
+  gracefully (a clear failure result, not a crash) rather than working —
+  add `RUN playwright install --with-deps chromium` after the
+  `pip install -r requirements.txt` step to enable it in production.
