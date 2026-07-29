@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 
 _LLM_THRESHOLD       = 0.6    # below this: use LLM router
 _DELIBERATION_THRESH = 0.75   # below this: use multi-agent voting
+_COLLABORATION_GAP   = 0.15   # runner-up within this of the winner: also executes, as a second opinion
 
 
 async def _publish_agent_event(
@@ -186,6 +187,7 @@ class AgentKernel:
         deliberate : bool = False,
         organization_id: Optional[str] = None,
         run_id     : Optional[str] = None,
+        forced_intent: Optional[str] = None,
     ) -> AgentResult:
         """
         Full pipeline: parse → route → (vote) → execute → reflect.
@@ -197,6 +199,14 @@ class AgentKernel:
         request, since it's the only way to know the id in time to start
         listening for steps before this synchronous call returns. Callers
         that don't care leave it unset and one is generated for them.
+
+        forced_intent bypasses the LLM router and internal deliberation
+        step below and executes this exact agent name (still subject to
+        the same visibility/ownership checks) — used by
+        deliberate_and_run() so the agent that actually executes is
+        guaranteed to be the one deliberation just voted for, instead of
+        this method's own independent intent resolution silently landing
+        on a different agent.
         """
         import uuid
         run_id = run_id or uuid.uuid4().hex[:12]
@@ -219,22 +229,25 @@ class AgentKernel:
             # that resolves intent_name some other way).
             known = self.visible_agent_names(organization_id)
 
-            # ── 1. Heuristic intent parse ──────────────────────────────────
+            # ── 1. Heuristic intent parse (always run — extracts ir.args) ────
             ir = self._parser.parse(raw_input)
 
-            # ── 2. LLM router (when heuristic is uncertain) ─────────────────
-            if ir.confidence < _LLM_THRESHOLD and self._router and self._router.available():
-                routed = await self._router.route(raw_input, known, org_id=organization_id)
-                if routed and routed.intent in known:
-                    ir = _adapt_routed(routed)
+            if forced_intent:
+                intent_name = forced_intent
+            else:
+                # ── 2. LLM router (when heuristic is uncertain) ─────────────
+                if ir.confidence < _LLM_THRESHOLD and self._router and self._router.available():
+                    routed = await self._router.route(raw_input, known, org_id=organization_id)
+                    if routed and routed.intent in known:
+                        ir = _adapt_routed(routed)
 
-            # ── 3. Multi-agent deliberation (when still ambiguous) ──────────
-            intent_name = ir.intent
-            if (deliberate or ir.confidence < _DELIBERATION_THRESH) and \
-                    self._deliberation and len(known) >= 2:
-                delib = await self._deliberation.vote(raw_input, self, ir.intent, org_id=organization_id)
-                if delib.winner in known:
-                    intent_name = delib.winner
+                # ── 3. Multi-agent deliberation (when still ambiguous) ──────
+                intent_name = ir.intent
+                if (deliberate or ir.confidence < _DELIBERATION_THRESH) and \
+                        self._deliberation and len(known) >= 2:
+                    delib = await self._deliberation.vote(raw_input, self, ir.intent, org_id=organization_id)
+                    if delib.winner in known:
+                        intent_name = delib.winner
 
             span.set_tag("intent", intent_name)
 
@@ -358,11 +371,48 @@ class AgentKernel:
     async def deliberate_and_run(
         self,
         raw_input: str,
+        run_id   : Optional[str] = None,
         **kwargs,
     ) -> tuple[AgentResult, dict]:
-        """Run with explicit deliberation — returns (result, vote_record)."""
-        delib = await self._deliberation.vote(raw_input, self, org_id=kwargs.get("organization_id"))
-        result = await self.run(raw_input, deliberate=False, **kwargs)
+        """
+        Run with explicit deliberation — returns (result, vote_record).
+
+        The executed agent is forced to be the deliberation winner (see
+        run()'s forced_intent) so the vote record returned alongside the
+        result always describes what actually ran — previously this
+        called run() independently, which could silently resolve to a
+        *different* agent than the one deliberation just voted for.
+
+        Collaboration: when a close runner-up exists (within
+        _COLLABORATION_GAP of the winner's score), it also executes on
+        the same input, and its result is attached at
+        result.data["collaborator"] — a genuine second agent's
+        independent take on the task, not just a losing bid.
+        """
+        import uuid
+        run_id = run_id or uuid.uuid4().hex[:12]
+
+        delib  = await self._deliberation.vote(raw_input, self, org_id=kwargs.get("organization_id"))
+        result = await self.run(raw_input, forced_intent=delib.winner, deliberate=False,
+                                run_id=run_id, **kwargs)
+
+        if len(delib.all_bids) >= 2:
+            top, second = delib.all_bids[0], delib.all_bids[1]
+            if second.agent_name != top.agent_name and (top.score - second.score) < _COLLABORATION_GAP:
+                await _publish_plan_step(
+                    run_id,
+                    f"Close call ({top.score:.2f} vs {second.score:.2f}) — "
+                    f"asking {second.agent_name} for a second opinion",
+                )
+                collaborator_result = await self.run(
+                    raw_input, forced_intent=second.agent_name, deliberate=False,
+                    run_id=run_id, **kwargs,
+                )
+                result.data["collaborator"] = {
+                    "agent" : second.agent_name,
+                    "result": collaborator_result.to_dict(),
+                }
+
         return result, delib.to_dict()
 
     async def plan_and_run(

@@ -635,6 +635,116 @@ class TestCollaborateRunIdThreading:
         assert "Stopped" in calls[-1][1]
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# run()'s forced_intent + deliberate_and_run() (Manus M4: deepen multi-agent
+# deliberation into real collaboration — see app/agents/kernel.py)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestForcedIntent:
+    def setup_method(self):
+        self.kernel = _make_kernel()
+        self.kernel.register_agent(EchoAgent())
+        self.kernel.register_agent(FailAgent())
+        self.kernel._parser.update_agents(["echo", "fail"])
+
+    def test_forced_intent_overrides_heuristic_resolution(self):
+        # "echo hello" would heuristically resolve to the echo agent on
+        # its own — forced_intent must win regardless.
+        result = _run(self.kernel.run("echo hello", forced_intent="fail"))
+        assert result.agent == "fail"
+
+    def test_forced_intent_still_enforces_agent_ownership(self):
+        # The bypass only skips intent *resolution* — the ownership
+        # boundary right before execution still applies exactly as if
+        # forced_intent had been resolved normally.
+        other_org_kernel = _make_kernel()
+        other_org_kernel.register_agent(FailAgent(), owner="org-other")
+        other_org_kernel._parser.update_agents(["fail"])
+
+        result = _run(other_org_kernel.run(
+            "anything", forced_intent="fail", organization_id="org-mine",
+        ))
+        assert result.success is False
+        assert result.error == "agent_not_found"
+
+
+def _fake_deliberation(winner: str, bids: list):
+    """bids: list of (agent_name, relevance, confidence, cost, risk) tuples,
+    highest-scoring first (mirrors the real Deliberation.vote()'s sorted
+    output — deliberate_and_run() assumes all_bids[0] is the winner)."""
+    from app.agents.deliberation import AgentBid, DeliberationResult
+
+    class _Fake:
+        async def vote(self, raw_input, kernel, org_id=None):
+            return DeliberationResult(
+                winner=winner, winner_score=1.0,
+                all_bids=[AgentBid(*b) for b in bids],
+                consensus=0.5, method="vote",
+            )
+    return _Fake()
+
+
+class TestDeliberateAndRun:
+    def setup_method(self):
+        self.kernel = _make_kernel()
+        self.kernel.register_agent(EchoAgent())
+        self.kernel.register_agent(FailAgent())
+        self.kernel._parser.update_agents(["echo", "fail"])
+
+    def test_executes_the_deliberation_winner_not_an_independently_resolved_agent(self):
+        # Regression: deliberate_and_run() used to call run() independently
+        # (deliberate=False) after computing the vote, so whenever the
+        # heuristic parser was confident about a *different* agent than
+        # the vote's winner, that different agent silently executed while
+        # the returned vote record still claimed the original winner.
+        self.kernel._deliberation = _fake_deliberation(
+            "fail", [("fail", 0.9, 0.9, 0.1, 0.1), ("echo", 0.1, 0.1, 0.1, 0.1)],
+        )
+        # "echo something" would heuristically resolve to the echo agent
+        # on its own — proving execution still follows the vote.
+        result, vote = _run(self.kernel.deliberate_and_run("echo something"))
+        assert result.agent == "fail"
+        assert vote["winner"] == "fail"
+
+    def test_close_runner_up_also_executes_as_a_collaborator(self):
+        self.kernel._deliberation = _fake_deliberation(
+            "echo", [("echo", 0.9, 0.9, 0.1, 0.1), ("fail", 0.8, 0.8, 0.1, 0.1)],
+        )
+        result, _vote = _run(self.kernel.deliberate_and_run("do something"))
+        assert result.agent == "echo"
+        assert result.data["collaborator"]["agent"] == "fail"
+        assert result.data["collaborator"]["result"]["agent"] == "fail"
+
+    def test_distant_runner_up_does_not_collaborate(self):
+        self.kernel._deliberation = _fake_deliberation(
+            "echo", [("echo", 0.95, 0.95, 0.1, 0.1), ("fail", 0.3, 0.3, 0.1, 0.1)],
+        )
+        result, _vote = _run(self.kernel.deliberate_and_run("do something"))
+        assert "collaborator" not in result.data
+
+    def test_single_bid_never_collaborates(self):
+        self.kernel._deliberation = _fake_deliberation(
+            "echo", [("echo", 1.0, 1.0, 0.1, 0.1)],
+        )
+        result, _vote = _run(self.kernel.deliberate_and_run("do something"))
+        assert "collaborator" not in result.data
+
+    def test_shares_one_run_id_across_winner_and_collaborator(self):
+        self.kernel._deliberation = _fake_deliberation(
+            "echo", [("echo", 0.9, 0.9, 0.1, 0.1), ("fail", 0.8, 0.8, 0.1, 0.1)],
+        )
+        seen_run_ids: list[str] = []
+        orig_run = self.kernel.run
+        async def spy_run(*args, **kwargs):
+            seen_run_ids.append(kwargs.get("run_id"))
+            return await orig_run(*args, **kwargs)
+        self.kernel.run = spy_run
+
+        _run(self.kernel.deliberate_and_run("do something", run_id="fixed-id"))
+
+        assert seen_run_ids == ["fixed-id", "fixed-id"]
+
+
 # TestAutonomyEngineOrgScoping moved to
 # tests/security/test_tenant_isolation.py as part of the Security Testing
 # phase's tests/security/ reorganization.

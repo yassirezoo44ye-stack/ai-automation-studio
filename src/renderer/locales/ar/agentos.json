@@ -28,6 +28,9 @@
     "deliverable": {
       "download": "⬇ تنزيل {{name}}",
       "downloadFailed": "فشل التنزيل: {{error}}"
+    },
+    "collaborator": {
+      "title": "🤝 رأي ثانٍ من {{agent}}"
     }
   },
   "agentGrid": {

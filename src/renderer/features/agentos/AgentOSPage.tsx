@@ -83,6 +83,7 @@ function ResultBox({ result }: { result: AgentResult }) {
   const border = result.success ? "var(--green)" : "var(--red)";
   const deliverableId    = result.data?.deliverable_id as string | undefined;
   const deliverableLabel = (result.data?.deliverable_label as string | undefined) ?? deliverableId;
+  const collaborator = result.data?.collaborator as { agent: string; result: AgentResult } | undefined;
 
   const download = useCallback(async () => {
     if (!deliverableId) return;
@@ -104,6 +105,14 @@ function ResultBox({ result }: { result: AgentResult }) {
         <GoldButton variant="primary" onClick={download} style={{ marginTop: 10, padding: "6px 14px", fontSize: 12 }}>
           {t("terminal.deliverable.download", { name: deliverableLabel })}
         </GoldButton>
+      )}
+      {collaborator && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 6 }}>
+            {t("terminal.collaborator.title", { agent: collaborator.agent })}
+          </div>
+          <pre style={{ ...S.mono, whiteSpace: "pre-wrap", margin: 0, color: "var(--t2)" }}>{collaborator.result.output}</pre>
+        </div>
       )}
     </GlassCard>
   );
@@ -137,7 +146,9 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
     setDelib(null);
     try {
       if (mode === "deliberate") {
-        const res = await agentOsApi.deliberate(val);
+        const runId = crypto.randomUUID();
+        setActiveRunId(runId);
+        const res = await agentOsApi.deliberate(val, runId);
         setDelib({ bids: res.deliberation.bids, winner: res.deliberation.winner });
         onResult(res.result);
       } else if (mode === "plan") {
@@ -192,7 +203,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           {loading ? t("terminal.running") : t("terminal.runButton")}
         </GoldButton>
       </div>
-      {(mode === "run" || mode === "plan") && loading && (
+      {(mode === "run" || mode === "plan" || mode === "deliberate") && loading && (
         <div style={{
           marginTop: 14, padding: "10px 12px", borderRadius: 8,
           background: "var(--bg-base)", border: "1px solid var(--border)",

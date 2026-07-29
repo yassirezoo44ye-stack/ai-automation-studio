@@ -159,6 +159,7 @@ async def agentos_deliberate(req: RunRequest, request: Request):
         user_id   = req.user_id,
         workspace = req.workspace,
         organization_id = await optional_org_id(request),
+        run_id    = req.run_id,
     )
     return {"result": result.to_dict(), "deliberation": vote}
 

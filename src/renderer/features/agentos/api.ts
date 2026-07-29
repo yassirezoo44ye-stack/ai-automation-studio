@@ -166,8 +166,9 @@ export const agentOsApi = {
       "/plan", { goal, run_id }
     ),
 
-  deliberate: (input: string) =>
-    post<DeliberateResult>("/deliberate", { input }),
+  // run_id: same client-generated correlation id as run()/plan() above.
+  deliberate: (input: string, run_id?: string) =>
+    post<DeliberateResult>("/deliberate", { input, run_id }),
 
   downloadDeliverable,
 

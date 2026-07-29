@@ -28,6 +28,9 @@
     "deliverable": {
       "download": "⬇ Download {{name}}",
       "downloadFailed": "Download failed: {{error}}"
+    },
+    "collaborator": {
+      "title": "🤝 Second opinion from {{agent}}"
     }
   },
   "agentGrid": {
