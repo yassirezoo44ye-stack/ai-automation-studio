@@ -112,7 +112,15 @@ class TestCostRouter(unittest.TestCase):
         # by default — see cost_router.py) so it must never be selected, even
         # though it would otherwise win on price alone.
         self.assertNotEqual(d.model, "ollama/llama3.1")
-        self.assertLessEqual(d.predicted_cost_usd, 0.001)
+        # CHEAPEST's score formula (85% cost, 10% quality, 5% speed — see
+        # CostRouter._score()) saturates the cost component near 1.0 for any
+        # sub-cent-per-call model, so among genuinely cheap models the
+        # winner is whichever has the best quality/speed, not strictly the
+        # lowest price. groq's llama-3.3-70b-versatile ($0.59/$0.79 per
+        # million tokens, quality=0.86, speed=0.95 — Groq's whole value
+        # proposition is LPU-accelerated throughput) currently wins on that
+        # basis; this is still a fraction of a cent per call.
+        self.assertLessEqual(d.predicted_cost_usd, 0.002)
 
     def test_unimplemented_providers_excluded_by_default(self):
         """Regression guard: DeepSeek/Mistral/Ollama/Azure/Bedrock are
@@ -188,36 +196,54 @@ class TestCostRouter(unittest.TestCase):
 # standalone system not currently wired into real completion calls)
 
 class TestModelRouterCatalog(unittest.TestCase):
-    def test_openrouter_excluded_from_every_policy(self):
-        """Regression guard: openrouter/auto has no app/ai/providers/*.py
-        backend (ProviderRegistry only knows anthropic/openai/gemini) and its
-        $0.0 cost would otherwise make CHEAPEST policy always select it,
-        causing every completion to fail (failover_chain() returns empty for
-        an unknown provider id)."""
+    def test_openrouter_excluded_when_not_in_available_providers(self):
+        """openrouter/auto's $0.0 cost makes it CHEAPEST policy's top pick
+        whenever it's a legal candidate — it must never be selected when
+        the caller says (via available_providers, i.e. real API-key
+        presence from platform_registry.available()) that openrouter isn't
+        actually configured. This is the real production path: see
+        app/core/ai/inference/engine.py's _apply_model_selection()."""
         from app.core.ai.router.model_router import ModelRouter, SelectionPolicy
         from app.ai.models import CompletionRequest, Message
         router = ModelRouter()
         req = CompletionRequest(messages=[Message(role="user", content="hi")], max_tokens=100)
         for policy in (SelectionPolicy.CHEAPEST, SelectionPolicy.FASTEST,
                       SelectionPolicy.BEST, SelectionPolicy.BALANCED):
-            sel = router.select(req, policy=policy)
-            self.assertNotEqual(sel.model_id, "openrouter/auto",
-                               f"policy={policy} selected the unimplemented openrouter model")
+            sel = router.select(req, policy=policy, available_providers=["anthropic", "openai"])
+            self.assertNotEqual(sel.provider_id, "openrouter",
+                               f"policy={policy} selected openrouter despite it being unavailable")
 
-    def test_openrouter_still_documented_but_deprecated(self):
+    def test_available_providers_was_previously_computed_and_discarded(self):
+        """Regression guard for a real bug this phase found: select()
+        accepted available_providers, built a `providers` list from it, and
+        then never referenced that list again — every policy could select
+        a model whose provider had no API key configured, only to fail
+        downstream once resolve_chain() filtered the unavailable provider
+        back out. Proven here by a policy that would otherwise pick the
+        globally cheapest model (openrouter/auto, $0) but must respect a
+        caller-supplied availability list instead."""
+        from app.core.ai.router.model_router import ModelRouter, SelectionPolicy
+        from app.ai.models import CompletionRequest, Message
+        router = ModelRouter()
+        req = CompletionRequest(messages=[Message(role="user", content="hi")], max_tokens=100)
+        sel = router.select(req, policy=SelectionPolicy.CHEAPEST, available_providers=["groq"])
+        self.assertEqual(sel.provider_id, "groq")
+
+    def test_openrouter_still_documented_and_now_has_a_real_backend(self):
         from app.core.ai.models.catalog import catalog
         info = catalog.get("openrouter/auto")
         self.assertIsNotNone(info, "entry should stay documented, not deleted")
-        self.assertTrue(info.deprecated, "must be excluded from auto-selection via deprecated=True")
+        self.assertFalse(info.deprecated,
+                         "app/core/ai/providers/openrouter.py is a real, registered backend now")
 
     def test_all_non_deprecated_catalog_models_have_a_real_provider(self):
-        """Every selectable model must map to a provider ProviderRegistry
+        """Every selectable model must map to a provider PlatformProviderRegistry
         actually knows how to call — otherwise selection succeeds but
-        execution fails downstream. Mirrors app/ai/providers/registry.py's
-        _ALL dict (anthropic/openai/gemini) — update both if a new provider
-        backend is added."""
+        execution fails downstream. Mirrors PlatformProviderRegistry.
+        _register_defaults() (app/core/ai/registry/registry.py) — update
+        both if a new provider backend is added."""
         from app.core.ai.models.catalog import catalog
-        known_providers = {"anthropic", "openai", "gemini"}
+        known_providers = {"anthropic", "openai", "gemini", "openrouter", "groq", "local"}
         for model in catalog.all():
             if model.deprecated:
                 continue

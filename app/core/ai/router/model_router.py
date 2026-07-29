@@ -94,6 +94,13 @@ class ModelRouter:
         providers    = available_providers or []
         if provider_id and provider_id not in providers:
             providers = [provider_id] + providers
+        # None means "no filtering" (callers that don't pass availability
+        # info keep today's behavior) — only narrows candidates when the
+        # caller actually told us what's configured. Previously this list
+        # was built and then never used: every policy could select a model
+        # whose provider had no API key configured at all, only to fail
+        # downstream when resolve_chain() filtered it back out.
+        avail_providers = set(providers) if providers else None
 
         # Estimate context needs
         msgs_tokens   = estimate_messages_tokens([m.model_dump() for m in request.messages])
@@ -106,6 +113,7 @@ class ModelRouter:
                 provider_id=provider_id,
                 min_context=needs_context,
                 requires_tools=needs_tools,
+                available_providers=avail_providers,
             )
             reason = "cheapest"
 
@@ -114,11 +122,12 @@ class ModelRouter:
                 provider_id=provider_id,
                 min_context=needs_context,
                 requires_tools=needs_tools,
+                available_providers=avail_providers,
             )
             reason = "fastest"
 
         elif policy == SelectionPolicy.BEST:
-            info = catalog.most_capable(provider_id=provider_id)
+            info = catalog.most_capable(provider_id=provider_id, available_providers=avail_providers)
             reason = "most_capable"
 
         else:  # BALANCED — reasonable quality at reasonable cost
@@ -126,6 +135,7 @@ class ModelRouter:
                 provider_id=provider_id,
                 needs_context=needs_context,
                 needs_tools=needs_tools,
+                available_providers=avail_providers,
             )
             reason = "balanced"
 
@@ -153,6 +163,7 @@ class ModelRouter:
         provider_id:   Optional[str],
         needs_context: int,
         needs_tools:   bool,
+        available_providers: Optional[set[str]] = None,
     ) -> Optional[ModelInfo]:
         """
         Balanced selection:
@@ -168,6 +179,7 @@ class ModelRouter:
             and m.context_window >= needs_context
             and (not needs_tools or m.supports_tools)
             and (provider_id is None or m.provider_id == provider_id)
+            and (available_providers is None or m.provider_id in available_providers)
         ]
         if not candidates:
             return None

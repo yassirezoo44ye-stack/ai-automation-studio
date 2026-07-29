@@ -24,6 +24,7 @@ from app.core.ai.events.events import (
     ProviderFailed, ProviderSelected, ModelSelected,
 )
 from app.core.ai.providers.openrouter import OpenRouterProvider
+from app.core.ai.providers.groq import GroqProvider
 from app.core.ai.providers.local import LocalProvider
 from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
@@ -65,6 +66,7 @@ class PlatformProviderRegistry:
             OpenAIProvider(),
             GeminiProvider(),
             OpenRouterProvider(),
+            GroqProvider(),
             LocalProvider(),
         ]:
             self._providers[p.provider_id] = p
@@ -108,7 +110,7 @@ class PlatformProviderRegistry:
         """Return the first available provider in preference order."""
         order = [
             ProviderID.anthropic, ProviderID.openai, ProviderID.gemini,
-            "openrouter", "local",
+            "openrouter", "groq", "local",
         ]
         for pid in order:
             p = self._providers.get(str(pid) if hasattr(pid, "value") else pid)
@@ -117,7 +119,7 @@ class PlatformProviderRegistry:
         raise RuntimeError(
             "No AI provider is configured. Set at least one API key: "
             "ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, "
-            "or LOCAL_MODEL_BASE_URL."
+            "GROQ_API_KEY, or LOCAL_MODEL_BASE_URL."
         )
 
     def available(self) -> list[str]:

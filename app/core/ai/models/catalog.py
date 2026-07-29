@@ -218,14 +218,10 @@ _GEMINI: list[ModelInfo] = [
 ]
 
 # ── OpenRouter ────────────────────────────────────────────────────────────────
-# No app/ai/providers/openrouter.py backend exists yet — ProviderRegistry
-# (app/ai/providers/registry.py) only knows anthropic/openai/gemini, so
-# selecting this model would fail the whole completion (failover_chain()
-# returns empty since "openrouter" isn't in its provider map). deprecated=True
-# keeps it out of every ModelCatalog selection method (_candidates() filters
-# `not m.deprecated`) without deleting the documented entry. Its $0.0 cost
-# would otherwise make CHEAPEST-policy selection pick it automatically.
-# Flip deprecated=False once a real provider backend is built.
+# app/core/ai/providers/openrouter.py is a real, registered backend
+# (PlatformProviderRegistry._register_defaults()) — not deprecated. $0.0
+# cost is honest: OpenRouter's billing is dynamic per-model and reported by
+# its usage endpoint rather than known statically here.
 
 _OPENROUTER: list[ModelInfo] = [
     ModelInfo(
@@ -237,7 +233,40 @@ _OPENROUTER: list[ModelInfo] = [
         input_cost_m=0.0,
         output_cost_m=0.0,
         latency_tier="medium",
-        deprecated=True,
+    ),
+]
+
+# ── Groq ──────────────────────────────────────────────────────────────────────
+# app/core/ai/providers/groq.py — real, registered backend. Fast LPU-backed
+# inference over an OpenAI-compatible API; pricing per Groq's public rate
+# card (verify against https://groq.com/pricing before relying on it for
+# billing-critical decisions — provider pricing can change independently
+# of this catalog).
+
+_GROQ: list[ModelInfo] = [
+    ModelInfo(
+        id="llama-3.3-70b-versatile",
+        provider_id="groq",
+        display_name="Llama 3.3 70B Versatile (Groq)",
+        context_window=128_000,
+        output_limit=32_768,
+        input_cost_m=0.59,
+        output_cost_m=0.79,
+        latency_tier="fast",
+        quality=0.86,
+        speed=0.95,
+    ),
+    ModelInfo(
+        id="llama-3.1-8b-instant",
+        provider_id="groq",
+        display_name="Llama 3.1 8B Instant (Groq)",
+        context_window=128_000,
+        output_limit=8_192,
+        input_cost_m=0.05,
+        output_cost_m=0.08,
+        latency_tier="fast",
+        quality=0.72,
+        speed=0.98,
     ),
 ]
 
@@ -367,12 +396,14 @@ class ModelCatalog:
         min_context: int = 0,
         requires_tools: bool = False,
         requires_vision: bool = False,
+        available_providers: Optional[set[str]] = None,
     ) -> Optional[ModelInfo]:
         candidates = self._candidates(
             provider_id=provider_id,
             min_context=min_context,
             requires_tools=requires_tools,
             requires_vision=requires_vision,
+            available_providers=available_providers,
         )
         return min(candidates, key=lambda m: m.input_cost_m, default=None)
 
@@ -382,12 +413,14 @@ class ModelCatalog:
         provider_id: Optional[str] = None,
         min_context: int = 0,
         requires_tools: bool = False,
+        available_providers: Optional[set[str]] = None,
     ) -> Optional[ModelInfo]:
         order = {"fast": 0, "medium": 1, "slow": 2}
         candidates = self._candidates(
             provider_id=provider_id,
             min_context=min_context,
             requires_tools=requires_tools,
+            available_providers=available_providers,
         )
         return min(candidates, key=lambda m: order.get(m.latency_tier, 9), default=None)
 
@@ -395,11 +428,13 @@ class ModelCatalog:
         self,
         *,
         provider_id: Optional[str] = None,
+        available_providers: Optional[set[str]] = None,
     ) -> Optional[ModelInfo]:
         # Proxy: largest context × highest output cost (expensive = capable)
         candidates = [m for m in self._by_id.values()
                       if not m.deprecated
-                      and (provider_id is None or m.provider_id == provider_id)]
+                      and (provider_id is None or m.provider_id == provider_id)
+                      and (available_providers is None or m.provider_id in available_providers)]
         return max(candidates, key=lambda m: (m.context_window, m.output_cost_m), default=None)
 
     def _candidates(
@@ -409,15 +444,17 @@ class ModelCatalog:
         min_context: int,
         requires_tools: bool = False,
         requires_vision: bool = False,
+        available_providers: Optional[set[str]] = None,
     ) -> list[ModelInfo]:
         return [
             m for m in self._by_id.values()
             if not m.deprecated
             and (provider_id is None or m.provider_id == provider_id)
+            and (available_providers is None or m.provider_id in available_providers)
             and m.context_window >= min_context
             and (not requires_tools  or m.supports_tools)
             and (not requires_vision or m.supports_vision)
         ]
 
 
-catalog = ModelCatalog(_ANTHROPIC + _OPENAI + _GEMINI + _OPENROUTER + _DEFERRED)
+catalog = ModelCatalog(_ANTHROPIC + _OPENAI + _GEMINI + _OPENROUTER + _GROQ + _DEFERRED)
