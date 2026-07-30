@@ -28,12 +28,15 @@ def run(coro):
 
 @pytest.fixture(autouse=True)
 def _clean_liveness_state():
-    """app/agents/liveness.py's `_running` dict is module-level, in-process
-    state — reset it around every test so runs don't leak into each other."""
+    """app/agents/liveness.py's `_running`/`_run_owners` dicts are
+    module-level, in-process state — reset them around every test so runs
+    don't leak into each other."""
     import app.agents.liveness as liveness
     liveness._running.clear()
+    liveness._run_owners.clear()
     yield
     liveness._running.clear()
+    liveness._run_owners.clear()
 
 
 class _FakeEvent:
@@ -245,6 +248,31 @@ class TestPublishStepBroadcastsOnPerRunTopic:
         fake_ws.broadcast.assert_not_awaited()
 
 
+class TestRunOwnerRegistry:
+    """register_run_owner()/get_run_owner() — the run_id -> verified-caller
+    record /ws/system/{run_id} checks so an unguessable run_id alone isn't
+    treated as sufficient authorization to watch someone else's run."""
+
+    def test_unregistered_run_id_has_no_owner_on_record(self):
+        import app.agents.liveness as liveness
+        assert liveness.get_run_owner("never-registered") is None
+
+    def test_registered_owner_is_returned(self):
+        import app.agents.liveness as liveness
+        liveness.register_run_owner("r1", "user-a")
+        assert liveness.get_run_owner("r1") == "user-a"
+
+    def test_anonymous_caller_registers_explicitly_as_none(self):
+        import app.agents.liveness as liveness
+        liveness.register_run_owner("r1", None)
+        assert liveness.get_run_owner("r1") is None
+
+    def test_empty_run_id_is_not_registered(self):
+        import app.agents.liveness as liveness
+        liveness.register_run_owner("", "user-a")
+        assert liveness._run_owners == {}
+
+
 class TestAgentEventsAreDeclared:
     def test_agent_lifecycle_events_are_in_event_types(self):
         """AgentKernel.run() publishes these unconditionally on every
@@ -269,9 +297,13 @@ def ws_client():
         yield c
 
 
-def _token():
+def _token_for(user_id: str):
     from app.core.jwt_utils import make_access_token
-    return make_access_token(str(uuid.uuid4()), "user@example.com")
+    return make_access_token(user_id, "user@example.com")
+
+
+def _token():
+    return _token_for(str(uuid.uuid4()))
 
 
 class TestSystemWsAuth:
@@ -304,6 +336,38 @@ class TestSystemRunWsAuth:
              ws_client.websocket_connect(f"/ws/system/run-b?token={_token()}") as ws_b:
             assert ws_a.receive_json()["topic"] == "system:run-a"
             assert ws_b.receive_json()["topic"] == "system:run-b"
+
+
+class TestSystemRunWsOwnershipCheck:
+    """An unguessable run_id must not be sufficient on its own — the
+    endpoint has to check the connecting user against the run's recorded
+    owner (see AgentKernel.run() -> liveness.register_run_owner)."""
+
+    def test_owner_can_connect_to_their_own_run(self, ws_client):
+        import app.agents.liveness as liveness
+        owner_id = str(uuid.uuid4())
+        liveness.register_run_owner("run-owned", owner_id)
+
+        with ws_client.websocket_connect(
+            f"/ws/system/run-owned?token={_token_for(owner_id)}",
+        ) as ws:
+            connected = ws.receive_json()
+            assert connected == {"type": "connected", "topic": "system:run-owned"}
+
+    def test_a_different_user_is_rejected(self, ws_client):
+        import app.agents.liveness as liveness
+        liveness.register_run_owner("run-owned", str(uuid.uuid4()))
+
+        with pytest.raises(Exception):  # noqa: B017 - starlette raises on the 4403 close
+            with ws_client.websocket_connect(f"/ws/system/run-owned?token={_token()}") as ws:
+                ws.receive_json()
+
+    def test_run_with_no_owner_on_record_allows_any_authenticated_user(self, ws_client):
+        # Covers both "run hasn't started yet" and "started by an
+        # unauthenticated caller" — same fallback deliverables use.
+        with ws_client.websocket_connect(f"/ws/system/run-unrecorded?token={_token()}") as ws:
+            connected = ws.receive_json()
+            assert connected == {"type": "connected", "topic": "system:run-unrecorded"}
 
 
 class TestConnectionManagerPerRunTopicIsolation:

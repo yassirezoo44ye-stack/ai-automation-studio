@@ -46,16 +46,49 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
 _running: dict[str, dict[str, float]] = {}  # agent_name -> {run_id: started_at}
 _wired = False
 
+# run_id -> verified owner user_id (None = the caller who started this run
+# had no verified identity). Checked by /ws/system/{run_id} (app/routers/ws.py)
+# before letting a connection subscribe to that run's step narration — an
+# unguessable run_id is not on its own treated as sufficient authorization,
+# same principle app/agents/deliverables.py applies to deliverable_id.
+# Deliberately never pruned: same in-process/unbounded-for-process-lifetime
+# tradeoff deliverables.py's own registry already accepts, and there's no
+# single "this run is done" signal here — collaborate()/plan_and_run()
+# share one run_id across several underlying run() calls, so clearing on
+# the first sub-task's finish would drop ownership before the run is
+# actually over.
+_run_owners: dict[str, Optional[str]] = {}
+
 
 def is_running(agent_name: str) -> bool:
     return bool(_running.get(agent_name))
+
+
+def register_run_owner(run_id: str, user_id: Optional[str]) -> None:
+    """Called by AgentKernel.run() as early as possible (before any
+    await), so the ownership record exists before this run's first step
+    narration could plausibly go out. A WS client racing ahead of this —
+    connecting to /ws/system/{run_id} before the run has reached this
+    line — sees no owner recorded yet and is allowed through (matches the
+    "no owner recorded" fallback deliverable downloads use); the
+    unguessable run_id is what makes that race safe in practice, not a
+    guarantee this function closes."""
+    if run_id:
+        _run_owners[run_id] = user_id
+
+
+def get_run_owner(run_id: str) -> Optional[str]:
+    """None means "no verified owner on record for this run_id" — treat
+    that as no ownership restriction (not as proof the run doesn't
+    exist)."""
+    return _run_owners.get(run_id)
 
 
 def snapshot() -> dict[str, dict[str, Any]]:

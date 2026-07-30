@@ -211,6 +211,12 @@ class AgentKernel:
         import uuid
         run_id = run_id or uuid.uuid4().hex[:12]
 
+        # Recorded before any await below, so the ownership check
+        # /ws/system/{run_id} does (app/routers/ws.py) has this run's
+        # owner on file as early as this method can possibly provide it.
+        from app.agents.liveness import register_run_owner
+        register_run_owner(run_id, user_id)
+
         tracer = get_tracer()
         with tracer.start_span("agent.run", service="agent_kernel") as span:
             for key, val in current_tags().items():

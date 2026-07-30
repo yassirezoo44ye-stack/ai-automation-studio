@@ -264,14 +264,26 @@ async def system_run_ws(ws: WebSocket, run_id: str):
     carry the run's actual input, search queries, and URLs, so fan-out
     is scoped at the topic/subscription level, not by filtering messages
     client-side after they've already been sent to every connection.
-    Auth is the same bearer-token-in-query-param check as every other WS
-    endpoint here; any authenticated user may connect (this channel isn't
-    itself org-scoped — the run_id is unguessable and callers only ever
-    learn one they themselves started)."""
+
+    Authorization is two-layered, same principle as deliverable downloads
+    (app/routers/agent_os_api.py): knowing an unguessable run_id is not
+    on its own treated as proof you're allowed to watch it. AgentKernel.run()
+    records the verified caller (if any) who started each run_id
+    (app/agents/liveness.py's register_run_owner); this endpoint checks
+    the connecting user against that record and rejects a mismatch. A
+    run_id with no owner on record — not yet started, or started by an
+    unauthenticated caller — falls back to any authenticated user, same
+    as deliverables' "no owner recorded" case."""
     token   = ws.query_params.get("token", "")
     user_id = _user_id_from_ws_token(token)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
+        return
+
+    from app.agents.liveness import get_run_owner
+    owner = get_run_owner(run_id)
+    if owner is not None and owner != user_id:
+        await ws.close(code=4403, reason="not authorized for this run")
         return
 
     topic = f"system:{run_id}"

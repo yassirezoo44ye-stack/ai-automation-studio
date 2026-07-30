@@ -194,6 +194,36 @@ class TestKernelRunIdThreading:
         assert ("agent.started", "probe", "fixed-id") in published
         assert ("agent.finished", "probe", "fixed-id") in published
 
+    def test_records_the_verified_caller_as_the_runs_owner(self):
+        """/ws/system/{run_id} (app/routers/ws.py) checks this record
+        before letting a connection subscribe — an unguessable run_id
+        alone isn't treated as proof of authorization."""
+        import app.agents.liveness as liveness
+        seen: dict = {}
+        kernel = _make_isolated_kernel()
+        kernel.register_agent(_probe_agent_class(seen)())
+
+        liveness._run_owners.clear()
+        try:
+            run(kernel.run("probe", organization_id=None, user_id="caller-1", run_id="fixed-id"))
+            assert liveness.get_run_owner("fixed-id") == "caller-1"
+        finally:
+            liveness._run_owners.clear()
+
+    def test_anonymous_caller_records_no_owner(self):
+        import app.agents.liveness as liveness
+        seen: dict = {}
+        kernel = _make_isolated_kernel()
+        kernel.register_agent(_probe_agent_class(seen)())
+
+        liveness._run_owners.clear()
+        try:
+            run(kernel.run("probe", organization_id=None, run_id="fixed-id"))
+            assert liveness.get_run_owner("fixed-id") is None
+            assert "fixed-id" in liveness._run_owners  # explicitly recorded, not just absent
+        finally:
+            liveness._run_owners.clear()
+
 
 # ── run_agent.py: TypedEvent handling + failure detection ──────────────────────
 
