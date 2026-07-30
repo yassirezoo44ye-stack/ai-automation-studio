@@ -11,15 +11,21 @@ failure instead of crashing, matching every other optional-dependency
 agent in this file (search_agent.py's BRAVE_SEARCH_API_KEY,
 image_agent.py's OPENAI_API_KEY).
 
-Every target URL is validated by app.core.ssrf_guard.assert_public_url()
-before Playwright ever touches it — the same guard this codebase already
-uses for user-supplied webhook/alert URLs (app/services/alerting.py,
-app/routers/diagnostics_api.py). An agent that can be told "go to this
-URL" is a materially bigger SSRF surface than a fixed-destination API
-call, so this check is not optional.
+Every request the page issues — not just the initial URL — is validated
+by app.core.ssrf_guard.assert_public_url() before it's allowed through, via
+a Playwright page.route() interceptor. A single upfront check on the
+navigation string isn't enough: Playwright is a full browser, so it
+follows HTTP redirects and executes the page's JavaScript, which can
+issue its own fetch()/XHR calls, load <iframe>/<img> subresources, or
+navigate again — any of which can point at an internal host with no
+redirect needed on the attacker's part. The interceptor re-validates
+every one of those, at the moment they're actually requested (which also
+re-resolves DNS each time, closing most of the TOCTOU window a one-shot
+check before launching the browser would leave open).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -33,6 +39,23 @@ log = logging.getLogger(__name__)
 _MAX_TEXT_CHARS = 4000
 _NAV_TIMEOUT_MS = 20_000
 _SCREENSHOT_KEYWORDS = {"screenshot", "shot", "image", "picture"}
+
+
+async def _guard_route(route, request, blocked: list[str]) -> None:
+    """page.route() handler — runs for the main navigation, every
+    redirect, and every subresource request this page issues. Aborts
+    anything that fails the same public-reachability check the initial
+    URL was validated against. assert_public_url() does blocking DNS
+    resolution (socket.getaddrinfo) — offloaded to a thread so it doesn't
+    stall the event loop across a page with many subresources."""
+    try:
+        await asyncio.to_thread(assert_public_url, request.url)
+    except UnsafeUrlError:
+        blocked.append(request.url)
+        log.warning("browser agent blocked a request to a non-public URL: %s", request.url)
+        await route.abort()
+        return
+    await route.continue_()
 
 
 def _normalize_url(raw: str) -> str:
@@ -79,11 +102,13 @@ class BrowserAgent(EvolvableAgent):
 
         await ctx.step(f"Opening {url}", "terminal")
 
+        blocked: list[str] = []
         try:
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch()
                 try:
                     page = await browser.new_page()
+                    await page.route("**/*", lambda route, request: _guard_route(route, request, blocked))
                     await page.goto(url, timeout=_NAV_TIMEOUT_MS, wait_until="domcontentloaded")
                     title = await page.title()
 
@@ -100,6 +125,7 @@ class BrowserAgent(EvolvableAgent):
                         deliverable_id = deliverables.register(
                             shot_path, run_id=ctx.run_id, agent=self.name,
                             label=shot_path.name, organization_id=ctx.organization_id,
+                            user_id=ctx.user_id,
                         )
                         if deliverable_id:
                             result_data["deliverable_id"]    = deliverable_id
@@ -110,11 +136,24 @@ class BrowserAgent(EvolvableAgent):
                         result_data["text"] = text
                         output += text
 
+                    if blocked:
+                        # Navigation itself succeeded — only subresources
+                        # (e.g. a tracking pixel pointing at an internal
+                        # host) were blocked. That's the guard working
+                        # correctly, not a failure; just surface it.
+                        result_data["blocked_non_public_requests"] = blocked
+
                     await ctx.step(f"Loaded {title or url}", "success")
                     return AgentResult.ok(self.name, output.strip(), data=result_data)
                 finally:
                     await browser.close()
         except Exception as exc:
+            if blocked:
+                return AgentResult.fail(
+                    self.name,
+                    f"Refused to load a non-public URL reached via redirect/subresource: {blocked[0]}",
+                    data={"url": url, "blocked": blocked},
+                )
             return AgentResult.fail(self.name, f"Browser automation failed: {exc}", data={"url": url})
 
     def performance_hint(self) -> dict:

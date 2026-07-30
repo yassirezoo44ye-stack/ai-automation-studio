@@ -5,6 +5,7 @@ Endpoints:
   WS /ws/agent/{session_id}       live agent output stream
   WS /ws/job/{job_id}             background job progress stream
   WS /ws/system                   system-wide broadcast (admin)
+  WS /ws/system/{run_id}          one AgentOS run's live step narration
   WS /ws/notifications            per-user notification stream (auth required)
 
 Protocol (JSON frames):
@@ -239,6 +240,46 @@ async def system_ws(ws: WebSocket):
 
     try:
         await manager.send(ws, {"type": "connected", "topic": "system"})
+        while True:
+            try:
+                raw = await asyncio.wait_for(ws.receive_text(), timeout=300)
+                msg = json.loads(raw)
+                if msg.get("type") == "ping":
+                    await manager.send(ws, {"type": "pong"})
+            except asyncio.TimeoutError:
+                await manager.send(ws, {"type": "ping"})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        hb.cancel()
+        manager.disconnect(ws, topic)
+
+
+@router.websocket("/ws/system/{run_id}")
+async def system_run_ws(ws: WebSocket, run_id: str):
+    """Narrated step stream for one AgentOS run (see
+    app/agents/liveness.py's publish_step). Deliberately a *separate*
+    topic per run_id (`system:{run_id}`) rather than the shared "system"
+    topic every connection on that endpoint receives — step payloads can
+    carry the run's actual input, search queries, and URLs, so fan-out
+    is scoped at the topic/subscription level, not by filtering messages
+    client-side after they've already been sent to every connection.
+    Auth is the same bearer-token-in-query-param check as every other WS
+    endpoint here; any authenticated user may connect (this channel isn't
+    itself org-scoped — the run_id is unguessable and callers only ever
+    learn one they themselves started)."""
+    token   = ws.query_params.get("token", "")
+    user_id = _user_id_from_ws_token(token)
+    if not user_id:
+        await ws.close(code=4401, reason="unauthorized")
+        return
+
+    topic = f"system:{run_id}"
+    await manager.connect(ws, topic)
+    hb    = asyncio.create_task(_heartbeat(ws))
+
+    try:
+        await manager.send(ws, {"type": "connected", "topic": topic})
         while True:
             try:
                 raw = await asyncio.wait_for(ws.receive_text(), timeout=300)

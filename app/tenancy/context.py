@@ -99,6 +99,24 @@ async def optional_org_id(request: Request) -> str | None:
     return org_id if role is not None else None
 
 
+async def optional_user_id(request: Request) -> str | None:
+    """Best-effort authenticated caller id, with no org header required —
+    for endpoints that don't require login but need a *verified* identity
+    (not a client-supplied claim) when one is available, e.g. to record
+    real ownership of something the caller creates. Never raises: a
+    missing or invalid bearer token just resolves to None, exactly like
+    optional_org_id above."""
+    try:
+        from fastapi.security import HTTPBearer
+        creds = await HTTPBearer(auto_error=False)(request)
+        if creds is None:
+            return None
+        user = await _get_current_user_dep()(creds)
+        return user["id"]
+    except Exception:
+        return None
+
+
 def require_permission(resource: str, action: str):
     """Dependency factory: org context + resource-based permission check."""
     async def _dep(ctx: OrgContext = Depends(org_context)) -> OrgContext:

@@ -77,7 +77,7 @@ class DeployAgent(EvolvableAgent):
 
         deliverable_id = deliverables.register(
             zip_path, run_id=ctx.run_id, agent=self.name, label=zip_path.name,
-            organization_id=ctx.organization_id,
+            organization_id=ctx.organization_id, user_id=ctx.user_id,
         )
         result_data: dict = {"zip": str(zip_path), "steps": steps}
         if deliverable_id:

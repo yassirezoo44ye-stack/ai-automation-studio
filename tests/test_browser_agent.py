@@ -38,6 +38,14 @@ class _FakePage:
         self._text = text
         self.goto = AsyncMock(side_effect=goto_error) if goto_error else AsyncMock()
         self.screenshot = AsyncMock()
+        # execute() always registers a page.route("**/*", ...) interceptor
+        # before navigating (SSRF guard on every request, not just the
+        # initial URL) — capture the handler so tests can drive it directly.
+        self.route = AsyncMock(side_effect=self._capture_route)
+        self.route_handler = None
+
+    async def _capture_route(self, _pattern, handler):
+        self.route_handler = handler
 
     async def title(self):
         return self._title
@@ -197,6 +205,82 @@ class TestBrowserAgentExecution:
         narrated = [c.args[2] for c in fake_publish.call_args_list]
         assert any("Opening" in n for n in narrated)
         assert any("Loaded" in n for n in narrated)
+
+
+class _FakeRoute:
+    def __init__(self):
+        self.abort = AsyncMock()
+        self.continue_ = AsyncMock()
+
+
+class _FakeRequest:
+    def __init__(self, url: str):
+        self.url = url
+
+
+class TestGuardRoute:
+    """Unit tests for _guard_route — the page.route() handler that
+    re-validates every request (main nav, redirects, subresources) a
+    browser page issues, not just the initial URL string."""
+
+    def test_public_url_is_allowed_through(self):
+        from app.agents.builtin.browser_agent import _guard_route
+        route, request, blocked = _FakeRoute(), _FakeRequest("https://example.com/style.css"), []
+        run(_guard_route(route, request, blocked))
+        route.continue_.assert_awaited_once()
+        route.abort.assert_not_called()
+        assert blocked == []
+
+    def test_private_ip_subresource_is_aborted_and_recorded(self):
+        from app.agents.builtin.browser_agent import _guard_route
+        route, request, blocked = _FakeRoute(), _FakeRequest("http://169.254.169.254/latest/meta-data/"), []
+        run(_guard_route(route, request, blocked))
+        route.abort.assert_awaited_once()
+        route.continue_.assert_not_called()
+        assert blocked == ["http://169.254.169.254/latest/meta-data/"]
+
+    def test_localhost_redirect_target_is_aborted(self):
+        from app.agents.builtin.browser_agent import _guard_route
+        route, request, blocked = _FakeRoute(), _FakeRequest("http://localhost:5432/internal"), []
+        run(_guard_route(route, request, blocked))
+        route.abort.assert_awaited_once()
+        assert blocked == ["http://localhost:5432/internal"]
+
+
+class TestBrowserAgentExecutionRegistersRouteGuard:
+    def test_execute_registers_an_interceptor_before_navigating(self):
+        from app.agents.builtin.browser_agent import BrowserAgent
+        page = _FakePage(title="Example Domain", text="text")
+        patcher, _browser = _patched_playwright(page)
+
+        with patcher, patch("app.agents.liveness.publish_step", AsyncMock()):
+            run(BrowserAgent().execute(_ctx("example.com")))
+
+        page.route.assert_awaited_once()
+        assert page.route.call_args.args[0] == "**/*"
+        assert page.route_handler is not None
+
+    def test_blocked_subresource_surfaces_on_a_successful_navigation(self):
+        """The interceptor blocking a tracking-pixel-style subresource
+        (e.g. one pointed at cloud metadata) must not fail an otherwise
+        successful page load — it's reported informationally instead."""
+        from app.agents.builtin.browser_agent import BrowserAgent
+
+        page = _FakePage(title="Example Domain", text="text")
+        # Simulate the browser issuing a blocked subresource request as
+        # part of navigating — drive it through the *real* handler execute()
+        # registered via page.route(), so it shares execute()'s own
+        # `blocked` list rather than a separate one.
+        async def fake_goto(*_a, **_kw):
+            await page.route_handler(_FakeRoute(), _FakeRequest("http://169.254.169.254/"))
+        page.goto = AsyncMock(side_effect=fake_goto)
+        patcher, _browser = _patched_playwright(page)
+
+        with patcher, patch("app.agents.liveness.publish_step", AsyncMock()):
+            result = run(BrowserAgent().execute(_ctx("example.com")))
+
+        assert result.success is True
+        assert result.data["blocked_non_public_requests"] == ["http://169.254.169.254/"]
 
 
 class TestBrowserIntentRouting:

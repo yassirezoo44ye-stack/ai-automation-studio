@@ -87,7 +87,7 @@ class ImageAgent(EvolvableAgent):
 
         deliverable_id = deliverables.register(
             image_path, run_id=ctx.run_id, agent=self.name, label=image_path.name,
-            organization_id=ctx.organization_id,
+            organization_id=ctx.organization_id, user_id=ctx.user_id,
         )
         result_data: dict = {"prompt": prompt}
         if deliverable_id:

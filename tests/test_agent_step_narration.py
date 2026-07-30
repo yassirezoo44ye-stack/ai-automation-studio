@@ -32,7 +32,11 @@ class TestPublishStep:
         with patch("app.routers.ws.manager", fake_ws):
             run(liveness.publish_step("r1", "build", "Running npm build", "terminal", command=["npm", "build"]))
 
-        fake_ws.broadcast.assert_awaited_once_with("system", {
+        # Broadcasts on a topic scoped to this run (not the shared "system"
+        # topic every /ws/system connection receives) — see
+        # tests/test_agent_liveness.py's TestPublishStepBroadcastsOnPerRunTopic
+        # for the isolation-focused coverage of this.
+        fake_ws.broadcast.assert_awaited_once_with("system:r1", {
             "run_id": "r1", "agent": "build", "step": "Running npm build",
             "kind": "terminal", "command": ["npm", "build"],
         })

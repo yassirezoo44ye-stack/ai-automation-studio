@@ -3,10 +3,20 @@ AgentOS agent liveness + live step narration — tracks each registered
 agent's current execution state (idle/running) in-process and
 broadcasts every transition, plus every AgentContext.step() call an
 agent makes mid-execution, live over the existing WS
-`_ConnectionManager` (app/routers/ws.py), onto the same "system" topic
-`/ws/system` already serves ("System-wide broadcast channel. Receives
-all agent + job events." — previously true only in the docstring; this
-is what actually makes it true). No new WS endpoint needed.
+`_ConnectionManager` (app/routers/ws.py).
+
+The liveness dot ("agent.started"/"agent.finished", published by
+_on_agent_event below) still goes on the shared "system" topic
+`/ws/system` — agent name + running/idle status isn't per-run
+sensitive, so any authenticated user on that channel seeing it is
+fine, same as always.
+
+publish_step() is different: its frames carry the run's actual
+content — the input text, search queries, URLs visited, generated
+text — so it broadcasts on a *per-run* topic (`system:{run_id}`,
+served by `/ws/system/{run_id}`) instead. That keeps the fan-out
+scoped at the topic/subscription boundary rather than relying on
+every subscriber to filter out runs that aren't theirs client-side.
 
 The liveness signal itself already exists: AgentKernel.run() publishes
 "agent.started"/"agent.finished" on the platform EventBus for every
@@ -72,7 +82,7 @@ async def publish_step(run_id: str, agent_name: str, description: str, kind: str
     frame = {"run_id": run_id, "agent": agent_name, "step": description, "kind": kind, **data}
     try:
         from app.routers.ws import manager as ws_manager
-        await ws_manager.broadcast("system", frame)
+        await ws_manager.broadcast(f"system:{run_id}", frame)
     except Exception:
         log.warning("agentos step broadcast failed for agent=%s run=%s", agent_name, run_id, exc_info=True)
 

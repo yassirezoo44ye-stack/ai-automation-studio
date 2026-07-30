@@ -50,7 +50,6 @@ class RunRequest(BaseModel):
     workspace  : Optional[str] = None
     project_id : Optional[str] = None
     caller     : str = "api"
-    user_id    : Optional[str] = None
     deliberate : bool = False
     # Client-generated, so a "live computer" viewer can start listening for
     # this run's narrated steps (see app/agents/liveness.py's publish_step)
@@ -101,12 +100,16 @@ class LoopRequest(BaseModel):
 @router.post("/api/agentos/run")
 async def agentos_run(req: RunRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
-    from app.tenancy.context import optional_org_id
+    from app.tenancy.context import optional_org_id, optional_user_id
     kernel = get_agent_kernel()
     result = await kernel.run(
         req.input,
         caller     = req.caller,
-        user_id    = req.user_id,
+        # Resolved from the caller's own bearer token, never a
+        # client-supplied field — this becomes deliverable ownership
+        # (see app/agents/deliverables.py), so it has to be verified,
+        # not merely claimed in the request body.
+        user_id    = await optional_user_id(request),
         workspace  = req.workspace,
         project_id = req.project_id,
         deliberate = req.deliberate,
@@ -119,11 +122,12 @@ async def agentos_run(req: RunRequest, request: Request):
 @router.post("/api/agentos/collaborate")
 async def agentos_collaborate(req: CollaborateRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
-    from app.tenancy.context import optional_org_id
+    from app.tenancy.context import optional_org_id, optional_user_id
     kernel  = get_agent_kernel()
     results = await kernel.collaborate(
         req.tasks,
         caller    = req.caller,
+        user_id   = await optional_user_id(request),
         workspace = req.workspace,
         parallel  = req.parallel,
         organization_id = await optional_org_id(request),
@@ -140,9 +144,10 @@ async def agentos_collaborate(req: CollaborateRequest, request: Request):
 @router.post("/api/agentos/plan")
 async def agentos_plan(req: PlanRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
-    from app.tenancy.context import optional_org_id
+    from app.tenancy.context import optional_org_id, optional_user_id
     return await get_agent_kernel().plan_and_run(
         req.goal, caller=req.caller, workspace=req.workspace,
+        user_id=await optional_user_id(request),
         organization_id=await optional_org_id(request),
         run_id=req.run_id,
     )
@@ -151,12 +156,12 @@ async def agentos_plan(req: PlanRequest, request: Request):
 @router.post("/api/agentos/deliberate")
 async def agentos_deliberate(req: RunRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
-    from app.tenancy.context import optional_org_id
+    from app.tenancy.context import optional_org_id, optional_user_id
     kernel = get_agent_kernel()
     result, vote = await kernel.deliberate_and_run(
         req.input,
         caller    = req.caller,
-        user_id   = req.user_id,
+        user_id   = await optional_user_id(request),
         workspace = req.workspace,
         organization_id = await optional_org_id(request),
         run_id    = req.run_id,
@@ -172,12 +177,14 @@ async def agentos_download_deliverable(
 ):
     """
     Downloads a file an agent produced (e.g. DeployAgent's zip archive —
-    see app/agents/deliverables.py). Requires login; if the deliverable
-    was registered with an organization_id, the caller must be a verified
-    member of that same org (resolved the same way every other org-scoped
-    read in this router does) — otherwise this 404s exactly like a
-    nonexistent id, so a caller can't distinguish "wrong org" from
-    "doesn't exist".
+    see app/agents/deliverables.py). Requires login. Authorization checks
+    ownership FIRST: if the deliverable has a verified owner (the caller
+    who was authenticated on the run that produced it), only that same
+    caller may download it — an org membership does not override this.
+    Only when a deliverable has NO owner on record (e.g. an unauthenticated
+    run) does org membership serve as the fallback gate. Either way this
+    404s exactly like a nonexistent id on denial, so a caller can't
+    distinguish "not yours" / "wrong org" from "doesn't exist".
     """
     from pathlib import Path
 
@@ -190,7 +197,11 @@ async def agentos_download_deliverable(
     if d is None:
         raise HTTPException(404, "Deliverable not found")
 
-    if d["organization_id"]:
+    owner_user_id = d.get("user_id")
+    if owner_user_id:
+        if owner_user_id != user["id"]:
+            raise HTTPException(404, "Deliverable not found")
+    elif d["organization_id"]:
         org_id = await optional_org_id(request)
         if org_id != d["organization_id"]:
             raise HTTPException(404, "Deliverable not found")

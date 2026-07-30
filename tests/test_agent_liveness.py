@@ -197,6 +197,54 @@ class TestAgentLivenessSnapshot:
 
 # ── agent.started/agent.finished are declared, real EVENT_TYPES ────────────────
 
+class TestPublishStepBroadcastsOnPerRunTopic:
+    """publish_step() carries a run's actual content (input text, search
+    queries, URLs) — it must land on a per-run topic (system:{run_id}),
+    not the shared "system" topic every /ws/system connection receives,
+    so isolation happens at the subscription boundary rather than relying
+    on every client to filter out runs that aren't theirs."""
+
+    def test_step_broadcasts_on_system_colon_run_id_not_shared_system_topic(self):
+        import app.agents.liveness as liveness
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+
+        with patch("app.routers.ws.manager", fake_ws):
+            run(liveness.publish_step("run-42", "browser", "Opening https://example.com", "terminal"))
+
+        topic, frame = fake_ws.broadcast.call_args.args
+        assert topic == "system:run-42"
+        assert topic != "system"
+        assert frame == {
+            "run_id": "run-42", "agent": "browser",
+            "step": "Opening https://example.com", "kind": "terminal",
+        }
+
+    def test_liveness_dot_still_broadcasts_on_the_shared_system_topic(self):
+        """The started/finished liveness dot (_on_agent_event, unlike
+        publish_step) is intentionally unchanged by the per-run isolation
+        fix — agent name + running/idle status isn't run-content-sensitive,
+        so it keeps going on the one shared "system" topic."""
+        import app.agents.liveness as liveness
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+
+        with patch("app.routers.ws.manager", fake_ws):
+            run(liveness._on_agent_event(_FakeEvent("agent.started", {"agent": "analyze", "run_id": "r1"})))
+
+        assert fake_ws.broadcast.call_args.args[0] == "system"
+
+    def test_missing_run_id_is_a_noop_not_a_crash(self):
+        import app.agents.liveness as liveness
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+
+        with patch("app.routers.ws.manager", fake_ws):
+            run(liveness.publish_step("", "browser", "step"))  # must not raise
+
+        fake_ws.broadcast.assert_not_awaited()
+
+
 class TestAgentEventsAreDeclared:
     def test_agent_lifecycle_events_are_in_event_types(self):
         """AgentKernel.run() publishes these unconditionally on every
@@ -236,6 +284,55 @@ class TestSystemWsAuth:
         with ws_client.websocket_connect(f"/ws/system?token={_token()}") as ws:
             connected = ws.receive_json()
             assert connected == {"type": "connected", "topic": "system"}
+
+
+# ── /ws/system/{run_id} per-run channel isolation ───────────────────────────
+
+class TestSystemRunWsAuth:
+    def test_unauthenticated_connection_is_rejected(self, ws_client):
+        with pytest.raises(Exception):  # noqa: B017 - starlette raises on the 4401 close
+            with ws_client.websocket_connect("/ws/system/run-42") as ws:
+                ws.receive_json()
+
+    def test_authenticated_connection_subscribes_to_the_per_run_topic(self, ws_client):
+        with ws_client.websocket_connect(f"/ws/system/run-42?token={_token()}") as ws:
+            connected = ws.receive_json()
+            assert connected == {"type": "connected", "topic": "system:run-42"}
+
+    def test_two_different_runs_get_two_different_topics(self, ws_client):
+        with ws_client.websocket_connect(f"/ws/system/run-a?token={_token()}") as ws_a, \
+             ws_client.websocket_connect(f"/ws/system/run-b?token={_token()}") as ws_b:
+            assert ws_a.receive_json()["topic"] == "system:run-a"
+            assert ws_b.receive_json()["topic"] == "system:run-b"
+
+
+class TestConnectionManagerPerRunTopicIsolation:
+    """Exercises the real _ConnectionManager (not liveness.py's mocked
+    boundary) to confirm broadcast() fan-out is actually scoped per topic
+    — a subscriber to system:{run_id} for one run must never receive a
+    frame broadcast on a different run's topic."""
+
+    def test_broadcast_on_one_run_topic_does_not_reach_another_runs_subscriber(self):
+        from app.routers.ws import _ConnectionManager
+        from starlette.websockets import WebSocketState
+
+        manager = _ConnectionManager()
+
+        ws_run_a = MagicMock()
+        ws_run_a.application_state = WebSocketState.CONNECTED
+        ws_run_a.send_text = AsyncMock()
+
+        ws_run_b = MagicMock()
+        ws_run_b.application_state = WebSocketState.CONNECTED
+        ws_run_b.send_text = AsyncMock()
+
+        run(manager.connect(ws_run_a, "system:run-a"))
+        run(manager.connect(ws_run_b, "system:run-b"))
+
+        run(manager.broadcast("system:run-a", {"run_id": "run-a", "step": "secret input for run a"}))
+
+        ws_run_a.send_text.assert_awaited_once()
+        ws_run_b.send_text.assert_not_awaited()
 
 
 # ── GET /api/agentos/agents liveness merge ──────────────────────────────────

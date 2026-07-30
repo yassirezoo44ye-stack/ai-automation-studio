@@ -28,6 +28,14 @@ class Deliverable(TypedDict):
     agent: str
     label: str
     organization_id: Optional[str]
+    # The verified caller identity that produced this deliverable (see
+    # app.tenancy.context.optional_user_id) — None only when the run that
+    # created it had no authenticated caller at all. This is the primary
+    # ownership check at download time; organization_id is the fallback
+    # for org-shared access. Never populate this from a client-supplied
+    # value (e.g. a request-body field) — it must come from a verified
+    # bearer token, or it isn't an authorization boundary at all.
+    user_id: Optional[str]
     created_at: float
 
 
@@ -36,7 +44,7 @@ _deliverables: dict[str, Deliverable] = {}
 
 def register(
     path: Path, *, run_id: str, agent: str, label: str,
-    organization_id: Optional[str] = None,
+    organization_id: Optional[str] = None, user_id: Optional[str] = None,
 ) -> Optional[str]:
     """
     Registers `path` for download and returns a deliverable_id, or None
@@ -58,6 +66,7 @@ def register(
         "agent": agent,
         "label": label,
         "organization_id": organization_id,
+        "user_id": user_id,
         "created_at": time.time(),
     }
     return deliverable_id
