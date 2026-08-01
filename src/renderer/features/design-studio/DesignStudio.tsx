@@ -8,6 +8,7 @@ import { useFabricCanvas }           from "./hooks/useFabricCanvas";
 import { useHistory }                from "./hooks/useHistory";
 import { useKeyboard }               from "./hooks/useKeyboard";
 import { useAutoSave }               from "./hooks/useAutoSave";
+import { useBrandKit }               from "./hooks/useBrandKit";
 import { CanvasView }                from "./components/Canvas/CanvasView";
 import { CanvasMinimap }             from "./components/Canvas/CanvasMinimap";
 import { LeftToolbar }               from "./components/Toolbar/LeftToolbar";
@@ -34,6 +35,9 @@ function DesignStudioInner() {
   const { state, dispatch, setTool, setSelectedIds, setPanel } = useDesign();
   const [showExport, setShowExport] = useState(false);
   const designIdRef = useRef<string | null>(null);
+
+  // Brand Kit lifecycle (init + designStore sync) — see hooks/useBrandKit.ts
+  useBrandKit();
 
   // Fabric canvas
   const fabricCanvas = useFabricCanvas(

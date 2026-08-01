@@ -5,6 +5,7 @@
  */
 import type { FabricObject } from "fabric";
 import type { ElementMeta } from "../../types/canvas.types";
+import type { FullBrandKit } from "../../features/brand-kit/BrandKit";
 
 // ── Object events ─────────────────────────────────────────────────────────────
 
@@ -61,7 +62,30 @@ export interface TokenDeletedEvent { tokenId: string }
 
 // ── Brand Kit events ──────────────────────────────────────────────────────────
 
-export interface BrandKitChangedEvent { kitId: string }
+/**
+ * Contract for BrandKitChanged (see BrandKitService — the only emitter):
+ *
+ * Event:   BrandKitChanged
+ * Payload: { kitId: string; kit: FullBrandKit }
+ *
+ * Fires when:
+ *   - BrandKitService.save() persists a kit successfully.
+ *   - BrandKitService.setActive() switches the active kit successfully.
+ *
+ * Guarantees:
+ *   - Fired after successful persistence — never before the IndexedDB write
+ *     that caused it has completed.
+ *   - Fired exactly once per successful mutation; never fired on a failed
+ *     or no-op write (e.g. save() before init() has opened the DB).
+ *   - `kit` is the exact object that was just persisted/activated — safe
+ *     to consume directly, no need to re-read brandKitService.active.
+ *   - `kitId` always refers to `kit.id` (kept alongside `kit` for callers
+ *     that only care about identity, not the full payload).
+ *   - One-directional: this event never carries Design Token data, and
+ *     TokenRegistry must never be the trigger for a BrandKitChanged emit
+ *     (see the Architecture Decision doc — BrandKit → Tokens is one-way).
+ */
+export interface BrandKitChangedEvent { kitId: string; kit: FullBrandKit }
 
 // ── Component events ──────────────────────────────────────────────────────────
 

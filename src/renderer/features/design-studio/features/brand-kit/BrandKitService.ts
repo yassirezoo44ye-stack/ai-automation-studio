@@ -66,18 +66,33 @@ async function idbGetAll<T>(db: IDBDatabase): Promise<T[]> {
 export class BrandKitService {
   private _db: IDBDatabase | null = null;
   private _active: FullBrandKit | null = null;
+  private _initPromise?: Promise<FullBrandKit>;
 
-  async init(): Promise<void> {
+  /**
+   * Memoized: concurrent callers (e.g. React 18 Strict Mode double-invoking
+   * an effect) all get the same in-flight promise instead of racing to
+   * create two default kits. Resolves to the active kit either way.
+   */
+  init(): Promise<FullBrandKit> {
+    if (!this._initPromise) this._initPromise = this._doInit();
+    return this._initPromise;
+  }
+
+  private async _doInit(): Promise<FullBrandKit> {
     this._db = await openDB();
     // Ensure at least one kit exists
     const all = await this.list();
     if (all.length === 0) {
       const kit = makeDefaultBrandKit();
-      await this.save(kit);
+      // Set _active before save() so BrandKitChanged listeners that read
+      // `.active` during the save see the real kit, not the empty-state
+      // fallback in the `active` getter below.
       this._active = kit;
+      await this.save(kit);
     } else {
       this._active = all[0];
     }
+    return this._active;
   }
 
   get active(): FullBrandKit {
@@ -88,7 +103,7 @@ export class BrandKitService {
     const kit = await this.get(kitId);
     if (!kit) throw new Error(`Brand kit "${kitId}" not found`);
     this._active = kit;
-    designBus.emit("BrandKitChanged", { kitId });
+    designBus.emit("BrandKitChanged", { kitId, kit });
   }
 
   async list(): Promise<FullBrandKit[]> {
@@ -106,6 +121,7 @@ export class BrandKitService {
     kit.updatedAt = new Date().toISOString();
     await idbPut(this._db, kit);
     if (this._active?.id === kit.id) this._active = kit;
+    designBus.emit("BrandKitChanged", { kitId: kit.id, kit });
   }
 
   async create(name: string): Promise<FullBrandKit> {
