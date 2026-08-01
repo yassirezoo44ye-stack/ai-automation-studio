@@ -239,7 +239,7 @@ jobs:
         # Instead: /health exposes "commit" (RENDER_GIT_COMMIT); poll until
         # it equals the SHA this run deployed, THEN require /health/deep.
         run: |
-          URL="${{ vars.PRODUCTION_URL || 'https://ai-automation-studio.onrender.com' }}"
+          URL="${{ vars.PRODUCTION_URL || 'https://ai-automation-studio-1-c2rt.onrender.com' }}"
           echo "Polling $URL/health until running commit == $GITHUB_SHA (up to 15 min)"
           for i in $(seq 1 60); do
             sleep 15
