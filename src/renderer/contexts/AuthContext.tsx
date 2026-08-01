@@ -48,14 +48,28 @@ export function useAuth(): AuthContextType {
 }
 
 async function apiFetch(path: string, init?: RequestInit, token?: string): Promise<Response> {
-  return fetch(`${API}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers as Record<string, string> ?? {}),
-    },
-  });
+  try {
+    return await fetch(`${API}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers as Record<string, string> ?? {}),
+      },
+    });
+  } catch (err) {
+    // A rejected fetch() (as opposed to a non-2xx response, which resolves
+    // normally) means the request never reached the server — DNS failure,
+    // connection refused, mixed HTTP/HTTPS content, or a CORS preflight the
+    // backend rejected. The browser's own message ("Failed to fetch") is
+    // accurate but gives no next step, so surface the actual URL and the
+    // two most common causes for this app's split-deployment setup
+    // (Vercel frontend + Render backend) without discarding the original error.
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Cannot reach ${API || "(empty VITE_API_URL)"}${path}. Check that VITE_API_URL is set correctly and that the backend's EXTRA_CORS_ORIGINS includes this frontend's origin. (${detail})`,
+    );
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
