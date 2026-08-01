@@ -141,8 +141,7 @@ function DesignStudioInner() {
     const fc = getCanvas();
     if (!fc) return;
     fc.set({ width: tpl.width, height: tpl.height });
-    fc.clear();
-    fc.renderAll();
+    await loadJSONToCanvas(fc, tpl.json);
     saveSnapshot("apply template");
   }, [getCanvas, saveSnapshot]);
 
