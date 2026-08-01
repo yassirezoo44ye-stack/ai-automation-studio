@@ -2,7 +2,7 @@
  * BrandKitService — CRUD for FullBrandKit, backed by BrandKitRepository.
  * Multiple brand kits can exist; one is "active" per project.
  */
-import type { FullBrandKit } from "./BrandKit";
+import type { FullBrandKit, BrandColor, BrandFont, BrandLogo } from "./BrandKit";
 import { makeDefaultBrandKit } from "./BrandKit";
 import { uid } from "../../utils/geometryUtils";
 import { designBus } from "../../core/events/DesignEventBus";
@@ -13,6 +13,7 @@ import { brandKitRepository } from "./BrandKitRepository";
 export class BrandKitService {
   private _active: FullBrandKit | null = null;
   private _initPromise?: Promise<FullBrandKit>;
+  private _writeQueue: Promise<unknown> = Promise.resolve();
 
   /**
    * Memoized: concurrent callers (e.g. React 18 Strict Mode double-invoking
@@ -86,6 +87,90 @@ export class BrandKitService {
     const copy = { ...src, id: uid(), name: `${src.name} (Copy)`, createdAt: new Date().toISOString() };
     await this.save(copy);
     return copy;
+  }
+
+  // ── Write queue ──────────────────────────────────────────────────────────
+  // Serializes mutations so concurrent calls (e.g. rapid double-click) always
+  // read-modify-write in call order, each starting from the previous one's
+  // result — without this, two mutations reading `this.active` before either
+  // resolves would race, and the second save() would silently overwrite the
+  // first's change. The queue link itself always resolves (never rejects)
+  // regardless of whether `mutation` succeeds — otherwise one failed
+  // mutation would permanently poison every mutation queued after it. The
+  // caller still sees the real success/failure via the returned promise.
+  private enqueue<T>(mutation: () => Promise<T>): Promise<T> {
+    const result = this._writeQueue.then(mutation);
+    this._writeQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  // ── Granular mutations ───────────────────────────────────────────────────
+  // Each: init() first (guarantees the repository is open before the
+  // read-modify-write cycle), read the current active kit, compute the next
+  // kit, persist via save() (repository write + BrandKitChanged emit),
+  // return the persisted kit.
+
+  addColor(color: Omit<BrandColor, "id">): Promise<FullBrandKit> {
+    return this.enqueue(async () => {
+      await this.init();
+      const kit = this.active;
+      const updated: FullBrandKit = { ...kit, colors: [...kit.colors, { ...color, id: uid() }] };
+      await this.save(updated);
+      return updated;
+    });
+  }
+
+  removeColor(id: string): Promise<FullBrandKit> {
+    return this.enqueue(async () => {
+      await this.init();
+      const kit = this.active;
+      const updated: FullBrandKit = { ...kit, colors: kit.colors.filter(c => c.id !== id) };
+      await this.save(updated);
+      return updated;
+    });
+  }
+
+  addFont(font: Omit<BrandFont, "id">): Promise<FullBrandKit> {
+    return this.enqueue(async () => {
+      await this.init();
+      const kit = this.active;
+      const updated: FullBrandKit = { ...kit, fonts: [...kit.fonts, { ...font, id: uid() }] };
+      await this.save(updated);
+      return updated;
+    });
+  }
+
+  removeFont(id: string): Promise<FullBrandKit> {
+    return this.enqueue(async () => {
+      await this.init();
+      const kit = this.active;
+      const updated: FullBrandKit = { ...kit, fonts: kit.fonts.filter(f => f.id !== id) };
+      await this.save(updated);
+      return updated;
+    });
+  }
+
+  addLogo(logo: Omit<BrandLogo, "id" | "variant"> & { variant?: BrandLogo["variant"] }): Promise<FullBrandKit> {
+    return this.enqueue(async () => {
+      await this.init();
+      const kit = this.active;
+      const updated: FullBrandKit = {
+        ...kit,
+        logos: [...kit.logos, { ...logo, id: uid(), variant: logo.variant ?? "primary" }],
+      };
+      await this.save(updated);
+      return updated;
+    });
+  }
+
+  removeLogo(id: string): Promise<FullBrandKit> {
+    return this.enqueue(async () => {
+      await this.init();
+      const kit = this.active;
+      const updated: FullBrandKit = { ...kit, logos: kit.logos.filter(l => l.id !== id) };
+      await this.save(updated);
+      return updated;
+    });
   }
 }
 
