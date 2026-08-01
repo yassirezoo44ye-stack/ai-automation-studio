@@ -8,6 +8,19 @@ import { uid } from "../../utils/geometryUtils";
 import { designBus } from "../../core/events/DesignEventBus";
 import { brandKitRepository } from "./BrandKitRepository";
 
+// ── Validation ───────────────────────────────────────────────────────────────
+// The service is the single source of truth for domain validity — enforced
+// here (not just in brandKitActions.ts) so any caller, not only the Command
+// API, gets the same guarantees.
+
+const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+function requireNonEmpty(value: string, field: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`${field} is required`);
+  return trimmed;
+}
+
 // ── Service ───────────────────────────────────────────────────────────────────
 
 export class BrandKitService {
@@ -110,64 +123,75 @@ export class BrandKitService {
   // kit, persist via save() (repository write + BrandKitChanged emit),
   // return the persisted kit.
 
-  addColor(color: Omit<BrandColor, "id">): Promise<FullBrandKit> {
+  async addColor(color: Omit<BrandColor, "id">): Promise<FullBrandKit> {
+    const name = requireNonEmpty(color.name, "Color name");
+    const value = requireNonEmpty(color.value, "Color value");
+    if (!HEX_COLOR_RE.test(value)) throw new Error(`"${value}" is not a valid hex color`);
     return this.enqueue(async () => {
       await this.init();
       const kit = this.active;
-      const updated: FullBrandKit = { ...kit, colors: [...kit.colors, { ...color, id: uid() }] };
+      const updated: FullBrandKit = { ...kit, colors: [...kit.colors, { ...color, name, value, id: uid() }] };
       await this.save(updated);
       return updated;
     });
   }
 
-  removeColor(id: string): Promise<FullBrandKit> {
+  async removeColor(id: string): Promise<FullBrandKit> {
+    const colorId = requireNonEmpty(id, "Color id");
     return this.enqueue(async () => {
       await this.init();
       const kit = this.active;
-      const updated: FullBrandKit = { ...kit, colors: kit.colors.filter(c => c.id !== id) };
+      const updated: FullBrandKit = { ...kit, colors: kit.colors.filter(c => c.id !== colorId) };
       await this.save(updated);
       return updated;
     });
   }
 
-  addFont(font: Omit<BrandFont, "id">): Promise<FullBrandKit> {
+  async addFont(font: Omit<BrandFont, "id">): Promise<FullBrandKit> {
+    const name = requireNonEmpty(font.name, "Font name");
+    const family = requireNonEmpty(font.family, "Font family");
     return this.enqueue(async () => {
       await this.init();
       const kit = this.active;
-      const updated: FullBrandKit = { ...kit, fonts: [...kit.fonts, { ...font, id: uid() }] };
+      const updated: FullBrandKit = { ...kit, fonts: [...kit.fonts, { ...font, name, family, id: uid() }] };
       await this.save(updated);
       return updated;
     });
   }
 
-  removeFont(id: string): Promise<FullBrandKit> {
+  async removeFont(id: string): Promise<FullBrandKit> {
+    const fontId = requireNonEmpty(id, "Font id");
     return this.enqueue(async () => {
       await this.init();
       const kit = this.active;
-      const updated: FullBrandKit = { ...kit, fonts: kit.fonts.filter(f => f.id !== id) };
+      const updated: FullBrandKit = { ...kit, fonts: kit.fonts.filter(f => f.id !== fontId) };
       await this.save(updated);
       return updated;
     });
   }
 
-  addLogo(logo: Omit<BrandLogo, "id" | "variant"> & { variant?: BrandLogo["variant"] }): Promise<FullBrandKit> {
+  async addLogo(logo: Omit<BrandLogo, "id" | "variant"> & { variant?: BrandLogo["variant"] }): Promise<FullBrandKit> {
+    const name = requireNonEmpty(logo.name, "Logo name");
+    const src = requireNonEmpty(logo.src, "Logo image");
+    if (!src.startsWith("data:")) throw new Error("Logo image must be a data URL");
     return this.enqueue(async () => {
       await this.init();
       const kit = this.active;
       const updated: FullBrandKit = {
         ...kit,
-        logos: [...kit.logos, { ...logo, id: uid(), variant: logo.variant ?? "primary" }],
+        logos: [...kit.logos, { ...logo, name, src, id: uid(), variant: logo.variant ?? "primary" }],
       };
       await this.save(updated);
       return updated;
     });
   }
 
-  removeLogo(id: string): Promise<FullBrandKit> {
+  async removeLogo(id: string): Promise<FullBrandKit> {
+    const logoId = requireNonEmpty(id, "Logo id");
     return this.enqueue(async () => {
       await this.init();
       const kit = this.active;
-      const updated: FullBrandKit = { ...kit, logos: kit.logos.filter(l => l.id !== id) };
+      const updated: FullBrandKit = { ...kit, logos: kit.logos.filter(l => l.id !== logoId) };
       await this.save(updated);
       return updated;
     });
