@@ -1,11 +1,13 @@
 /**
  * BrandKitPanel — visual panel for managing brand colors, fonts, and logos.
- * Reads from state.brandKit and dispatches SET_BRAND_KIT on changes.
+ * Reads state.brandKit (kept in sync by useBrandKit() via BrandKitChanged)
+ * and writes through brandKitActions, which persist via BrandKitService.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDesign } from "../../stores/designStore";
 import type { BrandKit, BrandColor, BrandFont, BrandLogo } from "../../types/canvas.types";
+import { brandKitActions } from "../../features/brand-kit/actions/brandKitActions";
 
 const s: Record<string, React.CSSProperties> = {
   root:      { display: "flex", flexDirection: "column", height: "100%", overflowY: "auto", padding: "8px" },
@@ -25,36 +27,32 @@ const s: Record<string, React.CSSProperties> = {
   addColorBtn:{ padding: "0", width: "32px", height: "32px", borderRadius: "6px", border: "2px dashed #374151", cursor: "pointer", background: "transparent", color: "#6b7280", fontSize: "18px", display: "flex", alignItems: "center", justifyContent: "center" },
 };
 
-const uid = () => Math.random().toString(36).slice(2, 9);
-
 export function BrandKitPanel() {
   const { t } = useTranslation("designStudio");
-  const { state, dispatch } = useDesign();
+  const { state } = useDesign();
   const kit = state.brandKit as BrandKit;
-
-  const update = (patch: Partial<BrandKit>) =>
-    dispatch({ type: "SET_BRAND_KIT", brandKit: { ...kit, ...patch } });
 
   // Colors
   const [newColor, setNewColor] = useState("#4f46e5");
   const [addingColor, setAddingColor] = useState(false);
 
   const addColor = () => {
-    update({ colors: [...kit.colors, { id: uid(), name: newColor, value: newColor }] });
     setAddingColor(false);
+    brandKitActions.addColor({ name: newColor, value: newColor }).catch(err => console.error("[brand-kit] addColor failed", err));
   };
-  const removeColor = (id: string) =>
-    update({ colors: kit.colors.filter((c: BrandColor) => c.id !== id) });
+  const removeColor = (id: string) => {
+    brandKitActions.removeColor(id).catch(err => console.error("[brand-kit] removeColor failed", err));
+  };
 
   // Fonts
   const addFont = () => {
     const family = window.prompt(t("brandKitPanel.fontFamilyPrompt"));
     if (!family) return;
-    const name = family.split(",")[0].trim();
-    update({ fonts: [...kit.fonts, { id: uid(), name, family, weights: [400, 700] }] });
+    brandKitActions.addFont({ family }).catch(err => console.error("[brand-kit] addFont failed", err));
   };
-  const removeFont = (id: string) =>
-    update({ fonts: kit.fonts.filter((f: BrandFont) => f.id !== id) });
+  const removeFont = (id: string) => {
+    brandKitActions.removeFont(id).catch(err => console.error("[brand-kit] removeFont failed", err));
+  };
 
   // Logos
   const addLogo = () => {
@@ -66,14 +64,17 @@ export function BrandKitPanel() {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        update({ logos: [...kit.logos, { id: uid(), name: file.name, src: reader.result as string }] });
+        brandKitActions
+          .addLogo({ name: file.name, src: reader.result as string })
+          .catch(err => console.error("[brand-kit] addLogo failed", err));
       };
       reader.readAsDataURL(file);
     };
     input.click();
   };
-  const removeLogo = (id: string) =>
-    update({ logos: kit.logos.filter((l: BrandLogo) => l.id !== id) });
+  const removeLogo = (id: string) => {
+    brandKitActions.removeLogo(id).catch(err => console.error("[brand-kit] removeLogo failed", err));
+  };
 
   return (
     <div style={s.root}>
