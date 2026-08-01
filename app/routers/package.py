@@ -3,13 +3,14 @@ import json
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.core.config import DIST_DIR
 from app.core.filesystem import workspace
 from app.core.helpers import sanitize_name
+from app.routers.build import _require_project_owner
 from app.runtime import registry
 from app.runtime import process as rt_process
 from app.runtime.preflight import run_preflight, preflight_error_events
@@ -67,7 +68,8 @@ async def _run_stream(cmd: list, cwd: str):
 
 
 @router.post("/api/package/stream")
-async def package_stream(req: PackageRequest):
+async def package_stream(req: PackageRequest, request: Request):
+    await _require_project_owner(req.project_id, request)
     ws        = workspace(req.project_id)
     safe_name = sanitize_name(req.app_name)
 

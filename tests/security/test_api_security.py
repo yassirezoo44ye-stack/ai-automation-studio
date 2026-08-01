@@ -351,5 +351,85 @@ class TestBuildProjectEndpointsRequireOwnership(unittest.TestCase):
         self.assertEqual(res.json(), {"running": False})
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# IDOR: packaging endpoint (app/routers/package.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestPackageStreamRequiresOwnership(unittest.TestCase):
+    """POST /api/package/stream took project_id straight to workspace()
+    with no ownership check — any authenticated user who learned another
+    user's project_id could trigger a build against that project's
+    workspace (the "docker" target zips every source file verbatim) and
+    download the result, exfiltrating that user's project source. Fixed
+    by reusing build.py's shared _require_project_owner() guard, the same
+    fix already applied to every /api/projects/{project_id}/* route."""
+
+    def _package_router_app(self):
+        from fastapi import FastAPI
+        from app.routers.package import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, *, requester_uid, owns_project: bool):
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(side_effect=[
+            requester_uid,                # owner_user_id() resolves the caller
+            1 if owns_project else None,  # resolve_project_id()'s ownership SELECT
+        ])
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
+    def test_non_owner_gets_404_not_a_build(self):
+        """Bob authenticates fine, but the project belongs to Alice —
+        the request must 404 before any workspace access or build starts."""
+        bob_uid = uuid.uuid4()
+        alice_project_id = str(uuid.uuid4())
+        app = self._package_router_app()
+        pool = self._mock_pool(requester_uid=bob_uid, owns_project=False)
+
+        with patch("app.routers.build.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    "/api/package/stream",
+                    json={
+                        "project_id": alice_project_id, "target": "exe", "lang": "python",
+                        "app_name": "MyApp", "app_version": "1.0.0",
+                    },
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+
+    def test_owner_passes_the_ownership_gate(self):
+        """The fix must not break legitimate access for the actual owner —
+        the request should proceed past the guard into the packaging
+        stream (docker/zip target: no subprocess, just file I/O)."""
+        import tempfile
+        from pathlib import Path
+
+        alice_uid = uuid.uuid4()
+        project_id = str(uuid.uuid4())
+        app = self._package_router_app()
+        pool = self._mock_pool(requester_uid=alice_uid, owns_project=True)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("app.routers.build.get_pool", return_value=pool), \
+                 patch("app.core.auth.owner_email", return_value="alice@example.com"), \
+                 patch("app.core.filesystem.WORKSPACES", Path(tmp)):
+                with TestClient(app, raise_server_exceptions=False) as c:
+                    res = c.post(
+                        "/api/package/stream",
+                        json={
+                            "project_id": project_id, "target": "zip", "lang": "docker",
+                            "app_name": "MyApp", "app_version": "1.0.0",
+                        },
+                        headers={"X-Sub-Token": "alice-token"},
+                    )
+        self.assertEqual(res.status_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()
