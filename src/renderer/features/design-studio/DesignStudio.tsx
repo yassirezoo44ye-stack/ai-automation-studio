@@ -25,7 +25,7 @@ import { PropertiesPanel }           from "./components/Panels/PropertiesPanel";
 import { ExportModal }               from "./components/Modals/ExportModal";
 import type { PanelId, Tool }        from "./types/canvas.types";
 import type { Template }             from "./types/canvas.types";
-import { findById }                  from "./utils/fabricUtils";
+import { findById, loadJSONToCanvas } from "./utils/fabricUtils";
 import styles                        from "./DesignStudio.module.css";
 
 function DesignStudioInner() {
@@ -140,6 +140,15 @@ function DesignStudioInner() {
     fc.clear();
     fc.renderAll();
     saveSnapshot("apply template");
+  }, [getCanvas, saveSnapshot]);
+
+  // Apply an AI-generated design (full Fabric.js JSON) to the current page
+  const handleApplyGeneratedDesign = useCallback(async (canvasJson: object, width: number, height: number) => {
+    const fc = getCanvas();
+    if (!fc) return;
+    fc.set({ width, height });
+    await loadJSONToCanvas(fc, canvasJson);
+    saveSnapshot("ai generate design");
   }, [getCanvas, saveSnapshot]);
 
   // Layer ordering
@@ -279,7 +288,12 @@ function DesignStudioInner() {
             {state.activePanel === "components" && <ComponentsPanel getCanvas={getCanvas} />}
             {state.activePanel === "tokens"     && <TokensPanel />}
             {state.activePanel === "history"    && <HistoryPanel />}
-            {state.activePanel === "ai"         && <AIPanel getCanvas={getCanvas} />}
+            {state.activePanel === "ai"         && (
+              <AIPanel
+                getCanvas={getCanvas}
+                onApplyDesign={(json, w, h) => void handleApplyGeneratedDesign(json, w, h)}
+              />
+            )}
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 /**
  * AIPanel — AI-powered design tools.
- * Text-to-image, color palette, font pairing, design suggestions.
+ * Full-design generation, color palette, font pairing, design suggestions.
  * Delegates to AIDesignEngine service.
  */
 import { useState, useCallback } from "react";
@@ -10,10 +10,23 @@ import { aiDesignEngine } from "../../features/ai/AIDesignEngine";
 import type { DesignSuggestion, FontPairingResult, ColorPaletteResult } from "../../features/ai/AIDesignEngine";
 
 interface Props {
-  getCanvas: () => FabricCanvas | null;
+  getCanvas:     () => FabricCanvas | null;
+  onApplyDesign: (canvasJson: object, width: number, height: number) => void;
 }
 
-type Tool = "image" | "palette" | "fonts" | "suggestions";
+type Tool = "generate" | "image" | "palette" | "fonts" | "suggestions";
+
+// Mirrors DESIGN_SIZES in app/routers/design.py — keys are sent to the
+// backend verbatim, so they stay in English regardless of UI language.
+const DESIGN_TEMPLATES: { key: string; labelKey: string; width: number; height: number }[] = [
+  { key: "Instagram Post",  labelKey: "instagramPost",  width: 1080, height: 1080 },
+  { key: "Instagram Story", labelKey: "instagramStory", width: 1080, height: 1920 },
+  { key: "Facebook Cover",  labelKey: "facebookCover",  width: 820,  height: 312  },
+  { key: "Facebook Post",   labelKey: "facebookPost",   width: 1200, height: 630  },
+  { key: "YouTube Thumb",   labelKey: "youtubeThumb",   width: 1280, height: 720  },
+  { key: "A4 Portrait",     labelKey: "a4Portrait",     width: 794,  height: 1123 },
+  { key: "Presentation",    labelKey: "presentation",   width: 1920, height: 1080 },
+];
 
 const s: Record<string, React.CSSProperties> = {
   root:     { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
@@ -26,6 +39,7 @@ const s: Record<string, React.CSSProperties> = {
   result:   { marginTop: "10px" },
   imgGrid:  { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "8px" },
   genImg:   { width: "100%", aspectRatio: "1", objectFit: "cover" as const, borderRadius: "4px", border: "1px solid #374151", cursor: "pointer" },
+  comingSoon: { color: "#6b7280", fontSize: "11px", marginTop: "6px", textAlign: "center" as const },
   colorRow: { display: "flex", gap: "6px", flexWrap: "wrap" as const, marginTop: "8px" },
   swatch:   { width: "36px", height: "36px", borderRadius: "6px", border: "1px solid #374151", cursor: "pointer", position: "relative" as const },
   fontItem: { padding: "8px", borderRadius: "6px", border: "1px solid #374151", marginTop: "6px", background: "#1f2937" },
@@ -42,13 +56,18 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   return <div style={{ marginBottom: "10px" }}><div style={s.label}>{label}</div>{children}</div>;
 }
 
-export function AIPanel({ getCanvas }: Props) {
+export function AIPanel({ getCanvas, onApplyDesign }: Props) {
   const { t } = useTranslation("designStudio");
-  const [tool, setTool]     = useState<Tool>("image");
+  const [tool, setTool]     = useState<Tool>("generate");
   const [busy, setBusy]     = useState(false);
   const [error, setError]   = useState("");
 
-  // Text-to-Image
+  // Generate full design
+  const [genPrompt, setGenPrompt] = useState("");
+  const [genTemplate, setGenTemplate] = useState(DESIGN_TEMPLATES[0].key);
+
+  // Text-to-Image — no backend yet; kept dormant with its Generate button
+  // disabled (see aiPanel.comingSoon) rather than deleted.
   const [imgPrompt, setImgPrompt] = useState("");
   const [images, setImages]       = useState<string[]>([]);
 
@@ -67,7 +86,11 @@ export function AIPanel({ getCanvas }: Props) {
     setBusy(true);
     setError("");
     try {
-      if (tool === "image") {
+      if (tool === "generate") {
+        const tpl = DESIGN_TEMPLATES.find(t => t.key === genTemplate) ?? DESIGN_TEMPLATES[0];
+        const res = await aiDesignEngine.generateDesign({ prompt: genPrompt, template: tpl.key });
+        onApplyDesign(res.canvas_json, tpl.width, tpl.height);
+      } else if (tool === "image") {
         const res = await aiDesignEngine.textToImage({ prompt: imgPrompt, width: 512, height: 512 });
         setImages(res.images);
       } else if (tool === "palette") {
@@ -87,7 +110,7 @@ export function AIPanel({ getCanvas }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [tool, imgPrompt, palPrompt, fontStyle, getCanvas, t]);
+  }, [tool, genPrompt, genTemplate, onApplyDesign, imgPrompt, palPrompt, fontStyle, getCanvas, t]);
 
   const insertImage = async (src: string) => {
     const fc = getCanvas();
@@ -102,7 +125,7 @@ export function AIPanel({ getCanvas }: Props) {
     } catch { /* noop */ }
   };
 
-  const TAB_IDS: Tool[] = ["image", "palette", "fonts", "suggestions"];
+  const TAB_IDS: Tool[] = ["generate", "image", "palette", "fonts", "suggestions"];
 
   return (
     <div style={s.root}>
@@ -123,6 +146,36 @@ export function AIPanel({ getCanvas }: Props) {
       </div>
 
       <div style={s.body}>
+        {tool === "generate" && (
+          <>
+            <Section label={t("aiPanel.describeDesign")}>
+              <textarea
+                style={{ ...s.input, minHeight: "64px" }}
+                value={genPrompt}
+                onChange={e => setGenPrompt(e.target.value)}
+                placeholder={t("aiPanel.designPromptPlaceholder")}
+                aria-label={t("aiPanel.designPromptAriaLabel")}
+              />
+            </Section>
+            <Section label={t("aiPanel.designFormat")}>
+              <select
+                style={s.input}
+                value={genTemplate}
+                onChange={e => setGenTemplate(e.target.value)}
+                aria-label={t("aiPanel.designFormatAriaLabel")}
+              >
+                {DESIGN_TEMPLATES.map(tpl => (
+                  <option key={tpl.key} value={tpl.key}>{t(`aiPanel.designFormats.${tpl.labelKey}`)}</option>
+                ))}
+              </select>
+            </Section>
+            <button style={s.btn} onClick={run} disabled={busy || !genPrompt.trim()}>
+              {busy ? t("aiPanel.generating") : t("aiPanel.generateDesign")}
+            </button>
+            {error && <div style={s.error}>{error}</div>}
+          </>
+        )}
+
         {tool === "image" && (
           <>
             <Section label={t("aiPanel.describeImage")}>
@@ -134,10 +187,10 @@ export function AIPanel({ getCanvas }: Props) {
                 aria-label={t("aiPanel.imagePromptAriaLabel")}
               />
             </Section>
-            <button style={s.btn} onClick={run} disabled={busy || !imgPrompt.trim()}>
-              {busy ? t("aiPanel.generating") : t("aiPanel.generateImage")}
+            <button style={s.btn} disabled title={t("aiPanel.comingSoon")}>
+              {t("aiPanel.generateImage")}
             </button>
-            {error && <div style={s.error}>{error}</div>}
+            <div style={s.comingSoon}>{t("aiPanel.comingSoon")}</div>
             {images.length > 0 && (
               <div style={s.imgGrid}>
                 {images.map((src, i) => (

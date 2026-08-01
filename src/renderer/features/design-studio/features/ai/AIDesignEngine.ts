@@ -8,6 +8,9 @@ import { designBus } from "../../core/events/DesignEventBus";
 
 // ── Request / response types ──────────────────────────────────────────────────
 
+export interface GenerateDesignParams { prompt: string; template?: string }
+export interface GenerateDesignResult { canvas_json: object }
+
 export interface TextToImageParams {
   prompt:  string;
   width?:  number;
@@ -86,7 +89,19 @@ export interface DesignAssistantResult {
 
 export class AIDesignEngine {
 
+  // ── Generate full design ─────────────────────────────────────────────────────
+
+  async generateDesign(params: GenerateDesignParams): Promise<GenerateDesignResult> {
+    const res = await apiFetch("/api/design/ai-generate", {
+      method: "POST", body: JSON.stringify(params),
+    });
+    return parseJSON<GenerateDesignResult>(res, "/api/design/ai-generate");
+  }
+
   // ── Text → Image ────────────────────────────────────────────────────────────
+  // No backend yet (/api/ai/image/generate doesn't exist) — kept as a dormant,
+  // fully-typed contract for when one is built. The only UI caller (AIPanel's
+  // "Image" tab) keeps its Generate button disabled until then.
 
   async textToImage(params: TextToImageParams): Promise<TextToImageResult> {
     const res = await apiFetch("/api/ai/image/generate", {
@@ -96,6 +111,7 @@ export class AIDesignEngine {
   }
 
   // ── Background removal ───────────────────────────────────────────────────────
+  // Dormant — no backend yet, no UI caller.
 
   async removeBackground(imageDataUrl: string): Promise<BackgroundRemovalResult> {
     const res = await apiFetch("/api/ai/image/remove-background", {
@@ -144,6 +160,7 @@ export class AIDesignEngine {
   }
 
   // ── Generate layout ──────────────────────────────────────────────────────────
+  // Dormant — no backend yet, no UI caller.
 
   async generateLayout(params: GenerateLayoutParams): Promise<DesignOperation[]> {
     const res = await apiFetch("/api/ai/design/layout", {
@@ -155,6 +172,7 @@ export class AIDesignEngine {
   }
 
   // ── Smart resize ─────────────────────────────────────────────────────────────
+  // Dormant — no backend yet, no UI caller.
 
   async smartResize(params: SmartResizeParams): Promise<SmartResizeResult> {
     const res = await apiFetch("/api/ai/design/resize", {
@@ -165,6 +183,7 @@ export class AIDesignEngine {
   }
 
   // ── Magic fill ───────────────────────────────────────────────────────────────
+  // Dormant — no backend yet, no UI caller.
 
   async magicFill(params: MagicFillParams): Promise<MagicFillResult> {
     const res = await apiFetch("/api/ai/image/inpaint", {
@@ -198,6 +217,7 @@ export class AIDesignEngine {
   }
 
   // ── Object eraser ────────────────────────────────────────────────────────────
+  // Dormant — no backend yet, no UI caller.
 
   async eraseObject(
     imageDataUrl: string,

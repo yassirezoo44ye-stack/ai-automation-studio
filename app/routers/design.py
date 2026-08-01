@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.core.auth import owner_user_id
 from app.core.db import get_pool
-from app.core.helpers import get_ai_client, resolve_project_id
+from app.core.helpers import get_async_ai_client, resolve_project_id
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
@@ -46,7 +46,7 @@ class DesignSaveRequest(BaseModel):
 async def design_ai_generate(req: DesignAIRequest, request: Request):
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
+    ai = get_async_ai_client()
 
     w, h = DESIGN_SIZES.get(req.template or "", (1080, 1080))
 
@@ -80,7 +80,7 @@ Rules:
 """
 
     try:
-        msg = ai.messages.create(
+        msg = await ai.messages.create(
             model="claude-sonnet-4-6", max_tokens=3000,
             system=system,
             messages=[{"role": "user", "content": f"Design brief: {req.prompt}\nTemplate: {req.template}"}],
@@ -214,7 +214,7 @@ class AssistantRequest(BaseModel):
 async def _call_claude(
     ai, system: str, user: str, max_tokens: int = 1200, *, org_id: Optional[str] = None,
 ) -> str:
-    msg = ai.messages.create(
+    msg = await ai.messages.create(
         model="claude-haiku-4-5-20251001", max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
@@ -235,7 +235,7 @@ async def ai_palette(req: PaletteRequest, request: Request):
     """Claude generates a design color palette as JSON."""
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
+    ai = get_async_ai_client()
     system = (
         'You are a professional color designer. Return ONLY a JSON object: '
         '{"colors":[{"name":"Primary","hex":"#4f46e5","role":"primary"},...]}'
@@ -263,7 +263,7 @@ async def ai_fonts(req: FontRequest, request: Request):
     """Claude suggests font pairings for the given style."""
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
+    ai = get_async_ai_client()
     system = (
         'You are a typography expert. Return ONLY a JSON object: '
         '{"pairs":[{"label":"Modern","heading":{"family":"Inter","weight":700},'
@@ -288,7 +288,7 @@ async def ai_suggestions(req: SuggestionsRequest, request: Request):
     """Claude analyzes the canvas and suggests design improvements."""
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
+    ai = get_async_ai_client()
     obj_count = len(req.canvas.get("objects", []))
     system = (
         'You are a senior graphic designer reviewing a Fabric.js canvas. '
@@ -310,14 +310,14 @@ async def ai_assistant(req: AssistantRequest, request: Request):
     """Claude as a conversational design assistant."""
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
+    ai = get_async_ai_client()
     system = (
         "You are an expert graphic designer and Fabric.js specialist. "
         "Help the user improve their design. Be concise and actionable. "
         "When suggesting canvas changes, include JSON action objects in your response."
     )
     try:
-        msg = ai.messages.create(
+        msg = await ai.messages.create(
             model="claude-sonnet-4-6", max_tokens=1000,
             system=system,
             messages=[{"role": m["role"], "content": m["content"]} for m in req.messages],
