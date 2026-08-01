@@ -136,6 +136,11 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await init_ai_usage_schema(conn)
 
+    # ── Package artifacts (ownership-scoped build downloads) ───────────────
+    from app.routers.package import init_package_artifacts_schema
+    async with pool.acquire() as conn:
+        await init_package_artifacts_schema(conn)
+
     # ── Marketplace store (PostgreSQL primary, JSON fallback) ──────────────
     from app.marketplace import init_marketplace_store
     await init_marketplace_store(pool)

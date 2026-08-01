@@ -361,8 +361,10 @@ class TestPackageStreamRequiresOwnership(unittest.TestCase):
     user's project_id could trigger a build against that project's
     workspace (the "docker" target zips every source file verbatim) and
     download the result, exfiltrating that user's project source. Fixed
-    by reusing build.py's shared _require_project_owner() guard, the same
-    fix already applied to every /api/projects/{project_id}/* route."""
+    with the same owner_user_id()/resolve_project_id() pair build.py's
+    shared _require_project_owner() guard is built from — resolve_project_id
+    itself already returns the resolved project UUID and 404s a non-owner,
+    which package_stream now needs for package_artifacts ownership too."""
 
     def _package_router_app(self):
         from fastapi import FastAPI
@@ -390,7 +392,7 @@ class TestPackageStreamRequiresOwnership(unittest.TestCase):
         app = self._package_router_app()
         pool = self._mock_pool(requester_uid=bob_uid, owns_project=False)
 
-        with patch("app.routers.build.get_pool", return_value=pool), \
+        with patch("app.routers.package.get_pool", return_value=pool), \
              patch("app.core.auth.owner_email", return_value="bob@example.com"):
             with TestClient(app, raise_server_exceptions=False) as c:
                 res = c.post(
@@ -416,7 +418,7 @@ class TestPackageStreamRequiresOwnership(unittest.TestCase):
         pool = self._mock_pool(requester_uid=alice_uid, owns_project=True)
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch("app.routers.build.get_pool", return_value=pool), \
+            with patch("app.routers.package.get_pool", return_value=pool), \
                  patch("app.core.auth.owner_email", return_value="alice@example.com"), \
                  patch("app.core.filesystem.WORKSPACES", Path(tmp)):
                 with TestClient(app, raise_server_exceptions=False) as c:
@@ -429,6 +431,87 @@ class TestPackageStreamRequiresOwnership(unittest.TestCase):
                         headers={"X-Sub-Token": "alice-token"},
                     )
         self.assertEqual(res.status_code, 200)
+
+
+class TestPackageDownloadRequiresOwnership(unittest.TestCase):
+    """GET /api/package/download/{folder}/{filename} used to serve any file
+    under DIST_DIR to any authenticated user with no ownership check at
+    all — only a path-traversal guard. Since folder is derived from the
+    user-chosen app_name (the UI's own default is "MyApp"), unrelated
+    users' builds could collide on the same download path. Fixed by
+    keying downloads to a package_artifacts row scoped to (id, user_id)."""
+
+    def _package_router_app(self):
+        from fastapi import FastAPI
+        from app.routers.package import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, *, requester_uid, artifact_row):
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=requester_uid)  # owner_user_id()
+        conn.fetchrow = AsyncMock(return_value=artifact_row)   # artifact ownership SELECT
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
+    def test_foreign_or_missing_artifact_returns_404(self):
+        """Bob authenticates fine, but no row matches (artifact_id, bob) —
+        whether it belongs to Alice or doesn't exist must look identical."""
+        bob_uid = uuid.uuid4()
+        artifact_id = str(uuid.uuid4())
+        app = self._package_router_app()
+        pool = self._mock_pool(requester_uid=bob_uid, artifact_row=None)
+
+        with patch("app.routers.package.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    f"/api/package/download/{artifact_id}",
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+
+    def test_owner_can_download_own_artifact(self):
+        """The fix must not break legitimate access for the actual owner."""
+        import tempfile
+        from pathlib import Path
+
+        alice_uid = uuid.uuid4()
+        artifact_id = str(uuid.uuid4())
+        app = self._package_router_app()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            file_path = Path(tmp) / "MyApp.zip"
+            file_path.write_bytes(b"fake zip contents")
+            row = {"filename": "MyApp.zip", "path": str(file_path)}
+            pool = self._mock_pool(requester_uid=alice_uid, artifact_row=row)
+
+            with patch("app.routers.package.get_pool", return_value=pool), \
+                 patch("app.core.auth.owner_email", return_value="alice@example.com"):
+                with TestClient(app, raise_server_exceptions=False) as c:
+                    res = c.get(
+                        f"/api/package/download/{artifact_id}",
+                        headers={"X-Sub-Token": "alice-token"},
+                    )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.content, b"fake zip contents")
+
+    def test_non_uuid_artifact_id_returns_404(self):
+        """A malformed id must 404 cleanly, not 500 on the UUID cast."""
+        app = self._package_router_app()
+        pool = self._mock_pool(requester_uid=uuid.uuid4(), artifact_row=None)
+
+        with patch("app.routers.package.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    "/api/package/download/not-a-uuid",
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
 
 
 if __name__ == "__main__":

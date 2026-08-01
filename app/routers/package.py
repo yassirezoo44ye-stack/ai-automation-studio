@@ -2,22 +2,46 @@ import base64
 import html
 import json
 import shutil
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from app.core.auth import owner_user_id
 from app.core.config import DIST_DIR
+from app.core.db import get_pool
 from app.core.filesystem import workspace
-from app.core.helpers import sanitize_name
-from app.routers.build import _require_project_owner
+from app.core.helpers import resolve_project_id, sanitize_name
 from app.runtime import registry
 from app.runtime import process as rt_process
 from app.runtime.preflight import run_preflight, preflight_error_events
 from app.runtime.errors import sse_error
 
 router = APIRouter(tags=["package"])
+
+# ── Package artifacts ─────────────────────────────────────────────────────────
+# Tracks which user built which output file, so /api/package/download can
+# verify ownership instead of trusting a client-guessable {folder}/{filename}
+# path (folder is derived from the user-chosen app_name — "MyApp" is the UI's
+# own default, so unrelated users' builds could collide/overlap there).
+PACKAGE_ARTIFACTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS package_artifacts (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    project_id  UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    filename    VARCHAR(255) NOT NULL,
+    path        TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at  TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_package_artifacts_user ON package_artifacts(user_id);
+"""
+
+
+async def init_package_artifacts_schema(conn) -> None:
+    await conn.execute(PACKAGE_ARTIFACTS_SCHEMA)
 
 
 @router.get("/api/package/runtimes")
@@ -70,9 +94,22 @@ async def _run_stream(cmd: list, cwd: str):
 
 @router.post("/api/package/stream")
 async def package_stream(req: PackageRequest, request: Request):
-    await _require_project_owner(req.project_id, request)
+    async with get_pool().acquire() as conn:
+        user_id      = await owner_user_id(conn, request)
+        project_uuid = await resolve_project_id(conn, req.project_id, user_id)
     ws        = workspace(req.project_id)
     safe_name = sanitize_name(req.app_name)
+
+    async def record_artifact(path: Path) -> str:
+        """Register a build output under its owner; returns the download URL."""
+        async with get_pool().acquire() as conn:
+            artifact_id = await conn.fetchval(
+                """INSERT INTO package_artifacts (user_id, project_id, filename, path, expires_at)
+                   VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days')
+                   RETURNING id""",
+                user_id, project_uuid, path.name, str(path.resolve()),
+            )
+        return f"/api/package/download/{artifact_id}"
 
     async def event_stream():
         def log(text: str, level: str = "info"):
@@ -87,7 +124,7 @@ async def package_stream(req: PackageRequest, request: Request):
         try:
             # ── 0. Docker / Full-stack deploy package (no preflight needed) ───
             if req.lang == "docker":
-                async for chunk in _package_docker(ws, safe_name, req.app_name, req.app_version, log, done, err):
+                async for chunk in _package_docker(ws, safe_name, req.app_name, req.app_version, log, done, err, record_artifact):
                     yield chunk
                 return
 
@@ -258,7 +295,7 @@ if __name__ == "__main__":
                 final_installer = installer_dist / f"{installer_exe_name}.exe"
                 if rc2 != 0 or not final_installer.exists():
                     yield log("⚠️ فشل بناء المُثبِّت — سيُقدَّم الـ .exe المباشر", "info")
-                    yield done(exe.name, f"/api/package/download/{safe_name}/{exe.name}", size_mb)
+                    yield done(exe.name, await record_artifact(exe), size_mb)
                     return
 
                 final_dest = dist_out / final_installer.name
@@ -266,7 +303,7 @@ if __name__ == "__main__":
                 ins_size = round(final_dest.stat().st_size / 1024 / 1024, 1)
                 yield log(f"✅ مُثبِّت جاهز: {installer_exe_name}.exe ({ins_size} MB)", "ok")
                 yield log("🖱️ نقرة واحدة = تثبيت + اختصار سطح المكتب + قائمة ابدأ + تشغيل فوري", "ok")
-                yield done(final_dest.name, f"/api/package/download/{safe_name}/{final_dest.name}", ins_size)
+                yield done(final_dest.name, await record_artifact(final_dest), ins_size)
 
             # ── 2. Python → .APK (Briefcase) ─────────────────────────────────
             elif req.lang == "python" and req.target == "apk":
@@ -359,7 +396,7 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 shutil.copy2(apk, out_apk)
                 size_mb = round(out_apk.stat().st_size / 1024 / 1024, 1)
                 yield log(f"✅ APK جاهز: {out_apk.name} ({size_mb} MB)", "ok")
-                yield done(out_apk.name, f"/api/package/download/{safe_name}/{out_apk.name}", size_mb)
+                yield done(out_apk.name, await record_artifact(out_apk), size_mb)
 
             # ── 3. Web → .APK (Capacitor + Gradle) ───────────────────────────
             elif req.lang == "web" and req.target == "apk":
@@ -439,7 +476,7 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 shutil.copy2(apk, out_apk)
                 size_mb = round(out_apk.stat().st_size / 1024 / 1024, 1)
                 yield log(f"✅ APK جاهز: {out_apk.name} ({size_mb} MB)", "ok")
-                yield done(out_apk.name, f"/api/package/download/{safe_name}/{out_apk.name}", size_mb)
+                yield done(out_apk.name, await record_artifact(out_apk), size_mb)
 
             # ── 4. Web → .EXE (Electron Builder) ─────────────────────────────
             elif req.lang in ("electron", "web") and req.target == "exe":
@@ -527,7 +564,7 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 shutil.copy2(exe, out_exe)
                 size_mb = round(out_exe.stat().st_size / 1024 / 1024, 1)
                 yield log(f"✅ مُثبِّت Windows جاهز: {out_exe.name} ({size_mb} MB)", "ok")
-                yield done(out_exe.name, f"/api/package/download/{safe_name}/{out_exe.name}", size_mb)
+                yield done(out_exe.name, await record_artifact(out_exe), size_mb)
 
             else:
                 supported = "python→exe, python→apk, web→exe, web→apk, electron→exe, docker→zip"
@@ -561,7 +598,7 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-async def _package_docker(ws, safe_name, app_name, app_version, log, done, err):
+async def _package_docker(ws, safe_name, app_name, app_version, log, done, err, record_artifact):
     """Package a Docker Compose / full-stack project into a deploy-ready ZIP."""
     import re
     import zipfile as _zip
@@ -749,7 +786,7 @@ Built with AI Automation Studio
     yield log(f"✅ الحزمة جاهزة — {size_mb} MB", "ok")
     yield log("📄 تحتوي على: كل ملفات المشروع + .env.example + setup.sh + DEPLOY.md", "info")
 
-    download_url = f"/api/package/download/{safe_name}/{zip_name}"
+    download_url = await record_artifact(zip_path)
     yield done(zip_name, download_url, size_mb, extra_files=[
         {"name": ".env.example",    "desc": "نسخه إلى .env واملأ القيم"},
         {"name": "setup.sh",        "desc": "سكربت الإعداد التلقائي (Linux/Mac)"},
@@ -758,21 +795,29 @@ Built with AI Automation Studio
     ])
 
 
-@router.get("/api/package/download/{folder}/{filename}")
-async def download_package(folder: str, filename: str):
-    safe_f = sanitize_name(folder)
-    safe_n = sanitize_name(filename.rsplit(".", 1)[0]) + ("." + filename.rsplit(".", 1)[1] if "." in filename else "")
-    safe_n = safe_n.replace("..", "")
-    path = (DIST_DIR / safe_f / safe_n).resolve()
-    if not str(path).startswith(str(DIST_DIR.resolve())):
-        from fastapi import HTTPException
-        raise HTTPException(400, "Invalid path")
+@router.get("/api/package/download/{artifact_id}")
+async def download_package(artifact_id: str, request: Request):
+    try:
+        aid = uuid.UUID(artifact_id)
+    except ValueError:
+        raise HTTPException(404, "Artifact not found")
+
+    async with get_pool().acquire() as conn:
+        user_id = await owner_user_id(conn, request)
+        row = await conn.fetchrow(
+            """SELECT filename, path FROM package_artifacts
+               WHERE id=$1 AND user_id=$2 AND (expires_at IS NULL OR expires_at > NOW())""",
+            aid, user_id,
+        )
+    if not row:
+        raise HTTPException(404, "Artifact not found")
+
+    path = Path(row["path"])
     if not path.exists():
-        from fastapi import HTTPException
         raise HTTPException(404, "File not found")
     ext = path.suffix.lower()
     media = ("application/vnd.android.package-archive" if ext == ".apk"
              else "application/zip" if ext == ".zip"
              else "application/octet-stream")
-    return FileResponse(str(path), media_type=media, filename=path.name,
-                        headers={"Content-Disposition": f'attachment; filename="{path.name}"'})
+    return FileResponse(str(path), media_type=media, filename=row["filename"],
+                        headers={"Content-Disposition": f'attachment; filename="{row["filename"]}"'})
