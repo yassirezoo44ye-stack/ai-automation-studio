@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import {
   Canvas as FabricCanvas,
-  Rect, Circle, Triangle, IText, FabricImage,
+  Rect, Circle, Triangle, Line, IText, FabricImage,
   PencilBrush, ActiveSelection,
   type FabricObject,
 } from "fabric";
@@ -106,6 +106,9 @@ export function useFabricCanvas(
         break;
       case "triangle":
         obj = new Triangle({ left: cx - 60, top: cy - 50, width: 120, height: 100, fill: "#4f46e5" });
+        break;
+      case "line":
+        obj = new Line([cx - 60, cy, cx + 60, cy], { stroke: "#4f46e5", strokeWidth: 3 });
         break;
       default:
         obj = new Rect({ left: cx - 60, top: cy - 40, width: 120, height: 80, fill: "#4f46e5" });

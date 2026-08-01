@@ -20,7 +20,9 @@
     "defaultPageName": "صفحة {{num}}"
   },
   "propertiesPanel": {
-    "emptyState": "اختر عنصرًا لتحرير خصائصه."
+    "emptyState": "اختر عنصرًا لتحرير خصائصه.",
+    "bringForward": "إحضار للأمام",
+    "sendBackward": "إرسال للخلف"
   },
   "templatesPanel": {
     "header": "القوالب",
@@ -206,7 +208,10 @@
     "resetZoomTitle": "إعادة ضبط التكبير (Ctrl+0)",
     "zoomInTitle": "تكبير (Ctrl+=)",
     "save": "حفظ",
-    "export": "تصدير"
+    "export": "تصدير",
+    "import": "استيراد",
+    "importTitle": "استيراد تصميم بصيغة Fabric.js JSON",
+    "importFailed": "فشل الاستيراد — الملف ليس تصميم JSON صالحًا"
   },
   "exportModal": {
     "dialogAriaLabel": "تصدير التصميم",

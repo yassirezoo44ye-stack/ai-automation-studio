@@ -16,9 +16,11 @@ import { EffectsInspector }    from "../../features/properties/inspectors/Effect
 interface Props {
   getCanvas:   () => FabricCanvas | null;
   selectedIds: string[];
+  onBringForward: () => void;
+  onSendBackward: () => void;
 }
 
-export function PropertiesPanel({ getCanvas, selectedIds }: Props) {
+export function PropertiesPanel({ getCanvas, selectedIds, onBringForward, onSendBackward }: Props) {
   const { t } = useTranslation("designStudio");
 
   if (!selectedIds.length) {
@@ -37,6 +39,30 @@ export function PropertiesPanel({ getCanvas, selectedIds }: Props) {
 
   return (
     <div style={{ overflowY: "auto", maxHeight: "100%" }}>
+      <div style={{ display: "flex", gap: "8px", padding: "12px 12px 0" }}>
+        <button
+          onClick={onBringForward}
+          title={t("propertiesPanel.bringForward")}
+          aria-label={t("propertiesPanel.bringForward")}
+          style={{
+            flex: 1, padding: "6px 8px", fontSize: "12px", border: "1px solid #374151",
+            borderRadius: "4px", background: "#1f2937", color: "#f9fafb", cursor: "pointer",
+          }}
+        >
+          {t("propertiesPanel.bringForward")}
+        </button>
+        <button
+          onClick={onSendBackward}
+          title={t("propertiesPanel.sendBackward")}
+          aria-label={t("propertiesPanel.sendBackward")}
+          style={{
+            flex: 1, padding: "6px 8px", fontSize: "12px", border: "1px solid #374151",
+            borderRadius: "4px", background: "#1f2937", color: "#f9fafb", cursor: "pointer",
+          }}
+        >
+          {t("propertiesPanel.sendBackward")}
+        </button>
+      </div>
       <PositionInspector   getCanvas={getCanvas} selectedIds={selectedIds} />
       <AppearanceInspector getCanvas={getCanvas} selectedIds={selectedIds} />
       <TypographyInspector getCanvas={getCanvas} selectedIds={selectedIds} />

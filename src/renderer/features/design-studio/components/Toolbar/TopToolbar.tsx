@@ -16,13 +16,14 @@ interface Props {
   onZoomReset:  () => void;
   onExport:     () => void;
   onSave:       () => void;
+  onImport:     (file: File) => void;
 }
 
 export function TopToolbar({
   projectName, unsaved, zoom,
   canUndo, canRedo, onUndo, onRedo,
   onZoomIn, onZoomOut, onZoomReset,
-  onExport, onSave,
+  onExport, onSave, onImport,
 }: Props) {
   const { t } = useTranslation("designStudio");
   return (
@@ -64,6 +65,19 @@ export function TopToolbar({
       </div>
 
       <div className={styles.right}>
+        <label className={styles.btnSecondary} title={t("topToolbar.importTitle")}>
+          {t("topToolbar.import")}
+          <input
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) onImport(file);
+              e.target.value = "";
+            }}
+          />
+        </label>
         <button className={styles.btnSecondary} onClick={onSave} title={t("topToolbar.save")}>
           {t("topToolbar.save")}
         </button>

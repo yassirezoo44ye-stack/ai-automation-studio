@@ -1,7 +1,9 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { DesignProvider, useDesign } from "./stores/designStore";
 import { apiFetch } from "../../utils/api";
+import { useToast } from "../../contexts/toast";
+import { importPipeline } from "./core/import/ImportPipeline";
 import { useFabricCanvas }           from "./hooks/useFabricCanvas";
 import { useHistory }                from "./hooks/useHistory";
 import { useKeyboard }               from "./hooks/useKeyboard";
@@ -28,6 +30,7 @@ import styles                        from "./DesignStudio.module.css";
 
 function DesignStudioInner() {
   const { t } = useTranslation("designStudio");
+  const toast = useToast();
   const { state, dispatch, setTool, setSelectedIds, setPanel } = useDesign();
   const [showExport, setShowExport] = useState(false);
   const designIdRef = useRef<string | null>(null);
@@ -44,6 +47,7 @@ function DesignStudioInner() {
 
   const { getCanvas, addShape, addText, addImage, deleteSelected, copySelected,
           pasteClipboard, selectAll, clearSelection, setActiveTool,
+          bringForward, sendBackward,
           zoomIn, zoomOut, zoomReset, getThumbnail } = fabricCanvas;
 
   // History
@@ -53,6 +57,17 @@ function DesignStudioInner() {
       dispatch({ type: "SET_HISTORY", index, length });
     }, [dispatch]),
   );
+
+  // Direct canvas manipulation (drag / resize / rotate via handles) fires
+  // Fabric's "object:modified" only on user interaction, never on
+  // programmatic .set() calls — safe to snapshot on every occurrence.
+  useEffect(() => {
+    const fc = getCanvas();
+    if (!fc) return;
+    const handler = () => saveSnapshot("modify");
+    fc.on("object:modified", handler);
+    return () => { fc.off("object:modified", handler); };
+  }, [getCanvas, saveSnapshot]);
 
   // Auto-save: persist canvas JSON to /api/design/canvases
   useAutoSave({
@@ -88,7 +103,7 @@ function DesignStudioInner() {
   const handleToolChange = useCallback((tool: Tool) => {
     setTool(tool);
     setActiveTool(tool);
-    if (["rect", "circle", "triangle"].includes(tool)) {
+    if (["rect", "circle", "triangle", "line"].includes(tool)) {
       addShape(tool);
       saveSnapshot("add shape");
       setTool("select");
@@ -126,6 +141,29 @@ function DesignStudioInner() {
     fc.renderAll();
     saveSnapshot("apply template");
   }, [getCanvas, saveSnapshot]);
+
+  // Layer ordering
+  const handleBringForward = useCallback(() => {
+    bringForward();
+    saveSnapshot("bring forward");
+  }, [bringForward, saveSnapshot]);
+
+  const handleSendBackward = useCallback(() => {
+    sendBackward();
+    saveSnapshot("send backward");
+  }, [sendBackward, saveSnapshot]);
+
+  // Import a Fabric.js JSON design file onto the current page
+  const handleImport = useCallback(async (file: File) => {
+    const fc = getCanvas();
+    if (!fc) return;
+    try {
+      await importPipeline.import(file, fc);
+      saveSnapshot("import");
+    } catch {
+      toast(t("topToolbar.importFailed"), "err");
+    }
+  }, [getCanvas, saveSnapshot, toast, t]);
 
   // Select layer by id
   const handleLayerSelect = useCallback((id: string) => {
@@ -195,6 +233,7 @@ function DesignStudioInner() {
         onZoomReset={zoomReset}
         onExport={() => setShowExport(true)}
         onSave={handleSave}
+        onImport={file => void handleImport(file)}
       />
 
       <div className={styles.body}>
@@ -225,7 +264,7 @@ function DesignStudioInner() {
               />
             )}
             {state.activePanel === "assets"     && (
-              <AssetsPanel onInsert={src => void addImage(src)} />
+              <AssetsPanel onInsert={src => { void addImage(src).then(() => saveSnapshot("insert image")); }} />
             )}
             {state.activePanel === "templates"  && (
               <TemplatesPanel onApply={tpl => void handleApplyTemplate(tpl)} />
@@ -251,7 +290,12 @@ function DesignStudioInner() {
             role="heading"
             aria-level={2}
           >{t("shell.propertiesHeading")}</div>
-          <PropertiesPanel getCanvas={getCanvas} selectedIds={state.selectedIds} />
+          <PropertiesPanel
+            getCanvas={getCanvas}
+            selectedIds={state.selectedIds}
+            onBringForward={handleBringForward}
+            onSendBackward={handleSendBackward}
+          />
 
           {/* Minimap */}
           <div className={styles.minimapWrap}>

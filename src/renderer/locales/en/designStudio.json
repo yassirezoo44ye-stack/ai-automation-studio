@@ -20,7 +20,9 @@
     "defaultPageName": "Page {{num}}"
   },
   "propertiesPanel": {
-    "emptyState": "Select an object to edit its properties."
+    "emptyState": "Select an object to edit its properties.",
+    "bringForward": "Bring Forward",
+    "sendBackward": "Send Backward"
   },
   "templatesPanel": {
     "header": "Templates",
@@ -206,7 +208,10 @@
     "resetZoomTitle": "Reset zoom (Ctrl+0)",
     "zoomInTitle": "Zoom in (Ctrl+=)",
     "save": "Save",
-    "export": "Export"
+    "export": "Export",
+    "import": "Import",
+    "importTitle": "Import Fabric.js JSON design",
+    "importFailed": "Import failed — file isn't a valid design JSON"
   },
   "exportModal": {
     "dialogAriaLabel": "Export design",
