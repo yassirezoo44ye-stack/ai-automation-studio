@@ -165,6 +165,11 @@ function DesignStudioInner() {
     }
   }, [getCanvas, saveSnapshot, toast, t]);
 
+  // Insert an asset image onto the canvas
+  const handleInsertImage = useCallback((src: string) => {
+    void addImage(src).then(() => saveSnapshot("insert image"));
+  }, [addImage, saveSnapshot]);
+
   // Select layer by id
   const handleLayerSelect = useCallback((id: string) => {
     const fc = getCanvas();
@@ -264,7 +269,7 @@ function DesignStudioInner() {
               />
             )}
             {state.activePanel === "assets"     && (
-              <AssetsPanel onInsert={src => { void addImage(src).then(() => saveSnapshot("insert image")); }} />
+              <AssetsPanel onInsert={handleInsertImage} />
             )}
             {state.activePanel === "templates"  && (
               <TemplatesPanel onApply={tpl => void handleApplyTemplate(tpl)} />

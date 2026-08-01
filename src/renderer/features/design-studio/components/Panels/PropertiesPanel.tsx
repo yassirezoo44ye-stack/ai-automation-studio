@@ -37,6 +37,11 @@ export function PropertiesPanel({ getCanvas, selectedIds, onBringForward, onSend
     );
   }
 
+  const layerBtn: React.CSSProperties = {
+    flex: 1, padding: "6px 8px", fontSize: "12px", border: "1px solid #374151",
+    borderRadius: "4px", background: "#1f2937", color: "#f9fafb", cursor: "pointer",
+  };
+
   return (
     <div style={{ overflowY: "auto", maxHeight: "100%" }}>
       <div style={{ display: "flex", gap: "8px", padding: "12px 12px 0" }}>
@@ -44,10 +49,7 @@ export function PropertiesPanel({ getCanvas, selectedIds, onBringForward, onSend
           onClick={onBringForward}
           title={t("propertiesPanel.bringForward")}
           aria-label={t("propertiesPanel.bringForward")}
-          style={{
-            flex: 1, padding: "6px 8px", fontSize: "12px", border: "1px solid #374151",
-            borderRadius: "4px", background: "#1f2937", color: "#f9fafb", cursor: "pointer",
-          }}
+          style={layerBtn}
         >
           {t("propertiesPanel.bringForward")}
         </button>
@@ -55,10 +57,7 @@ export function PropertiesPanel({ getCanvas, selectedIds, onBringForward, onSend
           onClick={onSendBackward}
           title={t("propertiesPanel.sendBackward")}
           aria-label={t("propertiesPanel.sendBackward")}
-          style={{
-            flex: 1, padding: "6px 8px", fontSize: "12px", border: "1px solid #374151",
-            borderRadius: "4px", background: "#1f2937", color: "#f9fafb", cursor: "pointer",
-          }}
+          style={layerBtn}
         >
           {t("propertiesPanel.sendBackward")}
         </button>

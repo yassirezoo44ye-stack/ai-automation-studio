@@ -26,6 +26,13 @@ export function TopToolbar({
   onExport, onSave, onImport,
 }: Props) {
   const { t } = useTranslation("designStudio");
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onImport(file);
+    e.target.value = "";
+  };
+
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
@@ -71,11 +78,7 @@ export function TopToolbar({
             type="file"
             accept="application/json,.json"
             style={{ display: "none" }}
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (file) onImport(file);
-              e.target.value = "";
-            }}
+            onChange={handleFileChange}
           />
         </label>
         <button className={styles.btnSecondary} onClick={onSave} title={t("topToolbar.save")}>
