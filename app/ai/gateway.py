@@ -150,9 +150,11 @@ class AIGateway:
                 if rendered_user and not messages:
                     messages = [Message(role="user", content=rendered_user)]
 
-        # 2. Conversation history
+        # 2. Conversation history (ownership is checked inside load_history)
         if request.conversation_id:
-            history = await mem.load_history(self._pool, request.conversation_id)
+            history = await mem.load_history(
+                self._pool, request.conversation_id, user_id=user_id,
+            )
             # Prepend history before new messages (skip if history already present)
             if history and messages:
                 messages = history + messages
@@ -182,7 +184,10 @@ class AIGateway:
     ) -> None:
         """Persist history, track cost, meter org usage. All failures are non-fatal."""
 
-        # Persist assistant message
+        # Persist assistant message. Ownership is checked inside
+        # append_message itself (single source of truth — see
+        # memory.is_owned_by), so an unowned conversation_id silently
+        # writes nothing rather than needing a duplicate check here.
         if request.conversation_id and response.content:
             # Persist last user message (the one not in history yet)
             last_user = next(
@@ -196,12 +201,14 @@ class AIGateway:
                         request.conversation_id,
                         "user",
                         content,
+                        user_id=user_id,
                     )
             await mem.append_message(
                 self._pool,
                 request.conversation_id,
                 "assistant",
                 response.content,
+                user_id=user_id,
             )
 
         # Track cost

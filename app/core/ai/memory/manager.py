@@ -21,6 +21,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+from app.ai import memory as mem
 from app.core.ai.events.bus import bus
 from app.core.ai.events.events import MemoryUpdated
 from app.core.ai.memory.types import MemoryItem, MemoryType, MEMORY_SCOPES
@@ -54,11 +55,25 @@ class MemoryManager:
         importance:      float = 1.0,
         tags:            list[str] | None = None,
     ) -> str:
-        """Persist a memory item. Returns its ID."""
+        """Persist a memory item. Returns its ID.
+
+        A conversation_id, if given, must be owned by owner_id (checked
+        via mem.is_owned_by(), the single source of truth for this — see
+        app/ai/memory.py). POST /memory (app/routers/inference.py) lets
+        any authenticated caller pass an arbitrary conversation_id in the
+        request body; without this check they could tag a memory item
+        onto another user's conversation just by naming its id. An
+        unowned conversation_id is dropped (stored with conversation_id
+        NULL) rather than rejecting the whole store — same fail-open-on-
+        the-link/fail-closed-on-the-data shape as AIGateway._enrich()
+        silently not loading history for an unowned conversation_id."""
         scope      = MEMORY_SCOPES[memory_type]
         expires_at = None
         if scope.ttl_seconds:
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=scope.ttl_seconds)
+
+        if conversation_id and not await mem.is_owned_by(self._pool, conversation_id, owner_id):
+            conversation_id = None
 
         uid = uuid.UUID(owner_id)        if owner_id        else None
         cid = uuid.UUID(conversation_id) if conversation_id else None
@@ -150,13 +165,22 @@ class MemoryManager:
 
     # ── Delete ────────────────────────────────────────────────────────────────
 
-    async def delete(self, memory_id: str) -> None:
+    async def delete(self, memory_id: str, *, owner_id: str) -> bool:
+        """Returns True if a row owned by owner_id was deleted, False if
+        memory_id/owner_id is malformed, not found, or not owned (router
+        404s)."""
+        try:
+            mid = uuid.UUID(memory_id)
+            uid = uuid.UUID(owner_id)
+        except ValueError:
+            return False
         try:
             async with self._pool.acquire() as conn:
-                await conn.execute(
-                    "DELETE FROM ai_memory_items WHERE id = $1",
-                    uuid.UUID(memory_id),
+                result = await conn.execute(
+                    "DELETE FROM ai_memory_items WHERE id = $1 AND user_id = $2",
+                    mid, uid,
                 )
+            return result != "DELETE 0"
         except Exception as exc:
             log.error("MemoryManager.delete failed: %s", exc)
             raise
@@ -186,10 +210,17 @@ class MemoryManager:
 
     # ── Conversation memory helpers ───────────────────────────────────────────
 
-    async def load_history(self, conversation_id: str, limit: int = 40):
-        """Thin wrapper that delegates to the existing memory module."""
-        from app.ai import memory as _mem
-        return await _mem.load_history(self._pool, conversation_id)
+    async def load_history(
+        self, conversation_id: str, *, user_id: Optional[str] = None, limit: int = 40,
+    ):
+        """Thin wrapper that delegates to the existing memory module.
+        user_id must be forwarded — mem.load_history() treats a missing
+        user_id as "not owned" and returns [] rather than defaulting to
+        an unscoped read (see mem.is_owned_by()). This wrapper has no
+        callers today, but previously dropped user_id entirely, which
+        would have made it silently return no history for any real
+        caller the moment something started using it."""
+        return await mem.load_history(self._pool, conversation_id, user_id=user_id)
 
     async def append_message(
         self,
@@ -197,8 +228,10 @@ class MemoryManager:
         role: str,
         content: str,
         tool_call_id: Optional[str] = None,
+        *,
+        user_id: Optional[str] = None,
     ) -> None:
-        from app.ai import memory as _mem
-        await _mem.append_message(
-            self._pool, conversation_id, role, content, tool_call_id
+        """Same user_id-forwarding requirement as load_history() above."""
+        await mem.append_message(
+            self._pool, conversation_id, role, content, tool_call_id, user_id=user_id,
         )

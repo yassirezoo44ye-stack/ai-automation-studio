@@ -874,5 +874,507 @@ class TestBuildEndpointsRequireOwnership(unittest.TestCase):
         fake_get_async.assert_not_called()
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cross-tenant data exposure: AI Gateway conversations/memory (app/routers/inference.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAIGatewayConversationsRequireOwnership(unittest.TestCase):
+    """inference.py's _user_id(request) used to read request.state.user_id,
+    which nothing in the app ever sets (confirmed by a full-repo grep) — so
+    it was always None. That made every conversation/memory ownership
+    filter a no-op: WHERE ($1::uuid IS NULL OR user_id = $1) always took
+    the IS NULL branch, i.e. "show/delete everything for everyone".
+    Currently non-exploitable only because the ai_conversations/ai_messages/
+    ai_memory_items tables are never created by the live startup path
+    (migrations/versions/003_ai_gateway.py is never run) — but the
+    vulnerable code was live and would activate the moment those tables
+    exist by any means. Fixed by resolving identity through owner_user_id(),
+    the same mechanism chat.py/build.py/package.py/design.py already use,
+    and by adding real ownership filters to ConversationService.messages()/
+    .delete() and MemoryManager.delete(), which previously had no owner
+    parameter to filter by at all."""
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.inference import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, *, resolved_uid, owns_target: bool, execute_return=None):
+        """fetchval branches on the query text so the same connection can
+        serve both owner_user_id()'s email->id lookup and the service
+        layer's ownership-check query."""
+        def fetchval_side_effect(query, *args, **kwargs):
+            if "FROM users WHERE email" in query:
+                return resolved_uid
+            if "ai_conversations" in query:
+                return 1 if owns_target else None
+            return None
+
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(side_effect=fetchval_side_effect)
+        conn.fetch = AsyncMock(return_value=[])
+        conn.execute = AsyncMock(
+            return_value=execute_return if execute_return is not None
+            else ("DELETE 1" if owns_target else "DELETE 0")
+        )
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
+    def test_user_a_cannot_read_user_bs_conversation_messages(self):
+        bob_uid = uuid.uuid4()
+        alice_conv_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(resolved_uid=bob_uid, owns_target=False)
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    f"/api/ai/conversations/{alice_conv_id}/messages",
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+
+    def test_user_a_cannot_delete_user_bs_conversation(self):
+        bob_uid = uuid.uuid4()
+        alice_conv_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(resolved_uid=bob_uid, owns_target=False, execute_return="DELETE 0")
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.delete(
+                    f"/api/ai/conversations/{alice_conv_id}",
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+
+    def test_owner_can_read_and_delete_their_own_conversation(self):
+        """The fix must not break legitimate access for the actual owner."""
+        alice_uid = uuid.uuid4()
+        conv_id = str(uuid.uuid4())
+        app = self._app()
+
+        pool_read = self._mock_pool(resolved_uid=alice_uid, owns_target=True)
+        with patch("app.routers.inference.get_pool", return_value=pool_read), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    f"/api/ai/conversations/{conv_id}/messages",
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), [])
+
+        pool_del = self._mock_pool(resolved_uid=alice_uid, owns_target=True, execute_return="DELETE 1")
+        with patch("app.routers.inference.get_pool", return_value=pool_del), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.delete(
+                    f"/api/ai/conversations/{conv_id}",
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 204)
+
+    def test_unauthenticated_requests_rejected(self):
+        """No X-Sub-Token at all: api_auth_middleware must reject before
+        the handler (and its ownership check) ever runs — check on the
+        FULL app, since the bare-router app in this class has no
+        middleware at all."""
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+        from app.factory import create_app
+
+        async def _run():
+            transport = ASGITransport(app=create_app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                list_res = await client.get("/api/ai/conversations")
+                msgs_res = await client.get(f"/api/ai/conversations/{uuid.uuid4()}/messages")
+                del_res  = await client.delete(f"/api/ai/conversations/{uuid.uuid4()}")
+                return list_res, msgs_res, del_res
+
+        list_res, msgs_res, del_res = asyncio.run(_run())
+        self.assertEqual(list_res.status_code, 401)
+        self.assertEqual(msgs_res.status_code, 401)
+        self.assertEqual(del_res.status_code, 401)
+
+    def test_malformed_conversation_id_returns_404_not_500(self):
+        alice_uid = uuid.uuid4()
+        app = self._app()
+        pool = self._mock_pool(resolved_uid=alice_uid, owns_target=True)
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                msgs_res = c.get(
+                    "/api/ai/conversations/not-a-uuid/messages",
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+                del_res = c.delete(
+                    "/api/ai/conversations/not-a-uuid",
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(msgs_res.status_code, 404)
+        self.assertEqual(del_res.status_code, 404)
+
+    def test_missing_ai_gateway_tables_fails_closed_as_404_not_500(self):
+        """Today, ai_conversations doesn't exist in any live database (the
+        migration that creates it is never run at startup) — a query
+        against it raises. ConversationService.messages() now delegates
+        its ownership check to mem.is_owned_by() (single source of truth,
+        see app/ai/memory.py), which catches this exact error internally
+        and returns False — is_owned_by()'s own contract is to treat
+        "malformed id" / "doesn't exist" / "owned by someone else" /
+        "couldn't be checked" all identically, as not-owned. That's a
+        behavior change from the pre-refactor version of this test (which
+        asserted 200 + [] here, matching the even-older pre-ownership-
+        check behavior) — but 404 is the more correct fail-closed answer:
+        never conflate "checked and empty" with "couldn't verify
+        ownership at all". The only hard requirement is no 500."""
+        alice_uid = uuid.uuid4()
+        conv_id = str(uuid.uuid4())
+        app = self._app()
+
+        conn = AsyncMock()
+
+        async def fetchval_side_effect(query, *args, **kwargs):
+            if "FROM users WHERE email" in query:
+                return alice_uid
+            raise Exception('relation "ai_conversations" does not exist')
+
+        conn.fetchval = AsyncMock(side_effect=fetchval_side_effect)
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    f"/api/ai/conversations/{conv_id}/messages",
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cross-tenant read/write via conversation_id in the main completion flow
+# (app/ai/gateway.py + app/ai/memory.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAIGatewayConversationIdRequiresOwnership(unittest.TestCase):
+    """AIGateway._enrich()/_post_complete() passed InferenceRequest's
+    client-supplied conversation_id straight to mem.load_history()/
+    mem.append_message() with no ownership check at all — unlike the
+    /api/ai/conversations* CRUD endpoints (see
+    TestAIGatewayConversationsRequireOwnership above), this is the MAIN
+    completion path (/api/ai/complete, /api/ai/stream): a caller could
+    put another user's conversation_id in their own request body to (a)
+    have that conversation's history loaded as context for their
+    completion (read leak) and (b) have their message + the AI's
+    response appended into that conversation (write injection) — a
+    second, independent instance of the same IDOR class this file
+    already covers many times over, found by auditing app.ai.memory
+    directly rather than an HTTP endpoint. Fixed by moving the ownership
+    check INSIDE mem.load_history()/mem.append_message() themselves (via
+    mem.is_owned_by(), the single source of truth for this) rather than
+    at each call site — so these tests exercise the real memory.py
+    functions against a mocked pool instead of mocking them away, since
+    mocking them away would bypass the very check under test."""
+
+    def _mock_pool(self, *, owns_target: bool, history_rows=None):
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=1 if owns_target else None)
+        conn.fetch = AsyncMock(return_value=history_rows or [])
+        conn.execute = AsyncMock()
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool, conn
+
+    def test_enrich_does_not_load_history_for_a_conversation_not_owned_by_caller(self):
+        import asyncio
+        from app.ai.gateway import AIGateway
+        from app.ai.models import CompletionRequest, Message
+
+        async def _run():
+            pool, conn = self._mock_pool(owns_target=False)
+            gw = AIGateway(pool=pool)
+            req = CompletionRequest(
+                messages=[Message(role="user", content="hi")],
+                conversation_id=str(uuid.uuid4()),  # not bob's — mock says not owned
+            )
+            enriched = await gw._enrich(req, user_id=str(uuid.uuid4()))
+            return enriched, conn
+
+        enriched, conn = asyncio.run(_run())
+        # Ownership check ran (fetchval) but the messages SELECT never did.
+        conn.fetch.assert_not_called()
+        # Only the caller's own new message is present — no other user's
+        # history got mixed into this completion's context.
+        self.assertEqual(len(enriched.messages), 1)
+        self.assertEqual(enriched.messages[0].content, "hi")
+
+    def test_enrich_loads_history_for_a_conversation_owned_by_caller(self):
+        """The fix must not break legitimate access for the actual owner."""
+        import asyncio
+        from app.ai.gateway import AIGateway
+        from app.ai.models import CompletionRequest, Message
+
+        async def _run():
+            pool, _conn = self._mock_pool(
+                owns_target=True,
+                history_rows=[{"role": "user", "content": "earlier message"}],
+            )
+            gw = AIGateway(pool=pool)
+            req = CompletionRequest(
+                messages=[Message(role="user", content="hi again")],
+                conversation_id=str(uuid.uuid4()),
+            )
+            return await gw._enrich(req, user_id=str(uuid.uuid4()))
+
+        enriched = asyncio.run(_run())
+        self.assertEqual(len(enriched.messages), 2)
+        self.assertEqual(enriched.messages[0].content, "earlier message")
+
+    def test_post_complete_does_not_append_into_a_conversation_not_owned_by_caller(self):
+        import asyncio
+        from app.ai.gateway import AIGateway
+        from app.ai.models import CompletionRequest, CompletionResponse, Message
+
+        async def _run():
+            pool, conn = self._mock_pool(owns_target=False)
+            gw = AIGateway(pool=pool)
+            req = CompletionRequest(
+                messages=[Message(role="user", content="inject me")],
+                conversation_id=str(uuid.uuid4()),
+            )
+            resp = CompletionResponse(content="an AI reply")
+            with patch("app.ai.cost_tracker.record", new=AsyncMock()):
+                await gw._post_complete(req, resp, user_id=str(uuid.uuid4()))
+            return conn
+
+        conn = asyncio.run(_run())
+        conn.execute.assert_not_called()
+
+    def test_post_complete_appends_into_a_conversation_owned_by_caller(self):
+        import asyncio
+        from app.ai.gateway import AIGateway
+        from app.ai.models import CompletionRequest, CompletionResponse, Message
+
+        async def _run():
+            pool, conn = self._mock_pool(owns_target=True)
+            gw = AIGateway(pool=pool)
+            req = CompletionRequest(
+                messages=[Message(role="user", content="hello")],
+                conversation_id=str(uuid.uuid4()),
+            )
+            resp = CompletionResponse(content="an AI reply")
+            with patch("app.ai.cost_tracker.record", new=AsyncMock()):
+                await gw._post_complete(req, resp, user_id=str(uuid.uuid4()))
+            return conn
+
+        conn = asyncio.run(_run())
+        # Each append_message call does 1 INSERT + 1 UPDATE; two messages
+        # (user + assistant reply) were persisted.
+        self.assertEqual(conn.execute.call_count, 4)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fail-fast ownership check on /api/ai/complete and /api/ai/stream
+# (app/routers/inference.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestInferenceEndpointsFailFastOnUnownedConversationId(unittest.TestCase):
+    """AIGateway silently drops the read/write for an unowned
+    conversation_id (see TestAIGatewayConversationIdRequiresOwnership
+    above), but only after the endpoint already paid for a full provider
+    completion. _require_conversation_ownership() (app/routers/inference.py)
+    now checks ownership before /complete or /stream ever calls the
+    platform, returning a clean 404 instead of spending a provider call on
+    a request whose history/memory effects were going to be discarded
+    anyway."""
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.inference import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, *, resolved_uid, owns_target: bool):
+        def fetchval_side_effect(query, *args, **kwargs):
+            if "FROM users WHERE email" in query:
+                return resolved_uid
+            if "ai_conversations" in query:
+                return 1 if owns_target else None
+            return None
+
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(side_effect=fetchval_side_effect)
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
+    def test_complete_404s_without_calling_the_provider_for_unowned_conversation_id(self):
+        bob_uid = uuid.uuid4()
+        alice_conv_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(resolved_uid=bob_uid, owns_target=False)
+
+        fake_platform = MagicMock()
+        fake_platform._pool = pool
+        fake_platform.complete = AsyncMock()
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.routers.inference.platform", fake_platform), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    "/api/ai/complete",
+                    json={
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "conversation_id": alice_conv_id,
+                    },
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+        fake_platform.complete.assert_not_called()
+
+    def test_stream_404s_without_calling_the_provider_for_unowned_conversation_id(self):
+        bob_uid = uuid.uuid4()
+        alice_conv_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(resolved_uid=bob_uid, owns_target=False)
+
+        fake_platform = MagicMock()
+        fake_platform._pool = pool
+        fake_platform.stream = MagicMock()
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.routers.inference.platform", fake_platform), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    "/api/ai/stream",
+                    json={
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "conversation_id": alice_conv_id,
+                    },
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+        fake_platform.stream.assert_not_called()
+
+    def test_complete_proceeds_to_the_provider_for_an_owned_conversation_id(self):
+        """The fix must not break legitimate access for the actual owner."""
+        alice_uid = uuid.uuid4()
+        conv_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(resolved_uid=alice_uid, owns_target=True)
+
+        from app.ai.models import CompletionResponse
+        fake_platform = MagicMock()
+        fake_platform._pool = pool
+        fake_platform.complete = AsyncMock(return_value=CompletionResponse(content="hi back"))
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.routers.inference.platform", fake_platform), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    "/api/ai/complete",
+                    json={
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "conversation_id": conv_id,
+                    },
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 200)
+        fake_platform.complete.assert_called_once()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cross-tenant conversation link via MemoryManager.store()
+# (app/core/ai/memory/manager.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestMemoryManagerConversationLinkRequiresOwnership(unittest.TestCase):
+    """MemoryManager.store() accepted a client-supplied conversation_id
+    (POST /memory's MemoryCreate.conversation_id, app/routers/inference.py)
+    and wrote it straight into ai_memory_items with no ownership check at
+    all — any authenticated caller could tag a memory item onto another
+    user's conversation just by naming its id. Found during the same
+    audit as TestAIGatewayConversationIdRequiresOwnership above (same
+    root cause: a function accepting a conversation_id with no check).
+    Fixed by routing through mem.is_owned_by() — the single source of
+    truth for this check — before persisting the link; an unowned
+    conversation_id is dropped (stored as NULL) rather than rejecting the
+    whole memory item, since owner_id itself is still valid and trusted."""
+
+    def _mock_pool(self, *, owns_target: bool):
+        def fetchval_side_effect(query, *args, **kwargs):
+            if "ai_conversations" in query:
+                return 1 if owns_target else None
+            if "ai_memory_items" in query:
+                return uuid.uuid4()
+            return None
+
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(side_effect=fetchval_side_effect)
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool, conn
+
+    def _insert_call(self, conn):
+        return next(
+            c for c in conn.fetchval.call_args_list if "ai_memory_items" in c.args[0]
+        )
+
+    def test_store_drops_conversation_link_not_owned_by_caller(self):
+        import asyncio
+        from app.core.ai.memory.manager import MemoryManager
+
+        async def _run():
+            pool, conn = self._mock_pool(owns_target=False)
+            mm = MemoryManager(pool)
+            await mm.store(
+                "some content",
+                owner_id=str(uuid.uuid4()),
+                conversation_id=str(uuid.uuid4()),  # not the caller's
+            )
+            return conn
+
+        conn = asyncio.run(_run())
+        # positional args: (query, user_id, conversation_id, content, importance, created_at)
+        self.assertIsNone(self._insert_call(conn).args[2])
+
+    def test_store_keeps_conversation_link_owned_by_caller(self):
+        """The fix must not break legitimate access for the actual owner."""
+        import asyncio
+        from app.core.ai.memory.manager import MemoryManager
+
+        async def _run():
+            pool, conn = self._mock_pool(owns_target=True)
+            mm = MemoryManager(pool)
+            conv_id = str(uuid.uuid4())
+            await mm.store(
+                "some content",
+                owner_id=str(uuid.uuid4()),
+                conversation_id=conv_id,
+            )
+            return conn, conv_id
+
+        conn, conv_id = asyncio.run(_run())
+        self.assertEqual(str(self._insert_call(conn).args[2]), conv_id)
+
+
 if __name__ == "__main__":
     unittest.main()

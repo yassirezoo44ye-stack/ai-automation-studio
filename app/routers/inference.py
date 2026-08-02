@@ -19,10 +19,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.ai import memory as mem
 from app.ai.models import (
     CompletionRequest, Message, ProviderID, ToolSchema,
 )
 from app.core.ai.platform import platform
+from app.core.auth import owner_user_id
 from app.core.db import get_pool
 from app.core.rate_limit import ai_rate_limit
 
@@ -32,8 +34,16 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _user_id(request: Request) -> Optional[str]:
-    return getattr(request.state, "user_id", None)
+async def _user_id(request: Request) -> str:
+    """Resolve the caller's real user id the same way every other router in
+    this codebase does (chat.py, build.py, package.py, design.py, ...) —
+    NOT the request.state.user_id this module used to read, which nothing
+    in the app ever sets (a dead, isolated identity mechanism that made
+    every ownership filter below a no-op). Raises 401 if the caller's
+    token doesn't resolve to a real account, matching owner_user_id's
+    behavior everywhere else it's used."""
+    async with get_pool().acquire() as conn:
+        return str(await owner_user_id(conn, request))
 
 
 async def _org_id(request: Request) -> Optional[str]:
@@ -50,6 +60,18 @@ async def _org_id(request: Request) -> Optional[str]:
 
 def _pool():
     return get_pool()
+
+
+async def _require_conversation_ownership(conversation_id: Optional[str], user_id: str) -> None:
+    """Reject an unowned conversation_id with 404 before spending a
+    provider call on it. AIGateway itself already no-ops on an unowned
+    conversation_id (empty history in, dropped write out — see
+    memory.is_owned_by), so this check is redundant for correctness; it
+    exists purely to fail fast instead of paying for inference against a
+    request that's going to have its history/memory silently discarded
+    anyway."""
+    if conversation_id and not await mem.is_owned_by(_pool(), conversation_id, user_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
 
 
 # ── HTTP request models ───────────────────────────────────────────────────────
@@ -106,10 +128,12 @@ def _to_gateway_request(req: InferenceRequest) -> CompletionRequest:
 async def complete(req: InferenceRequest, request: Request):
     """Non-streaming AI completion. Delegates entirely to InferenceEngine."""
     ai_rate_limit(request)
+    uid = await _user_id(request)
+    await _require_conversation_ownership(req.conversation_id, uid)
     p = platform if platform._pool else platform.__class__(pool=_pool())
     resp = await p.complete(
         _to_gateway_request(req),
-        user_id=_user_id(request),
+        user_id=uid,
         org_id=await _org_id(request),
         auto_tools=req.auto_execute_tools,
     )
@@ -129,14 +153,23 @@ async def stream(req: InferenceRequest, request: Request):
     """SSE streaming AI completion."""
     import json
     ai_rate_limit(request)
+    # Resolved before the StreamingResponse starts, not inside event_stream()
+    # — otherwise an unresolvable account surfaces as a buried SSE `error`
+    # event under a 200 status instead of a clean 401.
+    uid = await _user_id(request)
+    # Resolved before the StreamingResponse starts, same reasoning as uid
+    # above — a 404 here must be a clean HTTP 404, not a buried SSE `error`
+    # event under a 200 status.
+    await _require_conversation_ownership(req.conversation_id, uid)
+    org_id = await _org_id(request)
     p = platform if platform._pool else platform.__class__(pool=_pool())
 
     async def event_stream():
         try:
             async for chunk in p.stream(
                 _to_gateway_request(req),
-                user_id=_user_id(request),
-                org_id=await _org_id(request),
+                user_id=uid,
+                org_id=org_id,
                 auto_tools=req.auto_execute_tools,
             ):
                 if isinstance(chunk, dict):
@@ -171,7 +204,7 @@ async def create_conversation(body: ConvCreate, request: Request):
     conv_svc = platform.conversations if platform._pool else \
                __import__("app.core.ai.services.conversation", fromlist=["ConversationService"]).ConversationService(_pool())
     cid = await conv_svc.create(
-        user_id=_user_id(request),
+        user_id=await _user_id(request),
         title=body.title,
         project_id=body.project_id,
         agent_id=body.agent_id,
@@ -187,7 +220,7 @@ async def list_conversations(
 ):
     from app.core.ai.services.conversation import ConversationService
     svc  = ConversationService(_pool())
-    items = await svc.list(user_id=_user_id(request), limit=limit, offset=offset)
+    items = await svc.list(user_id=await _user_id(request), limit=limit, offset=offset)
     return [
         {
             "id":            c.id,
@@ -201,10 +234,12 @@ async def list_conversations(
 
 
 @router.get("/conversations/{conv_id}/messages")
-async def get_messages(conv_id: str, page: int = 1, page_size: int = 50):
+async def get_messages(conv_id: str, request: Request, page: int = 1, page_size: int = 50):
     from app.core.ai.services.conversation import ConversationService
     svc  = ConversationService(_pool())
-    msgs = await svc.messages(conv_id, page=page, page_size=page_size)
+    msgs = await svc.messages(conv_id, user_id=await _user_id(request), page=page, page_size=page_size)
+    if msgs is None:
+        raise HTTPException(404, "Conversation not found")
     return [
         {
             "id":           m.id,
@@ -218,9 +253,11 @@ async def get_messages(conv_id: str, page: int = 1, page_size: int = 50):
 
 
 @router.delete("/conversations/{conv_id}", status_code=204)
-async def delete_conversation(conv_id: str):
+async def delete_conversation(conv_id: str, request: Request):
     from app.core.ai.services.conversation import ConversationService
-    await ConversationService(_pool()).delete(conv_id)
+    deleted = await ConversationService(_pool()).delete(conv_id, user_id=await _user_id(request))
+    if not deleted:
+        raise HTTPException(404, "Conversation not found")
 
 
 # ── Usage ─────────────────────────────────────────────────────────────────────
@@ -237,15 +274,23 @@ def _parse_since(since: Optional[str]) -> Optional[datetime]:
 @router.get("/usage")
 async def get_usage(request: Request, since: Optional[str] = None):
     from app.core.ai.telemetry.service import TelemetryService
+    # Cheap, local validation before the DB-dependent identity resolution
+    # below — since is now async (a real owner_user_id() DB call, not the
+    # instant getattr() it used to be), so argument-evaluation order would
+    # otherwise run it before this ever gets a chance to raise its 422.
+    since_dt = _parse_since(since)
+    uid = await _user_id(request)
     svc = TelemetryService(pool=_pool())
-    return await svc.db_totals(user_id=_user_id(request), since=_parse_since(since))
+    return await svc.db_totals(user_id=uid, since=since_dt)
 
 
 @router.get("/usage/providers")
 async def get_usage_by_provider(request: Request, since: Optional[str] = None):
     from app.core.ai.telemetry.service import TelemetryService
+    since_dt = _parse_since(since)
+    uid = await _user_id(request)
     svc = TelemetryService(pool=_pool())
-    return await svc.db_by_provider(user_id=_user_id(request), since=_parse_since(since))
+    return await svc.db_by_provider(user_id=uid, since=since_dt)
 
 
 # ── Providers ─────────────────────────────────────────────────────────────────
@@ -290,7 +335,7 @@ async def create_prompt(body: PromptCreate, request: Request):
     pid = await engine.create(
         name=body.name, slug=body.slug, description=body.description,
         system=body.system, user_template=body.user_template,
-        variables=body.variables, user_id=_user_id(request),
+        variables=body.variables, user_id=await _user_id(request),
     )
     return {"id": pid, "slug": body.slug}
 
@@ -357,7 +402,7 @@ async def store_memory_item(body: MemoryCreate, request: Request):
     mid = await MemoryManager(_pool()).store(
         body.content,
         memory_type=MemoryType(body.memory_type),
-        owner_id=_user_id(request),
+        owner_id=await _user_id(request),
         conversation_id=body.conversation_id,
         importance=body.importance,
     )
@@ -367,14 +412,16 @@ async def store_memory_item(body: MemoryCreate, request: Request):
 @router.get("/memory")
 async def recall_memory(request: Request, limit: int = 10):
     from app.core.ai.memory.manager import MemoryManager
-    items = await MemoryManager(_pool()).recall(owner_id=_user_id(request), limit=limit)
+    items = await MemoryManager(_pool()).recall(owner_id=await _user_id(request), limit=limit)
     return {"items": [{"id": i.id, "content": i.content, "importance": i.importance} for i in items]}
 
 
 @router.delete("/memory/{memory_id}", status_code=204)
-async def delete_memory_item(memory_id: str):
+async def delete_memory_item(memory_id: str, request: Request):
     from app.core.ai.memory.manager import MemoryManager
-    await MemoryManager(_pool()).delete(memory_id)
+    deleted = await MemoryManager(_pool()).delete(memory_id, owner_id=await _user_id(request))
+    if not deleted:
+        raise HTTPException(404, "Memory item not found")
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────

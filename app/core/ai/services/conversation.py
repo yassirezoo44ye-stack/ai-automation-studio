@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.ai import memory as mem
 from app.core.ai.events.bus import bus
 from app.core.ai.events.events import ConversationCreated, ConversationArchived
 
@@ -138,12 +139,23 @@ class ConversationService:
         self,
         conversation_id: str,
         *,
+        user_id:   str,
         page:      int = 1,
         page_size: int = 50,
-    ) -> list[MessageRecord]:
-        cid    = uuid.UUID(conversation_id)
+    ) -> Optional[list[MessageRecord]]:
+        """Returns None if conversation_id isn't a valid id, doesn't exist,
+        or isn't owned by user_id — the router turns that into 404. Returns
+        [] (not None) for an owned conversation with zero messages.
+        Ownership goes through mem.is_owned_by() — the single source of
+        truth for this check (app/ai/memory.py) — rather than a second,
+        independent copy of the same SQL living here; is_owned_by() also
+        already treats a malformed conversation_id as "not owned", so this
+        no longer needs its own ValueError handling for that case."""
+        if not await mem.is_owned_by(self._pool, conversation_id, user_id):
+            return None
         offset = (page - 1) * page_size
         try:
+            cid = uuid.UUID(conversation_id)
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
@@ -171,13 +183,22 @@ class ConversationService:
 
     # ── Archive / Delete ──────────────────────────────────────────────────────
 
-    async def delete(self, conversation_id: str) -> None:
-        cid = uuid.UUID(conversation_id)
+    async def delete(self, conversation_id: str, *, user_id: str) -> bool:
+        """Returns True if a row owned by user_id was deleted, False if
+        conversation_id is malformed, not found, or not owned (router 404s)."""
+        try:
+            cid = uuid.UUID(conversation_id)
+            uid = uuid.UUID(user_id)
+        except ValueError:
+            return False
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                "DELETE FROM ai_conversations WHERE id = $1", cid
+            result = await conn.execute(
+                "DELETE FROM ai_conversations WHERE id = $1 AND user_id = $2", cid, uid,
             )
-        await bus.emit(ConversationArchived(conversation_id=conversation_id))
+        deleted = result != "DELETE 0"
+        if deleted:
+            await bus.emit(ConversationArchived(conversation_id=conversation_id))
+        return deleted
 
     # ── Title generation ──────────────────────────────────────────────────────
 
@@ -185,6 +206,7 @@ class ConversationService:
         self,
         conversation_id: str,
         *,
+        user_id: str,
         first_user_message: str,
         provider_id: Optional[str] = None,
     ) -> str:
@@ -209,22 +231,28 @@ class ConversationService:
             resp, _ = await platform_registry.complete_with_events(req)
             title = resp.content.strip().strip('"').strip("'")
             if title:
-                await self._update_title(conversation_id, title)
+                await self._update_title(conversation_id, title, user_id=user_id)
                 return title
         except Exception as exc:
             log.debug("Title generation failed: %s", exc)
 
         # Fallback: truncate the first message
         fallback = first_user_message[:40] + ("…" if len(first_user_message) > 40 else "")
-        await self._update_title(conversation_id, fallback)
+        await self._update_title(conversation_id, fallback, user_id=user_id)
         return fallback
 
-    async def _update_title(self, conversation_id: str, title: str) -> None:
+    async def _update_title(self, conversation_id: str, title: str, *, user_id: str) -> None:
+        """Scoped to (id, user_id) like delete() — an UPDATE with no owner
+        filter is the same IDOR class as a missing-ownership DELETE, just
+        less obviously destructive. Not currently reachable from any
+        router (generate_title has no caller today), but this is exactly
+        the kind of write path that tends to get wired up later without
+        anyone re-auditing the service method it calls into."""
         try:
             async with self._pool.acquire() as conn:
                 await conn.execute(
-                    "UPDATE ai_conversations SET title=$1, updated_at=$2 WHERE id=$3",
-                    title, datetime.now(timezone.utc), uuid.UUID(conversation_id),
+                    "UPDATE ai_conversations SET title=$1, updated_at=$2 WHERE id=$3 AND user_id=$4",
+                    title, datetime.now(timezone.utc), uuid.UUID(conversation_id), uuid.UUID(user_id),
                 )
         except Exception as exc:
             log.error("ConversationService._update_title failed: %s", exc)
@@ -234,13 +262,15 @@ class ConversationService:
     async def summarize(
         self,
         conversation_id: str,
+        *,
+        user_id: str,
         max_messages: int = 20,
     ) -> str:
         """Generate a prose summary of the conversation using AI."""
         from app.ai.models import CompletionRequest, Message
         from app.core.ai.registry.registry import platform_registry
 
-        msgs = await self.messages(conversation_id, page_size=max_messages)
+        msgs = await self.messages(conversation_id, user_id=user_id, page_size=max_messages)
         if not msgs:
             return ""
 

@@ -19,10 +19,50 @@ log = logging.getLogger(__name__)
 MAX_HISTORY_MESSAGES = 40
 
 
+# ── Ownership ─────────────────────────────────────────────────────────────────
+
+async def is_owned_by(pool, conversation_id: Optional[str], user_id: Optional[str]) -> bool:
+    """True only if conversation_id is a real conversation owned by
+    user_id. AIGateway._enrich()/_post_complete() pass a client-supplied
+    conversation_id (InferenceRequest.conversation_id) straight to
+    load_history()/append_message() below with no ownership check at
+    all — a caller could read another user's conversation history as
+    context, or inject messages into it, just by naming its id. Callers
+    of this function should treat "malformed id" / "doesn't exist" /
+    "exists but owned by someone else" identically (False) rather than
+    distinguish them."""
+    if not conversation_id or not user_id:
+        return False
+    try:
+        cid = uuid.UUID(conversation_id)
+        uid = uuid.UUID(user_id)
+    except ValueError:
+        return False
+    try:
+        async with pool.acquire() as conn:
+            owned = await conn.fetchval(
+                "SELECT 1 FROM ai_conversations WHERE id = $1 AND user_id = $2",
+                cid, uid,
+            )
+        return bool(owned)
+    except Exception as exc:
+        log.error("memory.is_owned_by failed: %s", exc)
+        return False
+
+
 # ── Short-term: conversation history ─────────────────────────────────────────
 
-async def load_history(pool, conversation_id: str) -> list[Message]:
-    """Return recent messages for a conversation, oldest first."""
+async def load_history(
+    pool, conversation_id: str, *, user_id: Optional[str] = None,
+) -> list[Message]:
+    """Return recent messages for a conversation owned by user_id, oldest
+    first. Ownership is checked HERE (via is_owned_by, the single source
+    of truth for this), not just by callers — a future caller that
+    reaches this function some other way still gets the check for free.
+    Returns [] if conversation_id is malformed, doesn't exist, or isn't
+    owned by user_id — identical to "no history", never distinguished."""
+    if not await is_owned_by(pool, conversation_id, user_id):
+        return []
     try:
         cid = uuid.UUID(conversation_id)
         async with pool.acquire() as conn:
@@ -47,8 +87,14 @@ async def append_message(
     role: str,
     content: str,
     tool_call_id: Optional[str] = None,
-) -> None:
-    """Persist one message to ai_messages."""
+    *,
+    user_id: Optional[str] = None,
+) -> bool:
+    """Persist one message to a conversation owned by user_id. Ownership
+    is checked HERE, same reasoning as load_history above. Returns False
+    (no DB write at all) if conversation_id isn't owned by user_id."""
+    if not await is_owned_by(pool, conversation_id, user_id):
+        return False
     try:
         cid = uuid.UUID(conversation_id)
         async with pool.acquire() as conn:
@@ -64,8 +110,10 @@ async def append_message(
                 "UPDATE ai_conversations SET updated_at=$1 WHERE id=$2",
                 datetime.now(timezone.utc), cid,
             )
+        return True
     except Exception as exc:
         log.error("memory.append_message failed: %s", exc)
+        return False
 
 
 async def create_conversation(
