@@ -147,6 +147,13 @@ class FileSyncRequest(BaseModel):
 async def build_program(req: BuildRequest, request: Request):
     from app.core.reliability import get_bulkhead
     org_id = await check_org_quota(request)
+    # Ownership verified BEFORE any AI call or workspace write — previously
+    # this ran after files were already written to workspace(req.project_id),
+    # so an attacker could get Claude-generated content written into another
+    # user's workspace before the (still-correct) 404 was ever evaluated.
+    async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+        await resolve_project_id(conn, req.project_id, uid)
     ai = get_ai_client()
     async with get_bulkhead("build", 8).acquire():
         try:
@@ -179,8 +186,6 @@ async def build_program(req: BuildRequest, request: Request):
         written.append(f["path"])
 
     async with get_pool().acquire() as conn:
-        uid = await owner_user_id(conn, request)
-        await resolve_project_id(conn, req.project_id, uid)
         await conn.execute(
             "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'build',$2)",
             uid, json.dumps({"prompt": req.prompt[:80], "files": written, "project_id": req.project_id}),
@@ -212,8 +217,13 @@ async def build_stream(req: BuildRequest, request: Request):
     bulkhead = get_bulkhead("build", 8)
     ai_rate_limit(request, max_calls=10, window=60)
     org_id = await check_org_quota(request)
+    # Unlike every other endpoint in this file, req.project_id was never
+    # verified against the caller here — uid was fetched but only used
+    # later for the usage_logs insert, never to check ownership before
+    # workspace(req.project_id) and the file writes below.
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
+        await resolve_project_id(conn, req.project_id, uid)
 
     async def event_stream():
         # Slot held for the whole stream (handler returns before tokens flow).

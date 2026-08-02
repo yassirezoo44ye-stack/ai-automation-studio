@@ -807,5 +807,72 @@ class TestDesignCanvasRequiresOwnership(unittest.TestCase):
         self.assertEqual(del_res.status_code, 401)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# IDOR: AI build endpoints (app/routers/build.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestBuildEndpointsRequireOwnership(unittest.TestCase):
+    """POST /api/build and /api/build/stream write Claude-generated files
+    into workspace(req.project_id) — every other endpoint in this file is
+    gated by _require_project_owner()/resolve_project_id(), but these two
+    were not: /api/build wrote files to the workspace BEFORE its ownership
+    check ran (so the write happened even though the response was
+    eventually a 404), and /api/build/stream fetched uid but never passed
+    it to resolve_project_id() at all, so req.project_id was never
+    verified. Both now check ownership before any AI call or file write."""
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.build import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, *, uid, owns_project: bool):
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(side_effect=[uid, 1 if owns_project else None])
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
+    def test_build_rejects_non_owner_before_any_ai_call(self):
+        bob_uid = uuid.uuid4()
+        alice_project_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(uid=bob_uid, owns_project=False)
+        fake_ai_client = MagicMock()
+
+        with patch("app.routers.build.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"), \
+             patch("app.routers.build.get_ai_client", return_value=fake_ai_client):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    "/api/build",
+                    json={"project_id": alice_project_id, "prompt": "build me an app"},
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+        fake_ai_client.messages.create.assert_not_called()
+
+    def test_build_stream_rejects_non_owner_before_any_ai_call(self):
+        bob_uid = uuid.uuid4()
+        alice_project_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(uid=bob_uid, owns_project=False)
+
+        with patch("app.routers.build.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"), \
+             patch("app.routers.build.get_async_ai_client") as fake_get_async:
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    "/api/build/stream",
+                    json={"project_id": alice_project_id, "prompt": "build me an app"},
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+        fake_get_async.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
