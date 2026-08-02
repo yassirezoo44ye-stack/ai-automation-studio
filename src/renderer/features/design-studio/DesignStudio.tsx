@@ -54,6 +54,46 @@ function DesignStudioInner() {
           bringForward, sendBackward,
           zoomIn, zoomOut, zoomReset, getThumbnail } = fabricCanvas;
 
+  // Resume work: load the most recently saved design (if any) once on
+  // mount, so refreshing the page restores the last state instead of
+  // always starting from a blank "Untitled Design". designIdRef is set
+  // to the loaded design's id so the next auto-save updates that same
+  // row instead of creating a new one.
+  //
+  // Loads straight onto the Fabric canvas (getCanvas() queried fresh
+  // after the fetch resolves), the same way handleApplyTemplate below
+  // does — NOT via dispatching a new DesignProject/SET_PROJECT and
+  // relying on CanvasView's currentPageId-keyed effect to apply it.
+  // That indirection races React StrictMode's dev-only double-effect
+  // cycle: the Fabric canvas itself gets disposed and recreated on the
+  // remount, but currentPageId only changes once, so the reactive
+  // effect never re-fires against the *new* canvas and it stays empty.
+  // Querying getCanvas() at resolve-time always returns whichever
+  // canvas instance is current at that moment, sidestepping the race.
+  const hasLoadedSavedDesignRef = useRef(false);
+  useEffect(() => {
+    if (hasLoadedSavedDesignRef.current) return;
+    hasLoadedSavedDesignRef.current = true;
+    void (async () => {
+      try {
+        const listRes = await apiFetch("/api/design/canvases?limit=1");
+        if (!listRes.ok) return;
+        const list = await listRes.json() as { id: string }[];
+        if (!list.length) return;
+        const detailRes = await apiFetch(`/api/design/canvases/${list[0].id}`);
+        if (!detailRes.ok) return;
+        const d = await detailRes.json() as {
+          id: string; canvas_json: object; width: number; height: number;
+        };
+        const fc = getCanvas();
+        if (!fc) return;
+        fc.set({ width: d.width, height: d.height });
+        await loadJSONToCanvas(fc, d.canvas_json ?? {});
+        designIdRef.current = d.id;
+      } catch { /* network unavailable — start with a blank canvas */ }
+    })();
+  }, [getCanvas]);
+
   // History
   const { saveSnapshot, undo, redo, canUndo, canRedo } = useHistory(
     getCanvas,

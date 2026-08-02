@@ -46,6 +46,19 @@ export function useFabricCanvas(
   const fabricRef      = useRef<FabricCanvas | null>(null);
   const clipboardRef   = useRef<FabricObject[]>([]);
 
+  // Init/destroy below only ever runs once ([] deps — the Fabric canvas
+  // instance must not be recreated on every render), so its event
+  // handlers close over these callbacks at mount time. Route calls
+  // through refs, kept current on every render, so a later-changing
+  // onObjectsChange (e.g. after currentPageId changes when a saved
+  // design loads) is never invoked with a stale closure — otherwise
+  // object:added dispatches UPDATE_PAGE_JSON for a pageId state.project
+  // no longer has, and the reducer silently drops the edit.
+  const onObjectsChangeRef   = useRef(onObjectsChange);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  useEffect(() => { onObjectsChangeRef.current = onObjectsChange; }, [onObjectsChange]);
+  useEffect(() => { onSelectionChangeRef.current = onSelectionChange; }, [onSelectionChange]);
+
   // ── Init / destroy ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -63,7 +76,7 @@ export function useFabricCanvas(
 
     // Object change events
     const onMod = () => {
-      if (fabricRef.current) onObjectsChange(canvasToJSON(fabricRef.current));
+      if (fabricRef.current) onObjectsChangeRef.current(canvasToJSON(fabricRef.current));
     };
 
     fc.on("object:added",    onMod);
@@ -73,17 +86,16 @@ export function useFabricCanvas(
     // Selection events
     const onSel = () => {
       const ids = fc.getActiveObjects().map(o => getMeta(o)?.id ?? "").filter(Boolean);
-      onSelectionChange(ids);
+      onSelectionChangeRef.current(ids);
     };
     fc.on("selection:created",  onSel);
     fc.on("selection:updated",  onSel);
-    fc.on("selection:cleared",  () => onSelectionChange([]));
+    fc.on("selection:cleared",  () => onSelectionChangeRef.current([]));
 
     return () => {
       fc.dispose();
       fabricRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getCanvas = useCallback(() => fabricRef.current, []);

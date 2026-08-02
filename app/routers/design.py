@@ -182,11 +182,17 @@ async def get_canvas(design_id: str, request: Request):
         )
     if not row:
         raise HTTPException(404, "Design not found")
+    # asyncpg has no jsonb codec registered on this pool, so a jsonb column
+    # comes back as its raw text — decode it or the client receives a JSON
+    # string instead of an object (breaks any round-trip: load then save).
+    canvas_json = row["canvas_json"]
+    if isinstance(canvas_json, str):
+        canvas_json = json.loads(canvas_json)
     return {
         "id":          str(row["id"]),
         "project_id":  str(row["project_id"]),
         "name":        row["name"],
-        "canvas_json": row["canvas_json"],
+        "canvas_json": canvas_json,
         "thumbnail":   row["thumbnail"],
         "width":       row["width"],
         "height":      row["height"],
