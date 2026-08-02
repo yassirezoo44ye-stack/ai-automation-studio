@@ -1,6 +1,7 @@
 import base64
 import html
 import json
+import shlex
 import shutil
 import uuid
 from pathlib import Path
@@ -151,7 +152,8 @@ async def package_stream(req: PackageRequest, request: Request):
                             f'root.geometry("480x300")\n'
                             f'tk.Label(root, text={label_text!r}, font=("Arial", 24, "bold")).pack(expand=True)\n'
                             f'tk.Label(root, text="Built with Axon", font=("Arial", 11)).pack()\n'
-                            f'root.mainloop()\n'
+                            f'root.mainloop()\n',
+                            encoding="utf-8",
                         )
                         yield log("✅ تم إنشاء main.py تجريبي (tkinter)", "ok")
                     else:
@@ -320,7 +322,7 @@ if __name__ == "__main__":
                 (src_pkg / "__init__.py").touch()
 
                 pyproject = f"""[tool.briefcase]
-project_name = "{req.app_name}"
+project_name = {json.dumps(req.app_name)}
 bundle = "com.example"
 version = "{req.app_version}"
 url = "https://example.com"
@@ -329,7 +331,7 @@ author = "Axon"
 author_email = "ai@studio.com"
 
 [tool.briefcase.app.{safe_name.lower()}]
-formal_name = "{req.app_name}"
+formal_name = {json.dumps(req.app_name)}
 description = "Built with Axon"
 icon = "icon"
 sources = ["src/{safe_name.lower()}"]
@@ -339,8 +341,8 @@ requires = ["toga"]
 requires = ["toga-android"]
 base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
 """
-                (bf_dir / "pyproject.toml").write_text(pyproject)
-                (bf_dir / "LICENSE").write_text("MIT License")
+                (bf_dir / "pyproject.toml").write_text(pyproject, encoding="utf-8")
+                (bf_dir / "LICENSE").write_text("MIT License", encoding="utf-8")
                 yield log("✅ هيكل مشروع Briefcase جاهز", "ok")
 
                 rc_bf, _, _ = await rt_process.run_process(
@@ -406,9 +408,11 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 html_files = list(ws.glob("*.html"))
                 entry = html_files[0].name if html_files else "index.html"
                 if not (ws / entry).exists():
+                    cap_app_name_html = html.escape(req.app_name)
                     (ws / entry).write_text(
-                        f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{req.app_name}</title></head>"
-                        f"<body><h1>{req.app_name}</h1></body></html>"
+                        f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{cap_app_name_html}</title></head>"
+                        f"<body><h1>{cap_app_name_html}</h1></body></html>",
+                        encoding="utf-8",
                     )
                 dist_web = cap_dir / "dist"
                 dist_web.mkdir(exist_ok=True)
@@ -420,12 +424,12 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                     "name": safe_name.lower(), "version": req.app_version,
                     "scripts": {"build": "echo done"},
                     "dependencies": {"@capacitor/core": "6.x", "@capacitor/android": "6.x", "@capacitor/cli": "6.x"},
-                }, indent=2))
+                }, indent=2), encoding="utf-8")
                 (cap_dir / "capacitor.config.json").write_text(json.dumps({
                     "appId": f"com.aistudio.{safe_name.lower()}",
                     "appName": req.app_name,
                     "webDir": "dist",
-                }, indent=2))
+                }, indent=2), encoding="utf-8")
 
                 yield log("📦 npm install…", "cmd")
                 async for line, code in _run_stream(["npm", "install", "--silent"], str(cap_dir)):
@@ -497,7 +501,8 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                     (el_dir / entry).write_text(
                         f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{app_name_html}</title></head>"
                         f"<body style='font-family:sans-serif;padding:40px;background:#1a1a2e;color:#fff'>"
-                        f"<h1>{app_name_html}</h1><p>Powered by Axon</p></body></html>"
+                        f"<h1>{app_name_html}</h1><p>Powered by Axon</p></body></html>",
+                        encoding="utf-8",
                     )
 
                 (el_dir / "main.js").write_text(
@@ -511,7 +516,8 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                     f"  win.setTitle({json.dumps(req.app_name)})\n"
                     f"}}\n"
                     f"app.whenReady().then(createWindow)\n"
-                    f"app.on('window-all-closed', () => {{ if (process.platform !== 'darwin') app.quit() }})\n"
+                    f"app.on('window-all-closed', () => {{ if (process.platform !== 'darwin') app.quit() }})\n",
+                    encoding="utf-8",
                 )
                 (el_dir / "package.json").write_text(json.dumps({
                     "name": safe_name.lower(), "version": req.app_version,
@@ -525,7 +531,7 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                         "files": ["**/*", "!node_modules/**"],
                     },
                     "devDependencies": {"electron": "^32.0.0", "electron-builder": "^25.0.0"},
-                }, indent=2))
+                }, indent=2), encoding="utf-8")
 
                 yield log("📦 npm install…", "cmd")
                 async for line, code in _run_stream(["npm", "install", "--silent"], str(el_dir)):
@@ -663,11 +669,17 @@ async def _package_docker(ws, safe_name, app_name, app_version, log, done, err, 
     yield log("✅ تم إنشاء .env.example", "ok")
 
     # ── Generate setup.sh ─────────────────────────────────────────────────────
+    # app_name is embedded via a safely shell-quoted variable assignment, then
+    # referenced as $APP_NAME everywhere below — bash does not re-expand
+    # command substitution ($(...)/backticks) out of an already-set variable's
+    # value, unlike interpolating the raw string straight into a "..." echo.
     setup_sh = f"""#!/bin/bash
-# {app_name} v{app_version} — Quick Setup Script
+# {safe_name} — Quick Setup Script
 set -e
 
-echo "🚀 Setting up {app_name}..."
+APP_NAME={shlex.quote(app_name)}
+
+echo "🚀 Setting up $APP_NAME..."
 
 # 1. Copy environment file
 if [ ! -f .env ]; then
@@ -695,7 +707,7 @@ elif docker compose exec backend ls alembic.ini 2>/dev/null; then
 fi
 
 echo ""
-echo "✅ {app_name} is running!"
+echo "✅ $APP_NAME is running!"
 echo "   Frontend:  http://localhost:3000"
 echo "   Backend:   http://localhost:3001"
 echo "   API Docs:  http://localhost:3001/api/docs"

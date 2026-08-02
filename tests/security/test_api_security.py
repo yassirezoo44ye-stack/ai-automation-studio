@@ -15,7 +15,10 @@ phase's tests/security/ reorganization. No behavioral change.
 """
 from __future__ import annotations
 
+import html
+import json
 import os
+import shlex
 import unittest
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -512,6 +515,174 @@ class TestPackageDownloadRequiresOwnership(unittest.TestCase):
                     headers={"X-Sub-Token": "bob-token"},
                 )
         self.assertEqual(res.status_code, 404)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Injection payload regression: every app_name generation path (package.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestPackageAppNameStaysInert(unittest.TestCase):
+    """app_name is embedded into generated Python (tkinter fallback), TOML
+    (Briefcase pyproject.toml), JS (Electron main.js), HTML (Electron
+    fallback index.html + Capacitor index.html), and Bash (docker
+    setup.sh). Each of those five files must treat a malicious app_name
+    as inert text, never as code/markup that breaks out of its enclosing
+    literal. Covers both the original 3 escaping fixes (commit
+    421c9424) and the 3 paths found missing on a follow-up sweep
+    (Capacitor HTML, Briefcase TOML, docker setup.sh)."""
+
+    PAYLOAD = (
+        "\"); import os; os.system('calc'); print(\""
+        "$(touch /tmp/pwned)"
+        "`whoami`"
+        "<script>alert(1)</script>"
+    )
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.package import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, uid):
+        conn = AsyncMock()
+        # owner_user_id(), resolve_project_id()'s ownership SELECT, and a
+        # spare value for record_artifact()'s INSERT (only the docker path
+        # reaches that third call — harmless if the other paths don't use it).
+        conn.fetchval = AsyncMock(side_effect=[uid, 1, uuid.uuid4()])
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
+    def _stream(self, tmp, *, lang, target, project_id, seed_workspace_file=False):
+        """POST /api/package/stream with a malicious app_name. Every
+        subprocess touchpoint is faked to succeed instantly (0 exit, no
+        output) so each branch's real file-generation code runs without
+        needing PyInstaller/Briefcase/npm/Gradle actually installed.
+        seed_workspace_file: the docker target bails out early on an empty
+        workspace, so pre-populate one dummy file for that case."""
+        from pathlib import Path
+        from app.runtime.preflight import PreflightResult
+
+        async def fake_stream_process(cmd, cwd=None, **kwargs):
+            yield "", 0
+
+        async def fake_run_process(cmd, cwd=None, **kwargs):
+            return 0, [], []
+
+        workspaces_dir = Path(tmp) / "workspaces"
+        dist_dir = Path(tmp) / "dist"
+        workspaces_dir.mkdir(parents=True, exist_ok=True)
+        dist_dir.mkdir(parents=True, exist_ok=True)
+        if seed_workspace_file:
+            project_ws = workspaces_dir / project_id
+            project_ws.mkdir(parents=True, exist_ok=True)
+            (project_ws / "app.py").write_text("print('hello')\n", encoding="utf-8")
+
+        pool = self._mock_pool(uuid.uuid4())
+        preflight_ok = PreflightResult(ok=True, checks=[], missing=[])
+
+        with patch("app.routers.package.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="tester@example.com"), \
+             patch("app.core.filesystem.WORKSPACES", workspaces_dir), \
+             patch("app.routers.package.DIST_DIR", dist_dir), \
+             patch("app.routers.package.run_preflight", return_value=preflight_ok), \
+             patch("app.runtime.process.stream_process", fake_stream_process), \
+             patch("app.runtime.process.run_process", fake_run_process):
+            with TestClient(self._app(), raise_server_exceptions=False) as c:
+                c.post(
+                    "/api/package/stream",
+                    json={
+                        "project_id": project_id, "target": target, "lang": lang,
+                        "app_name": self.PAYLOAD, "app_version": "1.0.0",
+                    },
+                    headers={"X-Sub-Token": "tester-token"},
+                )
+        return workspaces_dir, dist_dir
+
+    def _assert_html_escaped(self, html_content: str, *, context: str):
+        self.assertNotIn("<script>alert(1)</script>", html_content,
+                          f"{context}: <script> tag was not HTML-escaped")
+        self.assertIn(html.escape(self.PAYLOAD), html_content,
+                       f"{context}: escaped payload not found — generation logic may have changed")
+
+    def test_tkinter_fallback_treats_app_name_as_data(self):
+        import ast
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            project_id = str(uuid.uuid4())
+            workspaces_dir, _ = self._stream(tmp, lang="python", target="exe", project_id=project_id)
+            main_py = workspaces_dir / project_id / "main.py"
+            self.assertTrue(main_py.exists(), "tkinter fallback main.py was not generated")
+            content = main_py.read_text(encoding="utf-8")
+            tree = ast.parse(content)  # raises SyntaxError if escaping broke the file
+            self.assertEqual(
+                len(tree.body), 7,
+                "main.py has extra top-level statements — app_name broke out of the string literal",
+            )
+
+    def test_briefcase_pyproject_stays_valid_toml(self):
+        import tempfile
+        import tomllib
+        with tempfile.TemporaryDirectory() as tmp:
+            project_id = str(uuid.uuid4())
+            _, dist_dir = self._stream(tmp, lang="python", target="apk", project_id=project_id)
+            candidates = list(dist_dir.glob("*_briefcase/pyproject.toml"))
+            self.assertEqual(len(candidates), 1, "Briefcase pyproject.toml was not generated")
+            content = candidates[0].read_text(encoding="utf-8")
+            parsed = tomllib.loads(content)  # raises TOMLDecodeError if escaping broke the file
+            self.assertEqual(parsed["tool"]["briefcase"]["project_name"], self.PAYLOAD)
+            # The payload must be a single scalar value, not additional
+            # injected keys — the fixed schema keys must all still be present.
+            self.assertIn("bundle", parsed["tool"]["briefcase"])
+            self.assertIn("version", parsed["tool"]["briefcase"])
+
+    def test_electron_main_js_and_html_stay_inert(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            project_id = str(uuid.uuid4())
+            _, dist_dir = self._stream(tmp, lang="electron", target="exe", project_id=project_id)
+            el_dirs = list(dist_dir.glob("*_electron"))
+            self.assertEqual(len(el_dirs), 1, "Electron output dir was not generated")
+
+            main_js = (el_dirs[0] / "main.js").read_text(encoding="utf-8")
+            self.assertIn(json.dumps(self.PAYLOAD), main_js,
+                           "main.js does not contain the JSON-escaped app name")
+
+            html_files = list(el_dirs[0].glob("*.html"))
+            self.assertEqual(len(html_files), 1, "Electron fallback HTML was not generated")
+            self._assert_html_escaped(html_files[0].read_text(encoding="utf-8"), context="electron index.html")
+
+    def test_capacitor_html_stays_inert(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            project_id = str(uuid.uuid4())
+            workspaces_dir, _ = self._stream(tmp, lang="web", target="apk", project_id=project_id)
+            html_files = list((workspaces_dir / project_id).glob("*.html"))
+            self.assertEqual(len(html_files), 1, "Capacitor fallback HTML was not generated")
+            self._assert_html_escaped(html_files[0].read_text(encoding="utf-8"), context="capacitor index.html")
+
+    def test_docker_setup_sh_stays_inert(self):
+        import tempfile
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            project_id = str(uuid.uuid4())
+            _, dist_dir = self._stream(
+                tmp, lang="docker", target="zip", project_id=project_id, seed_workspace_file=True,
+            )
+            zips = list(dist_dir.rglob("*-deploy.zip"))
+            self.assertEqual(len(zips), 1, "docker deploy zip was not generated")
+            with zipfile.ZipFile(zips[0]) as zf:
+                names = [n for n in zf.namelist() if n.endswith("setup.sh")]
+                self.assertEqual(len(names), 1, "setup.sh was not found in the deploy zip")
+                setup_sh = zf.read(names[0]).decode("utf-8")
+            self.assertIn(shlex.quote(self.PAYLOAD), setup_sh,
+                           "setup.sh does not contain the shell-quoted app name")
+            # Every use after the quoted assignment must be the $APP_NAME
+            # variable reference, never the raw payload re-embedded.
+            self.assertNotIn(f'"{self.PAYLOAD}"', setup_sh)
 
 
 if __name__ == "__main__":
