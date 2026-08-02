@@ -685,5 +685,127 @@ class TestPackageAppNameStaysInert(unittest.TestCase):
             self.assertNotIn(f'"{self.PAYLOAD}"', setup_sh)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# IDOR: design canvas read/delete (app/routers/design.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestDesignCanvasRequiresOwnership(unittest.TestCase):
+    """GET/DELETE /api/design/canvases/{design_id} took design_id straight
+    to a raw SELECT/DELETE with zero ownership check. DELETE was the worse
+    of the two: no ownership check AND no Request parameter at all, so any
+    authenticated user could destroy any other user's design with no
+    recovery path. design_canvases has no user_id column, so the fix JOINs
+    projects the same way resolve_project_id already verifies ownership
+    for /api/design/canvases (POST) and /api/projects/{project_id}/*."""
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.design import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, *, uid, fetchrow_return=None, execute_return="DELETE 0"):
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=uid)  # owner_user_id()
+        conn.fetchrow = AsyncMock(return_value=fetchrow_return)
+        conn.execute = AsyncMock(return_value=execute_return)
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
+    def test_get_foreign_or_missing_canvas_returns_404(self):
+        bob_uid = uuid.uuid4()
+        design_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(uid=bob_uid, fetchrow_return=None)
+
+        with patch("app.routers.design.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(f"/api/design/canvases/{design_id}", headers={"X-Sub-Token": "bob-token"})
+        self.assertEqual(res.status_code, 404)
+
+    def test_owner_can_get_own_canvas(self):
+        alice_uid = uuid.uuid4()
+        design_id = str(uuid.uuid4())
+        row = {
+            "id": uuid.UUID(design_id), "project_id": uuid.uuid4(), "name": "My Design",
+            "canvas_json": {"objects": []}, "thumbnail": None, "width": 1080, "height": 1080,
+            "updated_at": None,
+        }
+        app = self._app()
+        pool = self._mock_pool(uid=alice_uid, fetchrow_return=row)
+
+        with patch("app.routers.design.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(f"/api/design/canvases/{design_id}", headers={"X-Sub-Token": "alice-token"})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["name"], "My Design")
+
+    def test_delete_foreign_canvas_returns_404(self):
+        """Bob authenticates fine, but the JOIN matches nothing for him —
+        the row is not deleted (DELETE 0), and he sees a plain 404."""
+        bob_uid = uuid.uuid4()
+        design_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(uid=bob_uid, execute_return="DELETE 0")
+
+        with patch("app.routers.design.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.delete(f"/api/design/canvases/{design_id}", headers={"X-Sub-Token": "bob-token"})
+        self.assertEqual(res.status_code, 404)
+
+    def test_owner_can_delete_own_canvas(self):
+        alice_uid = uuid.uuid4()
+        design_id = str(uuid.uuid4())
+        app = self._app()
+        pool = self._mock_pool(uid=alice_uid, execute_return="DELETE 1")
+
+        with patch("app.routers.design.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.delete(f"/api/design/canvases/{design_id}", headers={"X-Sub-Token": "alice-token"})
+        self.assertEqual(res.status_code, 204)
+
+    def test_malformed_design_id_returns_404_not_500(self):
+        """A non-UUID design_id must 404 cleanly on both routes, not hit
+        Postgres's ::uuid cast and bubble up as an unhandled 500."""
+        app = self._app()
+        pool = self._mock_pool(uid=uuid.uuid4())  # never reached if the guard works
+
+        with patch("app.routers.design.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                get_res = c.get("/api/design/canvases/not-a-uuid", headers={"X-Sub-Token": "bob-token"})
+                del_res = c.delete("/api/design/canvases/not-a-uuid", headers={"X-Sub-Token": "bob-token"})
+        self.assertEqual(get_res.status_code, 404)
+        self.assertEqual(del_res.status_code, 404)
+        pool_conn = pool.acquire.return_value.__aenter__.return_value
+        pool_conn.fetchrow.assert_not_called()
+        pool_conn.execute.assert_not_called()
+
+    def test_unauthenticated_requests_rejected(self):
+        """No X-Sub-Token at all: api_auth_middleware must reject before
+        the handler (and its ownership check) ever runs."""
+        import asyncio
+        from httpx import AsyncClient, ASGITransport
+        from app.factory import create_app
+
+        async def _run():
+            transport = ASGITransport(app=create_app())
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                get_res = await client.get(f"/api/design/canvases/{uuid.uuid4()}")
+                del_res = await client.delete(f"/api/design/canvases/{uuid.uuid4()}")
+                return get_res, del_res
+
+        get_res, del_res = asyncio.run(_run())
+        self.assertEqual(get_res.status_code, 401)
+        self.assertEqual(del_res.status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()

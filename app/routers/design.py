@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -160,11 +161,24 @@ async def list_canvases(request: Request, project_id: Optional[str] = None, limi
 
 
 @router.get("/api/design/canvases/{design_id}")
-async def get_canvas(design_id: str):
+async def get_canvas(design_id: str, request: Request):
+    """design_canvases has no direct user_id column — ownership is via its
+    project_id, so the check JOINs projects the same way resolve_project_id
+    verifies a caller-supplied project_id. Without this, any authenticated
+    user who learned another user's design_id (a UUID, but one that travels
+    through URLs/logs/screenshots) could read that design's full canvas_json."""
+    try:
+        uuid.UUID(design_id)
+    except ValueError:
+        raise HTTPException(404, "Design not found")
     pool = get_pool()
     async with pool.acquire() as conn:
+        uid = await owner_user_id(conn, request)
         row = await conn.fetchrow(
-            "SELECT * FROM design_canvases WHERE id=($1)::uuid", design_id,
+            """SELECT dc.* FROM design_canvases dc
+               JOIN projects p ON p.id = dc.project_id
+               WHERE dc.id=($1)::uuid AND p.user_id=$2""",
+            design_id, uid,
         )
     if not row:
         raise HTTPException(404, "Design not found")
@@ -181,12 +195,25 @@ async def get_canvas(design_id: str):
 
 
 @router.delete("/api/design/canvases/{design_id}", status_code=204)
-async def delete_canvas(design_id: str):
+async def delete_canvas(design_id: str, request: Request):
+    """Same ownership gap as get_canvas above, but destructive: previously
+    any authenticated user could delete any other user's design with zero
+    ownership check and no recovery path."""
+    try:
+        uuid.UUID(design_id)
+    except ValueError:
+        raise HTTPException(404, "Design not found")
     pool = get_pool()
     async with pool.acquire() as conn:
-        await conn.execute(
-            "DELETE FROM design_canvases WHERE id=($1)::uuid", design_id,
+        uid = await owner_user_id(conn, request)
+        result = await conn.execute(
+            """DELETE FROM design_canvases dc
+               USING projects p
+               WHERE dc.id=($1)::uuid AND dc.project_id=p.id AND p.user_id=$2""",
+            design_id, uid,
         )
+    if result == "DELETE 0":
+        raise HTTPException(404, "Design not found")
 
 
 # ── AI design intelligence (Claude-powered, no image API required) ────────────
