@@ -33,8 +33,18 @@ def _run(*args: str) -> str:
 
 
 def _last_tag() -> str:
+    # --match restricts this to actual release tags (vX.Y.Z / vX.Y.Z-rcN).
+    # Without it, a non-semver milestone tag (e.g. "v1.0-design-studio",
+    # used to mark a project-phase checkpoint, not a release) can be the
+    # nearest reachable tag from HEAD and get picked up here instead. That
+    # doesn't match _next_version's regex, so it silently falls back to
+    # "v1.0.0" — colliding with the real v1.0.0 release tag and failing
+    # the "Tag + push" step's already-exists guard.
     try:
-        return _run("git", "describe", "--tags", "--abbrev=0")
+        return _run(
+            "git", "describe", "--tags", "--abbrev=0",
+            "--match", "v[0-9]*.[0-9]*.[0-9]*",
+        )
     except subprocess.CalledProcessError:
         return "v0.0.0"
 
