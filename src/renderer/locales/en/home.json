@@ -11,7 +11,7 @@
     "evening": "Good evening"
   },
   "welcome": {
-    "platformLabel": "AXON PLATFORM",
+    "platformLabel": "FLOW PLATFORM",
     "withData": "You have {{conversations}} conversations and {{projects}} projects. Keep building.",
     "noData": "Your AI-powered automation studio is ready.",
     "backendOnline": "Backend online",

@@ -81,7 +81,7 @@ class PackageRequest(BaseModel):
     project_id: str
     target:      str  = "exe"
     lang:        str  = "python"
-    app_name:    str  = "MyApp"
+    app_name:    str  = "Flow App"
     app_version: str  = "1.0.0"
     one_file:    bool = True
     console:     bool = False

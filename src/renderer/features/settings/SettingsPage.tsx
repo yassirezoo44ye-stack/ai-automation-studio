@@ -359,7 +359,7 @@ export function SettingsPage() {
               <GlassCard lift={false} style={{ display: "flex", gap: 20, alignItems: "center" }}>
                 <AxonLogo size={52} />
                 <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-0.4px" }}>Axon</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-0.4px" }}>Flow</div>
                   <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 2 }}>{t("about.tagline")}</div>
                   <div style={{ fontSize: 12, color: "var(--t5)", marginTop: 6 }}>{t("about.poweredBy")}</div>
                 </div>

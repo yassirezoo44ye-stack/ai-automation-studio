@@ -18,7 +18,7 @@ function AppInner() {
   const { user, loading, bootstrapError } = useAuth();
 
   if (loading) {
-    return <LoadingSpinner fullPage label="Starting Axon…" />;
+    return <LoadingSpinner fullPage label="Starting Flow…" />;
   }
 
   if (bootstrapError) {

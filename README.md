@@ -1,4 +1,4 @@
-# Axon — AI Automation Studio
+# Flow — AI Automation Studio
 
 A production-grade SaaS platform for AI automation, developer tools, and social content management.
 

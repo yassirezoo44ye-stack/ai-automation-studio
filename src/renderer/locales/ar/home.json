@@ -11,7 +11,7 @@
     "evening": "مساء الخير"
   },
   "welcome": {
-    "platformLabel": "منصة AXON",
+    "platformLabel": "منصة FLOW",
     "withData": "لديك {{conversations}} محادثة و{{projects}} مشروع. واصل البناء.",
     "noData": "استوديو الأتمتة الذكي بالذكاء الاصطناعي جاهز.",
     "backendOnline": "الخادم متصل",

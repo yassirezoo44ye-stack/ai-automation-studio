@@ -73,7 +73,7 @@
     "messages": {
       "loading": "جارٍ تحميل المحادثة…",
       "loadError": "فشل تحميل هذه المحادثة.",
-      "emptyAgentName": "Axon AI",
+      "emptyAgentName": "Flow AI",
       "emptyDescription": "ابدأ محادثة أو اختر واحدة من الشريط الجانبي.",
       "suggestion1": "اكتب كود Python",
       "suggestion2": "اشرح مفهومًا",

@@ -440,7 +440,7 @@ class TestPackageDownloadRequiresOwnership(unittest.TestCase):
     """GET /api/package/download/{folder}/{filename} used to serve any file
     under DIST_DIR to any authenticated user with no ownership check at
     all — only a path-traversal guard. Since folder is derived from the
-    user-chosen app_name (the UI's own default is "MyApp"), unrelated
+    user-chosen app_name (the UI's own default is "Flow App"), unrelated
     users' builds could collide on the same download path. Fixed by
     keying downloads to a package_artifacts row scoped to (id, user_id)."""
 

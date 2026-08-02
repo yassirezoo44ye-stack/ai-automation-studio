@@ -73,7 +73,7 @@
     "messages": {
       "loading": "Loading conversation…",
       "loadError": "Failed to load this conversation.",
-      "emptyAgentName": "Axon AI",
+      "emptyAgentName": "Flow AI",
       "emptyDescription": "Start a conversation or pick one from the sidebar.",
       "suggestion1": "Write Python code",
       "suggestion2": "Explain a concept",

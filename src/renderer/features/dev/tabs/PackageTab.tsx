@@ -56,7 +56,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
     const valid = TARGETS_FOR[l];
     if (!valid.some(t => t.id === target)) setTarget(valid[0].id);
   };
-  const [appName, setAppName]     = useState("MyApp");
+  const [appName, setAppName]     = useState("Flow App");
   const [appVersion, setVersion]  = useState("1.0.0");
   const [oneFile, setOneFile]     = useState(true);
   const [state, setState]         = useState<PackState>("idle");
