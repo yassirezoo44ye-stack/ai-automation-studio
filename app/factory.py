@@ -129,11 +129,13 @@ async def lifespan(app: FastAPI):
 
     await on_invalidate("plans:", _refresh_plans)
 
-    # ── AI usage ledger — references organizations (tenancy block above)
-    # and users/conversations (init_db above). AI Routing consolidation:
-    # this is the single persisted cost/token source of truth.
-    from app.ai import init_ai_usage_schema
+    # ── AI Gateway persistence — conversations/messages/memory/prompts, then
+    # the usage ledger (references ai_conversations — must run after it) and
+    # organizations (tenancy block above)/users (init_db above). See
+    # docs/AI_ENTRY_POINT_UNIFICATION_AUDIT.md §7.3/§8 P0.
+    from app.ai import init_ai_gateway_schema, init_ai_usage_schema
     async with pool.acquire() as conn:
+        await init_ai_gateway_schema(conn)
         await init_ai_usage_schema(conn)
 
     # ── Package artifacts (ownership-scoped build downloads) ───────────────
