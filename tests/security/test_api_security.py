@@ -1701,5 +1701,78 @@ class TestCommandsRegisterPluginDisabled(unittest.TestCase):
         self.assertEqual(res.status_code, 403)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# RCE: "modify register" via POST /api/commands/execute (second path to the
+# same app.commands.loader._load_file() primitive as commands_api.py's
+# /register endpoint above)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestModifyRegisterCommandDisabled(unittest.TestCase):
+    """app/commands/builtin/modify_cmd.py's _modify_register() was an
+    independent second HTTP path to the exact same dangerous primitive
+    already disabled for POST /api/commands/register: a caller-supplied
+    file path passed straight to app.commands.loader._load_file(), which
+    calls exec_module() unconditionally. Reachable via
+    POST /api/commands/execute with {"command": "modify",
+    "args": ["register", <name>, <path>]} — a completely different route
+    than /api/commands/register, so disabling that endpoint alone left
+    this one live. `modify` is registered as a real built-in command
+    (app/commands/__init__.py's boot-time registration loop), not dead
+    code. No legitimate consumer of the "register" sub-action exists
+    anywhere in the repo. Fixed the same way: disabled outright, the
+    dangerous loader call removed from the code path entirely."""
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.commands_api import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def test_modify_register_rejects_even_a_real_valid_plugin_file(self):
+        """The strongest possible case: a real, readable, syntactically
+        valid Python file with an actual register() function — exactly
+        what a legitimate plugin would look like. Even this must be
+        refused, and _load_file() must never be reached."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as workspace:
+            plugin_file = Path(workspace) / "innocuous_plugin.py"
+            plugin_file.write_text(
+                "def register(registry):\n    pass\n", encoding="utf-8",
+            )
+
+            app = self._app()
+            with patch("app.commands.loader._load_file") as fake_load:
+                with TestClient(app, raise_server_exceptions=False) as c:
+                    res = c.post(
+                        "/api/commands/execute",
+                        json={
+                            "command": "modify",
+                            "args": ["register", "evil", str(plugin_file)],
+                        },
+                    )
+            fake_load.assert_not_called()
+        body = res.json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error_code"], "DISABLED")
+
+    def test_modify_register_rejects_traversal_and_system_paths(self):
+        app = self._app()
+        with patch("app.commands.loader._load_file") as fake_load:
+            with TestClient(app, raise_server_exceptions=False) as c:
+                for suspicious_path in (
+                    "/etc/passwd",
+                    "../../etc/passwd",
+                    "C:\\Windows\\System32\\drivers\\etc\\hosts",
+                ):
+                    res = c.post(
+                        "/api/commands/execute",
+                        json={"command": "modify", "args": ["register", "x", suspicious_path]},
+                    )
+                    body = res.json()
+                    self.assertFalse(body["success"], msg=suspicious_path)
+        fake_load.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

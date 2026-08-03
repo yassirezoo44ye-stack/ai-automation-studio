@@ -67,29 +67,30 @@ async def modify_handler(ctx: CommandContext) -> CommandResult:
 # ── Sub-actions ───────────────────────────────────────────────────────────────
 
 async def _modify_register(ctx: CommandContext) -> CommandResult:
-    """Dynamically register a command from a Python file at runtime."""
-    args = ctx.args[1:]  # skip "register"
-    if len(args) < 2:
-        return CommandResult.fail("modify", "Usage: modify register <name> <plugin_file>",
-                                  "MISSING_ARGS")
-    name, plugin_path = args[0], args[1]
-    path = Path(plugin_path).expanduser().resolve()
-    if not path.exists():
-        return CommandResult.fail("modify", f"Plugin file not found: {path}", "FILE_NOT_FOUND")
+    """DISABLED — arbitrary code execution.
 
-    from app.commands import get_registry
-    from app.commands.loader import _load_file
-    registry = get_registry()
+    Took a caller-supplied plugin_file path with no restriction to any
+    directory and passed it to app.commands.loader._load_file(), which
+    calls importlib.util.spec_from_file_location(...).exec_module(module)
+    — executing that file's entire module-level code unconditionally,
+    before even checking for a register() function. Reachable via
+    POST /api/commands/execute with {"command": "modify",
+    "args": ["register", <name>, <path>]} — the same underlying
+    _load_file() primitive already disabled for POST /api/commands/register
+    itself; this is the second, independent HTTP path to it.
 
-    ok = _load_file(registry, path)
-    if not ok:
-        return CommandResult.fail("modify", f"Plugin {path.name} has no register() function",
-                                  "PLUGIN_NO_REGISTER")
-
-    return CommandResult.ok(
+    Disabled outright rather than access-gated, for the same reason as the
+    /register endpoint: no legitimate consumer of this action exists
+    anywhere in the repo, and there is no platform-admin authorization
+    model to gate a process-wide code-execution capability with — see
+    app/routers/commands_api.py's register_plugin().
+    """
+    return CommandResult.fail(
         "modify",
-        output=f"✓ Registered commands from {path.name}",
-        data={"plugin": str(path), "action": "register"},
+        "Runtime plugin registration is disabled pending a security "
+        "review — it previously allowed arbitrary code execution via a "
+        "caller-supplied file path.",
+        "DISABLED",
     )
 
 
