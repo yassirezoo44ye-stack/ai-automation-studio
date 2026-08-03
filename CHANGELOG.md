@@ -47,3 +47,9 @@ successful deploy to `main`.
 ### Other
 - docs(ai): add §9 P1 design-review findings to the unification audit
 - fix(ai-gateway): enforce prompt ownership across PromptEngine
+
+## v1.0.4
+
+### Other
+- fix(commands): block unsafe plugin loading through modify command
+- fix(commands): disable unaudited plugin registration endpoint
