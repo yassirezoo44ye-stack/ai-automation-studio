@@ -33,3 +33,11 @@ successful deploy to `main`.
 - fix(design-studio): connect AI Design Generation to its working backend
 - refactor(design-studio): align new handlers with existing component style
 - fix(design-studio): wire up Line tool, layer ordering, JSON import, and drag/resize/rotate undo
+
+## v1.0.2
+
+### Other
+- docs(ai): add AI entry-point unification architecture audit
+- fix(ai-schema): retarget ai_usage_log foreign key to ai_conversations
+- fix(ai-gateway): enforce conversation ownership across gateway, services, and memory layers
+- fix(build): enforce project ownership before workspace access
