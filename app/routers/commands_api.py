@@ -121,20 +121,37 @@ async def describe_command(name: str):
 
 @router.post("/api/commands/register")
 async def register_plugin(req: RegisterPluginRequest):
-    """Load a plugin file and register its commands at runtime."""
-    from pathlib import Path
-    from app.commands.loader import _load_file
+    """DISABLED — arbitrary code execution.
 
-    path = Path(req.plugin_path).expanduser().resolve()
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+    This endpoint took a client-supplied `plugin_path`, resolved it with no
+    restriction to any directory, and passed it to
+    app.commands.loader._load_file(), which calls
+    importlib.util.spec_from_file_location(...).exec_module(module) —
+    executing that file's entire module-level code unconditionally, before
+    even checking for a register() function. api_auth_middleware
+    (app/factory.py) only requires a valid subscription/JWT — no role
+    check — so any authenticated user, regardless of privilege, could
+    execute arbitrary Python on the server just by naming a path it can
+    read.
 
-    registry = get_registry()
-    before   = set(registry.names())
-    ok       = _load_file(registry, path)
-    if not ok:
-        raise HTTPException(status_code=422,
-                            detail=f"{path.name} has no register() function.")
-
-    added = list(set(registry.names()) - before)
-    return {"loaded": str(path), "new_commands": added}
+    Confirmed zero legitimate consumers (no frontend, test, doc, or script
+    references this route or `plugin_path` anywhere in the repo), and this
+    codebase has no platform-level admin/staff concept to gate it with —
+    only per-organization membership roles (app/routers/organizations.py),
+    which are scoped to that org's own resources and would be the wrong
+    trust boundary for a process-wide code-execution capability regardless.
+    Disabled rather than access-gated until a real security model for
+    runtime plugin loading is designed — see
+    docs/AI_ENTRY_POINT_UNIFICATION_AUDIT.md-adjacent security audit,
+    2026-08-03. Startup-time plugin loading (app.commands.loader.
+    load_plugins(), which only scans fixed, non-client-controlled
+    directories) is unaffected and still runs normally.
+    """
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            "Runtime plugin registration is disabled pending a security "
+            "review — it previously allowed arbitrary code execution via "
+            "a client-supplied file path."
+        ),
+    )

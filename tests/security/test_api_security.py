@@ -21,6 +21,7 @@ import os
 import shlex
 import unittest
 import uuid
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -1640,6 +1641,64 @@ class TestPromptEngineRequiresOwnership(unittest.TestCase):
         body = res.json()
         self.assertTrue(body["valid"])
         self.assertEqual(body["system"], "hi")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RCE: POST /api/commands/register (app/routers/commands_api.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestCommandsRegisterPluginDisabled(unittest.TestCase):
+    """POST /api/commands/register accepted a client-supplied plugin_path
+    with no restriction to any directory and passed it straight to
+    app.commands.loader._load_file(), which calls
+    importlib.util.spec_from_file_location(...).exec_module(module) —
+    executing that file's entire module-level code unconditionally, before
+    even checking whether it has a register() function. api_auth_middleware
+    (app/factory.py) only requires a valid subscription/JWT — no role
+    check at all — so any authenticated user, regardless of privilege,
+    could run arbitrary Python on the server just by naming a path it can
+    read. No legitimate consumer of this route exists anywhere in the repo
+    (grepped frontend/tests/docs/scripts — zero hits), and this codebase
+    has no platform-level admin/staff concept to gate it with instead —
+    only per-organization membership roles, scoped to that org's own
+    resources, the wrong trust boundary for a process-wide code-execution
+    capability. Disabled outright (403) rather than access-gated, pending
+    a real security model for runtime plugin loading. These tests lock
+    that in: the dangerous loader must never be reached, for any input."""
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.commands_api import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def test_register_403s_for_any_path_and_never_loads_the_file(self):
+        app = self._app()
+        with patch("app.commands.loader._load_file") as fake_load:
+            with TestClient(app, raise_server_exceptions=False) as c:
+                for suspicious_path in (
+                    "/etc/passwd",
+                    "../../etc/passwd",
+                    str(Path(__file__).resolve()),  # a real, readable .py file
+                    "C:\\Windows\\System32\\drivers\\etc\\hosts",
+                ):
+                    res = c.post(
+                        "/api/commands/register",
+                        json={"plugin_path": suspicious_path},
+                    )
+                    self.assertEqual(res.status_code, 403, msg=suspicious_path)
+        fake_load.assert_not_called()
+
+    def test_register_403s_even_without_authentication(self):
+        """Belt-and-suspenders: this route is gated by api_auth_middleware
+        in the full app, but the handler itself must refuse unconditionally
+        too — it should never rely on auth alone as the only thing standing
+        between a request and exec_module()."""
+        app = self._app()  # bare router, no auth middleware at all
+        with TestClient(app, raise_server_exceptions=False) as c:
+            res = c.post("/api/commands/register", json={"plugin_path": "/tmp/x.py"})
+        self.assertEqual(res.status_code, 403)
 
 
 if __name__ == "__main__":
