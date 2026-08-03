@@ -341,35 +341,39 @@ async def create_prompt(body: PromptCreate, request: Request):
 
 
 @router.post("/prompts/{prompt_id}/versions", status_code=201)
-async def publish_prompt_version(prompt_id: str, body: PromptVersionCreate):
+async def publish_prompt_version(prompt_id: str, body: PromptVersionCreate, request: Request):
     from app.core.ai.prompts.engine import PromptEngine
     version = await PromptEngine(_pool()).publish_version(
-        prompt_id, system=body.system,
+        prompt_id, user_id=await _user_id(request), system=body.system,
         user_template=body.user_template, variables=body.variables,
     )
+    if version is None:
+        raise HTTPException(404, "Prompt not found")
     return {"prompt_id": prompt_id, "version": version}
 
 
 @router.get("/prompts/{prompt_id}/versions")
-async def list_prompt_versions(prompt_id: str):
+async def list_prompt_versions(prompt_id: str, request: Request):
     from app.core.ai.prompts.engine import PromptEngine
-    versions = await PromptEngine(_pool()).list_versions(prompt_id)
+    versions = await PromptEngine(_pool()).list_versions(prompt_id, user_id=await _user_id(request))
     return [v.model_dump() for v in versions]
 
 
 @router.get("/prompts/{prompt_id}/active")
-async def get_active_prompt_version(prompt_id: str):
+async def get_active_prompt_version(prompt_id: str, request: Request):
     from app.core.ai.prompts.engine import PromptEngine
-    v = await PromptEngine(_pool()).get_active(prompt_id)
+    v = await PromptEngine(_pool()).get_active(prompt_id, user_id=await _user_id(request))
     if not v:
         raise HTTPException(404, "No active version found")
     return v.model_dump()
 
 
 @router.post("/prompts/{prompt_id}/preview")
-async def preview_prompt(prompt_id: str, body: PromptPreviewRequest):
+async def preview_prompt(prompt_id: str, body: PromptPreviewRequest, request: Request):
     from app.core.ai.prompts.engine import PromptEngine
-    preview = await PromptEngine(_pool()).preview(prompt_id, variables=body.variables)
+    preview = await PromptEngine(_pool()).preview(
+        prompt_id, variables=body.variables, user_id=await _user_id(request),
+    )
     return {
         "system":        preview.system,
         "user_template": preview.user_template,
@@ -380,9 +384,13 @@ async def preview_prompt(prompt_id: str, body: PromptPreviewRequest):
 
 
 @router.post("/prompts/{prompt_id}/rollback/{version}")
-async def rollback_prompt(prompt_id: str, version: int):
+async def rollback_prompt(prompt_id: str, version: int, request: Request):
     from app.core.ai.prompts.engine import PromptEngine
-    new_version = await PromptEngine(_pool()).rollback(prompt_id, version)
+    new_version = await PromptEngine(_pool()).rollback(
+        prompt_id, version, user_id=await _user_id(request),
+    )
+    if new_version is None:
+        raise HTTPException(404, "Prompt or version not found")
     return {"prompt_id": prompt_id, "new_version": new_version}
 
 

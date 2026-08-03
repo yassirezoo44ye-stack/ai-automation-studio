@@ -1376,5 +1376,271 @@ class TestMemoryManagerConversationLinkRequiresOwnership(unittest.TestCase):
         self.assertEqual(str(self._insert_call(conn).args[2]), conv_id)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# IDOR: prompt management (app/routers/inference.py, app/core/ai/prompts/engine.py,
+# app/ai/prompt_store.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestPromptEngineRequiresOwnership(unittest.TestCase):
+    """5 of 6 /api/ai/prompts/* endpoints had no ownership check at any
+    layer — not the router, not PromptEngine, not prompt_store.py itself
+    (get_active_version()/publish_version()/list_versions() didn't even
+    take a user_id parameter). Only POST /prompts (create) recorded
+    user_id; nothing downstream ever checked it. Effect: any authenticated
+    caller could read (GET .../active, GET .../versions, POST .../preview)
+    or overwrite (POST .../versions, POST .../rollback/{version}) any
+    other user's prompt just by naming its id — same IDOR class as
+    build.py/design.py/AI Gateway conversations/MemoryManager, found
+    during the AI entry-point unification audit's P1 design review
+    (docs/AI_ENTRY_POINT_UNIFICATION_AUDIT.md §9.1). Elevated urgency:
+    ai_prompts/ai_prompt_versions didn't exist in any live database before
+    commit 355c4902 (schema-only P0 fix) created them as a correct but
+    unintended side effect — this IDOR went from "inert, table missing"
+    to "live" the moment that schema-only commit shipped, with zero
+    routing/ownership code touched. No shared/public-prompt concept exists
+    in the schema (no visibility column) or code (nothing references a
+    prompt_id from hardcoded feature code) — confirmed before writing this
+    fix, per explicit request — so strict per-user ownership on every
+    read/write is the correct model, not an oversimplification.
+
+    Fixed by adding prompt_store.is_owned_by() — the single source of
+    truth for this check, mirroring mem.is_owned_by() — called from
+    inside get_active_version()/publish_version()/list_versions()
+    themselves (not just by callers), then threaded through
+    PromptEngine and the router."""
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.inference import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _mock_pool(self, *, resolved_uid, owns_target: bool,
+                    versions_rows=None, active_row=None, next_version=2):
+        def fetchval_side_effect(query, *args, **kwargs):
+            if "FROM users WHERE email" in query:
+                return resolved_uid
+            if "ai_prompts" in query:
+                return 1 if owns_target else None
+            if "MAX(version)" in query:
+                return next_version
+            return None
+
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(side_effect=fetchval_side_effect)
+        conn.fetchrow = AsyncMock(return_value=active_row)
+        conn.fetch    = AsyncMock(return_value=versions_rows or [])
+        conn.execute  = AsyncMock()
+        conn.transaction = MagicMock()
+        conn.transaction.return_value.__aenter__ = AsyncMock(return_value=None)
+        conn.transaction.return_value.__aexit__  = AsyncMock(return_value=False)
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool, conn
+
+    def _version_row(self, *, version=1):
+        import uuid as _uuid
+        from datetime import datetime, timezone
+        return {
+            "id": _uuid.uuid4(), "prompt_id": _uuid.uuid4(), "version": version,
+            "system": "hi", "user_template": "there", "variables": [],
+            "created_at": datetime.now(timezone.utc), "is_active": version == 1,
+        }
+
+    # ── Write: publish a new version ────────────────────────────────────────
+
+    def test_publish_version_404s_and_writes_nothing_for_non_owner(self):
+        bob_uid = uuid.uuid4()
+        app = self._app()
+        pool, conn = self._mock_pool(resolved_uid=bob_uid, owns_target=False)
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    f"/api/ai/prompts/{uuid.uuid4()}/versions",
+                    json={"system": "attacker-controlled system prompt"},
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+        conn.execute.assert_not_called()
+
+    def test_publish_version_works_for_owner(self):
+        """The fix must not break legitimate access for the actual owner."""
+        alice_uid = uuid.uuid4()
+        app = self._app()
+        pool, _conn = self._mock_pool(resolved_uid=alice_uid, owns_target=True, next_version=2)
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    f"/api/ai/prompts/{uuid.uuid4()}/versions",
+                    json={"system": "updated system prompt"},
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.json()["version"], 2)
+
+    # ── Write: rollback ──────────────────────────────────────────────────────
+
+    def test_rollback_404s_and_writes_nothing_for_non_owner(self):
+        bob_uid = uuid.uuid4()
+        app = self._app()
+        pool, conn = self._mock_pool(resolved_uid=bob_uid, owns_target=False)
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    f"/api/ai/prompts/{uuid.uuid4()}/rollback/1",
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+        conn.execute.assert_not_called()
+
+    def test_rollback_works_for_owner(self):
+        """The fix must not break legitimate access for the actual owner."""
+        alice_uid = uuid.uuid4()
+        app = self._app()
+        pool, _conn = self._mock_pool(
+            resolved_uid=alice_uid, owns_target=True,
+            versions_rows=[self._version_row(version=1)], next_version=2,
+        )
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    f"/api/ai/prompts/{uuid.uuid4()}/rollback/1",
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["new_version"], 2)
+
+    # ── Read: list versions ──────────────────────────────────────────────────
+
+    def test_list_versions_empty_no_leak_for_non_owner(self):
+        """Same "unowned looks identical to empty" convention as
+        mem.load_history() — no version content of another user's prompt
+        is ever returned, whether the id is unowned or genuinely unknown."""
+        bob_uid = uuid.uuid4()
+        app = self._app()
+        pool, _conn = self._mock_pool(
+            resolved_uid=bob_uid, owns_target=False,
+            versions_rows=[self._version_row(version=1)],  # would leak if returned
+        )
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    f"/api/ai/prompts/{uuid.uuid4()}/versions",
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), [])
+
+    def test_list_versions_works_for_owner(self):
+        alice_uid = uuid.uuid4()
+        app = self._app()
+        pool, _conn = self._mock_pool(
+            resolved_uid=alice_uid, owns_target=True,
+            versions_rows=[self._version_row(version=1)],
+        )
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    f"/api/ai/prompts/{uuid.uuid4()}/versions",
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.json()), 1)
+
+    # ── Read: active version ─────────────────────────────────────────────────
+
+    def test_get_active_404s_for_non_owner(self):
+        bob_uid = uuid.uuid4()
+        app = self._app()
+        pool, _conn = self._mock_pool(
+            resolved_uid=bob_uid, owns_target=False,
+            active_row=self._version_row(),  # would leak if returned
+        )
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    f"/api/ai/prompts/{uuid.uuid4()}/active",
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 404)
+
+    def test_get_active_works_for_owner(self):
+        alice_uid = uuid.uuid4()
+        app = self._app()
+        pool, _conn = self._mock_pool(
+            resolved_uid=alice_uid, owns_target=True, active_row=self._version_row(),
+        )
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.get(
+                    f"/api/ai/prompts/{uuid.uuid4()}/active",
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["system"], "hi")
+
+    # ── Read: preview (renders content — must not leak) ──────────────────────
+
+    def test_preview_no_content_leak_for_non_owner(self):
+        bob_uid = uuid.uuid4()
+        app = self._app()
+        pool, _conn = self._mock_pool(
+            resolved_uid=bob_uid, owns_target=False,
+            active_row=self._version_row(),  # would leak if rendered
+        )
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="bob@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    f"/api/ai/prompts/{uuid.uuid4()}/preview",
+                    json={"variables": {}},
+                    headers={"X-Sub-Token": "bob-token"},
+                )
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertFalse(body["valid"])
+        self.assertIsNone(body["system"])
+        self.assertIsNone(body["user_template"])
+
+    def test_preview_works_for_owner(self):
+        alice_uid = uuid.uuid4()
+        app = self._app()
+        pool, _conn = self._mock_pool(
+            resolved_uid=alice_uid, owns_target=True, active_row=self._version_row(),
+        )
+
+        with patch("app.routers.inference.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value="alice@example.com"):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    f"/api/ai/prompts/{uuid.uuid4()}/preview",
+                    json={"variables": {}},
+                    headers={"X-Sub-Token": "alice-token"},
+                )
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertTrue(body["valid"])
+        self.assertEqual(body["system"], "hi")
+
+
 if __name__ == "__main__":
     unittest.main()

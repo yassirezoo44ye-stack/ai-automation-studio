@@ -62,11 +62,15 @@ class PromptEngine:
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
-    async def get_active(self, prompt_id: str) -> Optional[PromptVersion]:
-        return await _store.get_active_version(self._pool, prompt_id)
+    async def get_active(
+        self, prompt_id: str, *, user_id: Optional[str] = None,
+    ) -> Optional[PromptVersion]:
+        return await _store.get_active_version(self._pool, prompt_id, user_id=user_id)
 
-    async def list_versions(self, prompt_id: str) -> list[PromptVersion]:
-        return await _store.list_versions(self._pool, prompt_id)
+    async def list_versions(
+        self, prompt_id: str, *, user_id: Optional[str] = None,
+    ) -> list[PromptVersion]:
+        return await _store.list_versions(self._pool, prompt_id, user_id=user_id)
 
     # ── Preview (render without persisting) ───────────────────────────────────
 
@@ -74,10 +78,15 @@ class PromptEngine:
         self,
         prompt_id: str,
         variables: dict[str, str] | None = None,
+        *,
+        user_id: Optional[str] = None,
     ) -> PromptPreview:
-        """Render the active version with given variables. Never persists."""
+        """Render the active version with given variables. Never persists.
+        Ownership-scoped via get_active() — an unowned prompt_id renders
+        the same "not found" PromptPreview(valid=False) shape as a
+        genuinely missing one, so no content leaks either way."""
         variables = variables or {}
-        version   = await self.get_active(prompt_id)
+        version   = await self.get_active(prompt_id, user_id=user_id)
         if not version:
             return PromptPreview(
                 system=None, user_template=None,
@@ -163,32 +172,47 @@ class PromptEngine:
         self,
         prompt_id:     str,
         *,
+        user_id:       Optional[str] = None,
         system:        Optional[str] = None,
         user_template: Optional[str] = None,
         variables:     Optional[list[str]] = None,
-    ) -> int:
+    ) -> Optional[int]:
+        """Returns the new version number, or None if prompt_id isn't owned
+        by user_id — the router turns that into 404."""
         version = await _store.publish_version(
             self._pool, prompt_id,
+            user_id=user_id,
             system=system,
             user_template=user_template,
             variables=variables,
         )
+        if version is None:
+            return None
         await bus.emit(PromptSaved(prompt_id=prompt_id, slug="", version=version))
         return version
 
-    async def rollback(self, prompt_id: str, target_version: int) -> int:
+    async def rollback(
+        self, prompt_id: str, target_version: int, *, user_id: Optional[str] = None,
+    ) -> Optional[int]:
         """
         Activate a historical version.
 
-        Copies that version's content as a new version (so history is preserved).
+        Copies that version's content as a new version (so history is
+        preserved). Returns None — instead of raising — if prompt_id isn't
+        owned by user_id or target_version doesn't exist for it; the
+        router turns that into 404. list_versions() already returns []
+        for an unowned prompt_id (see prompt_store.is_owned_by), so both
+        cases collapse into the same "target not found" branch below
+        without needing a separate ownership check here.
         """
-        all_versions = await self.list_versions(prompt_id)
+        all_versions = await self.list_versions(prompt_id, user_id=user_id)
         target = next((v for v in all_versions if v.version == target_version), None)
         if not target:
-            raise ValueError(f"Version {target_version} not found for prompt {prompt_id!r}")
+            return None
 
         new_version = await self.publish_version(
             prompt_id,
+            user_id=user_id,
             system=target.system,
             user_template=target.user_template,
             variables=target.variables,
@@ -206,15 +230,19 @@ class PromptEngine:
         prompt_id:  str,
         variables:  dict[str, str] | None = None,
         *,
+        user_id:     Optional[str] = None,
         provider_id: Optional[str] = None,
         model:       Optional[str] = None,
     ) -> PromptTestResult:
-        """Render the active prompt and optionally run it through an AI provider."""
+        """Render the active prompt and optionally run it through an AI
+        provider. Not currently reachable from any router — no /test
+        endpoint is registered — but ownership-scoped anyway so wiring one
+        up later doesn't silently reopen this class's IDOR."""
         from app.ai.models import CompletionRequest, Message, ProviderID
         from app.core.ai.registry.registry import platform_registry
 
         variables = variables or {}
-        version   = await self.get_active(prompt_id)
+        version   = await self.get_active(prompt_id, user_id=user_id)
         if not version:
             return PromptTestResult(
                 prompt_id=prompt_id, version=0, variables=variables,

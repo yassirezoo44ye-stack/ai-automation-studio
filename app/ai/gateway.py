@@ -138,9 +138,11 @@ class AIGateway:
         messages = list(request.messages)
         system   = request.system
 
-        # 1. Prompt template
+        # 1. Prompt template (ownership checked inside get_active_version)
         if request.prompt_id:
-            version = await prompt_store.get_active_version(self._pool, request.prompt_id)
+            version = await prompt_store.get_active_version(
+                self._pool, request.prompt_id, user_id=user_id,
+            )
             if version:
                 rendered_sys, rendered_user = await prompt_store.render(
                     version, request.prompt_variables
