@@ -41,3 +41,9 @@ successful deploy to `main`.
 - fix(ai-schema): retarget ai_usage_log foreign key to ai_conversations
 - fix(ai-gateway): enforce conversation ownership across gateway, services, and memory layers
 - fix(build): enforce project ownership before workspace access
+
+## v1.0.3
+
+### Other
+- docs(ai): add §9 P1 design-review findings to the unification audit
+- fix(ai-gateway): enforce prompt ownership across PromptEngine
