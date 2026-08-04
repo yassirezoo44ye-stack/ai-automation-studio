@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -14,6 +15,7 @@ from app.core.helpers import get_ai_client, resolve_project_id, anthropic_error_
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["chat"])
 
 
@@ -133,8 +135,10 @@ async def run_stream(req: RunRequest, request: Request):
                 pass
 
         except anthropic.BadRequestError as e:
+            log.exception("run_stream error")
             yield f"data: {json.dumps({'type': 'error', 'message': anthropic_error_message(e)})}\n\n"
         except Exception as e:
+            log.exception("run_stream error")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
             await bulkhead_cm.__aexit__(None, None, None)
