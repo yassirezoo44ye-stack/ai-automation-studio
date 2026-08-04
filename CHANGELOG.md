@@ -53,3 +53,16 @@ successful deploy to `main`.
 ### Other
 - fix(commands): block unsafe plugin loading through modify command
 - fix(commands): disable unaudited plugin registration endpoint
+
+## v1.0.5
+
+### Docs
+- align execution plan around paid pilot validation
+- reflect completed security hardening in project status
+
+### Other
+- fix(chat): log run_stream exceptions server-side
+- docs(gtm): define initial ICP hypothesis and update execution backlog
+- chore: remove stale tracked demo workspace artifacts
+- docs(ops): add Single Source of Truth governance rule to PROJECT_STATUS.md
+- docs(ops): add Phase 1 operating docs — backlog, launch checklist, discovery log, status
