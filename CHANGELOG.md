@@ -66,3 +66,11 @@ successful deploy to `main`.
 - chore: remove stale tracked demo workspace artifacts
 - docs(ops): add Single Source of Truth governance rule to PROJECT_STATUS.md
 - docs(ops): add Phase 1 operating docs — backlog, launch checklist, discovery log, status
+
+## v1.0.6
+
+### Docs
+- document pilot readiness and live demo guidance
+
+### Other
+- docs(icp): protect ICP baseline from premature revision
