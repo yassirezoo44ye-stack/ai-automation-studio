@@ -89,3 +89,8 @@ successful deploy to `main`.
 - feat(ai-reliability): wire circuit breaker + bulkhead into remaining AI router call sites
 - feat(ai-reliability): wire circuit breaker into chat.py/build.py live AI traffic
 - feat(observability): expose queryable current-health accessor on HealthRegistry
+
+## v1.0.8
+
+### Other
+- feat(ai-gateway): migrate chat.py + build.py to InferenceEngine
