@@ -264,6 +264,14 @@ class TestWebhookPipeline:
             ))
 
     def test_receive_webhook_raises_duplicate_when_dedup_key_conflicts(self):
+        """A dedup_key conflict against a delivery that already fully
+        succeeded (processed_at set, no error) is a true duplicate — must
+        still raise WebhookDuplicateError. See
+        test_receive_webhook_conflict_with_no_processed_at_is_treated_as_retry
+        below for the sibling case this doesn't cover: a conflict against
+        an unfinished/failed prior attempt, which is a legitimate retry,
+        not a duplicate (the fix this file's sibling test module,
+        tests/test_integration_webhook_recovery.py, covers in depth)."""
         from app.integrations.webhooks import receive_webhook, WebhookDuplicateError
         from app.integrations.examples.webhook_relay_provider import WebhookRelayProvider
         from app.integrations.types import IntegrationCredential, ProviderType
@@ -281,11 +289,42 @@ class TestWebhookPipeline:
 
         conn = AsyncMock()
         conn.fetchval = AsyncMock(return_value=None)  # ON CONFLICT DO NOTHING -> no row
+        conn.fetchrow = AsyncMock(return_value={"processed_at": "2026-01-01T00:00:00Z", "error": None})
         with pytest.raises(WebhookDuplicateError):
             run(receive_webhook(
                 provider=provider, credential=cred, headers={"x-relay-signature": sig}, body=body,
                 pool=_mock_pool(conn),
             ))
+
+    def test_receive_webhook_conflict_with_no_processed_at_is_treated_as_retry(self):
+        """The recovery fix: a conflict against a row that was NEVER
+        marked processed (unfinished or failed prior attempt) must NOT
+        raise WebhookDuplicateError — it's a legitimate redelivery that
+        should actually run."""
+        from app.integrations.webhooks import receive_webhook
+        from app.integrations.examples.webhook_relay_provider import WebhookRelayProvider
+        from app.integrations.types import IntegrationCredential, ProviderType
+        import hmac
+        import hashlib
+
+        provider = WebhookRelayProvider()
+        secret = "shhh"
+        cred = IntegrationCredential(
+            provider_id="webhook-relay", organization_id=_org_id(), provider_type=ProviderType.CUSTOM,
+            secrets={"webhook_secret": secret},
+        )
+        body = b"{}"
+        sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=None)  # ON CONFLICT DO NOTHING -> no row
+        conn.fetchrow = AsyncMock(return_value={"processed_at": None, "error": "prior failure"})
+        conn.execute = AsyncMock(return_value="UPDATE 1")
+        event = run(receive_webhook(
+            provider=provider, credential=cred, headers={"x-relay-signature": sig}, body=body,
+            pool=_mock_pool(conn),
+        ))
+        assert event is not None
 
     def test_dedup_key_is_scoped_per_provider_and_org(self):
         from app.integrations.webhooks import _dedup_key

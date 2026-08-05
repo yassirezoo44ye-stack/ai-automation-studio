@@ -36,7 +36,14 @@ async def receive_webhook(
 ) -> WebhookEvent:
     """Verify, dedup, persist, and dispatch one inbound webhook delivery.
     Raises WebhookVerificationError (caller should respond 401) or
-    WebhookDuplicateError (caller should respond 200 without re-processing)."""
+    WebhookDuplicateError (caller should respond 200 without re-processing —
+    a delivery that already fully succeeded).
+
+    Mirrors app/billing/webhooks.py's WebhookEventService.record(): a
+    conflict on dedup_key is NOT automatically a true duplicate — if the
+    existing row was never marked processed (or was marked failed), this
+    delivery is treated as a legitimate retry of unfinished work instead
+    of being silently swallowed forever."""
     secret = credential.secrets.get("webhook_secret", "")
     event = WebhookEvent(
         id=new_id(), provider_id=provider.provider_id, organization_id=credential.organization_id,
@@ -55,8 +62,41 @@ async def receive_webhook(
             uuid.UUID(event.id), provider.provider_id, uuid.UUID(credential.organization_id),
             dedup_key, event.received_at,
         )
-    if inserted is None:
-        raise WebhookDuplicateError(dedup_key)
+        if inserted is None:
+            existing = await conn.fetchrow(
+                "SELECT processed_at, error FROM integration_webhook_events WHERE dedup_key=$1",
+                dedup_key,
+            )
+            if existing is not None and existing["processed_at"] is not None and existing["error"] is None:
+                raise WebhookDuplicateError(dedup_key)  # already fully succeeded
+            # Never completed, or failed last time — a legitimate retry.
 
-    await provider.handle_webhook(credential, event)
+    try:
+        await provider.handle_webhook(credential, event)
+    except Exception as exc:
+        await mark_failed(pool, dedup_key, str(exc))
+        raise
+    await mark_processed(pool, dedup_key)
     return event
+
+
+async def mark_processed(pool, dedup_key: str) -> None:
+    try:
+        await pool.execute(
+            "UPDATE integration_webhook_events SET processed_at=NOW(), error=NULL WHERE dedup_key=$1",
+            dedup_key,
+        )
+    except Exception:
+        log.debug("integration_webhook_events mark_processed failed", exc_info=True)
+
+
+async def mark_failed(pool, dedup_key: str, error: str) -> None:
+    """Leaves processed_at unset so a legitimate redelivery of this exact
+    event is treated as unfinished work, not a duplicate."""
+    try:
+        await pool.execute(
+            "UPDATE integration_webhook_events SET processed_at=NULL, error=$2 WHERE dedup_key=$1",
+            dedup_key, error[:2000],
+        )
+    except Exception:
+        log.debug("integration_webhook_events mark_failed failed", exc_info=True)

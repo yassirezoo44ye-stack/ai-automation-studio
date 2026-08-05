@@ -65,7 +65,22 @@ CREATE TABLE IF NOT EXISTS integration_webhook_events (
 CREATE INDEX IF NOT EXISTS idx_integration_webhook_events_org ON integration_webhook_events(organization_id, received_at DESC);
 """
 
+# integration_webhook_events originally had no processed_at/error columns —
+# a delivery whose provider.handle_webhook() raised AFTER the dedup_key row
+# was already committed had no way to distinguish "processed, don't retry"
+# from "failed, this redelivery should actually run" the way
+# app/billing/webhooks.py's WebhookEventService always could. Any future
+# retry of that exact delivery hit the UNIQUE(dedup_key) conflict and was
+# silently swallowed as a permanent duplicate. Added the same two columns
+# billing_events already has, via idempotent ADD COLUMN IF NOT EXISTS so
+# this is safe to run against a pre-existing deployment.
+INTEGRATION_WEBHOOK_EVENTS_RECOVERY_FIX = """
+ALTER TABLE integration_webhook_events ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ;
+ALTER TABLE integration_webhook_events ADD COLUMN IF NOT EXISTS error TEXT;
+"""
+
 
 async def init_integrations_schema(conn: asyncpg.Connection) -> None:
     await conn.execute(INTEGRATIONS_SCHEMA)
+    await conn.execute(INTEGRATION_WEBHOOK_EVENTS_RECOVERY_FIX)
     log.info("integrations schema initialised")
