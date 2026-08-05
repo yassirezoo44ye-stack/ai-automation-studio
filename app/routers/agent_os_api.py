@@ -101,22 +101,65 @@ class LoopRequest(BaseModel):
 async def agentos_run(req: RunRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id, optional_user_id
-    kernel = get_agent_kernel()
-    result = await kernel.run(
-        req.input,
-        caller     = req.caller,
-        # Resolved from the caller's own bearer token, never a
-        # client-supplied field — this becomes deliverable ownership
-        # (see app/agents/deliverables.py), so it has to be verified,
-        # not merely claimed in the request body.
-        user_id    = await optional_user_id(request),
-        workspace  = req.workspace,
-        project_id = req.project_id,
-        deliberate = req.deliberate,
-        organization_id = await optional_org_id(request),
-        run_id     = req.run_id,
-    )
-    return result.to_dict()
+    kernel  = get_agent_kernel()
+    user_id = await optional_user_id(request)
+    org_id  = await optional_org_id(request)
+
+    async def _run() -> dict:
+        result = await kernel.run(
+            req.input,
+            caller     = req.caller,
+            # Resolved from the caller's own bearer token, never a
+            # client-supplied field — this becomes deliverable ownership
+            # (see app/agents/deliverables.py), so it has to be verified,
+            # not merely claimed in the request body.
+            user_id    = user_id,
+            workspace  = req.workspace,
+            project_id = req.project_id,
+            deliberate = req.deliberate,
+            organization_id = org_id,
+            run_id     = req.run_id,
+        )
+        return result.to_dict()
+
+    if not req.run_id:
+        # No client-supplied run_id -> nothing to dedup against; kernel.run()
+        # generates a fresh one internally for this call, unique by
+        # construction.
+        return await _run()
+
+    # A duplicate agent run can be side-effecting (send an email, deploy,
+    # write files) — unlike JobQueue.submit's idempotency_key, this does
+    # NOT fail open: if the dedup mechanism itself is unavailable, refuse
+    # rather than risk silently double-executing.
+    from app.core.db import get_pool
+    from app.core.idempotency import IdempotencyInProgress, idempotent
+
+    entered = False
+    try:
+        async with idempotent(
+            "agent_run", f"{org_id or 'anon'}:{req.run_id}", pool=get_pool(),
+        ) as guard:
+            entered = True
+            if guard.is_replay:
+                return guard.cached_result
+            result_dict = await _run()
+            guard.result = result_dict
+            return result_dict
+    except IdempotencyInProgress as exc:
+        # A genuine concurrent duplicate (e.g. a double-click) — the
+        # first call for this exact run_id is still in flight. 409, not
+        # 503: the mechanism worked correctly, this isn't an outage.
+        raise HTTPException(409, str(exc))
+    except Exception:
+        if entered:
+            # A real failure inside _run() (or committing the guard) — the
+            # idempotency row is already correctly marked 'failed' by
+            # idempotent() itself; propagate the real error instead of
+            # masking it as a dedup problem.
+            raise
+        log.exception("agent_run idempotency check failed for run_id=%s", req.run_id)
+        raise HTTPException(503, "Could not verify request de-duplication — please retry.")
 
 
 @router.post("/api/agentos/collaborate")
