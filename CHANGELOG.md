@@ -74,3 +74,18 @@ successful deploy to `main`.
 
 ### Other
 - docs(icp): protect ICP baseline from premature revision
+
+## v1.0.7
+
+### Other
+- feat(agents): wire cost reporting into plan_agent and analyze_agent
+- feat(agents): add max_cost_usd/max_tokens budget with live cancellation
+- feat(agents): dedup POST /api/agentos/run via client-supplied run_id
+- feat(jobs): support idempotency_key on JobQueue.submit
+- fix(integrations): recover from failed webhook deliveries instead of permanent duplicate
+- feat(core): add generic idempotency layer (idempotency_keys table)
+- fix(kernel): wrap HotReloader.reload_builtin's exec/register in try/except
+- fix(kernel): make HotReloader.reload_plugin roll back on partial failure
+- feat(ai-reliability): wire circuit breaker + bulkhead into remaining AI router call sites
+- feat(ai-reliability): wire circuit breaker into chat.py/build.py live AI traffic
+- feat(observability): expose queryable current-health accessor on HealthRegistry
