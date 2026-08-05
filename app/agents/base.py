@@ -88,6 +88,11 @@ class AgentPermissions:
     can_modify_agents      : bool = False
     can_access_memory      : bool = True
     max_execution_seconds  : float = 30.0
+    # Cumulative $/token ceiling for one run, enforced between successive
+    # LLM calls (see RunBudget below) — None means unlimited, so every
+    # existing agent is unaffected by default.
+    max_cost_usd           : Optional[float] = None
+    max_tokens             : Optional[int]   = None
     allowed_paths          : list[str] = field(default_factory=list)
     denied_paths           : list[str] = field(default_factory=lambda: [
         ".git", "migrations", "alembic", ".env", ".pem", ".key"
@@ -103,7 +108,44 @@ class AgentPermissions:
             "can_modify_agents"     : self.can_modify_agents,
             "can_access_memory"     : self.can_access_memory,
             "max_execution_seconds" : self.max_execution_seconds,
+            "max_cost_usd"          : self.max_cost_usd,
+            "max_tokens"            : self.max_tokens,
         }
+
+
+# ── Run budget (Cost Guard) ───────────────────────────────────────────────────
+
+@dataclass
+class RunBudget:
+    """Cumulative cost/token ceiling for one agent run.
+
+    Enforced BETWEEN successive LLM calls, not mid-single-call — no current
+    agent code path streams a response incrementally (see
+    AgentContext.report_usage's docstring), so a running total accumulated
+    via report_usage() after each complete call is what's actually
+    achievable today. `max_cost_usd`/`max_tokens` of None means that
+    dimension is unlimited.
+    """
+    max_cost_usd : Optional[float] = None
+    max_tokens   : Optional[int]   = None
+    spent_usd    : float = 0.0
+    spent_tokens : int   = 0
+    _exceeded    : asyncio.Event = field(default_factory=asyncio.Event, repr=False, compare=False)
+
+    def record(self, cost_usd: float, tokens: int) -> None:
+        self.spent_usd    += cost_usd
+        self.spent_tokens += tokens
+        if self.max_cost_usd is not None and self.spent_usd >= self.max_cost_usd:
+            self._exceeded.set()
+        if self.max_tokens is not None and self.spent_tokens >= self.max_tokens:
+            self._exceeded.set()
+
+    @property
+    def exceeded(self) -> bool:
+        return self._exceeded.is_set()
+
+    async def wait_exceeded(self) -> None:
+        await self._exceeded.wait()
 
 
 # ── Context ───────────────────────────────────────────────────────────────────
@@ -134,6 +176,25 @@ class AgentContext:
     # report which agent it's narrating for without every call site
     # having to pass the name in explicitly.
     _agent_name_hint: str = field(default="", repr=False, compare=False)
+
+    # Set by EvolvableAgent.run() right before execute(), from
+    # self.permissions.max_cost_usd/max_tokens — never None during a real
+    # run, but Optional here since a hand-constructed AgentContext (tests,
+    # ad hoc callers) may not set one.
+    budget: Optional["RunBudget"] = None
+
+    async def report_usage(self, cost_usd: float, tokens: int) -> None:
+        """Best-effort cost/token accounting — call after every LLM call
+        an agent makes. Modeled on step()'s contract: never raises, never
+        affects control flow directly on its own failure. It CAN trip the
+        run's budget (see RunBudget.record), which EvolvableAgent.run()
+        watches for and uses to cancel the run — that's the entire
+        mechanism, there is no other side effect."""
+        try:
+            if self.budget is not None:
+                self.budget.record(cost_usd, tokens)
+        except Exception:
+            pass
 
     async def step(self, description: str, kind: str = "info", **data) -> None:
         """Narrate a live sub-step of this run — e.g. "Running npm build",
@@ -347,7 +408,21 @@ class EvolvableAgent(ABC):
     # ── Timed wrapper ─────────────────────────────────────────────────────────
 
     async def run(self, ctx: AgentContext) -> AgentResult:
-        """Execute with validation + timing. Called by AgentKernel."""
+        """Execute with validation + timing + budget enforcement. Called by
+        AgentKernel.
+
+        Races execute(ctx) against two independent cancellation triggers:
+        the pre-existing wall-clock timeout (max_execution_seconds), and —
+        new — the run's cost/token budget (max_cost_usd/max_tokens), which
+        ctx.report_usage() trips via ctx.budget. When neither limit is set
+        (the default for every existing agent) the budget_task simply isn't
+        created, and the result is externally equivalent to the prior
+        asyncio.wait_for(...) behavior — same wall-clock timeout, same
+        cancel-then-AgentResult.fail() outcome. Not byte-for-byte
+        identical internally (asyncio.wait() over a task set has slightly
+        different cancellation-propagation timing than asyncio.wait_for()
+        wrapping a single coroutine), but no existing agent's observable
+        behavior changes."""
         # Validate first
         validation = self.validate(ctx)
         if not validation.valid:
@@ -357,20 +432,79 @@ class EvolvableAgent(ABC):
             )
 
         ctx._agent_name_hint = self.name
+        ctx.budget = RunBudget(
+            max_cost_usd=self.permissions.max_cost_usd,
+            max_tokens=self.permissions.max_tokens,
+        )
         t0 = time.perf_counter()
-        try:
-            result = await asyncio.wait_for(self.execute(ctx), timeout=self.permissions.max_execution_seconds)
-        except asyncio.TimeoutError:
+
+        exec_task = asyncio.ensure_future(self.execute(ctx))
+        budget_task = None
+        if ctx.budget.max_cost_usd is not None or ctx.budget.max_tokens is not None:
+            budget_task = asyncio.ensure_future(ctx.budget.wait_exceeded())
+        waitables = {exec_task} | ({budget_task} if budget_task else set())
+
+        done, _pending = await asyncio.wait(
+            waitables, timeout=self.permissions.max_execution_seconds,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        if exec_task in done:
+            if budget_task is not None and not budget_task.done():
+                budget_task.cancel()
+                try:
+                    await budget_task
+                except asyncio.CancelledError:
+                    pass
+            try:
+                result = exec_task.result()
+            except asyncio.CancelledError:
+                ms = (time.perf_counter() - t0) * 1000
+                result = AgentResult.fail(self.name, "execution cancelled", duration_ms=ms)
+            except Exception as exc:
+                ms = (time.perf_counter() - t0) * 1000
+                result = AgentResult.fail(self.name, str(exc), duration_ms=ms)
+            else:
+                result.duration_ms = (time.perf_counter() - t0) * 1000
+        elif budget_task is not None and budget_task in done:
+            exec_task.cancel()
+            try:
+                await exec_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            ms = (time.perf_counter() - t0) * 1000
+            b = ctx.budget
+            spent = []
+            if b.max_cost_usd is not None:
+                spent.append(f"${b.spent_usd:.4f}/${b.max_cost_usd:.4f}")
+            if b.max_tokens is not None:
+                spent.append(f"{b.spent_tokens}/{b.max_tokens} tokens")
+            result = AgentResult.fail(
+                self.name, "budget_exceeded: spent " + ", ".join(spent), duration_ms=ms,
+            )
+        else:
+            # Neither finished within max_execution_seconds.
+            exec_task.cancel()
+            if budget_task is not None:
+                budget_task.cancel()
+            try:
+                await exec_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            if budget_task is not None:
+                try:
+                    await budget_task
+                except asyncio.CancelledError:
+                    pass
             ms = (time.perf_counter() - t0) * 1000
             result = AgentResult.fail(
                 self.name, f"execution exceeded max_execution_seconds={self.permissions.max_execution_seconds}",
                 duration_ms=ms,
             )
-        except Exception as exc:
-            ms = (time.perf_counter() - t0) * 1000
-            result = AgentResult.fail(self.name, str(exc), duration_ms=ms)
-        else:
-            result.duration_ms = (time.perf_counter() - t0) * 1000
 
         # Propagate trace if ctx has one
         if ctx.trace_id:
