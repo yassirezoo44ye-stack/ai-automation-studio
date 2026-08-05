@@ -13,11 +13,15 @@ class HealthMonitorService(BaseService):
     interval_s  = 30.0
 
     async def tick(self) -> None:
-        from app.core.observability.health   import get_health_registry
+        from app.core.observability.health   import (
+            HealthStatus, get_health_registry, _set_current_health,
+        )
         from app.core.observability.metrics  import get_metrics
 
         report  = await get_health_registry().check_all()
         metrics = get_metrics()
+
+        _set_current_health(HealthStatus(report["status"]))
 
         unhealthy = sum(1 for p in report["probes"] if p["status"] == "unhealthy")
         degraded  = sum(1 for p in report["probes"] if p["status"] == "degraded")

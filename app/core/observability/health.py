@@ -169,6 +169,30 @@ class HealthRegistry:
         return list(self._probes.keys())
 
 
+# ── Current health signal ────────────────────────────────────────────────────
+#
+# A cheap, zero-I/O, synchronous read of "is the system currently healthy" —
+# set once per HealthMonitorService tick (app/services/health_monitor.py)
+# from the same 3-tier rollup check_all() already computes, not a second
+# poll. Any subsystem that wants to react to system health (e.g. a cost
+# guard skipping non-essential work while DEGRADED) can call current_health()
+# without triggering probes itself. Defaults to UNKNOWN before the first
+# tick — callers should treat UNKNOWN as "no information yet", not "bad".
+
+_current_status: HealthStatus = HealthStatus.UNKNOWN
+
+
+def current_health() -> HealthStatus:
+    """Last known overall system health, from the most recent
+    HealthMonitorService tick. Zero I/O — safe to call from any hot path."""
+    return _current_status
+
+
+def _set_current_health(status: HealthStatus) -> None:
+    global _current_status
+    _current_status = status
+
+
 # ── Singleton ─────────────────────────────────────────────────────────────────
 
 _registry: HealthRegistry | None = None
