@@ -129,6 +129,12 @@ async def lifespan(app: FastAPI):
 
     await on_invalidate("plans:", _refresh_plans)
 
+    # ── Generic idempotency layer (app/core/idempotency.py) — no FK
+    # references to anything else, safe to init anywhere in this sequence.
+    from app.core.idempotency import init_idempotency_schema
+    async with pool.acquire() as conn:
+        await init_idempotency_schema(conn)
+
     # ── AI Gateway persistence — conversations/messages/memory/prompts, then
     # the usage ledger (references ai_conversations — must run after it) and
     # organizations (tenancy block above)/users (init_db above). See
