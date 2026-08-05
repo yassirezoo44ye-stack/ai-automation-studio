@@ -263,5 +263,53 @@ class TestCircuitOpenEndToEndOnRouter(unittest.IsolatedAsyncioTestCase):
         mock_cb.record_success.assert_not_called()
 
 
+# ── Execution order: bulkhead is checked before the circuit precheck ───────
+#
+# Every call site (Commits 2 and 3) acquires the bulkhead FIRST, then calls
+# ai_circuit_precheck() as the first statement inside that acquired scope —
+# never the reverse. This matters when both guards would reject: a saturated
+# bulkhead must short-circuit before the circuit breaker is even consulted,
+# so a capacity-shed response is never confused with a provider-health
+# response, and a provider outage never gets to consume bulkhead capacity
+# for requests that were going to be rejected anyway. Proven here against
+# the real router function and the real Bulkhead singleton (not a mock),
+# with only the circuit breaker mocked — if the precheck ran first, this
+# would raise HTTPException(503) instead of BulkheadFull, and
+# circuit_breaker.allow() would have been called despite the bulkhead
+# already being full.
+
+class TestBulkheadCheckedBeforeCircuitPrecheck(unittest.IsolatedAsyncioTestCase):
+    async def test_saturated_bulkhead_wins_even_when_circuit_is_also_open(self):
+        from app.routers import chat as chat_mod
+        from app.core.reliability import BulkheadFull, get_bulkhead
+
+        bulkhead = get_bulkhead("ai", 32)
+        original_in_flight = bulkhead._in_flight
+        bulkhead._in_flight = bulkhead.limit  # saturate it
+
+        fake_ai = MagicMock()
+        fake_ai.messages.create = MagicMock()
+
+        try:
+            with unittest.mock.patch.object(
+                chat_mod, "check_org_quota", AsyncMock(return_value=None),
+            ), unittest.mock.patch.object(
+                chat_mod, "get_ai_client", return_value=fake_ai,
+            ), unittest.mock.patch("app.ai.circuit_breaker.circuit_breaker") as mock_cb:
+                mock_cb.allow.return_value = False  # circuit ALSO open
+
+                req = chat_mod.RunRequest(project_id="demo", prompt="hello")
+                with self.assertRaises(BulkheadFull):
+                    await chat_mod.run_agent(req, MagicMock())
+
+            # The circuit breaker must never even have been consulted —
+            # proof the bulkhead rejected first, not just that both would
+            # have rejected independently.
+            mock_cb.allow.assert_not_called()
+            fake_ai.messages.create.assert_not_called()
+        finally:
+            bulkhead._in_flight = original_in_flight  # don't leak into other tests
+
+
 if __name__ == "__main__":
     unittest.main()

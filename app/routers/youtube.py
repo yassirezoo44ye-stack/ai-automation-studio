@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.core.helpers import get_ai_client
+from app.core.helpers import get_ai_client, ai_circuit_precheck, ai_circuit_report
+from app.core.reliability import get_bulkhead
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.rate_limit import make_rate_limit_dep
 from app.core.security import ai_rate_limit
@@ -105,6 +106,18 @@ async def youtube_analyze_stream(req: YoutubeAskRequest, request: Request):
 
     async def event_stream():
         try:
+            bulkhead_cm = get_bulkhead("youtube", 8).acquire()
+            await bulkhead_cm.__aenter__()
+        except Exception:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Server is at capacity — please retry shortly.'})}\n\n"
+            return
+        try:
+            ai_circuit_precheck()
+        except HTTPException as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': e.detail})}\n\n"
+            await bulkhead_cm.__aexit__(None, None, None)
+            return
+        try:
             with ai.messages.stream(
                 model="claude-sonnet-4-6", max_tokens=2048,
                 system=system,
@@ -118,9 +131,13 @@ async def youtube_analyze_stream(req: YoutubeAskRequest, request: Request):
                     await record_org_tokens(org_id, total_tokens, req.url, ref_type="youtube")
                 except Exception:
                     pass  # metering must never turn a successful reply into an error
+            ai_circuit_report(True)
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
+            ai_circuit_report(False)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            await bulkhead_cm.__aexit__(None, None, None)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

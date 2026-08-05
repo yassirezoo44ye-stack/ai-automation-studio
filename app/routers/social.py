@@ -1,11 +1,12 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.core.helpers import get_ai_client
+from app.core.helpers import get_ai_client, ai_circuit_precheck, ai_circuit_report
+from app.core.reliability import get_bulkhead
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
@@ -65,6 +66,18 @@ async def social_generate_stream(req: SocialRequest, request: Request):
 
     async def event_stream():
         try:
+            bulkhead_cm = get_bulkhead("social", 16).acquire()
+            await bulkhead_cm.__aenter__()
+        except Exception:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Server is at capacity — please retry shortly.'})}\n\n"
+            return
+        try:
+            ai_circuit_precheck()
+        except HTTPException as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': e.detail})}\n\n"
+            await bulkhead_cm.__aexit__(None, None, None)
+            return
+        try:
             yield f"data: {json.dumps({'type': 'status', 'message': 'Generating content…'})}\n\n"
             chunks: list[str] = []
             with ai.messages.stream(
@@ -80,6 +93,7 @@ async def social_generate_stream(req: SocialRequest, request: Request):
                     await record_org_tokens(org_id, total_tokens, None, ref_type="social")
                 except Exception:
                     pass  # metering must never turn a successful reply into an error
+            ai_circuit_report(True)
             raw = "".join(chunks).strip()
             if raw.startswith("```"):
                 raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
@@ -91,7 +105,10 @@ async def social_generate_stream(req: SocialRequest, request: Request):
         except json.JSONDecodeError:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Could not parse response. Try again.'})}\n\n"
         except Exception as e:
+            ai_circuit_report(False)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            await bulkhead_cm.__aexit__(None, None, None)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

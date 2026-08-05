@@ -9,7 +9,10 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import owner_email, owner_user_id
 from app.core.db import get_pool, ensure_tasks_table
-from app.core.helpers import get_ai_client, anthropic_error_message
+from app.core.helpers import (
+    get_ai_client, anthropic_error_message, ai_circuit_precheck, ai_circuit_report,
+)
+from app.core.reliability import get_bulkhead
 from app.core.org_quota import check_org_quota, record_org_tokens
 
 router = APIRouter(tags=["tasks"])
@@ -254,16 +257,22 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
 
     transcript = "\n".join(f"{m['role']}: {m['content']}" for m in msgs)[:12000]
 
-    try:
-        msg = ai.messages.create(
-            model="claude-sonnet-4-6", max_tokens=2000,
-            system=TASK_EXTRACT_SYSTEM,
-            messages=[{"role": "user", "content": transcript}],
-        )
-    except anthropic.BadRequestError as e:
-        raise HTTPException(402, anthropic_error_message(e))
-    except Exception as e:
-        raise HTTPException(502, str(e))
+    async with get_bulkhead("tasks", 16).acquire():
+        ai_circuit_precheck()
+        try:
+            msg = ai.messages.create(
+                model="claude-sonnet-4-6", max_tokens=2000,
+                system=TASK_EXTRACT_SYSTEM,
+                messages=[{"role": "user", "content": transcript}],
+            )
+        except anthropic.BadRequestError as e:
+            ai_circuit_report(False)
+            raise HTTPException(402, anthropic_error_message(e))
+        except Exception as e:
+            ai_circuit_report(False)
+            raise HTTPException(502, str(e))
+        else:
+            ai_circuit_report(True)
 
     try:
         total_tokens = msg.usage.input_tokens + msg.usage.output_tokens

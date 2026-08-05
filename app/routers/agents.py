@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import owner_user_id
 from app.core.db import get_pool, ensure_agents_table
-from app.core.helpers import get_ai_client, resolve_project_id
+from app.core.helpers import (
+    get_ai_client, resolve_project_id, ai_circuit_precheck, ai_circuit_report,
+)
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
@@ -117,6 +119,8 @@ async def delete_agent(agent_id: str, request: Request):
 
 @router.post("/api/agents/{agent_id}/chat/stream")
 async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Request):
+    from app.core.reliability import get_bulkhead
+    bulkhead = get_bulkhead("agents", 16)
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
     ai = get_ai_client()
@@ -164,6 +168,18 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
     history.append({"role": "user", "content": req.prompt})
 
     async def event_stream():
+        try:
+            bulkhead_cm = bulkhead.acquire()
+            await bulkhead_cm.__aenter__()
+        except Exception:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Server is at capacity — please retry shortly.'})}\n\n"
+            return
+        try:
+            ai_circuit_precheck()
+        except HTTPException as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': e.detail})}\n\n"
+            await bulkhead_cm.__aexit__(None, None, None)
+            return
         full_text = ""
         try:
             with ai.messages.stream(
@@ -183,6 +199,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 except Exception:
                     pass  # metering must never turn a successful reply into an error
 
+            ai_circuit_report(True)
             yield f"data: {json.dumps({'type':'done'})}\n\n"
 
             try:
@@ -199,7 +216,10 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
             except Exception:
                 pass
         except Exception as e:
+            ai_circuit_report(False)
             yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
+        finally:
+            await bulkhead_cm.__aexit__(None, None, None)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

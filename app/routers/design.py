@@ -7,7 +7,10 @@ from pydantic import BaseModel
 
 from app.core.auth import owner_user_id
 from app.core.db import get_pool
-from app.core.helpers import get_async_ai_client, resolve_project_id
+from app.core.helpers import (
+    get_async_ai_client, resolve_project_id, ai_circuit_precheck, ai_circuit_report,
+)
+from app.core.reliability import get_bulkhead
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
@@ -80,26 +83,33 @@ Rules:
 - Return ONLY the JSON, no explanation
 """
 
-    try:
-        msg = await ai.messages.create(
-            model="claude-sonnet-4-6", max_tokens=3000,
-            system=system,
-            messages=[{"role": "user", "content": f"Design brief: {req.prompt}\nTemplate: {req.template}"}],
-        )
+    async with get_bulkhead("design", 8).acquire():
+        ai_circuit_precheck()
         try:
-            total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
-            await record_org_tokens(org_id, total_tokens, None, ref_type="design")
-        except Exception:
-            pass  # metering must never turn a successful reply into an error
+            msg = await ai.messages.create(
+                model="claude-sonnet-4-6", max_tokens=3000,
+                system=system,
+                messages=[{"role": "user", "content": f"Design brief: {req.prompt}\nTemplate: {req.template}"}],
+            )
+        except Exception as e:
+            ai_circuit_report(False)
+            raise HTTPException(502, str(e))
+    ai_circuit_report(True)
+    try:
+        total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+        await record_org_tokens(org_id, total_tokens, None, ref_type="design")
+    except Exception:
+        pass  # metering must never turn a successful reply into an error
+    try:
         raw = msg.content[0].text.strip()
         if raw.startswith("```"):
             raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
         canvas_json = json.loads(raw)
-        return {"canvas_json": canvas_json}
     except json.JSONDecodeError:
         raise HTTPException(502, "Claude returned invalid JSON for the design.")
     except Exception as e:
         raise HTTPException(502, str(e))
+    return {"canvas_json": canvas_json}
 
 
 # ── Canvas persistence ────────────────────────────────────────────────────────
@@ -247,11 +257,18 @@ class AssistantRequest(BaseModel):
 async def _call_claude(
     ai, system: str, user: str, max_tokens: int = 1200, *, org_id: Optional[str] = None,
 ) -> str:
-    msg = await ai.messages.create(
-        model="claude-haiku-4-5-20251001", max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
+    async with get_bulkhead("design", 8).acquire():
+        ai_circuit_precheck()
+        try:
+            msg = await ai.messages.create(
+                model="claude-haiku-4-5-20251001", max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+        except Exception:
+            ai_circuit_report(False)
+            raise
+    ai_circuit_report(True)
     try:
         total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
         await record_org_tokens(org_id, total_tokens, None, ref_type="design")
@@ -349,17 +366,21 @@ async def ai_assistant(req: AssistantRequest, request: Request):
         "Help the user improve their design. Be concise and actionable. "
         "When suggesting canvas changes, include JSON action objects in your response."
     )
-    try:
-        msg = await ai.messages.create(
-            model="claude-sonnet-4-6", max_tokens=1000,
-            system=system,
-            messages=[{"role": m["role"], "content": m["content"]} for m in req.messages],
-        )
+    async with get_bulkhead("design", 8).acquire():
+        ai_circuit_precheck()
         try:
-            total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
-            await record_org_tokens(org_id, total_tokens, None, ref_type="design")
-        except Exception:
-            pass  # metering must never turn a successful reply into an error
-        return {"message": msg.content[0].text, "actions": []}
-    except Exception as e:
-        raise HTTPException(502, str(e))
+            msg = await ai.messages.create(
+                model="claude-sonnet-4-6", max_tokens=1000,
+                system=system,
+                messages=[{"role": m["role"], "content": m["content"]} for m in req.messages],
+            )
+        except Exception as e:
+            ai_circuit_report(False)
+            raise HTTPException(502, str(e))
+    ai_circuit_report(True)
+    try:
+        total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
+        await record_org_tokens(org_id, total_tokens, None, ref_type="design")
+    except Exception:
+        pass  # metering must never turn a successful reply into an error
+    return {"message": msg.content[0].text, "actions": []}
