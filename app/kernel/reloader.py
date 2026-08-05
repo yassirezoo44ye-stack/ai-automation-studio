@@ -137,6 +137,14 @@ class HotReloader:
         """
         Reload a builtin command module (e.g. 'app.commands.builtin.run_cmd').
         The module must be importable and must expose register(registry).
+
+        No ownership tracking exists for builtins, so a failure here can't
+        corrupt self._ownership the way reload_plugin's could — but a
+        register() failure after a successful import previously propagated
+        raw (no ReloadError wrapping) and left the half-imported module
+        sitting in sys.modules, so a retry would silently reuse that
+        broken module instead of re-importing cleanly. Both phases are now
+        wrapped and roll sys.modules back on failure.
         """
         before = set(self._registry.names())
 
@@ -148,12 +156,20 @@ class HotReloader:
         try:
             module = importlib.import_module(module_path)
         except ImportError as exc:
+            sys.modules.pop(module_path, None)
             raise ReloadError(f"Cannot import {module_path}: {exc}") from exc
 
-        register_fn = getattr(module, "register", None)
-        if register_fn is None:
-            raise ReloadError(f"{module_path} has no register() function")
-        register_fn(self._registry)
+        try:
+            register_fn = getattr(module, "register", None)
+            if register_fn is None:
+                raise ReloadError(f"{module_path} has no register() function")
+            register_fn(self._registry)
+        except Exception as exc:
+            sys.modules.pop(module_path, None)
+            log.warning("reload_builtin failed for %s: %s", module_path, exc)
+            if isinstance(exc, ReloadError):
+                raise
+            raise ReloadError(f"register() failed for {module_path}: {exc}") from exc
 
         after = set(self._registry.names())
         added = list(after - before)
