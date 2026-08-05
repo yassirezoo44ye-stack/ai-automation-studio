@@ -842,11 +842,14 @@ class TestBuildEndpointsRequireOwnership(unittest.TestCase):
         alice_project_id = str(uuid.uuid4())
         app = self._app()
         pool = self._mock_pool(uid=bob_uid, owns_project=False)
-        fake_ai_client = MagicMock()
 
+        # build.py no longer calls get_ai_client() directly — it routes
+        # through InferenceEngine.complete() (AI Gateway migration). The
+        # assertion this test cares about is unchanged: ownership is
+        # checked before any AI-layer call is made at all.
         with patch("app.routers.build.get_pool", return_value=pool), \
              patch("app.core.auth.owner_email", return_value="bob@example.com"), \
-             patch("app.routers.build.get_ai_client", return_value=fake_ai_client):
+             patch("app.core.ai.inference.engine.InferenceEngine.complete") as mock_complete:
             with TestClient(app, raise_server_exceptions=False) as c:
                 res = c.post(
                     "/api/build",
@@ -854,7 +857,7 @@ class TestBuildEndpointsRequireOwnership(unittest.TestCase):
                     headers={"X-Sub-Token": "bob-token"},
                 )
         self.assertEqual(res.status_code, 404)
-        fake_ai_client.messages.create.assert_not_called()
+        mock_complete.assert_not_called()
 
     def test_build_stream_rejects_non_owner_before_any_ai_call(self):
         bob_uid = uuid.uuid4()
@@ -862,9 +865,11 @@ class TestBuildEndpointsRequireOwnership(unittest.TestCase):
         app = self._app()
         pool = self._mock_pool(uid=bob_uid, owns_project=False)
 
+        # build.py's streaming endpoint no longer calls get_async_ai_client()
+        # directly either — same InferenceEngine.stream() migration.
         with patch("app.routers.build.get_pool", return_value=pool), \
              patch("app.core.auth.owner_email", return_value="bob@example.com"), \
-             patch("app.routers.build.get_async_ai_client") as fake_get_async:
+             patch("app.core.ai.inference.engine.InferenceEngine.stream") as mock_stream:
             with TestClient(app, raise_server_exceptions=False) as c:
                 res = c.post(
                     "/api/build/stream",
@@ -872,7 +877,7 @@ class TestBuildEndpointsRequireOwnership(unittest.TestCase):
                     headers={"X-Sub-Token": "bob-token"},
                 )
         self.assertEqual(res.status_code, 404)
-        fake_get_async.assert_not_called()
+        mock_stream.assert_not_called()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

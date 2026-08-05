@@ -9,12 +9,11 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.ai.models import CompletionRequest, Message
+from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
 from app.core.db import get_pool
-from app.core.helpers import (
-    get_ai_client, resolve_project_id, anthropic_error_message,
-    ai_circuit_precheck, ai_circuit_report,
-)
+from app.core.helpers import resolve_project_id, anthropic_error_message
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
@@ -39,7 +38,6 @@ async def run_stream(req: RunRequest, request: Request):
     bulkhead = get_bulkhead("ai", 32)
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
 
     history: list[dict] = []
     conv_id: Optional[uuid.UUID] = None
@@ -97,31 +95,56 @@ async def run_stream(req: RunRequest, request: Request):
         except Exception:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Server is at capacity — please retry shortly.'})}\n\n"
             return
-        try:
-            ai_circuit_precheck()
-        except HTTPException as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': e.detail})}\n\n"
-            await bulkhead_cm.__aexit__(None, None, None)
-            return
         full_text = ""
         try:
-            with ai.messages.stream(
+            yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': str(conv_id)})}\n\n"
+
+            request_obj = CompletionRequest(
+                messages=[Message(role=h["role"], content=h["content"]) for h in history],
                 model="claude-sonnet-4-6",
                 max_tokens=2048,
-                messages=history,
-            ) as stream:
-                yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': str(conv_id)})}\n\n"
-                for text in stream.text_stream:
-                    full_text += text
-                    yield f"data: {json.dumps({'type': 'delta', 'text': text})}\n\n"
+                temperature=1.0,        # CompletionRequest defaults to 0.7 and _build_kwargs
+                                        # always forwards a non-None temperature — the original
+                                        # ai.messages.create() call never set one, which means
+                                        # Anthropic's own API default (1.0) applied. Pin it
+                                        # explicitly so this migration doesn't silently change
+                                        # response temperature.
+                conversation_id=None,   # see app/routers/chat.py migration notes: chat.py owns
+                prompt_id=None,         # its own conversations/messages tables, distinct from
+                memory_enabled=False,   # AIGateway's ai_conversations/ai_messages — do not let
+                tools=None,             # the engine's history/memory enrichment touch either.
+                stream=True,
+            )
+            engine = InferenceEngine(pool=get_pool())
+            total_tokens = 0
+            stream_error: Optional[str] = None
+
+            async for chunk in engine.stream(
+                request_obj, user_id=str(uid), org_id=None, auto_tools=False,
+            ):
+                ctype = chunk.get("type")
+                if ctype == "delta":
+                    text = chunk.get("text") or ""
+                    if text:
+                        full_text += text
+                        yield f"data: {json.dumps({'type': 'delta', 'text': text})}\n\n"
+                elif ctype == "usage" and chunk.get("usage"):
+                    total_tokens = chunk["usage"].get("total_tokens", 0)
+                elif ctype == "error":
+                    stream_error = chunk.get("error") or "Unknown AI provider error"
+                    break
+
+            if stream_error:
+                log.warning("run_stream provider error: %s", stream_error)
+                yield f"data: {json.dumps({'type': 'error', 'message': stream_error})}\n\n"
+                return
+
+            if total_tokens:
                 try:
-                    final = stream.get_final_message()
-                    total_tokens = final.usage.input_tokens + final.usage.output_tokens
                     await record_org_tokens(org_id, total_tokens, str(conv_id))
                 except Exception:
                     pass  # metering must never turn a successful reply into an error
 
-            ai_circuit_report(True)
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
             try:
@@ -144,12 +167,7 @@ async def run_stream(req: RunRequest, request: Request):
             except Exception:
                 pass
 
-        except anthropic.BadRequestError as e:
-            ai_circuit_report(False)
-            log.exception("run_stream error")
-            yield f"data: {json.dumps({'type': 'error', 'message': anthropic_error_message(e)})}\n\n"
         except Exception as e:
-            ai_circuit_report(False)
             log.exception("run_stream error")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
@@ -163,32 +181,38 @@ async def run_stream(req: RunRequest, request: Request):
 async def run_agent(req: RunRequest, request: Request):
     from app.core.reliability import get_bulkhead
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
-    async with get_bulkhead("ai", 32).acquire():
-        ai_circuit_precheck()
-        try:
-            message = ai.messages.create(
-                model="claude-sonnet-4-6", max_tokens=1024,
-                messages=[{"role": "user", "content": req.prompt}],
-            )
-        except anthropic.AuthenticationError:
-            ai_circuit_report(False)
-            raise HTTPException(401, "Invalid Anthropic API key.")
-        except anthropic.BadRequestError as e:
-            ai_circuit_report(False)
-            raise HTTPException(402, anthropic_error_message(e))
-        except Exception as e:
-            ai_circuit_report(False)
-            raise HTTPException(502, str(e))
-        else:
-            ai_circuit_report(True)
-
-    await record_org_tokens(
-        org_id, message.usage.input_tokens + message.usage.output_tokens, req.project_id,
-    )
-    summary = message.content[0].text
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
+
+    request_obj = CompletionRequest(
+        messages=[Message(role="user", content=req.prompt)],
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        temperature=1.0,  # match Anthropic's own API default — see run_stream's comment above
+        conversation_id=None,
+        prompt_id=None,
+        memory_enabled=False,
+        tools=None,
+        stream=False,
+    )
+    engine = InferenceEngine(pool=get_pool())
+    async with get_bulkhead("ai", 32).acquire():
+        try:
+            resp = await engine.complete(
+                request_obj, user_id=str(uid), org_id=None, auto_tools=False,
+            )
+        except anthropic.AuthenticationError:
+            raise HTTPException(401, "Invalid Anthropic API key.")
+        except anthropic.BadRequestError as e:
+            raise HTTPException(402, anthropic_error_message(e))
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
+        except Exception as e:
+            raise HTTPException(502, str(e))
+
+    await record_org_tokens(org_id, resp.usage.total_tokens, req.project_id)
+    summary = resp.content
+    async with get_pool().acquire() as conn:
         pid = await resolve_project_id(conn, req.project_id, uid)
         run_id = await conn.fetchval(
             "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "

@@ -60,19 +60,46 @@ class TestChatRunEndpointsRequireAuth(unittest.TestCase):
 
     def test_authenticated_run_stream_passes_the_auth_gate(self):
         import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
         from httpx import AsyncClient, ASGITransport
         from app.core.auth import make_token
+
+        # No live Postgres in this test, so the handler itself may still
+        # fail downstream — the only thing under test is that a valid
+        # credential is not rejected by the auth gate (never 401). Before
+        # the AI Gateway migration (chat.py -> InferenceEngine), the
+        # missing-ANTHROPIC_API_KEY check inside get_ai_client() raised a
+        # clean HTTPException(503) *before* any DB access, so get_pool()
+        # never needed mocking here. That early check now lives deep
+        # inside InferenceEngine instead, so get_pool() IS reached first —
+        # mock it minimally so the pre-flight DB block (conversation
+        # lookup/creation) doesn't crash with an unhandled AttributeError
+        # on a None pool; the actual AI call still fails downstream
+        # (unmocked), same as before, just via a different path.
+        conn = MagicMock()
+        conn.fetchval = AsyncMock(return_value="00000000-0000-0000-0000-000000000000")
+        conn.fetch = AsyncMock(return_value=[])
+        conn.execute = AsyncMock(return_value="OK")
+        conn_cm = MagicMock()
+        conn_cm.__aenter__ = AsyncMock(return_value=conn)
+        conn_cm.__aexit__ = AsyncMock(return_value=False)
+        fake_pool = MagicMock()
+        fake_pool.acquire.return_value = conn_cm
+
+        async def _empty_stream(*a, **kw):
+            if False:
+                yield {}  # pragma: no cover — makes this an async generator function
 
         async def _run():
             transport = ASGITransport(app=self._app())
             headers = {"X-Sub-Token": make_token("run-stream-test@example.com", False, 0)}
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                return await client.post(
-                    "/api/run/stream", json={"project_id": "demo", "prompt": "hi"}, headers=headers,
-                )
-        # No live Postgres in this test, so the handler itself may still
-        # fail downstream — the only thing under test is that a valid
-        # credential is not rejected by the auth gate (never 401).
+            with patch("app.routers.chat.get_pool", return_value=fake_pool), patch(
+                "app.core.ai.inference.engine.InferenceEngine.stream", _empty_stream,
+            ):
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    return await client.post(
+                        "/api/run/stream", json={"project_id": "demo", "prompt": "hi"}, headers=headers,
+                    )
         self.assertNotEqual(asyncio.run(_run()).status_code, 401)
 
     def test_old_unprefixed_run_stream_path_no_longer_registered(self):

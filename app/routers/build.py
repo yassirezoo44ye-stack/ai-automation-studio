@@ -14,14 +14,12 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.ai.models import CompletionRequest, Message
+from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
-from app.core.helpers import (
-    get_ai_client, get_async_ai_client,
-    resolve_project_id, anthropic_error_message, strip_fences,
-    ai_circuit_precheck, ai_circuit_report,
-)
+from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 from app.execution import process_mgr
@@ -155,29 +153,34 @@ async def build_program(req: BuildRequest, request: Request):
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, req.project_id, uid)
-    ai = get_ai_client()
+
+    request_obj = CompletionRequest(
+        messages=[Message(role="user", content=req.prompt)],
+        model="claude-sonnet-4-6",
+        max_tokens=16000,
+        temperature=1.0,  # match Anthropic's own API default (see chat.py's migration for why)
+        system=BUILD_SYSTEM,
+        conversation_id=None,
+        prompt_id=None,
+        memory_enabled=False,
+        tools=None,
+        stream=False,
+    )
+    engine = InferenceEngine(pool=get_pool())
     async with get_bulkhead("build", 8).acquire():
-        ai_circuit_precheck()
         try:
-            msg = ai.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=16000,
-                system=BUILD_SYSTEM,
-                messages=[{"role": "user", "content": req.prompt}],
+            resp = await engine.complete(
+                request_obj, user_id=str(uid), org_id=None, auto_tools=False,
             )
         except anthropic.BadRequestError as e:
-            ai_circuit_report(False)
             raise HTTPException(402, anthropic_error_message(e))
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
         except Exception as e:
-            ai_circuit_report(False)
             raise HTTPException(502, str(e))
-        else:
-            ai_circuit_report(True)
 
-    await record_org_tokens(
-        org_id, msg.usage.input_tokens + msg.usage.output_tokens, req.project_id,
-    )
-    raw = strip_fences(msg.content[0].text)
+    await record_org_tokens(org_id, resp.usage.total_tokens, req.project_id)
+    raw = strip_fences(resp.content)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
@@ -240,27 +243,36 @@ async def build_stream(req: BuildRequest, request: Request):
             yield _sse("error", message="Server is at capacity — please retry shortly.")
             return
         try:
-            ai_circuit_precheck()
-        except HTTPException as e:
-            yield _sse("error", message=e.detail)
-            await bulkhead_cm.__aexit__(None, None, None)
-            return
-        try:
             yield _sse("status", message="🤖 Connecting to Claude…")
 
-            ai = get_async_ai_client()
+            request_obj = CompletionRequest(
+                messages=[Message(role="user", content=req.prompt)],
+                model="claude-sonnet-4-6",
+                max_tokens=8192,
+                temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
+                system=BUILD_UNIFIED_SYSTEM,
+                conversation_id=None,
+                prompt_id=None,
+                memory_enabled=False,
+                tools=None,
+                stream=True,
+            )
+            engine = InferenceEngine(pool=get_pool())
             parser = _BuildParser()
             ws = workspace(req.project_id)
             buf = ""
             last_heartbeat = time.time()
+            stream_error: Optional[str] = None
+            total_tokens = 0
 
-            async with ai.messages.stream(
-                model="claude-sonnet-4-6",
-                max_tokens=8192,
-                system=BUILD_UNIFIED_SYSTEM,
-                messages=[{"role": "user", "content": req.prompt}],
-            ) as stream:
-                async for text in stream.text_stream:
+            async for chunk in engine.stream(
+                request_obj, user_id=str(uid), org_id=None, auto_tools=False,
+            ):
+                ctype = chunk.get("type")
+                if ctype == "delta":
+                    text = chunk.get("text") or ""
+                    if not text:
+                        continue
                     buf += text
 
                     # Heartbeat — prevents Render/nginx idle-timeout on long builds
@@ -284,15 +296,22 @@ async def build_stream(req: BuildRequest, request: Request):
                             dest.parent.mkdir(parents=True, exist_ok=True)
                             await asyncio.to_thread(dest.write_text, content, "utf-8")
                             yield _sse("file", path=path, content=content)
+                elif ctype == "usage" and chunk.get("usage"):
+                    total_tokens = chunk["usage"].get("total_tokens", 0)
+                elif ctype == "error":
+                    stream_error = chunk.get("error") or "Unknown AI provider error"
+                    break
 
+            if stream_error:
+                log.warning("build_stream provider error: %s", stream_error)
+                yield _sse("error", message=stream_error)
+                return
+
+            if total_tokens:
                 try:
-                    final = await stream.get_final_message()
-                    total_tokens = final.usage.input_tokens + final.usage.output_tokens
                     await record_org_tokens(org_id, total_tokens, req.project_id)
                 except Exception:
                     pass  # metering must never turn a successful build into an error
-
-            ai_circuit_report(True)
 
             # Flush remaining buffer (last line without trailing newline)
             if buf.strip():
@@ -332,11 +351,7 @@ async def build_stream(req: BuildRequest, request: Request):
             except Exception:
                 pass
 
-        except anthropic.BadRequestError as e:
-            ai_circuit_report(False)
-            yield _sse("error", message=anthropic_error_message(e))
         except Exception as e:
-            ai_circuit_report(False)
             log.exception("build_stream error")
             yield _sse("error", message=str(e))
         finally:
