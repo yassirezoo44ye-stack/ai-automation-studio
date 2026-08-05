@@ -200,6 +200,7 @@ class JobQueue:
         max_retries : int = 0,
         run_at      : Optional[float] = None,
         org_id      : Optional[str]   = None,
+        idempotency_key: Optional[str] = None,
     ) -> str:
         """`org_id`, when given, always overwrites payload["organization_id"]
         rather than merely defaulting it — a caller reachable from an HTTP
@@ -208,19 +209,71 @@ class JobQueue:
         the server actually verified for this caller. Internal callers
         that already build a trusted payload themselves (e.g.
         app.integrations.sync_engine.schedule_sync) simply don't pass
-        org_id and are unaffected."""
+        org_id and are unaffected.
+
+        idempotency_key, when given, deduplicates job creation: a second
+        submit() call with the same (kind, idempotency_key) returns the
+        SAME job id instead of creating a duplicate job — guards against a
+        caller's own retry-after-timeout, or a double-click, creating two
+        independent jobs for the same logical request (app.core.jobs has
+        retry/backoff for a job's own execution, but nothing previously
+        stopped submit() itself from being called twice for one request).
+        This is waste-prevention, not financial-correctness, so a failure
+        in the dedup check itself fails OPEN — logs and submits normally —
+        rather than blocking submission.
+
+        This is best-effort deduplication, not strict exclusive submission:
+        app.core.idempotency.IdempotencyInProgress (raised when another
+        call for the same key is still within its staleness window) is
+        deliberately caught by the same broad except below and treated
+        identically to any other dedup-check failure — fail open, submit
+        anyway — rather than surfaced as a distinct "already in progress"
+        signal to the caller. In practice this window is tiny here (the
+        guard is marked 'completed' the moment _create() returns, not
+        when the job finishes running), so a genuine concurrent collision
+        producing one extra job is rare and, per the waste-prevention
+        framing above, an acceptable outcome. A caller that needs a
+        stronger guarantee (reject a genuine concurrent duplicate outright
+        rather than risk an extra job) should catch IdempotencyInProgress
+        itself before calling submit(), the way POST /api/agentos/run
+        does around app.core.idempotency.idempotent() directly."""
         if priority not in _PRIORITY_ORDER:
             priority = "normal"
         payload = dict(payload or {})
         if org_id is not None:
             payload["organization_id"] = org_id
-        job = Job(
-            id=str(uuid.uuid4()), kind=kind, payload=payload, ttl=ttl,
-            priority=priority, max_retries=max_retries, run_at=run_at,
-        )
-        await self._store.save(job)
-        log.debug("job[%s] submitted kind=%s priority=%s", job.id[:8], kind, priority)
-        return job.id
+
+        async def _create() -> str:
+            job = Job(
+                id=str(uuid.uuid4()), kind=kind, payload=payload, ttl=ttl,
+                priority=priority, max_retries=max_retries, run_at=run_at,
+            )
+            await self._store.save(job)
+            log.debug("job[%s] submitted kind=%s priority=%s", job.id[:8], kind, priority)
+            return job.id
+
+        if not idempotency_key:
+            return await _create()
+
+        try:
+            from app.core.db import get_pool
+            from app.core.idempotency import idempotent
+            async with idempotent(
+                "job_submit", f"{kind}:{idempotency_key}", pool=get_pool(),
+            ) as guard:
+                if guard.is_replay:
+                    log.debug("job_submit dedup hit kind=%s key=%s -> job=%s",
+                              kind, idempotency_key, guard.cached_result)
+                    return guard.cached_result
+                job_id = await _create()
+                guard.result = job_id
+                return job_id
+        except Exception:
+            log.warning(
+                "job_submit idempotency check failed for kind=%s key=%s — "
+                "submitting without dedup", kind, idempotency_key, exc_info=True,
+            )
+            return await _create()
 
     # ── Handler registry + scheduler (delayed jobs, DLQ requeue) ──────────────
 
