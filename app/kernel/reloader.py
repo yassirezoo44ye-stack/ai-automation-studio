@@ -54,6 +54,13 @@ class HotReloader:
         """
         Reload a plugin file: unregister old commands, re-import, re-register.
         Returns {"status", "module", "removed", "added"}.
+
+        If re-import or re-registration fails partway, the commands this
+        module owned before the reload are restored (not left silently
+        unregistered) and self._ownership is left untouched — previously
+        a broken plugin file would vanish its own commands with no
+        rollback, since exec_module()/register_fn() had no failure
+        handling at all.
         """
         path = _resolve(file)
         if not path.exists():
@@ -64,9 +71,15 @@ class HotReloader:
         # Track which commands exist before reload
         before = set(self._registry.names())
 
+        # Snapshot the full CommandMeta for every command this module
+        # owns *before* unregistering anything — this is what makes
+        # rollback possible below.
+        owned_before = self._ownership.get(module_name, [])
+        snapshot = [m for m in (self._registry.lookup(cmd) for cmd in owned_before) if m is not None]
+
         # Unregister commands previously owned by this module
         removed = []
-        for cmd in self._ownership.get(module_name, []):
+        for cmd in owned_before:
             if self._registry.unregister(cmd):
                 removed.append(cmd)
                 log.debug("hot-reload: unregistered %s (owned by %s)", cmd, path.name)
@@ -76,18 +89,36 @@ class HotReloader:
         for k in keys_to_remove:
             del sys.modules[k]
 
-        # Re-import and re-register
-        spec   = importlib.util.spec_from_file_location(module_name, path)
-        if spec is None or spec.loader is None:
-            raise ReloadError(f"Cannot create module spec for {file}")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)     # type: ignore[attr-defined]
+        try:
+            # Re-import and re-register
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            if spec is None or spec.loader is None:
+                raise ReloadError(f"Cannot create module spec for {file}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)     # type: ignore[attr-defined]
 
-        register_fn = getattr(module, "register", None)
-        if register_fn is None:
-            raise ReloadError(f"{path.name} has no register() function")
-        register_fn(self._registry)
+            register_fn = getattr(module, "register", None)
+            if register_fn is None:
+                raise ReloadError(f"{path.name} has no register() function")
+            register_fn(self._registry)
+        except Exception as exc:
+            # Undo the forced-reimport cache-bust and restore every
+            # command this module owned before we touched anything, so a
+            # broken plugin file leaves the kernel exactly as it was.
+            sys.modules.pop(module_name, None)
+            for meta in snapshot:
+                self._registry.register(
+                    meta.name, meta.handler,
+                    description=meta.description, aliases=meta.aliases,
+                    group=meta.group, source=meta.source, usage=meta.usage,
+                    override=True,
+                )
+            log.warning("hot-reload failed for %s, rolled back to previous state: %s",
+                        path.name, exc)
+            if isinstance(exc, ReloadError):
+                raise
+            raise ReloadError(f"Failed to reload {path.name}: {exc}") from exc
 
         after = set(self._registry.names())
         added = list(after - before | set(removed))   # re-added are counted as added
