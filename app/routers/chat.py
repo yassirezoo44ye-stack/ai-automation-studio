@@ -11,7 +11,10 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import owner_user_id
 from app.core.db import get_pool
-from app.core.helpers import get_ai_client, resolve_project_id, anthropic_error_message
+from app.core.helpers import (
+    get_ai_client, resolve_project_id, anthropic_error_message,
+    ai_circuit_precheck, ai_circuit_report,
+)
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
@@ -94,6 +97,12 @@ async def run_stream(req: RunRequest, request: Request):
         except Exception:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Server is at capacity — please retry shortly.'})}\n\n"
             return
+        try:
+            ai_circuit_precheck()
+        except HTTPException as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': e.detail})}\n\n"
+            await bulkhead_cm.__aexit__(None, None, None)
+            return
         full_text = ""
         try:
             with ai.messages.stream(
@@ -112,6 +121,7 @@ async def run_stream(req: RunRequest, request: Request):
                 except Exception:
                     pass  # metering must never turn a successful reply into an error
 
+            ai_circuit_report(True)
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
             try:
@@ -135,9 +145,11 @@ async def run_stream(req: RunRequest, request: Request):
                 pass
 
         except anthropic.BadRequestError as e:
+            ai_circuit_report(False)
             log.exception("run_stream error")
             yield f"data: {json.dumps({'type': 'error', 'message': anthropic_error_message(e)})}\n\n"
         except Exception as e:
+            ai_circuit_report(False)
             log.exception("run_stream error")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
@@ -153,17 +165,23 @@ async def run_agent(req: RunRequest, request: Request):
     org_id = await check_org_quota(request)
     ai = get_ai_client()
     async with get_bulkhead("ai", 32).acquire():
+        ai_circuit_precheck()
         try:
             message = ai.messages.create(
                 model="claude-sonnet-4-6", max_tokens=1024,
                 messages=[{"role": "user", "content": req.prompt}],
             )
         except anthropic.AuthenticationError:
+            ai_circuit_report(False)
             raise HTTPException(401, "Invalid Anthropic API key.")
         except anthropic.BadRequestError as e:
+            ai_circuit_report(False)
             raise HTTPException(402, anthropic_error_message(e))
         except Exception as e:
+            ai_circuit_report(False)
             raise HTTPException(502, str(e))
+        else:
+            ai_circuit_report(True)
 
     await record_org_tokens(
         org_id, message.usage.input_tokens + message.usage.output_tokens, req.project_id,

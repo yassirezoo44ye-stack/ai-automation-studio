@@ -27,6 +27,39 @@ def get_async_ai_client() -> anthropic.AsyncAnthropic:
     return anthropic.AsyncAnthropic(api_key=key)
 
 
+# ── AI circuit breaker (real traffic) ─────────────────────────────────────────
+#
+# app/ai/circuit_breaker.py's `circuit_breaker` singleton has always existed,
+# but was only ever consulted by app/core/ai/registry/registry.py's
+# PlatformProviderRegistry — a path the actual chat/build/agents/design/
+# social/youtube/tasks routers below don't use; they call get_ai_client()/
+# get_async_ai_client() directly. These two helpers apply the same breaker,
+# same target_id, to that real traffic, so a provider outage stops being
+# hammered on every request and GET /api/ai/providers reflects reality.
+
+def ai_circuit_precheck(target_id: str = "anthropic") -> None:
+    """Call right after get_ai_client()/get_async_ai_client(), before the
+    actual API call. Raises 503 immediately if the circuit is open —
+    cheaper and faster than letting the request hit a known-failing
+    provider and time out."""
+    from app.ai.circuit_breaker import circuit_breaker
+    if not circuit_breaker.allow(target_id):
+        raise HTTPException(
+            503, f"AI provider {target_id!r} is temporarily unavailable "
+                 f"(circuit open after repeated failures) — retry shortly.",
+        )
+
+
+def ai_circuit_report(success: bool, target_id: str = "anthropic") -> None:
+    """Call once per attempt, in both the success path and every except
+    branch that follows an AI call guarded by ai_circuit_precheck()."""
+    from app.ai.circuit_breaker import circuit_breaker
+    if success:
+        circuit_breaker.record_success(target_id)
+    else:
+        circuit_breaker.record_failure(target_id)
+
+
 # ── Project ID resolution ─────────────────────────────────────────────────────
 
 async def resolve_project_id(conn, project_id: Optional[str], user_id: uuid.UUID) -> uuid.UUID:

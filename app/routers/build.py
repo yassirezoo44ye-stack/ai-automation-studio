@@ -20,6 +20,7 @@ from app.core.filesystem import workspace, safe_path
 from app.core.helpers import (
     get_ai_client, get_async_ai_client,
     resolve_project_id, anthropic_error_message, strip_fences,
+    ai_circuit_precheck, ai_circuit_report,
 )
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
@@ -156,6 +157,7 @@ async def build_program(req: BuildRequest, request: Request):
         await resolve_project_id(conn, req.project_id, uid)
     ai = get_ai_client()
     async with get_bulkhead("build", 8).acquire():
+        ai_circuit_precheck()
         try:
             msg = ai.messages.create(
                 model="claude-sonnet-4-6",
@@ -164,9 +166,13 @@ async def build_program(req: BuildRequest, request: Request):
                 messages=[{"role": "user", "content": req.prompt}],
             )
         except anthropic.BadRequestError as e:
+            ai_circuit_report(False)
             raise HTTPException(402, anthropic_error_message(e))
         except Exception as e:
+            ai_circuit_report(False)
             raise HTTPException(502, str(e))
+        else:
+            ai_circuit_report(True)
 
     await record_org_tokens(
         org_id, msg.usage.input_tokens + msg.usage.output_tokens, req.project_id,
@@ -234,6 +240,12 @@ async def build_stream(req: BuildRequest, request: Request):
             yield _sse("error", message="Server is at capacity — please retry shortly.")
             return
         try:
+            ai_circuit_precheck()
+        except HTTPException as e:
+            yield _sse("error", message=e.detail)
+            await bulkhead_cm.__aexit__(None, None, None)
+            return
+        try:
             yield _sse("status", message="🤖 Connecting to Claude…")
 
             ai = get_async_ai_client()
@@ -280,6 +292,8 @@ async def build_stream(req: BuildRequest, request: Request):
                 except Exception:
                     pass  # metering must never turn a successful build into an error
 
+            ai_circuit_report(True)
+
             # Flush remaining buffer (last line without trailing newline)
             if buf.strip():
                 event = parser.feed(buf)
@@ -319,8 +333,10 @@ async def build_stream(req: BuildRequest, request: Request):
                 pass
 
         except anthropic.BadRequestError as e:
+            ai_circuit_report(False)
             yield _sse("error", message=anthropic_error_message(e))
         except Exception as e:
+            ai_circuit_report(False)
             log.exception("build_stream error")
             yield _sse("error", message=str(e))
         finally:
