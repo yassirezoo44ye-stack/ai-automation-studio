@@ -44,8 +44,7 @@ class PlanAgent(EvolvableAgent):
                 data={"goal": goal, "tasks": tasks, "method": "rule_based"},
             )
 
-        tasks = await _llm_plan(goal, list(ctx.kernel._agents.keys()), api_key,
-                                org_id=ctx.organization_id)
+        tasks = await _llm_plan(goal, list(ctx.kernel._agents.keys()), api_key, ctx)
         return AgentResult.ok(
             self.name,
             f"Plan ({len(tasks)} steps): {' → '.join(tasks)}",
@@ -58,16 +57,18 @@ class PlanAgent(EvolvableAgent):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _llm_plan(goal: str, agents: list[str], api_key: str, *,
-                    org_id: Optional[str] = None) -> list[str]:
+async def _llm_plan(goal: str, agents: list[str], api_key: str,
+                    ctx: Optional["AgentContext"] = None) -> list[str]:
+    org_id = ctx.organization_id if ctx is not None else None
     from app.core.org_quota import check_org_quota_id, record_org_tokens
     if not await check_org_quota_id(org_id):
         return _rule_based_plan(goal, agents)
+    model = "claude-haiku-4-5-20251001"
     try:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=api_key)
         msg = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=256,
             messages=[{
                 "role": "user",
@@ -86,6 +87,12 @@ async def _llm_plan(goal: str, agents: list[str], api_key: str, *,
             await record_org_tokens(org_id, total_tokens, None, ref_type="agent_plan")
         except Exception:
             pass  # metering must never turn a successful reply into an error
+        if ctx is not None:
+            from app.ai.providers.anthropic import AnthropicProvider
+            cost_usd = AnthropicProvider().calculate_cost(
+                model, msg.usage.input_tokens, msg.usage.output_tokens,
+            )
+            await ctx.report_usage(cost_usd, total_tokens)
         text  = msg.content[0].text.strip()
         tasks = [line.strip() for line in text.splitlines() if line.strip()]
         # Validate each task starts with a known agent

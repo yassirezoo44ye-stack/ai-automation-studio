@@ -13,7 +13,7 @@ import sys
 import unittest
 import unittest.mock
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -137,6 +137,68 @@ class TestRunBudget(unittest.IsolatedAsyncioTestCase):
         b = RunBudget()
         b.record(1_000_000.0, 1_000_000)
         self.assertFalse(b.exceeded)
+
+
+class TestPlanAgentCostReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_llm_plan_reports_calculated_cost_not_hand_rolled_math(self):
+        from app.agents.builtin.plan_agent import _llm_plan
+        from app.ai.providers.anthropic import AnthropicProvider
+
+        fake_msg = MagicMock()
+        fake_msg.usage.input_tokens = 100
+        fake_msg.usage.output_tokens = 50
+        fake_msg.content = [MagicMock(text="analyze .\nbuild .")]
+
+        fake_client = MagicMock()
+        fake_client.messages.create = AsyncMock(return_value=fake_msg)
+
+        ctx = _ctx()
+        ctx.budget = RunBudget()
+
+        expected_cost = AnthropicProvider().calculate_cost(
+            "claude-haiku-4-5-20251001", 100, 50,
+        )
+
+        with unittest.mock.patch("anthropic.AsyncAnthropic", return_value=fake_client):
+            await _llm_plan("build and deploy", ["analyze", "build", "deploy"], "fake-key", ctx)
+
+        self.assertAlmostEqual(ctx.budget.spent_usd, expected_cost)
+        self.assertEqual(ctx.budget.spent_tokens, 150)
+
+
+class TestAnalyzeAgentCostReporting(unittest.IsolatedAsyncioTestCase):
+    async def test_code_review_reports_calculated_cost_not_hand_rolled_math(self):
+        from app.agents.builtin.analyze_agent import AnalyzeAgent
+        from app.ai.providers.anthropic import AnthropicProvider
+
+        fake_msg = MagicMock()
+        fake_msg.usage.input_tokens = 200
+        fake_msg.usage.output_tokens = 80
+        fake_msg.content = [MagicMock(text="Looks fine.")]
+
+        fake_client = MagicMock()
+        fake_client.messages.create = AsyncMock(return_value=fake_msg)
+
+        ctx = _ctx()
+        ctx.budget = RunBudget()
+        ctx.organization_id = None
+
+        expected_cost = AnthropicProvider().calculate_cost(
+            "claude-haiku-4-5-20251001", 200, 80,
+        )
+
+        agent = AnalyzeAgent()
+        with unittest.mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "fake-key"}), \
+             unittest.mock.patch("anthropic.AsyncAnthropic", return_value=fake_client), \
+             unittest.mock.patch("pathlib.Path.exists", return_value=True), \
+             unittest.mock.patch("pathlib.Path.stat") as mock_stat, \
+             unittest.mock.patch("pathlib.Path.read_text", return_value="print('hi')"):
+            mock_stat.return_value.st_size = 10
+            result = await agent._code_review("fake_file.py", ctx)
+
+        self.assertTrue(result.success)
+        self.assertAlmostEqual(ctx.budget.spent_usd, expected_cost)
+        self.assertEqual(ctx.budget.spent_tokens, 280)
 
 
 if __name__ == "__main__":
