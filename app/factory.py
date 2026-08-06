@@ -454,10 +454,25 @@ def create_app() -> FastAPI:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.
                 from app.core.jwt_utils import decode_access_token
+                import jwt as _pyjwt
+                if not bearer:
+                    return JSONResponse(status_code=401, content={"detail": "Subscription required"})
                 try:
-                    if not bearer:
-                        raise ValueError("no bearer")
                     decode_access_token(bearer)
+                except _pyjwt.ExpiredSignatureError:
+                    # Distinct from "invalid/missing" so a client can tell
+                    # "silently refresh and retry" apart from "force a full
+                    # re-login" — previously every failure reason (expired,
+                    # invalid signature, missing entirely) collapsed into
+                    # the same generic message here, even though
+                    # get_current_user (app/routers/auth_users.py) already
+                    # made this exact distinction for the handful of routes
+                    # it guards. Same shape as the existing QuotaExceeded/
+                    # BulkheadFull handlers above (detail + machine-readable
+                    # "error" key).
+                    return JSONResponse(status_code=401, content={
+                        "detail": "Token expired", "error": "token_expired",
+                    })
                 except Exception:
                     return JSONResponse(status_code=401, content={"detail": "Subscription required"})
         return await call_next(request)

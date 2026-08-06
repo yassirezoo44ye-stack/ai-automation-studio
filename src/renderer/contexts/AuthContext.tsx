@@ -155,6 +155,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     doRefreshRef.current = doRefresh;
   }, [doRefresh]);
 
+  // Expose the deduped refresh function so shared/utils/api.ts's apiFetch
+  // can trigger a silent refresh-and-retry on a backend-flagged expired-JWT
+  // 401, without this module importing React context machinery — same
+  // window-global-bridge pattern OrgContext already uses for org id.
+  useEffect(() => {
+    (window as unknown as Record<string, typeof doRefresh>).__axon_refresh_fn = doRefresh;
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__axon_refresh_fn;
+    };
+  }, [doRefresh]);
+
   const fetchMe = useCallback(async (token: string) => {
     const res = await apiFetch("/api/auth/me", {}, token);
     if (res.status === 401) {
@@ -260,6 +271,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }).catch(() => {});
     }
     localStorage.removeItem(REFRESH_KEY);
+    // Previously left untouched: a stale, still-cryptographically-valid
+    // sub_token (30-day TTL, independent of this JWT logout entirely)
+    // remained fully usable by anything sending X-Sub-Token until it
+    // naturally expired or the next login overwrote it. Also clear
+    // OrgContext's persisted/global org selection here directly (rather
+    // than via a cross-import — OrgContext already depends on AuthContext,
+    // so the reverse would be circular) so a subsequent login by a
+    // different user on the same device can't inherit the previous user's
+    // org context for the brief window before OrgProvider re-fetches.
+    localStorage.removeItem("sub_token");
+    localStorage.removeItem("axon_current_org_id");
+    delete (window as unknown as Record<string, unknown>).__axon_org_id;
     setGlobalToken(null);
     setUser(null);
     setAccessToken(null);

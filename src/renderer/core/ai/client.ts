@@ -2,7 +2,7 @@
  * Generic AI client — all calls go through /api/ai/*.
  * Zero provider imports. Zero hardcoded model strings.
  */
-import { apiFetch, apiJSON, getToken, API } from "../../shared/utils/api";
+import { apiFetch, apiJSON } from "../../shared/utils/api";
 
 import type {
   CompletionResponse,
@@ -25,12 +25,23 @@ export async function complete(req: InferenceRequest): Promise<CompletionRespons
   });
 }
 
-/** Returns the raw Response so the caller can consume SSE. */
+/**
+ * Returns the raw Response so the caller can consume SSE.
+ *
+ * Previously built its own headers with only X-Sub-Token, never
+ * Authorization: Bearer — the one call site in the app that didn't go
+ * through apiFetch()/authH(). It "worked" in practice only because
+ * main.tsx's global window.fetch patch happened to add the Bearer header
+ * on top whenever window.__axon_access_token was set — a single point of
+ * failure with no redundancy, unlike every other call site (which builds
+ * both headers directly and doesn't depend on that patch at all). Routing
+ * through apiFetch() closes that gap and also picks up X-Organization-Id,
+ * which this endpoint was silently missing entirely.
+ */
 export async function streamRaw(req: InferenceRequest): Promise<Response> {
-  const res = await fetch(`${API}/api/ai/stream`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json", "X-Sub-Token": getToken() },
-    body:    JSON.stringify(req),
+  const res = await apiFetch("/api/ai/stream", {
+    method: "POST",
+    body:   JSON.stringify(req),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);

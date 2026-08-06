@@ -5,7 +5,7 @@ import stripe
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.core.auth import make_token, verify_token
+from app.core.auth import verify_token
 from app.core.config import STRIPE_PRICE_ID, APP_URL
 from app.core.db import get_pool
 from app.core.rate_limit import _real_ip, check_rate_limit
@@ -39,6 +39,22 @@ async def create_checkout(req: CheckoutRequest):
 
 @router.get("/api/subscription/status")
 async def subscription_status(email: str, request: Request):
+    """Read-only status check — no side effects, no token issuance.
+
+    SECURITY FIX: this endpoint previously auto-enrolled ANY caller-supplied,
+    unverified email into a fresh 7-day trial and handed back a fully
+    authenticated `token` scoped to that email — anyone who knew or guessed
+    a victim's email address could obtain a working session as that user
+    with zero proof of ownership (no password, no verification link).
+    Confirmed unused by the current frontend and referenced nowhere else in
+    this repo before this fix (only this router's own definition and a
+    README listing). It now only reports whether `email` already has an
+    active PAID subscription on file — it never creates a trial record and
+    never mints a token. Real account/trial creation goes through
+    POST /api/auth/register (password-protected) or the Stripe checkout
+    flow, both of which already require proof of identity this anonymous
+    GET had no way to check.
+    """
     if not check_rate_limit(f"sub:{_real_ip(request)}", max_calls=10, window=60):
         raise HTTPException(429, "Too many requests. Try again later.")
 
@@ -46,44 +62,30 @@ async def subscription_status(email: str, request: Request):
         sub = await conn.fetchrow(
             "SELECT status, current_period_end FROM subscriptions WHERE email=$1", email
         )
-        if sub and sub["status"] == "active" and (
-            sub["current_period_end"] is None or sub["current_period_end"] > datetime.utcnow()
-        ):
-            return {"active": True, "trial": False, "token": make_token(email, False, 0)}
-
-        trial = await conn.fetchrow("SELECT started_at FROM trials WHERE email=$1", email)
-        if not trial:
-            await conn.execute(
-                "INSERT INTO trials (email) VALUES ($1) ON CONFLICT DO NOTHING", email
-            )
-            trial = await conn.fetchrow("SELECT started_at FROM trials WHERE email=$1", email)
-
-        elapsed = (datetime.utcnow() - trial["started_at"].replace(tzinfo=None)).days
-        days_remaining = max(0, 7 - elapsed)
-        if days_remaining > 0:
-            return {
-                "active": True,
-                "trial": True,
-                "days_remaining": days_remaining,
-                "token": make_token(email, True, days_remaining),
-            }
-
-    return {"active": False, "trial_expired": True}
+    active = bool(sub and sub["status"] == "active" and (
+        sub["current_period_end"] is None or sub["current_period_end"] > datetime.utcnow()
+    ))
+    return {"active": active}
 
 
 @router.post("/api/subscription/verify")
 async def verify_session(request: Request):
+    """Kept read-only for backward compatibility with any still-existing
+    holder of a token minted before the fix above — reports validity only,
+    no longer re-signs/extends it. Silently renewing a token forever with
+    no password re-check (the previous behavior) is a real, separate
+    weakness — deliberately not fixed here to keep this security patch
+    scoped; flagged as follow-up tech debt. This endpoint mints nothing
+    itself either way, so it does not reopen the vulnerability fixed above."""
     body = await request.json()
     token = body.get("token", "")
     payload = verify_token(token)
     if not payload:
         return {"valid": False}
-    refreshed = make_token(payload["e"], payload.get("trial", False), payload.get("dr", 0))
     return {
         "valid": True,
         "trial": payload.get("trial", False),
         "days_remaining": payload.get("dr", 0),
-        "token": refreshed,
     }
 
 

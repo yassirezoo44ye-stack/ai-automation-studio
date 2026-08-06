@@ -23,18 +23,61 @@ export function authH(extra?: Record<string, string>): Record<string, string> {
   return h;
 }
 
-/** Authenticated fetch — all /api/* calls must use this. */
-export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+/** Set by AuthContext on mount to its deduped doRefresh() — lets this
+ * module trigger a silent token refresh without importing React context
+ * machinery (same window-global-bridge pattern already used for the
+ * access token/org id above). */
+type RefreshFn = () => Promise<{ token: string | null; networkError?: string }>;
+function getRefreshFn(): RefreshFn | undefined {
+  return (window as unknown as Record<string, RefreshFn | undefined>).__axon_refresh_fn;
+}
+
+function buildHeaders(path: string, init?: RequestInit): Record<string, string> {
   const jwt = getJwt();
   const orgId = getOrgId();
-  const headers: Record<string, string> = {
+  return {
     "X-Sub-Token": getToken(),
     ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     ...(orgId ? { "X-Organization-Id": orgId } : {}),
     ...(init?.body != null ? { "Content-Type": "application/json" } : {}),
     ...(init?.headers as Record<string, string> ?? {}),
   };
-  return fetch(`${API}${path}`, { ...init, headers });
+}
+
+/**
+ * Authenticated fetch — all /api/* calls must use this.
+ *
+ * On a 401 that the backend has specifically flagged as an expired JWT
+ * (`{"error": "token_expired"}`, see app/factory.py's api_auth_middleware),
+ * attempts exactly one silent refresh-and-retry before giving up — this is
+ * the only place that recovery happens; previously every 401 (expired,
+ * invalid, or missing credentials, indistinguishable from the client's
+ * side before this fix) just propagated to the caller as a hard failure,
+ * with a background 13-minute timer as the sole renewal mechanism (which
+ * a backgrounded/throttled tab or a missed tick could outrun). Never
+ * retries for /api/auth/* itself, and never loops more than once even if
+ * the retried request also comes back 401.
+ */
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(`${API}${path}`, { ...init, headers: buildHeaders(path, init) });
+
+  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+    let expired = false;
+    try {
+      expired = (await res.clone().json())?.error === "token_expired";
+    } catch {
+      // Non-JSON or empty 401 body — not our refreshable shape.
+    }
+    if (expired) {
+      const refresh = getRefreshFn();
+      const { token } = (await refresh?.()) ?? { token: null };
+      if (token) {
+        return fetch(`${API}${path}`, { ...init, headers: buildHeaders(path, init) });
+      }
+    }
+  }
+
+  return res;
 }
 
 // ── Structured API error ──────────────────────────────────────────────────────
