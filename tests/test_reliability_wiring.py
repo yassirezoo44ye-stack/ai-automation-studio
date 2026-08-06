@@ -134,16 +134,6 @@ class TestCircuitBreakerWiredIntoRealTraffic(unittest.TestCase):
         mod = importlib.import_module(module_name)
         return inspect.getsource(mod)
 
-    def test_agents_router_wired(self):
-        src = self._source("app.routers.agents")
-        self.assertIn("ai_circuit_precheck", src)
-        self.assertIn("ai_circuit_report", src)
-
-    def test_design_router_wired(self):
-        src = self._source("app.routers.design")
-        self.assertIn("ai_circuit_precheck", src)
-        self.assertIn("ai_circuit_report", src)
-
     def test_social_router_wired(self):
         src = self._source("app.routers.social")
         self.assertIn("ai_circuit_precheck", src)
@@ -154,42 +144,46 @@ class TestCircuitBreakerWiredIntoRealTraffic(unittest.TestCase):
         self.assertIn("ai_circuit_precheck", src)
         self.assertIn("ai_circuit_report", src)
 
-    def test_tasks_router_wired(self):
-        src = self._source("app.routers.tasks")
-        self.assertIn("ai_circuit_precheck", src)
-        self.assertIn("ai_circuit_report", src)
 
-
-class TestChatBuildRoutersRouteThroughInferenceEngine(unittest.TestCase):
-    """chat.py/build.py were migrated off manual ai_circuit_precheck()/
+class TestMigratedRoutersRouteThroughInferenceEngine(unittest.TestCase):
+    """chat.py/build.py (Commit 1) then agents.py/design.py/tasks.py
+    (Commit 2) were migrated off manual ai_circuit_precheck()/
     ai_circuit_report() onto InferenceEngine (app/core/ai/inference/
     engine.py), which already applies the same circuit_breaker singleton
-    (same target_id="anthropic") internally via platform_registry — see
-    tests/test_reliability_wiring.py's git history for the commit that
-    made this change. Keeping the manual helpers around after this
-    migration would double-count every success/failure against the same
-    breaker bucket, so their ABSENCE here is the regression guard (the
-    inverse of TestCircuitBreakerWiredIntoRealTraffic above, which still
-    asserts PRESENCE for the routers that haven't been migrated yet)."""
+    (same target_id="anthropic") internally via platform_registry. Keeping
+    the manual helpers around after this migration would double-count
+    every success/failure against the same breaker bucket, so their
+    ABSENCE here is the regression guard (the inverse of
+    TestCircuitBreakerWiredIntoRealTraffic above, which still asserts
+    PRESENCE for the routers that haven't been migrated yet —
+    youtube.py/social.py, Commit 3)."""
 
     def _source(self, module_name: str) -> str:
         import importlib
         mod = importlib.import_module(module_name)
         return inspect.getsource(mod)
 
-    def test_chat_router_no_longer_self_wires_circuit_breaker(self):
-        src = self._source("app.routers.chat")
+    def _assert_migrated(self, module_name: str):
+        src = self._source(module_name)
         self.assertNotIn("ai_circuit_precheck", src)
         self.assertNotIn("ai_circuit_report", src)
         self.assertIn("InferenceEngine", src)
         self.assertIn("auto_tools=False", src)
 
+    def test_chat_router_no_longer_self_wires_circuit_breaker(self):
+        self._assert_migrated("app.routers.chat")
+
     def test_build_router_no_longer_self_wires_circuit_breaker(self):
-        src = self._source("app.routers.build")
-        self.assertNotIn("ai_circuit_precheck", src)
-        self.assertNotIn("ai_circuit_report", src)
-        self.assertIn("InferenceEngine", src)
-        self.assertIn("auto_tools=False", src)
+        self._assert_migrated("app.routers.build")
+
+    def test_agents_router_no_longer_self_wires_circuit_breaker(self):
+        self._assert_migrated("app.routers.agents")
+
+    def test_design_router_no_longer_self_wires_circuit_breaker(self):
+        self._assert_migrated("app.routers.design")
+
+    def test_tasks_router_no_longer_self_wires_circuit_breaker(self):
+        self._assert_migrated("app.routers.tasks")
 
 
 class TestBulkheadWiredIntoRemainingRouters(unittest.TestCase):

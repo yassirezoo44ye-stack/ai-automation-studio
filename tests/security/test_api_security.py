@@ -186,12 +186,16 @@ class TestConversationsIsScoped:
         pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
         foreign_conv_id = str(uuid.uuid4())
+        # tasks.py no longer calls get_ai_client() at all (AI Gateway
+        # migration — routes through InferenceEngine.complete() instead,
+        # constructed even later, only after the ownership check below
+        # already passes). The 404 from the ownership JOIN finding nothing
+        # fires before any AI-layer code is reached either way.
         with patch("app.routers.tasks.get_pool", return_value=pool), \
              patch("app.core.db.get_pool", return_value=pool), \
              patch("app.routers.tasks.owner_email", return_value=OWNER_A_EMAIL), \
              patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL), \
-             patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value=None)), \
-             patch("app.routers.tasks.get_ai_client", return_value=MagicMock()):
+             patch("app.tenancy.context.optional_org_id", new=AsyncMock(return_value=None)):
             with TestClient(app, raise_server_exceptions=False) as c:
                 res = c.post(
                     f"/api/tasks/from-conversation/{foreign_conv_id}",

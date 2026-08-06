@@ -5,11 +5,11 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from app.ai.models import CompletionRequest, Message
+from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
 from app.core.db import get_pool
-from app.core.helpers import (
-    get_async_ai_client, resolve_project_id, ai_circuit_precheck, ai_circuit_report,
-)
+from app.core.helpers import resolve_project_id
 from app.core.reliability import get_bulkhead
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
@@ -50,7 +50,6 @@ class DesignSaveRequest(BaseModel):
 async def design_ai_generate(req: DesignAIRequest, request: Request):
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_async_ai_client()
 
     w, h = DESIGN_SIZES.get(req.template or "", (1080, 1080))
 
@@ -83,25 +82,33 @@ Rules:
 - Return ONLY the JSON, no explanation
 """
 
+    request_obj = CompletionRequest(
+        messages=[Message(role="user", content=f"Design brief: {req.prompt}\nTemplate: {req.template}")],
+        model="claude-sonnet-4-6",
+        max_tokens=3000,
+        temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
+        system=system,
+        conversation_id=None,
+        prompt_id=None,
+        memory_enabled=False,
+        tools=None,
+        stream=False,
+    )
+    engine = InferenceEngine(pool=get_pool())
     async with get_bulkhead("design", 8).acquire():
-        ai_circuit_precheck()
         try:
-            msg = await ai.messages.create(
-                model="claude-sonnet-4-6", max_tokens=3000,
-                system=system,
-                messages=[{"role": "user", "content": f"Design brief: {req.prompt}\nTemplate: {req.template}"}],
-            )
+            resp = await engine.complete(request_obj, user_id=None, org_id=None, auto_tools=False)
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
         except Exception as e:
-            ai_circuit_report(False)
             raise HTTPException(502, str(e))
-    ai_circuit_report(True)
+
     try:
-        total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
-        await record_org_tokens(org_id, total_tokens, None, ref_type="design")
+        await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
     except Exception:
         pass  # metering must never turn a successful reply into an error
     try:
-        raw = msg.content[0].text.strip()
+        raw = resp.content.strip()
         if raw.startswith("```"):
             raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
         canvas_json = json.loads(raw)
@@ -255,26 +262,35 @@ class AssistantRequest(BaseModel):
 
 
 async def _call_claude(
-    ai, system: str, user: str, max_tokens: int = 1200, *, org_id: Optional[str] = None,
+    system: str, user: str, max_tokens: int = 1200, *, org_id: Optional[str] = None,
 ) -> str:
+    """Callers (ai_palette/ai_fonts/ai_suggestions below) each wrap this in a
+    broad try/except that falls back to a hardcoded default response on ANY
+    failure — including a circuit-open RuntimeError, exactly as a raised
+    HTTPException from the old manual circuit-breaker precheck (removed by
+    this migration) was already caught by that same broad except before.
+    No new error handling needed here; re-raising unchanged preserves that
+    fallback behavior."""
+    request_obj = CompletionRequest(
+        messages=[Message(role="user", content=user)],
+        model="claude-haiku-4-5-20251001",
+        max_tokens=max_tokens,
+        temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
+        system=system,
+        conversation_id=None,
+        prompt_id=None,
+        memory_enabled=False,
+        tools=None,
+        stream=False,
+    )
+    engine = InferenceEngine(pool=get_pool())
     async with get_bulkhead("design", 8).acquire():
-        ai_circuit_precheck()
-        try:
-            msg = await ai.messages.create(
-                model="claude-haiku-4-5-20251001", max_tokens=max_tokens,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-            )
-        except Exception:
-            ai_circuit_report(False)
-            raise
-    ai_circuit_report(True)
+        resp = await engine.complete(request_obj, user_id=None, org_id=None, auto_tools=False)
     try:
-        total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
-        await record_org_tokens(org_id, total_tokens, None, ref_type="design")
+        await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
     except Exception:
         pass  # metering must never turn a successful reply into an error
-    raw = msg.content[0].text.strip()
+    raw = resp.content.strip()
     if raw.startswith("```"):
         raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
     return raw
@@ -285,7 +301,6 @@ async def ai_palette(req: PaletteRequest, request: Request):
     """Claude generates a design color palette as JSON."""
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_async_ai_client()
     system = (
         'You are a professional color designer. Return ONLY a JSON object: '
         '{"colors":[{"name":"Primary","hex":"#4f46e5","role":"primary"},...]}'
@@ -293,7 +308,7 @@ async def ai_palette(req: PaletteRequest, request: Request):
         ' No markdown, no explanation.'
     )
     try:
-        raw = await _call_claude(ai, system, f"Design theme: {req.prompt}", org_id=org_id)
+        raw = await _call_claude(system, f"Design theme: {req.prompt}", org_id=org_id)
         data = json.loads(raw)
         return data
     except (json.JSONDecodeError, Exception):
@@ -313,7 +328,6 @@ async def ai_fonts(req: FontRequest, request: Request):
     """Claude suggests font pairings for the given style."""
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_async_ai_client()
     system = (
         'You are a typography expert. Return ONLY a JSON object: '
         '{"pairs":[{"label":"Modern","heading":{"family":"Inter","weight":700},'
@@ -321,7 +335,7 @@ async def ai_fonts(req: FontRequest, request: Request):
         ' with 3 pairs for the requested style. Only use Google Fonts. No markdown.'
     )
     try:
-        raw = await _call_claude(ai, system, f"Style: {req.style}, Usage: {req.usage}", org_id=org_id)
+        raw = await _call_claude(system, f"Style: {req.style}, Usage: {req.usage}", org_id=org_id)
         return json.loads(raw)
     except (json.JSONDecodeError, Exception):
         return {
@@ -338,7 +352,6 @@ async def ai_suggestions(req: SuggestionsRequest, request: Request):
     """Claude analyzes the canvas and suggests design improvements."""
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_async_ai_client()
     obj_count = len(req.canvas.get("objects", []))
     system = (
         'You are a senior graphic designer reviewing a Fabric.js canvas. '
@@ -347,7 +360,7 @@ async def ai_suggestions(req: SuggestionsRequest, request: Request):
         'with 3-5 actionable suggestions. Types: color, layout, typography, spacing. No markdown.'
     )
     try:
-        raw = await _call_claude(ai, system,
+        raw = await _call_claude(system,
                            f"Canvas has {obj_count} objects. JSON: {json.dumps(req.canvas)[:800]}",
                            org_id=org_id)
         return json.loads(raw)
@@ -360,27 +373,39 @@ async def ai_assistant(req: AssistantRequest, request: Request):
     """Claude as a conversational design assistant."""
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_async_ai_client()
     system = (
         "You are an expert graphic designer and Fabric.js specialist. "
         "Help the user improve their design. Be concise and actionable. "
         "When suggesting canvas changes, include JSON action objects in your response."
     )
+    engine = InferenceEngine(pool=get_pool())
     async with get_bulkhead("design", 8).acquire():
-        ai_circuit_precheck()
         try:
-            msg = await ai.messages.create(
-                model="claude-sonnet-4-6", max_tokens=1000,
+            # Message(role=...) construction happens inside this try — a
+            # caller-supplied role outside {"system","user","assistant","tool"}
+            # now fails pydantic validation locally instead of reaching
+            # Anthropic's API and coming back as a BadRequestError, but the
+            # client-visible outcome is unchanged: still a 502.
+            request_obj = CompletionRequest(
+                messages=[Message(role=m["role"], content=m["content"]) for m in req.messages],
+                model="claude-sonnet-4-6",
+                max_tokens=1000,
+                temperature=1.0,  # match Anthropic's own API default
                 system=system,
-                messages=[{"role": m["role"], "content": m["content"]} for m in req.messages],
+                conversation_id=None,
+                prompt_id=None,
+                memory_enabled=False,
+                tools=None,
+                stream=False,
             )
+            resp = await engine.complete(request_obj, user_id=None, org_id=None, auto_tools=False)
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
         except Exception as e:
-            ai_circuit_report(False)
             raise HTTPException(502, str(e))
-    ai_circuit_report(True)
+
     try:
-        total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
-        await record_org_tokens(org_id, total_tokens, None, ref_type="design")
+        await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
     except Exception:
         pass  # metering must never turn a successful reply into an error
-    return {"message": msg.content[0].text, "actions": []}
+    return {"message": resp.content, "actions": []}

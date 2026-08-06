@@ -6,11 +6,11 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.ai.models import CompletionRequest, Message
+from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
 from app.core.db import get_pool, ensure_agents_table
-from app.core.helpers import (
-    get_ai_client, resolve_project_id, ai_circuit_precheck, ai_circuit_report,
-)
+from app.core.helpers import resolve_project_id
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
@@ -123,7 +123,6 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
     bulkhead = get_bulkhead("agents", 16)
     ai_rate_limit(request)
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
 
     await ensure_agents_table()
 
@@ -174,32 +173,51 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
         except Exception:
             yield f"data: {json.dumps({'type': 'error', 'message': 'Server is at capacity — please retry shortly.'})}\n\n"
             return
-        try:
-            ai_circuit_precheck()
-        except HTTPException as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': e.detail})}\n\n"
-            await bulkhead_cm.__aexit__(None, None, None)
-            return
         full_text = ""
         try:
-            with ai.messages.stream(
+            yield f"data: {json.dumps({'type':'conv_id','conv_id':str(conv_id)})}\n\n"
+
+            request_obj = CompletionRequest(
+                messages=[Message(role=h["role"], content=h["content"]) for h in history],
                 model=agent["model"] or "claude-sonnet-4-6",
                 max_tokens=2048,
+                temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
                 system=agent["system_prompt"],
-                messages=history,
-            ) as stream:
-                yield f"data: {json.dumps({'type':'conv_id','conv_id':str(conv_id)})}\n\n"
-                for text in stream.text_stream:
-                    full_text += text
-                    yield f"data: {json.dumps({'type':'delta','text':text})}\n\n"
+                conversation_id=None,  # agents.py reuses chat.py's own conversations/messages
+                prompt_id=None,        # tables, distinct from AIGateway's ai_conversations/
+                memory_enabled=False,  # ai_messages — same isolation as chat.py's migration.
+                tools=None,
+                stream=True,
+            )
+            engine = InferenceEngine(pool=get_pool())
+            total_tokens = 0
+            stream_error: Optional[str] = None
+
+            async for chunk in engine.stream(
+                request_obj, user_id=str(uid), org_id=None, auto_tools=False,
+            ):
+                ctype = chunk.get("type")
+                if ctype == "delta":
+                    text = chunk.get("text") or ""
+                    if text:
+                        full_text += text
+                        yield f"data: {json.dumps({'type':'delta','text':text})}\n\n"
+                elif ctype == "usage" and chunk.get("usage"):
+                    total_tokens = chunk["usage"].get("total_tokens", 0)
+                elif ctype == "error":
+                    stream_error = chunk.get("error") or "Unknown AI provider error"
+                    break
+
+            if stream_error:
+                yield f"data: {json.dumps({'type':'error','message':stream_error})}\n\n"
+                return
+
+            if total_tokens:
                 try:
-                    final = stream.get_final_message()
-                    total_tokens = final.usage.input_tokens + final.usage.output_tokens
                     await record_org_tokens(org_id, total_tokens, str(conv_id), ref_type="agents")
                 except Exception:
                     pass  # metering must never turn a successful reply into an error
 
-            ai_circuit_report(True)
             yield f"data: {json.dumps({'type':'done'})}\n\n"
 
             try:
@@ -216,7 +234,6 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
             except Exception:
                 pass
         except Exception as e:
-            ai_circuit_report(False)
             yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
         finally:
             await bulkhead_cm.__aexit__(None, None, None)

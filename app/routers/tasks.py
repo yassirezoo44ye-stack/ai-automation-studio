@@ -7,11 +7,11 @@ import anthropic
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.ai.models import CompletionRequest, Message
+from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_email, owner_user_id
 from app.core.db import get_pool, ensure_tasks_table
-from app.core.helpers import (
-    get_ai_client, anthropic_error_message, ai_circuit_precheck, ai_circuit_report,
-)
+from app.core.helpers import anthropic_error_message
 from app.core.reliability import get_bulkhead
 from app.core.org_quota import check_org_quota, record_org_tokens
 
@@ -226,7 +226,6 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
     owner = owner_email(request)
     conv_id = _parse_uuid(conversation_id, "conversation_id")
     org_id = await check_org_quota(request)
-    ai = get_ai_client()
 
     async with get_pool().acquire() as conn:
         # conversations has no owner column of its own — ownership is
@@ -257,30 +256,37 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
 
     transcript = "\n".join(f"{m['role']}: {m['content']}" for m in msgs)[:12000]
 
+    request_obj = CompletionRequest(
+        messages=[Message(role="user", content=transcript)],
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
+        system=TASK_EXTRACT_SYSTEM,
+        conversation_id=None,  # tasks.py reads the conversations/messages transcript itself;
+        prompt_id=None,        # do not let the engine's own history/memory enrichment touch
+        memory_enabled=False,  # the unrelated ai_conversations/ai_messages tables.
+        tools=None,
+        stream=False,
+    )
+    engine = InferenceEngine(pool=get_pool())
     async with get_bulkhead("tasks", 16).acquire():
-        ai_circuit_precheck()
         try:
-            msg = ai.messages.create(
-                model="claude-sonnet-4-6", max_tokens=2000,
-                system=TASK_EXTRACT_SYSTEM,
-                messages=[{"role": "user", "content": transcript}],
+            resp = await engine.complete(
+                request_obj, user_id=str(uid), org_id=None, auto_tools=False,
             )
         except anthropic.BadRequestError as e:
-            ai_circuit_report(False)
             raise HTTPException(402, anthropic_error_message(e))
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
         except Exception as e:
-            ai_circuit_report(False)
             raise HTTPException(502, str(e))
-        else:
-            ai_circuit_report(True)
 
     try:
-        total_tokens = msg.usage.input_tokens + msg.usage.output_tokens
-        await record_org_tokens(org_id, total_tokens, str(conv_id), ref_type="tasks")
+        await record_org_tokens(org_id, resp.usage.total_tokens, str(conv_id), ref_type="tasks")
     except Exception:
         pass  # metering must never turn a successful reply into an error
 
-    raw = msg.content[0].text.strip()
+    raw = resp.content.strip()
     if raw.startswith("```"):
         raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
     try:
