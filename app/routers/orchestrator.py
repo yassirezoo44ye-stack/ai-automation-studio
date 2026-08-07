@@ -174,8 +174,13 @@ async def run_workflow(body: WorkflowRunIn, request: Request):
         result = await platform.orchestrate(req)
         return {"content": result.content, "success": result.success}
 
+    # organization_id always comes from the verified caller context, never
+    # the client-supplied body.context — see get_execution()'s ownership
+    # check below, which this value has to match.
+    run_context = {**(body.context or {}), "organization_id": org_id}
+
     try:
-        execution = await platform.workflow.run(definition, _runner, body.context)
+        execution = await platform.workflow.run(definition, _runner, run_context)
         return {
             "execution_id":    execution.execution_id,
             "workflow_id":     execution.workflow_id,
@@ -188,19 +193,32 @@ async def run_workflow(body: WorkflowRunIn, request: Request):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/workflows/{execution_id}/resume")
-async def resume_workflow(execution_id: str, body: WorkflowResumeIn):
+def _owned_workflow_execution(execution_id: str, org_id: Optional[str]):
+    """Look up a workflow execution and verify it belongs to the caller's
+    org. 404 either way (not 403) — a caller outside this org must not be
+    able to tell "doesn't exist" apart from "exists, isn't yours". An
+    execution with no organization_id on record (started by a caller with
+    no verified org, e.g. no X-Organization-Id header) is only visible to
+    callers in that same no-org state — never treated as "everyone's"."""
     execution = platform.workflow.get_execution(execution_id)
-    if execution is None:
+    if execution is None or execution.context.get("organization_id") != org_id:
         raise HTTPException(status_code=404, detail=f"Execution not found: {execution_id}")
+    return execution
+
+
+@router.post("/workflows/{execution_id}/resume")
+async def resume_workflow(execution_id: str, body: WorkflowResumeIn, request: Request):
+    from app.tenancy.context import optional_org_id
+    org_id = await optional_org_id(request)
+    _owned_workflow_execution(execution_id, org_id)
     raise HTTPException(status_code=501, detail="Resume requires re-submitting the workflow definition")
 
 
 @router.get("/workflows/{execution_id}")
-async def get_execution(execution_id: str):
-    execution = platform.workflow.get_execution(execution_id)
-    if execution is None:
-        raise HTTPException(status_code=404, detail=f"Execution not found: {execution_id}")
+async def get_execution(execution_id: str, request: Request):
+    from app.tenancy.context import optional_org_id
+    org_id    = await optional_org_id(request)
+    execution = _owned_workflow_execution(execution_id, org_id)
     return {
         "execution_id":    execution.execution_id,
         "workflow_id":     execution.workflow_id,

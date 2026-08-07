@@ -15,16 +15,29 @@ GET  /api/commands/{name}
 POST /api/commands/register
     Register a new command from a plugin file at runtime.
     Body: {"plugin_path": "/abs/path/to/plugin.py"}
+
+Authorization (P0.5 security sweep, see docs/security-tenant-boundary-sweep.md):
+execute_command() dispatches into a process-wide command registry that
+includes app/commands/builtin/modify_cmd.py — "modify file" writes to any
+filesystem path the process can reach with NO PolicyEngine-style path
+restriction (unlike app/kernel/self_modify.py's SelfModifyingEngine, which
+this registry is a separate, independently-registered instance of).
+Previously reachable by any authenticated user of any org with only "some
+valid session" required. Now requires the same cross-org admin API-key
+mechanism as app/routers/kernel_api.py, which gates the equivalent
+capability on the AIKernel side. list_commands/describe_command are
+unchanged — read-only command metadata, no tenant data, no execution.
 """
 from __future__ import annotations
 
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.commands import get_registry, get_runner
+from app.core.api_keys import ApiKeyRecord, require_api_key
 
 log    = logging.getLogger(__name__)
 router = APIRouter(tags=["commands"])
@@ -49,7 +62,9 @@ class RegisterPluginRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/api/commands/execute")
-async def execute_command(req: ExecuteRequest):
+async def execute_command(
+    req: ExecuteRequest, key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"])),
+):
     """
     Execute a command.  Returns CommandResult as JSON.
     Never raises 5xx — errors are captured in the result.

@@ -14,27 +14,29 @@ require a real, authorized person) was reachable with zero authentication
 by anyone. Same shape of bug as the earlier chat.py /run(/stream) and
 arabic_api.py fixes this phase.
 
-KNOWN RESIDUAL GAP (flagged, not fixed here): the /api/ prefix now
-requires a real authenticated caller, but WorkflowRun/the approval
-registry (app/core/workflow/engine.py's WorkflowEngine._active +
-_approval_registry) carry no organization_id at all — active()/
-pending_approvals() return every org's runs, and approve()/reject()
-never verify the run belongs to the caller's org. Any authenticated user
-from ANY org can approve/reject/inspect another org's workflow step
-today. Closing this needs WorkflowRun to carry organization_id from
-WorkflowBuilder.build(context=...) through to the approval registry — a
-larger change than the auth fix above, tracked separately rather than
-folded into this commit.
+Tenant boundary (P0.5 security sweep, see
+docs/security-tenant-boundary-sweep.md — closes the "known residual gap"
+this file used to document here): every route now requires org_context
+and passes ctx.org_id into WorkflowEngine's active()/pending_approvals()/
+approve()/reject(), which filter/verify against each WorkflowRun's own
+context["organization_id"] (set server-side by whoever built the run —
+see WorkflowBuilder.build(context=...) and app/routers/orchestrator.py's
+run_workflow(), never a client-supplied field). A run with no
+organization_id on record is only visible to callers with no org context
+of their own — never treated as "everyone's". approve_step/reject_step
+404 (not 403) on a run that doesn't exist or isn't the caller's, same
+convention as app/routers/jobs_api.py.
 """
 from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.workflow import (
     WorkflowBuilder, RetryPolicy, get_workflow_engine,
 )
+from app.tenancy.context import OrgContext, org_context
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -64,33 +66,35 @@ async def _step_rollback_process(_context, _run_id, **_):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/active")
-def list_active():
+def list_active(ctx: OrgContext = Depends(org_context)):
     engine = get_workflow_engine()
-    return {"runs": engine.active()}
+    return {"runs": engine.active(organization_id=ctx.org_id)}
 
 
 @router.get("/approvals/pending")
-def list_pending_approvals():
+def list_pending_approvals(ctx: OrgContext = Depends(org_context)):
     engine = get_workflow_engine()
-    return {"pending": engine.pending_approvals()}
+    return {"pending": engine.pending_approvals(organization_id=ctx.org_id)}
 
 
 @router.post("/approvals/{run_id}/{step_id}/approve")
-def approve_step(run_id: str, step_id: str):
+def approve_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_context)):
     engine = get_workflow_engine()
-    engine.approve(run_id, step_id)
+    if not engine.approve(run_id, step_id, organization_id=ctx.org_id):
+        raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
     return {"approved": True, "run_id": run_id, "step_id": step_id}
 
 
 @router.post("/approvals/{run_id}/{step_id}/reject")
-def reject_step(run_id: str, step_id: str):
+def reject_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_context)):
     engine = get_workflow_engine()
-    engine.reject(run_id, step_id)
+    if not engine.reject(run_id, step_id, organization_id=ctx.org_id):
+        raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
     return {"rejected": True, "run_id": run_id, "step_id": step_id}
 
 
 @router.post("/demo")
-async def run_demo_workflow():
+async def run_demo_workflow(ctx: OrgContext = Depends(org_context)):
     """
     Execute a 3-step demo workflow (validate → process → notify).
     Step 'process' has a Saga compensation function.
@@ -108,7 +112,7 @@ async def run_demo_workflow():
               timeout_s=10)
         .step("notify", "Send notification", _step_notify,
               depends_on=["process"], timeout_s=5)
-        .build(context={"source": "demo"})
+        .build(context={"source": "demo", "organization_id": ctx.org_id})
     )
     result = await engine.execute(run, saga=True)
     return result.to_dict()

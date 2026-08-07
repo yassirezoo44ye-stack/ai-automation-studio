@@ -1725,7 +1725,16 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
     (app/commands/__init__.py's boot-time registration loop), not dead
     code. No legitimate consumer of the "register" sub-action exists
     anywhere in the repo. Fixed the same way: disabled outright, the
-    dangerous loader call removed from the code path entirely."""
+    dangerous loader call removed from the code path entirely.
+
+    P0.5 tenant-boundary sweep (docs/security-tenant-boundary-sweep.md):
+    POST /api/commands/execute now additionally requires
+    require_api_key(scopes=["admin"]) — a second, independent gate in
+    front of the handler-level DISABLED check these tests exercise. Both
+    tests here authenticate as an admin API key so they keep exercising
+    the handler's own defense-in-depth (a caller who legitimately has
+    admin access must still be refused this specific dangerous
+    sub-action), rather than just re-proving the outer gate."""
 
     def _app(self):
         from fastapi import FastAPI
@@ -1733,6 +1742,11 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
         app = FastAPI()
         app.include_router(router)
         return app
+
+    def _admin_headers(self):
+        from app.core.api_keys import ApiKeyRecord
+        admin_key = ApiKeyRecord(key_id="k", key_hash="h", name="admin", scopes=["admin"])
+        return admin_key, {"Authorization": "ApiKey axon_faketoken"}
 
     def test_modify_register_rejects_even_a_real_valid_plugin_file(self):
         """The strongest possible case: a real, readable, syntactically
@@ -1747,7 +1761,9 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
             )
 
             app = self._app()
-            with patch("app.commands.loader._load_file") as fake_load:
+            admin_key, headers = self._admin_headers()
+            with patch("app.commands.loader._load_file") as fake_load, \
+                 patch("app.core.api_keys.lookup_key", AsyncMock(return_value=admin_key)):
                 with TestClient(app, raise_server_exceptions=False) as c:
                     res = c.post(
                         "/api/commands/execute",
@@ -1755,6 +1771,7 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
                             "command": "modify",
                             "args": ["register", "evil", str(plugin_file)],
                         },
+                        headers=headers,
                     )
             fake_load.assert_not_called()
         body = res.json()
@@ -1763,7 +1780,9 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
 
     def test_modify_register_rejects_traversal_and_system_paths(self):
         app = self._app()
-        with patch("app.commands.loader._load_file") as fake_load:
+        admin_key, headers = self._admin_headers()
+        with patch("app.commands.loader._load_file") as fake_load, \
+             patch("app.core.api_keys.lookup_key", AsyncMock(return_value=admin_key)):
             with TestClient(app, raise_server_exceptions=False) as c:
                 for suspicious_path in (
                     "/etc/passwd",
@@ -1773,6 +1792,7 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
                     res = c.post(
                         "/api/commands/execute",
                         json={"command": "modify", "args": ["register", "x", suspicious_path]},
+                        headers=headers,
                     )
                     body = res.json()
                     self.assertFalse(body["success"], msg=suspicious_path)

@@ -15,16 +15,30 @@ POST /api/diagnostics/memory/search  Semantic memory search
 GET /api/diagnostics/codegen       Pending code-gen approvals
 POST /api/diagnostics/codegen/{run_id}/approve
 POST /api/diagnostics/codegen/{run_id}/reject
+
+Authorization (P0.5 security sweep, see docs/security-tenant-boundary-sweep.md):
+this is process-wide operator tooling, not tenant data — there is no
+OrgContext to check any of it against (background services, alert rules,
+and the codegen approval queue are all single, process-wide state, same
+shape as app/routers/kernel_api.py). The mutating/privileged actions below
+(start/stop a service, create/toggle an alert rule, approve/reject a
+codegen run) now require the same cross-org admin API-key mechanism
+kernel_api.py and usage_api.py already use — previously any authenticated
+user of any org could call them with zero role check. The read-only
+observability routes (health, metrics, traces, service/alert/memory/
+codegen listings) are unchanged: they expose operational telemetry, not
+tenant content, matching runtime_api.py's cache/stats precedent.
 """
 from __future__ import annotations
 
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
+from app.core.api_keys import ApiKeyRecord, require_api_key
 from app.core.ssrf_guard import UnsafeUrlError, assert_public_url
 
 log    = logging.getLogger(__name__)
@@ -85,7 +99,7 @@ async def diagnostics_services():
 
 
 @router.post("/services/{name}/start")
-async def service_start(name: str):
+async def service_start(name: str, key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"]))):
     from app.services.registry import get_service_registry
     ok = get_service_registry().start(name)
     if not ok:
@@ -94,7 +108,7 @@ async def service_start(name: str):
 
 
 @router.post("/services/{name}/stop")
-async def service_stop(name: str):
+async def service_stop(name: str, key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"]))):
     from app.services.registry import get_service_registry
     ok = get_service_registry().stop(name)
     if not ok:
@@ -137,7 +151,9 @@ async def list_alert_rules():
 
 
 @router.post("/alerts/rules", status_code=201)
-async def create_alert_rule(body: AlertRuleCreate):
+async def create_alert_rule(
+    body: AlertRuleCreate, key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"])),
+):
     if body.rule_type not in ("gauge_above", "counter_rate_above", "health_unhealthy"):
         raise HTTPException(400, "Invalid rule_type")
     from app.core.db import get_pool
@@ -152,7 +168,9 @@ async def create_alert_rule(body: AlertRuleCreate):
 
 
 @router.post("/alerts/rules/{rule_id}/toggle")
-async def toggle_alert_rule(rule_id: str, enabled: bool):
+async def toggle_alert_rule(
+    rule_id: str, enabled: bool, key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"])),
+):
     from app.core.db import get_pool
     async with get_pool().acquire() as conn:
         row = await conn.fetchrow(
@@ -227,7 +245,9 @@ class RejectRequest(BaseModel):
 
 
 @router.post("/codegen/{run_id}/approve")
-async def codegen_approve(run_id: str, req: ApproveRequest):
+async def codegen_approve(
+    run_id: str, req: ApproveRequest, key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"])),
+):
     from app.codegen.pipeline import get_codegen_pipeline
     result = get_codegen_pipeline().approve(run_id, approver=req.approver)
     if not result:
@@ -236,7 +256,9 @@ async def codegen_approve(run_id: str, req: ApproveRequest):
 
 
 @router.post("/codegen/{run_id}/reject")
-async def codegen_reject(run_id: str, req: RejectRequest):
+async def codegen_reject(
+    run_id: str, req: RejectRequest, key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"])),
+):
     from app.codegen.pipeline import get_codegen_pipeline
     result = get_codegen_pipeline().reject(run_id, reason=req.reason)
     if not result:

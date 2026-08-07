@@ -110,7 +110,27 @@ async def agent_ws(ws: WebSocket, session_id: str):
     Bidirectional channel for a live agent session.
     The agent publishes events to topic `agent:{session_id}`.
     Clients may send {"type": "cancel"} to abort the session.
+
+    Authorization (P0.5 security sweep, see
+    docs/security-tenant-boundary-sweep.md): requires the same JWT-via-
+    query-param auth as every other authenticated endpoint in this file.
+    The generic {"type":"subscribe","topic":<any>} relay that used to let a
+    connected client join ANY topic string by name has been removed — it
+    was reachable with zero authentication at all, and let a caller join
+    other users'/orgs' notifications:{user_id}, chat:org:{org_id}, and
+    system:{run_id} topics directly, bypassing every authorization check
+    those topics' own dedicated endpoints (notifications_ws/chat_ws/
+    system_run_ws below) enforce on a direct connection. No caller of this
+    relay exists anywhere in the app (confirmed: nothing publishes to an
+    "agent:"-prefixed topic, and no frontend code connects to this route),
+    so removing it changes no working behavior.
     """
+    token   = ws.query_params.get("token", "")
+    user_id = _user_id_from_ws_token(token)
+    if not user_id:
+        await ws.close(code=4401, reason="unauthorized")
+        return
+
     topic = f"agent:{session_id}"
     await manager.connect(ws, topic)
     hb    = asyncio.create_task(_heartbeat(ws))
@@ -136,12 +156,6 @@ async def agent_ws(ws: WebSocket, session_id: str):
                     await manager.broadcast(f"{topic}:control", {"action": "cancel"})
                     await manager.send(ws, {"type": "ack", "action": "cancel"})
 
-                elif kind == "subscribe":
-                    extra = msg.get("topic", "")
-                    if extra:
-                        await manager.connect(ws, extra)
-                        await manager.send(ws, {"type": "subscribed", "topic": extra})
-
             except asyncio.TimeoutError:
                 # No message for 2 minutes — send keep-alive
                 await manager.send(ws, {"type": "ping"})
@@ -164,7 +178,34 @@ async def job_ws(ws: WebSocket, job_id: str):
     Subscribe to background job progress.
     Server streams {"type": "progress", "pct": 0-100, "log": "..."} frames.
     Connection closes when job reaches a terminal state.
+
+    Authorization (P0.5 security sweep, see
+    docs/security-tenant-boundary-sweep.md): mirrors the already-fixed
+    REST GET /api/jobs/{job_id} (app/routers/jobs_api.py) — requires the
+    same JWT-via-query-param auth as this file's other authenticated
+    routes, plus a verified org_id (query param, checked against real
+    membership the same way app/routers/ws.py's chat_ws() already does)
+    that must match the job's own organization_id. This WS route
+    previously required no auth and no ownership check at all, exposing
+    any org's job snapshot/result/error to anyone who knew or guessed a
+    job_id.
     """
+    token   = ws.query_params.get("token", "")
+    user_id = _user_id_from_ws_token(token)
+    if not user_id:
+        await ws.close(code=4401, reason="unauthorized")
+        return
+
+    org_id = ws.query_params.get("org_id", "")
+    if not org_id:
+        await ws.close(code=4400, reason="missing org_id")
+        return
+    from app.tenancy import get_tenancy_service
+    role = await get_tenancy_service().get_member_role(org_id, user_id)
+    if role is None:
+        await ws.close(code=4403, reason="not a member of this organization")
+        return
+
     topic = f"job:{job_id}"
     await manager.connect(ws, topic)
     hb    = asyncio.create_task(_heartbeat(ws))
@@ -173,7 +214,10 @@ async def job_ws(ws: WebSocket, job_id: str):
         # Send current snapshot
         from app.core.jobs import get_job_queue
         job = await get_job_queue().get(job_id)
-        if not job:
+        # 404 either way (not "wrong org") — a non-member can't tell
+        # "doesn't exist" apart from "exists, isn't yours" (same
+        # convention as app/routers/jobs_api.py's get_job/cancel_job).
+        if not job or job.payload.get("organization_id") != org_id:
             await manager.send(ws, {"type": "error", "message": f"Job {job_id!r} not found"})
             return
 

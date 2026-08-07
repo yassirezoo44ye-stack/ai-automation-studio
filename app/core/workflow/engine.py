@@ -141,6 +141,9 @@ class WorkflowRun:
 
 # ── Approval registry ─────────────────────────────────────────────────────────
 
+_UNKNOWN_RUN = object()  # sentinel: run_id not in self._active, ownership unverifiable
+
+
 class ApprovalRegistry:
     """Thread-safe registry for human approval signals."""
 
@@ -502,21 +505,58 @@ class WorkflowEngine:
             await _publish_workflow_event(run, "workflow.completed")
             return run
 
-    def active(self) -> list[dict]:
-        return [r.to_dict() for r in self._active.values()]
+    def active(self, organization_id: str | None = None) -> list[dict]:
+        """organization_id=None (the default) returns every run, unfiltered
+        — existing/internal callers keep today's behavior. Passing it
+        (app/routers/workflow_api.py, since the P0.5 tenant-boundary sweep)
+        scopes results to runs whose own context["organization_id"] matches,
+        the same convention app/routers/orchestrator.py already uses for
+        workflow execution lookups."""
+        runs = self._active.values()
+        if organization_id is not None:
+            runs = [r for r in runs if r.context.get("organization_id") == organization_id]
+        return [r.to_dict() for r in runs]
 
-    def approve(self, run_id: str, step_id: str) -> bool:
+    def _run_org_id(self, run_id: str) -> str | None | object:
+        """Returns the run's organization_id, or a sentinel if the run is
+        no longer tracked in self._active (can't verify ownership either
+        way, so callers must treat that as deny, not allow)."""
+        run = self._active.get(run_id)
+        if run is None:
+            return _UNKNOWN_RUN
+        return run.context.get("organization_id")
+
+    def approve(self, run_id: str, step_id: str, organization_id: str | None = None) -> bool:
+        if organization_id is not None:
+            owner = self._run_org_id(run_id)
+            if owner is _UNKNOWN_RUN or owner != organization_id:
+                return False
         approval_id = f"{run_id}:{step_id}"
         _approval_registry.approve(approval_id)
         return True
 
-    def reject(self, run_id: str, step_id: str) -> bool:
+    def reject(self, run_id: str, step_id: str, organization_id: str | None = None) -> bool:
+        if organization_id is not None:
+            owner = self._run_org_id(run_id)
+            if owner is _UNKNOWN_RUN or owner != organization_id:
+                return False
         approval_id = f"{run_id}:{step_id}"
         _approval_registry.reject(approval_id)
         return True
 
-    def pending_approvals(self) -> list[str]:
-        return _approval_registry.pending()
+    def pending_approvals(self, organization_id: str | None = None) -> list[str]:
+        pending = _approval_registry.pending()
+        if organization_id is None:
+            return pending
+        # Only include approval ids we can positively verify belong to
+        # organization_id — deny-by-default for anything we can't confirm
+        # (e.g. the run already finished/dropped out of self._active).
+        owned = []
+        for approval_id in pending:
+            run_id = approval_id.rsplit(":", 1)[0]
+            if self._run_org_id(run_id) == organization_id:
+                owned.append(approval_id)
+        return owned
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
