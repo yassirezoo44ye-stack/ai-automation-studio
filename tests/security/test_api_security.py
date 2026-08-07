@@ -1799,5 +1799,108 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
         fake_load.assert_not_called()
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# subscription_status() — unauthenticated account impersonation (disabled)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestSubscriptionStatusImpersonationDisabled(unittest.TestCase):
+    """Security Closure Review of the "subscriptions.py::subscription_status"
+    Needs-Review finding from docs/security-tenant-boundary-sweep.md.
+
+    GET /api/subscription/status sits under PUBLIC_PREFIXES (no auth
+    required at all) and used to accept an arbitrary caller-supplied
+    `email`, minting a signed, 30-day access token for it (creating a
+    trial on the fly if none existed). That token is accepted at face
+    value by app.core.auth.owner_email()/owner_user_id() — the exact
+    resolver scoping every "legacy" endpoint (agents.py, build.py,
+    chat.py, design.py, package.py, projects.py, stats.py, tasks.py) to
+    "my data only". Confirmed via full reproduction (unauthenticated call
+    -> token -> owner_user_id() resolving to the real victim's users.id)
+    that this was a complete, unauthenticated account-takeover primitive
+    requiring nothing but a known/guessed email. Disabled outright,
+    matching this file's own TestModifyRegisterCommandDisabled precedent
+    (confirmed zero legitimate callers anywhere in the repo)."""
+
+    def _app(self):
+        from fastapi import FastAPI
+        from app.routers.subscriptions import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def test_unauthenticated_request_is_refused(self):
+        with TestClient(self._app(), raise_server_exceptions=False) as c:
+            res = c.get("/api/subscription/status", params={"email": "victim@example.com"})
+        self.assertEqual(res.status_code, 403)
+
+    def test_response_contains_no_token_and_no_account_data(self):
+        with TestClient(self._app(), raise_server_exceptions=False) as c:
+            res = c.get("/api/subscription/status", params={"email": "victim@example.com"})
+        body = res.json()
+        serialised = json.dumps(body)
+        self.assertNotIn("token", serialised)
+        self.assertNotIn("active", serialised)
+        self.assertNotIn("trial", serialised)
+
+    def test_no_token_is_ever_minted_for_an_arbitrary_email(self):
+        """Direct function-level reproduction of the original exploit
+        chain's first step: calling subscription_status() for an email
+        the caller has no relationship to must never produce a usable
+        token, regardless of transport (HTTP vs. direct call)."""
+        from app.routers.subscriptions import subscription_status
+        from fastapi import HTTPException, Request
+        from starlette.datastructures import Headers
+
+        import asyncio
+        fake_request = Request(scope={
+            "type": "http", "headers": Headers({}).raw, "method": "GET", "path": "/",
+        })
+        with self.assertRaises(HTTPException) as ctx:
+            asyncio.run(subscription_status("victim@example.com", fake_request))
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    def test_no_db_pool_access_attempted(self):
+        """The handler must refuse before ever touching subscriptions/
+        trials/users -- no side effect (like the old auto-create-a-trial
+        behavior) can occur for an unverified email."""
+        from app.routers import subscriptions as sub_router
+        with patch.object(sub_router, "get_pool") as fake_get_pool:
+            with TestClient(self._app(), raise_server_exceptions=False) as c:
+                c.get("/api/subscription/status", params={"email": "victim@example.com"})
+            fake_get_pool.assert_not_called()
+
+    def test_checkout_and_verify_routes_are_unaffected(self):
+        """This fix targets subscription_status() specifically -- the
+        Stripe checkout initiator and the verify-a-token-you-already-hold
+        endpoint (neither mints an identity token from a bare email) must
+        keep their original signatures/behavior."""
+        from app.routers import subscriptions as sub_router
+        import inspect
+        self.assertEqual(
+            list(inspect.signature(sub_router.create_checkout).parameters), ["req"],
+        )
+        self.assertEqual(
+            list(inspect.signature(sub_router.verify_session).parameters), ["request"],
+        )
+
+    def test_verify_session_still_only_validates_a_token_it_is_given(self):
+        """verify_session() has never accepted a bare email -- confirms
+        this route's own shape wasn't part of the vulnerability and
+        remains untouched."""
+        from app.routers.subscriptions import verify_session
+        from starlette.requests import Request as StarletteRequest
+
+        import asyncio
+
+        async def _no_body_request():
+            from unittest.mock import AsyncMock
+            req = AsyncMock(spec=StarletteRequest)
+            req.json = AsyncMock(return_value={"token": "not-a-real-token"})
+            return await verify_session(req)
+
+        result = asyncio.run(_no_body_request())
+        self.assertEqual(result, {"valid": False})
+
+
 if __name__ == "__main__":
     unittest.main()

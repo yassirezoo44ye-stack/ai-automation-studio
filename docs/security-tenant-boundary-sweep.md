@@ -62,7 +62,7 @@ All 41 files under `app/routers/` (`package_preflight.py` re-confirmed as a non-
 | `sandbox.py` | **Safe** | `_get_owned_worker(id, org_id)` on every route |
 | `social.py` | **Safe** | Stateless generation endpoint, no resource IDs |
 | `stats.py` | **Safe** | `owner_user_id` + `WHERE ... user_id=$1` |
-| `subscriptions.py` | **Needs Review** | `subscription_status(email, request)` mints a working subscription token for any caller-supplied email with no verification the caller owns it — see §7 |
+| `subscriptions.py` | **CONFIRMED (fixed)** | `subscription_status(email, request)` — see §7 and Addendum below (Security Closure Review): confirmed unauthenticated account impersonation, disabled |
 | `tasks.py` | **Safe** | `owner_user_id` pattern |
 | `team_chat.py` | **Safe** | `_require_team_in_org` + `delete_message(user_id=ctx.user_id)` |
 | `usage_api.py` | **Safe** | Mix of `org_context`/`require_permission`/`require_api_key(admin)`, each used correctly for its route's actual trust boundary |
@@ -222,7 +222,7 @@ The six confirmed findings in this sweep are exactly the routers that fell **out
 
 ## 9. Remaining Risks
 
-- **`app/routers/subscriptions.py::subscription_status(email, request)`** — accepts an arbitrary caller-supplied `email` and, if that email has an active subscription, mints a working session token for it, with no verification the caller actually owns that email address (rate-limited to 10 req/min/IP, but rate-limiting is not authentication). This is **flagged as Needs Review, not fixed**: it's an authentication-flow design question (how does a post-Stripe-Checkout redirect prove identity without a full account system), not the tenant-boundary IDOR pattern this sweep targeted, and any real fix would touch the checkout/session-issuance flow — out of scope for "smallest fix, no architecture redesign." Recommend a dedicated follow-up audit of this specific flow.
+- ~~`app/routers/subscriptions.py::subscription_status(email, request)` — flagged as Needs Review~~ — **resolved by the Security Closure Review below.** It was not a distinct authentication-design question as first assessed; it was a confirmed, unauthenticated account-impersonation vulnerability, now fixed.
 - **`diagnostics_api.py`'s read-only routes** (health, metrics, traces, service/alert/memory/codegen listings) remain reachable by any authenticated user, not just admins. No tenant data is exposed (confirmed), so this wasn't fixed here, but if this surface is meant to be admin-only entirely (not just its mutating routes), that's a slightly larger policy decision than this gate's scope.
 - **This sweep covered `app/routers/` exhaustively and the specific services those routers call into.** It did not exhaustively re-audit every internal service module for a caller *other than* its router (e.g. a background job or scheduled task invoking `WorkflowEngine`/`AgentKernel` directly, bypassing HTTP entirely). No evidence of such a caller was found during this sweep, but it wasn't the sweep's explicit target either.
 - **`events_api.py`'s known caveat from `7a56b66`** (replay filters after `limit` is applied, so an org can see fewer than `limit` results even when more of their own history exists) is unchanged — not part of this sweep's scope.
@@ -231,13 +231,13 @@ The six confirmed findings in this sweep are exactly the routers that fell **out
 
 ## 10. Final Security Assessment
 
-Six additional confirmed vulnerabilities found and fixed, matching the exact pattern already closed in `runtime_api`/`kernel_api`/`planning_api`/`events_api` — plus two (`commands_api`'s unrestricted file write, `ws.py`'s `agent_ws` topic bypass) that are more severe than any finding in the original four. Every other router in the codebase was traced to a real, verified ownership check — either the legacy per-user convention or the newer org-aware one — with one flagged exception (`subscriptions.py`) that is a different class of problem (authentication design, not tenant-boundary IDOR) outside this sweep's fix scope.
+Seven confirmed vulnerabilities found and fixed across this sweep and its closure review, matching the exact pattern already closed in `runtime_api`/`kernel_api`/`planning_api`/`events_api` — three of them (`commands_api`'s unrestricted file write, `ws.py`'s `agent_ws` topic bypass, and `subscriptions.py`'s unauthenticated impersonation) more severe than any finding in the original four, since each required **no authentication at all**, not just "any authenticated user of any org." Every other router in the codebase was traced to a real, verified ownership check — either the legacy per-user convention or the newer org-aware one.
 
-**Are tenant-boundary vulnerabilities remaining? No — not of the pattern this sweep targeted (ID-keyed resource access with no ownership check).** The one open item (§9, `subscriptions.py`) is a distinct, pre-existing authentication-model question flagged for separate review, not left unfixed within this sweep's own scope.
+**Are tenant-boundary vulnerabilities remaining? No.** The `subscriptions.py` item originally flagged as Needs Review was investigated to completion in the Security Closure Review (below) and confirmed as a real, severe vulnerability — not a distinct out-of-scope design question — and has been fixed. No open findings remain.
 
 ---
 
-## SECURITY SWEEP GATE
+## SECURITY SWEEP GATE (superseded by the Closure Review gate below)
 
 ```
 Surfaces examined: 41 routers under app/routers/ (all live routes; package_preflight.py
@@ -246,7 +246,7 @@ Surfaces examined: 41 routers under app/routers/ (all live routes; package_prefl
 Confirmed:  6  (orchestrator.py, workflow_api.py + engine.py, diagnostics_api.py,
                 commands_api.py, ws.py agent_ws, ws.py job_ws)
 Safe:       33 (verified via explicit ownership check, not assumed)
-Needs Review: 1 (subscriptions.py — different problem class, flagged not fixed)
+Needs Review: 1 (subscriptions.py — see Closure Review below: now Confirmed + Fixed)
 
 Production fixes: DONE (6/6 confirmed findings)
 Regression tests added: 30 (tests/security/test_tenant_boundary_sweep.py)
@@ -257,17 +257,139 @@ Full suite:           PASS (1482/1482 — baseline 1452 + 30 new, 0 regressions)
 Reliability/perf/AI-routing suites: PASS (108/108)
 App boot + OpenAPI generation: PASS
 
+Commit: 7a56b66 (prior fix, referenced) -> 3f39fc6 (this sweep, before closure review).
+```
+
+---
+
+## Addendum — Security Closure Review: `subscriptions.py::subscription_status`
+
+**Trigger:** the sweep above classified this endpoint as Needs Review rather than Confirmed/Safe. This closure review investigates it to a final classification, per the same reproduce-before-fix discipline as the rest of this document.
+
+### A.1 — Full implementation read
+
+`app/routers/subscriptions.py` has 4 routes: `POST /api/subscription/checkout` (starts a real Stripe Checkout session for an email), `GET /api/subscription/status` (the finding), `POST /api/subscription/verify` (validates a token the caller already holds), `POST /api/stripe/webhook` (Stripe-signature-verified). Only `subscription_status` was in question.
+
+### A.2 — Authentication/authorization chain, traced end to end
+
+1. **Route mount:** `GET /api/subscription/status` — no `Depends(...)` in its signature.
+2. **Global middleware:** `/api/subscription/` is listed in `PUBLIC_PREFIXES` (`app/core/config.py:66-72`) — `app/factory.py`'s `api_auth_middleware` explicitly skips authentication for any path under this prefix. **No credential of any kind is required to reach this handler.**
+3. **Identity source:** the `email` query parameter, taken verbatim from the request — never resolved from a session, cookie, JWT, or any verified source.
+4. **What determines the subscription returned:** a direct `SELECT status, current_period_end FROM subscriptions WHERE email=$1` using that unverified `email` — whichever row happens to match.
+5. **Token issuance:** if that email has an active paid subscription, `make_token(email, False, 0)` is returned. If not, the handler **auto-creates a 7-day trial row for that email** (`INSERT INTO trials (email) VALUES ($1) ON CONFLICT DO NOTHING`) and returns `make_token(email, True, days_remaining)` regardless. Either branch, the caller walks away with a token — the only email that produces *no* token is one whose trial has already expired.
+6. **What that token is worth:** `app/core/auth.py:36-45`, `make_token()` — an HMAC-SHA256-signed blob `{"e": email, "exp": now+TOKEN_TTL, "trial": ..., "dr": ...}`, valid for **`TOKEN_TTL` = 30 days** (`app/core/config.py:32`). It carries no session id, no device binding, no proof of how it was obtained.
+7. **Where that token is consumed:** `app/core/auth.py::owner_email(request)` — the identity resolver shared by **every** "legacy" endpoint (`agents.py`, `build.py`, `chat.py`, `design.py`, `package.py`, `projects.py`, `stats.py`, `tasks.py`). It accepts the token via `X-Sub-Token` header or cookie (or even `Authorization: Bearer`), verifies only the HMAC signature and expiry, and returns `payload["e"]` — **the email is trusted exactly as embedded, with no re-verification that this specific token was ever legitimately issued to that person.** `owner_user_id()` then does `SELECT id FROM users WHERE email=$1` and uses that as the scoping identity for every subsequent query.
+
+### A.3 — Direct answers to the checklist
+
+- **What is the source of user identity?** A caller-supplied string in a public, unauthenticated query parameter. Nothing else.
+- **Does the endpoint require authentication?** **No.** Confirmed directly from `PUBLIC_PREFIXES`.
+- **What determines the subscription returned?** A raw `WHERE email=$1` match against whatever the caller typed — no ownership check exists at any layer.
+- **Can an authenticated user learn/access another user's subscription?** Yes — and authentication isn't even a precondition; **anyone**, authenticated or not, can request status/a token for any email.
+- **Can an unauthenticated user obtain subscription information?** Yes — this is the entire vulnerability. No auth is required by design (public prefix).
+- **Sensitive information in the response?** The `token` field itself is the sensitive artifact — it is a bearer credential for the target email's identity across the whole legacy endpoint surface, not merely a status flag.
+- **Dependency on client-supplied email/user ID/customer ID?** Yes, total: the client-supplied `email` is the *only* input, and it is trusted with zero verification anywhere in the path.
+
+### A.4 — Reproduction (executed against the unmodified code, before any fix)
+
+Full end-to-end chain, using a fake `asyncpg` pool (no live DB) and the real `subscription_status()` and `owner_email()`/`owner_user_id()` functions:
+
+```
+STEP 1 — unauthenticated attacker calls /api/subscription/status
+         for a victim who already has a matching real 'users' row
+         (i.e. a normal registered user of the app) but the
+         attacker has NO credential of any kind, only the email.
+
+  Response (no auth, just knowing the email):
+  {'active': True, 'trial': True, 'days_remaining': 7,
+   'token': 'eyJlIjogInZpY3RpbUBleGFtcGxlLmNvbSIsICJleHAiOiAxNzg4NzEyNjg1LCAidHJpYWwiOiB0cnVlLCAiZHIiOiA3fQ.40b7c...'}
+  Attacker now holds a signed token for 'victim@example.com', valid 30 days.
+
+STEP 2 — attacker presents that token as X-Sub-Token to a real
+         'legacy' endpoint's identity resolver (app.core.auth)
+
+  owner_email(attacker's request) -> 'victim@example.com'
+  owner_user_id(...) -> 11111111-1111-1111-1111-111111111111
+    (== victim's real users.id — exact match)
+
+CONFIRMED: an unauthenticated caller who knows only a victim's email
+address obtains a valid 30-day access token for that victim's real
+account identity — the SAME identity-resolution function
+(app.core.auth.owner_email/owner_user_id) that scopes
+agents.py/build.py/chat.py/design.py/package.py/projects.py/
+stats.py/tasks.py accepts it without complaint.
+```
+
+This is a **complete, unauthenticated account-takeover primitive**, more severe than any finding in the original tenant-boundary sweep: it requires no authentication step of any kind, only a known or guessed email address, and grants durable (30-day), full-privilege impersonation across eight other router files this sweep had separately certified as "Safe" — correctly, since their own ownership checks were never the weak link; the identity feeding into them was.
+
+### A.5 — Alternate paths checked
+
+- **Manipulated identifiers/query params:** the email is taken as a plain string with parameterized SQL (`$1`) — no injection angle, but no validation either (any string an attacker chooses is accepted verbatim as "the" identity to mint a token for).
+- **Rate limiting as a mitigation:** `check_rate_limit(f"sub:{_real_ip(request)}", max_calls=10, window=60)` — 10 requests/minute per IP. Irrelevant to this exploit: a single request against one targeted victim email succeeds; rate limiting does not require or verify identity, it only throttles volume.
+- **Alternate authentication path:** none exists for this route — it is unconditionally public.
+
+### A.6 — Fix applied
+
+`subscription_status()` now unconditionally raises `403` before touching the database, pool, or minting any token — same treatment as this codebase's own established precedent for "confirmed dangerous + zero legitimate consumer" (`app/routers/commands_api.py::register_plugin`, `app/commands/builtin/modify_cmd.py::_modify_register`). Confirmed via repo-wide search that no frontend code, script, test, or doc anywhere references `/api/subscription/status` — there is no real behavior being removed. `POST /api/subscription/checkout` (real Stripe Checkout initiation) and `POST /api/subscription/verify` (validates a token the caller already holds — never mints one from a bare email) are untouched; neither has the unauthenticated-identity-minting shape that made `subscription_status` exploitable. Removed the now-unused `check_rate_limit`/`_real_ip` import (kept `ruff check` clean, no baseline drift).
+
+### A.7 — Regression tests
+
+Added to `tests/security/test_api_security.py` — `TestSubscriptionStatusImpersonationDisabled` (6 tests): unauthenticated HTTP request refused (403); response body contains no `token`/`active`/`trial` fields; a direct function-level call for an arbitrary email raises before minting anything; `get_pool()` is never even called (no trial-creation side effect can occur for an unverified email); `create_checkout`/`verify_session` signatures and behavior confirmed unchanged; `verify_session` confirmed to still only validate a token it's given, never mint one from an email.
+
+### A.8 — Tests executed
+
+```
+$ python -m pytest tests/security/test_api_security.py -k SubscriptionStatus -v
+6 passed
+
+$ python -m pytest tests/security/ -q
+241 passed, 6 subtests passed
+
+$ python -m pytest tests/ -q
+1488 passed, 7 warnings, 16 subtests passed   (prior baseline 1482 -> +6 new, 0 broken, 0 skipped)
+```
+
+App boot + OpenAPI schema regenerated cleanly: all 3 `subscriptions.py` routes (`/api/subscription/checkout`, `/api/subscription/status`, `/api/subscription/verify`) still present. `ruff check app/routers/subscriptions.py tests/security/test_api_security.py` — clean, no new lint debt.
+
+### A.9 — Final classification
+
+**CONFIRMED and FIXED** — not Safe, not a distinct out-of-scope design question. This was the single most severe finding across both the original tenant-boundary sweep and this closure review: a complete, unauthenticated account-impersonation primitive reachable by anyone who knows or guesses a registered user's email address, with no fix required beyond disabling a dead, unused, and dangerous code path.
+
+---
+
+## SECURITY CLOSURE REVIEW GATE
+
+```
+Finding: app/routers/subscriptions.py::subscription_status(email, request)
+Final classification: CONFIRMED — Unauthenticated Account Impersonation (FIXED)
+
+Reproduction: executed against unmodified code (see A.4) — confirmed an
+  unauthenticated caller obtains a 30-day impersonation token for any
+  registered user's real account by supplying only their email address.
+
+Fix applied: endpoint disabled outright (403), matching this codebase's
+  own established precedent (register_plugin / _modify_register).
+  create_checkout and verify_session unaffected.
+
+Regression tests added: 6 (tests/security/test_api_security.py::
+  TestSubscriptionStatusImpersonationDisabled)
+
+Security suite: PASS (241/241, 6 subtests)
+Full suite:     PASS (1488/1488 — baseline 1482 + 6 new, 0 regressions)
+App boot + OpenAPI generation: PASS
+ruff: clean, no new lint debt
+
 UI changes:      NONE
 Schema changes:  NONE
 Migrations:      NONE
-Coverage implementation: NOT STARTED
-Billing tests:           NOT STARTED
-Context P1:              NOT STARTED
+Scope expanded beyond subscription_status: NONE
+New routers examined: NONE (out of scope, per instruction)
+Coverage / Testing Foundation / Billing / PR: NOT STARTED (out of scope)
 
-Commit: 7a56b66 (prior fix, referenced) -> 3f39fc6 (this sweep).
+Clean tree: YES (after commit)
+Final commit hash: see bottom of this document / chat reply
 
-Tenant-boundary vulnerabilities remaining: NONE of the swept pattern.
-(subscriptions.py flagged separately, not a tenant-boundary IDOR.)
+RESULT: A — Security Boundary Sweep CLOSED
 
 Next decision:
 WAIT FOR APPROVAL

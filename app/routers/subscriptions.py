@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from app.core.auth import make_token, verify_token
 from app.core.config import STRIPE_PRICE_ID, APP_URL
 from app.core.db import get_pool
-from app.core.rate_limit import _real_ip, check_rate_limit
 
 log = logging.getLogger(__name__)
 
@@ -39,36 +38,54 @@ async def create_checkout(req: CheckoutRequest):
 
 @router.get("/api/subscription/status")
 async def subscription_status(email: str, request: Request):
-    if not check_rate_limit(f"sub:{_real_ip(request)}", max_calls=10, window=60):
-        raise HTTPException(429, "Too many requests. Try again later.")
+    """DISABLED — unauthenticated account impersonation.
 
-    async with get_pool().acquire() as conn:
-        sub = await conn.fetchrow(
-            "SELECT status, current_period_end FROM subscriptions WHERE email=$1", email
-        )
-        if sub and sub["status"] == "active" and (
-            sub["current_period_end"] is None or sub["current_period_end"] > datetime.utcnow()
-        ):
-            return {"active": True, "trial": False, "token": make_token(email, False, 0)}
+    Security Closure Review (see docs/security-tenant-boundary-sweep.md,
+    "subscriptions.py::subscription_status" finding): this route sits
+    under PUBLIC_PREFIXES ("/api/subscription/", app/core/config.py) — no
+    authentication of any kind is required to call it. It accepted an
+    arbitrary caller-supplied `email` with no proof the caller owns that
+    address, and for ANY email (creating a fresh 7-day trial on the fly if
+    none existed) returned a signed, 30-day (TOKEN_TTL) access token for
+    that email via make_token().
 
-        trial = await conn.fetchrow("SELECT started_at FROM trials WHERE email=$1", email)
-        if not trial:
-            await conn.execute(
-                "INSERT INTO trials (email) VALUES ($1) ON CONFLICT DO NOTHING", email
-            )
-            trial = await conn.fetchrow("SELECT started_at FROM trials WHERE email=$1", email)
+    That token is accepted at face value by app.core.auth.owner_email()/
+    owner_user_id() — the exact identity resolver that scopes every
+    "legacy" endpoint (agents.py, build.py, chat.py, design.py,
+    package.py, projects.py, stats.py, tasks.py) to "my data only" via
+    `WHERE user_id = $N`. owner_user_id() only requires a matching row in
+    `users` for that email to exist — it does not re-verify the token was
+    ever legitimately issued to that person. Confirmed via a full
+    reproduction (unauthenticated call -> token -> owner_user_id()
+    resolving to the real victim's users.id) that this is a complete,
+    unauthenticated account-takeover primitive requiring nothing but a
+    known or guessed email address: anyone could impersonate any
+    registered user across the entire legacy endpoint surface for 30
+    days per token, mint any number of tokens, with no verification step
+    (no magic-link click, no OAuth, no password) anywhere in the path.
 
-        elapsed = (datetime.utcnow() - trial["started_at"].replace(tzinfo=None)).days
-        days_remaining = max(0, 7 - elapsed)
-        if days_remaining > 0:
-            return {
-                "active": True,
-                "trial": True,
-                "days_remaining": days_remaining,
-                "token": make_token(email, True, days_remaining),
-            }
-
-    return {"active": False, "trial_expired": True}
+    Disabled outright rather than access-gated or partially mitigated,
+    matching this codebase's own established precedent for exactly this
+    situation (app/routers/commands_api.py's register_plugin(),
+    app/commands/builtin/modify_cmd.py's _modify_register()): confirmed
+    zero legitimate callers anywhere in the repo (no frontend, script,
+    test, or doc references /api/subscription/status), so there is no
+    real behavior to preserve, and any authorization gate added here
+    would just be scaffolding for a dead code path with no legitimate
+    use case to gate correctly against. POST /api/subscription/checkout
+    (starts a real Stripe Checkout session) and POST
+    /api/subscription/verify (validates a token a caller already holds,
+    never mints one from a bare email) are unaffected — neither has this
+    unauthenticated-identity-minting shape.
+    """
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            "Subscription status lookup by email is disabled pending a security "
+            "review — it previously allowed unauthenticated account impersonation "
+            "via a caller-supplied email address."
+        ),
+    )
 
 
 @router.post("/api/subscription/verify")
