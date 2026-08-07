@@ -22,14 +22,26 @@ GET  /api/kernel/agents
 
 POST /api/kernel/middleware
     Add a named middleware to the pipeline (from registered set).
+
+Authorization (P0.5 security fix, see docs/security-tenant-boundary-audit.md):
+the kernel is a single process-wide singleton, not org-scoped data — there
+is no OrgContext to check it against. Every route below requires the same
+cross-org admin API-key mechanism already used for other non-org-scoped,
+system-level actions (app/routers/usage_api.py's /api/admin/plans/{id},
+app/routers/marketplace.py's /api/admin/... routes), not org_context.
+Previously any authenticated user of any org could call POST
+/api/kernel/execute, including "modify patch ..." commands that rewrite
+the running application's own source files (app/kernel/self_modify.py).
 """
 from __future__ import annotations
 
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.core.api_keys import ApiKeyRecord, require_api_key
 
 log    = logging.getLogger(__name__)
 router = APIRouter(tags=["kernel"])
@@ -42,7 +54,10 @@ class KernelExecuteRequest(BaseModel):
 
 
 @router.post("/api/kernel/execute")
-async def kernel_execute(req: KernelExecuteRequest):
+async def kernel_execute(
+    req: KernelExecuteRequest,
+    key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"])),
+):
     from app.kernel import get_kernel
     kernel = get_kernel()
     result = await kernel.execute(req.input, caller=req.caller, user_id=req.user_id)
@@ -50,19 +65,19 @@ async def kernel_execute(req: KernelExecuteRequest):
 
 
 @router.get("/api/kernel/status")
-async def kernel_status():
+async def kernel_status(key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"]))):
     from app.kernel import get_kernel
     return get_kernel().status()
 
 
 @router.get("/api/kernel/state")
-async def kernel_state():
+async def kernel_state(key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"]))):
     from app.kernel import get_kernel
     return get_kernel().state.to_dict()
 
 
 @router.get("/api/kernel/modifications")
-async def kernel_modifications():
+async def kernel_modifications(key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"]))):
     from app.kernel import get_kernel
     mods = get_kernel().state.modifications
     return {
@@ -72,7 +87,7 @@ async def kernel_modifications():
 
 
 @router.post("/api/kernel/rollback/{index}")
-async def kernel_rollback(index: int):
+async def kernel_rollback(index: int, key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"]))):
     from app.kernel import get_kernel
     try:
         result = get_kernel().modifier.rollback(index)
@@ -82,7 +97,7 @@ async def kernel_rollback(index: int):
 
 
 @router.get("/api/kernel/agents")
-async def kernel_agents():
+async def kernel_agents(key: ApiKeyRecord = Depends(require_api_key(scopes=["admin"]))):
     from app.kernel import get_kernel
     cmds = get_kernel().registry.all()
     return {

@@ -12,6 +12,15 @@ Endpoints:
   GET    /api/runtime/cache/stats      — cache statistics
   DELETE /api/runtime/cache            — evict expired cache entries
   GET    /api/runtime/runtimes         — list registered runtimes
+
+Tenant boundary (P0.5 security fix, see docs/security-tenant-boundary-audit.md):
+execute() records the caller's verified org_id (org_context, never a
+client-supplied value) alongside each execution; every id-based lookup
+below re-verifies the caller's org_id matches before returning anything,
+404ing otherwise so a non-member can't distinguish "wrong org" from
+"doesn't exist" — same convention as app/routers/jobs_api.py. cache/stats,
+cache/evict and runtimes carry no tenant data and are intentionally left
+unscoped.
 """
 from __future__ import annotations
 
@@ -20,7 +29,7 @@ import logging
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -31,12 +40,23 @@ from app.execution.platform import (
     get_registry,
 )
 from app.execution.platform.artifacts import ArtifactSystem
+from app.tenancy.context import OrgContext, org_context
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["runtime"])
 
 # In-memory execution registry (process-lifetime)
-_executions: dict[str, dict] = {}   # execution_id → {"report": …, "artifacts": …, "status": …}
+_executions: dict[str, dict] = {}   # execution_id → {"org_id": …, "report": …, "status": …}
+
+
+def _owned_execution(execution_id: str, ctx: OrgContext) -> dict:
+    """Look up an execution and verify it belongs to the caller's org.
+    404 either way (not 403) — a caller outside this org must not be able
+    to tell "doesn't exist" apart from "exists, isn't yours"."""
+    rec = _executions.get(execution_id)
+    if not rec or rec.get("org_id") != ctx.org_id:
+        raise HTTPException(status_code=404, detail="execution not found")
+    return rec
 
 
 # ── Request/response models ────────────────────────────────────────────────────
@@ -50,7 +70,7 @@ class ExecuteRequest(BaseModel):
 # ── Execute (SSE stream) ──────────────────────────────────────────────────────
 
 @router.post("/api/runtime/execute")
-async def execute(req: ExecuteRequest):
+async def execute(req: ExecuteRequest, ctx: OrgContext = Depends(org_context)):
     """
     Start execution and stream TypedEvent objects as SSE.
 
@@ -64,6 +84,7 @@ async def execute(req: ExecuteRequest):
 
     engine       = UnifiedExecutionEngine()
     execution_id = None
+    org_id       = ctx.org_id
 
     async def _stream() -> AsyncIterator[str]:
         nonlocal execution_id
@@ -87,6 +108,7 @@ async def execute(req: ExecuteRequest):
                 "status"  : "done",
                 "report"  : report or {},
                 "workspace": str(ws),
+                "org_id"  : org_id,
             }
 
     return StreamingResponse(
@@ -102,33 +124,31 @@ async def execute(req: ExecuteRequest):
 # ── Status ────────────────────────────────────────────────────────────────────
 
 @router.get("/api/runtime/{execution_id}/status")
-async def get_status(execution_id: str):
-    rec = _executions.get(execution_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="execution not found")
+async def get_status(execution_id: str, ctx: OrgContext = Depends(org_context)):
+    rec = _owned_execution(execution_id, ctx)
     return {"execution_id": execution_id, "status": rec.get("status", "unknown")}
 
 
 # ── Report ────────────────────────────────────────────────────────────────────
 
 @router.get("/api/runtime/{execution_id}/report")
-async def get_report(execution_id: str):
-    rec = _executions.get(execution_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="execution not found")
+async def get_report(execution_id: str, ctx: OrgContext = Depends(org_context)):
+    rec = _owned_execution(execution_id, ctx)
     return rec.get("report", {})
 
 
 # ── Artifacts ─────────────────────────────────────────────────────────────────
 
 @router.get("/api/runtime/{execution_id}/artifacts")
-async def list_artifacts(execution_id: str):
+async def list_artifacts(execution_id: str, ctx: OrgContext = Depends(org_context)):
+    _owned_execution(execution_id, ctx)
     arts = ArtifactSystem.load(execution_id)
     return {"artifacts": [a.to_dict() for a in arts.all()]}
 
 
 @router.get("/api/runtime/{execution_id}/artifacts/{artifact_id}")
-async def download_artifact(execution_id: str, artifact_id: str):
+async def download_artifact(execution_id: str, artifact_id: str, ctx: OrgContext = Depends(org_context)):
+    _owned_execution(execution_id, ctx)
     arts = ArtifactSystem.load(execution_id)
     art  = arts.get(artifact_id)
     if not art or not art.exists:
@@ -143,7 +163,8 @@ async def download_artifact(execution_id: str, artifact_id: str):
 # ── Cancel / cleanup ──────────────────────────────────────────────────────────
 
 @router.delete("/api/runtime/{execution_id}")
-async def cancel_execution(execution_id: str):
+async def cancel_execution(execution_id: str, ctx: OrgContext = Depends(org_context)):
+    _owned_execution(execution_id, ctx)
     try:
         from app.execution.process_mgr import kill_execution
         kill_execution(execution_id)
