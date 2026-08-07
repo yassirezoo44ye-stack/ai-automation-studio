@@ -10,6 +10,9 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.ai.models import CompletionRequest, Message
+from app.core.ai.context.manager import (
+    ContextBudgetError, budget_history, record_budget_metrics, record_budget_rejection,
+)
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
 from app.core.db import get_pool
@@ -99,8 +102,31 @@ async def run_stream(req: RunRequest, request: Request):
         try:
             yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': str(conv_id)})}\n\n"
 
+            # Bound the message list before it's ever built into a request —
+            # `history` above is loaded with no LIMIT (see chat.py's SELECT
+            # above), so a long conversation must not be sent verbatim.
+            # budget_history() keeps `current` (the message just appended)
+            # and drops/summarizes older turns only as needed to fit
+            # claude-sonnet-4-6's real context window. See
+            # docs/context-control-audit.md §6/§18 (P0).
+            try:
+                budget = budget_history(history, model="claude-sonnet-4-6", system="")
+            except ContextBudgetError as exc:
+                log.warning("run_stream: context budget exceeded for conv_id=%s: %s", conv_id, exc)
+                record_budget_rejection(exc)
+                yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+                return
+            if budget.compacted or budget.truncated:
+                log.info(
+                    "run_stream: history compacted for conv_id=%s "
+                    "(dropped=%d, compacted=%s, truncated=%s, est_tokens=%d/%d)",
+                    conv_id, budget.dropped_count, budget.compacted, budget.truncated,
+                    budget.estimated_tokens, budget.context_window,
+                )
+            record_budget_metrics(budget)
+
             request_obj = CompletionRequest(
-                messages=[Message(role=h["role"], content=h["content"]) for h in history],
+                messages=[Message(role=h["role"], content=h["content"]) for h in budget.messages],
                 model="claude-sonnet-4-6",
                 max_tokens=2048,
                 temperature=1.0,        # CompletionRequest defaults to 0.7 and _build_kwargs

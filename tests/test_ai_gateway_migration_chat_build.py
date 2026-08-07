@@ -562,5 +562,111 @@ class TestBuildStreamParserIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('"type": "done"', joined)
 
 
+# ── run_stream: context budgeting (P0, docs/context-control-audit.md §6/§18) ─
+#
+# chat.py's history SELECT has no LIMIT (see chat.py::run_stream) — these
+# prove InferenceEngine.stream() never receives that unbounded list
+# verbatim once it stops fitting the model's context window, while a
+# normal short conversation is completely unaffected.
+
+class TestRunStreamContextBudgeting(unittest.IsolatedAsyncioTestCase):
+    async def _drive_with_history(self, chat_mod, req, history_rows, scripted_chunks):
+        pool, conn = _fake_pool()
+        conn.fetch = AsyncMock(return_value=history_rows)
+        with unittest.mock.patch.object(
+            chat_mod, "ai_rate_limit", MagicMock(),
+        ), unittest.mock.patch.object(
+            chat_mod, "check_org_quota", AsyncMock(return_value="org-1"),
+        ), unittest.mock.patch.object(
+            chat_mod, "get_pool", return_value=pool,
+        ), unittest.mock.patch.object(
+            chat_mod, "owner_user_id", AsyncMock(return_value=uuid.uuid4()),
+        ), unittest.mock.patch.object(
+            chat_mod, "resolve_project_id", AsyncMock(return_value=uuid.uuid4()),
+        ), unittest.mock.patch.object(
+            chat_mod, "record_org_tokens", AsyncMock(),
+        ), unittest.mock.patch(
+            "app.core.ai.inference.engine.InferenceEngine.stream",
+            MagicMock(return_value=_StreamChunks(scripted_chunks)),
+        ) as mock_stream:
+            resp = await chat_mod.run_stream(req, MagicMock())
+            events = [chunk async for chunk in resp.body_iterator]
+        return events, mock_stream
+
+    async def test_short_conversation_history_sent_unchanged(self):
+        """Requirement 1/short-conversation: existing behavior must not
+        change for a normal, well-within-budget conversation."""
+        from app.routers import chat as chat_mod
+
+        history_rows = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        req = chat_mod.RunRequest(
+            project_id="demo", prompt="how are you?", conversation_id=str(uuid.uuid4()),
+        )
+        chunks = [{"type": "delta", "text": "fine"}, {"type": "done"}]
+        events, mock_stream = await self._drive_with_history(chat_mod, req, history_rows, chunks)
+
+        sent_request = mock_stream.call_args.args[0]
+        self.assertEqual(len(sent_request.messages), 3)  # 2 history rows + current prompt
+        self.assertEqual(sent_request.messages[-1].content, "how are you?")
+        self.assertIn('"type": "delta", "text": "fine"', "".join(events))
+
+    async def test_long_conversation_is_bounded_not_sent_verbatim(self):
+        """Requirements 1/2/6: a long, unbounded-from-the-DB history must
+        not be forwarded verbatim to InferenceEngine.stream()."""
+        from app.routers import chat as chat_mod
+
+        history_rows = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": ("x" * 8_000)}
+            for i in range(120)
+        ]
+        req = chat_mod.RunRequest(
+            project_id="demo", prompt="what's the summary so far?",
+            conversation_id=str(uuid.uuid4()),
+        )
+        chunks = [{"type": "delta", "text": "ok"}, {"type": "done"}]
+        events, mock_stream = await self._drive_with_history(chat_mod, req, history_rows, chunks)
+
+        sent_request = mock_stream.call_args.args[0]
+        # Never the full 120 history rows + current prompt (121 messages).
+        self.assertLess(len(sent_request.messages), 121)
+        # Requirement 4: current input is never lost, even when bounded.
+        self.assertEqual(sent_request.messages[-1].content, "what's the summary so far?")
+        # Requirement 7: not silent — a summary message stands in for the
+        # dropped turns instead of them just vanishing.
+        self.assertIn("summary", str(sent_request.messages[0].content).lower())
+
+    async def test_overflow_returns_error_without_ever_calling_the_engine(self):
+        """Requirement 8: when even the current message alone cannot fit
+        the model's context window, the provider must never be called."""
+        from app.routers import chat as chat_mod
+
+        history_rows: list[dict] = []
+        huge_prompt = "x" * 4_000  # RunRequest caps prompt at 4000 chars — this is the max
+        req = chat_mod.RunRequest(
+            project_id="demo", prompt=huge_prompt, conversation_id=str(uuid.uuid4()),
+        )
+        # A 4000-char prompt (~1000 tokens) fits even a small window on its
+        # own, so force the floor check to fail by patching the model's
+        # resolved context window down via a tiny-window model id instead —
+        # simplest reliable way to hit the ContextBudgetError branch
+        # end-to-end without depending on RunRequest's max_length.
+        with unittest.mock.patch.object(chat_mod, "budget_history") as mock_budget:
+            from app.core.ai.context.manager import ContextBudgetError
+            mock_budget.side_effect = ContextBudgetError(
+                "system prompt + current message alone exceed the context window",
+                estimated_tokens=999_999, context_window=32_000,
+            )
+            events, mock_stream = await self._drive_with_history(chat_mod, req, history_rows, [])
+
+        mock_stream.assert_not_called()
+        joined = "".join(events)
+        self.assertIn('"type": "error"', joined)
+        self.assertIn("context window", joined)
+        self.assertNotIn('"type": "done"', joined)
+
+
 if __name__ == "__main__":
     unittest.main()

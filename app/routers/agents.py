@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from typing import Optional
 
@@ -6,6 +7,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.core.ai.context.manager import (
+    ContextBudgetError, budget_history, record_budget_metrics, record_budget_rejection,
+)
 from app.core.auth import owner_user_id
 from app.core.db import get_pool, ensure_agents_table
 from app.core.helpers import (
@@ -14,6 +18,7 @@ from app.core.helpers import (
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["agents"])
 
 
@@ -180,13 +185,45 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
             yield f"data: {json.dumps({'type': 'error', 'message': e.detail})}\n\n"
             await bulkhead_cm.__aexit__(None, None, None)
             return
+
+        # Bound the message list before it's ever sent to the provider —
+        # `history` above is loaded with no LIMIT (see the SELECT earlier in
+        # this function), so a long conversation must not be sent verbatim.
+        # budget_history() keeps agent["system_prompt"] and the current user
+        # message intact, dropping/summarizing older turns only as needed to
+        # fit the agent's model's real context window. This is NOT a
+        # provider failure, so it's checked (and — on rejection — exits)
+        # separately from the ai_circuit_report()-guarded block below,
+        # rather than tripping the circuit breaker for a request that never
+        # reached the provider. See docs/context-control-audit.md §6/§18 (P0).
+        model_id = agent["model"] or "claude-sonnet-4-6"
+        try:
+            budget = budget_history(history, model=model_id, system=agent["system_prompt"] or "")
+        except ContextBudgetError as exc:
+            log.warning(
+                "agent_chat_stream: context budget exceeded for agent=%s conv_id=%s: %s",
+                agent_id, conv_id, exc,
+            )
+            record_budget_rejection(exc)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+            await bulkhead_cm.__aexit__(None, None, None)
+            return
+        if budget.compacted or budget.truncated:
+            log.info(
+                "agent_chat_stream: history compacted for agent=%s conv_id=%s "
+                "(dropped=%d, compacted=%s, truncated=%s, est_tokens=%d/%d)",
+                agent_id, conv_id, budget.dropped_count, budget.compacted, budget.truncated,
+                budget.estimated_tokens, budget.context_window,
+            )
+        record_budget_metrics(budget)
+
         full_text = ""
         try:
             with ai.messages.stream(
-                model=agent["model"] or "claude-sonnet-4-6",
+                model=model_id,
                 max_tokens=2048,
                 system=agent["system_prompt"],
-                messages=history,
+                messages=budget.messages,
             ) as stream:
                 yield f"data: {json.dumps({'type':'conv_id','conv_id':str(conv_id)})}\n\n"
                 for text in stream.text_stream:
