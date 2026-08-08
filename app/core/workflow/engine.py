@@ -30,6 +30,12 @@ from app.core.observability.tracer import get_tracer
 
 log = logging.getLogger(__name__)
 
+# Sentinel distinguishing "org_id not specified at all" (unscoped,
+# cross-tenant — internal use only) from "org_id explicitly passed as
+# None" (the no-org bucket — a real, filterable value, not "everything").
+# Same convention as app/agents/memory.py's AgentMemory.
+_UNSCOPED = object()
+
 # ── Types ──────────────────────────────────────────────────────────────────────
 
 class StepStatus(str, Enum):
@@ -502,21 +508,62 @@ class WorkflowEngine:
             await _publish_workflow_event(run, "workflow.completed")
             return run
 
-    def active(self) -> list[dict]:
-        return [r.to_dict() for r in self._active.values()]
+    def active(self, org_id: Any = _UNSCOPED) -> list[dict]:
+        """Currently running workflow runs. `org_id` scopes the result to
+        one organization's own runs — this is a single, process-wide
+        registry shared by every tenant, so any caller that exposes this to
+        an end user MUST pass the calling org's verified id here —
+        including explicitly passing `org_id=None` for a caller with no
+        verified org, which filters to runs whose own context carries no
+        organization_id, NOT every tenant's runs. Only leaving org_id unset
+        (the default) returns the unscoped, cross-tenant view, and that
+        must stay reserved for internal/system purposes that never surface
+        this to one specific requester."""
+        runs = (
+            self._active.values() if org_id is _UNSCOPED
+            else [r for r in self._active.values()
+                  if r.context.get("organization_id") == org_id]
+        )
+        return [r.to_dict() for r in runs]
 
-    def approve(self, run_id: str, step_id: str) -> bool:
+    def _owns_run(self, run_id: str, org_id: Any) -> bool:
+        """True if `org_id` is unscoped (internal caller) or the run is
+        currently active and its context's organization_id matches. A run
+        that already finished (popped from _active on completion) or
+        belongs to another org both report False — the same "404 not 403"
+        shape as app/tenancy/context.py's org_context, so a caller can't
+        distinguish "run doesn't exist" from "run exists but isn't yours"."""
+        if org_id is _UNSCOPED:
+            return True
+        run = self._active.get(run_id)
+        return run is not None and run.context.get("organization_id") == org_id
+
+    def approve(self, run_id: str, step_id: str, org_id: Any = _UNSCOPED) -> bool:
+        """Approve a waiting step. Returns False without mutating anything
+        if `org_id` is given and the run isn't owned by that org (see
+        `_owns_run`) — callers must check this before reporting success."""
+        if not self._owns_run(run_id, org_id):
+            return False
         approval_id = f"{run_id}:{step_id}"
         _approval_registry.approve(approval_id)
         return True
 
-    def reject(self, run_id: str, step_id: str) -> bool:
+    def reject(self, run_id: str, step_id: str, org_id: Any = _UNSCOPED) -> bool:
+        """Reject a waiting step. Same org-ownership contract as `approve`."""
+        if not self._owns_run(run_id, org_id):
+            return False
         approval_id = f"{run_id}:{step_id}"
         _approval_registry.reject(approval_id)
         return True
 
-    def pending_approvals(self) -> list[str]:
-        return _approval_registry.pending()
+    def pending_approvals(self, org_id: Any = _UNSCOPED) -> list[str]:
+        """Approval ids awaiting a decision. `org_id` scopes to runs owned
+        by that org, same contract as `active()` — leaving it unset returns
+        every org's pending approvals and is reserved for internal callers."""
+        pending = _approval_registry.pending()
+        if org_id is _UNSCOPED:
+            return pending
+        return [aid for aid in pending if self._owns_run(aid.split(":", 1)[0], org_id)]
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
