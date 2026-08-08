@@ -10,6 +10,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.ai.models import CompletionRequest, Message
+from app.core.ai.context.manager import ContextBudgetError, budget_history
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
 from app.core.db import get_pool
@@ -99,8 +100,18 @@ async def run_stream(req: RunRequest, request: Request):
         try:
             yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': str(conv_id)})}\n\n"
 
+            # P0 context budgeting: history was built above with zero upper
+            # bound (every prior message in the conversation). budget_history()
+            # trims deterministically to fit "claude-sonnet-4-6"'s context
+            # window before it's ever sent to the provider — see
+            # app/core/ai/context/manager.py's docstring for the algorithm.
+            # A ContextBudgetError here is caught by this function's own
+            # except Exception below, same SSE error channel already used
+            # for provider errors — no new HTTP/SSE behavior.
+            budgeted_history = budget_history(history, model="claude-sonnet-4-6", max_tokens=2048)
+
             request_obj = CompletionRequest(
-                messages=[Message(role=h["role"], content=h["content"]) for h in history],
+                messages=[Message(role=h["role"], content=h["content"]) for h in budgeted_history],
                 model="claude-sonnet-4-6",
                 max_tokens=2048,
                 temperature=1.0,        # CompletionRequest defaults to 0.7 and _build_kwargs
@@ -167,6 +178,13 @@ async def run_stream(req: RunRequest, request: Request):
             except Exception:
                 pass
 
+        except ContextBudgetError as e:
+            # Same SSE error channel as any other failure below — no new
+            # HTTP/SSE contract — but logged distinctly (warning, not
+            # exception+traceback) since this is an expected, deterministic
+            # rejection, not an unexpected failure.
+            log.warning("run_stream context budget rejected: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         except Exception as e:
             log.exception("run_stream error")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

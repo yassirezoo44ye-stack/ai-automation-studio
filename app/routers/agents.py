@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.ai.models import CompletionRequest, Message
+from app.core.ai.context.manager import budget_history
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
 from app.core.db import get_pool, ensure_agents_table
@@ -177,8 +178,18 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
         try:
             yield f"data: {json.dumps({'type':'conv_id','conv_id':str(conv_id)})}\n\n"
 
+            # P0 context budgeting — same fix and rationale as chat.py's
+            # run_stream (see app/core/ai/context/manager.py's
+            # budget_history() docstring). A ContextBudgetError here is
+            # caught by this function's own except Exception below, same
+            # SSE error channel already used for provider errors.
+            budgeted_history = budget_history(
+                history, model=agent["model"] or "claude-sonnet-4-6",
+                max_tokens=2048, system=agent["system_prompt"],
+            )
+
             request_obj = CompletionRequest(
-                messages=[Message(role=h["role"], content=h["content"]) for h in history],
+                messages=[Message(role=h["role"], content=h["content"]) for h in budgeted_history],
                 model=agent["model"] or "claude-sonnet-4-6",
                 max_tokens=2048,
                 temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)

@@ -9,12 +9,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional, TYPE_CHECKING
 
+from app.core.ai.models.catalog import catalog
+from app.core.ai.utils.tokens import estimate_messages_tokens, estimate_tokens, fits_context
+
 if TYPE_CHECKING:
     import asyncpg
 
 
 _SYSTEM_SEPARATOR = "\n\n---\n\n"
 _TOKEN_BUDGET = 4000   # tokens reserved for injected context
+
+# Conservative fallback context window (tokens) for a model id the catalog
+# doesn't recognize (e.g. a caller-supplied/custom model string) — smaller
+# than every current catalog entry, so an unknown model degrades to more
+# aggressive trimming rather than silently assuming a large window it may
+# not actually have.
+_DEFAULT_CONTEXT_WINDOW = 128_000
 
 
 @dataclass
@@ -175,3 +185,107 @@ class ContextManager:
         total = sum(len(m) for m in bundle.memories) // 4
         total += sum(len(str(h.get("content", ""))) for h in bundle.history) // 4
         return total
+
+
+# ── Context budgeting (P0) ──────────────────────────────────────────────────
+#
+# chat.py::run_stream and agents.py::agent_chat_stream build their own
+# `history: list[dict]` directly from the `messages`/`conversations` tables
+# (distinct from this class's ai_conversations/ai_messages-backed
+# ContextManager.build() — see chat.py's migration notes) and send the
+# *entire* history to the LLM on every request with no token budget check.
+# budget_history() is the fix: a pure function (no DB access, no new
+# subsystem) those two routers call on their already-assembled history list
+# right before constructing the provider request.
+
+class ContextBudgetError(Exception):
+    """Raised when the content a request cannot do without — the system
+    prompt plus the current user turn — doesn't fit inside the model's
+    context window even with zero prior history. Sending it would be
+    guaranteed to fail at the provider, so it's rejected before any
+    provider call is made, not after."""
+
+    def __init__(self, message: str, *, required_tokens: int, context_window: int) -> None:
+        super().__init__(message)
+        self.required_tokens = required_tokens
+        self.context_window = context_window
+
+
+def _summarize_dropped_turns(dropped: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """One extractive bullet-point summary message standing in for a run
+    of older turns — same style as ContextManager.compress_history()
+    above, not a new summarization approach."""
+    if not dropped:
+        return None
+    lines = [f"- [{m.get('role', 'user')}]: {str(m.get('content', ''))[:200]}" for m in dropped]
+    return {"role": "user", "content": "Earlier conversation summary:\n" + "\n".join(lines)}
+
+
+def budget_history(
+    messages: list[dict[str, Any]],
+    *,
+    model: Optional[str] = None,
+    max_tokens: int = 2048,
+    system: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """
+    Ensure `messages` (role/content dicts; the *last* element is always the
+    current turn and is never dropped or summarized) fits inside `model`'s
+    context window, trimming older turns deterministically when it doesn't.
+
+    Fast path: if the estimated token count already fits, `messages` is
+    returned completely unchanged — no summarization cost for the common
+    case (requirement: no behavior change when already within budget).
+
+    When it doesn't fit: the oldest prior turns are folded into a single
+    extractive summary message (see `_summarize_dropped_turns`), keeping as
+    many of the most-recent prior turns raw as still fit — trying
+    progressively fewer raw prior turns until the remainder fits. This is
+    deterministic: the same input always produces the same output, and no
+    turn is ever silently dropped without either being kept verbatim or
+    folded into the summary. If even a summary of every prior turn doesn't
+    fit alongside `system` + the current turn, prior history is dropped
+    entirely (summary included) rather than the current turn.
+
+    Raises ContextBudgetError if `system` + the current turn *alone* (zero
+    prior history) don't fit — that case has no smaller trim to fall back
+    to, so failing closed here is the only option that doesn't risk a
+    guaranteed-to-fail provider call.
+    """
+    if not messages:
+        return messages
+
+    info = catalog.get(model) if model else None
+    context_window = info.context_window if info else _DEFAULT_CONTEXT_WINDOW
+
+    system_tokens = estimate_tokens(system) if system else 0
+    current = messages[-1]
+    prior = messages[:-1]
+
+    required_tokens = system_tokens + estimate_messages_tokens([current])
+    if not fits_context(required_tokens, context_window=context_window, max_output=max_tokens):
+        raise ContextBudgetError(
+            f"Request content alone ({required_tokens} estimated tokens) exceeds "
+            f"the context window ({context_window} tokens) for model "
+            f"{model or '<default>'!r}, even with no prior history.",
+            required_tokens=required_tokens, context_window=context_window,
+        )
+
+    total_tokens = system_tokens + estimate_messages_tokens(messages)
+    if fits_context(total_tokens, context_window=context_window, max_output=max_tokens):
+        return messages  # fast path — unchanged, no trimming performed
+
+    for keep in range(len(prior), -1, -1):
+        dropped = prior[: len(prior) - keep]
+        kept    = prior[len(prior) - keep :]
+        summary = _summarize_dropped_turns(dropped)
+        candidate = ([summary] if summary else []) + kept + [current]
+        candidate_tokens = system_tokens + estimate_messages_tokens(candidate)
+        if fits_context(candidate_tokens, context_window=context_window, max_output=max_tokens):
+            return candidate
+
+    # Guaranteed to fit: required_tokens (system + current alone) already
+    # passed the check above — this is reached only if even a summary of
+    # *every* prior turn was too large on its own, so prior history is
+    # dropped entirely rather than risk the current turn.
+    return [current]
