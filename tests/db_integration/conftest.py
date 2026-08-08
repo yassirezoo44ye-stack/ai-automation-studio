@@ -139,6 +139,8 @@ def pg_test_database_url() -> str:
             from app.tenancy import init_tenancy_schema, enable_scoped_rls
             from app.billing.credits import init_credits_schema
             from app.billing.invoices import init_invoices_schema
+            from app.billing.payment_methods import init_payment_methods_schema
+            from app.billing.plan_service import init_subscription_plans_schema
 
             async with pool.acquire() as conn:
                 await init_db(conn)
@@ -159,14 +161,24 @@ def pg_test_database_url() -> str:
                 db_module.set_pool(None)
             async with pool.acquire() as conn:
                 await init_tenancy_schema(conn)
-            # Billing schemas (credits/invoices/invoice_items/payments) must
-            # exist BEFORE enable_scoped_rls runs — it only enables RLS on
-            # tables that already exist, skipping (with a warning) any that
-            # don't yet, per its own idempotent-on-every-boot design.
+            # Billing schemas (credits/invoices/invoice_items/payments/
+            # payment_methods/subscription_plans) must exist BEFORE
+            # enable_scoped_rls runs — it only enables RLS on tables that
+            # already exist, skipping (with a warning) any that don't yet,
+            # per its own idempotent-on-every-boot design.
             async with pool.acquire() as conn:
                 await init_credits_schema(conn)
             async with pool.acquire() as conn:
                 await init_invoices_schema(conn)
+            async with pool.acquire() as conn:
+                await init_payment_methods_schema(conn)
+            async with pool.acquire() as conn:
+                # subscription_plans is a global (non-tenant) catalog, not
+                # RLS-scoped -- seeded here anyway for parity with real
+                # startup (app/factory.py's lifespan() calls this in the
+                # same batch) so PlanService tests see the same seeded
+                # rows production does.
+                await init_subscription_plans_schema(conn)
             async with pool.acquire() as conn:
                 await enable_scoped_rls(conn)
         finally:

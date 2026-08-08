@@ -229,23 +229,73 @@ Its own docstring literally names "client double-submit" as a scenario it exists
 
 ---
 
-## 12. Remaining P0 gaps (updated after commit 2)
+### 11.4 — `app/billing/payment_methods.py` (P0-3, commit 3)
 
-Per the approved P0 scope (P0-1, P0-2, P0-3) and the original assessment's P0 list:
+**Production paths examined:** `PaymentMethodService.sync_for_org()`, `.list_for_org()`, `.mark_default()`; every caller in the codebase (`grep`) — exactly two, both in `app/routers/org_billing.py` (`list_payment_methods` under `org_context`, `sync_payment_methods` under `require_permission("billing","manage")`), plus zero callers anywhere for `mark_default()`.
 
-- **P0-3 continuation — `payment_methods.py` and `plan_service.py`**: not started. Next step, pending review of commit 2.
-- The original assessment's other two P0 items — execution-driver behavioral tests (`python_script.py`/`python_server.py`/`detector.py`) and `PolicyEngine` table-driven tests (`app/kernel/policy.py`) — remain out of scope for this specific approval and unaddressed, as expected.
-- RLS coverage for the remaining non-tested tables in `_RLS_TABLES` beyond `organization_members`/`credits`/`invoices`/`payments` (now covered: `payment_methods`, `billing_events`, `sandbox_workers`, `sandbox_events`, `chat_messages`, `teams`, `usage_records`, `marketplace_installs`, `api_keys`, `marketplace_downloads`, `plugin_installations`) — will get real coverage naturally as their owning services get tested in future slices, same pattern as this one.
-- Two specific findings from §11 are flagged for an explicit decision rather than fixed in this commit: **no idempotency key on `credits.grant()`** (live, reachable via ordinary double-click/retry) and **no status-transition validation on invoice upserts** (live, reachable via out-of-order Stripe webhook delivery). Neither is a bug against the code's current documented contract — both are gaps relative to a more defensive design. See §11.1/§11.2 for full detail.
+**Tests added:** `tests/db_integration/test_billing_payment_methods.py`, 8 tests, all real for every DB-dependent behavior. Stripe itself (`stripe.PaymentMethod.list`, `stripe.Customer.retrieve`) is mocked — the one genuinely external boundary, per the approved instructions — everything after that (the multi-statement upsert+prune transaction, RLS) runs against real PostgreSQL.
+
+**Real PostgreSQL usage:** the sync transaction's `INSERT ... ON CONFLICT DO UPDATE` + soft-delete-prune runs for real; RLS on `payment_methods` (already in `app/tenancy/rls.py`'s scoped-table list) exercised directly, same "no WHERE clause" rigor as every prior service in this slice.
+
+**Mocks used, and why:** `stripe.PaymentMethod.list`/`stripe.Customer.retrieve` only — the external Stripe API call itself. Nothing DB-dependent is mocked.
+
+**Failure/rollback tested:** yes — a real Postgres type-range violation (`exp_month` SMALLINT given `999999`) forced mid-transaction, on the *second* row of a two-row sync, proves the *first* row's own successful `INSERT` (already executed in the same transaction) does not survive the rollback — same rigor as invoices.py's atomicity test, not a weaker "second row rejected" check.
+
+**Tenant isolation tested:** yes, both directions — `list_for_org()` is RLS-backed (unqualified `SELECT`, no `WHERE`, through a scoped connection); `sync_for_org()` is confirmed to run *unscoped* (plain `self._pool`, no `acquire_scoped()`), exactly the same asymmetry already documented for `credits.grant()`/`get_balance_cents()` — every statement inside it explicitly filters by the `org_id` parameter, and both real call sites resolve that parameter from a server-verified `OrgContext`, never client input directly. Not a demonstrated vulnerability.
+
+**Idempotency/concurrency relevance:** concurrency tested — two concurrent `sync_for_org()` calls for the same org (e.g. a webhook and a manual refresh racing) converge to one row per Stripe payment-method id via the existing `ON CONFLICT DO UPDATE`, no duplicate/lost rows. Idempotency is naturally handled by the same `ON CONFLICT` clause (keyed on the real, Stripe-assigned, globally-unique `stripe_payment_method_id`) — no separate idempotency-key mechanism needed here the way `credits.grant()` needs one, because this is a sync/cache-refresh operation (converges to Stripe's current truth), not an accumulating ledger write.
+
+**Findings (documented, not fixed — no bug against the code's current contract):**
+
+1. **`sync_for_org()` bypasses RLS by design**, same architectural asymmetry as `credits.grant()`/`get_balance_cents()` — no known caller passes attacker-controlled `org_id`. Not a demonstrated vulnerability.
+2. **`mark_default()` is dead code** — defined, but zero callers anywhere in the repository (confirmed by `grep` and, now, a standing AST-based pinning test that fails loudly the moment any route calls it, forcing an authorization review at that point rather than silently shipping an unscoped mutation with a live caller).
+3. Authorization boundary structurally re-confirmed (pinning test): both real payment-method routes depend on `org_context`/`require_permission`, matching the Security Boundary Sweep's own methodology.
+
+**Remaining gaps:** none — every non-dead method on `PaymentMethodService` has direct test coverage.
+
+### 11.5 — `app/billing/plan_service.py` (P0-3, commit 3 — closes P0-3)
+
+**Production paths examined:** `PlanService.list_plans()`, `.get_plan()`, `.update_plan()`, `.refresh_cache()`; the one router (`app/routers/usage_api.py`'s `GET /api/plans` and `POST /api/admin/plans/{id}`).
+
+**Architectural fact, not a gap:** `subscription_plans` is a *global* catalog — no `organization_id` column, no `acquire_scoped()` usage anywhere in this service, and not present in `app/tenancy/rls.py`'s scoped-table list. Every tenant-isolation question this P0-3 slice asked for the other three services (credits, invoices, payment_methods) does not apply to plan data — a plan's price/limits/features are identical for every org subscribed to it. Documented as a fact about the data model, not asserted as a "safe" verdict standing in for a test that was skipped.
+
+**Tests added:** `tests/db_integration/test_billing_plan_service.py`, 9 tests, all real.
+
+**Real PostgreSQL usage:** `update_plan()`'s dynamic partial-`UPDATE` SET-clause builder runs for real (proven: changing only `name` leaves `price_monthly_cents`/`limits`/`max_agents` untouched); `refresh_cache()`'s in-process cache is proven to reflect what's actually committed, from a separate connection, not just echoed back from the same call.
+
+**Mocks used, and why:** none — this service has no external (Stripe) boundary at all.
+
+**Failure/rollback tested:** `update_plan()` on an unknown `plan_id` raises `ValueError` cleanly (`RETURNING *` returns no row, checked explicitly) — no partial-write concern since it's a single `UPDATE` statement.
+
+**Tenant isolation tested:** N/A — see the architectural-fact note above.
+
+**Idempotency/concurrency relevance:** low — plan edits are rare, admin-only, single-statement updates; not a financial ledger or webhook-delivery-ordering concern the way credits/invoices are. Not specifically tested beyond the standard persistence/partial-update tests above.
+
+**The one behavior worth calling out, tested against real Postgres rather than trusted from its own code comment:** `get_plan()` for a plan an admin has since deactivated (`active=false`) keeps returning that plan's *real* limits, not silently substituting the free tier — verified end to end (insert a distinctive plan, deactivate it, confirm `get_plan()` still returns its real `max_agents`, confirm `list_plans()` excludes it from the display catalog). This matters because an org already subscribed to a plan that becomes non-purchasable must not be unexpectedly downgraded.
+
+**Findings:** none — `update_plan()`'s one authorization-relevant route (`POST /api/admin/plans/{id}`) is confirmed (structural test) to require `require_api_key(scopes=["admin"])`, matching every other true cross-org admin mutation in this codebase.
+
+**Remaining gaps:** none. **This closes P0-3** — all four approved billing services (`credits.py`, `invoices.py`, `payment_methods.py`, `plan_service.py`) now have real-PostgreSQL test coverage.
 
 ---
 
-## 13. Execution time (updated after commit 2)
+## 12. Remaining P0 gaps (updated after commit 3 — P0-3 now closed)
+
+Per the approved P0 scope (P0-1, P0-2, P0-3) and the original assessment's P0 list:
+
+- **P0-3 is now closed.** All four approved billing services (`credits.py`, `invoices.py`, `payment_methods.py`, `plan_service.py`) have real-PostgreSQL test coverage — see §11.1–§11.5.
+- The original assessment's other two P0 items — execution-driver behavioral tests (`python_script.py`/`python_server.py`/`detector.py`) and `PolicyEngine` table-driven tests (`app/kernel/policy.py`) — remain out of scope for this specific approval and unaddressed, as expected.
+- RLS coverage for the remaining non-tested tables in `_RLS_TABLES` beyond `organization_members`/`credits`/`invoices`/`payments`/`payment_methods` (still not directly exercised: `billing_events`, `sandbox_workers`, `sandbox_events`, `chat_messages`, `teams`, `usage_records`, `marketplace_installs`, `api_keys`, `marketplace_downloads`, `plugin_installations`) — will get real coverage naturally as their owning services get tested in future slices, same pattern as this one.
+- **Four specific findings remain flagged for an explicit decision, not fixed in any commit in this slice** (deliberately — two are financial-semantics changes outside this task's own auto-execute authority): **no idempotency key on `credits.grant()`** (live, reachable via ordinary double-click/retry) and **no status-transition validation on invoice upserts** (live, reachable via out-of-order Stripe webhook delivery). See §11.1/§11.2/§11.3 for full detail, including a concrete minimal-fix proposal for each, not yet implemented.
+
+---
+
+## 13. Execution time (updated after commit 3 — P0-3 closed)
 
 ```
-tests/db_integration/ alone (Postgres reachable):        48 passed in ~3-7s
-tests/db_integration/ alone (Postgres unreachable):       48 skipped, exit code 0
-Full suite (tests/ + tests/db_integration/, PG reachable): 1536 passed in ~90-98s
+tests/db_integration/ alone (Postgres reachable):        69 passed in ~5-8s
+tests/db_integration/ alone (Postgres unreachable):       69 skipped, exit code 0
+Full suite (tests/ + tests/db_integration/, PG reachable): 1566 passed in ~95-105s
 Baseline before P0-1/P0-2 (commit 1):                      1488 passed in ~46-72s (no --cov)
 Baseline after P0-1/P0-2 (commit 1):                       1509 passed
 ```
