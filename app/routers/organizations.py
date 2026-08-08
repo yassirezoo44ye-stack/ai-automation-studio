@@ -36,6 +36,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.config import ADMIN_EMAILS
 from app.routers.auth_users import _client_ip, get_current_user
 from app.tenancy import (
     OrgContext, TenancyError, get_tenancy_service, org_context, require_permission,
@@ -438,6 +439,15 @@ async def create_org_api_key(
     bad = set(body.scopes) - valid_scopes
     if bad:
         raise HTTPException(400, f"Unknown scopes: {bad}. Valid: {valid_scopes}")
+    # SECURITY FIX: "admin" isn't org-scoped in practice — ApiKeyRecord.
+    # has_scope() ignores organization_id, so an org-scoped "admin" key
+    # also passes require_api_key(scopes=["admin"]) on platform-wide
+    # endpoints. Org creation + the "manage api_keys" permission are both
+    # self-service, so being an org admin must not be enough to mint one —
+    # same platform-admin-allowlist restriction as the personal-key path
+    # in app/routers/api_keys_router.py.
+    if "admin" in body.scopes and ctx.user_email.lower() not in ADMIN_EMAILS:
+        raise HTTPException(403, "The 'admin' scope is restricted to platform admins.")
     raw, rec = await create_api_key(
         name=body.name, scopes=body.scopes, owner_id=ctx.user_id,
         expires_in_days=body.expires_in_days,

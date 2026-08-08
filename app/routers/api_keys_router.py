@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from app.core.api_keys import (
     create_api_key, revoke_api_key, list_api_keys,
 )
+from app.core.config import ADMIN_EMAILS
 from app.routers.auth_users import get_current_user
 
 router = APIRouter(prefix="/api/keys", tags=["api-keys"])
@@ -41,6 +42,14 @@ async def create_key(body: CreateKeyRequest, user: dict = Depends(get_current_us
     bad = set(body.scopes) - valid_scopes
     if bad:
         raise HTTPException(400, f"Unknown scopes: {bad}. Valid: {valid_scopes}")
+
+    # SECURITY FIX: "admin" bypasses require_api_key(scopes=["admin"]) gates
+    # on genuinely dangerous endpoints (marketplace publisher trust,
+    # usage_api's admin views). Account creation (POST /api/auth/register)
+    # is self-service, so without this check any signed-up user could mint
+    # a personal key that bypasses those gates.
+    if "admin" in body.scopes and user["email"].lower() not in ADMIN_EMAILS:
+        raise HTTPException(403, "The 'admin' scope is restricted to platform admins.")
 
     raw, rec = await create_api_key(
         name            = body.name,

@@ -71,6 +71,21 @@ PUBLIC_PREFIXES: tuple = (
     "/health",
 )
 
+# ── Platform admins ───────────────────────────────────────────────────────────
+# Comma-separated allowlist of emails permitted to hold the "admin" API-key
+# scope (app/routers/api_keys_router.py's create_key, app/routers/
+# organizations.py's create_org_api_key). That scope bypasses
+# require_api_key(scopes=["admin"]) gates on genuinely dangerous endpoints
+# (marketplace publisher trust, usage_api's admin views) — both key-creation
+# paths previously accepted "admin" from any caller with zero check they
+# were actually a platform admin, since account/org creation are both
+# self-service. Empty by default: fails closed, matching is_development()'s
+# rationale below — an unconfigured deployment grants nobody "admin" rather
+# than granting everybody.
+ADMIN_EMAILS: frozenset[str] = frozenset(
+    e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()
+)
+
 # ── Environment ───────────────────────────────────────────────────────────────
 # Read live via functions (not cached at import time, unlike the constants
 # above) so tests can toggle ENVIRONMENT with monkeypatch/os.environ without
