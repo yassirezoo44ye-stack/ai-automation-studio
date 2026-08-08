@@ -10,7 +10,7 @@ All AI calls go through AIGateway.complete() or AIGateway.stream().
 from __future__ import annotations
 
 import logging
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from app.ai import memory as mem
 from app.ai import cost_tracker
@@ -20,8 +20,34 @@ from app.ai.models import (
     CompletionRequest, CompletionResponse, StreamChunk, Message,
 )
 from app.ai.retries import with_retry
+from app.core.ai.context.manager import budget_history
 
 log = logging.getLogger(__name__)
+
+
+def _message_to_dict(m: Message) -> dict[str, Any]:
+    """budget_history() (app/core/ai/context/manager.py) works on plain
+    role/content dicts, not Message instances — this is the adapter, not
+    a new budgeting concept. A str content round-trips as-is; a
+    list[ContentPart] (multimodal) is dumped to dicts via each part's own
+    .model_dump(), which keeps the "text" key
+    app.core.ai.utils.tokens.estimate_messages_tokens() already knows how
+    to read for a TextPart, same as any other dict-shaped content list it
+    was already designed to accept."""
+    d: dict[str, Any] = {
+        "role": m.role,
+        "content": m.content if isinstance(m.content, str) else [p.model_dump() for p in m.content],
+    }
+    if m.name is not None:
+        d["name"] = m.name
+    return d
+
+
+def _dict_to_message(d: dict[str, Any]) -> Message:
+    """Inverse of _message_to_dict — pydantic re-validates a dumped
+    ContentPart dict list back into the correct TextPart/ImagePart/
+    ToolUsePart/ToolResultPart via its "type" discriminator field."""
+    return Message(role=d["role"], content=d["content"], name=d.get("name"))
 
 
 class AIGateway:
@@ -134,6 +160,20 @@ class AIGateway:
         1. Load versioned prompt template and render variables.
         2. Load conversation history.
         3. Inject long-term memory into system prompt.
+        4. Enforce the context budget (P1) on the result of 1-3 — same
+           budget_history() built for chat.py/agents.py's P0 fix, applied
+           here so /api/ai/complete, /api/ai/stream (both delegate to
+           InferenceEngine, which calls this method directly — see
+           app/core/ai/inference/engine.py) get the same protection.
+           ContextBudgetError is intentionally left to propagate: neither
+           complete() nor stream() below wrap this call in a try/except
+           (InferenceEngine.complete()/stream() don't either — they call
+           _enrich() before their own try blocks), so it reaches each
+           real caller's own existing unclassified-exception handling
+           unchanged — app/factory.py's app-wide 500 handler for
+           /api/ai/complete, app/routers/inference.py::stream()'s
+           existing generic SSE error for /api/ai/stream. No new
+           HTTP/SSE behavior added.
         """
         messages = list(request.messages)
         system   = request.system
@@ -168,6 +208,22 @@ class AIGateway:
             mem_ctx = await mem.build_memory_context(self._pool, user_id=user_id)
             if mem_ctx:
                 system = (system + "\n\n" + mem_ctx) if system else mem_ctx
+
+        # 4. Context budget (P1) — budget_history() works on role/content
+        # dicts (see its docstring), not Message instances, so messages
+        # are converted there and back. Content that's already a plain
+        # string round-trips as-is; a list[ContentPart] (multimodal) is
+        # converted via each part's own .model_dump() — which retains the
+        # "text" key estimate_messages_tokens() already knows how to read
+        # (app/core/ai/utils/tokens.py) — and reconstructed by handing
+        # the dict list back to Message(), which pydantic re-validates
+        # into the correct ContentPart subtype via its "type" tag.
+        if messages:
+            budgeted = budget_history(
+                [_message_to_dict(m) for m in messages],
+                model=request.model, max_tokens=request.max_tokens, system=system,
+            )
+            messages = [_dict_to_message(d) for d in budgeted]
 
         return request.model_copy(update={
             "messages": messages,
