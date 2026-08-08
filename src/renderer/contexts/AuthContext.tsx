@@ -11,6 +11,15 @@ import { parseJSON } from "../utils/api";
 
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 const REFRESH_KEY = "axon_refresh_token";
+// The legacy subscription-token system (app/core/auth.py) — sent as
+// X-Sub-Token on every request made through shared/utils/api.ts's fetch
+// helpers, independently of accessToken/REFRESH_KEY. It has no
+// server-side revocation (a bare HMAC-signed, time-limited token), so
+// leaving it in localStorage after a logout or a failed/expired refresh
+// would let anything still using those helpers keep making authenticated
+// requests with a session the user (or the backend) just ended — cleared
+// alongside REFRESH_KEY everywhere a session is torn down.
+const SUB_TOKEN_KEY = "sub_token";
 
 function setGlobalToken(token: string | null) {
   (window as unknown as Record<string, string | null>).__axon_access_token = token;
@@ -125,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (res.status === 401) {
           // Token is legitimately expired/revoked — clear session, not an error
           localStorage.removeItem(REFRESH_KEY);
+          localStorage.removeItem(SUB_TOKEN_KEY);
           setGlobalToken(null);
           setUser(null);
           setAccessToken(null);
@@ -160,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (res.status === 401) {
       // Token was revoked server-side — clear the local session.
       localStorage.removeItem(REFRESH_KEY);
+      localStorage.removeItem(SUB_TOKEN_KEY);
       setGlobalToken(null);
       setUser(null);
       setAccessToken(null);
@@ -193,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               res, "/api/auth/oauth-exchange",
             );
             localStorage.setItem(REFRESH_KEY, data.refresh_token);
-            if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
+            if (data.sub_token) localStorage.setItem(SUB_TOKEN_KEY, data.sub_token);
             setGlobalToken(data.access_token);
             setAccessToken(data.access_token);
             await fetchMe(data.access_token);
@@ -232,7 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token: string; user: AuthUser }>(res, "/api/auth/login");
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
-    if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
+    if (data.sub_token) localStorage.setItem(SUB_TOKEN_KEY, data.sub_token);
     setGlobalToken(data.access_token);
     setAccessToken(data.access_token);
     setUser(data.user);
@@ -260,6 +271,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }).catch(() => {});
     }
     localStorage.removeItem(REFRESH_KEY);
+    localStorage.removeItem(SUB_TOKEN_KEY);
     setGlobalToken(null);
     setUser(null);
     setAccessToken(null);
