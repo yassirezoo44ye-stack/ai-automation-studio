@@ -144,3 +144,30 @@
 }
 
 .addPage:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Narrow viewports (portrait phones/tablets) ─────────────────────────────────
+   The two side panels were a hard 220px each (flex-shrink: 0) — on a phone-width
+   viewport that alone exceeds the available width before the canvas gets any
+   space at all, and .studio's own overflow:hidden meant the excess was clipped,
+   not just tight. Panels now scale down with the viewport (clamp, same 768px
+   breakpoint the app shell's own sidebar already uses — see design-system.css)
+   instead of staying rigid, canvasArea keeps a real usable floor, and .body
+   gets a horizontal-scroll escape hatch so nothing is ever fully unreachable
+   even at the narrowest supported width. Same 3-pane structure, same
+   components, same desktop/tablet behavior above the breakpoint — panel width
+   is the only thing that changes. */
+@media (max-width: 768px) {
+  .body {
+    overflow-x: auto;
+  }
+
+  .leftPanel,
+  .rightPanel {
+    width:     clamp(120px, 34vw, 220px);
+    min-width: 120px;
+  }
+
+  .canvasArea {
+    min-width: 200px;
+  }
+}
