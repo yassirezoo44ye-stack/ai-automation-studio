@@ -25,6 +25,16 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      # Google Sign-In (app/routers/auth_users.py's /api/auth/google +
+      # /api/auth/google/callback) — both required together; the code reads
+      # them as os.getenv(..., "") and returns a clean 503 ("... OAuth is
+      # not configured on this server") when GOOGLE_CLIENT_ID is unset,
+      # rather than failing to boot. See docs for the exact redirect URI
+      # (<APP_URL>/api/auth/google/callback) to register in Google Cloud.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
       # Comma-separated additional CORS origins for a split-frontend setup
       # (e.g. https://your-app.vercel.app) — set after your first Vercel
       # deploy once you know the assigned domain.

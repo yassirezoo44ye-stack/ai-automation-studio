@@ -127,13 +127,25 @@ class TestOAuthStateCsrfProtection(unittest.TestCase):
     opening the resulting callback URL: the victim's browser ends up
     logged into the attacker's account (login/session-fixation CSRF)."""
 
-    def _client(self):
+    def setUp(self):
+        # ISOLATION FIX: this used to assign auth_users._GOOGLE_CLIENT_ID
+        # directly inside _client(), with no restoration — a permanent
+        # mutation of module-level state that leaked into every test that
+        # ran afterward in the same pytest process (e.g.
+        # tests/test_google_oauth_e2e.py's isolation-guard test, which
+        # expects the real unconfigured default once its own patch exits).
+        # unittest.mock.patch + addCleanup guarantees the original value is
+        # restored after each test regardless of pass/fail/order.
         import os
         os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
         os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+        patcher = patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "test-google-client-id")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _client(self):
         from fastapi import FastAPI
         from app.routers import auth_users
-        auth_users._GOOGLE_CLIENT_ID = "test-google-client-id"
         app = FastAPI()
         app.include_router(auth_users.router)
         return TestClient(app, raise_server_exceptions=False)

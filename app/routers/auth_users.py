@@ -931,6 +931,31 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
                 "redirect_uri": redirect_uri, "grant_type": "authorization_code",
             })
             if token_res.status_code != 200:
+                # DIAGNOSTIC FIX: previously discarded Google's actual response
+                # entirely — every token-exchange failure looked identical in
+                # the server log regardless of cause (redirect_uri_mismatch,
+                # invalid_client, invalid_grant, ...), making this endpoint's
+                # own failures undiagnosable from the logs. Google's OAuth
+                # error response (RFC 6749 §5.2) is {"error": ...,
+                # "error_description": ...} — only those two keys are ever
+                # logged, never the raw response body (not logged at all, not
+                # even truncated, if it isn't valid JSON). Neither key can
+                # contain this app's client_secret, the authorization `code`,
+                # or any token — Google's error body never echoes request
+                # credentials back. The client-facing exception is unchanged.
+                try:
+                    error_body = token_res.json()
+                    log.warning(
+                        "Google OAuth token exchange failed: status=%s error=%s error_description=%s",
+                        token_res.status_code,
+                        error_body.get("error"),
+                        error_body.get("error_description"),
+                    )
+                except Exception:
+                    log.warning(
+                        "Google OAuth token exchange failed: status=%s (response body was not valid JSON)",
+                        token_res.status_code,
+                    )
                 raise HTTPException(400, "Google OAuth token exchange failed")
             tokens = token_res.json()
             info_res = await client.get(

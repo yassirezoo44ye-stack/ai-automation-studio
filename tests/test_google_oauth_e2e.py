@@ -35,6 +35,7 @@ see the module docstring notes on each affected test class.
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -187,6 +188,8 @@ class _MockGoogleClient:
         self, *, token_status: int = 200, userinfo_status: int = 200,
         access_token: str = "google-access-token-abc",
         userinfo: dict | None = None,
+        token_error_body: dict | None = None,
+        token_raw_body: bytes | None = None,
     ):
         self.token_status = token_status
         self.userinfo_status = userinfo_status
@@ -195,6 +198,13 @@ class _MockGoogleClient:
             "email": "oauth-test@example.com", "name": "OAuth Test",
             "picture": "https://example.com/avatar.png", "verified_email": True,
         }
+        # Lets a test simulate exactly what Google's real error responses
+        # look like (e.g. {"error": "redirect_uri_mismatch", ...}) instead
+        # of always returning a success-shaped body under a failure status.
+        self.token_error_body = token_error_body
+        # Lets a test simulate a non-JSON failure body (e.g. an HTML error
+        # page from an edge/proxy in front of the real token endpoint).
+        self.token_raw_body = token_raw_body
         self.post_calls: list[dict] = []
         self.get_calls: list[dict] = []
 
@@ -206,6 +216,10 @@ class _MockGoogleClient:
 
     async def post(self, url, data=None, **kwargs):
         self.post_calls.append({"url": url, "data": data})
+        if self.token_status != 200 and self.token_raw_body is not None:
+            return httpx.Response(self.token_status, content=self.token_raw_body)
+        if self.token_status != 200 and self.token_error_body is not None:
+            return httpx.Response(self.token_status, json=self.token_error_body)
         return httpx.Response(self.token_status, json={"access_token": self.access_token})
 
     async def get(self, url, headers=None, **kwargs):
@@ -513,6 +527,94 @@ class TestGoogleTokenExchangeRequest:
             )
         assert resp.status_code == 400
         assert "token exchange failed" in resp.json()["detail"].lower()
+
+    def test_token_exchange_failure_logs_googles_actual_error_safely(self, client, caplog):
+        """Regression test for the production diagnosability fix: every
+        token-exchange failure — redirect_uri_mismatch, invalid_client,
+        invalid_grant, or anything else — used to be indistinguishable,
+        because the generic "Google OAuth token exchange failed" message
+        discarded Google's real response entirely with no server-side log
+        either. The fix is diagnostics-only: Google's status/error/
+        error_description are now logged via log.warning; the client-
+        facing response is deliberately unchanged (still the generic
+        message) — this is not a new HTTP contract."""
+        state, cookie = _valid_start(client)
+        mock_google = _MockGoogleClient(
+            token_status=400,
+            token_error_body={
+                "error": "redirect_uri_mismatch",
+                "error_description": "Redirect URI mismatch",
+            },
+        )
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             _patch_google(mock_google), \
+             caplog.at_level(logging.WARNING, logger="app.routers.auth_users"):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "code", "state": state},
+                cookies={"oauth_state": cookie},
+            )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Google OAuth token exchange failed"  # unchanged, generic
+
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "400" in logged
+        assert "redirect_uri_mismatch" in logged
+        assert "Redirect URI mismatch" in logged
+
+    def test_token_exchange_failure_never_logs_or_responds_with_secrets(self, client, caplog):
+        """Safety check on the fix above: the configured
+        GOOGLE_CLIENT_SECRET and the caller-supplied authorization `code`
+        must never appear in the log line, and — as before this fix —
+        never in the client-facing response either."""
+        state, cookie = _valid_start(client)
+        mock_google = _MockGoogleClient(
+            token_status=400,
+            token_error_body={
+                "error": "invalid_client",
+                "error_description": "description-text",
+            },
+        )
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._GOOGLE_CLIENT_SECRET", "super-secret-value-xyz"), \
+             _patch_google(mock_google), \
+             caplog.at_level(logging.WARNING, logger="app.routers.auth_users"):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "the-authorization-code-value", "state": state},
+                cookies={"oauth_state": cookie},
+            )
+
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "super-secret-value-xyz" not in logged
+        assert "the-authorization-code-value" not in logged
+        assert "super-secret-value-xyz" not in resp.text
+        assert "the-authorization-code-value" not in resp.text
+
+    def test_token_exchange_failure_with_non_json_body_logs_status_only(self, client, caplog):
+        """Explicit requirement: when Google's failure response isn't
+        valid JSON (e.g. an HTML error page from an edge/proxy), log only
+        the status code and a generic message — never the raw body, not
+        even truncated."""
+        state, cookie = _valid_start(client)
+        mock_google = _MockGoogleClient(
+            token_status=502, token_raw_body=b"<html><body>Bad Gateway</body></html>",
+        )
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             _patch_google(mock_google), \
+             caplog.at_level(logging.WARNING, logger="app.routers.auth_users"):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "code", "state": state},
+                cookies={"oauth_state": cookie},
+            )
+
+        assert resp.status_code == 400
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "502" in logged
+        assert "Bad Gateway" not in logged
+        assert "<html>" not in logged
 
 
 # ══════════════════════════════════════════════════════════════════════════════
