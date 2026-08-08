@@ -110,8 +110,35 @@ async def agent_ws(ws: WebSocket, session_id: str):
     Bidirectional channel for a live agent session.
     The agent publishes events to topic `agent:{session_id}`.
     Clients may send {"type": "cancel"} to abort the session.
+
+    SECURITY FIX: this was the only one of the 5 WS endpoints in this file
+    with no token check at all, AND its "subscribe" handler forwarded any
+    client-supplied topic string verbatim to manager.connect() with zero
+    validation — together, an unauthenticated connection could subscribe
+    itself to any other topic in the app (another user's chat room,
+    notifications, presence, or a live AgentOS run's step narration, which
+    carries real prompt/search/URL content) just by knowing or guessing
+    its name, bypassing every other endpoint's per-topic authorization
+    entirely. Now gated the same way as every sibling endpoint here, and
+    "subscribe" is restricted to this session's own sub-topics (the only
+    pattern this file itself ever publishes, e.g. "{topic}:control").
+    There is no per-session ownership registry for `session_id` today
+    (unlike /ws/system/{run_id}'s run-owner check) — any authenticated
+    user can still connect to any session_id, matching /ws/system's
+    existing "any authenticated user" model; closing that gap fully would
+    need a new ownership registry, out of scope for this minimal fix.
+    Confirmed unused by the current frontend (no caller of /ws/agent/ or
+    the "subscribe" message exists in src/renderer), so tightening this
+    carries no regression risk to an active feature.
     """
+    token   = ws.query_params.get("token", "")
+    user_id = _user_id_from_ws_token(token)
+    if not user_id:
+        await ws.close(code=4401, reason="unauthorized")
+        return
+
     topic = f"agent:{session_id}"
+    subscribed = [topic]
     await manager.connect(ws, topic)
     hb    = asyncio.create_task(_heartbeat(ws))
 
@@ -138,9 +165,14 @@ async def agent_ws(ws: WebSocket, session_id: str):
 
                 elif kind == "subscribe":
                     extra = msg.get("topic", "")
-                    if extra:
+                    # Only this session's own sub-topics — never an
+                    # arbitrary caller-supplied topic (see docstring).
+                    if extra and extra.startswith(f"{topic}:"):
                         await manager.connect(ws, extra)
+                        subscribed.append(extra)
                         await manager.send(ws, {"type": "subscribed", "topic": extra})
+                    else:
+                        await manager.send(ws, {"type": "error", "message": "topic not permitted"})
 
             except asyncio.TimeoutError:
                 # No message for 2 minutes — send keep-alive
@@ -153,7 +185,8 @@ async def agent_ws(ws: WebSocket, session_id: str):
         await manager.send(ws, {"type": "error", "message": str(exc)})
     finally:
         hb.cancel()
-        manager.disconnect(ws, topic)
+        for t in subscribed:
+            manager.disconnect(ws, t)
 
 
 # ── Job progress stream ───────────────────────────────────────────────────────
