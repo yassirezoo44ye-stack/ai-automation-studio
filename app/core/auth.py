@@ -64,12 +64,21 @@ def verify_token(token: str) -> Optional[dict]:
 def extract_auth_credentials(request: Request) -> tuple[str, str]:
     """(sub_token, bearer) from a request — the dual-auth extraction shared
     by owner_email() below and factory.py's api_auth_middleware. sub_token
-    comes from X-Sub-Token or the sub_token cookie; bearer is the
-    Authorization header with any "Bearer " prefix stripped."""
-    sub_token = (
-        request.headers.get("X-Sub-Token")
-        or request.cookies.get("sub_token", "")
-    )
+    comes from X-Sub-Token; bearer is the Authorization header with any
+    "Bearer " prefix stripped.
+
+    AUDIT FIX: this previously also accepted sub_token from a `sub_token`
+    cookie as a fallback. Nothing in this codebase ever sets that cookie
+    (the token is only ever handed to clients in a JSON response body and
+    stored/sent via X-Sub-Token) — it was a dead, unreachable path via any
+    of this app's own flows, but one that stayed trusted for auth. Left in
+    place, it would become a real risk the day this domain ever shares a
+    parent domain with a less-trusted subdomain (a subdomain can plant a
+    cookie for the shared parent domain — "cookie tossing" — and this
+    function would have accepted it as a valid credential). Removed
+    outright rather than disabled, since keeping a second, unused
+    credential-acceptance path around is itself the risk being closed."""
+    sub_token = request.headers.get("X-Sub-Token", "")
     bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     return sub_token, bearer
 

@@ -64,10 +64,17 @@ class TestOwnerEmail:
         req = self._Req({"Authorization": f"Bearer {tok}"})
         assert owner_email(req) == "c@d.com"
 
-    def test_cookie(self):
+    def test_cookie_no_longer_accepted(self):
+        # AUDIT FIX: extract_auth_credentials() no longer reads a sub_token
+        # cookie fallback at all — nothing in this codebase ever sets that
+        # cookie, so it was a dead, unreachable-via-legitimate-flows path
+        # that stayed trusted for auth (see app.core.auth.py's docstring).
+        # A token sent ONLY as a cookie must now be rejected, not accepted.
         tok = make_token("e@f.com", False, 0)
         req = self._Req({}, {"sub_token": tok})
-        assert owner_email(req) == "e@f.com"
+        with pytest.raises(HTTPException) as exc_info:
+            owner_email(req)
+        assert exc_info.value.status_code == 401
 
     def test_no_token_raises_401(self):
         # Was a silent fallback to a shared "demo@local" identity — closed
