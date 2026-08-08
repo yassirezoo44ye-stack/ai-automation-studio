@@ -156,6 +156,77 @@ Goal restated precisely, per the approval: not more test *count* — proof that 
 - **Concurrent-delivery transaction-isolation behavior** for two simultaneous `upsert_from_stripe_invoice()` calls for the *same* `stripe_invoice_id` was not tested — `ON CONFLICT` handles the invoices row itself safely, but whether the two transactions' invoice_items/payments DELETE-then-INSERT pairs could interleave in a way that leaves a transiently inconsistent (not permanently wrong, since both transactions still each fully commit or fully roll back) item set was not verified under real concurrent load. Worth a follow-up if this proves to matter in practice — Stripe does not typically deliver the same event concurrently.
 - `backfill_from_stripe()` (the Stripe-API-boundary wrapper) has no test in this slice, per the "mock only the external boundary, don't newly integrate a real payment provider" instruction — it would need a mocked `stripe.Invoice.list()`, which is a legitimate future addition but wasn't necessary to prove this slice's goal (DB-layer correctness).
 
+### 11.3 — Findings Decision Gate (post-commit-2 deep-dive, no code changed)
+
+Additional confirmation work only, per explicit instruction, before any of these four are fixed. No production code was touched producing this section; the two "reproduction" tests referenced already existed in commit `8efae17` (`TestNoIdempotencyKey`, `TestNoStatusTransitionValidation`) — no new tests were added, since both scenarios were already proven and adding a second test for the same fact would not add information.
+
+#### Finding #1 — `credits.grant()` idempotency → **Confirmed Financial Integrity Finding**
+
+**HTTP endpoint traced end to end:** `POST /api/orgs/{org_id}/credits` (`app/routers/org_billing.py::grant_credit`) → `ctx: OrgContext = Depends(require_permission("billing","manage"))`, **plus** an explicit `if ctx.role != "owner": raise 403` — this is genuinely owner-only, no permission-check bypass found. `GrantCreditRequest.amount_usd: float = Field(gt=0)` is the only input validation. The handler calls `CreditService.grant(ctx.org_id, round(amount_usd*100), reason, actor_id=ctx.user_id)` directly — no idempotency key field exists on `GrantCreditRequest`, no idempotency wrapping exists in the handler or the service method.
+
+**Who can call it:** only a verified member of the org holding the `owner` role (server-verified via `require_permission`'s real DB membership check, not client-trusted). This bounds the finding precisely: it is **not** an attacker-exploitable cross-tenant or privilege-escalation issue — it is a data-integrity risk triggered by a *legitimate, authorized* actor's own retry (accidental double-click, a client-side network timeout causing an automatic retry, a proxy retry, browser back-button resubmission). The party harmed is the organization's own credit ledger accuracy (and, since credits reduce what Stripe bills, the company's realized revenue) — not another tenant.
+
+**Existing idempotency mechanism found — `app.core.idempotency.idempotent()`** (`app/core/idempotency.py`), already schema'd (`idempotency_keys` table, `UNIQUE(scope, key)`), already tested (`tests/test_idempotency.py`), and **already used by two other call sites in this exact codebase**:
+- `app/routers/agent_os_api.py`'s `/api/agentos/run` — keyed by a client-supplied `req.run_id`.
+- `app/core/jobs/queue.py::JobQueue.submit()` — an **optional** `idempotency_key` parameter; when omitted (the default), no dedup happens at all — the exact same "opt-in, backward compatible" shape a credits fix would need.
+
+Its own docstring literally names "client double-submit" as a scenario it exists to solve — this is precisely the mechanism to reuse, not a new one to invent.
+
+**Is there an existing request-ID/idempotency-key already flowing through this specific request that could be reused for free?** No. `app/core/middleware.py::RequestIdMiddleware` does accept a client-supplied `X-Request-Id` header, but (a) it is used only for log/trace correlation (`set_request_id(rid)`), never read by any business-logic code, and (b) the frontend never sends this header at all (confirmed: zero occurrences of `X-Request-Id` anywhere in `src/`) — every request, including a genuine retry, gets a fresh server-generated UUID either way. **This header is not usable as an idempotency key today without both a frontend change (generate and persist one key per logical submit attempt, resend unchanged on retry) and a backend change (read and use it) — it is not "already wired," just present as unused plumbing.**
+
+**Reproduction:** `tests/db_integration/test_billing_credits.py::TestNoIdempotencyKey::test_identical_grant_calls_create_two_ledger_rows_not_one` (already in commit `8efae17`) — two `grant()` calls with byte-identical arguments create two distinct rows and double `get_balance_cents()`'s result. This generically covers "a retry of the same logical operation," not just "two deliberately different calls": at the HTTP layer, an automatic retry of the same `POST` *is* two calls with identical arguments — there is no third case in between that the existing test doesn't already cover.
+
+**Root cause:** no idempotency key exists anywhere in the request/response contract for this endpoint (not in the schema, not in the service signature), and no mechanism wraps the write.
+
+**Minimal fix proposal (not implemented — pending approval):**
+1. Add `idempotency_key: Optional[str] = None` to `GrantCreditRequest` (backward compatible — omitting it preserves today's exact behavior, mirroring `JobQueue.submit()`'s own optional-parameter convention).
+2. `CreditService.grant()` gains a matching optional `idempotency_key` parameter. When provided, the **entire** current body of `grant()` (both the best-effort Stripe balance-transaction call and the local `INSERT`) moves inside `async with idempotent("credit_grant", f"{org_id}:{idempotency_key}", pool=self._pool) as guard:` — both side effects need to be inside the guard, not just the DB write, or a replay would still re-attempt the Stripe call. `guard.result` gets set to the inserted row (JSON-serializable subset); a replay returns `guard.cached_result` instead of inserting again.
+3. **Effectiveness depends on the frontend generating and reusing a stable key per logical submission** (e.g., a UUID created once when the "Grant Credit" form is opened/submitted, kept unchanged across that submission's retries, discarded after a terminal response). A backend-only change with no client sending a stable key would leave the vulnerability's practical trigger (double-click/timeout-retry) unaddressed — this is a two-sided fix, not backend-only, and worth flagging explicitly since "smallest possible fix" could otherwise be misread as backend-only.
+
+**Database constraint/transaction implications:** none new — `idempotency_keys`'s existing `UNIQUE(scope, key)` constraint is the actual atomicity guarantee (the same `INSERT ... ON CONFLICT DO NOTHING` pattern already proven in `tests/test_idempotency.py`), so no new constraint or migration is needed on `credits` itself. The credits `INSERT` and the `idempotency_keys` bookkeeping would run as two separate statements (not one transaction) under `idempotent()`'s existing design — matching how `agent_os_api.py`/`JobQueue` already use it, not a new pattern.
+
+**Not implemented in this task — awaiting your explicit approval, per instruction.**
+
+#### Finding #2 — invoice status regression (`paid → draft`) → **Confirmed Domain Integrity Finding**
+
+**Schema/model read:** `invoices.status VARCHAR(20) NOT NULL DEFAULT 'draft'` — no `CHECK` constraint on value or on transitions; `_STATUS_TO_PAYMENT_STATUS`'s five keys (`paid, open, draft, uncollectible, void`) are exactly Stripe's real `Invoice.status` enum.
+
+**Webhook handling path read:** `app/routers/subscriptions.py::_dispatch_webhook_event` dispatches `invoice.created|finalized|paid|payment_failed|voided` all to the same `_sync_invoice()` → `upsert_from_stripe_invoice()`. `app/billing/webhooks.py::WebhookEventService.record()` dedupes by `stripe_event_id` — this stops an **exact redelivery of the same event** from double-processing, but does **nothing** to order **different** events for the same invoice relative to each other. `invoice.created` (status snapshot: `draft`) and `invoice.paid` (status snapshot: `paid`) are two distinct Stripe event IDs; each is "new" to `WebhookEventService` and processed independently. Stripe's delivery guarantee is at-least-once, explicitly not strictly ordered under retry — so `invoice.created`'s delivery can be delayed (network retry, an earlier processing failure that Stripe redelivers later) and arrive **after** `invoice.paid` already applied.
+
+**Status transition rules found in the codebase today:** none. No state machine, no ordering check, no use of the Stripe event's own `created` timestamp anywhere in this path.
+
+**Legal states in practice (Stripe's real domain, not invented):** the canonical flow is `draft → open → {paid | void | uncollectible}`, with one well-known legitimate "reopening" exception — `uncollectible → paid` (a previously-uncollectible invoice can still be paid later). Stripe's own system never actually transitions a real invoice from `paid` back to `draft` — a local row observing that "transition" is by definition processing a **stale, out-of-order snapshot**, not a genuine new state change.
+
+**Is `paid → draft` legitimate or an artifact?** An artifact of out-of-order webhook delivery, not a real domain transition — confirmed by the above, not assumed. **Classification: Confirmed Domain Integrity Finding, not Safe/Expected.**
+
+**Reproduction:** `tests/db_integration/test_billing_invoices.py::TestNoStatusTransitionValidation::test_status_can_regress_on_out_of_order_delivery` (already in commit `8efae17`) — applying a `draft` delivery after a `paid` one for the same `stripe_invoice_id` leaves the row showing `draft`, against real PostgreSQL.
+
+**Minimal fix proposal (not implemented — pending approval):** the narrowest fix does **not** require encoding Stripe's full status state machine (which would be more invasive and Stripe-domain-knowledge-fragile than "smallest fix" allows). Instead: capture the Stripe event's own `created` (epoch) timestamp — already available on every webhook `event` object, currently discarded — as a new `last_event_at` column on `invoices`, and change the `ON CONFLICT ... DO UPDATE` clause to a conditional update (`WHERE invoices.last_event_at IS NULL OR EXCLUDED.last_event_at >= invoices.last_event_at`), so a delivery that's provably older than what's already stored is a no-op rather than an overwrite. This is a "last-write-wins by event time, not by arrival time" pattern — standard for out-of-order webhook handling, requires one additive column (no destructive migration), and doesn't need to model Stripe's status semantics at all.
+
+**Not implemented in this task — awaiting your explicit approval, per instruction.**
+
+#### Finding #3 — `grant()`/`get_balance_cents()` bypass RLS → **P1 Architectural Hardening** (no exploit path found)
+
+**All callers traced, exhaustively** (`grep -rn "get_credit_service()\.\|\.grant(\|\.get_balance_cents(" app/` — zero results outside `app/billing/credits.py` and exactly two call sites in `app/routers/org_billing.py`):
+- `grant()` ← `grant_credit` only, with `ctx.org_id` from `require_permission("billing","manage")` **plus** the owner-role check (§ Finding #1).
+- `get_balance_cents()` ← `get_credits` only, with `ctx.org_id` from plain `org_context`.
+
+**Can an attacker reach either with an unverified `org_id`?** No. Both call sites' `ctx.org_id` is resolved by `org_context`'s `_extract_org_id()` (header/query/path — client-suppliable) but then **independently verified** against real DB membership (`get_tenancy_service().get_member_role(org_id, user_id)`) before `OrgContext` is ever constructed — the same server-verification pattern examined exhaustively across both prior security sweeps. There is no path from client input to `grant()`/`get_balance_cents()` that skips this check.
+
+**Can `get_balance_cents()` leak another org's balance?** No — same reasoning; its one caller always supplies a membership-verified `org_id`.
+
+**Are there service-to-service (non-HTTP) callers?** No — confirmed zero (checked `cli.py`, `agentos.py`, `scripts/`, `dev_plugins/`, and all of `app/` for any other importer of `CreditService`/`get_credit_service`).
+
+**Should these be RLS-protected per the current architecture's own stated intent?** The architecture's own documented intent (`app/tenancy/rls.py`'s docstring: "additive defense-in-depth for the tenancy-critical services") suggests yes, for consistency with `list_ledger()`'s treatment of the same table — but "should be more defensive" is a hardening judgment, not evidence of a live gap, since no caller today relies on RLS as the *only* protection for these two methods.
+
+**Classification: P1 Architectural Hardening.** No exploit path exists today; not modified in this task, per instruction.
+
+#### Finding #4 — negative `grant()` amount → **P2 / Dormant**
+
+**Confirmed no other entry point exists:** exhaustive `grep` (same sweep as Finding #3) found exactly one HTTP path to `grant()`, and `GrantCreditRequest.amount_usd: float = Field(gt=0)` is enforced by Pydantic on every request before the handler body even runs. No CLI, script, admin tool, or other router calls `CreditService.grant()` anywhere in this repository.
+
+**Classification: P2 / Dormant**, confirmed, not just assumed. The pinning test (`TestNoInsufficientCreditsProtection::test_no_router_ever_calls_grant_with_a_negative_amount`, already in commit `8efae17`) stays as the tripwire — no further action.
+
 ---
 
 ## 12. Remaining P0 gaps (updated after commit 2)
