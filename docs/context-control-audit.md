@@ -489,3 +489,43 @@ messages (بالترتيب):
 
 **Next recommended step:**
 تنفيذ P0 فقط (§15، §18 بند 1-2): كتابة اختبارات الوحدة لسيناريو الـ overflow (§14 بند 2) ثم توصيل `ContextBudgeter` الموجود فعلًا (`app/core/ai/utils/tokens.py`) داخل `ContextManager`/`AIGateway._enrich()` — بلا لمس `chat.py`/`agents.py`/أي schema. هذه أصغر خطوة ممكنة تعالج المشكلة الوحيدة المصنَّفة Critical (F1) بأثر قابل للقياس فورًا (§14 بند 2)، دون المساس بأي مسار حي حاليًا أو فتح تبعيات F4/F7 غير المحلولة بعد.
+
+---
+
+## Addendum — P1 Decision Gate: `ContextBudgetError` propagation في `AIGateway._enrich()`
+
+**تاريخ:** بعد إنجاز P0 (commit `12ddf3c`)، قبل أي تعديل على `app/ai/gateway.py`.
+**السؤال:** عند إضافة `budget_history()` داخل `_enrich()`، إن رفعت `ContextBudgetError`، كيف تُعالَج بلا ابتكار معمارية جديدة؟
+
+### فحص الـcallers الفعليين (بالكود، لا افتراضًا)
+
+| الاستدعاء | مكان `_enrich()` بالنسبة لأي try/except | من يلتقط الاستثناء فعليًا اليوم |
+|---|---|---|
+| `AIGateway.complete()` → `self._enrich(...)` | **بلا** try/except حولها في `gateway.py` نفسها | يصعد للمستدعي |
+| `AIGateway.stream()` → `self._enrich(...)` | **بلا** try/except حولها | يصعد للمستدعي |
+| `InferenceEngine.complete()` → `gw._enrich(...)` (`app/core/ai/inference/engine.py:82`) | **قبل** `try:` التي تُغلِّف `platform_registry.complete_with_events(...)`/`run_tool_loop(...)` — أي خارج تلك try تمامًا | يصعد مباشرة لمستدعي `InferenceEngine.complete()` بلا لمس |
+| `InferenceEngine.stream()` → `gw._enrich(...)` (سطر 153) | قبل أي `yield` — الدالة async generator، فـ`_enrich()` لا يُنفَّذ إلا عند أول تكرار (`__anext__`) | يصعد إلى حلقة `async for` عند المستدعي |
+| `app/routers/inference.py::complete()` (`POST /api/ai/complete`) | يستدعي `platform.complete()` **بلا try/except على الإطلاق** حول الاستدعاء | **الطبقة العامة**: `@app.exception_handler(Exception)` في `app/factory.py:379-385` — موجودة أصلًا، تُرجع `500 {"detail": "Internal server error"}` نظيفة، بلا traceback مُسرَّب. **هذا هو السلوك الحالي لأي استثناء آخر غير مُعالَج على هذا المسار تحديدًا (مثل `RuntimeError` دائرة مفتوحة، أو أخطاء anthropic) — لا استثناء خاص لأي نوع خطأ AI على هذا الراوتر اليوم.** |
+| `app/routers/inference.py::stream()` (`POST /api/ai/stream`) | يستدعي `p.stream(...)` **داخل** `try: async for chunk in p.stream(...): ... except Exception as exc: log.exception(...); yield SSE error chunk` (`inference.py:168-181`) — **طبقة موجودة أصلًا** | نفس الطبقة، تُنتِج SSE `{"type":"error","error":"An error occurred. Please try again."}` نظيف، **بلا** أي `done`/chunk سابق (لأن `_enrich()` يفشل قبل أول `yield` في `InferenceEngine.stream()`) |
+| `run_tool_loop()`/`stream_tool_loop()` (`tool_loop.py`) → `gateway.complete()`/`gateway.stream()` في كل جولة أدوات | يعيد استدعاء `_enrich()` لكل جولة (الرسائل تكبر بنتائج الأدوات) — لا try/except خاص بها في `tool_loop.py` | يصعد لـ`InferenceEngine.complete()`'s `try: ... except Exception: log.exception(...); raise` (التي تُغلِّف استدعاء `run_tool_loop` نفسه) — يُسجَّل ثم يُعاد رفعه بلا تغيير، ثم نفس الطبقتين أعلاه |
+
+### القرار
+
+**لا يُضاف أي `try/except` جديد حول `budget_history()` داخل `_enrich()`. الاستثناء يُرفَع ويُترَك يصعد طبيعيًا.**
+
+السبب: **كل** مسارات الاستدعاء الفعلية لديها بالفعل طبقة موجودة تتعامل مع استثناء غير متوقّع من `_enrich()` بشكل صحيح ونظيف:
+- `/api/ai/stream` → الطبقة الموجودة في `inference.py::stream()` تُنتج SSE error نظيفًا، ولا يحدث أي استدعاء provider (لأن `_enrich()` يفشل قبل أول `yield`، وقبل `platform_registry.resolve_chain`).
+- `/api/ai/complete` → الطبقة العامة الموجودة في `factory.py` تُنتج 500 نظيفًا، متّسقًا تمامًا مع كيف يُعامَل أي خطأ AI آخر غير مُصنَّف خصيصًا على هذا الراوتر اليوم (لا يوجد تمييز خاص حتى لأخطاء anthropic نفسها هنا) — فهذا ليس "500 غير مناسب يكسر العقد"، بل استمرار للعقد القائم فعلًا لهذا المسار تحديدًا.
+- جولات tool-loop → تُسجَّل عبر `InferenceEngine.complete()`'s try/except الموجودة أصلًا، ثم تصعد لنفس الطبقتين أعلاه.
+
+**الإضافة الوحيدة المسموح بها:** استدعاء `record_budget_rejection(exc)` (من P0، موجودة فعلًا، بلا منطق جديد) مباشرة قبل إعادة رفع الاستثناء — لمجرد التوازي مع نفس نقطة القياس المُفعَّلة في `chat.py`/`agents.py`. هذا **لا** يغيّر مسار الاستثناء ولا نوعه ولا الحالة النهائية — `except ContextBudgetError: record_budget_rejection(exc); raise` (bare `raise`، لا `raise from`، لا تحويل نوع).
+
+### لماذا هذا Fail Closed
+
+في كل الحالات أعلاه، فشل `_enrich()` يحدث **قبل** أي استدعاء لـ`platform_registry.complete_with_events`/`resolve_chain`/provider — لا يوجد أي احتمال لإرسال context متجاوز للميزانية. لا استمرار، لا تدهور صامت، لا "أفضل محاولة" — الطلب يتوقف بالكامل.
+
+### ما تم فحصه وثبت أنه غير ضروري
+
+- **لا حاجة لتعديل `inference.py`** — طبقتاه (`complete()`/`stream()`) تتعاملان مع هذا بلا أي تغيير.
+- **لا حاجة لتعديل `factory.py`** — المعالج العام موجود ويعمل بشكل صحيح للحالة هذه.
+- **لا حاجة لـ`except` جديد يحوّل `ContextBudgetError` إلى نوع HTTP معيّن** — كل الأنواع الأخرى غير المصنَّفة على هذين المسارين تُعامَل بنفس الطريقة العامة اليوم؛ إفراد `ContextBudgetError” بمعاملة خاصة كان سيكون تغيير سلوك أوسع من المطلوب، لا أصغره.

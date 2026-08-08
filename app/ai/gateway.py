@@ -20,6 +20,7 @@ from app.ai.models import (
     CompletionRequest, CompletionResponse, StreamChunk, Message,
 )
 from app.ai.retries import with_retry
+from app.core.ai.context.manager import ContextBudgetError, budget_history, record_budget_rejection
 
 log = logging.getLogger(__name__)
 
@@ -134,6 +135,20 @@ class AIGateway:
         1. Load versioned prompt template and render variables.
         2. Load conversation history.
         3. Inject long-term memory into system prompt.
+        4. Bound the result to the resolved model's context window.
+
+        Step 4 reuses budget_history() as-is (see docs/context-control-
+        audit.md §6/§18 — P0; Addendum — P1 Decision Gate for why no new
+        try/except is added here): steps 1-3 above have no upper bound on
+        how much history/memory they can inject, the same unbounded-context
+        risk P0 already fixed on the live chat routers. On overflow that
+        can't be fixed by compaction, ContextBudgetError is allowed to
+        propagate — every real caller of _enrich() already has an existing
+        layer that turns an unexpected exception here into a clean,
+        no-provider-call failure (InferenceEngine.stream()'s SSE error
+        handling in app/routers/inference.py, or the app-wide
+        @app.exception_handler(Exception) in app/factory.py) — so no new
+        error-handling architecture is introduced.
         """
         messages = list(request.messages)
         system   = request.system
@@ -168,6 +183,21 @@ class AIGateway:
             mem_ctx = await mem.build_memory_context(self._pool, user_id=user_id)
             if mem_ctx:
                 system = (system + "\n\n" + mem_ctx) if system else mem_ctx
+
+        # 4. Context budgeting — steps 1-3 above have no upper bound; bound
+        # the assembled result to request.model's real context window
+        # before it can ever reach a provider call. See the docstring above
+        # for why ContextBudgetError is intentionally NOT caught here.
+        if messages:
+            try:
+                budget = budget_history(
+                    [m.model_dump() for m in messages],
+                    model=request.model, system=system or "",
+                )
+            except ContextBudgetError as exc:
+                record_budget_rejection(exc)
+                raise
+            messages = [Message(**m) for m in budget.messages]
 
         return request.model_copy(update={
             "messages": messages,
