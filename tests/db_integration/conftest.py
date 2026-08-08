@@ -134,13 +134,29 @@ def pg_test_database_url() -> str:
         app_dsn = _app_dsn(db_name)
         pool = await asyncpg.create_pool(app_dsn, min_size=1, max_size=5)
         try:
-            from app.core.db import init_db
+            from app.core import db as db_module
+            from app.core.db import init_db, ensure_tasks_table
             from app.tenancy import init_tenancy_schema, enable_scoped_rls
             from app.billing.credits import init_credits_schema
             from app.billing.invoices import init_invoices_schema
 
             async with pool.acquire() as conn:
                 await init_db(conn)
+            # ensure_tasks_table() (despite its name) is also where
+            # app/factory.py's lifespan() creates user_sessions,
+            # email_verification_tokens, password_reset_tokens,
+            # mfa_secrets, and mfa_challenges — it reads app.core.db's
+            # module-level pool via get_pool() rather than taking a conn
+            # argument (matching real startup: app.factory.lifespan()
+            # calls set_pool() then this, in this order), so the pool
+            # must be installed here first. Cleared again in the finally
+            # block below — this is this session-scoped setup's own
+            # throwaway pool/loop, not the per-test pg_pool fixture's.
+            db_module.set_pool(pool)
+            try:
+                await ensure_tasks_table()
+            finally:
+                db_module.set_pool(None)
             async with pool.acquire() as conn:
                 await init_tenancy_schema(conn)
             # Billing schemas (credits/invoices/invoice_items/payments) must

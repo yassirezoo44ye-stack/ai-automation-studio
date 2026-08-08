@@ -357,28 +357,54 @@ async def login_mfa(body: LoginMfaRequest, request: Request, _rl: None = _auth_r
 
 @router.post("/refresh")
 async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
+    """Rotates the refresh token atomically.
+
+    Previously this was a SELECT (find the row for body.refresh_token)
+    followed by a separate UPDATE (write a new token onto that row's id) --
+    a real TOCTOU race, reproduced against real PostgreSQL: two concurrent
+    requests presenting the *same* refresh_token (a client double-fire, a
+    legitimate two-tab race right at expiry, or a replayed/stolen token)
+    could both read the still-valid row before either write landed, so
+    both would be ACCEPTED and each would be handed a *different* new
+    refresh_token -- but the database can only hold one. Whichever caller
+    "lost" received a token that would fail on its very next use, an
+    unexplained silent logout with no error at refresh time itself.
+
+    The single UPDATE ... WHERE refresh_token=$2 ... RETURNING below is a
+    compare-and-swap: it can match and rotate at most ONE row for a given
+    old-token value, so two concurrent requests for the same token can
+    never both succeed -- the loser's WHERE clause matches zero rows
+    (that exact token value no longer exists, already rotated away by the
+    winner) and it gets a clean 401, with no separate read-then-write
+    window in between where both could observe the same still-valid row.
+    This also gives free reuse detection: replaying an already-rotated
+    token hits the same zero-row path as any other invalid token.
+    """
+    new_refresh = make_refresh_token()
     async with get_pool().acquire() as conn:
         session = await conn.fetchrow(
-            """SELECT s.id, s.user_id, s.expires_at, u.email, u.name, u.email_verified, u.avatar_url, u.created_at
-               FROM user_sessions s JOIN users u ON u.id=s.user_id
-               WHERE s.refresh_token=$1""",
-            body.refresh_token,
+            """UPDATE user_sessions SET refresh_token=$1, last_used_at=NOW()
+               WHERE refresh_token=$2 AND expires_at > NOW()
+               RETURNING id, user_id""",
+            new_refresh, body.refresh_token,
         )
         if not session:
+            # Distinguish "expired" from "invalid/already rotated" only for
+            # a clearer client-facing message -- the auth outcome (401) is
+            # identical either way, and this lookup happens only on the
+            # already-failed path so it adds no cost to the normal case.
+            stale = await conn.fetchrow(
+                "SELECT id FROM user_sessions WHERE refresh_token=$1 AND expires_at <= NOW()",
+                body.refresh_token,
+            )
+            if stale:
+                await conn.execute("DELETE FROM user_sessions WHERE id=$1", stale["id"])
+                raise HTTPException(401, "Session expired")
             raise HTTPException(401, "Invalid refresh token")
-        if session["expires_at"] < datetime.datetime.now(datetime.timezone.utc):
-            await conn.execute("DELETE FROM user_sessions WHERE id=$1", session["id"])
-            raise HTTPException(401, "Session expired")
 
-        # Rotate refresh token
-        new_refresh = make_refresh_token()
-        await conn.execute(
-            "UPDATE user_sessions SET refresh_token=$1, last_used_at=NOW() WHERE id=$2",
-            new_refresh,
-            session["id"],
-        )
+        email = await conn.fetchval("SELECT email FROM users WHERE id=$1", session["user_id"])
 
-    access_token = make_access_token(str(session["user_id"]), session["email"])
+    access_token = make_access_token(str(session["user_id"]), email)
     return {
         "access_token": access_token,
         "refresh_token": new_refresh,
