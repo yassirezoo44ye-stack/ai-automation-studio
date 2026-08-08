@@ -94,6 +94,18 @@ def _mock_pool(conn):
 
 # ── Fake DB connection — persists users/sessions across calls in one test ────
 
+class _NullTransaction:
+    """No-op async context manager standing in for asyncpg's real
+    conn.transaction() — this fake has no real DB to roll back, but
+    production code now opens one around /refresh's read+rotate."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
 class _FakeOAuthConn:
     """Stands in for an asyncpg connection for exactly the SQL this
     OAuth -> refresh -> /me chain issues. Dispatches on recognizable SQL
@@ -105,6 +117,14 @@ class _FakeOAuthConn:
         self.users: dict[str, dict] = {str(u["id"]): dict(u) for u in (seed_users or [])}
         self.sessions: dict[str, dict] = {}
         self.insert_user_calls = 0
+
+    def transaction(self):
+        # POST /api/auth/refresh wraps its read+rotate in a real
+        # transaction (see auth_users.py's race-condition fix) — this
+        # fake has no real DB to demonstrate locking against, but still
+        # needs to support the `async with conn.transaction():` shape so
+        # the endpoint runs at all.
+        return _NullTransaction()
 
     def _by_email(self, email):
         return next((dict(u) for u in self.users.values() if u["email"] == email), None)

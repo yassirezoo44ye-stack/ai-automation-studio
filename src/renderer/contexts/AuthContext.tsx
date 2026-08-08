@@ -123,8 +123,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ refresh_token: stored }),
         });
         if (res.status === 401) {
-          // Token is legitimately expired/revoked — clear session, not an error
+          // Token is legitimately expired/revoked — clear session, not an error.
+          // AUDIT FIX: this is the most common way a session actually ends
+          // (natural refresh-token expiry, not an explicit Logout click) —
+          // previously only REFRESH_KEY/JWT state was cleared here, leaving
+          // sub_token (30-day TTL, independent of this JWT) and the org
+          // selection still live, the same leak logout() below was fixed
+          // for. Kept as a literal copy of logout()'s cleanup (not a shared
+          // helper) to keep this fix minimal and each call site independently
+          // readable.
           localStorage.removeItem(REFRESH_KEY);
+          localStorage.removeItem("sub_token");
+          localStorage.removeItem("axon_current_org_id");
+          delete (window as unknown as Record<string, unknown>).__axon_org_id;
           setGlobalToken(null);
           setUser(null);
           setAccessToken(null);
@@ -170,7 +181,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await apiFetch("/api/auth/me", {}, token);
     if (res.status === 401) {
       // Token was revoked server-side — clear the local session.
+      // AUDIT FIX: same sub_token/org leak as doRefresh's 401 branch above
+      // and logout() below — see that comment for the full rationale.
       localStorage.removeItem(REFRESH_KEY);
+      localStorage.removeItem("sub_token");
+      localStorage.removeItem("axon_current_org_id");
+      delete (window as unknown as Record<string, unknown>).__axon_org_id;
       setGlobalToken(null);
       setUser(null);
       setAccessToken(null);

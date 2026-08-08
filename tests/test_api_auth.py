@@ -7,6 +7,7 @@ rate-limit headers, and input validation.
 """
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -375,3 +376,89 @@ class TestOAuthCallbackProviderUnreachable:
             )
 
         assert resp.status_code == 400
+
+
+# ── Regression: Microsoft/GitHub token-exchange failures must log the
+#    provider's actual error (same diagnostic gap Google's callback had,
+#    same Option-B fix — log-only, client response unchanged) ────────────────
+
+class _TokenErrorClient:
+    """Returns a controllable JSON error body from the token endpoint,
+    simulating what a provider actually sends on a rejected exchange (as
+    opposed to _UnreachableProviderClient's connection-level failure)."""
+
+    def __init__(self, status_code: int, body: dict):
+        self.status_code = status_code
+        self.body = body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    async def post(self, *args, **kwargs):
+        return httpx.Response(self.status_code, json=self.body)
+
+    async def get(self, *args, **kwargs):
+        raise AssertionError("must not reach userinfo after a failed token exchange")
+
+
+class TestOAuthTokenExchangeFailureLogging:
+    @staticmethod
+    def _get_callback(client, path: str, state: str = "state-value"):
+        return client.get(path, params={"code": "auth-code", "state": state}, cookies={"oauth_state": state})
+
+    def test_microsoft_callback_logs_actual_error_keeps_generic_response(self, client, caplog):
+        with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_TokenErrorClient(400, {"error": "invalid_grant", "error_description": "code expired"})), \
+             caplog.at_level(logging.WARNING, logger="app.routers.auth_users"):
+            resp = self._get_callback(client, "/api/auth/microsoft/callback")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Microsoft OAuth token exchange failed"
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "invalid_grant" in logged
+        assert "code expired" in logged
+
+    def test_github_callback_logs_actual_error_keeps_generic_response(self, client, caplog):
+        with patch("app.routers.auth_users._GITHUB_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_TokenErrorClient(400, {"error": "bad_verification_code", "error_description": "bad code"})), \
+             caplog.at_level(logging.WARNING, logger="app.routers.auth_users"):
+            resp = self._get_callback(client, "/api/auth/github/callback")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "GitHub OAuth token exchange failed"
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "bad_verification_code" in logged
+        assert "bad code" in logged
+
+    def test_github_callback_200_with_no_access_token_logs_actual_error(self, client, caplog):
+        """GitHub's specific quirk: a rejected exchange can come back as
+        HTTP 200 with the error encoded in the body instead of a non-200
+        status — a second, separate check in the code catches this."""
+        with patch("app.routers.auth_users._GITHUB_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_TokenErrorClient(200, {"error": "incorrect_client_credentials", "error_description": "bad client"})), \
+             caplog.at_level(logging.WARNING, logger="app.routers.auth_users"):
+            resp = self._get_callback(client, "/api/auth/github/callback")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "GitHub did not return an access token"
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "incorrect_client_credentials" in logged
+        assert "bad client" in logged
+
+    def test_no_secrets_or_codes_in_log_for_any_provider(self, client, caplog):
+        with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._MICROSOFT_CLIENT_SECRET", "super-secret-value-xyz"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_TokenErrorClient(400, {"error": "invalid_client", "error_description": "d"})), \
+             caplog.at_level(logging.WARNING, logger="app.routers.auth_users"):
+            self._get_callback(client, "/api/auth/microsoft/callback")
+
+        logged = "\n".join(r.getMessage() for r in caplog.records)
+        assert "super-secret-value-xyz" not in logged
+        assert "auth-code" not in logged

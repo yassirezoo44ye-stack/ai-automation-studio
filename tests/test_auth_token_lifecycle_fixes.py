@@ -196,5 +196,158 @@ class TestVerifySessionNoLongerExtendsTokens(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.json(), {"valid": False})
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# POST /api/auth/refresh — concurrent-refresh race condition
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestRefreshTokenRotationIsRaceProtected(unittest.IsolatedAsyncioTestCase):
+    """Two concurrent /refresh calls with the same refresh_token used to
+    both read the same session row (no lock, no transaction) and both
+    write their own new_refresh — the second UPDATE silently overwrote the
+    first's, so the first caller's response handed back a refresh_token
+    that was already dead. The fix wraps the read+rotate in a transaction
+    and adds `FOR UPDATE OF s`, so a second concurrent caller blocks then
+    re-checks against the already-rotated row and correctly 401s instead
+    of racing. A mocked connection can't reproduce real Postgres locking,
+    so this proves the two structural properties that make Postgres's
+    documented SELECT-FOR-UPDATE re-check behavior apply here at all:
+    the query is inside a real transaction, and it takes a row lock."""
+
+    async def _refresh(self, conn, refresh_token: str):
+        from app.routers import auth_users
+        from fastapi import FastAPI
+        from unittest.mock import MagicMock
+
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        app = FastAPI()
+        app.include_router(auth_users.router)
+        with patch.object(auth_users, "get_pool", return_value=pool):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+
+    async def test_refresh_query_takes_a_row_lock_inside_a_transaction(self):
+        import datetime
+        import uuid
+
+        conn = MagicMock()
+        txn_cm = MagicMock()
+        txn_cm.__aenter__ = AsyncMock(return_value=None)
+        txn_cm.__aexit__ = AsyncMock(return_value=False)
+        conn.transaction = MagicMock(return_value=txn_cm)
+        conn.fetchrow = AsyncMock(return_value={
+            "id": uuid.uuid4(), "user_id": uuid.uuid4(),
+            "expires_at": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1),
+            "email": "race@example.com", "name": "Race Test",
+            "email_verified": True, "avatar_url": None, "created_at": None,
+        })
+        conn.execute = AsyncMock(return_value="UPDATE 1")
+
+        res = await self._refresh(conn, "some-refresh-token")
+
+        self.assertEqual(res.status_code, 200)
+        conn.transaction.assert_called_once()  # the read+rotate happens inside a real transaction
+        select_call = conn.fetchrow.call_args
+        self.assertIn("FOR UPDATE", select_call.args[0])  # takes a row lock, not a bare read
+
+    async def test_second_call_with_an_already_rotated_token_is_rejected(self):
+        """Simulates the outcome a real concurrent second caller sees
+        after Postgres's lock+re-check: the old refresh_token no longer
+        matches any row (already rotated by the first, committed
+        transaction), so fetchrow returns nothing and refresh 401s."""
+        conn = MagicMock()
+        txn_cm = MagicMock()
+        txn_cm.__aenter__ = AsyncMock(return_value=None)
+        txn_cm.__aexit__ = AsyncMock(return_value=False)
+        conn.transaction = MagicMock(return_value=txn_cm)
+        conn.fetchrow = AsyncMock(return_value=None)  # already rotated away by the "first" caller
+
+        res = await self._refresh(conn, "stale-refresh-token")
+
+        self.assertEqual(res.status_code, 401)
+        self.assertIn("Invalid refresh token", res.json()["detail"])
+
+
+class TestExpiredSessionCleanupNotRolledBack(unittest.IsolatedAsyncioTestCase):
+    """CLEANUP FIX regression: the expired-session DELETE used to sit
+    inside the same `async with conn.transaction():` block as the
+    HTTPException raised right after it — asyncpg rolls back on any
+    exception propagating out of that block, so the DELETE was silently
+    undone every time even though the client correctly still saw
+    "Session expired". The fix commits the DELETE (lets the transaction
+    block exit normally) before raising, once outside the transaction."""
+
+    async def _refresh(self, conn, refresh_token: str):
+        from app.routers import auth_users
+        from fastapi import FastAPI
+
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        app = FastAPI()
+        app.include_router(auth_users.router)
+        with patch.object(auth_users, "get_pool", return_value=pool):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                return await client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+
+    def _expired_conn(self, session_id):
+        import datetime
+        import uuid
+
+        conn = MagicMock()
+        txn_cm = MagicMock()
+        txn_cm.__aenter__ = AsyncMock(return_value=None)
+        txn_cm.__aexit__ = AsyncMock(return_value=False)
+        conn.transaction = MagicMock(return_value=txn_cm)
+        conn.fetchrow = AsyncMock(return_value={
+            "id": session_id, "user_id": uuid.uuid4(),
+            "expires_at": datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1),
+            "email": "expired@example.com", "name": "Expired",
+            "email_verified": True, "avatar_url": None, "created_at": None,
+        })
+        conn.execute = AsyncMock(return_value="DELETE 1")
+        return conn, txn_cm
+
+    async def test_expired_session_is_rejected_with_401(self):
+        import uuid
+        conn, _ = self._expired_conn(uuid.uuid4())
+
+        res = await self._refresh(conn, "an-expired-refresh-token")
+
+        self.assertEqual(res.status_code, 401)
+        self.assertEqual(res.json()["detail"], "Session expired")
+
+    async def test_expired_session_row_is_actually_deleted(self):
+        import uuid
+        session_id = uuid.uuid4()
+        conn, _ = self._expired_conn(session_id)
+
+        await self._refresh(conn, "an-expired-refresh-token")
+
+        conn.execute.assert_called_once()
+        delete_call = conn.execute.call_args
+        self.assertIn("DELETE FROM user_sessions", delete_call.args[0])
+        self.assertEqual(delete_call.args[1], session_id)
+
+    async def test_deletion_is_not_rolled_back_by_the_401_exception(self):
+        """The core of the fix: the transaction's __aexit__ must be called
+        with no exception info (a clean commit) for the expired-session
+        path — proving the HTTPException is raised after the transaction
+        block ends, not from inside it."""
+        import uuid
+        conn, txn_cm = self._expired_conn(uuid.uuid4())
+
+        await self._refresh(conn, "an-expired-refresh-token")
+
+        txn_cm.__aexit__.assert_called_once()
+        exc_info = txn_cm.__aexit__.call_args.args
+        self.assertEqual(exc_info, (None, None, None))  # clean exit -> commit, not rollback
+
+
 if __name__ == "__main__":
     unittest.main()

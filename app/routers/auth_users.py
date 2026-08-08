@@ -357,26 +357,53 @@ async def login_mfa(body: LoginMfaRequest, request: Request, _rl: None = _auth_r
 
 @router.post("/refresh")
 async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
+    # AUDIT FIX: two concurrent /refresh calls with the same refresh_token
+    # (two tabs, a network-retry racing the original, ...) used to both
+    # read the same row (no lock, no transaction) and both write their own
+    # new_refresh — the second UPDATE silently overwrote the first's, so
+    # the first caller's response handed back a refresh_token that was
+    # already dead, while both callers otherwise looked like they'd
+    # succeeded. `FOR UPDATE` inside a transaction serializes the two: the
+    # second call blocks until the first's UPDATE commits, then re-checks
+    # its own WHERE refresh_token=$1 against the now-rotated row — under
+    # Postgres's standard READ COMMITTED re-check semantics this no longer
+    # matches, so the second call correctly gets "Invalid refresh token"
+    # instead of a token that was never actually valid.
     async with get_pool().acquire() as conn:
-        session = await conn.fetchrow(
-            """SELECT s.id, s.user_id, s.expires_at, u.email, u.name, u.email_verified, u.avatar_url, u.created_at
-               FROM user_sessions s JOIN users u ON u.id=s.user_id
-               WHERE s.refresh_token=$1""",
-            body.refresh_token,
-        )
-        if not session:
-            raise HTTPException(401, "Invalid refresh token")
-        if session["expires_at"] < datetime.datetime.now(datetime.timezone.utc):
-            await conn.execute("DELETE FROM user_sessions WHERE id=$1", session["id"])
-            raise HTTPException(401, "Session expired")
+        async with conn.transaction():
+            session = await conn.fetchrow(
+                """SELECT s.id, s.user_id, s.expires_at, u.email, u.name, u.email_verified, u.avatar_url, u.created_at
+                   FROM user_sessions s JOIN users u ON u.id=s.user_id
+                   WHERE s.refresh_token=$1
+                   FOR UPDATE OF s""",
+                body.refresh_token,
+            )
+            if not session:
+                raise HTTPException(401, "Invalid refresh token")
 
-        # Rotate refresh token
-        new_refresh = make_refresh_token()
-        await conn.execute(
-            "UPDATE user_sessions SET refresh_token=$1, last_used_at=NOW() WHERE id=$2",
-            new_refresh,
-            session["id"],
-        )
+            expired = session["expires_at"] < datetime.datetime.now(datetime.timezone.utc)
+            if expired:
+                # CLEANUP FIX: raising HTTPException *inside* this
+                # transaction would roll back this DELETE along with it —
+                # asyncpg rolls back on any exception propagating out of
+                # `async with conn.transaction():`, so the expired row
+                # would silently survive forever instead of actually being
+                # cleaned up, even though the client still correctly saw
+                # "Session expired". Commit the delete by letting the
+                # transaction block exit normally here, then raise *after*
+                # it below, once we're no longer inside the transaction.
+                await conn.execute("DELETE FROM user_sessions WHERE id=$1", session["id"])
+            else:
+                # Rotate refresh token
+                new_refresh = make_refresh_token()
+                await conn.execute(
+                    "UPDATE user_sessions SET refresh_token=$1, last_used_at=NOW() WHERE id=$2",
+                    new_refresh,
+                    session["id"],
+                )
+
+        if expired:
+            raise HTTPException(401, "Session expired")
 
     access_token = make_access_token(str(session["user_id"]), session["email"])
     return {
@@ -1022,6 +1049,23 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
                 },
             )
             if token_res.status_code != 200:
+                # DIAGNOSTIC FIX: same gap Google's callback had (see its
+                # comment above for the full rationale) — log Microsoft's
+                # actual error/error_description server-side only; the
+                # client-facing response stays generic.
+                try:
+                    error_body = token_res.json()
+                    log.warning(
+                        "Microsoft OAuth token exchange failed: status=%s error=%s error_description=%s",
+                        token_res.status_code,
+                        error_body.get("error"),
+                        error_body.get("error_description"),
+                    )
+                except Exception:
+                    log.warning(
+                        "Microsoft OAuth token exchange failed: status=%s (response body was not valid JSON)",
+                        token_res.status_code,
+                    )
                 raise HTTPException(400, "Microsoft OAuth token exchange failed")
             tokens = token_res.json()
             info_res = await client.get(
@@ -1080,9 +1124,36 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
                       "code": code, "redirect_uri": redirect_uri},
             )
             if token_res.status_code != 200:
+                # DIAGNOSTIC FIX: same gap Google's callback had (see its
+                # comment above for the full rationale) — log GitHub's
+                # actual error/error_description server-side only; the
+                # client-facing response stays generic.
+                try:
+                    error_body = token_res.json()
+                    log.warning(
+                        "GitHub OAuth token exchange failed: status=%s error=%s error_description=%s",
+                        token_res.status_code,
+                        error_body.get("error"),
+                        error_body.get("error_description"),
+                    )
+                except Exception:
+                    log.warning(
+                        "GitHub OAuth token exchange failed: status=%s (response body was not valid JSON)",
+                        token_res.status_code,
+                    )
                 raise HTTPException(400, "GitHub OAuth token exchange failed")
-            gh_access = token_res.json().get("access_token")
+            token_body = token_res.json()
+            gh_access = token_body.get("access_token")
             if not gh_access:
+                # GitHub is a notable exception to "non-200 = error": a bad
+                # verification code / expired code / bad client credentials
+                # still comes back as HTTP 200 with {"error": ...,
+                # "error_description": ...} in the body instead of an
+                # error status. Same diagnostic gap and same fix.
+                log.warning(
+                    "GitHub OAuth token exchange returned no access_token: error=%s error_description=%s",
+                    token_body.get("error"), token_body.get("error_description"),
+                )
                 raise HTTPException(400, "GitHub did not return an access token")
 
             user_res = await client.get("https://api.github.com/user",
