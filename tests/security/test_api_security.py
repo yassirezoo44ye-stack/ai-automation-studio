@@ -1738,6 +1738,20 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
         app.include_router(router)
         return app
 
+    def _mock_pool(self):
+        # POST /api/commands/execute now resolves the caller's identity
+        # via owner_user_id(conn, request) before running any command (see
+        # commands_api.py's identity-spoofing fix) — unrelated to this
+        # class's own "modify register" finding, but every call through
+        # this endpoint needs a mocked pool now, not just ones that touch
+        # ownership-checked resources.
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=uuid.uuid4())
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        return pool
+
     def test_modify_register_rejects_even_a_real_valid_plugin_file(self):
         """The strongest possible case: a real, readable, syntactically
         valid Python file with an actual register() function — exactly
@@ -1751,7 +1765,9 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
             )
 
             app = self._app()
-            with patch("app.commands.loader._load_file") as fake_load:
+            with patch("app.commands.loader._load_file") as fake_load, \
+                 patch("app.routers.commands_api.get_pool", return_value=self._mock_pool()), \
+                 patch("app.core.auth.owner_email", return_value="a@b.com"):
                 with TestClient(app, raise_server_exceptions=False) as c:
                     res = c.post(
                         "/api/commands/execute",
@@ -1759,6 +1775,7 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
                             "command": "modify",
                             "args": ["register", "evil", str(plugin_file)],
                         },
+                        headers={"X-Sub-Token": "tok"},
                     )
             fake_load.assert_not_called()
         body = res.json()
@@ -1767,7 +1784,9 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
 
     def test_modify_register_rejects_traversal_and_system_paths(self):
         app = self._app()
-        with patch("app.commands.loader._load_file") as fake_load:
+        with patch("app.commands.loader._load_file") as fake_load, \
+             patch("app.routers.commands_api.get_pool", return_value=self._mock_pool()), \
+             patch("app.core.auth.owner_email", return_value="a@b.com"):
             with TestClient(app, raise_server_exceptions=False) as c:
                 for suspicious_path in (
                     "/etc/passwd",
@@ -1777,6 +1796,7 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
                     res = c.post(
                         "/api/commands/execute",
                         json={"command": "modify", "args": ["register", "x", suspicious_path]},
+                        headers={"X-Sub-Token": "tok"},
                     )
                     body = res.json()
                     self.assertFalse(body["success"], msg=suspicious_path)

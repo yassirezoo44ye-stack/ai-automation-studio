@@ -343,6 +343,7 @@ class AgentKernel:
         caller    : str = "system",
         user_id   : Optional[str] = None,
         workspace : Optional[str] = None,
+        project_id: Optional[str] = None,
         parallel  : bool = False,
         organization_id: Optional[str] = None,
         run_id    : Optional[str] = None,
@@ -358,6 +359,7 @@ class AgentKernel:
         if parallel:
             return list(await asyncio.gather(*[
                 self.run(t, caller=caller, user_id=user_id, workspace=workspace,
+                         project_id=project_id,
                          organization_id=organization_id, run_id=run_id)
                 for t in tasks
             ]))
@@ -366,6 +368,7 @@ class AgentKernel:
         for i, task in enumerate(tasks):
             await _publish_plan_step(run_id, f"Step {i + 1}/{len(tasks)}: {task}")
             r = await self.run(task, caller=caller, user_id=user_id, workspace=workspace,
+                               project_id=project_id,
                                organization_id=organization_id, run_id=run_id)
             results.append(r)
             if not r.success:
@@ -427,6 +430,7 @@ class AgentKernel:
         caller    : str = "system",
         user_id   : Optional[str] = None,
         workspace : Optional[str] = None,
+        project_id: Optional[str] = None,
         organization_id: Optional[str] = None,
         run_id    : Optional[str] = None,
     ) -> dict:
@@ -442,6 +446,7 @@ class AgentKernel:
 
         plan_result = await self.run(f"plan {goal}", caller=caller,
                                      user_id=user_id, workspace=workspace,
+                                     project_id=project_id,
                                      organization_id=organization_id, run_id=run_id)
         tasks = plan_result.data.get("tasks", [])
         if not tasks:
@@ -452,7 +457,8 @@ class AgentKernel:
             }
         await _publish_plan_step(run_id, f"Plan ready: {len(tasks)} step(s) — executing autonomously")
         results = await self.collaborate(tasks, caller=caller, user_id=user_id,
-                                         workspace=workspace, organization_id=organization_id,
+                                         workspace=workspace, project_id=project_id,
+                                         organization_id=organization_id,
                                          run_id=run_id)
         return {
             "plan"   : tasks,

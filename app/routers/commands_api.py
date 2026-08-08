@@ -3,8 +3,8 @@ Commands REST API.
 
 POST /api/commands/execute
     Execute any command by name or raw string.
-    Body: {"input": "run ./my-project --port=3000"}
-      or: {"command": "run", "args": ["./my-project"], "flags": {"port": "3000"}}
+    Body: {"input": "run --project=<id> --port=3000"}
+      or: {"command": "run", "args": [], "flags": {"project": "<id>", "port": "3000"}}
 
 GET  /api/commands
     List all registered commands.
@@ -15,16 +15,27 @@ GET  /api/commands/{name}
 POST /api/commands/register
     Register a new command from a plugin file at runtime.
     Body: {"plugin_path": "/abs/path/to/plugin.py"}
+
+SECURITY FIX: POST /api/commands/execute previously accepted a
+client-supplied `user_id` field and passed it straight through as the
+acting identity — commands like "run" use it to verify project ownership
+before touching the filesystem (see run_cmd.py's fix), so a
+client-supplied user_id would let anyone impersonate another user and
+defeat that check. It's resolved from the verified auth token instead
+(same as build.py's owner_user_id usage) and no longer accepted in the
+request body at all.
 """
 from __future__ import annotations
 
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.commands import get_registry, get_runner
+from app.core.auth import owner_user_id
+from app.core.db import get_pool
 
 log    = logging.getLogger(__name__)
 router = APIRouter(tags=["commands"])
@@ -39,7 +50,6 @@ class ExecuteRequest(BaseModel):
     args   : list[str]     = []
     flags  : dict[str, str]= {}
     caller : str           = "api"
-    user_id: Optional[str] = None
 
 
 class RegisterPluginRequest(BaseModel):
@@ -49,19 +59,22 @@ class RegisterPluginRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/api/commands/execute")
-async def execute_command(req: ExecuteRequest):
+async def execute_command(req: ExecuteRequest, request: Request):
     """
     Execute a command.  Returns CommandResult as JSON.
     Never raises 5xx — errors are captured in the result.
     """
+    async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+
     runner = get_runner()
 
     if req.input:
-        result = await runner.execute(req.input, caller=req.caller, user_id=req.user_id)
+        result = await runner.execute(req.input, caller=req.caller, user_id=str(uid))
     elif req.command:
         result = await runner.execute_parsed(
             req.command, req.args, req.flags,
-            caller=req.caller, user_id=req.user_id,
+            caller=req.caller, user_id=str(uid),
         )
     else:
         raise HTTPException(status_code=400,

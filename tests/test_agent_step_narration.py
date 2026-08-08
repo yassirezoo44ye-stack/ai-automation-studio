@@ -10,6 +10,7 @@ No live Postgres/Redis — pure in-process logic + mocked collaborators
 from __future__ import annotations
 
 import os
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
@@ -237,6 +238,30 @@ class _FakeTypedEvent:
         return self._d
 
 
+def _owned_run_context(run_id: str) -> "AgentContext":  # noqa: F821 - imported per-test
+    """A ctx that will pass run_agent.py's ownership guard (see its
+    security-fix docstring): user_id + project_id set, and a mocked
+    get_pool()/resolve_project_id() the guard will call. Callers must
+    still patch app.core.db.get_pool to the returned pool and
+    app.core.filesystem.WORKSPACES to a temp dir before invoking
+    RunAgent().execute()."""
+    from app.agents.base import AgentContext
+
+    project_id = str(uuid.uuid4())
+    ctx = AgentContext(
+        input="x", args="", kernel=None, memory=None, run_id=run_id,
+        user_id=str(uuid.uuid4()), project_id=project_id,
+    )
+    ctx._agent_name_hint = "run"
+
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(return_value=1)  # resolve_project_id: owned
+    pool = MagicMock()
+    pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+    pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    return ctx, pool
+
+
 class TestRunAgentEventHandling:
     def test_converts_typed_events_via_to_sse_dict_not_get(self):
         """Regression: engine.run() yields TypedEvent dataclass instances,
@@ -252,11 +277,15 @@ class TestRunAgentEventHandling:
         fake_engine = MagicMock()
         fake_engine.run = fake_engine_run
 
-        ctx = AgentContext(input="x", args=str(os.getcwd()), kernel=None, memory=None, run_id="r1")
-        ctx._agent_name_hint = "run"
+        ctx, pool = _owned_run_context("r1")
 
-        with patch("app.execution.platform.engine.UnifiedExecutionEngine", return_value=fake_engine), \
-             patch("app.agents.liveness.publish_step", AsyncMock()):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("app.execution.platform.engine.UnifiedExecutionEngine", return_value=fake_engine), \
+             patch("app.agents.liveness.publish_step", AsyncMock()), \
+             patch("app.core.db.get_pool", return_value=pool), \
+             patch("app.core.filesystem.WORKSPACES", Path(tmp)):
             result = run(RunAgent().execute(ctx))
 
         assert result.success is True
@@ -275,11 +304,15 @@ class TestRunAgentEventHandling:
         fake_engine = MagicMock()
         fake_engine.run = fake_engine_run
 
-        ctx = AgentContext(input="x", args=str(os.getcwd()), kernel=None, memory=None, run_id="r1")
-        ctx._agent_name_hint = "run"
+        ctx, pool = _owned_run_context("r1")
 
-        with patch("app.execution.platform.engine.UnifiedExecutionEngine", return_value=fake_engine), \
-             patch("app.agents.liveness.publish_step", AsyncMock()):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("app.execution.platform.engine.UnifiedExecutionEngine", return_value=fake_engine), \
+             patch("app.agents.liveness.publish_step", AsyncMock()), \
+             patch("app.core.db.get_pool", return_value=pool), \
+             patch("app.core.filesystem.WORKSPACES", Path(tmp)):
             result = run(RunAgent().execute(ctx))
 
         assert result.success is False
@@ -295,12 +328,16 @@ class TestRunAgentEventHandling:
         fake_engine = MagicMock()
         fake_engine.run = fake_engine_run
 
-        ctx = AgentContext(input="x", args=str(os.getcwd()), kernel=None, memory=None, run_id="r1")
-        ctx._agent_name_hint = "run"
+        ctx, pool = _owned_run_context("r1")
 
         fake_publish = AsyncMock()
-        with patch("app.execution.platform.engine.UnifiedExecutionEngine", return_value=fake_engine), \
-             patch("app.agents.liveness.publish_step", fake_publish):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch("app.execution.platform.engine.UnifiedExecutionEngine", return_value=fake_engine), \
+             patch("app.agents.liveness.publish_step", fake_publish), \
+             patch("app.core.db.get_pool", return_value=pool), \
+             patch("app.core.filesystem.WORKSPACES", Path(tmp)):
             run(RunAgent().execute(ctx))
 
         narrated = [c.args[2] for c in fake_publish.call_args_list]
