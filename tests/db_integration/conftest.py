@@ -6,10 +6,12 @@ entirely — no test anywhere runs a query against a real Postgres instance.
 This package is the deliberate exception: it provisions a real, ephemeral
 database per test session, runs the app's own production schema-creation
 functions against it (app.core.db.init_db, app.tenancy.init_tenancy_schema,
-app.tenancy.enable_scoped_rls — the exact functions app.factory.lifespan()
-calls, not a hand-maintained copy), and exercises TenancyService/RLS
-end-to-end: request/auth context -> TenancyService -> real connection/
-transaction -> real PostgreSQL Row Level Security -> result.
+app.tenancy.enable_scoped_rls, plus each billing service's own
+init_*_schema as those get covered — the exact functions
+app.factory.lifespan() calls, not a hand-maintained copy), and exercises
+TenancyService/RLS and billing-service behavior end-to-end: request/auth
+context -> service -> real connection/transaction -> real PostgreSQL
+(Row Level Security, constraints, transactions) -> result.
 
 Design constraints (see docs/testing-foundation-p0.md for the full
 rationale):
@@ -134,11 +136,21 @@ def pg_test_database_url() -> str:
         try:
             from app.core.db import init_db
             from app.tenancy import init_tenancy_schema, enable_scoped_rls
+            from app.billing.credits import init_credits_schema
+            from app.billing.invoices import init_invoices_schema
 
             async with pool.acquire() as conn:
                 await init_db(conn)
             async with pool.acquire() as conn:
                 await init_tenancy_schema(conn)
+            # Billing schemas (credits/invoices/invoice_items/payments) must
+            # exist BEFORE enable_scoped_rls runs — it only enables RLS on
+            # tables that already exist, skipping (with a warning) any that
+            # don't yet, per its own idempotent-on-every-boot design.
+            async with pool.acquire() as conn:
+                await init_credits_schema(conn)
+            async with pool.acquire() as conn:
+                await init_invoices_schema(conn)
             async with pool.acquire() as conn:
                 await enable_scoped_rls(conn)
         finally:

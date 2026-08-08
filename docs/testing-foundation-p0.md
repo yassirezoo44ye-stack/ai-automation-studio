@@ -1,7 +1,7 @@
 # Testing Foundation — P0 Slice
 
-**Status:** P0-1 (Real Postgres Tenant Boundary) and P0-2 (RLS Verification) — **done, commit 1**. P0-3 (Billing critical services) — not started, pending review of this commit before proceeding, per the approved execution order.
-**Scope:** exactly the P0 slice approved — no coverage-percentage work, no frontend/WebSocket/AI-adapter/Redis/execution-driver/`maintenance.py` testing, no reopening of the Security Boundary Sweep, no Billing product work. This document reports what was built and found; `docs/testing-foundation-assessment.md` §5/§13/§14 are updated to point here rather than duplicating detail.
+**Status:** P0-1 (Real Postgres Tenant Boundary) and P0-2 (RLS Verification) — **done, commit 1** (`e53dae2`). P0-3 (Billing critical services) — **`credits.py` and `invoices.py` done, commit 2**; `payment_methods.py` and `plan_service.py` not started, pending review of commit 2 before proceeding, per the approved execution order.
+**Scope:** exactly the P0 slice approved — no coverage-percentage work, no frontend/WebSocket/AI-adapter/Redis/execution-driver/`maintenance.py` testing, no reopening of the Security Boundary Sweep, no Billing *product* work (no new billing behavior, no production code changes beyond what a confirmed bug would require — none was found). This document reports what was built and found; `docs/testing-foundation-assessment.md` §5/§13/§14 are updated to point here rather than duplicating detail.
 
 ---
 
@@ -104,10 +104,77 @@ The ~1.6-2s added when Postgres is reachable is negligible relative to the full 
 
 ---
 
-## 11. Remaining P0 gaps
+## 11. Billing Critical Services (P0-3) — commit 2
+
+Goal restated precisely, per the approval: not more test *count* — proof that financial operations and billing data don't fail silently, don't cross tenant boundaries, and don't leave inconsistent state on failure. Both services below were read in full (implementation + schema + every real caller in the codebase, via `grep`) before any test was written, specifically to avoid asserting behavior that isn't actually implemented anywhere.
+
+### 11.1 — `app/billing/credits.py`
+
+**Production paths examined:** `CreditService.grant()`, `.get_balance_cents()`, `.list_ledger()`; every caller of `get_credit_service()` in the codebase (exactly one: `app/routers/org_billing.py::grant_credit`, owner-only, `Pydantic Field(gt=0)`-validated).
+
+**Tests added:** `tests/db_integration/test_billing_credits.py`, 12 tests, all real (no `asyncpg` mocking for anything DB-dependent).
+
+**Real PostgreSQL usage:** every test. `grant()`/`get_balance_cents()`/`list_ledger()` all run against the real `credits` table (schema now provisioned by the harness — see §2 update below); FK constraint (`organization_id REFERENCES organizations(id)`) exercised directly for the rollback test; real RLS policy exercised directly for the tenant-isolation tests, same "no WHERE clause" rigor as P0-1/P0-2.
+
+**Mocks used, and why:** none. `grant()`'s Stripe call is wrapped in the production code's own `try/except` (best-effort by design — see the source's own comment), so it fails closed to "no Stripe transaction id" without needing a mock at all in a test environment with no `stripe.api_key` configured; nothing here reaches across the network.
+
+**Failure/rollback tested:** yes — `grant()` against a non-existent `organization_id` raises `asyncpg.exceptions.ForeignKeyViolationError` and leaves zero rows (`TestRollbackOnFailure`).
+
+**Tenant isolation tested:** yes, both directions — `list_ledger()` is RLS-backed (proven with an unqualified `SELECT`, no `WHERE`, through a scoped connection); `grant()`/`get_balance_cents()` are confirmed to run *unscoped* (they never call `acquire_scoped()`), which is itself the significant finding below, not a hidden assumption.
+
+**Idempotency/concurrency relevance:** concurrency is relevant (an append-only ledger under concurrent writers) and tested — 20 concurrent real `grant()` calls all persist, no lost updates (`TestConcurrentGrants`). Idempotency is relevant (retries/double-clicks on a financial mutation) and found to be **absent** — see findings.
+
+**Findings (documented, not fixed — none rise to a confirmed bug against the code's own contract):**
+
+1. **No insufficient-credit protection at the service layer.** `grant()` accepts any negative `amount_cents` with zero balance check; the local ledger sum can go negative (verified: `TestNoInsufficientCreditsProtection`). **Currently unreachable in production**: the only HTTP path to `grant()` Pydantic-validates `amount_usd > 0`, so this is a dormant capability, not a live exploit path — `test_no_router_ever_calls_grant_with_a_negative_amount` pins that boundary so it's caught immediately if it ever changes.
+2. **No idempotency key on credit grants.** Two identical `grant()` calls (e.g. an owner's double-click, or a client retry after a timed-out response) create two ledger rows and double the balance — verified directly (`TestNoIdempotencyKey`). Unlike finding 1, **this *is* reachable today** through the live `grant_credit` endpoint by an ordinary user action, no malicious input required. Flagged for your explicit decision, per the approved instructions, rather than fixed here.
+3. **`grant()`/`get_balance_cents()` bypass RLS by design** (no `acquire_scoped()`), unlike `list_ledger()`. No known caller passes attacker-controlled `org_id` to these two methods (both are always called with a server-verified `ctx.org_id` from `org_billing.py`), so this is an architectural asymmetry worth knowing about, not a demonstrated vulnerability.
+
+**Remaining gaps:** none beyond the findings above — every method on `CreditService` has direct test coverage now.
+
+### 11.2 — `app/billing/invoices.py`
+
+**Production paths examined:** `InvoiceService.upsert_from_stripe_invoice()` (the only write path — invoices + invoice_items + derived payments row, one real transaction), `.get()`, `.list_for_org()`, `.list_payments_for_org()`; `app/routers/org_billing.py`'s invoice routes (confirmed read-only — no `update_invoice`/`delete_invoice` exists anywhere).
+
+**Tests added:** `tests/db_integration/test_billing_invoices.py`, 15 tests, all real.
+
+**Real PostgreSQL usage:** every test, including a genuine multi-statement transaction-atomicity proof (see below) that no mock could produce.
+
+**Mocks used, and why:** none. No Stripe API call exists in this file at all outside `backfill_from_stripe()` (not tested here — it's a thin wrapper that calls `upsert_from_stripe_invoice()` in a loop over live `stripe.Invoice.list()` results, i.e. it's a Stripe-API-boundary concern, not a database-behavior one, and mocking `stripe.Invoice.list()` to test a loop-and-call wrapper would not add to what this slice is proving).
+
+**Failure/rollback tested:** yes, and this is the strongest test in this file — `TestTransactionRollback::test_invoice_row_does_not_persist_if_line_item_insert_fails` forces a real type-coercion failure on the *second* of three statements inside the transaction (a non-integer `quantity` for `invoice_items`, which is `INTEGER NOT NULL`) — after the *first* statement (the invoice `INSERT ... RETURNING *`) has already run and returned a row within that same transaction. Confirms the invoice row does **not** survive the rollback: proof that the whole `async with conn.transaction():` block is genuinely atomic, not proof by reading the code. A second test does the same via a `ForeignKeyViolationError` on a non-existent `organization_id`.
+
+**Tenant isolation tested:** yes — `get()` returns `None` for another org's invoice id; `list_for_org()` excludes it; and, matching P0-1/P0-2's rigor, RLS itself is proven independently of the application-layer `WHERE organization_id=` filter for both `invoices` and `payments` (unqualified `SELECT`, no `WHERE`, through a scoped connection, only sees the scoped org's rows). "Tenant A cannot mutate/delete tenant B's invoice" has **no dedicated test** because there is no such endpoint to attack — `test_no_tenant_triggered_mutation_endpoint_exists` asserts that absence structurally so a future `PUT`/`DELETE` route would need this test file updated, not silently leave the gap unnoticed.
+
+**Idempotency/concurrency relevance:** idempotency is highly relevant (Stripe webhooks redeliver) and confirmed **present and correct** by design: `stripe_invoice_id` is `UNIQUE` with `ON CONFLICT ... DO UPDATE`, and the `invoice_items`/`payments` DELETE-then-INSERT pattern (documented in the source's own comment, now also verified by test) converges repeated deliveries to one row each, not duplicates (`TestIdempotentUpsert`, 3 tests). Concurrency (two simultaneous webhook deliveries for the same invoice) was not separately tested — `ON CONFLICT` makes the invoices upsert itself concurrency-safe by construction (a Postgres guarantee, not something this slice needed to re-prove), and the multi-statement items/payments replace happens inside the same transaction as the conflict-checked invoice row, so a genuine concurrent-delivery race would need to be understood at the transaction-isolation level specifically — flagged as a gap, not tested here (see below).
+
+**Findings (documented, not fixed):**
+
+1. **No status-transition validation.** `upsert_from_stripe_invoice()` unconditionally overwrites `status` with whatever the caller passes — an out-of-order-delivered `draft` event after a `paid` one silently regresses the row (verified: `TestNoStatusTransitionValidation`). This depends entirely on Stripe's own webhook-ordering guarantees (which are best-effort, not strict) — a real but bounded risk (Stripe redelivers rarely and mostly in-order), not something to redesign inside a testing-only task.
+
+**Remaining gaps:**
+- **Concurrent-delivery transaction-isolation behavior** for two simultaneous `upsert_from_stripe_invoice()` calls for the *same* `stripe_invoice_id` was not tested — `ON CONFLICT` handles the invoices row itself safely, but whether the two transactions' invoice_items/payments DELETE-then-INSERT pairs could interleave in a way that leaves a transiently inconsistent (not permanently wrong, since both transactions still each fully commit or fully roll back) item set was not verified under real concurrent load. Worth a follow-up if this proves to matter in practice — Stripe does not typically deliver the same event concurrently.
+- `backfill_from_stripe()` (the Stripe-API-boundary wrapper) has no test in this slice, per the "mock only the external boundary, don't newly integrate a real payment provider" instruction — it would need a mocked `stripe.Invoice.list()`, which is a legitimate future addition but wasn't necessary to prove this slice's goal (DB-layer correctness).
+
+---
+
+## 12. Remaining P0 gaps (updated after commit 2)
 
 Per the approved P0 scope (P0-1, P0-2, P0-3) and the original assessment's P0 list:
 
-- **P0-3 — Billing critical services** (`credits.py`, `invoices.py`, `payment_methods.py`, `plan_service.py`): not started. Next step, pending review of this commit.
-- The original assessment's other two P0 items — execution-driver behavioral tests (`python_script.py`/`python_server.py`/`detector.py`) and `PolicyEngine` table-driven tests (`app/kernel/policy.py`) — remain out of scope for this specific approval (explicitly excluded: "لا تعمل execution drivers الآن") and are unaddressed by this commit, as expected.
-- RLS coverage for the 15 non-`organization_members` tables in `_RLS_TABLES` beyond the representative case tested here (§8) — most directly relevant ones (`invoices`, `payment_methods`, `credits`, `billing_events`) will get real coverage naturally as part of P0-3's billing-service tests, since those services are the ones that actually write to those tables.
+- **P0-3 continuation — `payment_methods.py` and `plan_service.py`**: not started. Next step, pending review of commit 2.
+- The original assessment's other two P0 items — execution-driver behavioral tests (`python_script.py`/`python_server.py`/`detector.py`) and `PolicyEngine` table-driven tests (`app/kernel/policy.py`) — remain out of scope for this specific approval and unaddressed, as expected.
+- RLS coverage for the remaining non-tested tables in `_RLS_TABLES` beyond `organization_members`/`credits`/`invoices`/`payments` (now covered: `payment_methods`, `billing_events`, `sandbox_workers`, `sandbox_events`, `chat_messages`, `teams`, `usage_records`, `marketplace_installs`, `api_keys`, `marketplace_downloads`, `plugin_installations`) — will get real coverage naturally as their owning services get tested in future slices, same pattern as this one.
+- Two specific findings from §11 are flagged for an explicit decision rather than fixed in this commit: **no idempotency key on `credits.grant()`** (live, reachable via ordinary double-click/retry) and **no status-transition validation on invoice upserts** (live, reachable via out-of-order Stripe webhook delivery). Neither is a bug against the code's current documented contract — both are gaps relative to a more defensive design. See §11.1/§11.2 for full detail.
+
+---
+
+## 13. Execution time (updated after commit 2)
+
+```
+tests/db_integration/ alone (Postgres reachable):        48 passed in ~3-7s
+tests/db_integration/ alone (Postgres unreachable):       48 skipped, exit code 0
+Full suite (tests/ + tests/db_integration/, PG reachable): 1536 passed in ~90-98s
+Baseline before P0-1/P0-2 (commit 1):                      1488 passed in ~46-72s (no --cov)
+Baseline after P0-1/P0-2 (commit 1):                       1509 passed
+```
