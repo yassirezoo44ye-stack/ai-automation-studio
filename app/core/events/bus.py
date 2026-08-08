@@ -44,6 +44,13 @@ _STREAM = "axon:events"
 _DLQ    = "axon:events:dlq"
 _MAXLEN = 10_000
 
+# Sentinel distinguishing "org_id not specified at all" (unscoped,
+# cross-tenant — internal use only) from "org_id explicitly passed as
+# None" (the no-org bucket — a real, filterable value, not "everything").
+# Same convention as app/agents/memory.py's AgentMemory /
+# app/core/workflow/engine.py's WorkflowEngine.
+_UNSCOPED = object()
+
 
 @dataclass
 class Event:
@@ -166,8 +173,16 @@ class EventBus:
     # ── Replay / introspection ────────────────────────────────────────────────
 
     async def replay(self, *, since_ts: float = 0.0, type_prefix: str = "",
-                     limit: int = 100) -> list[Event]:
-        """Return historical events (Redis stream when active, ring buffer otherwise)."""
+                     limit: int = 100, org_id: Any = _UNSCOPED) -> list[Event]:
+        """Return historical events (Redis stream when active, ring buffer
+        otherwise). `org_id` scopes the result to one organization's own
+        events — this is a single, process-wide history shared by every
+        tenant, so any caller that exposes this to an end user MUST pass
+        the calling org's verified id here, including explicitly passing
+        `org_id=None` for a caller with no verified org (filters to events
+        with no organization_id, NOT every tenant's events). Only leaving
+        org_id unset (the default) returns the unscoped, cross-tenant view,
+        reserved for internal/system purposes."""
         if self._redis is not None:
             try:
                 entries = await self._redis.xrange(_STREAM, count=min(limit * 5, 5000))
@@ -179,11 +194,18 @@ class EventBus:
         out = [
             e for e in events
             if e.ts >= since_ts and (not type_prefix or e.type.startswith(type_prefix))
+            and (org_id is _UNSCOPED or e.organization_id == org_id)
         ]
         return out[-limit:]
 
-    def dead_letters(self, limit: int = 50) -> list[dict[str, Any]]:
-        return self._dlq[-limit:][::-1]
+    def dead_letters(self, limit: int = 50, org_id: Any = _UNSCOPED) -> list[dict[str, Any]]:
+        """Same org-scoping contract as `replay` above — the entry's
+        underlying event dict carries its own organization_id."""
+        entries = self._dlq[-limit:][::-1] if org_id is _UNSCOPED else [
+            e for e in self._dlq[::-1]
+            if e.get("event", {}).get("organization_id") == org_id
+        ][:limit]
+        return entries
 
     def stats(self) -> dict[str, Any]:
         return {
