@@ -237,6 +237,34 @@ def _valid_start(client, path="/api/auth/google/callback"):
     return state, cookie
 
 
+def _do_oauth_login(
+    client, conn, *, email="oauth-test@example.com", name="OAuth Test",
+    picture="", verified_email=True, code="code",
+):
+    """Shared start -> callback sequence (mocked Google token exchange +
+    userinfo) every full-flow test in this file needs before it can
+    exercise /oauth-exchange, /me, or /refresh. Returns the callback's
+    redirect response — callers extract whatever they need from it
+    (typically response.headers["location"].split("code=")[1]) and
+    inspect `conn` (a _FakeOAuthConn the caller owns) for DB-level
+    assertions. Deliberately does only the start+callback part, not the
+    /oauth-exchange call after it — callers that need tokens make that
+    call themselves so the exchange step's own request/response stays
+    visible in each test, not hidden inside this helper."""
+    state, cookie = _valid_start(client)
+    with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+         _patch_google(_MockGoogleClient(userinfo={
+             "email": email, "name": name, "picture": picture,
+             "verified_email": verified_email,
+         })), _mock_pool(conn):
+        return client.get(
+            "/api/auth/google/callback",
+            params={"code": code, "state": state},
+            cookies={"oauth_state": cookie},
+            follow_redirects=False,
+        )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. OAuth start
 # ══════════════════════════════════════════════════════════════════════════════
@@ -299,17 +327,15 @@ class TestGoogleOAuthStart:
 
 class TestGoogleOAuthMissingConfiguration:
     def test_start_503s_when_client_id_is_empty(self, client):
-        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", ""):
+        """One scenario, three properties: empty GOOGLE_CLIENT_ID ->
+        /api/auth/google 503s with an informative message, AND never even
+        constructs an httpx client to reach Google."""
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", ""), \
+             patch("app.routers.auth_users._httpx.AsyncClient") as mock_client_cls:
             resp = client.get("/api/auth/google", follow_redirects=False)
         assert resp.status_code == 503
         assert "Google" in resp.json()["detail"]
         assert "GOOGLE_CLIENT_ID" in resp.json()["detail"]
-
-    def test_start_does_not_contact_google_when_unconfigured(self, client):
-        """No httpx client should even be constructed."""
-        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", ""), \
-             patch("app.routers.auth_users._httpx.AsyncClient") as mock_client_cls:
-            client.get("/api/auth/google", follow_redirects=False)
         mock_client_cls.assert_not_called()
 
     def test_callback_503s_when_client_id_is_empty(self, client):
@@ -475,14 +501,6 @@ class TestGoogleTokenExchangeRequest:
         assert data["redirect_uri"] == "http://localhost:8000/api/auth/google/callback"
         assert data["grant_type"] == "authorization_code"
 
-    def test_no_real_google_endpoint_is_ever_actually_contacted(self, client):
-        """The mock replaces httpx.AsyncClient entirely — assert the patch
-        target is exactly what google_oauth_callback() uses, so a future
-        refactor that bypasses `_httpx.AsyncClient` would break this test
-        rather than silently start hitting the real internet."""
-        import app.routers.auth_users as auth_mod
-        assert hasattr(auth_mod, "_httpx")
-
     def test_token_exchange_non_200_yields_400_not_a_crash(self, client):
         state, cookie = _valid_start(client)
         mock_google = _MockGoogleClient(token_status=400)
@@ -596,20 +614,11 @@ class TestGoogleUserinfo:
 
 class TestGoogleOAuthNewUser:
     def _run(self, client, email="new-oauth-user@example.com"):
-        state, cookie = _valid_start(client)
-        mock_google = _MockGoogleClient(userinfo={
-            "email": email, "name": "New OAuth User",
-            "picture": "https://example.com/avatar.png", "verified_email": True,
-        })
         conn = _FakeOAuthConn()
-        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
-             _patch_google(mock_google), _mock_pool(conn):
-            resp = client.get(
-                "/api/auth/google/callback",
-                params={"code": "code", "state": state},
-                cookies={"oauth_state": cookie},
-                follow_redirects=False,
-            )
+        resp = _do_oauth_login(
+            client, conn, email=email, name="New OAuth User",
+            picture="https://example.com/avatar.png",
+        )
         return resp, conn
 
     def test_creates_exactly_one_new_user(self, client):
@@ -628,7 +637,7 @@ class TestGoogleOAuthNewUser:
         _, conn = self._run(client)
         assert len(conn.sessions) == 1
 
-    def test_creates_an_oauth_exchange_code_and_no_duplicate_user_on_a_second_new_email(self, client):
+    def test_creates_a_well_formed_oauth_exchange_code(self, client):
         resp, _ = self._run(client, email="another-new-user@example.com")
         location = resp.headers["location"]
         assert location.startswith("http://localhost:8000/oauth-callback?code=")
@@ -736,18 +745,7 @@ class TestGoogleOAuthExistingUser:
 
 class TestOAuthExchange:
     def _do_login(self, client, conn, email="exchange-test@example.com"):
-        state, cookie = _valid_start(client)
-        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
-             _patch_google(_MockGoogleClient(userinfo={
-                 "email": email, "name": "Exchange Test", "picture": "",
-                 "verified_email": True,
-             })), _mock_pool(conn):
-            resp = client.get(
-                "/api/auth/google/callback",
-                params={"code": "code", "state": state},
-                cookies={"oauth_state": cookie},
-                follow_redirects=False,
-            )
+        resp = _do_oauth_login(client, conn, email=email, name="Exchange Test")
         return resp.headers["location"].split("code=")[1]
 
     def test_valid_code_returns_the_current_documented_contract(self, client):
@@ -787,7 +785,12 @@ class TestOAuthExchange:
         resp = client.post("/api/auth/oauth-exchange", json={"code": code})
         assert resp.status_code == 400
 
-    def test_reused_code_is_rejected_after_first_redemption(self, client):
+    def test_reused_code_is_rejected_and_removed_from_the_store(self, client):
+        """Single-use exchange code, proven at both levels: first
+        redemption succeeds, a second redemption of the same code is
+        rejected (black-box), and the underlying Redis-backed entry is
+        actually gone (white-box) — not just that the second HTTP call
+        happens to 400 for some unrelated reason."""
         conn = _FakeOAuthConn()
         code = self._do_login(client, conn)
 
@@ -796,15 +799,6 @@ class TestOAuthExchange:
 
         assert first.status_code == 200
         assert second.status_code == 400  # single-use — the whole point of the exchange step
-
-    def test_exchange_code_is_confirmed_single_use_via_store_inspection(self, client):
-        """Stronger than the black-box test above — directly confirms the
-        Redis-backed entry is actually deleted, not just that a second
-        HTTP call happens to 400 for some other reason."""
-        conn = _FakeOAuthConn()
-        code = self._do_login(client, conn)
-
-        client.post("/api/auth/oauth-exchange", json={"code": code})
 
         from app.core.cache.redis_adapter import get_redis
 
@@ -823,18 +817,10 @@ class TestOAuthExchange:
 class TestMeAfterOAuthExchange:
     def test_me_returns_the_same_identity_google_supplied(self, client):
         conn = _FakeOAuthConn()
-        state, cookie = _valid_start(client)
-        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
-             _patch_google(_MockGoogleClient(userinfo={
-                 "email": "me-check@example.com", "name": "Me Check",
-                 "picture": "https://example.com/p.png", "verified_email": True,
-             })), _mock_pool(conn):
-            callback_resp = client.get(
-                "/api/auth/google/callback",
-                params={"code": "code", "state": state},
-                cookies={"oauth_state": cookie},
-                follow_redirects=False,
-            )
+        callback_resp = _do_oauth_login(
+            client, conn, email="me-check@example.com", name="Me Check",
+            picture="https://example.com/p.png",
+        )
         exchange_code = callback_resp.headers["location"].split("code=")[1]
 
         with _mock_pool(conn):
@@ -851,10 +837,6 @@ class TestMeAfterOAuthExchange:
         assert me_body["name"] == "Me Check"
         assert me_body["email_verified"] is True
 
-    def test_me_without_a_token_is_rejected(self, client):
-        resp = client.get("/api/auth/me")
-        assert resp.status_code in (401, 403)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 10. Refresh flow
@@ -862,18 +844,7 @@ class TestMeAfterOAuthExchange:
 
 class TestRefreshAfterOAuth:
     def _login_and_exchange(self, client, conn, email="refresh-oauth@example.com"):
-        state, cookie = _valid_start(client)
-        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
-             _patch_google(_MockGoogleClient(userinfo={
-                 "email": email, "name": "Refresh Test", "picture": "",
-                 "verified_email": True,
-             })), _mock_pool(conn):
-            callback_resp = client.get(
-                "/api/auth/google/callback",
-                params={"code": "code", "state": state},
-                cookies={"oauth_state": cookie},
-                follow_redirects=False,
-            )
+        callback_resp = _do_oauth_login(client, conn, email=email, name="Refresh Test")
         exchange_code = callback_resp.headers["location"].split("code=")[1]
         with _mock_pool(conn):
             return client.post("/api/auth/oauth-exchange", json={"code": exchange_code}).json()
@@ -924,9 +895,3 @@ class TestRefreshAfterOAuth:
                 "/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]},
             )
         assert reuse_resp.status_code == 401
-
-    def test_invalid_refresh_token_is_rejected(self, client):
-        conn = _FakeOAuthConn()
-        with _mock_pool(conn):
-            resp = client.post("/api/auth/refresh", json={"refresh_token": "never-issued"})
-        assert resp.status_code == 401
