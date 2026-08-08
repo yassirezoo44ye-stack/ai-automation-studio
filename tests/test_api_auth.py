@@ -375,3 +375,190 @@ class TestOAuthCallbackProviderUnreachable:
             )
 
         assert resp.status_code == 400
+
+
+# ── Regression: a non-200 from the token-exchange/userinfo call must be
+#    LOGGED with the provider's real error before the generic 400 is
+#    raised — previously the real reason (bad client_secret, redirect_uri
+#    mismatch, expired/reused code, provider-side rejection) was silently
+#    discarded, leaving only an undifferentiated "Google OAuth token
+#    exchange failed" with nothing to debug from. ─────────────────────────────
+
+class _JsonResponseClient:
+    """Stands in for httpx.AsyncClient(); every call returns a fixed
+    (status_code, json_body) response regardless of URL, so these tests can
+    target the token-exchange failure without needing a resolvable second
+    call to succeed."""
+
+    def __init__(self, status_code: int, json_body: dict, text: str | None = None):
+        self._status_code = status_code
+        self._json_body = json_body
+        self._text = text if text is not None else str(json_body)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    class _Response:
+        def __init__(self, status_code, json_body, text):
+            self.status_code = status_code
+            self._json_body = json_body
+            self.text = text
+
+        def json(self):
+            return self._json_body
+
+    async def post(self, *args, **kwargs):
+        return self._Response(self._status_code, self._json_body, self._text)
+
+    async def get(self, *args, **kwargs):
+        return self._Response(self._status_code, self._json_body, self._text)
+
+
+class TestAppUrlTrailingSlashNormalized:
+    """A trailing slash on the APP_URL env var (an easy, otherwise-silent
+    misconfiguration) must not produce a double-slash redirect_uri --
+    Google/Microsoft/GitHub compare redirect_uri byte-for-byte against what
+    was registered, so a double slash breaks the token exchange with no
+    obvious client-visible cause.
+
+    Deliberately does NOT importlib.reload(app.routers.auth_users) to test
+    this -- reloading recreates every function object in the module
+    (get_current_user included), which breaks identity-based checks
+    elsewhere in the suite (e.g. test_enterprise.py's
+    `Depends(get_current_user)` `is` comparison, whose captured reference
+    is bound at api_keys_router's own import time). The normalization is
+    tested as the pure function it actually is instead."""
+
+    def test_normalize_strips_trailing_slash(self):
+        from app.routers.auth_users import _normalize_app_url_base
+        assert _normalize_app_url_base("https://example.com/") == "https://example.com"
+
+    def test_normalize_is_a_noop_without_trailing_slash(self):
+        from app.routers.auth_users import _normalize_app_url_base
+        assert _normalize_app_url_base("https://example.com") == "https://example.com"
+
+    def test_normalize_strips_only_trailing_slashes_not_path_slashes(self):
+        from app.routers.auth_users import _normalize_app_url_base
+        assert _normalize_app_url_base("https://example.com/app/") == "https://example.com/app"
+
+    def test_currently_loaded_app_url_base_has_no_trailing_slash(self):
+        """The module-level constant every redirect_uri is actually built
+        from must itself be normalized -- proves the helper above is wired
+        in, not just correct in isolation."""
+        from app.routers.auth_users import _APP_URL_BASE
+        assert not _APP_URL_BASE.endswith("/")
+
+    def test_google_start_redirect_uri_has_no_double_slash(self, client):
+        """End-to-end through the real, already-loaded module: whatever
+        APP_URL this process started with, the redirect_uri Google sees
+        must never contain a double slash before /api."""
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
+            resp = client.get("/api/auth/google", follow_redirects=False)
+        assert resp.status_code in (302, 307)
+        location = resp.headers["location"]
+        assert "//api/auth/google/callback" not in location
+
+
+class TestOAuthTokenExchangeErrorIsLogged:
+    @staticmethod
+    def _get_callback(client, path: str, state: str = "state-value"):
+        return client.get(
+            path,
+            params={"code": "auth-code", "state": state},
+            cookies={"oauth_state": state},
+        )
+
+    def test_google_token_exchange_failure_logs_real_error(self, client, caplog):
+        fake_client = _JsonResponseClient(
+            400, {"error": "invalid_grant", "error_description": "Bad Request"},
+        )
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._GOOGLE_CLIENT_SECRET", "fake-secret"), \
+             patch("app.routers.auth_users._httpx.AsyncClient", return_value=fake_client), \
+             caplog.at_level("WARNING", logger="app.routers.auth_users"):
+            resp = self._get_callback(client, "/api/auth/google/callback")
+
+        assert resp.status_code == 400
+        assert "Google OAuth token exchange failed" in resp.json()["detail"]
+
+        # The real Google-reported reason must be observable server-side...
+        warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        joined = "\n".join(warnings)
+        assert "invalid_grant" in joined
+        assert "Bad Request" in joined
+        assert "400" in joined
+        # ...but the authorization code, client secret, and any token must
+        # never appear in a log line, regardless of outcome.
+        assert "fake-secret" not in joined
+        assert "auth-code" not in joined
+
+    def test_google_userinfo_failure_logs_real_error(self, client, caplog):
+        """The token exchange succeeds; the userinfo call is what fails —
+        must be logged distinctly from a token-exchange failure."""
+        call_count = {"n": 0}
+
+        class _MixedClient(_JsonResponseClient):
+            async def post(self, *args, **kwargs):
+                return self._Response(200, {"access_token": "gh-tok"}, "")
+
+            async def get(self, *args, **kwargs):
+                call_count["n"] += 1
+                return self._Response(
+                    401, {"error": {"code": 401, "message": "Invalid Credentials"}}, "",
+                )
+
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._GOOGLE_CLIENT_SECRET", "fake-secret"), \
+             patch("app.routers.auth_users._httpx.AsyncClient", return_value=_MixedClient(0, {})), \
+             caplog.at_level("WARNING", logger="app.routers.auth_users"):
+            resp = self._get_callback(client, "/api/auth/google/callback")
+
+        assert resp.status_code == 400
+        assert "Failed to fetch Google user info" in resp.json()["detail"]
+        warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        joined = "\n".join(warnings)
+        assert "Invalid Credentials" in joined
+        assert "userinfo" in joined
+        assert "gh-tok" not in joined  # the access token itself must never be logged
+
+    def test_microsoft_token_exchange_failure_logs_real_error(self, client, caplog):
+        fake_client = _JsonResponseClient(
+            401, {"error": "invalid_client", "error_description": "Invalid client secret"},
+        )
+        with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._MICROSOFT_CLIENT_SECRET", "fake-secret"), \
+             patch("app.routers.auth_users._httpx.AsyncClient", return_value=fake_client), \
+             caplog.at_level("WARNING", logger="app.routers.auth_users"):
+            resp = self._get_callback(client, "/api/auth/microsoft/callback")
+
+        assert resp.status_code == 400
+        warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        joined = "\n".join(warnings)
+        assert "invalid_client" in joined
+        assert "Invalid client secret" in joined
+        assert "fake-secret" not in joined
+
+    def test_github_token_exchange_failure_logs_real_error(self, client, caplog):
+        """GitHub's token endpoint can 200 with an error body instead of a
+        non-200 status (e.g. a reused/expired code) — must still be
+        logged, not just the plain non-200 case."""
+        fake_client = _JsonResponseClient(
+            200, {"error": "bad_verification_code",
+                  "error_description": "The code passed is incorrect or expired."},
+        )
+        with patch("app.routers.auth_users._GITHUB_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._GITHUB_CLIENT_SECRET", "fake-secret"), \
+             patch("app.routers.auth_users._httpx.AsyncClient", return_value=fake_client), \
+             caplog.at_level("WARNING", logger="app.routers.auth_users"):
+            resp = self._get_callback(client, "/api/auth/github/callback")
+
+        assert resp.status_code == 400
+        assert "GitHub did not return an access token" in resp.json()["detail"]
+        warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        joined = "\n".join(warnings)
+        assert "bad_verification_code" in joined
+        assert "expired" in joined
+        assert "fake-secret" not in joined

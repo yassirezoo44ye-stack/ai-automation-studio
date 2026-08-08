@@ -773,12 +773,57 @@ _GITHUB_CLIENT_ID        = _os.getenv("GITHUB_CLIENT_ID", "")
 _GITHUB_CLIENT_SECRET    = _os.getenv("GITHUB_CLIENT_SECRET", "")
 _MICROSOFT_CLIENT_ID     = _os.getenv("MICROSOFT_CLIENT_ID", "")
 _MICROSOFT_CLIENT_SECRET = _os.getenv("MICROSOFT_CLIENT_SECRET", "")
-_APP_URL_BASE            = _os.getenv("APP_URL", "http://localhost:8000")
+def _normalize_app_url_base(raw: str) -> str:
+    """Strip a trailing slash from APP_URL before it's used to build any
+    OAuth redirect_uri. redirect_uri is compared byte-for-byte by Google/
+    Microsoft/GitHub against what's registered in their consoles. A
+    trailing slash on the APP_URL env var (an easy, otherwise-silent
+    misconfiguration -- "https://host.example.com/" instead of
+    "https://host.example.com") would build
+    "https://host.example.com//api/..." here, which never matches the
+    registered redirect URI -- the provider rejects the token exchange
+    with redirect_uri_mismatch, and (before the _log_oauth_error_response
+    fix above) that reason was invisible server-side."""
+    return raw.rstrip("/")
+
+
+_APP_URL_BASE            = _normalize_app_url_base(_os.getenv("APP_URL", "http://localhost:8000"))
 
 
 def _oauth_not_configured(provider: str):
     raise HTTPException(503, f"{provider} OAuth is not configured on this server. "
                              f"Set {provider.upper()}_CLIENT_ID and {provider.upper()}_CLIENT_SECRET.")
+
+
+def _log_oauth_error_response(provider: str, stage: str, response) -> None:
+    """Log the real reason an OAuth provider's HTTP call failed.
+
+    Previously, a non-200 from the token-exchange or userinfo call just
+    raised a generic HTTPException with no server-side trace of *why* --
+    the only visible symptom was a flat "Google OAuth token exchange
+    failed" with nothing to distinguish a bad client_secret, a redirect_uri
+    mismatch, an expired/already-used code, or a Google-side outage.
+
+    `response` is the failed httpx.Response itself (never the outgoing
+    request) -- provider error responses never echo back the authorization
+    code, client_secret, or any token we sent, so logging their body is
+    safe. Still: never log the request body/headers here, and cap the
+    fallback raw-text branch so nothing unbounded ends up in logs."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    if isinstance(body, dict) and (body.get("error") or body.get("error_description")):
+        log.warning(
+            "oauth %s %s failed: status=%s error=%r error_description=%r",
+            provider, stage, response.status_code,
+            body.get("error"), body.get("error_description"),
+        )
+    else:
+        log.warning(
+            "oauth %s %s failed: status=%s body=%r",
+            provider, stage, response.status_code, response.text[:300],
+        )
 
 
 def _oauth_provider_unreachable(provider: str, exc: Exception) -> HTTPException:
@@ -931,6 +976,7 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
                 "redirect_uri": redirect_uri, "grant_type": "authorization_code",
             })
             if token_res.status_code != 200:
+                _log_oauth_error_response("Google", "token exchange", token_res)
                 raise HTTPException(400, "Google OAuth token exchange failed")
             tokens = token_res.json()
             info_res = await client.get(
@@ -938,6 +984,7 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
                 headers={"Authorization": f"Bearer {tokens['access_token']}"},
             )
             if info_res.status_code != 200:
+                _log_oauth_error_response("Google", "userinfo fetch", info_res)
                 raise HTTPException(400, "Failed to fetch Google user info")
             info = info_res.json()
     except _httpx.RequestError as exc:
@@ -997,6 +1044,7 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
                 },
             )
             if token_res.status_code != 200:
+                _log_oauth_error_response("Microsoft", "token exchange", token_res)
                 raise HTTPException(400, "Microsoft OAuth token exchange failed")
             tokens = token_res.json()
             info_res = await client.get(
@@ -1004,6 +1052,7 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
                 headers={"Authorization": f"Bearer {tokens['access_token']}"},
             )
             if info_res.status_code != 200:
+                _log_oauth_error_response("Microsoft", "userinfo fetch", info_res)
                 raise HTTPException(400, "Failed to fetch Microsoft user info")
             info = info_res.json()
     except _httpx.RequestError as exc:
@@ -1055,9 +1104,17 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
                       "code": code, "redirect_uri": redirect_uri},
             )
             if token_res.status_code != 200:
+                _log_oauth_error_response("GitHub", "token exchange", token_res)
                 raise HTTPException(400, "GitHub OAuth token exchange failed")
-            gh_access = token_res.json().get("access_token")
+            token_body = token_res.json()
+            gh_access = token_body.get("access_token")
             if not gh_access:
+                # GitHub's token endpoint can return HTTP 200 with an error
+                # in the body (e.g. a reused/expired code) instead of a
+                # non-200 status -- token_res.status_code == 200 here, so
+                # _log_oauth_error_response (which branches on the JSON
+                # body's error fields, not status) still surfaces it.
+                _log_oauth_error_response("GitHub", "token exchange", token_res)
                 raise HTTPException(400, "GitHub did not return an access token")
 
             user_res = await client.get("https://api.github.com/user",
@@ -1065,6 +1122,7 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
             emails_res = await client.get("https://api.github.com/user/emails",
                                           headers={"Authorization": f"Bearer {gh_access}"})
             if user_res.status_code != 200:
+                _log_oauth_error_response("GitHub", "userinfo fetch", user_res)
                 raise HTTPException(400, "Failed to fetch GitHub user info")
             gh_user = user_res.json()
             emails = emails_res.json() if emails_res.status_code == 200 else []

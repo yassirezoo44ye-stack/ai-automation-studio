@@ -25,6 +25,13 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      # Google OAuth (GET /api/auth/google -> /api/auth/google/callback).
+      # Redirect URI registered in Google Cloud Console must be exactly
+      # {APP_URL}/api/auth/google/callback -- no trailing slash on APP_URL.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
       # Comma-separated additional CORS origins for a split-frontend setup
       # (e.g. https://your-app.vercel.app) — set after your first Vercel
       # deploy once you know the assigned domain.
