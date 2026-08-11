@@ -141,6 +141,13 @@ def pg_test_database_url() -> str:
             from app.billing.invoices import init_invoices_schema
             from app.billing.payment_methods import init_payment_methods_schema
             from app.billing.plan_service import init_subscription_plans_schema
+            from app.marketplace.store import PgMarketplaceStore
+            from app.marketplace.downloads import init_downloads_schema
+            from app.plugins.schema import init_plugins_schema
+            from app.sandbox.schema import init_sandbox_schema
+            from app.billing.usage import init_usage_schema
+            from app.billing.webhooks import init_billing_events_schema
+            from app.core.api_keys import init_api_keys_schema
 
             async with pool.acquire() as conn:
                 await init_db(conn)
@@ -179,6 +186,29 @@ def pg_test_database_url() -> str:
                 # same batch) so PlanService tests see the same seeded
                 # rows production does.
                 await init_subscription_plans_schema(conn)
+            # Remaining P0 RLS-table gap (docs/testing-foundation-p0.md):
+            # billing_events/sandbox_workers/sandbox_events/usage_records/
+            # marketplace_installs/marketplace_downloads/plugin_installations/
+            # api_keys. teams/chat_messages are already created by
+            # init_tenancy_schema above. Real FK chain, so order matters:
+            # marketplace_items (schema-only, no catalog seeding — that's
+            # a separate step init_marketplace_store() does that this
+            # harness doesn't need) -> plugin_installations (FK's to
+            # marketplace_items) -> sandbox_workers/events (FK's to
+            # plugin_installations) -> the rest (no cross-dependencies).
+            await PgMarketplaceStore(pool).init()
+            async with pool.acquire() as conn:
+                await init_downloads_schema(conn)
+            async with pool.acquire() as conn:
+                await init_plugins_schema(conn)
+            async with pool.acquire() as conn:
+                await init_sandbox_schema(conn)
+            async with pool.acquire() as conn:
+                await init_usage_schema(conn)
+            async with pool.acquire() as conn:
+                await init_billing_events_schema(conn)
+            async with pool.acquire() as conn:
+                await init_api_keys_schema(conn)
             async with pool.acquire() as conn:
                 await enable_scoped_rls(conn)
         finally:
