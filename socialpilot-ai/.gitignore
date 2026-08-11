@@ -1,0 +1,35 @@
+# NOTE: the repo root .gitignore has a bare `backend/` rule (for Flow's own
+# tree) that would otherwise also swallow this project's `backend/` directory,
+# since gitignore patterns without a leading slash match at any depth. Un-ignore
+# it explicitly, then apply this project's own ignores on top.
+!backend/
+!backend/**
+
+# --- Python / backend ---
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.egg-info/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/htmlcov/
+backend/.coverage
+
+# --- Node / frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.tsbuildinfo
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# --- Misc ---
+*.log
+.DS_Store

@@ -1,0 +1,17 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+pydantic==2.10.3
+pydantic-settings==2.7.0
+passlib[argon2]==1.7.4
+argon2-cffi==23.1.0
+pyjwt==2.10.1
+python-multipart==0.0.20
+slowapi==0.1.9
+redis==5.2.1
+httpx==0.28.1
+email-validator==2.2.0
+structlog==24.4.0
+tenacity==9.0.0

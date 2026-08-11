@@ -1,0 +1,80 @@
+name: SocialPilot AI CI
+
+# Scoped entirely to socialpilot-ai/ — independent of Flow's own CI (ci.yml,
+# build-system-validation.yml) by design; see socialpilot-ai/docs/ARCHITECTURE.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "socialpilot-ai/**"
+      - ".github/workflows/socialpilot-ai-ci.yml"
+  pull_request:
+    paths:
+      - "socialpilot-ai/**"
+      - ".github/workflows/socialpilot-ai-ci.yml"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: socialpilot_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: socialpilot-ai/backend
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/socialpilot_test
+      JWT_SECRET_KEY: ci-test-secret-not-for-production-use-xxxxxxxxxxxxxxxxxxx
+      COOKIE_SECURE: "false"
+      ENVIRONMENT: test
+      REDIS_URL: redis://localhost:6379/0
+      RATE_LIMIT_STORAGE_URL: "memory://"
+      AUTH_RATE_LIMIT: "1000/minute"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: socialpilot-ai/backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: alembic upgrade head
+      - run: pytest -q
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: socialpilot-ai/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: socialpilot-ai/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
