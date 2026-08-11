@@ -50,6 +50,7 @@ vi.mock("../features/plugins", () => ({ PluginsPage: () => <div>PLUGINS_PAGE_CON
 vi.mock("../features/sandbox", () => ({ SandboxPage: () => <div>SANDBOX_PAGE_CONTENT</div> }));
 vi.mock("../features/ai-routing", () => ({ AIRoutingPage: () => <div>AI_ROUTING_PAGE_CONTENT</div> }));
 vi.mock("../features/observability", () => ({ ObservabilityPage: () => <div>OBSERVABILITY_PAGE_CONTENT</div> }));
+vi.mock("../features/integrations", () => ({ IntegrationsPage: () => <div>INTEGRATIONS_PAGE_CONTENT</div> }));
 vi.mock("../features/social", () => ({ SocialPage: () => <div>SOCIAL_PAGE_CONTENT</div> }));
 vi.mock("../features/settings", () => ({ SettingsPage: () => <div>SETTINGS_PAGE_CONTENT</div> }));
 
@@ -77,6 +78,7 @@ describe("navigation", () => {
       ["Sandbox", "SANDBOX_PAGE_CONTENT"],
       ["AI Routing", "AI_ROUTING_PAGE_CONTENT"],
       ["Observability", "OBSERVABILITY_PAGE_CONTENT"],
+      ["Integrations", "INTEGRATIONS_PAGE_CONTENT"],
       ["Organizations", "ORGANIZATIONS_PAGE_CONTENT"],
       ["Teams", "TEAMS_PAGE_CONTENT"],
       ["Billing", "BILLING_PAGE_CONTENT"],

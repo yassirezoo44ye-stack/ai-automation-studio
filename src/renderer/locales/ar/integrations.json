@@ -1,0 +1,54 @@
+{
+  "header": {
+    "title": "التكاملات"
+  },
+  "noOrg": {
+    "title": "لم يتم اختيار منظمة",
+    "descriptionNoOrgs": "أنشئ منظمة أولاً.",
+    "descriptionHasOrgs": "اختر واحدة من صفحة المنظمات."
+  },
+  "empty": {
+    "title": "لا توجد مزودات تكامل متاحة",
+    "description": "لا توجد أي مزودات مسجّلة على هذا الخادم بعد."
+  },
+  "loadError": {
+    "title": "تعذّر تحميل التكاملات",
+    "description": "حدث خطأ ما أثناء الاتصال بالخادم.",
+    "retry": "إعادة المحاولة"
+  },
+  "toast": {
+    "loadFailed": "فشل تحميل التكاملات",
+    "connected": "تم ربط التكامل",
+    "connectFailed": "فشل ربط التكامل",
+    "disconnected": "تم فصل التكامل",
+    "disconnectFailed": "فشل فصل التكامل",
+    "confirmDisconnect": "هل تريد فصل هذا التكامل؟ سيتم حذف بيانات الاعتماد المخزّنة.",
+    "syncStarted": "بدأت المزامنة",
+    "syncFailed": "فشل بدء المزامنة"
+  },
+  "status": {
+    "connected": "متصل",
+    "syncing": "جارٍ المزامنة",
+    "error": "خطأ",
+    "degraded": "متدهور",
+    "disconnected": "غير متصل"
+  },
+  "providerType": "النوع: {{type}}",
+  "lastSync": "آخر مزامنة {{date}}",
+  "actions": {
+    "connect": "ربط",
+    "reconfigure": "إعادة الإعداد",
+    "disconnect": "فصل",
+    "sync": "مزامنة الآن"
+  },
+  "connectForm": {
+    "title": "ربط {{name}}",
+    "description": "أدخل بيانات الاعتماد التي يتطلبها هذا المزود. يتم تشفير القيم أثناء التخزين ولن تُعرض مجددًا.",
+    "keyPlaceholder": "المفتاح (مثال: api_key)",
+    "valuePlaceholder": "القيمة",
+    "addField": "+ إضافة حقل",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "saving": "جارٍ الحفظ…"
+  }
+}

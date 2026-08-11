@@ -1,0 +1,54 @@
+{
+  "header": {
+    "title": "Integrations"
+  },
+  "noOrg": {
+    "title": "No organization selected",
+    "descriptionNoOrgs": "Create an organization first.",
+    "descriptionHasOrgs": "Pick one from the Organizations page."
+  },
+  "empty": {
+    "title": "No integration providers available",
+    "description": "No providers are registered on this server yet."
+  },
+  "loadError": {
+    "title": "Could not load integrations",
+    "description": "Something went wrong reaching the server.",
+    "retry": "Retry"
+  },
+  "toast": {
+    "loadFailed": "Failed to load integrations",
+    "connected": "Integration connected",
+    "connectFailed": "Failed to connect integration",
+    "disconnected": "Integration disconnected",
+    "disconnectFailed": "Failed to disconnect integration",
+    "confirmDisconnect": "Disconnect this integration? Its stored credentials will be deleted.",
+    "syncStarted": "Sync started",
+    "syncFailed": "Failed to start sync"
+  },
+  "status": {
+    "connected": "Connected",
+    "syncing": "Syncing",
+    "error": "Error",
+    "degraded": "Degraded",
+    "disconnected": "Disconnected"
+  },
+  "providerType": "Type: {{type}}",
+  "lastSync": "Last synced {{date}}",
+  "actions": {
+    "connect": "Connect",
+    "reconfigure": "Reconfigure",
+    "disconnect": "Disconnect",
+    "sync": "Sync now"
+  },
+  "connectForm": {
+    "title": "Connect {{name}}",
+    "description": "Enter the credentials this provider requires. Values are encrypted at rest and never shown again.",
+    "keyPlaceholder": "Key (e.g. api_key)",
+    "valuePlaceholder": "Value",
+    "addField": "+ Add field",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…"
+  }
+}

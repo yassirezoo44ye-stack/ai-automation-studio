@@ -4,7 +4,7 @@
     "nav": {
       "home": "Home", "ai": "AI", "dev": "Dev", "design": "Design",
       "automation": "Workflows", "agentos": "AgentOS", "marketplace": "Marketplace", "plugins": "Plugins", "sandbox": "Sandbox",
-      "aiRouting": "AI Routing", "observability": "Observability",
+      "aiRouting": "AI Routing", "observability": "Observability", "integrations": "Integrations",
       "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings"
     },
     "mainNav": "Main navigation",
