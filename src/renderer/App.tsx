@@ -7,6 +7,7 @@ import { NotificationProvider } from "./contexts/NotificationContext";
 import { CopilotProvider } from "./contexts/CopilotContext";
 import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
+import { ResetPasswordPage } from "./features/auth/ResetPasswordPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
 import "./design-system.css";
 
@@ -16,6 +17,14 @@ setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
 function AppInner() {
   const { user, loading, bootstrapError } = useAuth();
+
+  // Reached from the password-reset email link (app/core/email.py:
+  // `${APP_URL}/reset-password?token=...`) -- a fully logged-out visitor
+  // with no stored session, so it's handled before the auth-bootstrap
+  // gates below rather than waiting on `loading`/`user` to resolve.
+  if (window.location.pathname === "/reset-password") {
+    return <ResetPasswordPage />;
+  }
 
   if (loading) {
     return <LoadingSpinner fullPage label="Starting Flow…" />;
