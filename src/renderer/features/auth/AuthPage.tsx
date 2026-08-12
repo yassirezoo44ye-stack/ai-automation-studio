@@ -126,23 +126,31 @@ interface ResetValues { password: string; confirmPassword: string }
 export function AuthPage() {
   const { t } = useTranslation("auth");
   const { login, register } = useAuth();
-  const [tab, setTab] = useState<Tab>("login");
-  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
-  const [resetToken, setResetToken] = useState<string | null>(null);
 
-  // Detect /reset-password?token=... on initial page load.
-  // The SPA catch-all serves AuthPage for this URL since the user is not yet
-  // authenticated.  We read the token, clean the URL (token is sensitive), then
-  // switch to the "reset" tab so the user can enter their new password.
+  // Derive initial tab and token from the URL at first render using the lazy
+  // useState initializer (runs once synchronously, no extra render cycle).
+  // When the user follows a /reset-password?token=... link, the SPA catch-all
+  // serves AuthPage (no user is logged in), and we switch straight to the
+  // "reset" tab so they can enter their new password.
+  const [tab, setTab] = useState<Tab>(() => {
+    if (window.location.pathname === "/reset-password") {
+      return new URLSearchParams(window.location.search).get("token") ? "reset" : "login";
+    }
+    return "login";
+  });
+  // resetToken is set once from the URL; the setter is intentionally unused after init.
+  const [resetToken, _setResetToken] = useState<string | null>(() =>
+    window.location.pathname === "/reset-password"
+      ? new URLSearchParams(window.location.search).get("token")
+      : null,
+  );
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+
+  // Clean the sensitive token from the URL bar once on mount.
+  // No state changes here — tab and resetToken were already set above.
   useEffect(() => {
     if (window.location.pathname === "/reset-password") {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
-      history.replaceState(null, "", "/");        // remove token from URL bar
-      if (token) {
-        setResetToken(token);
-        setTab("reset");
-      }
+      history.replaceState(null, "", "/");
     }
   }, []);
 
