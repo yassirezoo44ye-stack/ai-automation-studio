@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
 import AxonLogo from "../../AxonLogo";
@@ -9,7 +9,7 @@ import { all, required, email as emailValidator, minLength, matchesField, passwo
 import { EmailField, PasswordField, TextField, Checkbox, SubmitButton, ErrorBanner, SuccessBanner } from "../../shared/ui/forms";
 import { GoldButton } from "../../shared/ui/gold";
 
-type Tab = "login" | "register" | "forgot";
+type Tab = "login" | "register" | "forgot" | "reset";
 
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
@@ -121,12 +121,30 @@ function OAuthRow({ onSelect }: { onSelect: (provider: "google" | "github" | "mi
 interface LoginValues { email: string; password: string; remember: boolean }
 interface RegisterValues { name: string; email: string; password: string; confirmPassword: string }
 interface ForgotValues { email: string }
+interface ResetValues { password: string; confirmPassword: string }
 
 export function AuthPage() {
   const { t } = useTranslation("auth");
   const { login, register } = useAuth();
   const [tab, setTab] = useState<Tab>("login");
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+
+  // Detect /reset-password?token=... on initial page load.
+  // The SPA catch-all serves AuthPage for this URL since the user is not yet
+  // authenticated.  We read the token, clean the URL (token is sensitive), then
+  // switch to the "reset" tab so the user can enter their new password.
+  useEffect(() => {
+    if (window.location.pathname === "/reset-password") {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+      history.replaceState(null, "", "/");        // remove token from URL bar
+      if (token) {
+        setResetToken(token);
+        setTab("reset");
+      }
+    }
+  }, []);
 
   function handleOAuth(provider: "google" | "github" | "microsoft") {
     window.location.href = `${API}/api/auth/${provider}`;
@@ -177,6 +195,24 @@ export function AuthPage() {
     }),
   });
 
+  // ── Reset password (token from /reset-password?token=) ────────────────
+  const resetSubmit = useAsyncSubmit<{ message: string }>();
+  const resetForm = useForm<ResetValues>({
+    initialValues: { password: "", confirmPassword: "" },
+    validators: {
+      password: all(required(t("validation.passwordRequired")), minLength(8), passwordStrength()),
+      confirmPassword: all(required(t("validation.confirmRequired")), matchesField("password", t("validation.passwordsMismatch"))),
+    },
+    onValid: values => resetSubmit.run(async signal => {
+      const res = await fetch(`${API}/api/auth/reset-password`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resetToken, password: values.password }),
+        signal,
+      });
+      return parseJSON<{ message: string }>(res, "/api/auth/reset-password");
+    }),
+  });
+
   // ── Resend verification (button action, no fields) ────────────────────────
   const resendSubmit = useAsyncSubmit<{ message: string }>();
   function handleResend() {
@@ -193,7 +229,7 @@ export function AuthPage() {
 
   function switchTab(next: Tab) {
     setTab(next);
-    loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset();
+    loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset(); resetSubmit.reset();
     if (next !== "register") setRegisteredEmail(null);
   }
 
@@ -204,7 +240,7 @@ export function AuthPage() {
         <h1 style={S.title}>{t("title")}</h1>
         <p style={S.sub}>{t("subtitle")}</p>
 
-        {tab !== "forgot" && (
+        {tab !== "forgot" && tab !== "reset" && (
           <div style={S.tabs} role="tablist">
             <button role="tab" aria-selected={tab === "login"} style={S.tab(tab === "login")} onClick={() => switchTab("login")}>
               {t("tabs.signIn")}
@@ -284,6 +320,31 @@ export function AuthPage() {
               {t("forgot.backToSignIn")}
             </button>
           </form>
+        )}
+
+        {/* ── Reset password (token arrived via /reset-password?token=) ── */}
+        {tab === "reset" && !resetSubmit.success && (
+          <form onSubmit={resetForm.handleSubmit} noValidate>
+            <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
+              {t("reset.intro")}
+            </p>
+            {resetSubmit.error && <ErrorBanner message={resetSubmit.error} suggestedFix={resetSubmit.suggestedFix} onRetry={resetForm.isValid ? resetSubmit.retry : undefined} />}
+            <PasswordField {...resetForm.register("password")} label={t("register.password")} required autoFocus autoComplete="new-password"
+              hint={!resetForm.errors.password ? t("register.passwordHint") : undefined} />
+            <PasswordField {...resetForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
+            <SubmitButton loading={resetSubmit.isSubmitting} loadingText={t("reset.submitting")}>{t("reset.submit")}</SubmitButton>
+          </form>
+        )}
+
+        {tab === "reset" && resetSubmit.success && (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+            <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>{t("reset.successTitle")}</p>
+            <p style={{ color: "var(--t3)", fontSize: 13, marginBottom: 20 }}>{t("reset.successBody")}</p>
+            <GoldButton onClick={() => switchTab("login")} style={{ width: "100%" }}>
+              {t("forgot.backToSignIn")}
+            </GoldButton>
+          </div>
         )}
       </div>
     </div>
