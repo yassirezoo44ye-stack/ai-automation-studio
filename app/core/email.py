@@ -5,7 +5,7 @@ import os
 log = logging.getLogger(__name__)
 
 _FROM = os.getenv("SMTP_FROM", "noreply@axon.app")
-_APP_URL = os.getenv("APP_URL", "http://localhost:3000")
+_APP_URL = os.getenv("APP_URL", "http://localhost:3000").rstrip("/")
 
 
 async def send_email(to: str, subject: str, html: str) -> None:

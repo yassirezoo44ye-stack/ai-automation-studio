@@ -800,7 +800,7 @@ _GITHUB_CLIENT_ID        = _os.getenv("GITHUB_CLIENT_ID", "")
 _GITHUB_CLIENT_SECRET    = _os.getenv("GITHUB_CLIENT_SECRET", "")
 _MICROSOFT_CLIENT_ID     = _os.getenv("MICROSOFT_CLIENT_ID", "")
 _MICROSOFT_CLIENT_SECRET = _os.getenv("MICROSOFT_CLIENT_SECRET", "")
-_APP_URL_BASE            = _os.getenv("APP_URL", "http://localhost:8000")
+_APP_URL_BASE            = _os.getenv("APP_URL", "http://localhost:8000").rstrip("/")
 
 
 def _oauth_not_configured(provider: str):
