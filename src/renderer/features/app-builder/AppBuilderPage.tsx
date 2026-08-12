@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
 import * as api from "./api";
+import { APIError } from "../../shared/utils/api";
 import type {
   AppSpec, BuildResult, AppRecord, AppDetail,
   BuildPhase, BuildStep,
@@ -591,8 +592,24 @@ export function AppBuilderPage() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /**
+   * Tracks whether the component is still mounted.
+   * The async setInterval callback may fire after unmount — every state
+   * setter call is guarded by isMountedRef.current to prevent the
+   * "Can't perform a React state update on an unmounted component" warning
+   * and any related memory-leak / double-update bugs.
+   */
+  const isMountedRef = useRef(true);
 
   const examples = t("examplesList", { returnObjects: true }) as string[];
+
+  // Track mount state so polling callbacks can bail out after unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -612,6 +629,10 @@ export function AppBuilderPage() {
       pollRef.current = setInterval(async () => {
         try {
           const detail: AppDetail = await api.getApp(appId);
+
+          // Guard: component may have unmounted while the request was in flight
+          if (!isMountedRef.current) return;
+
           const pct = detail.progress ?? 0;
           const stepName = detail.current_step ?? "";
           setBuildProgress(pct);
@@ -642,8 +663,28 @@ export function AppBuilderPage() {
               toast(errMsg, "err");
             }
           }
-        } catch {
-          // Transient network error — keep polling; do not surface to user
+        } catch (err) {
+          // Guard: component may have unmounted while the request was in flight
+          if (!isMountedRef.current) return;
+
+          // Determine if this is a permanent error (stop polling) or a
+          // transient one (network glitch / 5xx — keep retrying silently).
+          const status = err instanceof APIError ? err.details.status : 0;
+
+          if (status === 401 || status === 403) {
+            // Auth failure — no point continuing; user must re-authenticate.
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            setPhase("error");
+            toast(t("error.authRequired", "Session expired — please refresh the page"), "err");
+          } else if (status === 404) {
+            // App was deleted while polling — stop silently and reset.
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            setPhase("idle");
+          }
+          // Any other status (0 = network error, 429, 500, 503) → transient;
+          // keep the interval running and retry on the next tick.
         }
       }, POLL_INTERVAL_MS);
     },

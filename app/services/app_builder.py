@@ -595,6 +595,57 @@ class AppBuilderService:
 
         return app_id, job_id
 
+    # ── Startup crash recovery ────────────────────────────────────────────────
+
+    async def recover_stale_builds(self) -> int:
+        """
+        Mark builds stuck in 'building' since before server restart as recoverable failures.
+
+        Called once at server startup (factory.py lifespan).  The job queue's
+        _dispatch_due() only picks up PENDING jobs — crashed RUNNING jobs are
+        never re-dispatched.  Without this, apps whose background job was
+        interrupted by a restart stay in build_status='building' forever with
+        no way for the user to recover except manual DB intervention.
+
+        Thresholds (conservative — only obviously-dead builds are touched):
+          • last_heartbeat_at older than 15 min → clearly dead (heartbeat is
+            updated every pipeline step, so 15 min = at least 12 missed steps)
+          • last_heartbeat_at IS NULL AND started_at older than 30 min →
+            job was submitted but never progressed (e.g. worker died before
+            the first _update_build_progress call)
+
+        Returns the number of records recovered.
+        """
+        try:
+            async with self._pool.acquire() as conn:
+                result = await conn.execute(
+                    """
+                    UPDATE app_builder_apps
+                    SET build_status  = 'failed',
+                        error         = 'Build interrupted — server restarted. Use retry to rebuild.',
+                        completed_at  = now(),
+                        updated_at    = now()
+                    WHERE build_status = 'building'
+                      AND (
+                        last_heartbeat_at < now() - interval '15 minutes'
+                        OR (
+                          last_heartbeat_at IS NULL
+                          AND started_at < now() - interval '30 minutes'
+                        )
+                      )
+                    """,
+                )
+                # asyncpg returns the command tag as a string, e.g. "UPDATE 3"
+                n = int(result.split()[-1]) if result else 0
+                if n:
+                    log.warning(
+                        "Stale build recovery: marked %d stuck build(s) as failed", n
+                    )
+                return n
+        except Exception as exc:
+            log.error("Stale build recovery query failed: %s", exc)
+            return 0
+
     # ── Job handler (registered with JobQueue) ────────────────────────────────
 
     async def build_job_handler(self, job: "Job") -> None:
@@ -602,6 +653,10 @@ class AppBuilderService:
         Entrypoint called by the JobQueue for 'app_builder.build' jobs.
         Extracts payload and runs the 12-step pipeline, updating job.progress
         as it goes so callers can observe real progress via GET /api/jobs/{id}.
+
+        Guarantees: any unhandled exception (e.g. from _parse_and_validate_spec)
+        is caught here and the DB record is immediately updated to build_status
+        'failed', so the record never stays in 'building' after a crash.
         """
         payload = job.payload
         app_id = payload["app_id"]
@@ -611,17 +666,44 @@ class AppBuilderService:
         user_email = payload.get("user_email", "")
         include_automation = payload.get("include_automation", False)
 
-        spec = self._parse_and_validate_spec(spec_dict)
-        await self._run_build_pipeline(
-            app_id=app_id,
-            spec=spec,
-            spec_dict=spec_dict,
-            org_id=org_id,
-            user_id=user_id,
-            user_email=user_email,
-            include_automation=include_automation,
-            job=job,
-        )
+        try:
+            spec = self._parse_and_validate_spec(spec_dict)
+            await self._run_build_pipeline(
+                app_id=app_id,
+                spec=spec,
+                spec_dict=spec_dict,
+                org_id=org_id,
+                user_id=user_id,
+                user_email=user_email,
+                include_automation=include_automation,
+                job=job,
+            )
+        except Exception as exc:
+            # _run_build_pipeline is documented to never raise; any exception
+            # here originates from _parse_and_validate_spec or payload access.
+            # Write the failure to DB so the user sees a meaningful error
+            # instead of a perpetual 'building' state.
+            log.error("App %s: build_job_handler fatal error: %s", app_id, exc)
+            try:
+                async with self._pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        UPDATE app_builder_apps
+                        SET build_status  = 'failed',
+                            error         = $1,
+                            completed_at  = now(),
+                            updated_at    = now()
+                        WHERE id = $2
+                        """,
+                        f"Build failed: {exc}",
+                        app_id,
+                    )
+            except Exception as db_exc:
+                log.error(
+                    "App %s: failed to persist fatal build error to DB: %s",
+                    app_id, db_exc,
+                )
+            raise  # Re-raise so the JobQueue marks the job as failed too
 
     # ── 12-step build pipeline ────────────────────────────────────────────────
 

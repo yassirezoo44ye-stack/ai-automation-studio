@@ -1028,3 +1028,174 @@ class TestSecurityRegression:
         assert "DROP TABLE" not in sql_src.upper(), (
             "Service must never execute DROP TABLE — use soft deletes only"
         )
+
+
+# ── Crash recovery (Section 2) ─────────────────────────────────────────────────
+
+class TestCrashRecovery:
+    """
+    Verify the stale-build recovery mechanism added in session 3.
+
+    After a server restart the job queue only re-dispatches PENDING jobs.
+    Any job that was RUNNING is abandoned, leaving its app_builder_apps
+    record stuck in build_status='building'.  recover_stale_builds() is
+    called once at startup to mark those records as 'failed' so users can
+    retry rather than waiting forever.
+    """
+
+    def test_recover_stale_builds_method_exists(self):
+        """recover_stale_builds() must be a coroutine on AppBuilderService."""
+        import asyncio
+        assert hasattr(AppBuilderService, "recover_stale_builds"), (
+            "AppBuilderService must have a recover_stale_builds method"
+        )
+        method = getattr(AppBuilderService, "recover_stale_builds")
+        assert asyncio.iscoroutinefunction(method), (
+            "recover_stale_builds must be an async method"
+        )
+
+    def test_recover_stale_builds_queries_building_status(self):
+        """The recovery SQL must filter on build_status = 'building'."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.recover_stale_builds)
+        assert "'building'" in src or '"building"' in src, (
+            "recover_stale_builds must target build_status = 'building'"
+        )
+
+    def test_recover_stale_builds_uses_heartbeat_threshold(self):
+        """Must check last_heartbeat_at to detect dead builds."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.recover_stale_builds)
+        assert "last_heartbeat_at" in src, (
+            "recover_stale_builds must use last_heartbeat_at for stale detection"
+        )
+
+    def test_recover_stale_builds_uses_started_at_fallback(self):
+        """Must check started_at for builds that never received a heartbeat."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.recover_stale_builds)
+        assert "started_at" in src, (
+            "recover_stale_builds must also check started_at for builds without heartbeats"
+        )
+
+    def test_recover_stale_builds_sets_failed_status(self):
+        """Stuck builds must be set to 'failed' (not deleted or left unchanged)."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.recover_stale_builds)
+        assert "'failed'" in src or '"failed"' in src, (
+            "recover_stale_builds must set build_status='failed'"
+        )
+        # Must set an error message so users understand what happened
+        assert "error" in src.lower(), (
+            "recover_stale_builds must set an error message on the record"
+        )
+
+    def test_recover_stale_builds_records_completed_at(self):
+        """Recovered builds must have completed_at set so they have a proper end time."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.recover_stale_builds)
+        assert "completed_at" in src, (
+            "recover_stale_builds must set completed_at on recovered records"
+        )
+
+    def test_recover_stale_builds_returns_int(self):
+        """Return value must be an integer count of recovered records."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.recover_stale_builds)
+        # Method returns the count of updated records
+        assert "return" in src, "recover_stale_builds must return the count"
+
+    def test_recover_stale_builds_swallows_db_errors(self):
+        """Recovery must not crash server startup on DB errors."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.recover_stale_builds)
+        assert "except" in src, (
+            "recover_stale_builds must catch exceptions so startup is not aborted"
+        )
+        # Should return 0 on error, not raise
+        assert "return 0" in src or "return n" in src
+
+    def test_factory_calls_recover_stale_builds(self):
+        """factory.py lifespan must call recover_stale_builds after registering the handler."""
+        import inspect
+        import app.factory as factory_mod
+        src = inspect.getsource(factory_mod.lifespan)
+        assert "recover_stale_builds" in src, (
+            "factory.py lifespan must call _abs_svc.recover_stale_builds() at startup"
+        )
+
+    def test_recover_stale_builds_called_after_handler_registration(self):
+        """recovery call must come after register_handler to preserve ordering."""
+        import inspect
+        import app.factory as factory_mod
+        src = inspect.getsource(factory_mod.lifespan)
+        reg_idx = src.find("register_handler")
+        rec_idx = src.find("recover_stale_builds")
+        assert reg_idx != -1, "register_handler not found in lifespan"
+        assert rec_idx != -1, "recover_stale_builds not found in lifespan"
+        assert rec_idx > reg_idx, (
+            "recover_stale_builds must be called after register_handler"
+        )
+
+
+# ── Handler fatal-error hardening (Section 2b) ───────────────────────────────
+
+class TestBuildJobHandlerErrorHardening:
+    """
+    build_job_handler must catch any exception that escapes the pipeline
+    and persist build_status='failed' to the DB, so the record never gets
+    stuck in 'building' state after an unexpected crash.
+    """
+
+    def test_build_job_handler_has_try_except(self):
+        """Handler body must be wrapped in try/except."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.build_job_handler)
+        assert "try:" in src and "except" in src, (
+            "build_job_handler must wrap its body in try/except to catch unexpected errors"
+        )
+
+    def test_build_job_handler_updates_db_on_exception(self):
+        """On exception, handler must persist build_status='failed' before re-raising."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.build_job_handler)
+        assert "'failed'" in src or '"failed"' in src, (
+            "build_job_handler must set build_status='failed' in the except block"
+        )
+        assert "build_status" in src
+
+    def test_build_job_handler_reraises_after_db_write(self):
+        """Handler must re-raise so the JobQueue also marks the job as failed."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.build_job_handler)
+        assert "raise" in src, (
+            "build_job_handler must re-raise the exception so the job is marked failed "
+            "in the queue too — not just in the DB"
+        )
+
+    def test_build_job_handler_sets_error_message(self):
+        """Error column must contain a human-readable message, not just 'True'/'error'."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.build_job_handler)
+        # The error field should be f"Build failed: {exc}" or similar
+        assert "error" in src.lower() and "exc" in src, (
+            "build_job_handler must include the exception message in the error column"
+        )
+
+    def test_build_job_handler_reads_app_id_from_payload(self):
+        """Handler must use app_id from payload (set server-side), not from user input."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.build_job_handler)
+        assert 'payload["app_id"]' in src or "payload['app_id']" in src

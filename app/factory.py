@@ -230,6 +230,12 @@ async def lifespan(app: FastAPI):
     get_job_queue().register_handler(
         "app_builder.build", _abs_svc.build_job_handler
     )
+    # Recover builds that were interrupted by a server restart.  The job
+    # queue only re-dispatches PENDING jobs — RUNNING jobs from the previous
+    # process are orphaned.  This marks any app that has been stuck in
+    # 'building' for longer than the stale thresholds as 'failed' so the
+    # user can trigger a retry rather than waiting forever.
+    await _abs_svc.recover_stale_builds()
 
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
