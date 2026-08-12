@@ -223,20 +223,6 @@ async def lifespan(app: FastAPI):
                     role, resource, action,
                 )
 
-    # ── Register App Builder background job handler ────────────────────────
-    # Must run after the job queue is initialised (get_job_queue(cache=...) above).
-    from app.services.app_builder import get_app_builder_service as _get_abs
-    _abs_svc = _get_abs()
-    get_job_queue().register_handler(
-        "app_builder.build", _abs_svc.build_job_handler
-    )
-    # Recover builds that were interrupted by a server restart.  The job
-    # queue only re-dispatches PENDING jobs — RUNNING jobs from the previous
-    # process are orphaned.  This marks any app that has been stuck in
-    # 'building' for longer than the stale thresholds as 'failed' so the
-    # user can trigger a retry rather than waiting forever.
-    await _abs_svc.recover_stale_builds()
-
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
     await get_event_bus().connect()
@@ -264,6 +250,23 @@ async def lifespan(app: FastAPI):
     # ── Background job queue (Redis-backed when available) ──────────────────
     from app.core.jobs import get_job_queue
     get_job_queue(cache=cache)
+
+    # ── Register App Builder background job handler ────────────────────────
+    # Must run AFTER the job queue is initialised with get_job_queue(cache=cache)
+    # above — the import of get_job_queue must be visible before the call site
+    # (UnboundLocalError otherwise: Python sees the local import at line above
+    # and treats the name as local throughout the enclosing function scope).
+    from app.services.app_builder import get_app_builder_service as _get_abs
+    _abs_svc = _get_abs()
+    get_job_queue().register_handler(
+        "app_builder.build", _abs_svc.build_job_handler
+    )
+    # Recover builds that were interrupted by a server restart.  The job
+    # queue only re-dispatches PENDING jobs — RUNNING jobs from the previous
+    # process are orphaned.  This marks any app that has been stuck in
+    # 'building' for longer than the stale thresholds as 'failed' so the
+    # user can trigger a retry rather than waiting forever.
+    await _abs_svc.recover_stale_builds()
 
     # ── Integration SDK — register the example provider + health probe.
     # No real third-party provider is registered here (see
