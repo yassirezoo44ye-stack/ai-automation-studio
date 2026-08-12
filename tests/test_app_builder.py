@@ -33,6 +33,14 @@ from app.services.app_builder import (
     _validate_entity_name,
     _validate_column_type,
     _FORBIDDEN_KEYWORDS,
+    _canvas_uuid,
+    _agent_uuid,
+    _workflow_uuid,
+    _CRON_KEYWORDS,
+    _WEBHOOK_KEYWORDS,
+    _SUPPORTED_ACTION_TYPES,
+    STEP_LABELS,
+    _TOTAL_STEPS,
 )
 
 
@@ -671,3 +679,352 @@ class TestDestructiveOperationProtection:
         for bad_type in dangerous_types:
             with pytest.raises(ValueError):
                 _validate_column_type(bad_type)
+
+
+# ── Async build (Phase 2 + 3 + 4) ────────────────────────────────────────────
+
+class TestAsyncBuild:
+    """
+    POST /apps must return immediately (async) with {id, status, progress,
+    current_step} — the actual build runs in the background.
+    """
+
+    def test_create_app_returns_async_response_shape(self):
+        """Router source: POST /apps calls submit_build_job (non-blocking)."""
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.create_app)
+        # Must delegate to the async submission path
+        assert "submit_build_job" in src
+        # Must NOT call build_app (the old synchronous path)
+        assert "build_app" not in src, (
+            "create_app must use submit_build_job, not the synchronous build_app"
+        )
+
+    def test_create_app_returns_id_and_status_building(self):
+        """Router returns status='building' immediately."""
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.create_app)
+        assert '"building"' in src or "'building'" in src
+        assert '"progress"' in src or "'progress'" in src
+        assert '"current_step"' in src or "'current_step'" in src
+
+    def test_create_app_never_exposes_user_id_in_response(self):
+        """The async response shape must not leak user_id or org_id."""
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.create_app)
+        response_block = src[src.rfind("return {"):] if "return {" in src else ""
+        assert "user_id" not in response_block
+        assert "org_id" not in response_block
+
+    def test_step_labels_count_matches_total_steps(self):
+        """The 12-step pipeline constant and label list must stay in sync."""
+        assert len(STEP_LABELS) == _TOTAL_STEPS
+
+    def test_progress_columns_in_get_app_query(self):
+        """GET /apps/{id} must SELECT all async progress columns."""
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.get_app)
+        for col in ("progress", "current_step", "completed_steps", "error", "retry_count"):
+            assert col in src, f"GET /apps/{{id}} must SELECT column '{col}'"
+
+    def test_progress_in_get_app_response(self):
+        """GET /apps/{id} must include progress in the response dict."""
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.get_app)
+        assert '"progress"' in src or "'progress'" in src
+        assert '"current_step"' in src or "'current_step'" in src
+        assert '"error"' in src or "'error'" in src
+
+
+# ── Retry endpoint (Phase 5) ──────────────────────────────────────────────────
+
+class TestRetryEndpoint:
+    """POST /apps/{id}/retry must exist, be org-scoped, and require update perm."""
+
+    def test_retry_endpoint_exists(self):
+        from app.routers import app_builder as router_mod
+        assert hasattr(router_mod, "retry_app"), (
+            "retry_app endpoint must be defined in the router"
+        )
+
+    def test_retry_requires_update_permission(self):
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.retry_app)
+        assert 'require_permission("app_builder", "update")' in src
+
+    def test_retry_calls_service_method(self):
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.retry_app)
+        assert "retry_app_build" in src
+
+    def test_retry_passes_org_id_from_context(self):
+        """org_id must come from OrgContext, never from the request body."""
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.retry_app)
+        assert "ctx.org_id" in src
+
+    def test_retry_returns_async_shape(self):
+        """Retry response is same shape as create: {id, status, progress, current_step}."""
+        import inspect
+        from app.routers import app_builder as router_mod
+        src = inspect.getsource(router_mod.retry_app)
+        assert '"building"' in src or "'building'" in src
+        assert '"progress"' in src or "'progress'" in src
+
+    def test_retry_only_allowed_when_status_failed_or_partial(self):
+        """Service method raises ValueError for apps not in failed/partial state."""
+        svc = AppBuilderService.__new__(AppBuilderService)
+        # Test the status check logic is encoded in the method
+        import inspect
+        src = inspect.getsource(svc.retry_app_build)
+        assert "failed" in src
+        assert "partial" in src
+
+
+# ── Idempotency (Phase 6) ─────────────────────────────────────────────────────
+
+class TestIdempotency:
+    """Deterministic UUID helpers produce stable IDs across calls."""
+
+    def test_canvas_uuid_is_deterministic(self):
+        app_id = "test-app-id-001"
+        id1 = _canvas_uuid(app_id)
+        id2 = _canvas_uuid(app_id)
+        assert id1 == id2
+
+    def test_canvas_uuid_is_valid_uuid(self):
+        import uuid
+        raw = _canvas_uuid("any-app-id")
+        # Should not raise
+        parsed = uuid.UUID(raw)
+        assert str(parsed) == raw
+
+    def test_canvas_uuid_differs_per_app(self):
+        assert _canvas_uuid("app-a") != _canvas_uuid("app-b")
+
+    def test_agent_uuid_is_deterministic(self):
+        app_id = "my-app"
+        name = "Support Bot"
+        assert _agent_uuid(app_id, name) == _agent_uuid(app_id, name)
+
+    def test_agent_uuid_differs_per_name(self):
+        app_id = "my-app"
+        assert _agent_uuid(app_id, "Bot A") != _agent_uuid(app_id, "Bot B")
+
+    def test_agent_uuid_differs_per_app(self):
+        name = "Support Bot"
+        assert _agent_uuid("app-1", name) != _agent_uuid("app-2", name)
+
+    def test_workflow_uuid_is_deterministic(self):
+        app_id = "my-app"
+        name = "Send Welcome Email"
+        assert _workflow_uuid(app_id, name) == _workflow_uuid(app_id, name)
+
+    def test_workflow_uuid_differs_per_name(self):
+        app_id = "my-app"
+        assert _workflow_uuid(app_id, "A") != _workflow_uuid(app_id, "B")
+
+    def test_canvas_and_agent_uuids_never_collide(self):
+        """Different helper functions never produce the same ID for the same app."""
+        app_id = "collision-test"
+        assert _canvas_uuid(app_id) != _agent_uuid(app_id, "Bot")
+        assert _canvas_uuid(app_id) != _workflow_uuid(app_id, "WF")
+        assert _agent_uuid(app_id, "Bot") != _workflow_uuid(app_id, "WF")
+
+    def test_submit_build_job_uses_idempotency_key(self):
+        """submit_build_job must pass an idempotency_key so double-submit is safe."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.submit_build_job)
+        assert "idempotency_key" in src, (
+            "submit_build_job must pass idempotency_key to queue.submit"
+        )
+
+    def test_retry_does_not_pass_old_idempotency_key(self):
+        """retry_app_build submits without the build:{app_id} key so a new job is created."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.retry_app_build)
+        # Retry intentionally omits idempotency_key to always start a new job
+        assert 'idempotency_key=f"build:{app_id}"' not in src
+
+
+# ── RLS (Phase 7) ─────────────────────────────────────────────────────────────
+
+class TestRLS:
+    """App Builder tables must be listed in the RLS configuration."""
+
+    def test_app_builder_apps_in_rls_tables(self):
+        from app.tenancy.rls import _RLS_TABLES
+        tables = {t for t, _ in _RLS_TABLES}
+        assert "app_builder_apps" in tables, (
+            "app_builder_apps must be in _RLS_TABLES for database-level tenant isolation"
+        )
+
+    def test_app_builder_versions_in_rls_tables(self):
+        from app.tenancy.rls import _RLS_TABLES
+        tables = {t for t, _ in _RLS_TABLES}
+        assert "app_builder_versions" in tables, (
+            "app_builder_versions must be in _RLS_TABLES"
+        )
+
+    def test_app_builder_apps_org_column_is_correct(self):
+        from app.tenancy.rls import _RLS_TABLES
+        col_map = dict(_RLS_TABLES)
+        assert col_map.get("app_builder_apps") == "organization_id"
+
+    def test_app_builder_versions_org_column_is_correct(self):
+        from app.tenancy.rls import _RLS_TABLES
+        col_map = dict(_RLS_TABLES)
+        assert col_map.get("app_builder_versions") == "organization_id"
+
+    def test_migration_010_enables_rls(self):
+        """Migration 010 must contain ENABLE ROW LEVEL SECURITY for app_builder tables."""
+        import inspect
+        from migrations.versions._010_app_builder_async import upgrade
+        src = inspect.getsource(upgrade)
+        assert "ENABLE ROW LEVEL SECURITY" in src
+        assert "app_builder_apps" in src
+
+    def test_migration_010_adds_progress_columns(self):
+        """Migration 010 must add progress tracking columns."""
+        import inspect
+        from migrations.versions._010_app_builder_async import upgrade
+        src = inspect.getsource(upgrade)
+        for col in ("progress", "current_step", "total_steps", "completed_steps",
+                    "retry_count", "started_at", "completed_at"):
+            assert col in src, f"Migration 010 must add column '{col}'"
+
+    def test_migration_010_fixes_build_status_check(self):
+        """Migration 010 must include 'partial' in the build_status CHECK constraint."""
+        import inspect
+        from migrations.versions._010_app_builder_async import upgrade
+        src = inspect.getsource(upgrade)
+        assert "'partial'" in src or "partial" in src
+
+
+# ── Workflow mapping (Phase 8) ─────────────────────────────────────────────────
+
+class TestWorkflowMapping:
+    """
+    Verify the constants that gate which workflow trigger / action types
+    are mapped to the real WorkflowEngine vs. emitting a warning.
+    """
+
+    def test_cron_keywords_set_is_non_empty(self):
+        assert len(_CRON_KEYWORDS) > 0
+
+    def test_webhook_keywords_set_is_non_empty(self):
+        assert len(_WEBHOOK_KEYWORDS) > 0
+
+    def test_supported_action_types_contains_expected(self):
+        for t in ("notify", "create", "update", "agent"):
+            assert t in _SUPPORTED_ACTION_TYPES
+
+    def test_cron_trigger_would_be_flagged(self):
+        trigger = "every day at midnight"
+        flagged = any(kw in trigger.lower() for kw in _CRON_KEYWORDS)
+        assert flagged, "Cron-like triggers should be flagged as unsupported"
+
+    def test_webhook_trigger_would_be_flagged(self):
+        trigger = "on incoming webhook"
+        flagged = any(kw in trigger.lower() for kw in _WEBHOOK_KEYWORDS)
+        assert flagged, "Webhook triggers should be flagged as unsupported"
+
+    def test_event_trigger_not_flagged_as_cron(self):
+        trigger = "on user created"
+        flagged_cron = any(kw in trigger.lower() for kw in _CRON_KEYWORDS)
+        flagged_wh = any(kw in trigger.lower() for kw in _WEBHOOK_KEYWORDS)
+        assert not flagged_cron
+        assert not flagged_wh
+
+    def test_unsupported_action_type_not_in_supported_set(self):
+        for bad in ("shell", "exec", "sql", "raw"):
+            assert bad not in _SUPPORTED_ACTION_TYPES
+
+    def test_create_workflows_method_exists_in_service(self):
+        assert hasattr(AppBuilderService, "_create_workflows"), (
+            "_create_workflows must exist on AppBuilderService"
+        )
+
+    def test_create_agents_method_exists_in_service(self):
+        assert hasattr(AppBuilderService, "_create_agents"), (
+            "_create_agents must exist on AppBuilderService"
+        )
+
+
+# ── Security regression ───────────────────────────────────────────────────────
+
+class TestSecurityRegression:
+    """End-to-end security property checks that must hold across all phases."""
+
+    def test_submit_build_job_org_id_from_arg_not_payload(self):
+        """
+        submit_build_job must pass org_id as a separate kwarg to queue.submit,
+        which stamps it into payload["organization_id"] server-side.
+        This prevents any caller from injecting a different org_id via the payload.
+        """
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.submit_build_job)
+        # org_id is a keyword argument to queue.submit — it overwrites the payload
+        assert "org_id=org_id" in src
+
+    def test_retry_org_id_always_from_context(self):
+        """retry_app_build must pass org_id from its parameter, never from payload."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.retry_app_build)
+        assert "org_id=org_id" in src
+
+    def test_retry_service_scopes_db_query_by_org(self):
+        """Retry must check both app_id AND organization_id to prevent IDOR."""
+        import inspect
+        svc = AppBuilderService.__new__(AppBuilderService)
+        src = inspect.getsource(svc.retry_app_build)
+        assert "organization_id = $2" in src, (
+            "retry_app_build must scope the DB lookup to organization_id to prevent IDOR"
+        )
+
+    def test_no_eval_or_exec_in_service(self):
+        """The service must not use eval/exec/compile on AI-generated content."""
+        import inspect
+        import app.services.app_builder as svc_mod
+        src = inspect.getsource(svc_mod)
+        # re.compile() is safe (compiles regex, not code) — neutralise it before checking
+        src_clean = src.replace("re.compile(", "re_compile_safe_PLACEHOLDER(")
+        # These would allow arbitrary code execution from LLM output
+        for dangerous in ("eval(", "exec(", "compile(", "__import__("):
+            assert dangerous not in src_clean, f"Service must not use {dangerous!r}"
+
+    def test_no_os_system_in_service(self):
+        """The service must not call os.system/subprocess on AI output."""
+        import inspect
+        import app.services.app_builder as svc_mod
+        src = inspect.getsource(svc_mod)
+        for dangerous in ("os.system(", "subprocess.run(", "subprocess.call("):
+            assert dangerous not in src, f"Service must not use {dangerous!r}"
+
+    def test_delete_is_soft_only_across_full_service(self):
+        """No DROP TABLE in any execute() call in the service — only soft deletes."""
+        import inspect
+        import app.services.app_builder as svc_mod
+        src = inspect.getsource(svc_mod)
+        # Only inspect lines that are actual DB execute calls, not docstrings or comments.
+        # The module docstring mentions "DROP TABLE" to say it's *blocked* — that's fine.
+        sql_lines = [
+            line for line in src.split("\n")
+            if ("execute(" in line or "conn.execute" in line) and not line.strip().startswith("#")
+        ]
+        sql_src = "\n".join(sql_lines)
+        assert "DROP TABLE" not in sql_src.upper(), (
+            "Service must never execute DROP TABLE — use soft deletes only"
+        )

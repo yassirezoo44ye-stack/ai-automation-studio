@@ -197,11 +197,15 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await enable_scoped_rls(conn)
 
-    # ── AI Business App Builder — tables + role permissions ─────────────────
+    # ── AI Business App Builder — tables + async columns + role permissions ──
     from migrations.versions.app_builder_schema import upgrade as init_app_builder_schema
+    from migrations.versions.app_builder_async_schema import upgrade as init_app_builder_async_schema
     from app.tenancy.schema import DEFAULT_PERMISSIONS
     async with pool.acquire() as conn:
         await init_app_builder_schema(conn)
+        # Migration 010 — adds async build columns, fixes CHECK constraint,
+        # and enables RLS on both App Builder tables. Idempotent.
+        await init_app_builder_async_schema(conn)
         # Seed app_builder permissions for manager and developer roles so they
         # can build apps without needing full-wildcard admin rights.
         for role, extra_perms in [
@@ -218,6 +222,14 @@ async def lifespan(app: FastAPI):
                     "ON CONFLICT DO NOTHING",
                     role, resource, action,
                 )
+
+    # ── Register App Builder background job handler ────────────────────────
+    # Must run after the job queue is initialised (get_job_queue(cache=...) above).
+    from app.services.app_builder import get_app_builder_service as _get_abs
+    _abs_svc = _get_abs()
+    get_job_queue().register_handler(
+        "app_builder.build", _abs_svc.build_job_handler
+    )
 
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus

@@ -77,6 +77,14 @@ export interface BuildResult {
   warnings: string[];
 }
 
+/** Response from POST /apps and POST /apps/{id}/retry — returns immediately. */
+export interface AsyncBuildResponse {
+  id: string;
+  status: "building";
+  progress: number;
+  current_step: string;
+}
+
 export interface AppVersion {
   version_number: number;
   label: string;
@@ -88,7 +96,7 @@ export interface AppRecord {
   id: string;
   name: string;
   description: string | null;
-  build_status: "pending" | "planning" | "building" | "ready" | "failed";
+  build_status: "pending" | "planning" | "building" | "ready" | "partial" | "failed";
   include_automation: boolean;
   workflow_count: number;
   agent_count: number;
@@ -102,6 +110,15 @@ export interface AppDetail extends AppRecord {
   build_warnings: string[];
   canvas_id: string | null;
   versions: AppVersion[];
+  // ── Async build progress ───────────────────────────────────────────────────
+  progress: number;         // 0-100
+  current_step: string;     // human-readable step name
+  total_steps: number;      // 12 for the full pipeline
+  completed_steps: number;
+  error: string | null;     // set when build_status === "failed"
+  retry_count: number;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 export type BuildPhase =

@@ -5,17 +5,12 @@
  * automatically (matching the rest of the codebase).
  */
 import { apiJSON } from "../../shared/utils/api";
-import type { AppSpec, BuildResult, AppRecord, AppDetail } from "./types";
+import type { AppSpec, BuildResult, AppRecord, AppDetail, AsyncBuildResponse } from "./types";
 
 const BASE = "/api/app-builder";
 
 export interface PreviewSpecResponse {
   spec: AppSpec;
-}
-
-export interface CreateAppResponse {
-  spec: AppSpec;
-  result: BuildResult;
 }
 
 export interface ListAppsResponse {
@@ -37,12 +32,17 @@ export async function previewSpec(
   });
 }
 
-/** Generate spec + build the full application. */
+/**
+ * Submit a build job asynchronously.
+ *
+ * Returns immediately with {id, status: "building", progress: 0, current_step: "initializing"}.
+ * Poll getApp(id) every ~2 s for live progress until build_status is terminal.
+ */
 export async function createApp(
   prompt: string,
   includeAutomation = false,
-): Promise<CreateAppResponse> {
-  return apiJSON<CreateAppResponse>(`${BASE}/apps`, {
+): Promise<AsyncBuildResponse> {
+  return apiJSON<AsyncBuildResponse>(`${BASE}/apps`, {
     method: "POST",
     body: JSON.stringify({ prompt, include_automation: includeAutomation }),
   });
@@ -53,9 +53,21 @@ export async function listApps(): Promise<ListAppsResponse> {
   return apiJSON<ListAppsResponse>(`${BASE}/apps`);
 }
 
-/** Get app details including spec and version history. */
+/** Get app details including live build progress and version history. */
 export async function getApp(appId: string): Promise<AppDetail> {
   return apiJSON<AppDetail>(`${BASE}/apps/${appId}`);
+}
+
+/**
+ * Retry a failed or partially-built app.
+ *
+ * Returns the same async response shape as createApp. Poll getApp(id) for
+ * live progress updates.
+ */
+export async function retryApp(appId: string): Promise<AsyncBuildResponse> {
+  return apiJSON<AsyncBuildResponse>(`${BASE}/apps/${appId}/retry`, {
+    method: "POST",
+  });
 }
 
 /** Incrementally modify an existing app. */
