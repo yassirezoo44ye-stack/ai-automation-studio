@@ -61,6 +61,51 @@ describe("AuthPage — login form (framework flagship migration)", () => {
     resolveLogin();
   });
 
+  it("shows reset-password form when pathname=/reset-password and ?token= is present", () => {
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "?token=abc123", pathname: "/reset-password" },
+      writable: true,
+    });
+    render(<AuthPage />);
+    // Should show the reset form, not the login tabs
+    expect(screen.queryByRole("tab", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /reset password/i })).toBeInTheDocument();
+    // Restore
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "", pathname: "/" },
+      writable: true,
+    });
+  });
+
+  it("reset-password form validates mismatched passwords before calling API", () => {
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "?token=abc123", pathname: "/reset-password" },
+      writable: true,
+    });
+    render(<AuthPage />);
+    // "New Password" and "Confirm New Password" both match /new password/i — use exact label text
+    const [newPwField] = screen.getAllByLabelText(/new password/i);
+    const confirmPwField = screen.getByLabelText(/confirm new password/i);
+    fireEvent.change(newPwField, { target: { value: "password1" } });
+    fireEvent.change(confirmPwField, { target: { value: "different1" } });
+    fireEvent.click(screen.getByRole("button", { name: /reset password/i }));
+    expect(screen.getByText("Passwords do not match")).toBeInTheDocument();
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "", pathname: "/" },
+      writable: true,
+    });
+  });
+
+  it("shows invalid-token message when reset tab has no token", () => {
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, search: "", pathname: "/" },
+      writable: true,
+    });
+    render(<AuthPage />);
+    // Default is login tab, no reset token visible
+    expect(screen.queryByRole("button", { name: /reset password/i })).not.toBeInTheDocument();
+  });
+
   it("register form rejects a mismatched confirm-password before calling register", () => {
     render(<AuthPage />);
     fireEvent.click(screen.getByRole("tab", { name: /create account/i }));

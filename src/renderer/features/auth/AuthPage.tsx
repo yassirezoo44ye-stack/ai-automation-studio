@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
 import AxonLogo from "../../AxonLogo";
@@ -9,7 +9,7 @@ import { all, required, email as emailValidator, minLength, matchesField, passwo
 import { EmailField, PasswordField, TextField, Checkbox, SubmitButton, ErrorBanner, SuccessBanner } from "../../shared/ui/forms";
 import { GoldButton } from "../../shared/ui/gold";
 
-type Tab = "login" | "register" | "forgot";
+type Tab = "login" | "register" | "forgot" | "reset" | "verify-email";
 
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
@@ -121,11 +121,29 @@ function OAuthRow({ onSelect }: { onSelect: (provider: "google" | "github" | "mi
 interface LoginValues { email: string; password: string; remember: boolean }
 interface RegisterValues { name: string; email: string; password: string; confirmPassword: string }
 interface ForgotValues { email: string }
+interface ResetValues { password: string; confirmPassword: string }
 
 export function AuthPage() {
   const { t } = useTranslation("auth");
   const { login, register } = useAuth();
-  const [tab, setTab] = useState<Tab>("login");
+
+  // Detect token and route in URL on initial load
+  const [initialToken, initialTab] = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+      const path = window.location.pathname;
+      if (token && path.includes("reset-password")) return [token, "reset" as Tab];
+      if (token && path.includes("verify-email")) return [token, "verify-email" as Tab];
+      return [null, "login" as Tab];
+    } catch { return [null, "login" as Tab]; }
+  })();
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [resetToken] = useState<string | null>(initialTab === "reset" ? initialToken : null);
+  const [verifyToken] = useState<string | null>(initialTab === "verify-email" ? initialToken : null);
+  // Email verification state (auto-triggered)
+  const [verifyStatus, setVerifyStatus] = useState<"pending" | "success" | "error">("pending");
+  const [verifyMessage, setVerifyMessage] = useState<string>("");
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
 
   function handleOAuth(provider: "google" | "github" | "microsoft") {
@@ -177,6 +195,49 @@ export function AuthPage() {
     }),
   });
 
+  // ── Email verification (auto-call on load when ?token= present) ──────────
+  useEffect(() => {
+    if (tab !== "verify-email" || !verifyToken) return;
+    // Clear token from URL immediately
+    if (window.history?.replaceState) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    fetch(`${API}/api/auth/verify-email/${encodeURIComponent(verifyToken)}`)
+      .then(async res => {
+        if (res.ok) {
+          setVerifyStatus("success");
+          setVerifyMessage(t("verifyLink.success"));
+        } else {
+          const data = await res.json().catch(() => ({}));
+          setVerifyStatus("error");
+          setVerifyMessage((data as { detail?: string }).detail ?? t("verifyLink.error"));
+        }
+      })
+      .catch(() => {
+        setVerifyStatus("error");
+        setVerifyMessage(t("verifyLink.error"));
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Reset password (token from email link) ────────────────────────────────
+  const resetSubmit = useAsyncSubmit<{ message: string }>();
+  const resetForm = useForm<ResetValues>({
+    initialValues: { password: "", confirmPassword: "" },
+    validators: {
+      password: all(required(t("validation.passwordRequired")), minLength(8), passwordStrength()),
+      confirmPassword: all(required(t("validation.confirmRequired")), matchesField("password", t("validation.passwordsMismatch"))),
+    },
+    onValid: values => resetSubmit.run(async signal => {
+      const res = await fetch(`${API}/api/auth/reset-password`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resetToken, password: values.password }),
+        signal,
+      });
+      return parseJSON<{ message: string }>(res, "/api/auth/reset-password");
+    }),
+  });
+
   // ── Resend verification (button action, no fields) ────────────────────────
   const resendSubmit = useAsyncSubmit<{ message: string }>();
   function handleResend() {
@@ -193,8 +254,11 @@ export function AuthPage() {
 
   function switchTab(next: Tab) {
     setTab(next);
-    loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset();
+    loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset(); resetSubmit.reset();
     if (next !== "register") setRegisteredEmail(null);
+    if (next !== "reset" && next !== "verify-email" && window.history?.replaceState) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }
 
   return (
@@ -204,7 +268,7 @@ export function AuthPage() {
         <h1 style={S.title}>{t("title")}</h1>
         <p style={S.sub}>{t("subtitle")}</p>
 
-        {tab !== "forgot" && (
+        {tab !== "forgot" && tab !== "reset" && tab !== "verify-email" && (
           <div style={S.tabs} role="tablist">
             <button role="tab" aria-selected={tab === "login"} style={S.tab(tab === "login")} onClick={() => switchTab("login")}>
               {t("tabs.signIn")}
@@ -284,6 +348,76 @@ export function AuthPage() {
               {t("forgot.backToSignIn")}
             </button>
           </form>
+        )}
+
+        {/* ── Email verification (auto-called on load) ── */}
+        {tab === "verify-email" && (
+          <div style={{ textAlign: "center" }}>
+            {verifyStatus === "pending" && (
+              <>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>⏳</div>
+                <p style={{ color: "var(--t3)", fontSize: 13 }}>{t("verifyLink.verifying")}</p>
+              </>
+            )}
+            {verifyStatus === "success" && (
+              <>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                <SuccessBanner message={verifyMessage} />
+                <GoldButton style={{ width: "100%", marginTop: 16 }} onClick={() => switchTab("login")}>
+                  {t("reset.backToSignIn")}
+                </GoldButton>
+              </>
+            )}
+            {verifyStatus === "error" && (
+              <>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>❌</div>
+                <ErrorBanner message={verifyMessage} />
+                <button type="button" style={{ ...S.btnSecondary, marginTop: 12 }} onClick={() => switchTab("login")}>
+                  {t("reset.backToSignIn")}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Reset password (token from email link) ── */}
+        {tab === "reset" && (
+          <>
+            {!resetToken && (
+              <div style={{ textAlign: "center" }}>
+                <p style={{ color: "var(--error, #e53e3e)", fontSize: 13, marginBottom: 20 }}>
+                  {t("reset.invalidToken")}
+                </p>
+                <button type="button" style={S.btnSecondary} onClick={() => switchTab("forgot")}>
+                  {t("forgot.submit")}
+                </button>
+              </div>
+            )}
+            {resetToken && !resetSubmit.success && (
+              <form onSubmit={resetForm.handleSubmit} noValidate>
+                <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
+                  {t("reset.intro")}
+                </p>
+                {resetSubmit.error && <ErrorBanner message={resetSubmit.error} suggestedFix={resetSubmit.suggestedFix} onRetry={resetForm.isValid ? resetSubmit.retry : undefined} />}
+                <PasswordField {...resetForm.register("password")} label={t("reset.newPassword")} required autoFocus autoComplete="new-password"
+                  hint={!resetForm.errors.password ? t("register.passwordHint") : undefined} />
+                <PasswordField {...resetForm.register("confirmPassword")} label={t("reset.confirmPassword")} required autoComplete="new-password" />
+                <SubmitButton loading={resetSubmit.isSubmitting} loadingText={t("reset.submitting")}>{t("reset.submit")}</SubmitButton>
+                <button type="button" style={S.btnSecondary} onClick={() => switchTab("login")}>
+                  {t("reset.backToSignIn")}
+                </button>
+              </form>
+            )}
+            {resetToken && resetSubmit.success && (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                <SuccessBanner message={t("reset.success")} />
+                <GoldButton style={{ width: "100%", marginTop: 16 }} onClick={() => switchTab("login")}>
+                  {t("reset.backToSignIn")}
+                </GoldButton>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
