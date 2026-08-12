@@ -59,6 +59,7 @@ from app.routers import sandbox          as sandbox_router
 from app.routers import notifications    as notifications_router
 from app.routers import team_chat        as team_chat_router
 from app.routers import integrations     as integrations_router
+from app.routers import app_builder      as app_builder_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -195,6 +196,28 @@ async def lifespan(app: FastAPI):
     from app.tenancy import enable_scoped_rls
     async with pool.acquire() as conn:
         await enable_scoped_rls(conn)
+
+    # ── AI Business App Builder — tables + role permissions ─────────────────
+    from migrations.versions.app_builder_schema import upgrade as init_app_builder_schema
+    from app.tenancy.schema import DEFAULT_PERMISSIONS
+    async with pool.acquire() as conn:
+        await init_app_builder_schema(conn)
+        # Seed app_builder permissions for manager and developer roles so they
+        # can build apps without needing full-wildcard admin rights.
+        for role, extra_perms in [
+            ("manager",   [("app_builder", "create"), ("app_builder", "read"),
+                           ("app_builder", "update")]),
+            ("developer", [("app_builder", "create"), ("app_builder", "read"),
+                           ("app_builder", "update")]),
+            ("operator",  [("app_builder", "read")]),
+            ("viewer",    [("app_builder", "read")]),
+        ]:
+            for resource, action in extra_perms:
+                await conn.execute(
+                    "INSERT INTO role_permissions (role, resource, action) VALUES ($1,$2,$3) "
+                    "ON CONFLICT DO NOTHING",
+                    role, resource, action,
+                )
 
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
@@ -560,6 +583,7 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router.router)
     app.include_router(team_chat_router.router)
     app.include_router(integrations_router.router)
+    app.include_router(app_builder_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

@@ -5,6 +5,7 @@
       "home": "Home", "ai": "AI", "dev": "Dev", "design": "Design",
       "automation": "Workflows", "agentos": "AgentOS", "marketplace": "Marketplace", "plugins": "Plugins", "sandbox": "Sandbox",
       "aiRouting": "AI Routing", "observability": "Observability",
+      "appBuilder": "App Builder",
       "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings"
     },
     "mainNav": "Main navigation",
@@ -45,7 +46,8 @@
       "teams": { "label": "Teams", "sub": "Members & invitations" },
       "billing": { "label": "Billing", "sub": "Plan & usage" },
       "social": { "label": "Social", "sub": "Social media content" },
-      "settings": { "label": "Settings", "sub": "App configuration" }
+      "settings": { "label": "Settings", "sub": "App configuration" },
+      "app-builder": { "label": "App Builder", "sub": "Build business apps with AI" }
     },
     "actions": {
       "newChat": { "label": "New Chat", "sub": "Start a conversation" },

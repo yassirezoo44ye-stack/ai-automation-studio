@@ -25,6 +25,7 @@ const PluginsPage       = lazy(() => import("../../features/plugins").then(m => 
 const SandboxPage       = lazy(() => import("../../features/sandbox").then(m => ({ default: m.SandboxPage })));
 const AIRoutingPage     = lazy(() => import("../../features/ai-routing").then(m => ({ default: m.AIRoutingPage })));
 const ObservabilityPage = lazy(() => import("../../features/observability").then(m => ({ default: m.ObservabilityPage })));
+const AppBuilderPage    = lazy(() => import("../../features/app-builder").then(m => ({ default: m.AppBuilderPage })));
 
 function WorkspaceContent() {
   const { t } = useTranslation("common");
@@ -53,6 +54,7 @@ function WorkspaceContent() {
         {page === "sandbox"     && <SandboxPage />}
         {page === "ai-routing"  && <AIRoutingPage />}
         {page === "observability" && <ObservabilityPage />}
+        {page === "app-builder"  && <AppBuilderPage />}
         {page === "social"     && <SocialPage />}
         {page === "settings"   && <SettingsPage />}
         </PageTransition>
