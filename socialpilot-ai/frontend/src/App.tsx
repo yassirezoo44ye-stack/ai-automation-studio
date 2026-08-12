@@ -6,6 +6,9 @@ import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { ContentStrategyPage } from "./pages/content/ContentStrategyPage";
+import { ContentGeneratePage } from "./pages/content/ContentGeneratePage";
+import { ContentLibraryPage } from "./pages/content/ContentLibraryPage";
 
 export function App() {
   return (
@@ -21,6 +24,30 @@ export function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/content/strategy"
+            element={
+              <ProtectedRoute>
+                <ContentStrategyPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/content/generate"
+            element={
+              <ProtectedRoute>
+                <ContentGeneratePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/content/library"
+            element={
+              <ProtectedRoute>
+                <ContentLibraryPage />
               </ProtectedRoute>
             }
           />

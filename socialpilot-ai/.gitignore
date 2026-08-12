@@ -32,4 +32,5 @@ frontend/.env.local
 
 # --- Misc ---
 *.log
+*.rdb
 .DS_Store

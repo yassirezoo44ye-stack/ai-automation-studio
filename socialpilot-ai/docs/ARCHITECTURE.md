@@ -80,7 +80,7 @@ not in the frontend.
 | Queue/Scheduler | Redis + Celery (celery beat for periodic dispatch, celery worker for publishing) | production-grade, horizontally scalable, survives process restarts, has native retry/backoff |
 | Auth | Short-lived JWT access token (Bearer, in-memory on client) + opaque refresh token (httpOnly, Secure, SameSite=Strict cookie, hashed at rest, rotated on use) | avoids storing long-lived secrets in JS-reachable storage; refresh flow is CSRF-hardened with SameSite=Strict + double-submit token |
 | Password hashing | Argon2id (`passlib[argon2]`) | modern default, resistant to GPU cracking |
-| AI provider | Provider abstraction (`app/providers/ai/*`) supporting Anthropic/OpenAI-compatible backends via `AI_PROVIDER`/`AI_API_KEY` env vars | no invented APIs; real key required to actually generate content |
+| AI provider | Provider abstraction (`app/services/ai/*`) — Anthropic today, `AI_PROVIDER`/`AI_API_KEY`/`AI_MODEL` env vars, plus a deterministic `mock` provider for dev/CI/E2E only | no invented APIs; real key required to actually generate content; structured JSON output validated against a Pydantic schema before persistence, not free-form parsing |
 | Social providers | Provider abstraction (`app/providers/social/*`), one class per platform implementing a common `SocialProvider` interface, real OAuth 2.0 + official REST APIs only | matches "no scraping, no fake publishing" requirement |
 | Storage | S3-compatible (`app/services/storage.py`, boto3), pluggable | media library, phase 5 |
 | Tests | pytest + pytest-asyncio + httpx.AsyncClient against a real Postgres test database | integration tests exercise real SQL, not mocks, for schema/tenancy correctness |
@@ -101,8 +101,8 @@ not in the frontend.
 
 ## 5. Delivery phases (this repo will grow in this order)
 
-1. **Architecture + Database + Authentication** ← this PR
-2. Content Strategy + AI Generation
+1. **Architecture + Database + Authentication** — done
+2. **Content Strategy + AI Generation** — done (see §5a below)
 3. Automation + Scheduler + Queue
 4. Social OAuth + Publishing Engine
 5. Media + Video Pipeline
@@ -115,6 +115,52 @@ not in the frontend.
 Each phase ends with: migrations applied cleanly from zero, `pytest` green, a diff
 review, and a commit scoped to that phase.
 
+## 5a. Content Strategy + AI Generation (Phase 2)
+
+```
+Frontend (/content/strategy, /content/generate, /content/library)
+        │  apiFetch<T>() — same client as Phase 1 (Bearer + CSRF + 401-retry)
+        ▼
+API layer (app/api/v1/content.py)
+  - require_org_member / require_role(*CONTENT_ROLES)  — tenant + RBAC gate
+  - Pydantic request/response schemas (app/schemas/content.py)
+        │
+        ▼
+Content services (app/services/content_*_service.py)
+  - ContentStrategyService, ContentItemService: plain CRUD, org-scoped
+  - ContentGenerationService: builds a structured prompt from the saved
+    strategy, calls the AI provider, validates the JSON result against a
+    Pydantic schema, always persists a ContentGeneration audit record
+    (succeeded or failed) before returning
+        │
+        ▼
+AIProvider abstraction (app/services/ai/provider.py)
+  - generate() / generate_structured(system, prompt, schema) -> dict
+  - AnthropicProvider: real calls, forces schema-conforming JSON via Claude's
+    tool-use/tool_choice, needs AI_API_KEY
+  - MockAIProvider: deterministic canned JSON, no network — AI_PROVIDER=mock,
+    dev/CI/E2E only, refused by Settings.validate_for_production()
+  - injected via FastAPI Depends(get_ai_provider) — routes never call a
+    provider directly, so tests substitute a fake via
+    app.dependency_overrides
+        │
+        ▼
+PostgreSQL: content_strategies, content_pillars, content_generations,
+content_items — every table carries organization_id (indexed), every
+repository query filters by it explicitly (see app/repositories/content_*).
+```
+
+Deleting a strategy cascades to its pillars but **not** to saved library
+items — `content_items.strategy_id` is `ON DELETE SET NULL`, so a strategy
+being retired never silently deletes previously published/saved content.
+
+Ideas and posts are returned as structured, schema-validated JSON (not
+free-form text parsed after the fact) — see
+`GENERATED_IDEAS_JSON_SCHEMA`/`GENERATED_POST_JSON_SCHEMA` in
+`app/schemas/content.py`, enforced both at the AI-provider boundary (Claude's
+forced tool-use) and again via Pydantic validation before anything is
+persisted.
+
 ## 6. Directory layout
 
 ```
@@ -125,8 +171,9 @@ socialpilot-ai/
 │   │   ├── models/          # SQLAlchemy ORM models (one file per aggregate)
 │   │   ├── schemas/         # Pydantic request/response models
 │   │   ├── repositories/    # data-access layer (tenant-scoped queries)
-│   │   ├── services/        # business logic (auth, org, audit, ...)
-│   │   ├── providers/       # ai/* and social/* pluggable provider interfaces
+│   │   ├── services/        # business logic (auth, org, audit, content, ...)
+│   │   │   └── ai/          # AIProvider abstraction (Anthropic, Mock) + factory
+│   │   ├── providers/       # social/* pluggable provider interfaces (phase 4+)
 │   │   ├── workers/         # Celery app + tasks (phase 3+)
 │   │   ├── api/v1/          # FastAPI routers, thin — validation + service calls only
 │   │   └── main.py          # app factory, middleware, exception handlers

@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.core.exceptions import (
     AuthenticationError,
     AuthorizationError,
+    ConfigurationError,
     ConflictError,
     DomainError,
     NotFoundError,
@@ -33,6 +34,7 @@ _ERROR_STATUS_MAP: dict[type[DomainError], int] = {
     AuthenticationError: 401,
     AuthorizationError: 403,
     RateLimitedError: 429,
+    ConfigurationError: 503,
 }
 
 

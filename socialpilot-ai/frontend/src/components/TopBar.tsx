@@ -22,6 +22,15 @@ export function TopBar() {
             <Link to="/dashboard" className="btn btn-ghost">
               Dashboard
             </Link>
+            <Link to="/content/strategy" className="btn btn-ghost">
+              Strategy
+            </Link>
+            <Link to="/content/generate" className="btn btn-ghost">
+              Generate
+            </Link>
+            <Link to="/content/library" className="btn btn-ghost">
+              Library
+            </Link>
             <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{user?.email}</span>
             <button className="btn btn-ghost" onClick={handleLogout}>
               Log out

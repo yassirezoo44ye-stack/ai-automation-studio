@@ -32,3 +32,8 @@ class AuthorizationError(DomainError):
 
 class RateLimitedError(DomainError):
     pass
+
+
+class ConfigurationError(DomainError):
+    """A feature is unreachable because required configuration (e.g. an AI
+    provider API key) is missing — never faked, always surfaced clearly."""

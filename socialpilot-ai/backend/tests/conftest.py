@@ -26,6 +26,7 @@ os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/1")
 os.environ.setdefault("RATE_LIMIT_STORAGE_URL", "memory://")
 os.environ.setdefault("AUTH_RATE_LIMIT", "1000/minute")
+os.environ.setdefault("AI_GENERATION_RATE_LIMIT", "1000/minute")
 os.environ.setdefault("DATABASE_USE_NULL_POOL", "true")
 
 import pytest
@@ -42,6 +43,10 @@ settings = get_settings()
 
 _APP_TABLES = (
     "audit_logs",
+    "content_items",
+    "content_generations",
+    "content_pillars",
+    "content_strategies",
     "refresh_tokens",
     "organization_members",
     "organizations",

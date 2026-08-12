@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     # --- Rate limiting ---
     rate_limit_storage_url: str | None = None  # falls back to redis_url, then in-memory
     auth_rate_limit: str = "10/minute"
+    ai_generation_rate_limit: str = "20/minute"
 
     # --- AI provider abstraction (Phase 2+) ---
     ai_provider: str = "anthropic"
@@ -101,6 +102,11 @@ class Settings(BaseSettings):
             )
         if not self.cookie_secure:
             raise RuntimeError("COOKIE_SECURE must be true in production.")
+        if self.ai_provider == "mock":
+            raise RuntimeError(
+                "AI_PROVIDER=mock (deterministic canned responses, no real AI call) is for local "
+                "development/CI/E2E only — set a real provider (e.g. AI_PROVIDER=anthropic) in production."
+            )
 
 
 @lru_cache
