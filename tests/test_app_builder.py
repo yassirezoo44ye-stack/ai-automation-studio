@@ -16,7 +16,6 @@ Coverage:
 """
 from __future__ import annotations
 
-import json
 import uuid
 import pytest
 
@@ -68,11 +67,11 @@ def make_spec(
         for i in range(entities)
     ]
     pgs = [
-        PageDef(name=f"Page {i}", entity=f"entity_0", kind="list")
+        PageDef(name=f"Page {i}", entity="entity_0", kind="list")
         for i in range(pages)
     ]
     rls = [
-        RoleDef(name=f"Role{i}", permissions=[f"entity_0:read"])
+        RoleDef(name=f"Role{i}", permissions=["entity_0:read"])
         for i in range(roles)
     ]
     wfs = [
@@ -361,7 +360,7 @@ class TestBuildResult:
         assert result.warnings == []
 
     def test_api_operation_count(self):
-        spec = make_spec(entities=4)
+        make_spec(entities=4)
         # 4 entities × 5 operations (list, create, read, update, delete)
         expected_ops = 4 * 5
         result = BuildResult(

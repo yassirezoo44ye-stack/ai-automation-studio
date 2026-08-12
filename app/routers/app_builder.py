@@ -22,14 +22,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.tenancy import OrgContext, require_permission
 from app.services.app_builder import (
-    AppSpec, BuildResult, BuildStep, get_app_builder_service,
+    AppSpec, BuildResult, get_app_builder_service,
 )
-from app.core.db import get_pool, write_audit
+from app.core.db import get_pool
 
 log = logging.getLogger(__name__)
 
