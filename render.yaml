@@ -35,6 +35,18 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # GitHub Sign-In — optional, same graceful 503 as Google when unset.
+      # Register a GitHub OAuth App; callback URI: <APP_URL>/api/auth/github/callback
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      # Microsoft Sign-In — optional, same graceful 503 as Google when unset.
+      # Register an Azure App Registration; callback URI: <APP_URL>/api/auth/microsoft/callback
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
       # Comma-separated additional CORS origins for a split-frontend setup
       # (e.g. https://your-app.vercel.app) — set after your first Vercel
       # deploy once you know the assigned domain.

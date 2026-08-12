@@ -11,10 +11,11 @@ import type { Page } from "../../types";
 type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 const NAV_GROUPS: { groupKey: string; items: NavItem[] }[] = [
   { groupKey: "workspace", items: [
-    { id: "home",   navKey: "home",   icon: "home"   },
-    { id: "ai",     navKey: "ai",     icon: "ai"     },
-    { id: "dev",    navKey: "dev",    icon: "dev"    },
-    { id: "design", navKey: "design", icon: "design" },
+    { id: "home",        navKey: "home",       icon: "home"        },
+    { id: "ai",          navKey: "ai",         icon: "ai"          },
+    { id: "dev",         navKey: "dev",        icon: "dev"         },
+    { id: "design",      navKey: "design",     icon: "design"      },
+    { id: "app-builder", navKey: "appBuilder", icon: "app-builder" },
   ]},
   { groupKey: "automation", items: [
     { id: "automation",  navKey: "automation",  icon: "automation"  },

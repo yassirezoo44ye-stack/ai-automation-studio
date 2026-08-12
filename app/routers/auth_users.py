@@ -790,9 +790,9 @@ async def delete_account(
 
 # ── OAuth (Google + GitHub + Microsoft) ────────────────────────────────────────
 
-import os as _os
-import httpx as _httpx
-from fastapi.responses import RedirectResponse
+import os as _os  # noqa: E402
+import httpx as _httpx  # noqa: E402
+from fastapi.responses import RedirectResponse  # noqa: E402
 
 _GOOGLE_CLIENT_ID        = _os.getenv("GOOGLE_CLIENT_ID", "")
 _GOOGLE_CLIENT_SECRET    = _os.getenv("GOOGLE_CLIENT_SECRET", "")
