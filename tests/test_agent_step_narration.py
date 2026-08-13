@@ -268,7 +268,6 @@ class TestRunAgentEventHandling:
         which have no .get() — calling .get() directly on them raises
         AttributeError. run_agent.py must call .to_sse_dict() first."""
         from app.agents.builtin.run_agent import RunAgent
-        from app.agents.base import AgentContext
 
         async def fake_engine_run(ws, project_id, execution_id):
             yield _FakeTypedEvent({"type": "execution_started", "project_id": project_id})
@@ -295,7 +294,6 @@ class TestRunAgentEventHandling:
         "error", which is not a real event_type (see _FAILURE_EVENT_TYPES
         in run_agent.py) — a real failure event was never caught."""
         from app.agents.builtin.run_agent import RunAgent
-        from app.agents.base import AgentContext
 
         async def fake_engine_run(ws, project_id, execution_id):
             yield _FakeTypedEvent({"type": "execution_started"})
@@ -320,7 +318,6 @@ class TestRunAgentEventHandling:
 
     def test_narrates_each_event_live_via_ctx_step(self):
         from app.agents.builtin.run_agent import RunAgent
-        from app.agents.base import AgentContext
 
         async def fake_engine_run(ws, project_id, execution_id):
             yield _FakeTypedEvent({"type": "install_progress", "line": "installing deps..."})
