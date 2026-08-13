@@ -1,21 +1,26 @@
 /**
  * Runs — execution monitoring page.
- * Shows all agent & automation runs with status, duration, and drill-down.
+ *
+ * Data sources (via runsService):
+ *  • GET /api/jobs          – org-scoped job queue
+ *  • GET /api/agent-runs    – user-scoped agent run history
+ *
+ * Both are merged and deduplicated. When org context is missing the jobs
+ * endpoint returns an error; we fall back to agent-runs only (transparent
+ * to the user — the service handles it).
  */
-import { useState, useEffect, useCallback } from "react";
-import { apiFetch } from "../../utils/api";
-
-/* ── Types ──────────────────────────────────────────────────────── */
-type RunStatus = "running" | "completed" | "failed" | "pending" | "cancelled";
-type Run = {
-  job_id: string; kind: string; status: RunStatus;
-  progress: number; error?: string;
-  created_at: string; started_at?: string; finished_at?: string;
-};
-type RunStats = { total: number; active: number; dead: number; counts: Record<string, number> };
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  fetchRuns,
+  fetchRunStats,
+  cancelRun,
+  type Run,
+  type RunStats,
+  type RunStatus,
+} from "./services/runsService";
 
 /* ── Helpers ────────────────────────────────────────────────────── */
-const STATUS_CFG: Record<string, { color: string; bg: string; label: string }> = {
+const STATUS_CFG: Record<RunStatus, { color: string; bg: string; label: string }> = {
   running:   { color: "var(--blue)",   bg: "var(--blue-dim)",   label: "Running"   },
   completed: { color: "var(--green)",  bg: "var(--green-dim)",  label: "Completed" },
   failed:    { color: "var(--red)",    bg: "var(--red-dim)",    label: "Failed"    },
@@ -23,10 +28,10 @@ const STATUS_CFG: Record<string, { color: string; bg: string; label: string }> =
   cancelled: { color: "var(--t4)",     bg: "var(--bg-card)",    label: "Cancelled" },
 };
 
-function elapsed(job: Run, now: number): string {
-  const start = job.started_at ? new Date(job.started_at).getTime() : new Date(job.created_at).getTime();
-  const end   = job.finished_at ? new Date(job.finished_at).getTime() : now;
-  const s     = Math.round((end - start) / 1000);
+function elapsed(run: Run, now: number): string {
+  const start = run.started_at ? new Date(run.started_at).getTime() : new Date(run.created_at).getTime();
+  const end   = run.finished_at ? new Date(run.finished_at).getTime() : now;
+  const s     = Math.max(0, Math.round((end - start) / 1000));
   if (s < 60)   return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
@@ -72,8 +77,9 @@ function RunDetail({ run, now, onClose }: { run: Run; now: number; onClose: () =
           </div>
         </div>
         {([
-          ["Run ID",    run.job_id],
+          ["Run ID",    run.id],
           ["Type",      run.kind.replace(/_/g, " ")],
+          ["Source",    run.source === "job" ? "Job Queue" : "Agent Run"],
           ["Duration",  elapsed(run, now)],
           ["Started",   run.started_at ? new Date(run.started_at).toLocaleString() : "—"],
           ["Finished",  run.finished_at ? new Date(run.finished_at).toLocaleString() : "—"],
@@ -95,7 +101,7 @@ function RunDetail({ run, now, onClose }: { run: Run; now: number; onClose: () =
           </div>
         )}
         {run.error && (
-          <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--red-dim)", border: "1px solid var(--red)" }}>
+          <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--red-dim)", border: "1px solid rgba(239,68,68,0.3)" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", marginBottom: 4, textTransform: "uppercase" }}>Error</div>
             <div style={{ fontSize: 12, color: "var(--red)", lineHeight: 1.5 }}>{run.error}</div>
           </div>
@@ -112,10 +118,12 @@ export function RunsPage() {
   const [runs, setRuns]     = useState<Run[]>([]);
   const [stats, setStats]   = useState<RunStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError]   = useState<string | null>(null);
   const [filter, setFilter] = useState<RunStatus | "all">("all");
   const [selected, setSelected] = useState<Run | null>(null);
   const [now, setNow]       = useState(() => Date.now());
 
+  // Live clock for elapsed time display
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -123,27 +131,55 @@ export function RunsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [jr, sr] = await Promise.all([
-        apiFetch("/api/jobs").then(r => r.json()).catch(() => ({ jobs: [] })),
-        apiFetch("/api/jobs/stats").then(r => r.json()).catch(() => null) as Promise<RunStats | null>,
+      const [runsData, statsData] = await Promise.all([
+        fetchRuns(),
+        fetchRunStats(),
       ]);
-      setRuns((jr as { jobs?: Run[] }).jobs ?? []);
-      setStats(sr);
-    } finally { setLoading(false); }
+      setRuns(runsData);
+      setStats(statsData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load runs");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  // Initial load
   useEffect(() => { void load(); }, [load]);
 
-  const cancel = async (id: string) => {
-    await apiFetch(`/api/jobs/${id}`, { method: "DELETE" }).catch(() => {});
-    void load();
-  };
+  // Auto-refresh every 5 seconds when runs are active
+  const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    const hasActive = runs.some(r => r.status === "running" || r.status === "pending");
+    if (hasActive) {
+      refreshRef.current = setInterval(() => { void load(); }, 5000);
+    } else {
+      if (refreshRef.current) {
+        clearInterval(refreshRef.current);
+        refreshRef.current = null;
+      }
+    }
+    return () => {
+      if (refreshRef.current) clearInterval(refreshRef.current);
+    };
+  }, [runs, load]);
+
+  const cancel = useCallback(async (id: string) => {
+    try {
+      await cancelRun(id);
+      void load();
+    } catch {
+      // cancelRun already handles 409 (already done); other errors are silently ignored
+      void load();
+    }
+  }, [load]);
 
   const filtered = filter === "all" ? runs : runs.filter(r => r.status === filter);
 
   const statusTabs: { id: RunStatus | "all"; label: string }[] = [
-    { id: "all", label: "All" },
+    { id: "all",       label: "All"       },
     { id: "running",   label: "Running"   },
     { id: "completed", label: "Completed" },
     { id: "failed",    label: "Failed"    },
@@ -163,7 +199,7 @@ export function RunsPage() {
           {stats && <span style={{ fontSize: 12, color: "var(--t4)", marginLeft: 10 }}>{stats.total} total</span>}
         </div>
         <button
-          onClick={load}
+          onClick={() => void load()}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 10, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t2)", fontSize: 13, cursor: "pointer" }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -175,15 +211,23 @@ export function RunsPage() {
         {/* Main content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
+          {/* Error banner */}
+          {error && (
+            <div style={{ padding: "12px 24px", flexShrink: 0, background: "var(--red-dim)", borderBottom: "1px solid rgba(239,68,68,0.2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, color: "var(--red)" }}>{error}</span>
+              <button onClick={() => void load()} style={{ fontSize: 12, color: "var(--red)", background: "none", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Retry</button>
+            </div>
+          )}
+
           {/* Stats row */}
           <div style={{ padding: "20px 24px 14px", display: "flex", gap: 12, flexWrap: "wrap", flexShrink: 0 }}>
             <StatCard label="Total" value={stats?.total ?? runs.length} color="var(--accent)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
-            <StatCard label="Running" value={stats?.active ?? runs.filter(r => r.status === "running").length} color="var(--blue)"
+            <StatCard label="Running" value={stats?.running ?? runs.filter(r => r.status === "running").length} color="var(--blue)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>} />
-            <StatCard label="Completed" value={stats?.counts?.completed ?? runs.filter(r => r.status === "completed").length} color="var(--green)"
+            <StatCard label="Completed" value={stats?.completed ?? runs.filter(r => r.status === "completed").length} color="var(--green)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>} />
-            <StatCard label="Failed" value={stats?.dead ?? runs.filter(r => r.status === "failed").length} color="var(--red)"
+            <StatCard label="Failed" value={stats?.failed ?? runs.filter(r => r.status === "failed").length} color="var(--red)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>} />
           </div>
 
@@ -236,20 +280,21 @@ export function RunsPage() {
                   <tbody>
                     {filtered.map(run => {
                       const cfg = STATUS_CFG[run.status] ?? STATUS_CFG.pending;
+                      const isSelected = selected?.id === run.id;
                       return (
                         <tr
-                          key={run.job_id}
-                          onClick={() => setSelected(run === selected ? null : run)}
+                          key={run.id}
+                          onClick={() => setSelected(isSelected ? null : run)}
                           style={{
                             borderBottom: "1px solid var(--b1)", cursor: "pointer",
-                            background: selected?.job_id === run.job_id ? "var(--accent-dim)" : "transparent",
+                            background: isSelected ? "var(--accent-dim)" : "transparent",
                             transition: "background 0.1s",
                           }}
-                          onMouseEnter={e => { if (selected?.job_id !== run.job_id) (e.currentTarget as HTMLTableRowElement).style.background = "var(--bg-card)"; }}
-                          onMouseLeave={e => { if (selected?.job_id !== run.job_id) (e.currentTarget as HTMLTableRowElement).style.background = "transparent"; }}
+                          onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLTableRowElement).style.background = "var(--bg-card)"; }}
+                          onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLTableRowElement).style.background = "transparent"; }}
                         >
                           <td style={{ padding: "12px 14px", fontSize: 11, color: "var(--t4)", fontFamily: "var(--font-mono)" }}>
-                            {run.job_id.slice(0, 8)}…
+                            {run.id.slice(0, 8)}…
                           </td>
                           <td style={{ padding: "12px 8px" }}>
                             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>
@@ -286,9 +331,10 @@ export function RunsPage() {
                             }
                           </td>
                           <td style={{ padding: "12px 14px" }}>
-                            {(run.status === "running" || run.status === "pending") && (
+                            {/* Cancel only available for job-queue runs that are still active */}
+                            {run.source === "job" && (run.status === "running" || run.status === "pending") && (
                               <button
-                                onClick={e => { e.stopPropagation(); void cancel(run.job_id); }}
+                                onClick={e => { e.stopPropagation(); void cancel(run.id); }}
                                 style={{
                                   padding: "4px 10px", borderRadius: 7, border: "1px solid var(--red)",
                                   background: "transparent", color: "var(--red)", fontSize: 11, fontWeight: 600, cursor: "pointer",

@@ -7,13 +7,21 @@
  *   │  (nav)       │        (iframe sim)           │  (chat)       │
  *   └──────────────┴──────────────────────────────┴───────────────┘
  *
- * Top bar: Build | Plan | Debug  +  Preview | Share | Publish
+ * Build flow (real backend):
+ *   1. createProject() → POST /api/projects
+ *   2. streamBuild()   → POST /api/build/stream  (SSE)
+ *   3. SSE events drive phase progression honestly — no setTimeout simulation.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppContext } from "../../contexts/app";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
-import type { Project } from "../../types";
+import {
+  createProject,
+  streamBuild,
+  promptToProjectName,
+  getProject,
+} from "./services/builderService";
 
 /* ── Types ──────────────────────────────────────────────────────── */
 type BuildMode  = "build" | "plan" | "debug";
@@ -123,9 +131,9 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
         <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>{projectName || "Your App"}</h2>
         <p style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>Your AI-built application is ready to customize.</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-          {[["6", "Tables"], ["8", "Pages"], ["3", "User Roles"], ["4", "Workflows"], ["2", "Integrations"], ["12", "AI Features"]].map(([n, l]) => (
+          {[["Pages", "Pages"], ["Tables", "Tables"], ["Roles", "Roles"], ["Workflows", "Workflows"], ["Integrations", "Integrations"], ["AI Features", "AI Features"]].map(([n, l]) => (
             <div key={l} style={{ background: "var(--bg-card)", border: "1px solid var(--b1)", borderRadius: 12, padding: "16px", textAlign: "center" }}>
-              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)" }}>{n}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)"}}>—</div>
               <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 4 }}>{l}</div>
             </div>
           ))}
@@ -242,7 +250,7 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
         <div style={{ textAlign: "center", maxWidth: 360 }}>
           <div style={{ fontSize: 32, marginBottom: 16 }}>⚡</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>AI is building your app…</div>
-          <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>This takes about 30 seconds. Sit back and relax.</div>
+          <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>Connecting to build server. Sit back and relax.</div>
           <div style={{ width: "100%", height: 4, borderRadius: 99, background: "var(--bg-card)", overflow: "hidden" }}>
             <div style={{
               height: "100%", borderRadius: 99,
@@ -282,9 +290,10 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
 }
 
 /** Right panel — AI builder chat */
-function AIBuilderPanel({ onBuild, projectName }: {
+function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
   onBuild: (prompt: string) => void;
   projectName: string;
+  isBuilding: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput]       = useState("");
@@ -306,12 +315,12 @@ function AIBuilderPanel({ onBuild, projectName }: {
 
   const send = useCallback(async () => {
     const val = input.trim();
-    if (!val || loading) return;
+    if (!val || loading || isBuilding) return;
     setInput("");
     setMessages(prev => [...prev, { role: "user", content: val }]);
     setLoading(true);
 
-    // Kick off build if first message
+    // Kick off build on first message only
     if (messages.length === 0) {
       onBuild(val);
     }
@@ -327,7 +336,6 @@ function AIBuilderPanel({ onBuild, projectName }: {
         const data = await parseJSON<{ response: string }>(r, "/api/ai/chat");
         setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
       } else {
-        // Fallback response
         setMessages(prev => [...prev, {
           role: "assistant",
           content: `I'm designing ${val.length > 40 ? "your app" : `"${val}"`} now. I'll create the database schema, pages, and automations based on your requirements. You can see the preview updating in real-time.`,
@@ -340,7 +348,7 @@ function AIBuilderPanel({ onBuild, projectName }: {
       }]);
     }
     setLoading(false);
-  }, [input, loading, messages, onBuild, projectName]);
+  }, [input, loading, isBuilding, messages, onBuild, projectName]);
 
   return (
     <div style={{
@@ -361,9 +369,9 @@ function AIBuilderPanel({ onBuild, projectName }: {
         </div>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>AI Builder</div>
-          <div style={{ fontSize: 10, color: "var(--green)", display: "flex", alignItems: "center", gap: 3 }}>
-            <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--green)", display: "inline-block" }} />
-            Ready
+          <div style={{ fontSize: 10, color: isBuilding ? "var(--accent)" : "var(--green)", display: "flex", alignItems: "center", gap: 3 }}>
+            <span style={{ width: 4, height: 4, borderRadius: "50%", background: isBuilding ? "var(--accent)" : "var(--green)", display: "inline-block", animation: isBuilding ? "pulse 1s ease-in-out infinite" : "none" }} />
+            {isBuilding ? "Building…" : "Ready"}
           </div>
         </div>
       </div>
@@ -464,26 +472,29 @@ function AIBuilderPanel({ onBuild, projectName }: {
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Describe a change…"
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+            placeholder={isBuilding ? "Building in progress…" : "Describe a change…"}
+            disabled={isBuilding}
             rows={2}
             style={{
               flex: 1, padding: "9px 12px", fontSize: 13,
               borderRadius: 10, border: "1px solid var(--b1)",
-              background: "var(--bg-card)", color: "var(--t1)",
+              background: isBuilding ? "var(--bg-base)" : "var(--bg-card)",
+              color: "var(--t1)",
               resize: "none", outline: "none", fontFamily: "inherit",
+              opacity: isBuilding ? 0.6 : 1,
             }}
             onFocus={e => (e.target.style.borderColor = "var(--accent)")}
             onBlur={e => (e.target.style.borderColor = "var(--b1)")}
           />
           <button
-            onClick={send}
-            disabled={!input.trim() || loading}
+            onClick={() => void send()}
+            disabled={!input.trim() || loading || isBuilding}
             style={{
               width: 36, height: 36, borderRadius: 9, border: "none",
-              background: input.trim() && !loading ? "var(--accent)" : "var(--bg-card)",
-              color: input.trim() && !loading ? "white" : "var(--t5)",
-              cursor: input.trim() && !loading ? "pointer" : "default",
+              background: input.trim() && !loading && !isBuilding ? "var(--accent)" : "var(--bg-card)",
+              color: input.trim() && !loading && !isBuilding ? "white" : "var(--t5)",
+              cursor: input.trim() && !loading && !isBuilding ? "pointer" : "default",
               display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
               transition: "all 0.12s",
             }}
@@ -497,7 +508,11 @@ function AIBuilderPanel({ onBuild, projectName }: {
 }
 
 /* ── Build phases overlay ─────────────────────────────────────────── */
-function BuildingOverlay({ phases }: { phases: BuildPhase[] }) {
+function BuildingOverlay({ phases, onCancel, errorMsg }: {
+  phases: BuildPhase[];
+  onCancel: () => void;
+  errorMsg: string | null;
+}) {
   return (
     <div style={{
       position: "absolute", inset: 0,
@@ -520,8 +535,14 @@ function BuildingOverlay({ phases }: { phases: BuildPhase[] }) {
               <div style={{
                 width: 22, height: 22, borderRadius: 99, flexShrink: 0,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                background: phase.status === "done" ? "var(--green-dim)" : phase.status === "running" ? "var(--accent-dim)" : "var(--bg-card)",
-                border: `1px solid ${phase.status === "done" ? "rgba(22,163,74,0.2)" : phase.status === "running" ? "var(--accent-border)" : "var(--b1)"}`,
+                background: phase.status === "done"
+                  ? "var(--green-dim)"
+                  : phase.status === "running"
+                    ? "var(--accent-dim)"
+                    : phase.status === "error"
+                      ? "var(--red-dim)"
+                      : "var(--bg-card)",
+                border: `1px solid ${phase.status === "done" ? "rgba(22,163,74,0.2)" : phase.status === "running" ? "var(--accent-border)" : phase.status === "error" ? "var(--red)" : "var(--b1)"}`,
               }}>
                 {phase.status === "done" && (
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
@@ -529,18 +550,41 @@ function BuildingOverlay({ phases }: { phases: BuildPhase[] }) {
                 {phase.status === "running" && (
                   <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", animation: "pulse 1s ease-in-out infinite" }} />
                 )}
+                {phase.status === "error" && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                )}
                 {phase.status === "pending" && (
                   <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--t5)" }} />
                 )}
               </div>
               <span style={{
                 fontSize: 13, fontWeight: phase.status === "running" ? 600 : 400,
-                color: phase.status === "pending" ? "var(--t4)" : phase.status === "done" ? "var(--t2)" : "var(--t1)",
+                color: phase.status === "pending" ? "var(--t4)" : phase.status === "done" ? "var(--t2)" : phase.status === "error" ? "var(--red)" : "var(--t1)",
               }}>
                 {phase.label}
               </span>
             </div>
           ))}
+        </div>
+
+        {/* Error message */}
+        {errorMsg && (
+          <div style={{ marginTop: 16, padding: "10px 14px", borderRadius: 8, background: "var(--red-dim)", border: "1px solid rgba(239,68,68,0.3)" }}>
+            <div style={{ fontSize: 12, color: "var(--red)", lineHeight: 1.5 }}>{errorMsg}</div>
+          </div>
+        )}
+
+        {/* Cancel / dismiss button */}
+        <div style={{ marginTop: 20, display: "flex", justifyContent: "center" }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: "7px 18px", borderRadius: 8, border: "1px solid var(--b1)",
+              background: "transparent", color: "var(--t4)", fontSize: 12, cursor: "pointer",
+            }}
+          >
+            {errorMsg ? "Dismiss" : "Cancel"}
+          </button>
         </div>
       </div>
     </div>
@@ -558,51 +602,145 @@ export function AppBuilderPage() {
   const [section, setSection] = useState<AppSection>("overview");
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildDone, setBuildDone]   = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [buildFileCount, setBuildFileCount] = useState(0);
+  const [buildLanguage, setBuildLanguage]   = useState("");
   const [phases, setPhases]         = useState<BuildPhase[]>(INITIAL_PHASES);
   const [projectName, setProjectName] = useState("");
 
-  // Load active project info
+  /** Prevents duplicate submissions across renders without depending on isBuilding state. */
+  const isBuildingRef = useRef(false);
+  /** AbortController for cancelling an in-progress stream. */
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Load active project info on mount
   useEffect(() => {
     const pid = sessionStorage.getItem("flow_active_project");
-    if (pid) {
-      apiFetch(`/api/projects/${pid}`).then(r => r.json()).then((data: Partial<Project>) => {
-        if (data.name) setProjectName(data.name);
-      }).catch(() => {});
-    }
+    if (!pid) return;
+    getProject(pid)
+      .then(p => { if (p.name) setProjectName(p.name); })
+      .catch(() => {}); // project may have been deleted; silently ignore
   }, []);
 
+  /**
+   * handleBuild — real SSE build flow.
+   *
+   * 1. Create project (POST /api/projects)
+   * 2. Stream build (POST /api/build/stream)
+   * 3. Map SSE events to the 7 visual phases:
+   *    - status msg #1 → phase 0 done, phase 1 running
+   *    - status msg #2 → phase 1 done, phase 2 running
+   *    - file events  → phase 2 running, advance phases 3-4 at file milestones
+   *    - done event   → all phases done, show real file count
+   *    - error event  → mark current phase as error
+   */
   const handleBuild = useCallback(async (prompt: string) => {
+    if (isBuildingRef.current) return;
+    isBuildingRef.current = true;
+
     setIsBuilding(true);
     setBuildDone(false);
+    setBuildError(null);
+    setBuildFileCount(0);
+    setBuildLanguage("");
 
-    // Animate phases
-    const newPhases = [...INITIAL_PHASES];
-    for (let i = 0; i < newPhases.length; i++) {
-      await new Promise(r => setTimeout(r, 800 + Math.random() * 600));
-      newPhases[i] = { ...newPhases[i], status: "running" };
-      setPhases([...newPhases]);
-      await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
-      newPhases[i] = { ...newPhases[i], status: "done" };
-      setPhases([...newPhases]);
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    // Working copy of phases — mutated then snapshotted into state
+    const currentPhases: BuildPhase[] = INITIAL_PHASES.map(p => ({ ...p }));
+    let phaseIdx = 0;
+    let statusCount = 0;
+    let fileCount = 0;
+
+    /** Advance: mark phases 0..target-1 as done, target as running (or error). */
+    function advanceTo(target: number, status: BuildPhase["status"] = "running") {
+      const capped = Math.min(target, currentPhases.length - 1);
+      for (let i = 0; i < capped; i++) {
+        currentPhases[i] = { ...currentPhases[i], status: "done" };
+      }
+      currentPhases[capped] = { ...currentPhases[capped], status };
+      phaseIdx = capped;
+      setPhases([...currentPhases]);
     }
 
-    // Create project in backend
-    try {
-      const name = prompt.split(" ").slice(0, 4).join(" ").replace(/^build a?n?\s*/i, "").trim() || "New App";
-      const r = await apiFetch("/api/projects", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.charAt(0).toUpperCase() + name.slice(1), description: prompt }),
-      });
-      if (r.ok) {
-        const data = await r.json() as Partial<Project>;
-        if (data.name) setProjectName(data.name);
-        toast("Your app is ready!", "ok");
-      }
-    } catch { /* best-effort */ }
+    // Phase 0 starts immediately
+    advanceTo(0);
 
-    setIsBuilding(false);
-    setBuildDone(true);
+    try {
+      // ── Step 1: create project first ──
+      const name = promptToProjectName(prompt);
+      const project = await createProject(name, prompt);
+      setProjectName(project.name);
+      sessionStorage.setItem("flow_active_project", project.id);
+
+      // ── Step 2: stream the build ──
+      for await (const event of streamBuild(project.id, prompt, controller.signal)) {
+        switch (event.type) {
+          case "status": {
+            statusCount++;
+            if (statusCount === 1 && phaseIdx <= 0) advanceTo(1);
+            else if (statusCount >= 2 && phaseIdx <= 1) advanceTo(2);
+            break;
+          }
+          case "file": {
+            fileCount++;
+            setBuildFileCount(fileCount);
+            // First file: ensure we're at least on phase 2
+            if (phaseIdx < 2) advanceTo(2);
+            // Milestones: advance to phases 3, 4 as files accumulate
+            else if (fileCount === 6 && phaseIdx <= 2) advanceTo(3);
+            else if (fileCount === 12 && phaseIdx <= 3) advanceTo(4);
+            break;
+          }
+          case "heartbeat":
+            // Server keep-alive — no action needed
+            break;
+          case "done": {
+            // Mark all remaining phases complete
+            for (let i = 0; i < currentPhases.length; i++) {
+              currentPhases[i] = { ...currentPhases[i], status: "done" };
+            }
+            setPhases([...currentPhases]);
+            setBuildFileCount(event.files.length);
+            setBuildLanguage(event.language ?? "");
+            toast("Your app is ready!", "ok");
+            setBuildDone(true);
+            break;
+          }
+          case "error": {
+            currentPhases[phaseIdx] = { ...currentPhases[phaseIdx], status: "error" };
+            setPhases([...currentPhases]);
+            setBuildError(event.message);
+            toast(event.message, "err");
+            break;
+          }
+        }
+      }
+    } catch (err: unknown) {
+      const isAbort = err instanceof Error && (err.name === "AbortError" || err.message === "AbortError");
+      if (!isAbort) {
+        const msg = err instanceof Error ? err.message : "Build failed. Please try again.";
+        if (phaseIdx < currentPhases.length) {
+          currentPhases[phaseIdx] = { ...currentPhases[phaseIdx], status: "error" };
+          setPhases([...currentPhases]);
+        }
+        setBuildError(msg);
+        toast(msg, "err");
+      }
+    } finally {
+      isBuildingRef.current = false;
+      setIsBuilding(false);
+      abortRef.current = null;
+    }
   }, [toast]);
+
+  /** Cancel an in-progress build. */
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+    setIsBuilding(false);
+    isBuildingRef.current = false;
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -678,10 +816,16 @@ export function AppBuilderPage() {
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         <AppSidebar section={section} setSection={setSection} projectName={projectName} />
         <PreviewPanel section={section} projectName={projectName} isBuilding={isBuilding} buildDone={buildDone} />
-        <AIBuilderPanel onBuild={handleBuild} projectName={projectName} />
+        <AIBuilderPanel onBuild={prompt => void handleBuild(prompt)} projectName={projectName} isBuilding={isBuilding} />
 
-        {/* Build overlay */}
-        {isBuilding && <BuildingOverlay phases={phases} />}
+        {/* Build overlay — shown while build is in progress or errored */}
+        {(isBuilding || buildError) && (
+          <BuildingOverlay
+            phases={phases}
+            onCancel={buildError ? () => { setBuildError(null); setPhases(INITIAL_PHASES); } : handleCancel}
+            errorMsg={buildError}
+          />
+        )}
       </div>
 
       {/* Build done banner */}
@@ -697,7 +841,11 @@ export function AppBuilderPage() {
           <div style={{ color: "var(--green)", fontSize: 20 }}>✓</div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>Your app is ready!</div>
-            <div style={{ fontSize: 12, color: "var(--t4)" }}>6 tables · 8 pages · 3 roles · 4 automations</div>
+            <div style={{ fontSize: 12, color: "var(--t4)" }}>
+              {buildFileCount > 0
+                ? `${buildFileCount} files generated${buildLanguage ? ` · ${buildLanguage}` : ""}`
+                : "App build complete"}
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginLeft: 8 }}>
             <button style={{
