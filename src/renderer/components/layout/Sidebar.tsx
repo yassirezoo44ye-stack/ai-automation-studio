@@ -10,30 +10,36 @@ import type { Page } from "../../types";
 
 type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 const NAV_GROUPS: { groupKey: string; items: NavItem[] }[] = [
-  { groupKey: "workspace", items: [
-    { id: "home",   navKey: "home",   icon: "home"   },
-    { id: "ai",     navKey: "ai",     icon: "ai"     },
-    { id: "dev",    navKey: "dev",    icon: "dev"    },
-    { id: "design", navKey: "design", icon: "design" },
-  ]},
-  { groupKey: "automation", items: [
-    { id: "automation",  navKey: "automation",  icon: "automation"  },
-    { id: "agentos",     navKey: "agentos",     icon: "agentos"     },
-    { id: "marketplace", navKey: "marketplace", icon: "marketplace" },
-    { id: "plugins",     navKey: "plugins",     icon: "plugins"     },
-    { id: "sandbox",     navKey: "sandbox",     icon: "sandbox"     },
-  ]},
-  { groupKey: "platform", items: [
-    { id: "ai-routing",    navKey: "aiRouting",    icon: "ai-routing"    },
-    { id: "observability", navKey: "observability", icon: "observability" },
-  ]},
-  { groupKey: "organization", items: [
-    { id: "organizations", navKey: "organizations", icon: "organizations" },
-    { id: "teams",         navKey: "teams",         icon: "teams"         },
-    { id: "billing",       navKey: "billing",       icon: "billing"       },
-    { id: "social",        navKey: "social",        icon: "social"        },
-    { id: "settings",      navKey: "settings",      icon: "settings"      },
-  ]},
+  {
+    groupKey: "workspace", items: [
+      { id: "home",        navKey: "home",       icon: "home"        },
+      { id: "app-builder", navKey: "appBuilder",  icon: "app-builder" },
+      { id: "marketplace", navKey: "marketplace", icon: "templates"   },
+    ],
+  },
+  {
+    groupKey: "build", items: [
+      { id: "design",       navKey: "design",       icon: "design"       },
+      { id: "agentos",      navKey: "agentos",      icon: "agentos"      },
+      { id: "automation",   navKey: "automation",   icon: "automation"   },
+      { id: "runs",         navKey: "runs",         icon: "runs"         },
+      { id: "integrations", navKey: "integrations", icon: "integrations" },
+    ],
+  },
+  {
+    groupKey: "platform", items: [
+      { id: "observability", navKey: "observability", icon: "data"         },
+      { id: "ai-routing",    navKey: "aiRouting",     icon: "api"          },
+      { id: "plugins",       navKey: "plugins",       icon: "plugins"      },
+      { id: "sandbox",       navKey: "sandbox",       icon: "analytics"    },
+    ],
+  },
+  {
+    groupKey: "system", items: [
+      { id: "organizations", navKey: "organizations", icon: "organizations" },
+      { id: "settings",      navKey: "settings",      icon: "settings"      },
+    ],
+  },
 ];
 
 function SunIcon() {
@@ -59,6 +65,50 @@ function GlobeIcon() {
       <line x1="2" y1="12" x2="22" y2="12"/>
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
     </svg>
+  );
+}
+
+/** Flow wordmark — shown when sidebar is expanded */
+function FlowLogo() {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "20px 16px 16px",
+      borderBottom: "1px solid var(--b1)",
+      marginBottom: 4,
+    }}>
+      {/* App icon */}
+      <div style={{
+        width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+        background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+      </div>
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.3px", color: "var(--t1)", lineHeight: 1.2 }}>Flow</div>
+        <div style={{ fontSize: 10, color: "var(--t4)", fontWeight: 500, letterSpacing: "0.04em" }}>AI Business OS</div>
+      </div>
+    </div>
+  );
+}
+
+/** Collapsed logo — just the icon */
+function FlowIcon() {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", padding: "18px 0 14px", borderBottom: "1px solid var(--b1)", marginBottom: 4 }}>
+      <div style={{
+        width: 32, height: 32, borderRadius: 10,
+        background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+      </div>
+    </div>
   );
 }
 
@@ -89,6 +139,10 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         role="navigation"
         aria-label={t("sidebar.mainNav")}
       >
+        {/* Logo area */}
+        {sidebarCollapsed ? <FlowIcon /> : <FlowLogo />}
+
+        {/* Collapse toggle */}
         <button
           className="sidebar__toggle"
           onClick={() => setSidebarCollapsed(v => !v)}
@@ -100,6 +154,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           </svg>
         </button>
 
+        {/* Org switcher */}
         {orgs.length > 0 && (
           <div style={{ padding: sidebarCollapsed ? "0 8px 8px" : "0 12px 10px" }}>
             <select
@@ -123,7 +178,9 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         <nav className="sidebar__nav">
           {NAV_GROUPS.map(group => (
             <div key={group.groupKey} className="sidebar__group">
-              {!sidebarCollapsed && <div className="sidebar__group-label">{t(`sidebar.groups.${group.groupKey}`)}</div>}
+              {!sidebarCollapsed && (
+                <div className="sidebar__group-label">{t(`sidebar.groups.${group.groupKey}`)}</div>
+              )}
               {group.items.map(item => {
                 const Icon = Icons[item.icon];
                 const active = page === item.id;
@@ -149,6 +206,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           ))}
         </nav>
 
+        {/* Footer actions */}
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
           <NotificationBell collapsed={sidebarCollapsed} />
           <button
@@ -157,8 +215,6 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             title={theme === "dark" ? t("sidebar.switchToLight") : t("sidebar.switchToDark")}
             aria-label={theme === "dark" ? t("sidebar.switchToLight") : t("sidebar.switchToDark")}
           >
-            {/* toggleTheme() only ever swaps between dark/light — a user in
-                high-contrast mode lands on dark, matching this icon/label. */}
             <span className="sidebar__icon" aria-hidden="true">
               {theme === "dark" ? <SunIcon /> : <MoonIcon />}
             </span>

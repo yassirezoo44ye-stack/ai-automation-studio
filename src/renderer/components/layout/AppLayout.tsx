@@ -9,15 +9,15 @@ import { CommandPalette } from "./CommandPalette";
 import { CopilotButton } from "../../shared/ui/copilot";
 import type { Page } from "../../types";
 
-const HomePage       = lazy(() => import("../../features/home").then(m => ({ default: m.HomePage })));
-const AIWorkspace    = lazy(() => import("../../features/ai").then(m => ({ default: m.AIWorkspace })));
-const DevWorkspace   = lazy(() => import("../../features/dev").then(m => ({ default: m.DevWorkspace })));
-const SocialPage     = lazy(() => import("../../features/social").then(m => ({ default: m.SocialPage })));
-const SettingsPage   = lazy(() => import("../../features/settings").then(m => ({ default: m.SettingsPage })));
-const DesignStudio   = lazy(() => import("../../features/design-studio").then(m => ({ default: m.DesignStudio })));
-const AutomationPage = lazy(() => import("../../features/automation/AutomationPage").then(m => ({ default: m.AutomationPage })));
-const AgentOSPage      = lazy(() => import("../../features/agentos").then(m => ({ default: m.AgentOSPage })));
-const MarketplacePage  = lazy(() => import("../../features/marketplace").then(m => ({ default: m.MarketplacePage })));
+const HomePage        = lazy(() => import("../../features/home").then(m => ({ default: m.HomePage })));
+const AIWorkspace     = lazy(() => import("../../features/ai").then(m => ({ default: m.AIWorkspace })));
+const DevWorkspace    = lazy(() => import("../../features/dev").then(m => ({ default: m.DevWorkspace })));
+const SocialPage      = lazy(() => import("../../features/social").then(m => ({ default: m.SocialPage })));
+const SettingsPage    = lazy(() => import("../../features/settings").then(m => ({ default: m.SettingsPage })));
+const DesignStudio    = lazy(() => import("../../features/design-studio").then(m => ({ default: m.DesignStudio })));
+const AutomationPage  = lazy(() => import("../../features/automation/AutomationPage").then(m => ({ default: m.AutomationPage })));
+const AgentOSPage     = lazy(() => import("../../features/agentos").then(m => ({ default: m.AgentOSPage })));
+const MarketplacePage = lazy(() => import("../../features/marketplace").then(m => ({ default: m.MarketplacePage })));
 const OrganizationsPage = lazy(() => import("../../features/organizations").then(m => ({ default: m.OrganizationsPage })));
 const TeamsPage         = lazy(() => import("../../features/teams").then(m => ({ default: m.TeamsPage })));
 const BillingPage       = lazy(() => import("../../features/billing").then(m => ({ default: m.BillingPage })));
@@ -25,6 +25,10 @@ const PluginsPage       = lazy(() => import("../../features/plugins").then(m => 
 const SandboxPage       = lazy(() => import("../../features/sandbox").then(m => ({ default: m.SandboxPage })));
 const AIRoutingPage     = lazy(() => import("../../features/ai-routing").then(m => ({ default: m.AIRoutingPage })));
 const ObservabilityPage = lazy(() => import("../../features/observability").then(m => ({ default: m.ObservabilityPage })));
+// New Flow pages
+const AppBuilderPage  = lazy(() => import("../../features/app-builder").then(m => ({ default: m.AppBuilderPage })));
+const RunsPage        = lazy(() => import("../../features/runs").then(m => ({ default: m.RunsPage })));
+const IntegrationsPage = lazy(() => import("../../features/integrations").then(m => ({ default: m.IntegrationsPage })));
 
 function WorkspaceContent() {
   const { t } = useTranslation("common");
@@ -39,22 +43,26 @@ function WorkspaceContent() {
     <ErrorBoundary key={page} name={page}>
       <Suspense fallback={fallback}>
         <PageTransition pageKey={page}>
-        {page === "home"       && <HomePage />}
-        {page === "ai"         && <AIWorkspace />}
-        {page === "dev"        && <DevWorkspace />}
-        {page === "design"     && <DesignStudio />}
-        {page === "automation" && <AutomationPage />}
-        {page === "agentos"    && <AgentOSPage />}
-        {page === "marketplace" && <MarketplacePage />}
-        {page === "organizations" && <OrganizationsPage />}
-        {page === "teams"       && <TeamsPage />}
-        {page === "billing"     && <BillingPage />}
-        {page === "plugins"     && <PluginsPage />}
-        {page === "sandbox"     && <SandboxPage />}
-        {page === "ai-routing"  && <AIRoutingPage />}
-        {page === "observability" && <ObservabilityPage />}
-        {page === "social"     && <SocialPage />}
-        {page === "settings"   && <SettingsPage />}
+          {page === "home"          && <HomePage />}
+          {page === "ai"            && <AIWorkspace />}
+          {page === "dev"           && <DevWorkspace />}
+          {page === "design"        && <DesignStudio />}
+          {page === "automation"    && <AutomationPage />}
+          {page === "agentos"       && <AgentOSPage />}
+          {page === "marketplace"   && <MarketplacePage />}
+          {page === "organizations" && <OrganizationsPage />}
+          {page === "teams"         && <TeamsPage />}
+          {page === "billing"       && <BillingPage />}
+          {page === "plugins"       && <PluginsPage />}
+          {page === "sandbox"       && <SandboxPage />}
+          {page === "ai-routing"    && <AIRoutingPage />}
+          {page === "observability" && <ObservabilityPage />}
+          {page === "social"        && <SocialPage />}
+          {page === "settings"      && <SettingsPage />}
+          {/* New Flow pages */}
+          {page === "app-builder"   && <AppBuilderPage />}
+          {page === "runs"          && <RunsPage />}
+          {page === "integrations"  && <IntegrationsPage />}
         </PageTransition>
       </Suspense>
     </ErrorBoundary>
@@ -64,8 +72,8 @@ function WorkspaceContent() {
 export function AppLayout() {
   const { t } = useTranslation("common");
   const { setPage, isPageTransitioning } = useAppContext();
-  const [mobileOpen, setMobileOpen]   = useState(false);
-  const [cmdOpen,    setCmdOpen]       = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [cmdOpen,    setCmdOpen]    = useState(false);
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   // Global Ctrl+K / Cmd+K opens command palette

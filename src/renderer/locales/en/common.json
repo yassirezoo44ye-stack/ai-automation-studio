@@ -1,11 +1,21 @@
 {
   "sidebar": {
-    "groups": { "workspace": "Workspace", "automation": "Automation", "platform": "Platform", "organization": "Organization" },
+    "groups": {
+      "workspace": "Workspace",
+      "automation": "Automation",
+      "platform": "Platform",
+      "organization": "Organization",
+      "build": "Build",
+      "system": "System"
+    },
     "nav": {
-      "home": "Home", "ai": "AI", "dev": "Dev", "design": "Design",
-      "automation": "Workflows", "agentos": "AgentOS", "marketplace": "Marketplace", "plugins": "Plugins", "sandbox": "Sandbox",
-      "aiRouting": "AI Routing", "observability": "Observability",
-      "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings"
+      "home": "Dashboard", "ai": "AI", "dev": "Dev", "design": "Design Studio",
+      "automation": "Automations", "agentos": "Agents", "marketplace": "Templates", "plugins": "Packages", "sandbox": "Analytics",
+      "aiRouting": "API", "observability": "Data",
+      "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings",
+      "appBuilder": "App Builder",
+      "runs": "Runs",
+      "integrations": "Integrations"
     },
     "mainNav": "Main navigation",
     "collapse": "Collapse sidebar",
@@ -34,18 +44,21 @@
     "kbdOpen": "open",
     "kbdClose": "close",
     "pages": {
-      "home": { "label": "Home", "sub": "Overview & projects" },
+      "home": { "label": "Dashboard", "sub": "Overview & your apps" },
       "ai": { "label": "AI", "sub": "Chat & agents" },
       "dev": { "label": "Dev", "sub": "Build, run & package" },
-      "design": { "label": "Design", "sub": "Visual design studio" },
-      "automation": { "label": "Automation", "sub": "Tasks & workflows" },
-      "agentos": { "label": "AgentOS", "sub": "Self-evolving AI OS" },
-      "marketplace": { "label": "Marketplace", "sub": "Browse agents & plugins" },
+      "design": { "label": "Design Studio", "sub": "Visual design studio" },
+      "automation": { "label": "Automations", "sub": "Tasks & workflows" },
+      "agentos": { "label": "Agents", "sub": "Self-evolving AI agents" },
+      "marketplace": { "label": "Templates", "sub": "Browse app templates" },
       "organizations": { "label": "Organizations", "sub": "Create & switch orgs" },
       "teams": { "label": "Teams", "sub": "Members & invitations" },
       "billing": { "label": "Billing", "sub": "Plan & usage" },
       "social": { "label": "Social", "sub": "Social media content" },
-      "settings": { "label": "Settings", "sub": "App configuration" }
+      "settings": { "label": "Settings", "sub": "App configuration" },
+      "app-builder": { "label": "App Builder", "sub": "Build apps with AI" },
+      "runs": { "label": "Runs", "sub": "Monitor executions" },
+      "integrations": { "label": "Integrations", "sub": "Connect your tools" }
     },
     "actions": {
       "newChat": { "label": "New Chat", "sub": "Start a conversation" },
