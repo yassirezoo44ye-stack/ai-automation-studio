@@ -1,85 +1,72 @@
 {
   "header": {
-    "title": "Home",
-    "tabOverview": "Overview",
-    "tabProjects": "Projects",
-    "newProject": "New Project"
+    "title": "Dashboard",
+    "backendOnline": "Online",
+    "backendOffline": "Offline",
+    "checking": "Checking…",
+    "newApp": "New App",
+    "buildWithAI": "Build with AI"
   },
-  "greeting": {
-    "morning": "Good morning",
-    "afternoon": "Good afternoon",
-    "evening": "Good evening"
+  "buildSection": {
+    "label": "AI Business OS",
+    "title": "What do you want to build?",
+    "buildBtn": "Build App →",
+    "ideas": ["CRM", "Inventory", "HR Portal", "Support Tickets", "Project Tracker"],
+    "ideaPrompt": "Build a {{idea}} system with AI automation"
   },
-  "welcome": {
-    "platformLabel": "FLOW PLATFORM",
-    "withData": "You have {{conversations}} conversations and {{projects}} projects. Keep building.",
-    "noData": "Your AI-powered automation studio is ready.",
-    "backendOnline": "Backend online",
-    "backendOffline": "Backend offline",
-    "checking": "Checking…"
+  "stats": {
+    "appsBuilt": "Apps Built",
+    "aiConversations": "AI Conversations",
+    "agentRuns": "Agent Runs",
+    "successRate": "Success Rate"
   },
-  "quickActions": {
-    "label": "Quick Actions",
-    "newChat": { "label": "New Chat", "sub": "Start an AI conversation" },
-    "buildApp": { "label": "Build App", "sub": "Generate code with AI" },
-    "newAgent": { "label": "New Agent", "sub": "Create an AI agent" },
-    "newProject": { "label": "New Project", "sub": "Organize your work" }
+  "apps": {
+    "title": "Your Apps",
+    "count_one": "{{count}} app",
+    "count_other": "{{count}} apps",
+    "noApps": "No apps yet",
+    "search": "Search apps…",
+    "loadError": "Failed to load apps",
+    "emptyTitle": "No apps yet",
+    "emptyDesc": "Describe what you want to build and let AI create it in seconds.",
+    "buildWithAI": "Build with AI",
+    "createManually": "Create Manually"
   },
-  "overview": {
-    "label": "Overview",
-    "kpiConversations": "Conversations",
-    "kpiMessages": "Messages",
-    "kpiBuilds": "Builds",
-    "kpiProjects": "Projects",
-    "kpiSuccessRate": "Success Rate",
-    "notAvailable": "N/A",
-    "statsError": "Could not load stats."
+  "createForm": {
+    "title": "Create New App",
+    "namePlaceholder": "App name (e.g. Sales CRM)",
+    "descPlaceholder": "Brief description (optional)",
+    "creating": "Creating…",
+    "create": "Create App",
+    "cancel": "Cancel"
   },
-  "chart": {
-    "title": "Activity — last 14 days",
-    "messages": "Messages",
-    "builds": "Builds",
-    "error": "Could not load activity chart."
+  "card": {
+    "updatedAt": "Updated {{time}}",
+    "open": "Open →",
+    "deleteTitle": "Delete app",
+    "deleteConfirm": "Delete \"{{name}}\"? This cannot be undone."
   },
   "activity": {
     "title": "Recent Activity",
-    "empty": "No activity yet — start a chat or build a project.",
-    "chat": "Chat",
-    "message": "Message",
-    "build": "Build",
-    "project": "Project",
-    "conversation": "Conversation"
-  },
-  "recentProjects": {
-    "title": "Recent Projects",
-    "viewAll": "View all →"
-  },
-  "toolbar": {
-    "searchPlaceholder": "Search projects…",
-    "sortLatest": "Latest",
-    "sortAZ": "A → Z",
-    "gridView": "Grid",
-    "listView": "List"
-  },
-  "newProjectForm": {
-    "title": "New Project",
-    "namePlaceholder": "Project name *",
-    "nameHint": "Project name must be at least 2 characters.",
-    "descPlaceholder": "Description (optional)",
-    "creating": "Creating…",
-    "create": "Create Project"
-  },
-  "projects": {
-    "loadError": "Could not load projects.",
-    "emptyTitle": "No projects yet",
-    "emptyDesc": "Create your first project to get started.",
-    "delete": "Delete",
-    "deleteConfirm": "Delete \"{{name}}\"? This cannot be undone."
+    "empty": "No activity yet",
+    "actions": {
+      "agentRun": "Agent Run",
+      "messageSent": "Message",
+      "build": "Build",
+      "projectCreated": "App Created",
+      "conversationCreated": "Chat"
+    }
   },
   "toast": {
-    "created": "Project created",
-    "createFailed": "Failed to create",
-    "deleted": "Deleted \"{{name}}\"",
-    "deleteFailed": "Failed to delete project"
+    "created": "App created successfully",
+    "createFailed": "Failed to create app",
+    "deleted": "\"{{name}}\" deleted",
+    "deleteFailed": "Failed to delete app"
+  },
+  "quickNav": {
+    "agents":       { "label": "Agents",       "desc": "Manage AI agents"      },
+    "automations":  { "label": "Automations",   "desc": "Workflows & triggers"  },
+    "runs":         { "label": "Runs",          "desc": "Monitor executions"    },
+    "integrations": { "label": "Integrations",  "desc": "Connect your tools"    }
   }
 }

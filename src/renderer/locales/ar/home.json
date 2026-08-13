@@ -1,85 +1,76 @@
 {
   "header": {
-    "title": "الرئيسية",
-    "tabOverview": "نظرة عامة",
-    "tabProjects": "المشاريع",
-    "newProject": "مشروع جديد"
+    "title": "لوحة التحكم",
+    "backendOnline": "متصل",
+    "backendOffline": "غير متصل",
+    "checking": "جارٍ التحقق…",
+    "newApp": "تطبيق جديد",
+    "buildWithAI": "بناء بالذكاء الاصطناعي"
   },
-  "greeting": {
-    "morning": "صباح الخير",
-    "afternoon": "نهارك سعيد",
-    "evening": "مساء الخير"
+  "buildSection": {
+    "label": "منصة FLOW للأعمال",
+    "title": "ماذا تريد أن تبني؟",
+    "buildBtn": "بناء التطبيق ←",
+    "ideas": ["CRM", "المخزون", "بوابة الموارد البشرية", "تذاكر الدعم", "متابع المشاريع"],
+    "ideaPrompt": "ابنِ نظام {{idea}} بالأتمتة الذكية"
   },
-  "welcome": {
-    "platformLabel": "منصة FLOW",
-    "withData": "لديك {{conversations}} محادثة و{{projects}} مشروع. واصل البناء.",
-    "noData": "استوديو الأتمتة الذكي بالذكاء الاصطناعي جاهز.",
-    "backendOnline": "الخادم متصل",
-    "backendOffline": "الخادم غير متصل",
-    "checking": "جارٍ التحقق…"
+  "stats": {
+    "appsBuilt": "التطبيقات المبنية",
+    "aiConversations": "محادثات الذكاء الاصطناعي",
+    "agentRuns": "تشغيلات الوكلاء",
+    "successRate": "نسبة النجاح"
   },
-  "quickActions": {
-    "label": "إجراءات سريعة",
-    "newChat": { "label": "محادثة جديدة", "sub": "ابدأ محادثة مع الذكاء الاصطناعي" },
-    "buildApp": { "label": "بناء تطبيق", "sub": "أنشئ الكود بالذكاء الاصطناعي" },
-    "newAgent": { "label": "وكيل جديد", "sub": "أنشئ وكيل ذكاء اصطناعي" },
-    "newProject": { "label": "مشروع جديد", "sub": "نظّم عملك" }
+  "apps": {
+    "title": "تطبيقاتك",
+    "count_zero": "لا توجد تطبيقات",
+    "count_one": "تطبيق واحد",
+    "count_two": "تطبيقان",
+    "count_few": "{{count}} تطبيقات",
+    "count_many": "{{count}} تطبيقاً",
+    "count_other": "{{count}} تطبيق",
+    "noApps": "لا توجد تطبيقات بعد",
+    "search": "ابحث في التطبيقات…",
+    "loadError": "تعذر تحميل التطبيقات",
+    "emptyTitle": "لا توجد تطبيقات بعد",
+    "emptyDesc": "صِف ما تريد بناءه ودع الذكاء الاصطناعي ينشئه في ثوانٍ.",
+    "buildWithAI": "بناء بالذكاء الاصطناعي",
+    "createManually": "إنشاء يدوياً"
   },
-  "overview": {
-    "label": "نظرة عامة",
-    "kpiConversations": "المحادثات",
-    "kpiMessages": "الرسائل",
-    "kpiBuilds": "عمليات البناء",
-    "kpiProjects": "المشاريع",
-    "kpiSuccessRate": "نسبة النجاح",
-    "notAvailable": "غير متاح",
-    "statsError": "تعذر تحميل الإحصائيات."
+  "createForm": {
+    "title": "إنشاء تطبيق جديد",
+    "namePlaceholder": "اسم التطبيق (مثال: نظام CRM)",
+    "descPlaceholder": "وصف مختصر (اختياري)",
+    "creating": "جارٍ الإنشاء…",
+    "create": "إنشاء التطبيق",
+    "cancel": "إلغاء"
   },
-  "chart": {
-    "title": "النشاط — آخر 14 يومًا",
-    "messages": "الرسائل",
-    "builds": "عمليات البناء",
-    "error": "تعذر تحميل مخطط النشاط."
+  "card": {
+    "updatedAt": "تحديث {{time}}",
+    "open": "فتح ←",
+    "deleteTitle": "حذف التطبيق",
+    "deleteConfirm": "حذف \"{{name}}\"؟ لا يمكن التراجع عن هذا الإجراء."
   },
   "activity": {
     "title": "النشاط الأخير",
-    "empty": "لا يوجد نشاط بعد — ابدأ محادثة أو أنشئ مشروعًا.",
-    "chat": "محادثة",
-    "message": "رسالة",
-    "build": "بناء",
-    "project": "مشروع",
-    "conversation": "محادثة"
-  },
-  "recentProjects": {
-    "title": "المشاريع الأخيرة",
-    "viewAll": "عرض الكل ←"
-  },
-  "toolbar": {
-    "searchPlaceholder": "ابحث في المشاريع…",
-    "sortLatest": "الأحدث",
-    "sortAZ": "أ ← ي",
-    "gridView": "شبكة",
-    "listView": "قائمة"
-  },
-  "newProjectForm": {
-    "title": "مشروع جديد",
-    "namePlaceholder": "اسم المشروع *",
-    "nameHint": "يجب أن يتكون اسم المشروع من حرفين على الأقل.",
-    "descPlaceholder": "الوصف (اختياري)",
-    "creating": "جارٍ الإنشاء…",
-    "create": "إنشاء المشروع"
-  },
-  "projects": {
-    "loadError": "تعذر تحميل المشاريع.",
-    "emptyTitle": "لا توجد مشاريع بعد",
-    "emptyDesc": "أنشئ مشروعك الأول للبدء.",
-    "delete": "حذف",
-    "deleteConfirm": "حذف \"{{name}}\"؟ لا يمكن التراجع عن هذا الإجراء."
+    "empty": "لا يوجد نشاط بعد",
+    "actions": {
+      "agentRun": "تشغيل وكيل",
+      "messageSent": "رسالة",
+      "build": "بناء",
+      "projectCreated": "تطبيق مُنشأ",
+      "conversationCreated": "محادثة"
+    }
   },
   "toast": {
-    "created": "تم إنشاء المشروع",
-    "createFailed": "فشل الإنشاء",
+    "created": "تم إنشاء التطبيق بنجاح",
+    "createFailed": "فشل إنشاء التطبيق",
     "deleted": "تم حذف \"{{name}}\"",
-    "deleteFailed": "فشل حذف المشروع"
+    "deleteFailed": "فشل حذف التطبيق"
+  },
+  "quickNav": {
+    "agents":       { "label": "الوكلاء",      "desc": "إدارة وكلاء الذكاء الاصطناعي" },
+    "automations":  { "label": "الأتمتة",       "desc": "سير العمل والمشغّلات"         },
+    "runs":         { "label": "التشغيلات",     "desc": "مراقبة التنفيذات"              },
+    "integrations": { "label": "التكاملات",     "desc": "ربط أدواتك"                   }
   }
 }

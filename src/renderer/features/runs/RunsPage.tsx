@@ -10,6 +10,7 @@
  * to the user — the service handles it).
  */
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   fetchRuns,
   fetchRunStats,
@@ -20,12 +21,14 @@ import {
 } from "./services/runsService";
 
 /* ── Helpers ────────────────────────────────────────────────────── */
-const STATUS_CFG: Record<RunStatus, { color: string; bg: string; label: string }> = {
-  running:   { color: "var(--blue)",   bg: "var(--blue-dim)",   label: "Running"   },
-  completed: { color: "var(--green)",  bg: "var(--green-dim)",  label: "Completed" },
-  failed:    { color: "var(--red)",    bg: "var(--red-dim)",    label: "Failed"    },
-  pending:   { color: "var(--yellow)", bg: "var(--yellow-dim)", label: "Pending"   },
-  cancelled: { color: "var(--t4)",     bg: "var(--bg-card)",    label: "Cancelled" },
+// Labels resolved at render time via useTranslation — not declared here as
+// a top-level constant, because module-level code cannot call hooks.
+const STATUS_COLORS: Record<RunStatus, { color: string; bg: string }> = {
+  running:   { color: "var(--blue)",   bg: "var(--blue-dim)"  },
+  completed: { color: "var(--green)",  bg: "var(--green-dim)" },
+  failed:    { color: "var(--red)",    bg: "var(--red-dim)"   },
+  pending:   { color: "var(--yellow)", bg: "var(--yellow-dim)"},
+  cancelled: { color: "var(--t4)",     bg: "var(--bg-card)"   },
 };
 
 function elapsed(run: Run, now: number): string {
@@ -58,7 +61,9 @@ function StatCard({ label, value, color, icon }: { label: string; value: number;
 
 /* ── Run detail drawer ───────────────────────────────────────────── */
 function RunDetail({ run, now, onClose }: { run: Run; now: number; onClose: () => void }) {
-  const cfg = STATUS_CFG[run.status] ?? STATUS_CFG.pending;
+  const { t } = useTranslation("runs");
+  const colors = STATUS_COLORS[run.status] ?? STATUS_COLORS.pending;
+  const statusLabel = t(`status.${run.status}`, { defaultValue: run.status });
   return (
     <div style={{
       width: 360, flexShrink: 0, borderLeft: "1px solid var(--b1)",
@@ -66,33 +71,33 @@ function RunDetail({ run, now, onClose }: { run: Run; now: number; onClose: () =
       overflow: "hidden",
     }}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--b1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>Run Details</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{t("detail.title")}</div>
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", fontSize: 22, lineHeight: 1 }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 600, background: cfg.bg, color: cfg.color }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.color }} />
-            {cfg.label}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 600, background: colors.bg, color: colors.color }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: colors.color }} />
+            {statusLabel}
           </div>
         </div>
         {([
-          ["Run ID",    run.id],
-          ["Type",      run.kind.replace(/_/g, " ")],
-          ["Source",    run.source === "job" ? "Job Queue" : "Agent Run"],
-          ["Duration",  elapsed(run, now)],
-          ["Started",   run.started_at ? new Date(run.started_at).toLocaleString() : "—"],
-          ["Finished",  run.finished_at ? new Date(run.finished_at).toLocaleString() : "—"],
-        ] as [string, string][]).map(([label, value]) => (
+          [t("detail.runId"),   run.id,                                                           true  ],
+          [t("detail.type"),    run.kind.replace(/_/g, " "),                                      false ],
+          [t("detail.source"),  run.source === "job" ? t("detail.sourceJob") : t("detail.sourceAgent"), false],
+          [t("detail.duration"),elapsed(run, now),                                                false ],
+          [t("detail.started"), run.started_at ? new Date(run.started_at).toLocaleString() : "—", false],
+          [t("detail.finished"),run.finished_at ? new Date(run.finished_at).toLocaleString() : "—",false],
+        ] as [string, string, boolean][]).map(([label, value, mono]) => (
           <div key={label} style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>
-            <div style={{ fontSize: 13, color: "var(--t1)", fontFamily: label === "Run ID" ? "var(--font-mono)" : "inherit", wordBreak: "break-all" }}>{value}</div>
+            <div style={{ fontSize: 13, color: "var(--t1)", fontFamily: mono ? "var(--font-mono)" : "inherit", wordBreak: "break-all" }}>{value}</div>
           </div>
         ))}
         {run.status === "running" && (
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Progress</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("detail.progress")}</div>
               <span style={{ fontSize: 11, color: "var(--t4)" }}>{run.progress}%</span>
             </div>
             <div style={{ height: 6, borderRadius: 99, background: "var(--bg-card)", overflow: "hidden" }}>
@@ -102,7 +107,7 @@ function RunDetail({ run, now, onClose }: { run: Run; now: number; onClose: () =
         )}
         {run.error && (
           <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--red-dim)", border: "1px solid rgba(239,68,68,0.3)" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", marginBottom: 4, textTransform: "uppercase" }}>Error</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", marginBottom: 4, textTransform: "uppercase" }}>{t("detail.error")}</div>
             <div style={{ fontSize: 12, color: "var(--red)", lineHeight: 1.5 }}>{run.error}</div>
           </div>
         )}
@@ -115,6 +120,8 @@ function RunDetail({ run, now, onClose }: { run: Run; now: number; onClose: () =
    Main RunsPage
    ══════════════════════════════════════════════════════════════════ */
 export function RunsPage() {
+  const { t } = useTranslation("runs");
+
   const [runs, setRuns]     = useState<Run[]>([]);
   const [stats, setStats]   = useState<RunStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -179,11 +186,11 @@ export function RunsPage() {
   const filtered = filter === "all" ? runs : runs.filter(r => r.status === filter);
 
   const statusTabs: { id: RunStatus | "all"; label: string }[] = [
-    { id: "all",       label: "All"       },
-    { id: "running",   label: "Running"   },
-    { id: "completed", label: "Completed" },
-    { id: "failed",    label: "Failed"    },
-    { id: "pending",   label: "Pending"   },
+    { id: "all",       label: t("tabs.all")         },
+    { id: "running",   label: t("status.running")   },
+    { id: "completed", label: t("status.completed") },
+    { id: "failed",    label: t("status.failed")    },
+    { id: "pending",   label: t("status.pending")   },
   ];
 
   return (
@@ -195,15 +202,15 @@ export function RunsPage() {
         display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
       }}>
         <div>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>Runs</span>
-          {stats && <span style={{ fontSize: 12, color: "var(--t4)", marginLeft: 10 }}>{stats.total} total</span>}
+          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>{t("header.title")}</span>
+          {stats && <span style={{ fontSize: 12, color: "var(--t4)", marginLeft: 10 }}>{t("header.total", { count: stats.total })}</span>}
         </div>
         <button
           onClick={() => void load()}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 10, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t2)", fontSize: 13, cursor: "pointer" }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-          Refresh
+          {t("header.refresh")}
         </button>
       </header>
 
@@ -215,19 +222,19 @@ export function RunsPage() {
           {error && (
             <div style={{ padding: "12px 24px", flexShrink: 0, background: "var(--red-dim)", borderBottom: "1px solid rgba(239,68,68,0.2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: 13, color: "var(--red)" }}>{error}</span>
-              <button onClick={() => void load()} style={{ fontSize: 12, color: "var(--red)", background: "none", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Retry</button>
+              <button onClick={() => void load()} style={{ fontSize: 12, color: "var(--red)", background: "none", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>{t("actions.retry")}</button>
             </div>
           )}
 
           {/* Stats row */}
           <div style={{ padding: "20px 24px 14px", display: "flex", gap: 12, flexWrap: "wrap", flexShrink: 0 }}>
-            <StatCard label="Total" value={stats?.total ?? runs.length} color="var(--accent)"
+            <StatCard label={t("stats.total")} value={stats?.total ?? runs.length} color="var(--accent)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
-            <StatCard label="Running" value={stats?.running ?? runs.filter(r => r.status === "running").length} color="var(--blue)"
+            <StatCard label={t("stats.running")} value={stats?.running ?? runs.filter(r => r.status === "running").length} color="var(--blue)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>} />
-            <StatCard label="Completed" value={stats?.completed ?? runs.filter(r => r.status === "completed").length} color="var(--green)"
+            <StatCard label={t("stats.completed")} value={stats?.completed ?? runs.filter(r => r.status === "completed").length} color="var(--green)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>} />
-            <StatCard label="Failed" value={stats?.failed ?? runs.filter(r => r.status === "failed").length} color="var(--red)"
+            <StatCard label={t("stats.failed")} value={stats?.failed ?? runs.filter(r => r.status === "failed").length} color="var(--red)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>} />
           </div>
 
@@ -264,22 +271,28 @@ export function RunsPage() {
                 background: "var(--bg-card)", borderRadius: 18, border: "1px dashed var(--b2)",
               }}>
                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--t5)" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t2)" }}>No runs {filter !== "all" ? `with status "${filter}"` : "yet"}</div>
-                <div style={{ fontSize: 12, color: "var(--t4)" }}>Runs appear here when agents or automations execute.</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t2)" }}>
+                  {filter === "all"
+                    ? t("empty.titleAll")
+                    : t("empty.titleFiltered", { filter: t(`status.${filter}`, { defaultValue: filter }) })
+                  }
+                </div>
+                <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("empty.description")}</div>
               </div>
             ) : (
               <div style={{ background: "var(--bg-surface)", border: "1px solid var(--b1)", borderRadius: 14, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid var(--b1)", background: "var(--bg-card)" }}>
-                      {["ID", "Type", "Status", "Progress", "Duration", "Started", ""].map(h => (
-                        <th key={h} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 600, color: "var(--t4)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                      {[t("table.id"), t("table.type"), t("table.status"), t("table.progress"), t("table.duration"), t("table.started"), ""].map((h, idx) => (
+                        <th key={idx} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 600, color: "var(--t4)", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map(run => {
-                      const cfg = STATUS_CFG[run.status] ?? STATUS_CFG.pending;
+                      const colors = STATUS_COLORS[run.status] ?? STATUS_COLORS.pending;
+                      const statusLabel = t(`status.${run.status}`, { defaultValue: run.status });
                       const isSelected = selected?.id === run.id;
                       return (
                         <tr
@@ -305,10 +318,10 @@ export function RunsPage() {
                             <div style={{
                               display: "inline-flex", alignItems: "center", gap: 5,
                               padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 600,
-                              background: cfg.bg, color: cfg.color,
+                              background: colors.bg, color: colors.color,
                             }}>
-                              <span style={{ width: 5, height: 5, borderRadius: "50%", background: cfg.color, flexShrink: 0, animation: run.status === "running" ? "pulse 1s ease-in-out infinite" : "none" }} />
-                              {cfg.label}
+                              <span style={{ width: 5, height: 5, borderRadius: "50%", background: colors.color, flexShrink: 0, animation: run.status === "running" ? "pulse 1s ease-in-out infinite" : "none" }} />
+                              {statusLabel}
                             </div>
                           </td>
                           <td style={{ padding: "12px 8px" }}>
@@ -340,7 +353,7 @@ export function RunsPage() {
                                   background: "transparent", color: "var(--red)", fontSize: 11, fontWeight: 600, cursor: "pointer",
                                 }}
                               >
-                                Cancel
+                                {t("actions.cancel")}
                               </button>
                             )}
                           </td>

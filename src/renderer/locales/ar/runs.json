@@ -1,0 +1,53 @@
+{
+  "header": {
+    "title": "التشغيلات",
+    "total": "{{count}} إجمالاً",
+    "refresh": "تحديث"
+  },
+  "status": {
+    "running": "قيد التشغيل",
+    "completed": "مكتملة",
+    "failed": "فاشلة",
+    "pending": "معلقة",
+    "cancelled": "ملغاة"
+  },
+  "stats": {
+    "total": "الإجمالي",
+    "running": "قيد التشغيل",
+    "completed": "مكتملة",
+    "failed": "فاشلة"
+  },
+  "tabs": {
+    "all": "الكل"
+  },
+  "table": {
+    "id": "المعرّف",
+    "type": "النوع",
+    "status": "الحالة",
+    "progress": "التقدم",
+    "duration": "المدة",
+    "started": "البداية"
+  },
+  "empty": {
+    "titleAll": "لا توجد تشغيلات بعد",
+    "titleFiltered": "لا توجد تشغيلات بحالة \"{{filter}}\"",
+    "description": "تظهر التشغيلات هنا عند تنفيذ الوكلاء أو سير العمل التلقائي."
+  },
+  "detail": {
+    "title": "تفاصيل التشغيل",
+    "runId": "معرّف التشغيل",
+    "type": "النوع",
+    "source": "المصدر",
+    "duration": "المدة",
+    "started": "البداية",
+    "finished": "النهاية",
+    "progress": "التقدم",
+    "error": "خطأ",
+    "sourceJob": "طابور المهام",
+    "sourceAgent": "تشغيل وكيل"
+  },
+  "actions": {
+    "cancel": "إلغاء",
+    "retry": "إعادة المحاولة"
+  }
+}

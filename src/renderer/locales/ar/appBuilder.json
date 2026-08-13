@@ -1,0 +1,66 @@
+{
+  "sections": {
+    "overview": "نظرة عامة",
+    "pages": "الصفحات",
+    "data": "البيانات",
+    "workflows": "سير العمل",
+    "agents": "الوكلاء",
+    "integrations": "التكاملات",
+    "settings": "الإعدادات"
+  },
+  "phases": {
+    "understanding": "فهم المتطلبات",
+    "schema": "تصميم مخطط قاعدة البيانات",
+    "ui": "إنشاء الصفحات والواجهة",
+    "backend": "إعداد منطق الخادم",
+    "permissions": "ضبط الصلاحيات",
+    "automations": "إنشاء سير العمل التلقائي",
+    "tests": "تشغيل الاختبارات"
+  },
+  "appSidebar": {
+    "appNameFallback": "تطبيق بلا اسم",
+    "statusLive": "مباشر",
+    "publish": "🚀 نشر"
+  },
+  "preview": {
+    "buildingTitle": "الذكاء الاصطناعي يبني تطبيقك…",
+    "buildingSubtitle": "جارٍ الاتصال بخادم البناء. استرخِ وانتظر.",
+    "typePrompt": "اكتب مطالبة لبدء بناء تطبيقك"
+  },
+  "aiPanel": {
+    "title": "منشئ الذكاء الاصطناعي",
+    "statusBuilding": "جارٍ البناء…",
+    "statusReady": "جاهز",
+    "emptyPrompt": "صِف ما تريد بناءه. سأنشئ التطبيق الكامل لك.",
+    "suggestion1": "ابنِ نظام CRM للمبيعات",
+    "suggestion2": "أنشئ نظام إدارة المخزون",
+    "suggestion3": "ابنِ تطبيق مكتب المساعدة",
+    "placeholderBuilding": "جارٍ البناء…",
+    "placeholderReady": "صِف تعديلاً…"
+  },
+  "topbar": {
+    "back": "التطبيقات",
+    "preview": "معاينة",
+    "share": "مشاركة",
+    "publish": "🚀 نشر"
+  },
+  "modes": {
+    "build": "بناء",
+    "plan": "تخطيط",
+    "debug": "تصحيح"
+  },
+  "overlay": {
+    "title": "بناء تطبيقك بالذكاء الاصطناعي",
+    "subtitle": "استرخِ، سيستغرق ذلك نحو 30 ثانية",
+    "cancel": "إلغاء",
+    "dismiss": "إغلاق"
+  },
+  "done": {
+    "title": "تطبيقك جاهز!",
+    "filesGenerated": "تم توليد {{count}} ملف",
+    "filesGeneratedWithLang": "تم توليد {{count}} ملف · {{lang}}",
+    "buildComplete": "اكتمل بناء التطبيق",
+    "dismiss": "إغلاق",
+    "publish": "🚀 نشر"
+  }
+}

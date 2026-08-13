@@ -13,6 +13,7 @@
  *   3. SSE events drive phase progression honestly — no setTimeout simulation.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
@@ -26,27 +27,30 @@ import {
 /* ── Types ──────────────────────────────────────────────────────── */
 type BuildMode  = "build" | "plan" | "debug";
 type AppSection = "overview" | "pages" | "data" | "workflows" | "agents" | "integrations" | "settings";
-type BuildPhase = { label: string; status: "pending" | "running" | "done" | "error" };
+// labelKey maps to "appBuilder" namespace (sections.* or phases.*)
+type BuildPhase = { labelKey: string; status: "pending" | "running" | "done" | "error" };
 
-const SECTIONS: { id: AppSection; label: string; icon: React.ReactNode }[] = [
-  { id: "overview",     label: "Overview",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
-  { id: "pages",        label: "Pages",        icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
-  { id: "data",         label: "Data",         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> },
-  { id: "workflows",    label: "Workflows",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><line x1="7" y1="6" x2="17" y2="6"/><line x1="5" y1="8" x2="12" y2="16"/><line x1="19" y1="8" x2="12" y2="16"/></svg> },
-  { id: "agents",       label: "Agents",       icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
-  { id: "integrations", label: "Integrations", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> },
-  { id: "settings",     label: "Settings",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06"/></svg> },
+// labelKey maps to appBuilder namespace sections.*
+const SECTIONS: { id: AppSection; labelKey: string; icon: React.ReactNode }[] = [
+  { id: "overview",     labelKey: "sections.overview",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
+  { id: "pages",        labelKey: "sections.pages",        icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
+  { id: "data",         labelKey: "sections.data",         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> },
+  { id: "workflows",    labelKey: "sections.workflows",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><line x1="7" y1="6" x2="17" y2="6"/><line x1="5" y1="8" x2="12" y2="16"/><line x1="19" y1="8" x2="12" y2="16"/></svg> },
+  { id: "agents",       labelKey: "sections.agents",       icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
+  { id: "integrations", labelKey: "sections.integrations", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> },
+  { id: "settings",     labelKey: "sections.settings",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06"/></svg> },
 ];
 
 /* ── Build phases ────────────────────────────────────────────────── */
+// labelKey maps to appBuilder namespace phases.*
 const INITIAL_PHASES: BuildPhase[] = [
-  { label: "Understanding requirements", status: "pending" },
-  { label: "Designing database schema",  status: "pending" },
-  { label: "Creating pages & UI",        status: "pending" },
-  { label: "Setting up backend logic",   status: "pending" },
-  { label: "Configuring permissions",    status: "pending" },
-  { label: "Creating automations",       status: "pending" },
-  { label: "Running tests",              status: "pending" },
+  { labelKey: "phases.understanding", status: "pending" },
+  { labelKey: "phases.schema",        status: "pending" },
+  { labelKey: "phases.ui",            status: "pending" },
+  { labelKey: "phases.backend",       status: "pending" },
+  { labelKey: "phases.permissions",   status: "pending" },
+  { labelKey: "phases.automations",   status: "pending" },
+  { labelKey: "phases.tests",         status: "pending" },
 ];
 
 /* ── AI chat message ─────────────────────────────────────────────── */
@@ -62,6 +66,7 @@ function AppSidebar({ section, setSection, projectName }: {
   setSection: (s: AppSection) => void;
   projectName: string;
 }) {
+  const { t } = useTranslation("appBuilder");
   return (
     <div style={{
       width: 200, flexShrink: 0,
@@ -73,11 +78,11 @@ function AppSidebar({ section, setSection, projectName }: {
       {/* App identity */}
       <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--b1)" }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {projectName || "Untitled App"}
+          {projectName || t("appSidebar.appNameFallback")}
         </div>
         <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)", display: "inline-block" }} />
-          Live
+          {t("appSidebar.statusLive")}
         </div>
       </div>
 
@@ -99,7 +104,7 @@ function AppSidebar({ section, setSection, projectName }: {
             }}
           >
             <span style={{ flexShrink: 0, opacity: section === s.id ? 1 : 0.7 }}>{s.icon}</span>
-            {s.label}
+            {t(s.labelKey)}
           </button>
         ))}
       </nav>
@@ -111,7 +116,7 @@ function AppSidebar({ section, setSection, projectName }: {
           background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
           color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
         }}>
-          🚀 Publish
+          {t("appSidebar.publish")}
         </button>
       </div>
     </div>
@@ -125,6 +130,8 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
   isBuilding: boolean;
   buildDone: boolean;
 }) {
+  const { t } = useTranslation("appBuilder");
+
   const previewContent: Record<AppSection, React.ReactNode> = {
     overview: (
       <div style={{ padding: 28, height: "100%", overflowY: "auto" }}>
@@ -162,12 +169,12 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
           { name: "Companies", fields: 10, records: 0 },
           { name: "Activities", fields: 7, records: 0 },
           { name: "Users", fields: 9, records: 1 },
-        ].map(t => (
-          <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, marginBottom: 4, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
+        ].map(tbl => (
+          <div key={tbl.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, marginBottom: 4, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t1)", flex: 1 }}>{t.name}</span>
-            <span style={{ fontSize: 11, color: "var(--t4)" }}>{t.fields} fields</span>
-            <span style={{ fontSize: 11, color: "var(--t5)" }}>{t.records} rows</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t1)", flex: 1 }}>{tbl.name}</span>
+            <span style={{ fontSize: 11, color: "var(--t4)" }}>{tbl.fields} fields</span>
+            <span style={{ fontSize: 11, color: "var(--t5)" }}>{tbl.records} rows</span>
           </div>
         ))}
       </div>
@@ -249,8 +256,8 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)" }}>
         <div style={{ textAlign: "center", maxWidth: 360 }}>
           <div style={{ fontSize: 32, marginBottom: 16 }}>⚡</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>AI is building your app…</div>
-          <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>Connecting to build server. Sit back and relax.</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>{t("preview.buildingTitle")}</div>
+          <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>{t("preview.buildingSubtitle")}</div>
           <div style={{ width: "100%", height: 4, borderRadius: 99, background: "var(--bg-card)", overflow: "hidden" }}>
             <div style={{
               height: "100%", borderRadius: 99,
@@ -281,7 +288,7 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
       <div style={{ height: "calc(100% - 41px)", overflow: "hidden" }}>
         {buildDone || !isBuilding ? previewContent[section] : (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--t4)", fontSize: 14 }}>
-            Type a prompt to start building your app
+            {t("preview.typePrompt")}
           </div>
         )}
       </div>
@@ -295,6 +302,7 @@ function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
   projectName: string;
   isBuilding: boolean;
 }) {
+  const { t } = useTranslation("appBuilder");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput]       = useState("");
   const [loading, setLoading]   = useState(false);
@@ -350,6 +358,12 @@ function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
     setLoading(false);
   }, [input, loading, isBuilding, messages, onBuild, projectName]);
 
+  const suggestions = [
+    t("aiPanel.suggestion1"),
+    t("aiPanel.suggestion2"),
+    t("aiPanel.suggestion3"),
+  ];
+
   return (
     <div style={{
       width: 320, flexShrink: 0,
@@ -368,10 +382,10 @@ function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
         </div>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>AI Builder</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{t("aiPanel.title")}</div>
           <div style={{ fontSize: 10, color: isBuilding ? "var(--accent)" : "var(--green)", display: "flex", alignItems: "center", gap: 3 }}>
             <span style={{ width: 4, height: 4, borderRadius: "50%", background: isBuilding ? "var(--accent)" : "var(--green)", display: "inline-block", animation: isBuilding ? "pulse 1s ease-in-out infinite" : "none" }} />
-            {isBuilding ? "Building…" : "Ready"}
+            {isBuilding ? t("aiPanel.statusBuilding") : t("aiPanel.statusReady")}
           </div>
         </div>
       </div>
@@ -381,14 +395,10 @@ function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
         {messages.length === 0 && (
           <div style={{ textAlign: "center", padding: "24px 8px" }}>
             <div style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.6, marginBottom: 16 }}>
-              Describe what you want to build. I'll create the full application for you.
+              {t("aiPanel.emptyPrompt")}
             </div>
             {/* Suggestions */}
-            {[
-              "Build a CRM for sales",
-              "Create inventory system",
-              "Make a help desk app",
-            ].map(s => (
+            {suggestions.map(s => (
               <button
                 key={s}
                 onClick={() => setInput(s)}
@@ -473,7 +483,7 @@ function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-            placeholder={isBuilding ? "Building in progress…" : "Describe a change…"}
+            placeholder={isBuilding ? t("aiPanel.placeholderBuilding") : t("aiPanel.placeholderReady")}
             disabled={isBuilding}
             rows={2}
             style={{
@@ -513,6 +523,7 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
   onCancel: () => void;
   errorMsg: string | null;
 }) {
+  const { t } = useTranslation("appBuilder");
   return (
     <div style={{
       position: "absolute", inset: 0,
@@ -526,8 +537,8 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
       }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>Building your app with AI</div>
-          <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 6 }}>Sit back, this takes about 30 seconds</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{t("overlay.title")}</div>
+          <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 6 }}>{t("overlay.subtitle")}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {phases.map((phase, i) => (
@@ -561,7 +572,7 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
                 fontSize: 13, fontWeight: phase.status === "running" ? 600 : 400,
                 color: phase.status === "pending" ? "var(--t4)" : phase.status === "done" ? "var(--t2)" : phase.status === "error" ? "var(--red)" : "var(--t1)",
               }}>
-                {phase.label}
+                {t(phase.labelKey)}
               </span>
             </div>
           ))}
@@ -583,7 +594,7 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
               background: "transparent", color: "var(--t4)", fontSize: 12, cursor: "pointer",
             }}
           >
-            {errorMsg ? "Dismiss" : "Cancel"}
+            {errorMsg ? t("overlay.dismiss") : t("overlay.cancel")}
           </button>
         </div>
       </div>
@@ -595,6 +606,7 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
    Main AppBuilderPage
    ══════════════════════════════════════════════════════════════════ */
 export function AppBuilderPage() {
+  const { t } = useTranslation("appBuilder");
   const { setPage } = useAppContext();
   const toast = useToast();
 
@@ -758,7 +770,7 @@ export function AppBuilderPage() {
           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
-          Apps
+          {t("topbar.back")}
         </button>
         <div style={{ width: 1, height: 16, background: "var(--b1)" }} />
 
@@ -773,11 +785,10 @@ export function AppBuilderPage() {
                 background: mode === m ? "var(--bg-surface)" : "transparent",
                 color: mode === m ? "var(--t1)" : "var(--t4)",
                 boxShadow: mode === m ? "var(--shadow-xs)" : "none",
-                textTransform: "capitalize",
                 transition: "all 0.12s",
               }}
             >
-              {m}
+              {t(`modes.${m}`)}
             </button>
           ))}
         </div>
@@ -794,13 +805,13 @@ export function AppBuilderPage() {
           padding: "6px 14px", borderRadius: 8, border: "1px solid var(--b1)",
           background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 500, cursor: "pointer",
         }}>
-          Preview
+          {t("topbar.preview")}
         </button>
         <button style={{
           padding: "6px 14px", borderRadius: 8, border: "1px solid var(--b1)",
           background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 500, cursor: "pointer",
         }}>
-          Share
+          {t("topbar.share")}
         </button>
         <button style={{
           padding: "6px 14px", borderRadius: 8, border: "none",
@@ -808,7 +819,7 @@ export function AppBuilderPage() {
           color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
           boxShadow: "var(--shadow-btn)",
         }}>
-          🚀 Publish
+          {t("topbar.publish")}
         </button>
       </div>
 
@@ -840,11 +851,13 @@ export function AppBuilderPage() {
         }}>
           <div style={{ color: "var(--green)", fontSize: 20 }}>✓</div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>Your app is ready!</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{t("done.title")}</div>
             <div style={{ fontSize: 12, color: "var(--t4)" }}>
               {buildFileCount > 0
-                ? `${buildFileCount} files generated${buildLanguage ? ` · ${buildLanguage}` : ""}`
-                : "App build complete"}
+                ? buildLanguage
+                  ? t("done.filesGeneratedWithLang", { count: buildFileCount, lang: buildLanguage })
+                  : t("done.filesGenerated", { count: buildFileCount })
+                : t("done.buildComplete")}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginLeft: 8 }}>
@@ -852,14 +865,14 @@ export function AppBuilderPage() {
               padding: "7px 14px", borderRadius: 8, border: "1px solid var(--b1)",
               background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer",
             }} onClick={() => setBuildDone(false)}>
-              Dismiss
+              {t("done.dismiss")}
             </button>
             <button style={{
               padding: "7px 16px", borderRadius: 8, border: "none",
               background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
               color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
             }}>
-              🚀 Publish
+              {t("done.publish")}
             </button>
           </div>
         </div>

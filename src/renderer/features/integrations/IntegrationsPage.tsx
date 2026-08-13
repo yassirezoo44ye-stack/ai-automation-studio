@@ -13,6 +13,7 @@
  * in component state after submission.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { useOrg } from "../../contexts/OrgContext";
 import {
@@ -53,13 +54,14 @@ const FRONTEND_CATALOG = [
 /* ── Category metadata ──────────────────────────────────────────── */
 type Category = "all" | "productivity" | "communication" | "data" | "developer" | "payments";
 
-const CATEGORIES: { id: Category; label: string }[] = [
-  { id: "all",          label: "All" },
-  { id: "productivity", label: "Productivity" },
-  { id: "communication",label: "Communication" },
-  { id: "data",         label: "Data & Storage" },
-  { id: "developer",    label: "Developer" },
-  { id: "payments",     label: "Payments" },
+// labelKey maps to "integrations" namespace categories.*
+const CATEGORIES: { id: Category; labelKey: string }[] = [
+  { id: "all",           labelKey: "categories.all"           },
+  { id: "productivity",  labelKey: "categories.productivity"  },
+  { id: "communication", labelKey: "categories.communication" },
+  { id: "data",          labelKey: "categories.data"          },
+  { id: "developer",     labelKey: "categories.developer"     },
+  { id: "payments",      labelKey: "categories.payments"      },
 ];
 
 const CATEGORY_MAP: Record<string, Category> = {
@@ -89,48 +91,51 @@ function categoryFor(id: string, providerType: string): Category {
 }
 
 /* ── Secret form fields per provider type ───────────────────────── */
+// label and placeholder are i18n keys resolved at render time in ConnectModal
 type SecretField = { key: string; label: string; placeholder: string };
 
 function secretFieldsFor(providerType: string): SecretField[] {
   switch (providerType) {
     case "basic_auth":
       return [
-        { key: "username", label: "Username", placeholder: "Enter username" },
-        { key: "password", label: "Password", placeholder: "Enter password" },
+        { key: "username", label: "fields.username", placeholder: "fields.usernamePlaceholder" },
+        { key: "password", label: "fields.password", placeholder: "fields.passwordPlaceholder" },
       ];
     case "jwt":
-      return [{ key: "token", label: "Token", placeholder: "Enter JWT token" }];
+      return [{ key: "token", label: "fields.token", placeholder: "fields.tokenPlaceholder" }];
     case "oauth2":
       return []; // OAuth requires a redirect flow; not supported here
     case "api_key":
     default:
-      return [{ key: "api_key", label: "API Key", placeholder: "Enter API key or secret" }];
+      return [{ key: "api_key", label: "fields.apiKey", placeholder: "fields.apiKeyPlaceholder" }];
   }
 }
 
 /* ── Status pill ────────────────────────────────────────────────── */
 function StatusPill({ status, hasBackend }: { status: Integration["status"]; hasBackend: boolean }) {
+  const { t } = useTranslation("integrations");
+
   if (!hasBackend) {
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: "var(--t4)", padding: "2px 8px", borderRadius: 20, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
-        Coming Soon
+        {t("status.comingSoon")}
       </span>
     );
   }
 
-  const cfg: Record<Integration["status"], { label: string; color: string }> = {
-    connected:     { label: "Connected",      color: "var(--teal)"  },
-    not_connected: { label: "Not Connected",  color: "var(--t4)"    },
-    syncing:       { label: "Syncing…",       color: "var(--accent)"},
-    error:         { label: "Error",          color: "var(--red)"   },
-    degraded:      { label: "Degraded",       color: "var(--yellow)"},
-    unavailable:   { label: "Unavailable",    color: "var(--t5)"    },
+  const cfg: Record<Integration["status"], { labelKey: string; color: string }> = {
+    connected:     { labelKey: "status.connected",     color: "var(--teal)"  },
+    not_connected: { labelKey: "status.notConnected",  color: "var(--t4)"    },
+    syncing:       { labelKey: "status.syncing",       color: "var(--accent)"},
+    error:         { labelKey: "status.error",         color: "var(--red)"   },
+    degraded:      { labelKey: "status.degraded",      color: "var(--yellow)"},
+    unavailable:   { labelKey: "status.unavailable",   color: "var(--t5)"    },
   };
-  const { label, color } = cfg[status] ?? cfg.not_connected;
+  const { labelKey, color } = cfg[status] ?? cfg.not_connected;
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color, padding: "2px 8px", borderRadius: 20, background: `${color}18` }}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, boxShadow: status === "connected" ? `0 0 6px ${color}` : "none" }} />
-      {label}
+      {t(labelKey)}
     </span>
   );
 }
@@ -149,6 +154,7 @@ function ConnectModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const { t } = useTranslation("integrations");
   const fields = secretFieldsFor(provider?.provider_type ?? integration.providerType);
   // Secrets live in local state only for the duration of the modal.
   // They are cleared on submit/close and never stored beyond this component.
@@ -198,27 +204,27 @@ function ConnectModal({
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24 }}>
           <span style={{ fontSize: 36 }}>{integration.icon}</span>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>Connect {integration.name}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{t("modal.title", { name: integration.name })}</div>
             <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 2 }}>{integration.description}</div>
           </div>
         </div>
 
         {isOAuth ? (
           <div style={{ padding: "16px", borderRadius: 10, background: "var(--bg-card)", border: "1px solid var(--b1)", marginBottom: 20, fontSize: 13, color: "var(--t4)", textAlign: "center" }}>
-            OAuth authentication is configured on the server side. Contact your administrator to set up this integration.
+            {t("modal.oauthNote")}
           </div>
         ) : (
           fields.map(field => (
             <div key={field.key} style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
-                {field.label}
+                {t(field.label)}
               </label>
               <input
                 type="password"
                 autoComplete="off"
                 value={secrets[field.key] ?? ""}
                 onChange={e => setSecrets(prev => ({ ...prev, [field.key]: e.target.value }))}
-                placeholder={field.placeholder}
+                placeholder={t(field.placeholder)}
                 style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t1)", fontSize: 14, boxSizing: "border-box", outline: "none" }}
                 onFocus={e => (e.target.style.borderColor = "var(--accent)")}
                 onBlur={e => (e.target.style.borderColor = "var(--b1)")}
@@ -230,7 +236,7 @@ function ConnectModal({
         {/* Available scopes info */}
         {!isOAuth && (provider?.scopes ?? integration.scopes).length > 0 && (
           <div style={{ marginBottom: 16, fontSize: 12, color: "var(--t4)" }}>
-            <span style={{ fontWeight: 600 }}>Scopes: </span>
+            <span style={{ fontWeight: 600 }}>{t("modal.scopesLabel")} </span>
             {(provider?.scopes ?? integration.scopes).map(s => s.label).join(", ")}
           </div>
         )}
@@ -243,7 +249,7 @@ function ConnectModal({
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 8, border: "1px solid var(--b1)", background: "transparent", color: "var(--t2)", fontSize: 14, cursor: "pointer" }}>
-            Cancel
+            {t("modal.cancel")}
           </button>
           {!isOAuth && (
             <button
@@ -254,9 +260,9 @@ function ConnectModal({
               {connecting ? (
                 <>
                   <span style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite", display: "inline-block" }} />
-                  Connecting…
+                  {t("modal.connecting")}
                 </>
-              ) : "Connect"}
+              ) : t("modal.connect")}
             </button>
           )}
         </div>
@@ -275,6 +281,7 @@ function IntegrationCard({
   onConnect: (i: Integration) => void;
   onDisconnect: (id: string) => void;
 }) {
+  const { t } = useTranslation("integrations");
   const { status, hasBackend, connectedAt } = integration;
   const connected   = status === "connected";
   const unavailable = !hasBackend || status === "unavailable";
@@ -315,20 +322,20 @@ function IntegrationCard({
       {/* Connected metadata */}
       {connected && connectedAt && (
         <div style={{ fontSize: 11, color: "var(--t4)" }}>
-          Connected {new Date(connectedAt).toLocaleDateString()}
+          {t("card.connectedAt", { date: new Date(connectedAt).toLocaleDateString() })}
         </div>
       )}
 
       {/* Error detail */}
       {status === "error" && (
-        <div style={{ fontSize: 11, color: "var(--red)" }}>Connection error — reconnect to restore access</div>
+        <div style={{ fontSize: 11, color: "var(--red)" }}>{t("card.connectionError")}</div>
       )}
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
         {unavailable ? (
           <button disabled style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "1px solid var(--b1)", background: "transparent", color: "var(--t5)", fontSize: 13, cursor: "not-allowed" }}>
-            Coming Soon
+            {t("card.comingSoon")}
           </button>
         ) : connected ? (
           <>
@@ -336,13 +343,13 @@ function IntegrationCard({
               onClick={() => onConnect(integration)}
               style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid var(--b1)", background: "transparent", color: "var(--t2)", fontSize: 13, cursor: "pointer", fontWeight: 500 }}
             >
-              Configure
+              {t("card.configure")}
             </button>
             <button
               onClick={() => onDisconnect(integration.id)}
               style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "var(--red)", fontSize: 13, cursor: "pointer", fontWeight: 500 }}
             >
-              Disconnect
+              {t("card.disconnect")}
             </button>
           </>
         ) : (
@@ -350,7 +357,7 @@ function IntegrationCard({
             onClick={() => onConnect(integration)}
             style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: status === "error" ? "var(--red)" : "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
           >
-            {status === "error" ? "Reconnect" : "+ Connect"}
+            {status === "error" ? t("card.reconnect") : t("card.connect")}
           </button>
         )}
       </div>
@@ -360,6 +367,7 @@ function IntegrationCard({
 
 /* ── Main page ───────────────────────────────────────────────────── */
 export function IntegrationsPage() {
+  const { t } = useTranslation("integrations");
   const { currentOrgId, currentOrg, loading: orgLoading } = useOrg();
 
   const [providers, setProviders]           = useState<BackendProvider[]>([]);
@@ -430,9 +438,9 @@ export function IntegrationsPage() {
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: "var(--bg-base)" }}>
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--t5)" strokeWidth="1.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>Select an organisation</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{t("noOrg.title")}</div>
         <div style={{ fontSize: 14, color: "var(--t4)", textAlign: "center", maxWidth: 340 }}>
-          Integrations are org-scoped. Choose an organisation from the sidebar to manage its connections.
+          {t("noOrg.description")}
         </div>
       </div>
     );
@@ -443,10 +451,10 @@ export function IntegrationsPage() {
       {/* ── Top bar ── */}
       <div style={{ padding: "20px 28px", borderBottom: "1px solid var(--b1)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexShrink: 0, background: "var(--bg-surface)" }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--t1)" }}>Integrations</h1>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--t1)" }}>{t("header.title")}</h1>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--t4)" }}>
-            {currentOrg ? `${currentOrg.name} · ` : ""}
-            {connectedCount} of {backendCount} available connected
+            {currentOrg ? t("header.orgPrefix", { orgName: currentOrg.name }) : ""}
+            {t("header.subtitle", { connected: connectedCount, available: backendCount })}
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -458,7 +466,7 @@ export function IntegrationsPage() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search integrations…"
+              placeholder={t("search.placeholder")}
               style={{ padding: "8px 12px 8px 32px", borderRadius: 8, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t1)", fontSize: 13, width: 220, outline: "none" }}
             />
           </div>
@@ -469,7 +477,7 @@ export function IntegrationsPage() {
             style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t2)", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, opacity: loading ? 0.6 : 1 }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Refresh
+            {t("actions.refresh")}
           </button>
         </div>
       </div>
@@ -477,14 +485,14 @@ export function IntegrationsPage() {
       {/* ── Stats row ── */}
       <div style={{ padding: "14px 28px", display: "flex", gap: 14, borderBottom: "1px solid var(--b1)", flexShrink: 0, background: "var(--bg-surface)" }}>
         {[
-          { label: "Connected",   value: connectedCount,                      color: "var(--teal)"  },
-          { label: "Available",   value: backendCount - connectedCount,         color: "var(--t4)"    },
-          { label: "Coming Soon", value: integrations.length - backendCount,    color: "var(--t5)"    },
-          { label: "Total",       value: integrations.length,                   color: "var(--accent)"},
+          { labelKey: "stats.connected",   value: connectedCount,                      color: "var(--teal)"  },
+          { labelKey: "stats.available",   value: backendCount - connectedCount,         color: "var(--t4)"    },
+          { labelKey: "stats.comingSoon",  value: integrations.length - backendCount,    color: "var(--t5)"    },
+          { labelKey: "stats.total",       value: integrations.length,                   color: "var(--accent)"},
         ].map(s => (
-          <div key={s.label} style={{ background: "var(--bg-card)", border: "1px solid var(--b1)", borderRadius: 10, padding: "10px 18px", display: "flex", flexDirection: "column", gap: 2, minWidth: 90 }}>
+          <div key={s.labelKey} style={{ background: "var(--bg-card)", border: "1px solid var(--b1)", borderRadius: 10, padding: "10px 18px", display: "flex", flexDirection: "column", gap: 2, minWidth: 90 }}>
             <span style={{ fontSize: 22, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.value}</span>
-            <span style={{ fontSize: 11, color: "var(--t4)", fontWeight: 500 }}>{s.label}</span>
+            <span style={{ fontSize: 11, color: "var(--t4)", fontWeight: 500 }}>{t(s.labelKey)}</span>
           </div>
         ))}
       </div>
@@ -500,7 +508,7 @@ export function IntegrationsPage() {
               onClick={() => setActiveCategory(cat.id)}
               style={{ padding: "6px 14px", borderRadius: 20, border: active ? "none" : "1px solid var(--b1)", background: active ? "var(--accent)" : "transparent", color: active ? "#fff" : "var(--t2)", fontSize: 13, fontWeight: active ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}
             >
-              {cat.label}
+              {t(cat.labelKey)}
               <span style={{ fontSize: 11, fontWeight: 600, background: active ? "rgba(255,255,255,0.25)" : "var(--bg-card)", padding: "1px 6px", borderRadius: 20, color: active ? "#fff" : "var(--t4)" }}>
                 {count}
               </span>
@@ -513,7 +521,7 @@ export function IntegrationsPage() {
       {error && (
         <div style={{ padding: "12px 28px", background: "var(--red-dim)", borderBottom: "1px solid rgba(239,68,68,0.2)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <span style={{ fontSize: 13, color: "var(--red)" }}>{error}</span>
-          <button onClick={refresh} style={{ fontSize: 12, color: "var(--red)", background: "none", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Retry</button>
+          <button onClick={refresh} style={{ fontSize: 12, color: "var(--red)", background: "none", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>{t("actions.retry")}</button>
         </div>
       )}
 
@@ -528,8 +536,8 @@ export function IntegrationsPage() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", color: "var(--t4)", padding: "60px 0" }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🔌</div>
-            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>No integrations found</div>
-            <div style={{ fontSize: 13 }}>Try a different search or category</div>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>{t("empty.title")}</div>
+            <div style={{ fontSize: 13 }}>{t("empty.description")}</div>
           </div>
         ) : (
           <motion.div

@@ -23,6 +23,7 @@ const STATUS_COLOR: Record<string, string> = {
   active: "var(--green)", building: "var(--blue)", error: "var(--red)", draft: "var(--t4)",
 };
 
+// Static EN prompts for cycling textarea placeholder (UX flourish, not translated)
 const EXAMPLE_PROMPTS = [
   "Build a CRM for my sales team with contacts, deals, and follow-ups",
   "Create an inventory management system with low-stock alerts",
@@ -30,6 +31,15 @@ const EXAMPLE_PROMPTS = [
   "Create a customer support ticketing system with AI triage",
   "Build a project tracker with time logging and team collaboration",
 ];
+
+// labelKey maps to home namespace activity.actions.*
+const ACTION_META: Record<string, { labelKey: string; color: string; icon: React.ReactNode }> = {
+  agent_run:            { labelKey: "activity.actions.agentRun",           color: "var(--accent)", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/></svg> },
+  message_sent:         { labelKey: "activity.actions.messageSent",        color: "var(--blue)",   icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+  build:                { labelKey: "activity.actions.build",              color: "var(--green)",  icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
+  project_created:      { labelKey: "activity.actions.projectCreated",     color: "var(--yellow)", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
+  conversation_created: { labelKey: "activity.actions.conversationCreated",color: "var(--blue)",   icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+};
 
 /* ── Stat card ─────────────────────────────────────────────────────── */
 function StatCard({ label, value, icon, accent }: { label: string; value: string | number; icon: React.ReactNode; accent?: boolean }) {
@@ -64,6 +74,7 @@ function AppCard({ project, onOpen, onDelete }: {
   onOpen: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation("home");
   const { lang } = useLangContext();
   const status = project.status ?? "active";
   const statusColor = STATUS_COLOR[status] ?? "var(--t4)";
@@ -114,7 +125,7 @@ function AppCard({ project, onOpen, onDelete }: {
           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t5)", padding: 4, borderRadius: 6, flexShrink: 0 }}
           onMouseEnter={e => (e.currentTarget.style.color = "var(--red)")}
           onMouseLeave={e => (e.currentTarget.style.color = "var(--t5)")}
-          title="Delete app"
+          title={t("card.deleteTitle")}
           aria-label={`Delete ${project.name}`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -132,7 +143,7 @@ function AppCard({ project, onOpen, onDelete }: {
 
       {/* Footer */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
-        <span style={{ fontSize: 11, color: "var(--t5)" }}>Updated {relTime(project.created_at, lang)}</span>
+        <span style={{ fontSize: 11, color: "var(--t5)" }}>{t("card.updatedAt", { time: relTime(project.created_at, lang) })}</span>
         <button
           onClick={e => { e.stopPropagation(); onOpen(); }}
           style={{
@@ -141,27 +152,18 @@ function AppCard({ project, onOpen, onDelete }: {
             color: "var(--accent)", cursor: "pointer",
           }}
         >
-          Open →
+          {t("card.open")}
         </button>
       </div>
     </motion.div>
   );
 }
 
-/* ── Activity item ─────────────────────────────────────────────────── */
-const ACTION_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  agent_run:            { label: "Agent Run",    color: "var(--accent)", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
-  message_sent:         { label: "Message",      color: "var(--blue)",   icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
-  build:                { label: "Build",        color: "var(--green)",  icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
-  project_created:      { label: "App Created",  color: "var(--yellow)", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
-  conversation_created: { label: "Chat",         color: "var(--blue)",   icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
-};
-
 /* ══════════════════════════════════════════════════════════════════
    Main HomePage
    ══════════════════════════════════════════════════════════════════ */
 export function HomePage() {
-  const { t: _t } = useTranslation("home");
+  const { t } = useTranslation("home");
   const { setPage } = useAppContext();
   const { lang } = useLangContext();
   const toast = useToast();
@@ -222,18 +224,18 @@ export function HomePage() {
       if (!r.ok) throw new Error();
       setNewName(""); setNewDesc(""); setCreating(false);
       projectsQuery.refetch();
-      toast("App created successfully", "ok");
-    } catch { toast("Failed to create app", "err"); }
+      toast(t("toast.created"), "ok");
+    } catch { toast(t("toast.createFailed"), "err"); }
     finally { setSaving(false); }
   }
 
   async function deleteProject(id: string, name: string) {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    if (!confirm(t("card.deleteConfirm", { name }))) return;
     try {
       const r = await apiFetch(`/api/projects/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error();
-      toast(`"${name}" deleted`, "ok");
-    } catch { toast("Failed to delete app", "err"); }
+      toast(t("toast.deleted", { name }), "ok");
+    } catch { toast(t("toast.deleteFailed"), "err"); }
     finally { projectsQuery.refetch(); }
   }
 
@@ -242,6 +244,17 @@ export function HomePage() {
   useEffect(() => {
     apiFetch("/health").then(r => setBackendOk(r.ok)).catch(() => setBackendOk(false));
   }, []);
+
+  // Quick nav items built from translations
+  const quickNavItems = [
+    { labelKey: "quickNav.agents",       page: "agentos"      as const, color: "#6E32E0", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/></svg> },
+    { labelKey: "quickNav.automations",  page: "automation"   as const, color: "#2563EB", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
+    { labelKey: "quickNav.runs",         page: "runs"         as const, color: "#0B7A70", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+    { labelKey: "quickNav.integrations", page: "integrations" as const, color: "#A16207", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> },
+  ];
+
+  // Build idea chips from locale
+  const ideaChips = (t("buildSection.ideas", { returnObjects: true }) as string[]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -253,7 +266,7 @@ export function HomePage() {
         background: "var(--bg-surface)", flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>Dashboard</span>
+          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>{t("header.title")}</span>
           <div style={{
             display: "flex", alignItems: "center", gap: 5, padding: "4px 10px",
             borderRadius: 99, fontSize: 11, fontWeight: 600,
@@ -262,7 +275,12 @@ export function HomePage() {
             border: `1px solid ${backendOk === true ? "rgba(22,163,74,0.2)" : "var(--b1)"}`,
           }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: backendOk === true ? "var(--green)" : "var(--t5)" }} />
-            {backendOk === true ? "Online" : backendOk === false ? "Offline" : "Checking…"}
+            {backendOk === true
+              ? t("header.backendOnline")
+              : backendOk === false
+                ? t("header.backendOffline")
+                : t("header.checking")
+            }
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -276,7 +294,7 @@ export function HomePage() {
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New App
+            {t("header.newApp")}
           </button>
           <button
             onClick={handleBuildApp}
@@ -289,7 +307,7 @@ export function HomePage() {
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            Build with AI
+            {t("header.buildWithAI")}
           </button>
         </div>
       </header>
@@ -303,10 +321,10 @@ export function HomePage() {
           borderRadius: 24, padding: "28px 32px", marginBottom: 28,
         }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "var(--accent)", textTransform: "uppercase", marginBottom: 6 }}>
-            AI Business OS
+            {t("buildSection.label")}
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)", letterSpacing: "-0.5px", margin: "0 0 16px" }}>
-            What do you want to build?
+            {t("buildSection.title")}
           </h1>
           <div style={{ position: "relative" }}>
             <textarea
@@ -344,16 +362,16 @@ export function HomePage() {
                 transition: "all 0.15s",
               }}
             >
-              Build App →
+              {t("buildSection.buildBtn")}
             </button>
           </div>
           {/* Quick ideas */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-            {["CRM", "Inventory", "HR Portal", "Support Tickets", "Project Tracker"].map(idea => (
+            {ideaChips.map(idea => (
               <button
                 key={idea}
                 onClick={() => {
-                  setPrompt(`Build a ${idea.toLowerCase()} system with AI automation`);
+                  setPrompt(t("buildSection.ideaPrompt", { idea }));
                   promptRef.current?.focus();
                 }}
                 style={{
@@ -375,23 +393,23 @@ export function HomePage() {
         {stats && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 28 }}>
             <StatCard
-              label="Apps Built"
+              label={t("stats.appsBuilt")}
               value={stats.projects ?? 0}
               accent
               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>}
             />
             <StatCard
-              label="AI Conversations"
+              label={t("stats.aiConversations")}
               value={stats.conversations ?? 0}
               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
             />
             <StatCard
-              label="Agent Runs"
+              label={t("stats.agentRuns")}
               value={stats.agent_runs ?? 0}
               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
             />
             <StatCard
-              label="Success Rate"
+              label={t("stats.successRate")}
               value={stats.agent_runs ? `${stats.success_rate ?? 0}%` : "—"}
               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>}
             />
@@ -402,9 +420,12 @@ export function HomePage() {
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", margin: 0 }}>Your Apps</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", margin: 0 }}>{t("apps.title")}</h2>
               <p style={{ fontSize: 12, color: "var(--t4)", margin: "4px 0 0" }}>
-                {projects.length > 0 ? `${projects.length} app${projects.length !== 1 ? "s" : ""}` : "No apps yet"}
+                {projects.length > 0
+                  ? t("apps.count", { count: projects.length })
+                  : t("apps.noApps")
+                }
               </p>
             </div>
             {projects.length > 0 && (
@@ -415,7 +436,7 @@ export function HomePage() {
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search apps…"
+                  placeholder={t("apps.search")}
                   style={{
                     paddingLeft: 32, paddingRight: 12, paddingTop: 7, paddingBottom: 7,
                     fontSize: 12, borderRadius: 9, border: "1px solid var(--b1)",
@@ -437,11 +458,11 @@ export function HomePage() {
                   boxShadow: "var(--shadow-glow)",
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", marginBottom: 12 }}>Create New App</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", marginBottom: 12 }}>{t("createForm.title")}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <input
                     value={newName} onChange={e => setNewName(e.target.value)}
-                    placeholder="App name (e.g. Sales CRM)"
+                    placeholder={t("createForm.namePlaceholder")}
                     style={{
                       padding: "10px 14px", fontSize: 13, borderRadius: 10,
                       border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t1)", outline: "none",
@@ -451,7 +472,7 @@ export function HomePage() {
                   />
                   <textarea
                     value={newDesc} onChange={e => setNewDesc(e.target.value)}
-                    placeholder="Brief description (optional)"
+                    placeholder={t("createForm.descPlaceholder")}
                     style={{
                       padding: "10px 14px", fontSize: 12, borderRadius: 10,
                       border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t1)", outline: "none",
@@ -469,7 +490,7 @@ export function HomePage() {
                         opacity: saving || newName.trim().length < 2 ? 0.5 : 1,
                       }}
                     >
-                      {saving ? "Creating…" : "Create App"}
+                      {saving ? t("createForm.creating") : t("createForm.create")}
                     </button>
                     <button
                       onClick={() => { setCreating(false); setNewName(""); setNewDesc(""); }}
@@ -478,7 +499,7 @@ export function HomePage() {
                         background: "transparent", color: "var(--t3)", fontSize: 13, cursor: "pointer",
                       }}
                     >
-                      Cancel
+                      {t("createForm.cancel")}
                     </button>
                   </div>
                 </div>
@@ -492,7 +513,7 @@ export function HomePage() {
               {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 160, borderRadius: 18 }} />)}
             </div>
           ) : projectsQuery.status === "error" ? (
-            <ErrorState message="Failed to load apps" onRetry={projectsQuery.refetch} />
+            <ErrorState message={t("apps.loadError")} onRetry={projectsQuery.refetch} />
           ) : filteredProjects.length === 0 && !creating ? (
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -507,9 +528,9 @@ export function HomePage() {
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8l2 2-2 2M11 12h4"/></svg>
               </div>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>No apps yet</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>{t("apps.emptyTitle")}</div>
                 <div style={{ fontSize: 13, color: "var(--t4)", maxWidth: 280 }}>
-                  Describe what you want to build and let AI create it in seconds.
+                  {t("apps.emptyDesc")}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
@@ -521,7 +542,7 @@ export function HomePage() {
                     color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer",
                   }}
                 >
-                  Build with AI
+                  {t("apps.buildWithAI")}
                 </button>
                 <button
                   onClick={() => setCreating(true)}
@@ -530,7 +551,7 @@ export function HomePage() {
                     background: "transparent", color: "var(--t2)", fontSize: 13, cursor: "pointer",
                   }}
                 >
-                  Create Manually
+                  {t("apps.createManually")}
                 </button>
               </div>
             </div>
@@ -563,16 +584,16 @@ export function HomePage() {
             background: "var(--bg-surface)", border: "1px solid var(--b1)",
             borderRadius: 18, padding: "20px 22px",
           }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 14 }}>Recent Activity</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 14 }}>{t("activity.title")}</div>
             {activity.length === 0 ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 0", gap: 8, color: "var(--t4)" }}>
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-6"/></svg>
-                <span style={{ fontSize: 13 }}>No activity yet</span>
+                <span style={{ fontSize: 13 }}>{t("activity.empty")}</span>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column" }}>
                 {activity.slice(0, 8).map((a, i) => {
-                  const meta = ACTION_META[a.action] ?? { label: a.action, color: "var(--t4)", icon: null };
+                  const meta = ACTION_META[a.action] ?? { labelKey: a.action, color: "var(--t4)", icon: null };
                   return (
                     <div key={i} style={{
                       display: "flex", alignItems: "center", gap: 10, padding: "9px 0",
@@ -587,7 +608,7 @@ export function HomePage() {
                         {meta.icon}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>{meta.label}</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>{t(meta.labelKey)}</div>
                         {a.details.prompt_preview && (
                           <div style={{ fontSize: 11, color: "var(--t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             "{a.details.prompt_preview}"
@@ -604,14 +625,9 @@ export function HomePage() {
 
           {/* Quick navigation panel */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[
-              { label: "Agents", desc: "Manage AI agents", page: "agentos" as const, color: "#6E32E0", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/></svg> },
-              { label: "Automations", desc: "Workflows & triggers", page: "automation" as const, color: "#2563EB", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
-              { label: "Runs", desc: "Monitor executions", page: "runs" as const, color: "#0B7A70", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
-              { label: "Integrations", desc: "Connect your tools", page: "integrations" as const, color: "#A16207", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> },
-            ].map(item => (
+            {quickNavItems.map(item => (
               <button
-                key={item.label}
+                key={item.labelKey}
                 onClick={() => setPage(item.page)}
                 style={{
                   display: "flex", alignItems: "center", gap: 12, padding: "14px 16px",
@@ -630,8 +646,8 @@ export function HomePage() {
                   {item.icon}
                 </div>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{item.label}</div>
-                  <div style={{ fontSize: 11, color: "var(--t4)" }}>{item.desc}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{t(`${item.labelKey}.label`)}</div>
+                  <div style={{ fontSize: 11, color: "var(--t4)" }}>{t(`${item.labelKey}.desc`)}</div>
                 </div>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: "auto", color: "var(--t5)", flexShrink: 0 }}><polyline points="9 18 15 12 9 6"/></svg>
               </button>

@@ -1,0 +1,72 @@
+{
+  "header": {
+    "title": "Integrations",
+    "subtitle": "{{connected}} of {{available}} available connected",
+    "orgPrefix": "{{orgName}} · "
+  },
+  "noOrg": {
+    "title": "Select an organisation",
+    "description": "Integrations are org-scoped. Choose an organisation from the sidebar to manage its connections."
+  },
+  "stats": {
+    "connected": "Connected",
+    "available": "Available",
+    "comingSoon": "Coming Soon",
+    "total": "Total"
+  },
+  "categories": {
+    "all": "All",
+    "productivity": "Productivity",
+    "communication": "Communication",
+    "data": "Data & Storage",
+    "developer": "Developer",
+    "payments": "Payments"
+  },
+  "status": {
+    "comingSoon": "Coming Soon",
+    "connected": "Connected",
+    "notConnected": "Not Connected",
+    "syncing": "Syncing…",
+    "error": "Error",
+    "degraded": "Degraded",
+    "unavailable": "Unavailable"
+  },
+  "card": {
+    "connectedAt": "Connected {{date}}",
+    "connectionError": "Connection error — reconnect to restore access",
+    "configure": "Configure",
+    "disconnect": "Disconnect",
+    "reconnect": "Reconnect",
+    "connect": "+ Connect",
+    "comingSoon": "Coming Soon"
+  },
+  "modal": {
+    "title": "Connect {{name}}",
+    "oauthNote": "OAuth authentication is configured on the server side. Contact your administrator to set up this integration.",
+    "scopesLabel": "Scopes:",
+    "cancel": "Cancel",
+    "connect": "Connect",
+    "connecting": "Connecting…"
+  },
+  "search": {
+    "placeholder": "Search integrations…"
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "retry": "Retry"
+  },
+  "empty": {
+    "title": "No integrations found",
+    "description": "Try a different search or category"
+  },
+  "fields": {
+    "username": "Username",
+    "password": "Password",
+    "token": "Token",
+    "apiKey": "API Key",
+    "usernamePlaceholder": "Enter username",
+    "passwordPlaceholder": "Enter password",
+    "tokenPlaceholder": "Enter JWT token",
+    "apiKeyPlaceholder": "Enter API key or secret"
+  }
+}
