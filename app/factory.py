@@ -450,6 +450,16 @@ def create_app() -> FastAPI:
 
             if (sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer)):
                 pass  # valid subscription token (X-Sub-Token/cookie, or Authorization: Bearer)
+            elif (
+                request.headers.get("Authorization", "").startswith("ApiKey ")
+                or request.headers.get("X-API-Key", "")
+            ):
+                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...)
+                # — defer to the require_api_key() FastAPI dependency on the specific
+                # route. The middleware's job is subscription/JWT gating; actual key
+                # validation and scope enforcement happen in the dependency so they
+                # stay co-located with the endpoint rather than spread across layers.
+                pass
             else:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.
@@ -491,7 +501,7 @@ def create_app() -> FastAPI:
         allow_origins=_cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-Sub-Token", "X-Request-Id", "X-Organization-Id"],
+        allow_headers=["Content-Type", "Authorization", "X-Sub-Token", "X-Request-Id", "X-Organization-Id", "X-API-Key"],
     )
 
     # ── Static frontend (non-catch-all assets first) ────────────────────────
