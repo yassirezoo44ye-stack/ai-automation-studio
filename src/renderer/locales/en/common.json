@@ -1,10 +1,10 @@
 {
   "sidebar": {
-    "groups": { "workspace": "Workspace", "build": "Build", "platform": "Platform", "organization": "Organization" },
+    "groups": { "workspace": "Workspace", "automation": "Automation", "platform": "Platform", "organization": "Organization" },
     "nav": {
-      "home": "Dashboard", "ai": "AI", "dev": "Packages", "design": "Design Studio",
-      "automation": "Automations", "agentos": "Agents", "marketplace": "Marketplace", "plugins": "Plugins", "sandbox": "Integrations",
-      "aiRouting": "AI Gateway", "observability": "Monitoring",
+      "home": "Home", "ai": "AI", "dev": "Dev", "design": "Design",
+      "automation": "Workflows", "agentos": "AgentOS", "marketplace": "Marketplace", "plugins": "Plugins", "sandbox": "Sandbox",
+      "aiRouting": "AI Routing", "observability": "Observability",
       "appBuilder": "App Builder",
       "engineering": "Engineering",
       "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings"
