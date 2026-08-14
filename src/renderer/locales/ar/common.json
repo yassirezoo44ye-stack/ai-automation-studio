@@ -5,6 +5,7 @@
       "home": "الرئيسية", "ai": "الذكاء الاصطناعي", "dev": "التطوير", "design": "التصميم",
       "automation": "سير العمل", "agentos": "نظام الوكلاء", "marketplace": "المتجر", "plugins": "الإضافات", "sandbox": "بيئة الاختبار",
       "aiRouting": "توجيه الذكاء الاصطناعي", "observability": "المراقبة",
+      "appBuilder": "منشئ التطبيقات", "engineering": "هندسة البرمجيات",
       "organizations": "المؤسسات", "teams": "الفرق", "billing": "الفوترة", "social": "التواصل الاجتماعي", "settings": "الإعدادات"
     },
     "mainNav": "التنقل الرئيسي",

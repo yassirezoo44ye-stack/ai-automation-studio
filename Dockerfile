@@ -37,6 +37,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY main.py .
 COPY app_main.py .
 COPY app ./app
+COPY migrations ./migrations
 
 # Copy built frontend from stage 1
 COPY --from=frontend /app/dist ./dist

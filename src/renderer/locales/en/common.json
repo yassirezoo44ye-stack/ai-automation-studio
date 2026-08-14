@@ -6,6 +6,7 @@
       "automation": "Workflows", "agentos": "AgentOS", "marketplace": "Marketplace", "plugins": "Plugins", "sandbox": "Sandbox",
       "aiRouting": "AI Routing", "observability": "Observability",
       "appBuilder": "App Builder",
+      "engineering": "Engineering",
       "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings"
     },
     "mainNav": "Main navigation",

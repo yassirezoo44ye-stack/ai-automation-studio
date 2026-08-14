@@ -27,6 +27,7 @@ const NAV_GROUPS: { groupKey: string; items: NavItem[] }[] = [
   { groupKey: "platform", items: [
     { id: "ai-routing",    navKey: "aiRouting",    icon: "ai-routing"    },
     { id: "observability", navKey: "observability", icon: "observability" },
+    { id: "engineering",   navKey: "engineering",   icon: "engineering"   },
   ]},
   { groupKey: "organization", items: [
     { id: "organizations", navKey: "organizations", icon: "organizations" },
