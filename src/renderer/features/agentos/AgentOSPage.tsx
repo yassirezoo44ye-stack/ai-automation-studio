@@ -135,6 +135,20 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const { steps } = useAgentRunSteps(activeRunId);
   const stepsEndRef = useRef<HTMLDivElement>(null);
 
+  // Active project — resolved from sessionStorage (set by AppBuilderPage on
+  // project create). Passed to every /api/agentos/run call so that agents
+  // like run_agent.py that require a verified project context receive it.
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+    () => sessionStorage.getItem("flow_active_project"),
+  );
+
+  // Keep the displayed project ID in sync if another tab updates it
+  useEffect(() => {
+    const sync = () => setActiveProjectId(sessionStorage.getItem("flow_active_project"));
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+
   useEffect(() => {
     stepsEndRef.current?.scrollIntoView({ block: "nearest" });
   }, [steps]);
@@ -144,6 +158,9 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
     if (!val || loading) return;
     setLoading(true);
     setDelib(null);
+    // Always pass the currently active project so that the `run` agent
+    // (and any other project-scoped agent) has the project context it needs.
+    const projectId = sessionStorage.getItem("flow_active_project") ?? undefined;
     try {
       if (mode === "deliberate") {
         const runId = crypto.randomUUID();
@@ -162,7 +179,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
       } else {
         const runId = crypto.randomUUID();
         setActiveRunId(runId);
-        const res = await agentOsApi.run(val, undefined, runId);
+        const res = await agentOsApi.run(val, undefined, runId, projectId);
         onResult(res);
       }
     } catch (e: unknown) {
@@ -179,7 +196,18 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   return (
     <GlassCard lift={false}>
       <div style={S.cardHeader}>
-        <span>{t("terminal.title")}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span>{t("terminal.title")}</span>
+          {activeProjectId ? (
+            <span style={{ fontSize: 10, color: "var(--green)", fontFamily: "var(--font-mono)" }}>
+              project: {activeProjectId.slice(0, 8)}…
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, color: "var(--yellow)", fontFamily: "var(--font-mono)" }}>
+              {t("terminal.noProject", { defaultValue: "no active project — open App Builder first" })}
+            </span>
+          )}
+        </div>
         <div style={S.row}>
           {(["run", "deliberate", "plan"] as const).map(m => (
             <GoldButton key={m} variant={mode === m ? "primary" : "ghost"} onClick={() => setMode(m)} style={{ padding: "5px 12px", fontSize: 12 }}>
@@ -251,6 +279,14 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
             {ex}
           </GoldButton>
         ))}
+        {/* run example — shows active project id if known */}
+        <GoldButton
+          variant="ghost"
+          onClick={() => setInput(activeProjectId ? `run --project=${activeProjectId}` : "run")}
+          style={{ padding: "4px 10px", fontSize: 11 }}
+        >
+          {activeProjectId ? `run (active project)` : "run"}
+        </GoldButton>
       </div>
     </GlassCard>
   );
