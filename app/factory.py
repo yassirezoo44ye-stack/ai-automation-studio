@@ -59,6 +59,7 @@ from app.routers import sandbox          as sandbox_router
 from app.routers import notifications    as notifications_router
 from app.routers import team_chat        as team_chat_router
 from app.routers import integrations     as integrations_router
+from app.routers import app_builder      as app_builder_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -196,6 +197,32 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await enable_scoped_rls(conn)
 
+    # ── AI Business App Builder — tables + async columns + role permissions ──
+    from migrations.versions.app_builder_schema import upgrade as init_app_builder_schema
+    from migrations.versions.app_builder_async_schema import upgrade as init_app_builder_async_schema
+    from app.tenancy.schema import DEFAULT_PERMISSIONS
+    async with pool.acquire() as conn:
+        await init_app_builder_schema(conn)
+        # Migration 010 — adds async build columns, fixes CHECK constraint,
+        # and enables RLS on both App Builder tables. Idempotent.
+        await init_app_builder_async_schema(conn)
+        # Seed app_builder permissions for manager and developer roles so they
+        # can build apps without needing full-wildcard admin rights.
+        for role, extra_perms in [
+            ("manager",   [("app_builder", "create"), ("app_builder", "read"),
+                           ("app_builder", "update")]),
+            ("developer", [("app_builder", "create"), ("app_builder", "read"),
+                           ("app_builder", "update")]),
+            ("operator",  [("app_builder", "read")]),
+            ("viewer",    [("app_builder", "read")]),
+        ]:
+            for resource, action in extra_perms:
+                await conn.execute(
+                    "INSERT INTO role_permissions (role, resource, action) VALUES ($1,$2,$3) "
+                    "ON CONFLICT DO NOTHING",
+                    role, resource, action,
+                )
+
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
     await get_event_bus().connect()
@@ -223,6 +250,23 @@ async def lifespan(app: FastAPI):
     # ── Background job queue (Redis-backed when available) ──────────────────
     from app.core.jobs import get_job_queue
     get_job_queue(cache=cache)
+
+    # ── Register App Builder background job handler ────────────────────────
+    # Must run AFTER the job queue is initialised with get_job_queue(cache=cache)
+    # above — the import of get_job_queue must be visible before the call site
+    # (UnboundLocalError otherwise: Python sees the local import at line above
+    # and treats the name as local throughout the enclosing function scope).
+    from app.services.app_builder import get_app_builder_service as _get_abs
+    _abs_svc = _get_abs()
+    get_job_queue().register_handler(
+        "app_builder.build", _abs_svc.build_job_handler
+    )
+    # Recover builds that were interrupted by a server restart.  The job
+    # queue only re-dispatches PENDING jobs — RUNNING jobs from the previous
+    # process are orphaned.  This marks any app that has been stuck in
+    # 'building' for longer than the stale thresholds as 'failed' so the
+    # user can trigger a retry rather than waiting forever.
+    await _abs_svc.recover_stale_builds()
 
     # ── Integration SDK — register the example provider + health probe.
     # No real third-party provider is registered here (see
@@ -560,6 +604,7 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router.router)
     app.include_router(team_chat_router.router)
     app.include_router(integrations_router.router)
+    app.include_router(app_builder_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

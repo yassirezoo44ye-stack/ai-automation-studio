@@ -25,7 +25,18 @@
   "preview": {
     "buildingTitle": "AI is building your app…",
     "buildingSubtitle": "Connecting to build server. Sit back and relax.",
-    "typePrompt": "Type a prompt to start building your app"
+    "typePrompt": "Type a prompt to start building your app",
+    "title": "Your app is ready",
+    "tables": "database tables",
+    "pages": "pages",
+    "roles": "roles",
+    "apiOps": "API operations",
+    "workflows": "workflows",
+    "agents": "AI agents",
+    "openApp": "Open App",
+    "editDesign": "Edit in Design Studio",
+    "addAutomation": "Add Automation",
+    "publish": "Publish"
   },
   "aiPanel": {
     "title": "AI Builder",
@@ -62,5 +73,56 @@
     "buildComplete": "App build complete",
     "dismiss": "Dismiss",
     "publish": "🚀 Publish"
+  },
+  "title": "App Builder",
+  "subtitle": "Build business software in minutes with AI",
+  "inputPlaceholder": "Describe the business software you want to build...",
+  "buildApp": "Build App",
+  "buildAutomate": "Build + Automate",
+  "examples": "Examples",
+  "examplesList": [
+    "Build a CRM for my sales team",
+    "Build an inventory management system",
+    "Build an HR portal for 50 employees",
+    "Build a booking system for a clinic",
+    "Build an invoice and customer management system"
+  ],
+  "building": "Building your application...",
+  "steps": {
+    "understanding": "Understanding requirements",
+    "database": "Designing database",
+    "backend": "Creating backend",
+    "pages": "Creating pages",
+    "permissions": "Configuring permissions",
+    "workflows": "Creating workflows",
+    "validating": "Validating application"
+  },
+  "ready": "Application ready",
+  "modify": {
+    "placeholder": "Describe what you want to change or add...",
+    "button": "Apply Changes",
+    "title": "Modify Application"
+  },
+  "versions": {
+    "title": "Version History",
+    "initial": "Initial build"
+  },
+  "warnings": {
+    "title": "Build completed with warnings",
+    "requiresSetup": "requires configuration"
+  },
+  "myApps": "My Apps",
+  "newApp": "New App",
+  "status": {
+    "ready": "Ready",
+    "partial": "Partial",
+    "building": "Building",
+    "failed": "Failed",
+    "pending": "Pending"
+  },
+  "error": {
+    "buildFailed": "Build failed. Please try again.",
+    "specFailed": "Could not generate app specification.",
+    "modifyFailed": "Modification failed. Please try again."
   }
 }

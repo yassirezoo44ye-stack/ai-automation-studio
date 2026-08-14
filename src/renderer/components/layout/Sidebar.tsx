@@ -9,6 +9,7 @@ import type { Page } from "../../types";
 
 type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
+
 /**
  * Navigation groups — three semantic sections + system bottom.
  * "workspace" has no label (top of sidebar, most used).
