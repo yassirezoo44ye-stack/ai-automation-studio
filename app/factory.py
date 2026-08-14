@@ -60,6 +60,9 @@ from app.routers import notifications    as notifications_router
 from app.routers import team_chat        as team_chat_router
 from app.routers import integrations     as integrations_router
 from app.routers import app_builder      as app_builder_router
+from app.routers import missions_api     as missions_api_router
+from app.routers import approvals_api    as approvals_api_router
+from app.routers import evidence_api     as evidence_api_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -196,6 +199,103 @@ async def lifespan(app: FastAPI):
     from app.tenancy import enable_scoped_rls
     async with pool.acquire() as conn:
         await enable_scoped_rls(conn)
+
+    # ── Engineering Control Plane — schema + providers + job handler ────────
+    from app.engineering import init_engineering_schema
+    from app.integrations import get_integration_registry
+    from app.integrations.providers.github import GitHubProvider
+    from app.integrations.providers.render import RenderProvider
+    from app.integrations.providers.vercel import VercelProvider
+    from app.integrations.providers.sentry import SentryProvider
+    async with pool.acquire() as conn:
+        await init_engineering_schema(conn)
+        # Seed engineering permissions for each role (idempotent ON CONFLICT DO NOTHING)
+        _eng_perms = [
+            # (role, action)
+            ("owner",     "engineering", "create"),
+            ("owner",     "engineering", "read"),
+            ("owner",     "engineering", "write"),
+            ("owner",     "engineering", "execute"),
+            ("owner",     "engineering", "approve"),
+            ("owner",     "engineering", "delete"),
+            ("admin",     "engineering", "create"),
+            ("admin",     "engineering", "read"),
+            ("admin",     "engineering", "write"),
+            ("admin",     "engineering", "execute"),
+            ("admin",     "engineering", "approve"),
+            ("manager",   "engineering", "create"),
+            ("manager",   "engineering", "read"),
+            ("manager",   "engineering", "write"),
+            ("manager",   "engineering", "approve"),
+            ("developer", "engineering", "create"),
+            ("developer", "engineering", "read"),
+            ("developer", "engineering", "write"),
+            ("developer", "engineering", "execute"),
+            ("operator",  "engineering", "read"),
+            ("operator",  "engineering", "execute"),
+            ("viewer",    "engineering", "read"),
+        ]
+        for role, resource, action in _eng_perms:
+            await conn.execute(
+                "INSERT INTO role_permissions (role, resource, action) VALUES ($1,$2,$3) "
+                "ON CONFLICT DO NOTHING",
+                role, resource, action,
+            )
+
+    # Register engineering integration providers
+    _eng_registry = get_integration_registry()
+    for _provider in (GitHubProvider(), RenderProvider(), VercelProvider(), SentryProvider()):
+        try:
+            _eng_registry.register(_provider)
+        except Exception:
+            pass  # already registered on hot reload
+
+    # Register the mission_run job handler
+    from app.core.jobs import get_job_queue
+    async def _handle_mission_run(job) -> None:
+        """Background job handler: runs a Release Autopilot pipeline."""
+        from app.engineering.missions import get_mission_service
+        from app.engineering.templates.release_pipeline import build_release_pipeline
+        from app.core.workflow.engine import WorkflowEngine
+        payload    = job.payload
+        mission_id = payload["mission_id"]
+        org_id     = payload["org_id"]
+        svc = get_mission_service()
+        try:
+            await svc.transition(mission_id, org_id=org_id, to_status="RUNNING",
+                                 actor=payload.get("user_id", "system"), reason="job started")
+            wf = build_release_pipeline(
+                mission_id=mission_id,
+                org_id=org_id,
+                user_id=payload.get("user_id", ""),
+                user_role=payload.get("user_role", "developer"),
+                repo=payload["repo"],
+                base_sha=payload["base_sha"],
+                objective=payload.get("objective", ""),
+                render_service_id=payload["render_service_id"],
+                health_url=payload.get("health_url"),
+                base_branch=payload.get("base_branch", "main"),
+                lint_workflow_id=payload.get("lint_workflow_id"),
+                test_workflow_id=payload.get("test_workflow_id"),
+                security_workflow_id=payload.get("security_workflow_id"),
+                build_workflow_id=payload.get("build_workflow_id"),
+            )
+            engine = WorkflowEngine()
+            run = await engine.execute(wf)
+            classification = wf.context.get("classification", "DEVELOPMENT")
+            final_status = "SUCCEEDED" if run.status.value == "completed" else "FAILED"
+            await svc.transition(mission_id, org_id=org_id, to_status=final_status,
+                                 actor="system", reason=f"pipeline {run.status.value}; {classification}")
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger(__name__).error("mission_run job failed: %s", exc, exc_info=True)
+            try:
+                await svc.transition(mission_id, org_id=org_id, to_status="FAILED",
+                                     actor="system", reason=str(exc)[:500])
+            except Exception:
+                pass
+
+    get_job_queue().register_handler("mission_run", _handle_mission_run)
 
     # ── AI Business App Builder — tables + role permissions ─────────────────
     from migrations.versions.app_builder_schema import upgrade as init_app_builder_schema
@@ -584,6 +684,9 @@ def create_app() -> FastAPI:
     app.include_router(team_chat_router.router)
     app.include_router(integrations_router.router)
     app.include_router(app_builder_router.router)
+    app.include_router(missions_api_router.router)
+    app.include_router(approvals_api_router.router)
+    app.include_router(evidence_api_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
