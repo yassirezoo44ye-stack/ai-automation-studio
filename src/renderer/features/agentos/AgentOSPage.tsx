@@ -165,13 +165,13 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
       if (mode === "deliberate") {
         const runId = crypto.randomUUID();
         setActiveRunId(runId);
-        const res = await agentOsApi.deliberate(val, runId);
+        const res = await agentOsApi.deliberate(val, runId, projectId);
         setDelib({ bids: res.deliberation.bids, winner: res.deliberation.winner });
         onResult(res.result);
       } else if (mode === "plan") {
         const runId = crypto.randomUUID();
         setActiveRunId(runId);
-        const res = await agentOsApi.plan(val, runId);
+        const res = await agentOsApi.plan(val, runId, projectId);
         onResult({
           agent: "plan", success: res.success, output: res.plan.join(" → "),
           data: { results: res.results }, duration_ms: 0,

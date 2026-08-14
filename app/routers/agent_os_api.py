@@ -68,10 +68,11 @@ class CollaborateRequest(BaseModel):
 
 
 class PlanRequest(BaseModel):
-    goal     : str
-    workspace: Optional[str] = None
-    caller   : str = "api"
-    run_id   : Optional[str] = None
+    goal      : str
+    workspace : Optional[str] = None
+    caller    : str = "api"
+    run_id    : Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class EvolveRequest(BaseModel):
@@ -191,6 +192,7 @@ async def agentos_plan(req: PlanRequest, request: Request):
     return await get_agent_kernel().plan_and_run(
         req.goal, caller=req.caller, workspace=req.workspace,
         user_id=await optional_user_id(request),
+        project_id=req.project_id,
         organization_id=await optional_org_id(request),
         run_id=req.run_id,
     )
@@ -203,11 +205,12 @@ async def agentos_deliberate(req: RunRequest, request: Request):
     kernel = get_agent_kernel()
     result, vote = await kernel.deliberate_and_run(
         req.input,
-        caller    = req.caller,
-        user_id   = await optional_user_id(request),
-        workspace = req.workspace,
+        caller      = req.caller,
+        user_id     = await optional_user_id(request),
+        workspace   = req.workspace,
+        project_id  = req.project_id,
         organization_id = await optional_org_id(request),
-        run_id    = req.run_id,
+        run_id      = req.run_id,
     )
     return {"result": result.to_dict(), "deliberation": vote}
 
