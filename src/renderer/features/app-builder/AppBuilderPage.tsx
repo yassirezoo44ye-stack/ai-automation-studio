@@ -138,7 +138,7 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
         <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>{projectName || "Your App"}</h2>
         <p style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>Your AI-built application is ready to customize.</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-          {[["Pages", "Pages"], ["Tables", "Tables"], ["Roles", "Roles"], ["Workflows", "Workflows"], ["Integrations", "Integrations"], ["AI Features", "AI Features"]].map(([n, l]) => (
+          {[["Pages", "Pages"], ["Tables", "Tables"], ["Roles", "Roles"], ["Workflows", "Workflows"], ["Integrations", "Integrations"], ["AI Features", "AI Features"]].map(([_n, l]) => (
             <div key={l} style={{ background: "var(--bg-card)", border: "1px solid var(--b1)", borderRadius: 12, padding: "16px", textAlign: "center" }}>
               <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)"}}>—</div>
               <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 4 }}>{l}</div>

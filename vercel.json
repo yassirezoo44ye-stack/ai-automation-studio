@@ -4,5 +4,21 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options",  "value": "nosniff" },
+        { "key": "X-Frame-Options",          "value": "DENY" },
+        { "key": "Referrer-Policy",          "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy",       "value": "geolocation=(), microphone=(), camera=()" },
+        { "key": "Strict-Transport-Security","value": "max-age=31536000; includeSubDomains" },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' https://js.stripe.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://ai-automation-studio.onrender.com wss://ai-automation-studio.onrender.com https://api.stripe.com https://checkout.stripe.com; frame-src https://checkout.stripe.com https://js.stripe.com blob:; font-src 'self' data:;"
+        }
+      ]
+    }
   ]
 }
