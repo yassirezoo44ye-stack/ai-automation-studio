@@ -778,7 +778,7 @@ def _make_kernel_with_deliberation(winner_agent_name: str) -> "AgentKernel":
     winner_agent_name — used to isolate the deliberation-guard logic.
     """
     from app.agents.kernel import AgentKernel
-    from app.agents.deliberation import AgentBid, DeliberationResult
+    from app.agents.deliberation import DeliberationResult
     from app.plugins.registry_guard import OwnershipTracker
 
     class _FakeDelib:
