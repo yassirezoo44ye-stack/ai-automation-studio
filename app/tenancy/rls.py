@@ -51,6 +51,10 @@ _RLS_TABLES: tuple[tuple[str, str], ...] = (
     ("eng_task_transitions",  "organization_id"),
     ("eng_evidence",          "organization_id"),
     ("eng_approvals",         "organization_id"),
+    # App Builder — scoped in migration 010; listed here so enable_scoped_rls()
+    # can re-apply on any boot that runs before migration 010 has set them.
+    ("app_builder_apps", "organization_id"),
+    ("app_builder_versions", "organization_id"),
 )
 
 

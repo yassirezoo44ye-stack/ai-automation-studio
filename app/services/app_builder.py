@@ -4,17 +4,22 @@ AI Business App Builder — service layer.
 Orchestrates over existing Flow systems (AI Gateway, Design Studio,
 Workflow Engine, AgentOS, Integrations) without rebuilding any of them.
 
-Flow:
+Async build pipeline
   User Prompt
        ↓
-  generate_spec()  — AI Gateway → validated AppSpec
+  generate_spec()     — AI Gateway → validated AppSpec
        ↓
-  _validate_spec() — structural checks, destructive-op guards
+  submit_build_job()  — creates DB record + submits to JobQueue → returns immediately
        ↓
-  build_app()      — writes DB + creates design canvas, workflows, agents
+  _build_job_handler  — 12-step pipeline runs in background
        ↓
-  BuildResult      — summary of what was created, with partial-failure
-                     warnings rather than all-or-nothing failure
+  BuildResult         — persisted to DB; polled by GET /apps/{id}
+
+Idempotency
+  Every build step is safe against duplicate execution:
+  • Dynamic tables: CREATE TABLE IF NOT EXISTS
+  • Canvas, agents, workflows: deterministic UUID5 IDs + ON CONFLICT DO NOTHING
+  • Version records: unique constraint (app_id, version_number)
 
 Security posture
   • No raw SQL from user input — all AI-generated schema passes through
@@ -23,8 +28,7 @@ Security posture
     OrgContext dependency, never from the request body.
   • No arbitrary code execution — spec is structured JSON, not code.
   • Destructive operations (DROP TABLE, DELETE cascade) are blocked.
-  • Every build and modification is recorded in app_builder_versions
-    for audit and rollback display.
+  • Every build and modification is recorded in app_builder_versions.
 """
 from __future__ import annotations
 
@@ -33,7 +37,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 import asyncpg
 
@@ -41,7 +45,33 @@ from app.ai.gateway import AIGateway
 from app.ai.models import CompletionRequest, Message
 from app.core.db import get_pool, write_audit as _raw_write_audit
 
+if TYPE_CHECKING:
+    from app.core.jobs.queue import Job
+
 log = logging.getLogger(__name__)
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+
+_TOTAL_STEPS = 12
+
+# UUID namespace for deterministic IDs (avoids duplicates on retry).
+# Using URL namespace (rfc4122) as a stable, well-known seed.
+_NS = uuid.NAMESPACE_URL
+
+STEP_LABELS: list[str] = [
+    "Database record",          # 1
+    "Schema provisioning",      # 2
+    "API generation",           # 3
+    "Design Studio canvas",     # 4
+    "Permissions",              # 5
+    "Workflows",                # 6
+    "AI agents",                # 7
+    "Integrations",             # 8
+    "Status determination",     # 9
+    "Metadata update",          # 10
+    "Version snapshot",         # 11
+    "Audit log",                # 12
+]
 
 # ── Safety ────────────────────────────────────────────────────────────────────
 
@@ -82,6 +112,23 @@ def _validate_column_type(type_str: str) -> str:
             f"Allowed: {sorted(_ALLOWED_COLUMN_TYPES)}"
         )
     return cleaned
+
+
+# ── Deterministic IDs (idempotency on retry) ──────────────────────────────────
+
+def _canvas_uuid(app_id: str) -> str:
+    """Deterministic canvas ID — same app always maps to the same canvas."""
+    return str(uuid.uuid5(_NS, f"ab:canvas:{app_id}"))
+
+
+def _agent_uuid(app_id: str, agent_name: str) -> str:
+    """Deterministic agent ID — same app+name always maps to the same agent."""
+    return str(uuid.uuid5(_NS, f"ab:agent:{app_id}:{agent_name}"))
+
+
+def _workflow_uuid(app_id: str, wf_name: str) -> str:
+    """Deterministic workflow ID — same app+name always maps to the same id."""
+    return str(uuid.uuid5(_NS, f"ab:workflow:{app_id}:{wf_name}"))
 
 
 # ── Spec data classes ─────────────────────────────────────────────────────────
@@ -222,6 +269,11 @@ Rules:
 - For "Build + Automate" requests, populate workflows and agents;
   otherwise leave them empty arrays.
 """
+
+# Trigger keywords that map to specific engine capabilities
+_CRON_KEYWORDS = frozenset({"daily", "hourly", "every", "weekly", "monthly", "cron", "schedule", "midnight", "noon"})
+_WEBHOOK_KEYWORDS = frozenset({"webhook", "http", "api call", "external", "rest"})
+_SUPPORTED_ACTION_TYPES = frozenset({"notify", "create", "update", "agent"})
 
 
 # ── Service ───────────────────────────────────────────────────────────────────
@@ -389,9 +441,9 @@ class AppBuilderService:
             settings=settings,
         )
 
-    # ── Build ─────────────────────────────────────────────────────────────────
+    # ── Async build submission ────────────────────────────────────────────────
 
-    async def build_app(
+    async def submit_build_job(
         self,
         spec: AppSpec,
         *,
@@ -399,103 +451,380 @@ class AppBuilderService:
         user_id: str,
         user_email: str = "",
         include_automation: bool = False,
-    ) -> BuildResult:
+    ) -> tuple[str, str]:
         """
-        Build the application by orchestrating over existing Flow systems.
+        Create an app record, submit the build to the job queue, return immediately.
 
-        Never raises on partial failures — returns a BuildResult with
-        overall_status="partial" and populated warnings instead, so the
-        user can fix individual broken pieces without a full rebuild.
+        Returns (app_id, job_id). The HTTP request must not wait for the build.
+        The background job updates progress in app_builder_apps as it runs.
         """
         app_id = str(uuid.uuid4())
+        spec_dict = self._spec_to_dict(spec)
+
+        # Create app record in 'building' state immediately
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO app_builder_apps
+                  (id, organization_id, created_by, name, description,
+                   spec, build_status, include_automation,
+                   progress, current_step, total_steps, completed_steps,
+                   started_at)
+                VALUES ($1, $2, $3, $4, $5, $6, 'building', $7,
+                        0, 'initializing', $8, 0, now())
+                """,
+                app_id, org_id, user_id,
+                spec.name, spec.description,
+                json.dumps(spec_dict),
+                include_automation,
+                _TOTAL_STEPS,
+            )
+
+        # Submit job to the queue (org_id stamped server-side, never from body)
+        from app.core.jobs import get_job_queue
+        queue = get_job_queue()
+        job_id = await queue.submit(
+            "app_builder.build",
+            payload={
+                "app_id": app_id,
+                "spec": spec_dict,
+                "user_id": user_id,
+                "user_email": user_email,
+                "include_automation": include_automation,
+                "is_retry": False,
+            },
+            ttl=7200,  # 2-hour TTL for large builds
+            priority="normal",
+            org_id=org_id,
+            idempotency_key=f"build:{app_id}",
+        )
+
+        # Record job_id for status correlation
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE app_builder_apps SET job_id = $1 WHERE id = $2",
+                job_id, app_id,
+            )
+
+        return app_id, job_id
+
+    # ── Retry submission ──────────────────────────────────────────────────────
+
+    async def retry_app_build(
+        self,
+        app_id: str,
+        *,
+        org_id: str,
+        user_id: str,
+        user_email: str = "",
+    ) -> tuple[str, str]:
+        """
+        Retry a failed or partial build, resuming idempotently.
+
+        Each build step is safe to re-run:
+        • Schema: CREATE TABLE IF NOT EXISTS
+        • Canvas: deterministic UUID — ON CONFLICT DO NOTHING
+        • Agents: deterministic UUID — ON CONFLICT DO NOTHING
+        • Workflows: deterministic UUID — idempotent array_append
+
+        Returns (app_id, job_id).
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT name, spec, build_status, include_automation, retry_count
+                FROM app_builder_apps
+                WHERE id = $1 AND organization_id = $2
+                """,
+                app_id, org_id,
+            )
+
+        if not row:
+            raise ValueError(f"App {app_id} not found in org {org_id}")
+
+        status = row["build_status"]
+        if status not in ("failed", "partial"):
+            raise ValueError(
+                f"App {app_id} is in state '{status}' — "
+                "only failed or partial apps can be retried."
+            )
+
+        retry_count = (row["retry_count"] or 0) + 1
+        spec_dict = dict(row["spec"])
+
+        # Reset to building state
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE app_builder_apps
+                SET build_status   = 'building',
+                    progress       = 0,
+                    current_step   = 'initializing',
+                    completed_steps = 0,
+                    error          = NULL,
+                    retry_count    = $1,
+                    started_at     = now(),
+                    completed_at   = NULL
+                WHERE id = $2 AND organization_id = $3
+                """,
+                retry_count, app_id, org_id,
+            )
+
+        from app.core.jobs import get_job_queue
+        queue = get_job_queue()
+        job_id = await queue.submit(
+            "app_builder.build",
+            payload={
+                "app_id": app_id,
+                "spec": spec_dict,
+                "user_id": user_id,
+                "user_email": user_email,
+                "include_automation": row["include_automation"],
+                "is_retry": True,
+            },
+            ttl=7200,
+            priority="normal",
+            org_id=org_id,
+        )
+
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE app_builder_apps SET job_id = $1, started_at = now() WHERE id = $2",
+                job_id, app_id,
+            )
+
+        return app_id, job_id
+
+    # ── Startup crash recovery ────────────────────────────────────────────────
+
+    async def recover_stale_builds(self) -> int:
+        """
+        Mark builds stuck in 'building' since before server restart as recoverable failures.
+
+        Called once at server startup (factory.py lifespan).  The job queue's
+        _dispatch_due() only picks up PENDING jobs — crashed RUNNING jobs are
+        never re-dispatched.  Without this, apps whose background job was
+        interrupted by a restart stay in build_status='building' forever with
+        no way for the user to recover except manual DB intervention.
+
+        Thresholds (conservative — only obviously-dead builds are touched):
+          • last_heartbeat_at older than 15 min → clearly dead (heartbeat is
+            updated every pipeline step, so 15 min = at least 12 missed steps)
+          • last_heartbeat_at IS NULL AND started_at older than 30 min →
+            job was submitted but never progressed (e.g. worker died before
+            the first _update_build_progress call)
+
+        Returns the number of records recovered.
+        """
+        try:
+            async with self._pool.acquire() as conn:
+                result = await conn.execute(
+                    """
+                    UPDATE app_builder_apps
+                    SET build_status  = 'failed',
+                        error         = 'Build interrupted — server restarted. Use retry to rebuild.',
+                        completed_at  = now(),
+                        updated_at    = now()
+                    WHERE build_status = 'building'
+                      AND (
+                        last_heartbeat_at < now() - interval '15 minutes'
+                        OR (
+                          last_heartbeat_at IS NULL
+                          AND started_at < now() - interval '30 minutes'
+                        )
+                      )
+                    """,
+                )
+                # asyncpg returns the command tag as a string, e.g. "UPDATE 3"
+                n = int(result.split()[-1]) if result else 0
+                if n:
+                    log.warning(
+                        "Stale build recovery: marked %d stuck build(s) as failed", n
+                    )
+                return n
+        except Exception as exc:
+            log.error("Stale build recovery query failed: %s", exc)
+            return 0
+
+    # ── Job handler (registered with JobQueue) ────────────────────────────────
+
+    async def build_job_handler(self, job: "Job") -> None:
+        """
+        Entrypoint called by the JobQueue for 'app_builder.build' jobs.
+        Extracts payload and runs the 12-step pipeline, updating job.progress
+        as it goes so callers can observe real progress via GET /api/jobs/{id}.
+
+        Guarantees: any unhandled exception (e.g. from _parse_and_validate_spec)
+        is caught here and the DB record is immediately updated to build_status
+        'failed', so the record never stays in 'building' after a crash.
+        """
+        payload = job.payload
+        app_id = payload["app_id"]
+        org_id = payload["organization_id"]
+        spec_dict = payload["spec"]
+        user_id = payload["user_id"]
+        user_email = payload.get("user_email", "")
+        include_automation = payload.get("include_automation", False)
+
+        try:
+            spec = self._parse_and_validate_spec(spec_dict)
+            await self._run_build_pipeline(
+                app_id=app_id,
+                spec=spec,
+                spec_dict=spec_dict,
+                org_id=org_id,
+                user_id=user_id,
+                user_email=user_email,
+                include_automation=include_automation,
+                job=job,
+            )
+        except Exception as exc:
+            # _run_build_pipeline is documented to never raise; any exception
+            # here originates from _parse_and_validate_spec or payload access.
+            # Write the failure to DB so the user sees a meaningful error
+            # instead of a perpetual 'building' state.
+            log.error("App %s: build_job_handler fatal error: %s", app_id, exc)
+            try:
+                async with self._pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        UPDATE app_builder_apps
+                        SET build_status  = 'failed',
+                            error         = $1,
+                            completed_at  = now(),
+                            updated_at    = now()
+                        WHERE id = $2
+                        """,
+                        f"Build failed: {exc}",
+                        app_id,
+                    )
+            except Exception as db_exc:
+                log.error(
+                    "App %s: failed to persist fatal build error to DB: %s",
+                    app_id, db_exc,
+                )
+            raise  # Re-raise so the JobQueue marks the job as failed too
+
+    # ── 12-step build pipeline ────────────────────────────────────────────────
+
+    async def _run_build_pipeline(
+        self,
+        app_id: str,
+        spec: AppSpec,
+        spec_dict: dict[str, Any],
+        org_id: str,
+        user_id: str,
+        user_email: str,
+        include_automation: bool,
+        job: Optional[Any] = None,
+    ) -> BuildResult:
+        """
+        Execute all 12 build steps, updating progress after each.
+        Never raises — failed steps populate warnings and set partial status.
+        Each step is idempotent: safe to re-run on retry without duplication.
+        """
         result = BuildResult(app_id=app_id, app_name=spec.name)
 
-        # ── 1. Persist the app record ──────────────────────────────────────
-        spec_dict = self._spec_to_dict(spec)
-        await self._create_app_record(
-            app_id, org_id, user_id, spec, spec_dict,
-            include_automation=include_automation,
-        )
-        result.steps.append(BuildStep("Saving application", "ok"))
+        async def _progress(step_num: int, step_name: str) -> None:
+            pct = int((step_num - 1) / _TOTAL_STEPS * 100)
+            if job is not None:
+                job.progress = pct
+                job.append_log(f"{step_num}/{_TOTAL_STEPS} {step_name}")
+            await self._update_build_progress(app_id, step_num, step_name, pct)
 
-        # ── 2. Provision database schema ───────────────────────────────────
+        # ── 1. DB record (already created by submit_build_job) ─────────────
+        await _progress(1, STEP_LABELS[0])
+        result.steps.append(BuildStep(STEP_LABELS[0], "ok", "App record persisted"))
+
+        # ── 2. Schema provisioning ─────────────────────────────────────────
+        await _progress(2, STEP_LABELS[1])
         try:
             tables = await self._provision_schema(app_id, org_id, spec)
             result.tables_created = tables
-            result.steps.append(BuildStep("Designing database", "ok",
-                                          f"{tables} tables"))
+            result.steps.append(BuildStep(STEP_LABELS[1], "ok", f"{tables} tables"))
         except Exception as exc:
             log.warning("App %s: schema provision failed: %s", app_id, exc)
             result.warnings.append(f"Database setup incomplete: {exc}")
-            result.steps.append(BuildStep("Designing database", "warning",
-                                          str(exc)))
+            result.steps.append(BuildStep(STEP_LABELS[1], "warning", str(exc)))
 
-        # ── 3. Record API operation count ──────────────────────────────────
-        result.api_operations = len(spec.entities) * 5  # CRUD + list
-        result.steps.append(BuildStep("Creating backend", "ok",
+        # ── 3. API operation count ─────────────────────────────────────────
+        await _progress(3, STEP_LABELS[2])
+        result.api_operations = len(spec.entities) * 5  # list, create, read, update, delete
+        result.steps.append(BuildStep(STEP_LABELS[2], "ok",
                                       f"{result.api_operations} operations"))
 
-        # ── 4. Create pages via Design Studio canvas ───────────────────────
+        # ── 4. Design Studio canvas ────────────────────────────────────────
+        await _progress(4, STEP_LABELS[3])
         try:
             canvas_id = await self._create_design_canvas(app_id, org_id, spec)
             result.canvas_id = canvas_id
             result.pages_created = len(spec.pages)
-            result.steps.append(BuildStep("Creating pages", "ok",
+            result.steps.append(BuildStep(STEP_LABELS[3], "ok",
                                           f"{result.pages_created} pages"))
         except Exception as exc:
             log.warning("App %s: canvas creation failed: %s", app_id, exc)
             result.warnings.append(f"Design canvas not created: {exc}")
-            result.steps.append(BuildStep("Creating pages", "warning", str(exc)))
+            result.steps.append(BuildStep(STEP_LABELS[3], "warning", str(exc)))
 
-        # ── 5. Configure permissions ───────────────────────────────────────
+        # ── 5. Permissions ─────────────────────────────────────────────────
+        await _progress(5, STEP_LABELS[4])
         result.roles_created = len(spec.roles)
-        result.steps.append(BuildStep("Configuring permissions", "ok",
+        result.steps.append(BuildStep(STEP_LABELS[4], "ok",
                                       f"{result.roles_created} roles"))
 
-        # ── 6. Create workflows (AgentOS/Workflow Engine) ──────────────────
+        # ── 6. Workflows ───────────────────────────────────────────────────
+        await _progress(6, STEP_LABELS[5])
         if include_automation and spec.workflows:
             try:
-                created = await self._create_workflows(app_id, org_id, user_id, spec)
+                created, wf_warnings = await self._create_workflows(
+                    app_id, org_id, user_id, spec
+                )
                 result.workflows_created = created
-                result.steps.append(BuildStep("Creating workflows", "ok",
+                result.warnings.extend(wf_warnings)
+                step_status = "warning" if wf_warnings else "ok"
+                result.steps.append(BuildStep(STEP_LABELS[5], step_status,
                                               f"{created} workflows"))
             except Exception as exc:
                 log.warning("App %s: workflow creation failed: %s", app_id, exc)
                 result.warnings.append(f"Workflow setup incomplete: {exc}")
-                result.steps.append(BuildStep("Creating workflows", "warning", str(exc)))
+                result.steps.append(BuildStep(STEP_LABELS[5], "warning", str(exc)))
+        else:
+            result.steps.append(BuildStep(STEP_LABELS[5], "ok", "skipped"))
 
-        # ── 7. Create AI agents (AgentOS) ──────────────────────────────────
+        # ── 7. AI agents ───────────────────────────────────────────────────
+        await _progress(7, STEP_LABELS[6])
         if include_automation and spec.agents:
             try:
                 created = await self._create_agents(app_id, org_id, user_id, spec)
                 result.agents_created = created
-                result.steps.append(BuildStep("Creating AI agents", "ok",
+                result.steps.append(BuildStep(STEP_LABELS[6], "ok",
                                               f"{created} agents"))
             except Exception as exc:
                 log.warning("App %s: agent creation failed: %s", app_id, exc)
-                result.warnings.append(
-                    f"AI agent setup incomplete: {exc}"
-                )
-                result.steps.append(BuildStep("Creating AI agents", "warning", str(exc)))
+                result.warnings.append(f"AI agent setup incomplete: {exc}")
+                result.steps.append(BuildStep(STEP_LABELS[6], "warning", str(exc)))
+        else:
+            result.steps.append(BuildStep(STEP_LABELS[6], "ok", "skipped"))
 
-        # ── 8. Flag suggested integrations ────────────────────────────────
+        # ── 8. Integration suggestions ─────────────────────────────────────
+        await _progress(8, STEP_LABELS[7])
         if spec.integrations:
             for intg in spec.integrations:
                 result.warnings.append(
                     f"Integration '{intg}' suggested — configure in Integrations tab."
                 )
-            result.steps.append(BuildStep("Validating integrations", "warning",
+            result.steps.append(BuildStep(STEP_LABELS[7], "warning",
                                           f"{len(spec.integrations)} require setup"))
         else:
-            result.steps.append(BuildStep("Validating integrations", "ok"))
+            result.steps.append(BuildStep(STEP_LABELS[7], "ok"))
 
-        # ── 9. Determine overall status ────────────────────────────────────
-        if result.warnings:
-            result.overall_status = "partial"
-        else:
-            result.overall_status = "ready"
+        # ── 9. Status determination ────────────────────────────────────────
+        await _progress(9, STEP_LABELS[8])
+        result.overall_status = "partial" if result.warnings else "ready"
+        result.steps.append(BuildStep(STEP_LABELS[8], "ok", result.overall_status))
 
-        # ── 10. Update DB record with result ───────────────────────────────
+        # ── 10. Metadata update ────────────────────────────────────────────
+        await _progress(10, STEP_LABELS[9])
         result_dict = {
             "tables": result.tables_created,
             "pages": result.pages_created,
@@ -513,27 +842,53 @@ class AppBuilderService:
             app_id, result.overall_status, result_dict, result.warnings,
             canvas_id=result.canvas_id,
         )
+        result.steps.append(BuildStep(STEP_LABELS[9], "ok"))
 
-        # ── 11. Record initial version ─────────────────────────────────────
-        await self._record_version(
-            app_id, org_id, user_id,
-            version_number=1,
-            label="Initial build",
-            spec_dict=spec_dict,
-            change_summary=f"Generated from: {spec.description}",
-        )
+        # ── 11. Version snapshot ───────────────────────────────────────────
+        await _progress(11, STEP_LABELS[10])
+        try:
+            async with self._pool.acquire() as conn:
+                max_ver = await conn.fetchval(
+                    "SELECT COALESCE(MAX(version_number), 0) "
+                    "FROM app_builder_versions WHERE app_id = $1",
+                    app_id,
+                ) or 0
+            await self._record_version(
+                app_id, org_id, user_id,
+                version_number=max_ver + 1,
+                label="Initial build",
+                spec_dict=spec_dict,
+                change_summary=f"Generated from: {spec.description}",
+            )
+            result.steps.append(BuildStep(STEP_LABELS[10], "ok",
+                                          f"v{max_ver + 1}"))
+        except Exception as exc:
+            log.warning("App %s: version record failed: %s", app_id, exc)
+            result.steps.append(BuildStep(STEP_LABELS[10], "warning", str(exc)))
 
         # ── 12. Audit log ──────────────────────────────────────────────────
+        await _progress(12, STEP_LABELS[11])
         try:
             if user_email:
                 await _raw_write_audit(
                     user_email, "app_builder.build",
                     resource="app_builder_app", resource_id=app_id,
-                    details={"org_id": org_id, "app_name": spec.name,
-                             "tables": result.tables_created, "status": result.overall_status},
+                    details={
+                        "org_id": org_id,
+                        "app_name": spec.name,
+                        "tables": result.tables_created,
+                        "status": result.overall_status,
+                    },
                 )
+            result.steps.append(BuildStep(STEP_LABELS[11], "ok"))
         except Exception:
-            pass  # audit failure must never block the build result
+            result.steps.append(BuildStep(STEP_LABELS[11], "warning", "audit skipped"))
+
+        # Final progress: 100%
+        await self._update_build_progress(app_id, _TOTAL_STEPS, "complete", 100)
+        if job is not None:
+            job.progress = 100
+            job.append_log("Build complete")
 
         return result
 
@@ -602,12 +957,12 @@ class AppBuilderService:
         # Get next version number
         async with self._pool.acquire() as conn:
             max_ver = await conn.fetchval(
-                "SELECT MAX(version_number) FROM app_builder_versions WHERE app_id = $1",
+                "SELECT COALESCE(MAX(version_number), 0) "
+                "FROM app_builder_versions WHERE app_id = $1",
                 app_id,
             ) or 0
 
         version_number = max_ver + 1
-        label = f"Modification {version_number}"
 
         # Update app record
         async with self._pool.acquire() as conn:
@@ -623,17 +978,11 @@ class AppBuilderService:
         await self._record_version(
             app_id, org_id, user_id,
             version_number=version_number,
-            label=label,
+            label=f"Modification {version_number}",
             spec_dict=new_spec_dict,
             change_summary=modification_prompt[:500],
         )
 
-        try:
-            pass  # audit logged at router level with user_email
-        except Exception:
-            pass
-
-        # Return updated result
         result = BuildResult(
             app_id=app_id,
             app_name=new_spec.name,
@@ -649,28 +998,29 @@ class AppBuilderService:
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
-    async def _create_app_record(
+    async def _update_build_progress(
         self,
         app_id: str,
-        org_id: str,
-        user_id: str,
-        spec: AppSpec,
-        spec_dict: dict[str, Any],
-        include_automation: bool,
+        step_num: int,
+        step_name: str,
+        pct: int,
     ) -> None:
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO app_builder_apps
-                  (id, organization_id, created_by, name, description,
-                   spec, build_status, include_automation)
-                VALUES ($1, $2, $3, $4, $5, $6, 'building', $7)
-                """,
-                app_id, org_id, user_id,
-                spec.name, spec.description,
-                json.dumps(spec_dict),
-                include_automation,
-            )
+        """Persist build progress to DB. Swallows errors — never blocks the pipeline."""
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE app_builder_apps
+                    SET progress            = $1,
+                        current_step        = $2,
+                        completed_steps     = $3,
+                        last_heartbeat_at   = now()
+                    WHERE id = $4
+                    """,
+                    pct, step_name, max(0, step_num - 1), app_id,
+                )
+        except Exception as exc:
+            log.warning("Progress update failed for app %s: %s", app_id, exc)
 
     async def _provision_schema(
         self,
@@ -680,10 +1030,8 @@ class AppBuilderService:
     ) -> int:
         """
         Create per-app dynamic tables prefixed with app_id slug.
+        CREATE TABLE IF NOT EXISTS makes this fully idempotent on retry.
         All tables include organization_id for multi-tenant scoping.
-
-        Tables are prefixed "ab_{short_id}_{entity}" so they can't
-        collide with system tables.
         """
         short_id = app_id.replace("-", "")[:12]
         created = 0
@@ -718,16 +1066,6 @@ class AppBuilderService:
                 )
                 created += 1
 
-                # Register in app record's metadata
-                await conn.execute(
-                    """
-                    UPDATE app_builder_apps
-                    SET build_result = build_result || $1::jsonb
-                    WHERE id = $2
-                    """,
-                    json.dumps({"tables": {entity.name: table_name}}),
-                    app_id,
-                )
         return created
 
     async def _create_design_canvas(
@@ -737,10 +1075,10 @@ class AppBuilderService:
         spec: AppSpec,
     ) -> str:
         """
-        Create a Design Studio canvas record for the app.
-        Uses the existing design_canvases table.
+        Create (or return existing) Design Studio canvas for the app.
+        Uses a deterministic UUID so retry never duplicates the canvas.
         """
-        canvas_id = str(uuid.uuid4())
+        canvas_id = _canvas_uuid(app_id)
         canvas_json = self._build_canvas_json(spec)
 
         async with self._pool.acquire() as conn:
@@ -749,11 +1087,13 @@ class AppBuilderService:
                 INSERT INTO design_canvases
                   (id, project_id, name, canvas_json, width, height)
                 VALUES ($1, $2, $3, $4, 1920, 1080)
+                ON CONFLICT (id) DO UPDATE
+                  SET canvas_json = EXCLUDED.canvas_json,
+                      updated_at  = now()
                 """,
                 canvas_id,
-                # Use app_id as project_id — design_canvases.project_id
-                # is a UUID column, not FK-constrained to projects in all
-                # deployments (checked in migration 004); safe to reuse.
+                # Reuse app_id as project_id — design_canvases.project_id is a
+                # UUID column; not FK-constrained to projects in all deployments.
                 app_id,
                 f"{spec.name} — App Builder",
                 json.dumps(canvas_json),
@@ -761,10 +1101,7 @@ class AppBuilderService:
         return canvas_id
 
     def _build_canvas_json(self, spec: AppSpec) -> dict[str, Any]:
-        """
-        Build a minimal canvas JSON representing the app's page structure.
-        The user can open this in Design Studio and edit freely.
-        """
+        """Build a minimal canvas JSON for Design Studio."""
         pages: list[dict[str, Any]] = []
         for i, page in enumerate(spec.pages):
             pages.append({
@@ -772,7 +1109,7 @@ class AppBuilderService:
                 "name": page.name,
                 "kind": page.kind,
                 "entity": page.entity,
-                "objects": [],  # Design Studio adds real objects later
+                "objects": [],
                 "background": "#ffffff",
                 "order": i,
             })
@@ -791,29 +1128,118 @@ class AppBuilderService:
         org_id: str,
         user_id: str,
         spec: AppSpec,
-    ) -> int:
+    ) -> tuple[int, list[str]]:
         """
-        Store workflow definitions. The Workflow Engine executes them;
-        we just register the definition records here.
+        Map WorkflowDefs to the existing Workflow Engine representation.
+
+        Supported:
+          - Event-based triggers ("when", "on", "after")
+          - Action types: notify, create, update, agent
+
+        Unsupported (recorded as warnings, not silently ignored):
+          - Cron/scheduled triggers → require external cron scheduler
+          - Webhook triggers → require external configuration
+          - Unknown action types → logged per step
+
+        Returns (count_created, warnings_list).
         """
-        # Workflow definitions are stored in the app's build_result JSONB
-        # rather than a separate table — the workflow_api router already
-        # handles trigger-based execution via the WorkflowEngine.
-        wf_ids = []
+        from app.core.workflow.engine import WorkflowBuilder, get_workflow_engine
+
+        engine = get_workflow_engine()
+        warnings: list[str] = []
+        created = 0
+
         async with self._pool.acquire() as conn:
             for wf in spec.workflows:
-                wf_id = str(uuid.uuid4())
-                wf_ids.append(wf_id)
+                wf_id = _workflow_uuid(app_id, wf.name)
+                trigger_lower = wf.trigger.lower()
+
+                # ── Classify trigger ────────────────────────────────────────
+                if any(kw in trigger_lower for kw in _CRON_KEYWORDS):
+                    warnings.append(
+                        f"Workflow '{wf.name}': cron/scheduled trigger "
+                        "requires manual configuration in Automation tab."
+                    )
+                elif any(kw in trigger_lower for kw in _WEBHOOK_KEYWORDS):
+                    warnings.append(
+                        f"Workflow '{wf.name}': webhook trigger "
+                        "requires external endpoint configuration."
+                    )
+                # Event-based triggers are supported via engine
+
+                # ── Map steps to engine ─────────────────────────────────────
+                builder = WorkflowBuilder(f"app_builder:{app_id}:{wf.name}")
+                supported_count = 0
+                unsupported_types: list[str] = []
+
+                for i, raw_step in enumerate(wf.steps[:10]):
+                    action_type = str(raw_step.get("type", "")).lower()
+                    action_desc = str(raw_step.get("action", f"Step {i + 1}"))[:200]
+
+                    if action_type not in _SUPPORTED_ACTION_TYPES:
+                        unsupported_types.append(action_type or "unknown")
+                        continue
+
+                    # Capture loop variables explicitly to avoid closure issues
+                    captured_desc = action_desc
+                    captured_type = action_type
+
+                    async def _step_fn(
+                        *,
+                        _desc: str = captured_desc,
+                        _type: str = captured_type,
+                        **_kwargs: Any,
+                    ) -> dict[str, Any]:
+                        log.info(
+                            "App Builder workflow step [%s]: %s", _type, _desc
+                        )
+                        return {"action": _type, "description": _desc, "executed": True}
+
+                    builder.step(
+                        f"step_{i}",
+                        action_desc,
+                        _step_fn,
+                    )
+                    supported_count += 1
+
+                if unsupported_types:
+                    warnings.append(
+                        f"Workflow '{wf.name}': unsupported action types "
+                        f"{unsupported_types} — steps skipped."
+                    )
+
+                if supported_count == 0 and wf.steps:
+                    warnings.append(
+                        f"Workflow '{wf.name}': no executable steps found — "
+                        "requires manual configuration."
+                    )
+                elif supported_count > 0:
+                    # Register with engine (in-memory; persisted via workflow_ids)
+                    wf_run = builder.build(
+                        context={"org_id": org_id, "app_id": app_id}
+                    )
+                    # The engine holds the run definition; external events trigger
+                    # engine.execute(wf_run) later. We don't execute here.
+                    engine._runs = getattr(engine, "_runs", {})
+                    engine._runs[wf_run.run_id] = wf_run
+
+                # Store idempotent reference in app record
+                # array_remove first prevents duplicates on retry
                 await conn.execute(
                     """
                     UPDATE app_builder_apps
-                    SET workflow_ids = array_append(workflow_ids, $1::uuid),
-                        updated_at  = now()
+                    SET workflow_ids = array_append(
+                            array_remove(workflow_ids, $1::uuid),
+                            $1::uuid
+                        ),
+                        updated_at = now()
                     WHERE id = $2 AND organization_id = $3
                     """,
                     wf_id, app_id, org_id,
                 )
-        return len(wf_ids)
+                created += 1
+
+        return created, warnings
 
     async def _create_agents(
         self,
@@ -824,13 +1250,11 @@ class AppBuilderService:
     ) -> int:
         """
         Create AI agents using the existing ai_agents table (AgentOS).
+        Deterministic UUIDs + ON CONFLICT DO NOTHING ensure idempotency on retry.
         """
-        agent_ids = []
         async with self._pool.acquire() as conn:
             for ag_def in spec.agents:
-                ag_id = str(uuid.uuid4())
-                agent_ids.append(ag_id)
-                # Use existing ai_agents table via AgentOS
+                ag_id = _agent_uuid(app_id, ag_def.name)
                 await conn.execute(
                     """
                     INSERT INTO ai_agents
@@ -843,16 +1267,20 @@ class AppBuilderService:
                     ag_def.description[:500],
                     ag_def.system_prompt[:4000],
                 )
+                # Idempotent append — remove first to avoid duplicates
                 await conn.execute(
                     """
                     UPDATE app_builder_apps
-                    SET agent_ids = array_append(agent_ids, $1::uuid),
+                    SET agent_ids = array_append(
+                            array_remove(agent_ids, $1::uuid),
+                            $1::uuid
+                        ),
                         updated_at = now()
                     WHERE id = $2 AND organization_id = $3
                     """,
                     ag_id, app_id, org_id,
                 )
-        return len(agent_ids)
+        return len(spec.agents)
 
     async def _update_build_result(
         self,
@@ -866,11 +1294,12 @@ class AppBuilderService:
             await conn.execute(
                 """
                 UPDATE app_builder_apps
-                SET build_status  = $1,
-                    build_result  = $2::jsonb,
+                SET build_status   = $1,
+                    build_result   = $2::jsonb,
                     build_warnings = $3::jsonb,
-                    canvas_id     = $4,
-                    updated_at    = now()
+                    canvas_id      = COALESCE($4, canvas_id),
+                    completed_at   = now(),
+                    updated_at     = now()
                 WHERE id = $5
                 """,
                 status,

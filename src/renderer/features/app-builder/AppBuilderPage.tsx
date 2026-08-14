@@ -3,16 +3,26 @@
  *
  * Three panels:
  *  1. PromptPanel   — chat input + examples
- *  2. BuildProgress — live build steps (shown during/after build)
+ *  2. BuildProgress — live progress bar + steps (polled from the server)
  *  3. AppPreview    — build result summary with open/edit/publish actions
  *  4. AppList       — list of existing apps in the org
  */
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
 import * as api from "./api";
-import type { AppSpec, BuildResult, AppRecord, BuildPhase, BuildStep } from "./types";
+import { APIError } from "../../shared/utils/api";
+import type {
+  AppSpec, BuildResult, AppRecord, AppDetail,
+  BuildPhase, BuildStep,
+} from "./types";
+
+/** How often to poll GET /apps/{id} during an active build (ms). */
+const POLL_INTERVAL_MS = 2000;
+
+/** Build_status values that indicate a completed (terminal) build. */
+const TERMINAL_STATUSES = new Set(["ready", "partial", "failed"]);
 
 // ── Build step icons ──────────────────────────────────────────────────────────
 
@@ -32,7 +42,7 @@ function StepIcon({ status }: { status: BuildStep["status"] }) {
       <span style={{ color: "var(--error, #ef4444)", fontSize: 16 }}>✗</span>
     );
   }
-  // pending
+  // pending — spinning ring
   return (
     <span
       style={{
@@ -48,14 +58,57 @@ function StepIcon({ status }: { status: BuildStep["status"] }) {
   );
 }
 
-// ── Progress panel ─────────────────────────────────────────────────────────────
+// ── Progress bar ──────────────────────────────────────────────────────────────
+
+function ProgressBar({ pct, label }: { pct: number; label: string }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: 12,
+          color: "var(--t3)",
+          marginBottom: 6,
+        }}
+      >
+        <span style={{ textTransform: "capitalize" }}>{label}</span>
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
+      </div>
+      <div
+        style={{
+          height: 6,
+          background: "var(--bg-hover)",
+          borderRadius: 3,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            background: "var(--accent)",
+            borderRadius: 3,
+            transition: "width 0.4s ease",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Build progress panel ──────────────────────────────────────────────────────
 
 function BuildProgressPanel({
   steps,
   phase,
+  progress,
+  currentStep,
 }: {
   steps: BuildStep[];
   phase: BuildPhase;
+  progress: number;
+  currentStep: string;
 }) {
   const { t } = useTranslation("appBuilder");
 
@@ -89,11 +142,17 @@ function BuildProgressPanel({
           fontSize: 14,
           fontWeight: 600,
           color: "var(--t2)",
-          marginBottom: 18,
+          marginBottom: 12,
         }}
       >
         {phase === "building" ? t("building") : t("steps.validating")}
       </p>
+
+      {/* Real progress bar — only shown during an active build */}
+      {phase === "building" && (
+        <ProgressBar pct={progress} label={currentStep || "initializing"} />
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {displaySteps.map((step, i) => (
           <div
@@ -126,12 +185,14 @@ function AppPreviewPanel({
   onOpenDesign,
   onModify,
   onNewApp,
+  onRetry,
 }: {
   spec: AppSpec;
   result: BuildResult;
   onOpenDesign: () => void;
   onModify: (prompt: string) => void;
   onNewApp: () => void;
+  onRetry?: () => void;
 }) {
   const { t } = useTranslation("appBuilder");
   const [modifyPrompt, setModifyPrompt] = useState("");
@@ -154,6 +215,7 @@ function AppPreviewPanel({
   };
 
   const isPartial = result.status === "partial";
+  const isFailed = result.status === "failed";
   const statusColor =
     result.status === "ready"
       ? "var(--success, #22c55e)"
@@ -201,7 +263,11 @@ function AppPreviewPanel({
               marginBottom: 4,
             }}
           >
-            {isPartial ? t("warnings.title") : t("preview.title")}
+            {isFailed
+              ? t("status.failed")
+              : isPartial
+              ? t("warnings.title")
+              : t("preview.title")}
           </div>
           <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)", margin: 0 }}>
             {spec.name}
@@ -229,31 +295,33 @@ function AppPreviewPanel({
       </div>
 
       {/* Summary stats */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
-          gap: 12,
-          marginBottom: 24,
-        }}
-      >
-        {summaryItems.map(({ count, label }) => (
-          <div
-            key={label}
-            style={{
-              background: "var(--bg-hover)",
-              borderRadius: 8,
-              padding: "12px 16px",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)" }}>
-              {count}
+      {summaryItems.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+            gap: 12,
+            marginBottom: 24,
+          }}
+        >
+          {summaryItems.map(({ count, label }) => (
+            <div
+              key={label}
+              style={{
+                background: "var(--bg-hover)",
+                borderRadius: 8,
+                padding: "12px 16px",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)" }}>
+                {count}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>{label}</div>
             </div>
-            <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>{label}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Warnings */}
       {result.warnings.length > 0 && (
@@ -277,40 +345,60 @@ function AppPreviewPanel({
 
       {/* Action buttons */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-        <button
-          onClick={onOpenDesign}
-          style={{
-            padding: "10px 20px",
-            background: "var(--accent)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {t("preview.editDesign")}
-        </button>
-        <button
-          onClick={() => setShowModify((v) => !v)}
-          style={{
-            padding: "10px 20px",
-            background: "var(--bg-hover)",
-            color: "var(--t1)",
-            border: "1px solid var(--b1)",
-            borderRadius: 8,
-            fontSize: 14,
-            cursor: "pointer",
-          }}
-        >
-          {t("modify.title")}
-        </button>
+        {!isFailed && (
+          <button
+            onClick={onOpenDesign}
+            style={{
+              padding: "10px 20px",
+              background: "var(--accent)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {t("preview.editDesign")}
+          </button>
+        )}
+        {!isFailed && (
+          <button
+            onClick={() => setShowModify((v) => !v)}
+            style={{
+              padding: "10px 20px",
+              background: "var(--bg-hover)",
+              color: "var(--t1)",
+              border: "1px solid var(--b1)",
+              borderRadius: 8,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            {t("modify.title")}
+          </button>
+        )}
+        {(isPartial || isFailed) && onRetry && (
+          <button
+            onClick={onRetry}
+            style={{
+              padding: "10px 20px",
+              background: "var(--bg-hover)",
+              color: "var(--warning, #f59e0b)",
+              border: "1px solid var(--warning, #f59e0b)",
+              borderRadius: 8,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            {t("retry", "Retry build")}
+          </button>
+        )}
       </div>
 
       {/* Inline modify input */}
       {showModify && (
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
           <input
             type="text"
             value={modifyPrompt}
@@ -366,7 +454,12 @@ function AppPreviewPanel({
           Build log ({result.steps.length} steps)
         </summary>
         <div style={{ marginTop: 10 }}>
-          <BuildProgressPanel steps={result.steps} phase="done" />
+          <BuildProgressPanel
+            steps={result.steps}
+            phase="done"
+            progress={100}
+            currentStep=""
+          />
         </div>
       </details>
     </div>
@@ -388,6 +481,7 @@ function AppCard({
     ready: "var(--success, #22c55e)",
     partial: "var(--warning, #f59e0b)",
     building: "var(--accent)",
+    planning: "var(--accent)",
     failed: "var(--error, #ef4444)",
     pending: "var(--t3)",
   };
@@ -426,7 +520,7 @@ function AppCard({
             padding: "2px 7px",
           }}
         >
-          {t(`status.${app.build_status}` as Parameters<typeof t>[0], app.build_status)}
+          {t(`status.${app.build_status}`, { defaultValue: app.build_status })}
         </span>
       </div>
       {app.description && (
@@ -454,6 +548,30 @@ function AppCard({
   );
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Convert an AppDetail (from GET /apps/{id}) into a BuildResult for AppPreviewPanel. */
+function detailToBuildResult(detail: AppDetail): BuildResult {
+  const br = detail.build_result as Record<string, unknown> | null ?? {};
+  const steps = Array.isArray(br["steps"]) ? (br["steps"] as BuildStep[]) : [];
+  return {
+    app_id: detail.id,
+    app_name: detail.name,
+    status: (detail.build_status as "ready" | "partial" | "failed") ?? "failed",
+    summary: {
+      tables: typeof br["tables"] === "number" ? br["tables"] : 0,
+      pages: typeof br["pages"] === "number" ? br["pages"] : 0,
+      roles: typeof br["roles"] === "number" ? br["roles"] : 0,
+      api_operations: typeof br["api_operations"] === "number" ? br["api_operations"] : 0,
+      workflows: typeof br["workflows"] === "number" ? br["workflows"] : 0,
+      agents: typeof br["agents"] === "number" ? br["agents"] : 0,
+      canvas_id: detail.canvas_id,
+    },
+    steps,
+    warnings: detail.build_warnings ?? [],
+  };
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function AppBuilderPage() {
@@ -469,9 +587,109 @@ export function AppBuilderPage() {
   const [loadingApps, setLoadingApps] = useState(false);
   const [currentAppId, setCurrentAppId] = useState<string | null>(null);
   const [buildSteps, setBuildSteps] = useState<BuildStep[]>([]);
+  const [buildProgress, setBuildProgress] = useState(0);
+  const [buildCurrentStep, setBuildCurrentStep] = useState("initializing");
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /**
+   * Tracks whether the component is still mounted.
+   * The async setInterval callback may fire after unmount — every state
+   * setter call is guarded by isMountedRef.current to prevent the
+   * "Can't perform a React state update on an unmounted component" warning
+   * and any related memory-leak / double-update bugs.
+   */
+  const isMountedRef = useRef(true);
 
   const examples = t("examplesList", { returnObjects: true }) as string[];
+
+  // Track mount state so polling callbacks can bail out after unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current !== null) {
+        clearInterval(pollRef.current);
+      }
+    };
+  }, []);
+
+  // Start polling GET /apps/{id} until build is terminal
+  const startPolling = useCallback(
+    (appId: string) => {
+      if (pollRef.current !== null) {
+        clearInterval(pollRef.current);
+      }
+      pollRef.current = setInterval(async () => {
+        try {
+          const detail: AppDetail = await api.getApp(appId);
+
+          // Guard: component may have unmounted while the request was in flight
+          if (!isMountedRef.current) return;
+
+          const pct = detail.progress ?? 0;
+          const stepName = detail.current_step ?? "";
+          setBuildProgress(pct);
+          setBuildCurrentStep(stepName);
+
+          // Update step list if the server has real steps
+          const serverSteps = Array.isArray(
+            (detail.build_result as Record<string, unknown> | null)?.["steps"],
+          )
+            ? ((detail.build_result as Record<string, unknown>)["steps"] as BuildStep[])
+            : [];
+          if (serverSteps.length > 0) {
+            setBuildSteps(serverSteps);
+          }
+
+          if (TERMINAL_STATUSES.has(detail.build_status)) {
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+
+            if (detail.build_status === "ready" || detail.build_status === "partial") {
+              setSpec(detail.spec);
+              setResult(detailToBuildResult(detail));
+              setPhase("done");
+            } else {
+              // failed
+              setPhase("error");
+              const errMsg = detail.error ?? t("error.buildFailed");
+              toast(errMsg, "err");
+            }
+          }
+        } catch (err) {
+          // Guard: component may have unmounted while the request was in flight
+          if (!isMountedRef.current) return;
+
+          // Determine if this is a permanent error (stop polling) or a
+          // transient one (network glitch / 5xx — keep retrying silently).
+          const status = err instanceof APIError ? err.details.status : 0;
+
+          if (status === 401 || status === 403) {
+            // Auth failure — no point continuing; user must re-authenticate.
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            setPhase("error");
+            toast(t("error.authRequired", "Session expired — please refresh the page"), "err");
+          } else if (status === 404) {
+            // App was deleted while polling — stop silently and reset.
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            setPhase("idle");
+          }
+          // Any other status (0 = network error, 429, 500, 503) → transient;
+          // keep the interval running and retry on the next tick.
+        }
+      }, POLL_INTERVAL_MS);
+    },
+    [t, toast],
+  );
 
   // Load app list
   const loadApps = useCallback(async () => {
@@ -496,78 +714,54 @@ export function AppBuilderPage() {
       setBuildSteps([]);
       setSpec(null);
       setResult(null);
-
-      // Simulate progressive steps while the real build runs
-      const defaultLabels = [
-        t("steps.understanding"),
-        t("steps.database"),
-        t("steps.backend"),
-        t("steps.pages"),
-        t("steps.permissions"),
-        t("steps.workflows"),
-        t("steps.validating"),
-      ];
-      const simulatedSteps: BuildStep[] = defaultLabels.map((label) => ({
-        label,
-        status: "pending",
-        detail: "",
-      }));
-      setBuildSteps([...simulatedSteps]);
-
-      // Animate each step as "running" then wait for API
-      let stepIdx = 0;
-      const stepTimer = setInterval(() => {
-        if (stepIdx < simulatedSteps.length) {
-          simulatedSteps[stepIdx].status = "ok";
-          setBuildSteps([...simulatedSteps]);
-          stepIdx++;
-        } else {
-          clearInterval(stepTimer);
-        }
-      }, 600);
+      setBuildProgress(0);
+      setBuildCurrentStep("initializing");
 
       try {
-        const data = await api.createApp(p, includeAutomation);
-        clearInterval(stepTimer);
-        setSpec(data.spec);
-        setResult(data.result);
-        setCurrentAppId(data.result.app_id);
-        // Replace simulated steps with real ones
-        if (data.result.steps.length > 0) {
-          setBuildSteps(data.result.steps);
-        } else {
-          simulatedSteps.forEach((s) => (s.status = "ok"));
-          setBuildSteps([...simulatedSteps]);
-        }
-        setPhase("done");
+        // POST /apps returns immediately with {id, status, progress, current_step}
+        const resp = await api.createApp(p, includeAutomation);
+        setCurrentAppId(resp.id);
+        // Start polling for real progress
+        startPolling(resp.id);
       } catch (err) {
-        clearInterval(stepTimer);
         setPhase("error");
         toast(t("error.buildFailed"), "err");
-        setBuildSteps((prev) =>
-          prev.map((s, i) =>
-            i === stepIdx
-              ? { ...s, status: "error" }
-              : s.status === "pending"
-              ? s
-              : s,
-          ),
-        );
       }
     },
-    [prompt, t, toast],
+    [prompt, t, toast, startPolling],
   );
+
+  const handleRetry = useCallback(async () => {
+    if (!currentAppId) return;
+    setPhase("building");
+    setBuildSteps([]);
+    setSpec(null);
+    setResult(null);
+    setBuildProgress(0);
+    setBuildCurrentStep("initializing");
+
+    try {
+      await api.retryApp(currentAppId);
+      startPolling(currentAppId);
+    } catch (err) {
+      setPhase("error");
+      toast(t("error.buildFailed"), "err");
+    }
+  }, [currentAppId, t, toast, startPolling]);
 
   const handleModify = useCallback(
     async (modPrompt: string) => {
       if (!currentAppId) return;
       setPhase("building");
+      setBuildProgress(0);
+      setBuildCurrentStep("applying changes");
       try {
         const data = await api.modifyApp(currentAppId, modPrompt);
         setResult(data.result);
         if (data.result.steps.length > 0) {
           setBuildSteps(data.result.steps);
         }
+        setBuildProgress(100);
         setPhase("done");
         toast("App updated successfully", "ok");
       } catch {
@@ -583,10 +777,16 @@ export function AppBuilderPage() {
   }, [setPage]);
 
   const handleNewApp = useCallback(() => {
+    if (pollRef.current !== null) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
     setPhase("idle");
     setSpec(null);
     setResult(null);
     setBuildSteps([]);
+    setBuildProgress(0);
+    setBuildCurrentStep("initializing");
     setPrompt("");
     setCurrentAppId(null);
   }, []);
@@ -625,7 +825,7 @@ export function AppBuilderPage() {
         </p>
       </div>
 
-      {/* Prompt panel — always visible when idle or error */}
+      {/* Prompt panel — visible when idle or after an error */}
       {(phase === "idle" || phase === "error") && (
         <div
           style={{
@@ -775,12 +975,17 @@ export function AppBuilderPage() {
         </div>
       )}
 
-      {/* Build progress */}
-      {(phase === "building" || (phase === "done" && buildSteps.length > 0 && !result)) && (
-        <BuildProgressPanel steps={buildSteps} phase={phase} />
+      {/* Build progress — shown while polling or after completion before result renders */}
+      {phase === "building" && (
+        <BuildProgressPanel
+          steps={buildSteps}
+          phase={phase}
+          progress={buildProgress}
+          currentStep={buildCurrentStep}
+        />
       )}
 
-      {/* App preview after successful build */}
+      {/* App preview after a successful (ready/partial) build */}
       {phase === "done" && spec && result && (
         <AppPreviewPanel
           spec={spec}
@@ -788,10 +993,15 @@ export function AppBuilderPage() {
           onOpenDesign={handleOpenDesign}
           onModify={handleModify}
           onNewApp={handleNewApp}
+          onRetry={
+            result.status === "partial" || result.status === "failed"
+              ? handleRetry
+              : undefined
+          }
         />
       )}
 
-      {/* Existing apps list */}
+      {/* Existing apps list — shown in idle / error state */}
       {(phase === "idle" || phase === "error") && (
         <div style={{ marginTop: 40 }}>
           <div
@@ -832,7 +1042,6 @@ export function AppBuilderPage() {
                   key={app.id}
                   app={app}
                   onSelect={(id) => {
-                    // Navigate to the app detail (for now, show it)
                     setCurrentAppId(id);
                   }}
                 />

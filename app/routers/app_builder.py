@@ -3,31 +3,33 @@ AI Business App Builder — REST router.
 
 Endpoints (all require JWT auth + org membership):
   POST   /api/app-builder/preview-spec          dry-run: return spec only
-  POST   /api/app-builder/apps                  generate spec + build
+  POST   /api/app-builder/apps                  generate spec + submit async build
   GET    /api/app-builder/apps                  list org's apps
-  GET    /api/app-builder/apps/{app_id}         app details + versions
+  GET    /api/app-builder/apps/{app_id}         app detail + progress + versions
+  POST   /api/app-builder/apps/{app_id}/retry   retry a failed/partial build
   POST   /api/app-builder/apps/{app_id}/modify  incremental modification
   DELETE /api/app-builder/apps/{app_id}         soft-delete (owner/admin only)
 
 Security:
   • Every endpoint resolves OrgContext — membership verified in DB.
-  • All writes are scoped to ctx.org_id, never request body.
+  • All writes are scoped to ctx.org_id, never from the request body.
   • No raw SQL or arbitrary code from user input — validation in service.
-  • IDOR: GET/PATCH/DELETE check both app_id AND organization_id.
+  • IDOR: GET/POST/DELETE check both app_id AND organization_id.
+  • Progress/status returned from DB, never fabricated server-side.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.tenancy import OrgContext, require_permission
 from app.services.app_builder import (
-    AppSpec, BuildResult, BuildStep, get_app_builder_service,
+    AppSpec, BuildResult, get_app_builder_service,
 )
-from app.core.db import get_pool, write_audit
+from app.core.db import get_pool
 
 log = logging.getLogger(__name__)
 
@@ -140,18 +142,26 @@ async def create_app(
     ctx: OrgContext = Depends(require_permission("app_builder", "create")),
 ) -> dict[str, Any]:
     """
-    Generate spec + build the full application.
-    Returns a build result summary immediately; building happens synchronously.
+    Generate spec + submit the build job asynchronously.
+
+    Returns immediately with the app ID and initial build state.
+    Poll GET /apps/{id} for live progress updates.
+
+    Response: {"id": "...", "status": "building", "progress": 0, "current_step": "initializing"}
     """
     svc = get_app_builder_service()
     try:
+        # Spec generation runs in the HTTP request so validation errors
+        # (bad prompt, AI refusal) surface before we create any DB records.
         spec = await svc.generate_spec(
             body.prompt,
             include_automation=body.include_automation,
             org_id=ctx.org_id,
             user_id=ctx.user_id,
         )
-        result = await svc.build_app(
+        # Create app record + submit background job — returns (app_id, job_id)
+        # immediately; the pipeline runs in the background.
+        app_id, _job_id = await svc.submit_build_job(
             spec,
             org_id=ctx.org_id,
             user_id=ctx.user_id,
@@ -162,11 +172,13 @@ async def create_app(
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
         log.error("create_app error: %s", exc, exc_info=True)
-        raise HTTPException(500, "App build failed — check logs.") from exc
+        raise HTTPException(500, "App submission failed — check logs.") from exc
 
     return {
-        "spec": _spec_to_response(spec),
-        "result": _result_to_response(result),
+        "id": app_id,
+        "status": "building",
+        "progress": 0,
+        "current_step": "initializing",
     }
 
 
@@ -213,14 +225,22 @@ async def get_app(
     app_id: str,
     ctx: OrgContext = Depends(require_permission("app_builder", "read")),
 ) -> dict[str, Any]:
-    """Return full app details including spec and version history."""
+    """
+    Return full app detail including live build progress and version history.
+
+    Poll this endpoint every 2 seconds while build_status == 'building' to
+    receive live progress updates. Build is terminal when build_status is
+    one of: ready | partial | failed.
+    """
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
             SELECT id, name, description, spec, build_status,
                    build_result, build_warnings, canvas_id,
-                   include_automation, created_at, updated_at
+                   include_automation, created_at, updated_at,
+                   progress, current_step, total_steps, completed_steps,
+                   error, retry_count, started_at, completed_at
             FROM app_builder_apps
             WHERE id = $1 AND organization_id = $2
             """,
@@ -240,6 +260,9 @@ async def get_app(
             app_id,
         )
 
+    def _ts(v: Any) -> Optional[str]:
+        return v.isoformat() if v is not None else None
+
     return {
         "id": str(row["id"]),
         "name": row["name"],
@@ -252,6 +275,16 @@ async def get_app(
         "include_automation": row["include_automation"],
         "created_at": row["created_at"].isoformat(),
         "updated_at": row["updated_at"].isoformat(),
+        # ── Async build progress ──────────────────────────────────────────────
+        "progress": row["progress"] if row["progress"] is not None else 0,
+        "current_step": row["current_step"] or "pending",
+        "total_steps": row["total_steps"] if row["total_steps"] is not None else 12,
+        "completed_steps": row["completed_steps"] if row["completed_steps"] is not None else 0,
+        "error": row["error"],
+        "retry_count": row["retry_count"] if row["retry_count"] is not None else 0,
+        "started_at": _ts(row["started_at"]),
+        "completed_at": _ts(row["completed_at"]),
+        # ── Version history ───────────────────────────────────────────────────
         "versions": [
             {
                 "version_number": v["version_number"],
@@ -261,6 +294,43 @@ async def get_app(
             }
             for v in versions
         ],
+    }
+
+
+@router.post("/apps/{app_id}/retry")
+async def retry_app(
+    app_id: str,
+    ctx: OrgContext = Depends(require_permission("app_builder", "update")),
+) -> dict[str, Any]:
+    """
+    Retry a failed or partially-built app.
+
+    Only apps in 'failed' or 'partial' state can be retried.
+    The build pipeline is idempotent — every step is safe to re-run
+    without creating duplicate resources.
+
+    Response: {"id": "...", "status": "building", "progress": 0, "current_step": "initializing"}
+    """
+    svc = get_app_builder_service()
+    try:
+        _app_id, _job_id = await svc.retry_app_build(
+            app_id,
+            org_id=ctx.org_id,
+            user_id=ctx.user_id,
+            user_email=ctx.user_email,
+        )
+    except ValueError as exc:
+        # Includes "not found", "wrong state", "not in this org"
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        log.error("retry_app %s error: %s", app_id, exc, exc_info=True)
+        raise HTTPException(500, "Retry submission failed — check logs.") from exc
+
+    return {
+        "id": app_id,
+        "status": "building",
+        "progress": 0,
+        "current_step": "initializing",
     }
 
 
