@@ -277,36 +277,43 @@ function AgentGrid({ agents, isRunning }: { agents: AgentInfo[]; isRunning: (nam
             {items.map(a => {
               const rateKind = a.stats.success_rate >= 0.8 ? "green" : a.stats.success_rate >= 0.5 ? "yellow" : "red";
               const running = isRunning(a.name);
+              const statusLabel = running
+                ? t("agentGrid.running")
+                : a.stats.call_count > 0
+                  ? t("agentGrid.idle", { defaultValue: "Idle" })
+                  : t("agentGrid.ready", { defaultValue: "Ready" });
               return (
-                <div key={a.name} style={{
-                  padding: "10px 12px", borderRadius: 8,
-                  background: "var(--bg-base)",
-                  border: `1px solid ${running ? "var(--accent)" : "var(--border)"}`,
-                  transition: "border-color .2s",
-                }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
-                    <span style={{
-                      width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-                      background: running ? "var(--accent)" : "var(--t5)",
-                      animation: running ? "fadeIn .6s ease-in-out infinite alternate" : undefined,
-                    }} />
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</span>
-                    {running && (
-                      <span className="badge badge-purple">{t("agentGrid.running")}</span>
-                    )}
-                    {!running && a.stats.call_count > 0 && (
-                      <span className={`badge badge-${rateKind}`}>{(a.stats.success_rate * 100).toFixed(0)}%</span>
-                    )}
+                <div
+                  key={a.name}
+                  className={`agent-card${running ? " agent-card--running" : ""}`}
+                >
+                  <div className="agent-card__header">
+                    <span className={`agent-card__dot ${running ? "agent-card__dot--running" : "agent-card__dot--idle"}`} />
+                    <span className="agent-card__name">{a.name}</span>
+                    {running
+                      ? <span className="badge badge-purple">{t("agentGrid.running")}</span>
+                      : a.stats.call_count > 0
+                        ? <span className={`badge badge-${rateKind}`}>{(a.stats.success_rate * 100).toFixed(0)}%</span>
+                        : null
+                    }
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--t3)", marginBottom: a.stats.call_count > 0 ? 6 : 0 }}>
-                    {a.description}
+                  <div className="agent-card__desc">{a.description}</div>
+                  <div className="agent-card__meta">
+                    <span style={{ color: running ? "var(--green)" : "var(--t4)", fontWeight: 600 }}>
+                      {statusLabel}
+                    </span>
+                    {a.stats.call_count > 0 && (
+                      <>
+                        <span>·</span>
+                        <span>{a.stats.call_count} {t("agentGrid.runs", { defaultValue: "runs" })}</span>
+                        <span>·</span>
+                        <span>{a.stats.avg_ms.toFixed(0)}ms</span>
+                      </>
+                    )}
                   </div>
                   {a.stats.call_count > 0 && (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <div style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}>
                       <SuccessBar rate={a.stats.success_rate} />
-                      <span style={{ fontSize: 10, color: "var(--t3)", whiteSpace: "nowrap" as const }}>
-                        {a.stats.call_count} calls · {a.stats.avg_ms.toFixed(0)}ms
-                      </span>
                     </div>
                   )}
                 </div>

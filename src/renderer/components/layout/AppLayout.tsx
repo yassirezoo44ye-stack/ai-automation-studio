@@ -7,6 +7,7 @@ import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
 import { CopilotButton } from "../../shared/ui/copilot";
+import { NotificationBell } from "../../shared/ui/notifications";
 import type { Page } from "../../types";
 
 const HomePage        = lazy(() => import("../../features/home").then(m => ({ default: m.HomePage })));
@@ -25,21 +26,108 @@ const PluginsPage       = lazy(() => import("../../features/plugins").then(m => 
 const SandboxPage       = lazy(() => import("../../features/sandbox").then(m => ({ default: m.SandboxPage })));
 const AIRoutingPage     = lazy(() => import("../../features/ai-routing").then(m => ({ default: m.AIRoutingPage })));
 const ObservabilityPage = lazy(() => import("../../features/observability").then(m => ({ default: m.ObservabilityPage })));
-// New Flow pages
 const AppBuilderPage  = lazy(() => import("../../features/app-builder").then(m => ({ default: m.AppBuilderPage })));
 const RunsPage        = lazy(() => import("../../features/runs").then(m => ({ default: m.RunsPage })));
 const IntegrationsPage = lazy(() => import("../../features/integrations").then(m => ({ default: m.IntegrationsPage })));
+
+/** Map page keys → sidebar nav translation keys */
+const PAGE_NAV_KEY: Record<string, string> = {
+  "home":         "home",
+  "ai":           "ai",
+  "dev":          "dev",
+  "design":       "design",
+  "automation":   "automation",
+  "agentos":      "agentos",
+  "marketplace":  "marketplace",
+  "plugins":      "plugins",
+  "sandbox":      "sandbox",
+  "ai-routing":   "aiRouting",
+  "observability":"observability",
+  "organizations":"organizations",
+  "teams":        "teams",
+  "billing":      "billing",
+  "social":       "social",
+  "settings":     "settings",
+  "app-builder":  "appBuilder",
+  "runs":         "runs",
+  "integrations": "integrations",
+};
+
+function SunIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  );
+}
+
+/** Global top bar — breadcrumb + search shortcut + theme + notifications */
+function PageTopBar({ onOpenCmd }: { onOpenCmd: () => void }) {
+  const { t } = useTranslation("common");
+  const { page, theme, toggleTheme } = useAppContext();
+
+  const navKey = PAGE_NAV_KEY[page];
+  const pageTitle = navKey ? t(`sidebar.nav.${navKey}`) : page;
+
+  return (
+    <div className="flow-topbar">
+      <div className="flow-topbar__left">
+        {/* Brand separator */}
+        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: "0.04em", flexShrink: 0 }}>
+          FLOW
+        </span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--b2)", flexShrink: 0 }}>
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+        <span className="flow-topbar__crumb">{pageTitle}</span>
+      </div>
+      <div className="flow-topbar__right">
+        {/* Search shortcut */}
+        <button className="flow-topbar__search" onClick={onOpenCmd} aria-label={t("appLayout.openCommandPalette", { defaultValue: "Open command palette" })}>
+          <SearchIcon />
+          <span style={{ color: "var(--t4)", fontSize: 12 }}>{t("appLayout.search", { defaultValue: "Search…" })}</span>
+          <span className="flow-topbar__kbd">⌘K</span>
+        </button>
+
+        {/* Theme toggle */}
+        <button
+          className="flow-topbar__btn"
+          onClick={toggleTheme}
+          title={theme === "dark" ? t("sidebar.switchToLight") : t("sidebar.switchToDark")}
+          aria-label={theme === "dark" ? t("sidebar.switchToLight") : t("sidebar.switchToDark")}
+        >
+          {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+        </button>
+
+        {/* Notification bell */}
+        <NotificationBell collapsed={false} />
+      </div>
+    </div>
+  );
+}
 
 function WorkspaceContent() {
   const { t } = useTranslation("common");
   const { page } = useAppContext();
   const fallback = <LoadingSpinner fullPage label={t("appLayout.loadingWorkspace")} />;
   return (
-    // Keyed by page: an error on one page must never leak into the next
-    // page's fallback UI. Without a key, ErrorBoundary is the same instance
-    // across navigations and its `hasError` state only ever clears via the
-    // manual Retry button — so a crash on "ai" would keep showing "Error in
-    // ai" chrome after navigating away to "home".
     <ErrorBoundary key={page} name={page}>
       <Suspense fallback={fallback}>
         <PageTransition pageKey={page}>
@@ -59,7 +147,6 @@ function WorkspaceContent() {
           {page === "observability" && <ObservabilityPage />}
           {page === "social"        && <SocialPage />}
           {page === "settings"      && <SettingsPage />}
-          {/* New Flow pages */}
           {page === "app-builder"   && <AppBuilderPage />}
           {page === "runs"          && <RunsPage />}
           {page === "integrations"  && <IntegrationsPage />}
@@ -76,7 +163,6 @@ export function AppLayout() {
   const [cmdOpen,    setCmdOpen]    = useState(false);
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
-  // Global Ctrl+K / Cmd+K opens command palette
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
@@ -96,7 +182,7 @@ export function AppLayout() {
 
   return (
     <>
-      {/* Skip-to-content for keyboard/screen-reader users */}
+      {/* Skip-to-content */}
       <a href="#main-content" className="skip-link">{t("appLayout.skipToContent")}</a>
 
       {/* Mobile hamburger */}
@@ -114,10 +200,12 @@ export function AppLayout() {
       <div className="app-layout">
         <Sidebar mobileOpen={mobileOpen} onMobileClose={closeMobile} />
         <main id="main-content" className="app-main">
-          {/* Only visible while a not-yet-cached page's chunk is loading —
-              near-instant (no visible flash) once every route has been
-              visited once in this session. */}
+          {/* Global top bar */}
+          <PageTopBar onOpenCmd={() => setCmdOpen(v => !v)} />
+
+          {/* Page-switch progress bar */}
           {isPageTransitioning && <div className="page-nav-progress" aria-hidden="true" />}
+
           <WorkspaceContent />
         </main>
       </div>
