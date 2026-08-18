@@ -180,3 +180,101 @@ class TestProjectDataIsolation:
 
         assert res.status_code == 401
         assert "register" in res.json()["detail"].lower()
+
+
+class TestCreateProjectResponseSchema:
+    """POST /api/projects must return the full Project object the frontend Project type expects.
+
+    Regression guard for the schema mismatch where the old endpoint returned
+    {"id": "...", "message": "Project created"} — leaving project.name undefined
+    in AppBuilderPage.tsx and causing setProjectName(undefined) on every new build.
+    """
+
+    def test_create_project_returns_full_project_fields(self):
+        """201 response must include id, name, description, status, created_at, updated_at."""
+        import datetime
+        app = _make_app()
+        pid = uuid.uuid4()
+        now = datetime.datetime(2024, 6, 1, 10, 0, 0, tzinfo=datetime.timezone.utc)
+
+        conn = AsyncMock()
+        # fetchval: SELECT id FROM users WHERE email=$1 (owner_user_id)
+        conn.fetchval = AsyncMock(return_value=OWNER_A_UID)
+        # fetchrow: INSERT INTO projects ... RETURNING id, name, description, status, ...
+        conn.fetchrow = AsyncMock(return_value={
+            "id": pid,
+            "name": "My App",
+            "description": "A todo list app",
+            "status": "active",
+            "created_at": now,
+            "updated_at": now,
+        })
+        conn.execute = AsyncMock(return_value="INSERT 0 1")
+
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.routers.projects.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    "/api/projects",
+                    json={"name": "My App", "description": "A todo list app"},
+                    headers={"X-Sub-Token": ALICE_TOKEN},
+                )
+
+        assert res.status_code == 201, f"Expected 201, got {res.status_code}: {res.text}"
+        body = res.json()
+        # Every field the frontend Project type declares must be present
+        for field in ("id", "name", "description", "status", "created_at", "updated_at"):
+            assert field in body, (
+                f"Missing '{field}' in POST /api/projects response — "
+                "frontend Project type requires it; missing fields become undefined "
+                "and cause setProjectName(undefined) in AppBuilderPage."
+            )
+        assert body["id"] == str(pid)
+        assert body["name"] == "My App"
+        assert body["description"] == "A todo list app"
+        assert body["status"] == "active"
+
+    def test_create_project_no_longer_returns_message_only(self):
+        """Old response shape {id, message} must be gone — name must be in the response."""
+        import datetime
+        app = _make_app()
+        pid = uuid.uuid4()
+        now = datetime.datetime(2024, 6, 1, 10, 0, 0, tzinfo=datetime.timezone.utc)
+
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=OWNER_A_UID)
+        conn.fetchrow = AsyncMock(return_value={
+            "id": pid,
+            "name": "Regression Check",
+            "description": None,
+            "status": "active",
+            "created_at": now,
+            "updated_at": now,
+        })
+        conn.execute = AsyncMock(return_value="INSERT 0 1")
+
+        pool = MagicMock()
+        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.routers.projects.get_pool", return_value=pool), \
+             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
+            with TestClient(app, raise_server_exceptions=False) as c:
+                res = c.post(
+                    "/api/projects",
+                    json={"name": "Regression Check"},
+                    headers={"X-Sub-Token": ALICE_TOKEN},
+                )
+
+        assert res.status_code == 201
+        body = res.json()
+        # Regression: old endpoint returned only {id, message} — name was absent
+        assert "name" in body, (
+            "POST /api/projects regression: response lacks 'name'. "
+            "Old code returned {id, message} only — project.name was undefined "
+            "in AppBuilderPage.tsx after createProject()."
+        )
