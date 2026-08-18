@@ -677,14 +677,37 @@ export function AppBuilderPage() {
     advanceTo(0);
 
     try {
-      // ── Step 1: create project first ──
-      const name = promptToProjectName(prompt);
-      const project = await createProject(name, prompt);
-      setProjectName(project.name);
-      sessionStorage.setItem("flow_active_project", project.id);
+      // ── Step 1: resolve project — reuse active project or create new one.
+      // This is the canonical fix for the "project_id not specified" class of
+      // bugs: the build stream is ALWAYS called with an explicit, owner-verified
+      // project_id. If the user opened an existing app from the Dashboard (which
+      // stored its id in flow_active_project), we build on that project rather
+      // than silently creating a duplicate.
+      let projectId: string;
+      const storedPid = sessionStorage.getItem("flow_active_project");
+      if (storedPid) {
+        try {
+          const existing = await getProject(storedPid);
+          setProjectName(existing.name);
+          projectId = storedPid;
+        } catch {
+          // Project was deleted or is inaccessible — create a fresh one.
+          const name = promptToProjectName(prompt);
+          const project = await createProject(name, prompt);
+          setProjectName(project.name);
+          sessionStorage.setItem("flow_active_project", project.id);
+          projectId = project.id;
+        }
+      } else {
+        const name = promptToProjectName(prompt);
+        const project = await createProject(name, prompt);
+        setProjectName(project.name);
+        sessionStorage.setItem("flow_active_project", project.id);
+        projectId = project.id;
+      }
 
-      // ── Step 2: stream the build ──
-      for await (const event of streamBuild(project.id, prompt, controller.signal)) {
+      // ── Step 2: stream the build — project_id is always set here ──
+      for await (const event of streamBuild(projectId, prompt, controller.signal)) {
         switch (event.type) {
           case "status": {
             statusCount++;

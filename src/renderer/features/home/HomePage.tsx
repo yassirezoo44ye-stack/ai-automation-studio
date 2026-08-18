@@ -19,6 +19,18 @@ import type { Project } from "../../types";
 type ActivityEntry = { action: string; details: Record<string, string>; time: string };
 type StatsResponse = Record<string, number> & { recent_activity?: ActivityEntry[] };
 
+type AgentLive = { status: "running" | "idle" | "error" | string };
+type AgentEntry = {
+  name: string;
+  description: string;
+  live: AgentLive;
+  stats: { run_count: number; fail_count: number };
+};
+type AgentsResponse = { count: number; agents: AgentEntry[] };
+
+type WorkflowRun = { id: string; name: string; status: string; started_at?: string };
+type WorkflowsResponse = { runs: WorkflowRun[] };
+
 const STATUS_COLOR: Record<string, string> = {
   active: "var(--green)", building: "var(--blue)", error: "var(--red)", draft: "var(--t4)",
 };
@@ -169,6 +181,20 @@ export function HomePage() {
   );
   const projects    = projectsQuery.data ?? [];
   const loadingProj = projectsQuery.status === "loading";
+
+  // Active Agents — GET /api/agentos/agents
+  const agentsQuery = useAsyncData<AgentsResponse>(
+    () => apiFetch("/api/agentos/agents").then(r => parseJSON<AgentsResponse>(r, "/api/agentos/agents")),
+    [],
+  );
+  const agents = agentsQuery.data?.agents ?? [];
+
+  // Active Workflow Runs — GET /api/workflows/active
+  const workflowsQuery = useAsyncData<WorkflowsResponse>(
+    () => apiFetch("/api/workflows/active").then(r => parseJSON<WorkflowsResponse>(r, "/api/workflows/active")),
+    [],
+  );
+  const workflowRuns = workflowsQuery.data?.runs ?? [];
 
   const filteredProjects = projects
     .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
@@ -556,6 +582,121 @@ export function HomePage() {
                 ))}
               </AnimatePresence>
             </motion.div>
+          )}
+        </div>
+
+        {/* ── Active Agents ──────────────────────────────────── */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div className="dash-section-title">{t("agents.title")}</div>
+            <button
+              onClick={() => setPage("agentos")}
+              style={{ fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
+            >
+              {t("quickNav.agents.label")} →
+            </button>
+          </div>
+          {agentsQuery.status === "loading" ? (
+            <div style={{ display: "flex", gap: 10 }}>
+              {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 56, borderRadius: 10, flex: 1 }} />)}
+            </div>
+          ) : agents.length === 0 ? (
+            <div style={{
+              padding: "20px 24px", background: "var(--bg-card)", borderRadius: 12,
+              border: "1px dashed var(--b2)", textAlign: "center",
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 3 }}>{t("agents.empty")}</div>
+              <div style={{ fontSize: 11, color: "var(--t5)" }}>{t("agents.emptyDesc")}</div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+              {agents.slice(0, 6).map(ag => {
+                const liveStatus = ag.live?.status ?? "idle";
+                const statusColor = liveStatus === "running" ? "var(--green)" : liveStatus === "error" ? "var(--red)" : "var(--t5)";
+                return (
+                  <div
+                    key={ag.name}
+                    style={{
+                      padding: "12px 14px", background: "var(--bg-card)", borderRadius: 10,
+                      border: `1px solid ${liveStatus === "running" ? "var(--accent-border)" : "var(--b1)"}`,
+                      display: "flex", alignItems: "center", gap: 10,
+                    }}
+                  >
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                      background: liveStatus === "running" ? "var(--accent-dim)" : "var(--bg-base)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: liveStatus === "running" ? "var(--accent)" : "var(--t4)",
+                    }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ag.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
+                        <span style={{ fontSize: 10, color: statusColor, fontWeight: 600, textTransform: "capitalize" }}>
+                          {t(`agents.status.${liveStatus}`, { defaultValue: liveStatus })}
+                        </span>
+                        {ag.stats?.run_count > 0 && (
+                          <span style={{ fontSize: 10, color: "var(--t5)", marginLeft: 4 }}>
+                            {ag.stats.run_count} runs
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Automations ─────────────────────────────────────── */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div className="dash-section-title">{t("automations.title")}</div>
+            <button
+              onClick={() => setPage("automation")}
+              style={{ fontSize: 11, color: "var(--accent)", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
+            >
+              {t("automations.viewAll")} →
+            </button>
+          </div>
+          {workflowsQuery.status === "loading" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {[1, 2].map(i => <div key={i} className="skeleton" style={{ height: 44, borderRadius: 10 }} />)}
+            </div>
+          ) : workflowRuns.length === 0 ? (
+            <div style={{
+              padding: "20px 24px", background: "var(--bg-card)", borderRadius: 12,
+              border: "1px dashed var(--b2)", textAlign: "center",
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 3 }}>{t("automations.empty")}</div>
+              <div style={{ fontSize: 11, color: "var(--t5)" }}>{t("automations.emptyDesc")}</div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {workflowRuns.slice(0, 5).map(run => {
+                const runColor = run.status === "completed" ? "var(--green)" : run.status === "running" ? "var(--accent)" : run.status === "failed" ? "var(--red)" : "var(--t5)";
+                return (
+                  <div
+                    key={run.id}
+                    style={{
+                      padding: "10px 14px", background: "var(--bg-card)", borderRadius: 10,
+                      border: "1px solid var(--b1)", display: "flex", alignItems: "center", gap: 10,
+                    }}
+                  >
+                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: runColor, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                        {run.name}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 10, color: runColor, fontWeight: 600, textTransform: "capitalize", flexShrink: 0 }}>{run.status}</span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 

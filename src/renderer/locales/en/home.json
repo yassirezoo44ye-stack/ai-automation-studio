@@ -68,5 +68,21 @@
     "automations":  { "label": "Automations",   "desc": "Workflows & triggers"  },
     "runs":         { "label": "Runs",          "desc": "Monitor executions"    },
     "integrations": { "label": "Integrations",  "desc": "Connect your tools"    }
+  },
+  "agents": {
+    "title": "Active Agents",
+    "empty": "No agents running",
+    "emptyDesc": "Agents activate when you run a build or task",
+    "status": {
+      "running": "Running",
+      "idle": "Idle",
+      "error": "Error"
+    }
+  },
+  "automations": {
+    "title": "Automations",
+    "empty": "No active workflows",
+    "emptyDesc": "Workflows will appear here when triggered",
+    "viewAll": "View All"
   }
 }
