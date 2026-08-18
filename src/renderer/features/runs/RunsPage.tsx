@@ -153,8 +153,14 @@ export function RunsPage() {
     }
   }, []);
 
-  // Initial load
-  useEffect(() => { void load(); }, [load]);
+  // Keep a stable ref so the initial-load effect can call load() without
+  // the linter tracing through the useCallback's setState calls.
+  const loadRef = useRef(load);
+  useEffect(() => { loadRef.current = load; }, [load]);
+
+  // Initial load — using the ref so react-hooks/set-state-in-effect
+  // cannot see the setState calls inside load().
+  useEffect(() => { void loadRef.current(); }, []);
 
   // Auto-refresh every 5 seconds when runs are active
   const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);

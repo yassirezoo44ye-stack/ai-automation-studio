@@ -304,18 +304,15 @@ function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
 }) {
   const { t } = useTranslation("appBuilder");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [input, setInput]       = useState("");
+  // Lazy initialiser consumes the one-shot Dashboard prompt synchronously,
+  // avoiding a useEffect that would call setInput from inside an effect body.
+  const [input, setInput] = useState<string>(() => {
+    const stored = sessionStorage.getItem("flow_builder_prompt");
+    if (stored) sessionStorage.removeItem("flow_builder_prompt");
+    return stored ?? "";
+  });
   const [loading, setLoading]   = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
-
-  // Load initial prompt from Dashboard
-  useEffect(() => {
-    const stored = sessionStorage.getItem("flow_builder_prompt");
-    if (stored) {
-      sessionStorage.removeItem("flow_builder_prompt");
-      setInput(stored);
-    }
-  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });

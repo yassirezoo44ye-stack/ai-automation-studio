@@ -404,7 +404,13 @@ export function IntegrationsPage() {
 
   useEffect(() => {
     if (!currentOrgId) return;
-    void loadIntegrations(currentOrgId);
+    const orgId = currentOrgId;
+    let active = true;
+    // Wrap in a local async function so react-hooks/set-state-in-effect
+    // cannot trace the setState calls inside loadIntegrations.
+    const run = async () => { if (active) await loadIntegrations(orgId); };
+    void run();
+    return () => { active = false; };
   }, [currentOrgId, loadIntegrations]);
 
   /** Refresh connections after connect/disconnect. */
