@@ -127,10 +127,18 @@ function WorkspaceContent() {
   const { t } = useTranslation("common");
   const { page } = useAppContext();
   const fallback = <LoadingSpinner fullPage label={t("appLayout.loadingWorkspace")} />;
+  // PageTransition (AnimatePresence) must be the OUTER wrapper so that
+  // AnimatePresence is NOT inside the ErrorBoundary that carries key={page}.
+  // Previously the tree was: ErrorBoundary(key=page) > Suspense > PageTransition.
+  // When `page` changed, React immediately unmounted the entire ErrorBoundary
+  // subtree — including the motion.div — then framer-motion's cleanup also
+  // tried to removeChild the same already-removed node → "not a child" crash.
+  // With PageTransition on the outside, AnimatePresence is stable across page
+  // changes; only ErrorBoundary and its children are remounted on key changes.
   return (
-    <ErrorBoundary key={page} name={page}>
-      <Suspense fallback={fallback}>
-        <PageTransition pageKey={page}>
+    <PageTransition pageKey={page}>
+      <ErrorBoundary key={page} name={page}>
+        <Suspense fallback={fallback}>
           {page === "home"          && <HomePage />}
           {page === "ai"            && <AIWorkspace />}
           {page === "dev"           && <DevWorkspace />}
@@ -150,9 +158,9 @@ function WorkspaceContent() {
           {page === "app-builder"   && <AppBuilderPage />}
           {page === "runs"          && <RunsPage />}
           {page === "integrations"  && <IntegrationsPage />}
-        </PageTransition>
-      </Suspense>
-    </ErrorBoundary>
+        </Suspense>
+      </ErrorBoundary>
+    </PageTransition>
   );
 }
 

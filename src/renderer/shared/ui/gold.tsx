@@ -66,6 +66,27 @@ export function GlassCard({
 
 /* ── Dialog ─────────────────────────────────────────────────────────────── */
 
+/**
+ * Stable portal root — created once at module load and never removed by React.
+ * Using a dedicated container (rather than document.body directly) prevents
+ * the double-removeChild crash that happens when AnimatePresence's exit
+ * animation is still running while React unmounts the Dialog's host tree:
+ * React removes the portal node from document.body, then framer-motion's
+ * cleanup tries to remove the same already-gone node → "not a child" error.
+ * A stable container that is never itself removed by React sidesteps this.
+ */
+const _dialogPortalRoot: Element =
+  typeof document !== "undefined"
+    ? (() => {
+        const existing = document.getElementById("g-dialog-portal-root");
+        if (existing) return existing;
+        const el = document.createElement("div");
+        el.id = "g-dialog-portal-root";
+        document.body.appendChild(el);
+        return el;
+      })()
+    : (null as unknown as Element);
+
 export function Dialog({
   open, onClose, title, children, width = 480,
 }: {
@@ -116,7 +137,7 @@ export function Dialog({
         </motion.div>
       )}
     </AnimatePresence>,
-    document.body,
+    _dialogPortalRoot ?? document.body,
   );
 }
 
