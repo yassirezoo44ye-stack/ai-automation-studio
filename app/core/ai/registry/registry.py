@@ -267,8 +267,30 @@ class PlatformProviderRegistry:
     ):
         """Stream from primary provider; emit events; fall back on failure.
         Skips any provider (primary or fallback) whose circuit is open."""
-        chain = [p for p in self.resolve_chain(request) if circuit_breaker.allow(p.provider_id)]
+        raw_chain = self.resolve_chain(request)
+        if not raw_chain:
+            # No providers have API keys configured — operational fix required.
+            log.error(
+                "No AI providers configured. "
+                "Set at least one environment variable: ANTHROPIC_API_KEY, "
+                "OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, "
+                "GROQ_API_KEY, or LOCAL_MODEL_BASE_URL"
+            )
+            yield StreamChunk(type="error", error="No available AI providers — circuits open or none configured.")
+            return
+
+        chain = [p for p in raw_chain if circuit_breaker.allow(p.provider_id)]
         if not chain:
+            # Providers are configured but all circuit breakers are open —
+            # likely caused by repeated API failures (invalid key, quota exceeded,
+            # or network issue). Circuits auto-recover after 30 s of cooldown.
+            blocked = [p.provider_id for p in raw_chain]
+            log.error(
+                "AI provider circuit(s) open, requests blocked: %s. "
+                "Check API key validity and billing status. "
+                "Circuits will auto-recover after the cooldown period.",
+                blocked,
+            )
             yield StreamChunk(type="error", error="No available AI providers — circuits open or none configured.")
             return
 
