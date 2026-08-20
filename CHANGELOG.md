@@ -133,3 +133,8 @@ successful deploy to `main`.
 - fix(auth): remove dead sub_token cookie fallback
 - fix(auth): repair token lifecycle and close auth gaps
 - feat(ai-gateway): migrate agents.py + design.py + tasks.py to InferenceEngine
+
+## v1.0.10
+
+### Fixes
+- harden AI provider diagnostics and migration image validation
