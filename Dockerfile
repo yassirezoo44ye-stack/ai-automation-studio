@@ -39,6 +39,17 @@ COPY app_main.py .
 COPY app ./app
 COPY migrations ./migrations
 
+# ── Build-time assertion: fail immediately if migrations package is missing ────
+# This turns a silent runtime ModuleNotFoundError into a hard build failure so
+# Render never promotes a broken image to production.
+RUN python -c "import migrations; print('migrations package:', migrations.__file__)" \
+ && python -c "from migrations.versions.app_builder_schema import upgrade; print('MIGRATIONS IMPORT OK')" \
+ && python -c "from migrations.versions.app_builder_async_schema import upgrade; print('MIGRATIONS ASYNC IMPORT OK')" \
+ && test -f /app/migrations/__init__.py \
+ && test -f /app/migrations/versions/__init__.py \
+ && test -f /app/migrations/versions/app_builder_schema.py \
+ && test -f /app/migrations/versions/app_builder_async_schema.py
+
 # Copy built frontend from stage 1
 COPY --from=frontend /app/dist ./dist
 COPY --from=frontend /app/public ./public
