@@ -261,6 +261,118 @@ class TestFailoverChainSkipsOpenCircuit(unittest.TestCase):
             platform_registry.unregister("test_ok_provider")
 
 
+# ── ProviderID enum lookup regression (Python 3.11 str() bug) ─────────────
+#
+# Root cause (confirmed in production Python 3.11):
+#   str(ProviderID.anthropic) == "ProviderID.anthropic"   ← wrong key
+#   ProviderID.anthropic.value == "anthropic"              ← correct key
+#
+# The old default() used str(pid), so every ProviderID-typed entry in the
+# iteration order was looked up with the wrong key and returned None — even
+# when ANTHROPIC_API_KEY was set and AnthropicProvider.is_available = True.
+# Fix: use pid.value instead of str(pid).
+
+class TestProviderIdEnumLookupPy311Regression(unittest.TestCase):
+    """Regression: default() must use pid.value, not str(pid), so it finds
+    built-in providers on Python 3.11 where str(StrEnum-like members) returns
+    the qualified class.member string rather than the plain value."""
+
+    def test_str_of_provider_id_enum_is_not_plain_value(self):
+        """Documents the Python 3.11 str() behaviour that caused the bug.
+        str(ProviderID.anthropic) is NOT "anthropic" on Python 3.11 — it is
+        "ProviderID.anthropic".  Code must never use str() for dict lookup."""
+        from app.ai.models import ProviderID
+        # .value is always the plain string regardless of Python version
+        self.assertEqual(ProviderID.anthropic.value, "anthropic")
+        self.assertEqual(ProviderID.openai.value,    "openai")
+        self.assertEqual(ProviderID.gemini.value,    "gemini")
+        # str() produces the qualified name on Python 3.11+ — wrong for lookup
+        # (on Python 3.12+ this may change again, but .value is always stable)
+        import sys
+        if sys.version_info >= (3, 11):
+            self.assertNotEqual(str(ProviderID.anthropic), "anthropic",
+                msg="This confirms the Python 3.11 bug exists in this runtime; "
+                    "the fix must use pid.value not str(pid)")
+
+    def test_provider_dict_lookup_with_value_finds_provider(self):
+        """Simulates the fixed default() lookup: _providers keyed by plain
+        string, ProviderID.value also plain string → lookup succeeds."""
+        from app.ai.models import ProviderID
+        providers = {"anthropic": "AnthropicProvider", "openai": "OpenAIProvider"}
+        # .value lookup — always correct
+        self.assertEqual(providers.get(ProviderID.anthropic.value), "AnthropicProvider")
+        self.assertEqual(providers.get(ProviderID.openai.value),    "OpenAIProvider")
+
+    def test_provider_dict_lookup_with_str_fails_on_py311(self):
+        """The broken lookup: str(ProviderID.anthropic) returns the wrong key
+        on Python 3.11, so get() returns None even when the key is present."""
+        from app.ai.models import ProviderID
+        import sys
+        providers = {"anthropic": "AnthropicProvider"}
+        if sys.version_info >= (3, 11):
+            self.assertIsNone(providers.get(str(ProviderID.anthropic)),
+                msg="Confirms str(enum) produces wrong lookup key on Python 3.11")
+
+    def test_default_returns_anthropic_when_api_key_set(self):
+        """default() must return AnthropicProvider when ANTHROPIC_API_KEY is
+        set, regardless of whether other provider keys are absent."""
+        from unittest.mock import patch
+        from app.core.ai.registry.registry import PlatformProviderRegistry
+        # Use a dummy value — we only need is_available to be True
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test-key"}, clear=False):
+            reg = PlatformProviderRegistry()
+            provider = reg.default()
+            self.assertEqual(provider.provider_id, "anthropic")
+
+    def test_default_raises_when_no_key_set(self):
+        """default() must raise RuntimeError when no provider keys are set."""
+        from unittest.mock import patch
+        from app.core.ai.registry.registry import PlatformProviderRegistry
+        no_keys = {k: "" for k in (
+            "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY",
+            "OPENROUTER_API_KEY", "GROQ_API_KEY", "LOCAL_MODEL_BASE_URL",
+        )}
+        with patch.dict("os.environ", no_keys, clear=False):
+            reg = PlatformProviderRegistry()
+            with self.assertRaises(RuntimeError):
+                reg.default()
+
+    def test_available_includes_anthropic_when_api_key_set(self):
+        """registry.available() must include 'anthropic' when key is set."""
+        from unittest.mock import patch
+        from app.core.ai.registry.registry import PlatformProviderRegistry
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test-key"}, clear=False):
+            reg = PlatformProviderRegistry()
+            self.assertIn("anthropic", reg.available())
+
+    def test_resolve_chain_not_empty_when_anthropic_key_set(self):
+        """resolve_chain() must return a non-empty list when ANTHROPIC_API_KEY
+        is set and no explicit provider is specified (mirrors build.py path)."""
+        from unittest.mock import patch
+        from app.core.ai.registry.registry import PlatformProviderRegistry
+        from app.ai.models import CompletionRequest, Message
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test-key"}, clear=False):
+            reg = PlatformProviderRegistry()
+            # Matches build.py: no provider specified, default chain
+            req   = CompletionRequest(messages=[Message(role="user", content="hi")])
+            chain = reg.resolve_chain(req)
+            self.assertGreater(len(chain), 0,
+                "resolve_chain() returned [] even though ANTHROPIC_API_KEY is set — "
+                "this is the Python 3.11 str(enum) regression")
+            self.assertEqual(chain[0].provider_id, "anthropic")
+
+    def test_closed_circuit_does_not_block_provider(self):
+        """A CLOSED circuit must allow the provider through both resolve_chain
+        and stream_with_events.  circuit_breaker.allow() returns True for
+        providers that have never failed (their circuit starts CLOSED)."""
+        from app.ai.circuit_breaker import circuit_breaker
+        from app.core.reliability import CircuitState
+        # Fresh circuit state for "anthropic" is CLOSED
+        state = circuit_breaker._get("anthropic").state
+        self.assertEqual(state, CircuitState.CLOSED)
+        self.assertTrue(circuit_breaker.allow("anthropic"))
+
+
 # ── Reconciled model/pricing catalog ────────────────────────────────────────
 
 class TestReconciledCatalog(unittest.TestCase):
