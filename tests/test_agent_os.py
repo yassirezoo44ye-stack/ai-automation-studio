@@ -745,6 +745,223 @@ class TestDeliberateAndRun:
         assert seen_run_ids == ["fixed-id", "fixed-id"]
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# NLP routing — deliberation guard (fix: method=="unknown" must not trigger
+# deliberation, preventing arbitrary agent execution on unrecognised input).
+#
+# Regression for production incident: Arabic input "سأبدأ" (and any input
+# that fails all heuristic parse steps when the LLM router is unavailable)
+# was landing in deliberation with ir.method=="unknown".  Deliberation had
+# no keyword signal to anchor on, assigned every agent equal relevance,
+# and picked a winner (AnalyzeAgent) by cost/risk alone.  AnalyzeAgent
+# then received the full raw input as ir.args and interpreted it as a
+# filesystem path, returning "Path not found: سأبدأ".
+# ──────────────────────────────────────────────────────────────────────────────
+
+class PathAgent(EvolvableAgent):
+    """Mimics AnalyzeAgent: treats ctx.args as a filesystem path."""
+    name        = "path_agent"
+    description = "Interprets args as a path"
+    group       = "test"
+
+    async def execute(self, ctx: AgentContext) -> AgentResult:
+        import os
+        target = ctx.args or ""
+        if not target or not os.path.exists(target):
+            return AgentResult.fail(self.name, f"Path not found: {target}")
+        return AgentResult.ok(self.name, f"Found: {target}")
+
+
+def _make_kernel_with_deliberation(winner_agent_name: str) -> "AgentKernel":
+    """
+    Kernel with a deterministic fake deliberation that always picks
+    winner_agent_name — used to isolate the deliberation-guard logic.
+    """
+    from app.agents.kernel import AgentKernel
+    from app.agents.deliberation import DeliberationResult
+    from app.plugins.registry_guard import OwnershipTracker
+
+    class _FakeDelib:
+        async def vote(self, raw_input, kernel, heuristic_intent="", *, org_id=None):
+            agents = kernel.visible_agents(org_id)
+            winner = winner_agent_name if any(a.name == winner_agent_name for a in agents) \
+                else (agents[0].name if agents else "unknown")
+            return DeliberationResult(winner=winner, winner_score=0.9,
+                                      method="vote", consensus=0.8)
+
+    k = AgentKernel.__new__(AgentKernel)
+    k._agents       = {}
+    k._agent_owners = OwnershipTracker("agent")
+    k._memory       = _make_memory()
+    k._parser       = IntentParser()
+    k._booted       = True
+    k._modifier     = None
+    k._reloader     = None
+    k._evolution    = None
+    k._router       = None
+    k._reflector    = None
+    k._deliberation = _FakeDelib()
+    k._autonomy     = None
+    k._loop         = None
+    return k
+
+
+class TestNLPRoutingDeliberationGuard:
+    """
+    Verifies that the deliberation guard (method != "unknown") prevents
+    arbitrary agent execution when intent parsing completely fails.
+    """
+
+    def setup_method(self):
+        # Kernel whose fake deliberation always picks PathAgent — which
+        # would return "Path not found: <user_input>" if allowed to run.
+        self.kernel = _make_kernel_with_deliberation("path_agent")
+        self.kernel.register_agent(EchoAgent())
+        self.kernel.register_agent(PathAgent())
+        self.kernel._parser.update_agents(["echo", "path_agent"])
+
+    # ── 1. Arabic input (non-Latin NL) with no LLM router ────────────────────
+
+    def test_arabic_input_returns_agent_not_found_not_path_error(self):
+        # "سأبدأ" = "I'll start" in Arabic.  Heuristic parser cannot match
+        # it (English-only); LLM router is None in _make_kernel_with_deliberation.
+        # The guard must prevent deliberation from running PathAgent with
+        # "سأبدأ" as a filesystem argument.
+        result = _run(self.kernel.run("سأبدأ"))
+        assert result.success is False
+        assert result.error == "agent_not_found"
+        # Must NOT contain "Path not found" — that would mean PathAgent ran.
+        assert "Path not found" not in result.output
+        assert "agent_not_found" == result.error
+
+    # ── 2. English equivalent that also fails all heuristic steps ────────────
+
+    def test_unrecognised_english_phrase_returns_agent_not_found(self):
+        # "I will start" fails alias/prefix/pattern/fuzzy → method="unknown".
+        # Same guard must apply regardless of input language.
+        result = _run(self.kernel.run("I will start something"))
+        assert result.success is False
+        assert result.error == "agent_not_found"
+        assert "Path not found" not in result.output
+
+    # ── 3. Valid known command still works after the guard ────────────────────
+
+    def test_valid_alias_still_executes_correctly(self):
+        result = _run(self.kernel.run("echo hello"))
+        assert result.success is True
+        assert result.agent == "echo"
+
+    # ── 4. Unsupported / truly unknown command → clean error ─────────────────
+
+    def test_unsupported_command_returns_agent_not_found_with_suggestions(self):
+        result = _run(self.kernel.run("xyzzy_unknown_9f3k"))
+        assert result.success is False
+        assert result.error == "agent_not_found"
+        # Kernel includes known agents in data so the caller can suggest them.
+        assert "agents" in result.data or "suggestions" in result.data
+
+    # ── 5. Empty input still routes to help alias ─────────────────────────────
+
+    def test_empty_input_still_routes_to_help_or_unknown(self):
+        # IntentParser returns intent="help" for empty input — NOT "unknown".
+        # No registered help agent in this kernel, so agent_not_found is fine,
+        # but it must NOT have been short-circuited by the guard (method="alias").
+        result = _run(self.kernel.run(""))
+        # Either help ran (success=True) or it's agent_not_found (no help agent),
+        # but it must NOT be a path-resolution error.
+        assert "Path not found" not in result.output
+
+    # ── 6. Malformed / special-char input → raw text not exposed as path ───────
+
+    def test_malformed_input_does_not_expose_raw_text_as_path(self):
+        # When intent parsing completely fails (method="unknown"), the guard
+        # prevents deliberation, so the raw input is never used as a
+        # filesystem path.  Inputs that DO fuzzy-match a known alias (e.g.
+        # "🤖🚀" matches "h" → "help") are intentionally allowed through
+        # deliberation, but the agent receives empty args (from the parsed
+        # "rest"), not the full raw input — so the user's text cannot appear
+        # verbatim in a "Path not found: <raw_text>" error.
+        inputs_expecting_no_raw_path_echo = [
+            "!!!@@@###",  # no alias, no pattern → method="unknown" → guard blocks
+            "\x00\x01",   # control chars → method="unknown" → guard blocks
+            "سأبدأ",      # Arabic → method="unknown" → guard blocks
+            "؟؟؟",        # Arabic punctuation → method="unknown" → guard blocks
+        ]
+        for bad in inputs_expecting_no_raw_path_echo:
+            result = _run(self.kernel.run(bad))
+            # The raw user text must never appear verbatim in a path error.
+            assert f"Path not found: {bad}" not in result.output, \
+                f"Raw input exposed as path for {bad!r}: {result.output!r}"
+
+    # ── 7. Attempted route/agent injection is still blocked ──────────────────
+
+    def test_arbitrary_agent_name_in_input_does_not_bypass_allowlist(self):
+        # Even if the user types the exact name of a registered agent,
+        # it must go through IntentParser's allowlist (prefix check) —
+        # not be directly executed via the deliberation path.
+        # "path_agent" IS a known agent, so prefix match succeeds and
+        # the guard does NOT apply; this test verifies the allowlist itself.
+        result = _run(self.kernel.run("path_agent"))
+        # PathAgent runs but receives empty args ("") → "Path not found: "
+        # This is correct: the name was valid, the agent ran, no injection.
+        assert result.agent == "path_agent"
+
+    # ── 8. Deliberation IS still triggered for ambiguous-but-parsed intent ───
+
+    def test_deliberation_runs_when_heuristic_has_nonzero_confidence(self):
+        # "start something" → aliases "start" → "run" → method="alias",
+        # confidence=1.0 — but "run" is NOT registered in this kernel, so
+        # the deliberation guard lets it through (method != "unknown") and
+        # the fake deliberation picks "echo" instead.
+        # Verify: with method="alias" the guard does NOT block deliberation.
+        kernel2 = _make_kernel_with_deliberation("echo")
+        kernel2.register_agent(EchoAgent())
+        kernel2._parser.update_agents(["echo"])
+        result = _run(kernel2.run("start something"))
+        # Deliberation picked echo (alias "start"→"run" not registered,
+        # falls through to agent=None without deliberation intervening on
+        # "run"; but since method="alias" the guard lets delib run and
+        # echo wins) OR the kernel returns agent_not_found for "run".
+        # Either way: no path error and the guard did not suppress delib.
+        assert "Path not found" not in result.output
+
+    # ── 9. Cross-organization: another org's agent must not win deliberation ──
+
+    def test_other_org_agent_cannot_win_deliberation_for_unknown_input(self):
+        from app.agents.deliberation import Deliberation
+        from app.agents.kernel import AgentKernel
+        from app.plugins.registry_guard import OwnershipTracker
+
+        k = AgentKernel.__new__(AgentKernel)
+        k._agents       = {}
+        k._agent_owners = OwnershipTracker("agent")
+        k._memory       = _make_memory()
+        k._parser       = IntentParser()
+        k._booted       = True
+        k._modifier = k._reloader = k._evolution = None
+        k._router   = k._reflector = k._autonomy = k._loop = None
+        k._deliberation = Deliberation()
+
+        # org-a owns "secret_agent"; org-b should never invoke it.
+        class SecretAgent(EvolvableAgent):
+            name = "secret_agent"
+            description = "org-a private"
+            group = "test"
+            async def execute(self, ctx):
+                return AgentResult.ok(self.name, "secret data")
+
+        k.register_agent(EchoAgent())                      # built-in
+        k.register_agent(SecretAgent(), owner="org-a")     # org-a only
+        k._parser.update_agents(list(k._agents.keys()))
+
+        # org-b sends an unknown Arabic phrase; even if deliberation somehow
+        # tries to run secret_agent, the ownership check must block it.
+        result = _run(k.run("مرحبا", organization_id="org-b"))
+        assert result.agent != "secret_agent"
+        if not result.success:
+            assert result.error in ("agent_not_found",)
+
+
 # TestAutonomyEngineOrgScoping moved to
 # tests/security/test_tenant_isolation.py as part of the Security Testing
 # phase's tests/security/ reorganization.

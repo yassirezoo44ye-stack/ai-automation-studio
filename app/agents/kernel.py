@@ -251,9 +251,24 @@ class AgentKernel:
                 intent_name = ir.intent
                 if (deliberate or ir.confidence < _DELIBERATION_THRESH) and \
                         self._deliberation and len(known) >= 2:
-                    delib = await self._deliberation.vote(raw_input, self, ir.intent, org_id=organization_id)
-                    if delib.winner in known:
-                        intent_name = delib.winner
+                    # Guard: only deliberate when the heuristic produced a
+                    # recognisable intent signal.  method == "unknown" means
+                    # every parse step failed and confidence is 0.0 — the
+                    # LLM router was also either unavailable or returned None.
+                    # In that state, Deliberation has no keyword biases to
+                    # anchor on (_AGENT_BIASES has no "unknown" entry) and
+                    # assigns every agent the same relevance (0.3), picking
+                    # a winner by cost/risk alone.  That winner then receives
+                    # ir.args == raw_input (the full unparsed text) as its
+                    # command argument — e.g. AnalyzeAgent treats the text
+                    # as a filesystem path and returns "Path not found: <text>".
+                    # When parsing completely fails the correct response is
+                    # agent_not_found so the caller can rephrase or the operator
+                    # can configure the LLM router (ANTHROPIC_API_KEY).
+                    if ir.method != "unknown":
+                        delib = await self._deliberation.vote(raw_input, self, ir.intent, org_id=organization_id)
+                        if delib.winner in known:
+                            intent_name = delib.winner
 
             span.set_tag("intent", intent_name)
 
