@@ -138,3 +138,8 @@ successful deploy to `main`.
 
 ### Fixes
 - harden AI provider diagnostics and migration image validation
+
+## v1.0.11
+
+### Other
+- fix(ai): resolve ProviderID values correctly on Python 3.11
