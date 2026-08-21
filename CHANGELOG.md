@@ -143,3 +143,39 @@ successful deploy to `main`.
 
 ### Other
 - fix(ai): resolve ProviderID values correctly on Python 3.11
+
+## v1.0.12
+
+### Features
+- Flow UI redesign + real backend integration (App Builder, Runs, Integrations)
+- Flow UI/UX redesign — sidebar, topbar, dashboard, agents, automations
+- connect App Builder, Runs, Integrations to real backend APIs
+- Flow UI redesign — new sidebar, dashboard, App Builder, Runs, Integrations
+
+### Fixes
+- use pid.value instead of str(pid) in registry default() — Python 3.11 Enum.__str__ returns 'ProviderID.anthropic' not 'anthropic'
+- resolve removeChild crash on page navigation
+- add migrations/ to Docker image — resolves Render startup ModuleNotFoundError
+- propagate active project_id to AgentOS run_agent and DevWorkspace
+
+### Tests
+- build_stream edge cases — valid/missing/unauthorized project_id, provider available/unavailable, generated files, preview, i18n
+
+### Other
+- Merge remote-tracking branch 'origin/main' into claude/flow-ui-redesign-rye5o6
+- feat(ai-workspace): 3-column layout redesign — conversation rail, context panel, RTL
+- diag: safe provider probe endpoint + key presence/length in health/full
+- fix(config): correct GEMINI_API_KEY env var name in docs and render.yaml
+- diag: distinguish 'no keys' vs 'circuits open' in stream_with_events log
+- fix(migrations): add __init__.py to make migrations a proper Python package
+- fix(projects): return full Project object from POST /api/projects
+- feat(home): App Builder Command Center + project_id propagation fix
+- fix(ui): resolve react-hooks/set-state-in-effect warnings
+- merge: integrate auth/CI hotfixes from remote into conflict resolution
+- merge: resolve Flow UI redesign conflicts with main
+- fix(auth): API key requests silently 401'd by api_auth_middleware
+- fix(ci): smoke-test URL warning, PRODUCTION_URL required, render.yaml CORS docs
+- fix(prod): Phase 1 — split-deploy connectivity, security headers, build guard
+- fix(agentos): propagate project_id through plan/deliberate paths
+- feat(i18n): wire Arabic i18n across AppBuilderPage, RunsPage, IntegrationsPage, HomePage
+- ci: resolve pre-existing ruff ratchet drift
