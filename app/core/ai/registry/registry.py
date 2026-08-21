@@ -113,7 +113,7 @@ class PlatformProviderRegistry:
             "openrouter", "groq", "local",
         ]
         for pid in order:
-            p = self._providers.get(str(pid) if hasattr(pid, "value") else pid)
+            p = self._providers.get(pid.value if hasattr(pid, "value") else pid)
             if p and p.is_available:
                 return p
         raise RuntimeError(
