@@ -14,6 +14,7 @@ import os
 import time
 
 from app.ai.circuit_breaker import circuit_breaker
+from app.ai.errors import AIProviderError, NO_CIRCUIT_CODES, AIProviderErrorCode
 from app.ai.models import CompletionRequest, CompletionResponse, ProviderID, StreamChunk
 from app.ai.providers.anthropic import AnthropicProvider
 from app.ai.providers.base import BaseProvider
@@ -31,6 +32,12 @@ from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
 
 log = logging.getLogger(__name__)
+
+# How long to suppress a provider that returned a billing/auth error before
+# re-attempting it. These are account-level failures — not transient — so we
+# wait long enough to avoid hammering the API, but short enough that a
+# freshly-added key or recharged account starts working within the hour.
+_BILLING_ERROR_TTL: float = 3600.0  # 1 hour
 
 
 class PlatformProviderRegistry:
@@ -57,6 +64,13 @@ class PlatformProviderRegistry:
         # prompts/keys/responses into its own sandbox.
         from app.plugins.registry_guard import OwnershipTracker
         self._owners = OwnershipTracker("AI provider")
+        # Per-provider billing/auth error timestamps — keyed by provider_id,
+        # value is the time.time() when the error was last recorded.
+        # Unlike the circuit breaker (which tracks transient failures), these
+        # account-level errors must NOT open the circuit — doing so would
+        # mask the real cause in health diagnostics and give the misleading
+        # impression that the provider "recovered" once the circuit re-opens.
+        self._billing_errors: dict[str, float] = {}
         self._register_defaults()
 
     # ── Registration ──────────────────────────────────────────────────────────
@@ -128,17 +142,53 @@ class PlatformProviderRegistry:
         return [pid for pid, p in self._providers.items() if p.is_available]
 
     def health(self) -> dict[str, dict]:
-        """Return availability + circuit breaker status for every known provider."""
+        """Return availability + circuit breaker + billing status for every known provider."""
         circuits = circuit_breaker.snapshot()
-        return {
-            pid: {
-                "available":    p.is_available,
-                "provider_id":  pid,
+        result = {}
+        for pid, p in self._providers.items():
+            circuit_state = circuits.get(pid, {}).get("state", "closed")
+            if not p.is_available:
+                status = "unavailable"
+            elif self._has_billing_error(pid):
+                status = "billing_required"
+            elif circuit_state == "open":
+                status = "circuit_open"
+            else:
+                status = "healthy"
+            result[pid] = {
+                "available":     p.is_available,
+                "provider_id":   pid,
                 "default_model": p.default_model() if p.is_available else None,
-                "circuit_state": circuits.get(pid, {}).get("state", "closed"),
+                "circuit_state": circuit_state,
+                "status":        status,
             }
-            for pid, p in self._providers.items()
-        }
+        return result
+
+    # ── Billing / auth error tracking ─────────────────────────────────────────
+
+    def _mark_billing_error(self, provider_id: str, exc: AIProviderError) -> None:
+        """Record a billing or auth failure for a provider.
+
+        These are NOT forwarded to the circuit breaker — they are permanent
+        account-level conditions, not transient API instability.
+        """
+        self._billing_errors[provider_id] = time.time()
+        log.warning(
+            "Provider %s marked as billing/auth error (code=%s) — "
+            "will be skipped for %.0fs. Add credits or fix the API key.",
+            provider_id, exc.code.value, _BILLING_ERROR_TTL,
+        )
+
+    def _has_billing_error(self, provider_id: str) -> bool:
+        """Return True if this provider has an active (within TTL) billing error."""
+        ts = self._billing_errors.get(provider_id)
+        if ts is None:
+            return False
+        if time.time() - ts < _BILLING_ERROR_TTL:
+            return True
+        # TTL expired — clear the entry so re-attempts can flow through
+        del self._billing_errors[provider_id]
+        return False
 
     def capabilities(self, provider_id: str) -> dict:
         """Return static capability flags for a provider."""
@@ -209,6 +259,9 @@ class PlatformProviderRegistry:
                 span.set_tag(key, val)
             span.set_tag("request_id", request_id)
             for provider in chain:
+                if self._has_billing_error(provider.provider_id):
+                    log.debug("billing error active for %s — skipping", provider.provider_id)
+                    continue
                 if not circuit_breaker.allow(provider.provider_id):
                     log.debug("circuit open for %s — skipping without attempting", provider.provider_id)
                     continue
@@ -240,6 +293,24 @@ class PlatformProviderRegistry:
                         span.set_tag("provider_id", provider.provider_id)
                         span.set_tag("model", model)
                         return resp, provider.provider_id
+                    except AIProviderError as exc:
+                        pspan.set_tag("error", f"{exc.code.value}: {exc.message}")
+                        if exc.code in NO_CIRCUIT_CODES:
+                            # Billing/auth — permanent account condition; do NOT trip the
+                            # circuit breaker. Track separately so health() shows the real cause.
+                            self._mark_billing_error(provider.provider_id, exc)
+                        else:
+                            circuit_breaker.record_failure(provider.provider_id)
+                        await bus.emit(ProviderFailed(
+                            provider_id=provider.provider_id,
+                            error=f"{exc.code.value}: {exc.message}",
+                            attempt=attempt,
+                        ))
+                        log.warning(
+                            "Provider %s failed (attempt %d, code=%s): %s",
+                            provider.provider_id, attempt, exc.code.value, exc.message,
+                        )
+                        last_err = exc
                     except Exception as exc:
                         pspan.set_tag("error", str(exc))
                         circuit_breaker.record_failure(provider.provider_id)
@@ -270,7 +341,7 @@ class PlatformProviderRegistry:
         Skips any provider (primary or fallback) whose circuit is open."""
         # Two-stage check so the error message is actionable:
         #   Stage 1 — is anything configured (API key present)?
-        #   Stage 2 — does any configured provider have an open circuit?
+        #   Stage 2 — does any configured provider have an open circuit or billing error?
         configured = self.resolve_chain(request)  # already filtered to is_available=True
         if not configured:
             log.error(
@@ -288,10 +359,31 @@ class PlatformProviderRegistry:
                 ),
             )
             return
-        chain = [p for p in configured if circuit_breaker.allow(p.provider_id)]
+
+        # Exclude providers with active billing/auth errors (tracked separately from circuit breaker)
+        billing_failed = [p.provider_id for p in configured if self._has_billing_error(p.provider_id)]
+        circuit_ready  = [p for p in configured if not self._has_billing_error(p.provider_id)]
+
+        chain = [p for p in circuit_ready if circuit_breaker.allow(p.provider_id)]
         if not chain:
+            # Distinguish the two failure modes for actionable diagnostics
+            if billing_failed and not circuit_ready:
+                log.warning(
+                    "stream_with_events: all providers billing/auth failed — providers=%s",
+                    billing_failed,
+                )
+                yield StreamChunk(
+                    type="error",
+                    error=(
+                        f"No available AI providers — "
+                        f"provider{'s' if len(billing_failed) > 1 else ''} "
+                        f"{', '.join(billing_failed)} require billing or authentication fix. "
+                        f"Add API credits or verify your API key, then retry."
+                    ),
+                )
+                return
             cooldown = int(circuit_breaker._cooldown)
-            open_ids  = [p.provider_id for p in configured
+            open_ids  = [p.provider_id for p in circuit_ready
                          if not circuit_breaker.allow(p.provider_id)]
             log.warning(
                 "stream_with_events: all circuits open — providers=%s  cooldown=%ds",
@@ -336,17 +428,26 @@ class PlatformProviderRegistry:
                 async for chunk in provider.stream(request):
                     yield chunk
                 circuit_breaker.record_success(provider.provider_id)
-            except Exception as exc:
-                span.set_tag("error", str(exc))
-                circuit_breaker.record_failure(provider.provider_id)
+            except AIProviderError as exc:
+                span.set_tag("error", f"{exc.code.value}: {exc.message}")
+                if exc.code in NO_CIRCUIT_CODES:
+                    self._mark_billing_error(provider.provider_id, exc)
+                else:
+                    circuit_breaker.record_failure(provider.provider_id)
                 await bus.emit(ProviderFailed(
                     provider_id=provider.provider_id,
-                    error=str(exc),
+                    error=f"{exc.code.value}: {exc.message}",
                     attempt=0,
                 ))
-                log.warning("Stream failed on %s: %s — attempting fallback", provider.provider_id, exc)
+                log.warning(
+                    "Stream failed on %s (code=%s): %s — attempting fallback",
+                    provider.provider_id, exc.code.value, exc.message,
+                )
 
                 for fallback in chain[1:]:
+                    if self._has_billing_error(fallback.provider_id):
+                        log.debug("billing error active for fallback %s — skipping", fallback.provider_id)
+                        continue
                     try:
                         resp = await fallback.complete(request)
                         circuit_breaker.record_success(fallback.provider_id)
@@ -358,6 +459,48 @@ class PlatformProviderRegistry:
                         yield StreamChunk(type="usage", usage=resp.usage)
                         yield StreamChunk(type="done")
                         return
+                    except AIProviderError as fb_exc:
+                        if fb_exc.code in NO_CIRCUIT_CODES:
+                            self._mark_billing_error(fallback.provider_id, fb_exc)
+                        else:
+                            circuit_breaker.record_failure(fallback.provider_id)
+                        log.warning("Fallback %s also failed (code=%s): %s", fallback.provider_id, fb_exc.code.value, fb_exc.message)
+                    except Exception as fb_exc:
+                        circuit_breaker.record_failure(fallback.provider_id)
+                        log.warning("Fallback %s also failed: %s", fallback.provider_id, fb_exc)
+
+                yield StreamChunk(type="error", error=f"{exc.code.value}: {exc.message}")
+            except Exception as exc:
+                span.set_tag("error", str(exc))
+                circuit_breaker.record_failure(provider.provider_id)
+                await bus.emit(ProviderFailed(
+                    provider_id=provider.provider_id,
+                    error=str(exc),
+                    attempt=0,
+                ))
+                log.warning("Stream failed on %s: %s — attempting fallback", provider.provider_id, exc)
+
+                for fallback in chain[1:]:
+                    if self._has_billing_error(fallback.provider_id):
+                        log.debug("billing error active for fallback %s — skipping", fallback.provider_id)
+                        continue
+                    try:
+                        resp = await fallback.complete(request)
+                        circuit_breaker.record_success(fallback.provider_id)
+                        span.set_tag("provider_id", fallback.provider_id)
+                        yield StreamChunk(type="delta", text=resp.content)
+                        if resp.tool_calls:
+                            for tc in resp.tool_calls:
+                                yield StreamChunk(type="tool_call", tool_call=tc)
+                        yield StreamChunk(type="usage", usage=resp.usage)
+                        yield StreamChunk(type="done")
+                        return
+                    except AIProviderError as fb_exc:
+                        if fb_exc.code in NO_CIRCUIT_CODES:
+                            self._mark_billing_error(fallback.provider_id, fb_exc)
+                        else:
+                            circuit_breaker.record_failure(fallback.provider_id)
+                        log.warning("Fallback %s also failed (code=%s): %s", fallback.provider_id, fb_exc.code.value, fb_exc.message)
                     except Exception as fb_exc:
                         circuit_breaker.record_failure(fallback.provider_id)
                         log.warning("Fallback %s also failed: %s", fallback.provider_id, fb_exc)

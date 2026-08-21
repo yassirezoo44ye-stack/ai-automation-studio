@@ -1,6 +1,10 @@
 """
 Anthropic (Claude) provider implementation.
 All Anthropic-specific API calls are isolated to this file.
+
+Every Anthropic SDK exception is classified into a normalized AIProviderError
+before being re-raised so that the registry and gateway can make routing and
+HTTP-status decisions without parsing opaque exception messages.
 """
 from __future__ import annotations
 
@@ -8,6 +12,7 @@ from typing import AsyncGenerator, Any
 
 import anthropic as sdk
 
+from app.ai.errors import AIProviderError, AIProviderErrorCode
 from app.ai.models import (
     CompletionRequest, CompletionResponse, StreamChunk,
     ToolCall, UsageStats, Message,
@@ -81,6 +86,103 @@ def _to_sdk_tools(tools: list) -> list[dict[str, Any]]:
     ]
 
 
+def _classify_sdk_error(exc: Exception, provider_id: str) -> AIProviderError:
+    """
+    Map every Anthropic SDK exception to a normalized AIProviderError.
+
+    Critically, the error message is derived from the structured error body —
+    NEVER from raw headers or kwargs that could contain the API key.
+    The upstream request_id is preserved for server-side diagnostics.
+    """
+    request_id: str = getattr(exc, "request_id", "") or ""
+
+    if isinstance(exc, sdk.BadRequestError):
+        # HTTP 400 — check for the billing-specific message first.
+        body = str(exc)
+        if "credit balance is too low" in body or "insufficient_funds" in body:
+            return AIProviderError(
+                AIProviderErrorCode.BILLING_REQUIRED,
+                provider=provider_id,
+                message=(
+                    "The Anthropic API credit balance is too low to process requests. "
+                    "Add credits at console.anthropic.com/plans."
+                ),
+                retryable=False,
+                request_id=request_id,
+            )
+        return AIProviderError(
+            AIProviderErrorCode.INVALID_REQUEST,
+            provider=provider_id,
+            message=f"Anthropic rejected the request (HTTP 400): {exc}",
+            retryable=False,
+            request_id=request_id,
+        )
+
+    if isinstance(exc, sdk.AuthenticationError):
+        return AIProviderError(
+            AIProviderErrorCode.AUTHENTICATION_FAILED,
+            provider=provider_id,
+            message="Anthropic API key is invalid or has been revoked.",
+            retryable=False,
+            request_id=request_id,
+        )
+
+    if isinstance(exc, sdk.RateLimitError):
+        return AIProviderError(
+            AIProviderErrorCode.RATE_LIMITED,
+            provider=provider_id,
+            message="Anthropic rate limit exceeded. The request will be retried.",
+            retryable=True,
+            request_id=request_id,
+        )
+
+    if isinstance(exc, (sdk.APITimeoutError,)):
+        return AIProviderError(
+            AIProviderErrorCode.TIMEOUT,
+            provider=provider_id,
+            message="Anthropic API request timed out.",
+            retryable=True,
+            request_id=request_id,
+        )
+
+    if isinstance(exc, (sdk.InternalServerError, sdk.OverloadedError)):
+        return AIProviderError(
+            AIProviderErrorCode.PROVIDER_UNAVAILABLE,
+            provider=provider_id,
+            message=f"Anthropic service error: {type(exc).__name__}",
+            retryable=True,
+            request_id=request_id,
+        )
+
+    if isinstance(exc, sdk.APIConnectionError):
+        return AIProviderError(
+            AIProviderErrorCode.PROVIDER_UNAVAILABLE,
+            provider=provider_id,
+            message="Cannot reach Anthropic API — network or DNS error.",
+            retryable=True,
+            request_id=request_id,
+        )
+
+    # Any other AnthropicError (APIResponseValidationError, etc.)
+    if isinstance(exc, sdk.AnthropicError):
+        return AIProviderError(
+            AIProviderErrorCode.UNKNOWN,
+            provider=provider_id,
+            message=f"Unexpected Anthropic error ({type(exc).__name__}).",
+            retryable=True,
+            request_id=request_id,
+        )
+
+    # Non-SDK exception (shouldn't reach here normally)
+    return AIProviderError(
+        AIProviderErrorCode.UNKNOWN,
+        provider=provider_id,
+        message=f"Unexpected error from Anthropic provider: {type(exc).__name__}",
+        retryable=True,
+        request_id=request_id,
+    )
+
+
 def _build_kwargs(request: CompletionRequest, model: str) -> dict[str, Any]:
     system = _extract_system(request.messages, request.system)
     kwargs: dict[str, Any] = {
@@ -119,7 +221,10 @@ class AnthropicProvider(BaseProvider):
         client = self._client()
         kwargs = _build_kwargs(request, model)
 
-        msg = await client.messages.create(**kwargs)
+        try:
+            msg = await client.messages.create(**kwargs)
+        except sdk.AnthropicError as exc:
+            raise _classify_sdk_error(exc, self.provider_id) from exc
 
         content_text = ""
         tool_calls: list[ToolCall] = []
@@ -158,24 +263,27 @@ class AnthropicProvider(BaseProvider):
         input_tokens = 0
         output_tokens = 0
 
-        async with client.messages.stream(**kwargs) as stream:
-            async for text in stream.text_stream:
-                yield StreamChunk(type="delta", text=text)
-                output_tokens += 1  # approximate; exact count below
+        try:
+            async with client.messages.stream(**kwargs) as stream:
+                async for text in stream.text_stream:
+                    yield StreamChunk(type="delta", text=text)
+                    output_tokens += 1  # approximate; exact count below
 
-            final = await stream.get_final_message()
-            input_tokens  = final.usage.input_tokens
-            output_tokens = final.usage.output_tokens
+                final = await stream.get_final_message()
+                input_tokens  = final.usage.input_tokens
+                output_tokens = final.usage.output_tokens
 
-            # Emit any tool calls from final message
-            for block in final.content:
-                if block.type == "tool_use":
-                    yield StreamChunk(
-                        type="tool_call",
-                        tool_call=ToolCall(
-                            id=block.id, name=block.name, arguments=block.input
-                        ),
-                    )
+                # Emit any tool calls from final message
+                for block in final.content:
+                    if block.type == "tool_use":
+                        yield StreamChunk(
+                            type="tool_call",
+                            tool_call=ToolCall(
+                                id=block.id, name=block.name, arguments=block.input
+                            ),
+                        )
+        except sdk.AnthropicError as exc:
+            raise _classify_sdk_error(exc, self.provider_id) from exc
 
         cost = self.calculate_cost(model, input_tokens, output_tokens)
         yield StreamChunk(
