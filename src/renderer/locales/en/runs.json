@@ -1,0 +1,53 @@
+{
+  "header": {
+    "title": "Runs",
+    "total": "{{count}} total",
+    "refresh": "Refresh"
+  },
+  "status": {
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "pending": "Pending",
+    "cancelled": "Cancelled"
+  },
+  "stats": {
+    "total": "Total",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed"
+  },
+  "tabs": {
+    "all": "All"
+  },
+  "table": {
+    "id": "ID",
+    "type": "Type",
+    "status": "Status",
+    "progress": "Progress",
+    "duration": "Duration",
+    "started": "Started"
+  },
+  "empty": {
+    "titleAll": "No runs yet",
+    "titleFiltered": "No runs with status \"{{filter}}\"",
+    "description": "Runs appear here when agents or automations execute."
+  },
+  "detail": {
+    "title": "Run Details",
+    "runId": "Run ID",
+    "type": "Type",
+    "source": "Source",
+    "duration": "Duration",
+    "started": "Started",
+    "finished": "Finished",
+    "progress": "Progress",
+    "error": "Error",
+    "sourceJob": "Job Queue",
+    "sourceAgent": "Agent Run"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "retry": "Retry"
+  }
+}

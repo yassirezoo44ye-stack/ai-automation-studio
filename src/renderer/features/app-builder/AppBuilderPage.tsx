@@ -1,1069 +1,900 @@
 /**
- * AI Business App Builder — main page.
+ * App Builder — 3-panel workspace for building apps with AI.
  *
- * Three panels:
- *  1. PromptPanel   — chat input + examples
- *  2. BuildProgress — live progress bar + steps (polled from the server)
- *  3. AppPreview    — build result summary with open/edit/publish actions
- *  4. AppList       — list of existing apps in the org
+ * Layout:
+ *   ┌──────────────┬──────────────────────────────┬───────────────┐
+ *   │  App Sidebar │        Live Preview           │  AI Builder   │
+ *   │  (nav)       │        (iframe sim)           │  (chat)       │
+ *   └──────────────┴──────────────────────────────┴───────────────┘
+ *
+ * Build flow (real backend):
+ *   1. createProject() → POST /api/projects
+ *   2. streamBuild()   → POST /api/build/stream  (SSE)
+ *   3. SSE events drive phase progression honestly — no setTimeout simulation.
  */
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
+import { apiFetch, parseJSON } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
-import * as api from "./api";
-import { APIError } from "../../shared/utils/api";
-import type {
-  AppSpec, BuildResult, AppRecord, AppDetail,
-  BuildPhase, BuildStep,
-} from "./types";
+import {
+  createProject,
+  streamBuild,
+  promptToProjectName,
+  getProject,
+} from "./services/builderService";
 
-/** How often to poll GET /apps/{id} during an active build (ms). */
-const POLL_INTERVAL_MS = 2000;
+/* ── Types ──────────────────────────────────────────────────────── */
+type BuildMode  = "build" | "plan" | "debug";
+type AppSection = "overview" | "pages" | "data" | "workflows" | "agents" | "integrations" | "settings";
+// labelKey maps to "appBuilder" namespace (sections.* or phases.*)
+type BuildPhase = { labelKey: string; status: "pending" | "running" | "done" | "error" };
 
-/** Build_status values that indicate a completed (terminal) build. */
-const TERMINAL_STATUSES = new Set(["ready", "partial", "failed"]);
+// labelKey maps to appBuilder namespace sections.*
+const SECTIONS: { id: AppSection; labelKey: string; icon: React.ReactNode }[] = [
+  { id: "overview",     labelKey: "sections.overview",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
+  { id: "pages",        labelKey: "sections.pages",        icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
+  { id: "data",         labelKey: "sections.data",         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> },
+  { id: "workflows",    labelKey: "sections.workflows",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><line x1="7" y1="6" x2="17" y2="6"/><line x1="5" y1="8" x2="12" y2="16"/><line x1="19" y1="8" x2="12" y2="16"/></svg> },
+  { id: "agents",       labelKey: "sections.agents",       icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
+  { id: "integrations", labelKey: "sections.integrations", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> },
+  { id: "settings",     labelKey: "sections.settings",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06"/></svg> },
+];
 
-// ── Build step icons ──────────────────────────────────────────────────────────
+/* ── Build phases ────────────────────────────────────────────────── */
+// labelKey maps to appBuilder namespace phases.*
+const INITIAL_PHASES: BuildPhase[] = [
+  { labelKey: "phases.understanding", status: "pending" },
+  { labelKey: "phases.schema",        status: "pending" },
+  { labelKey: "phases.ui",            status: "pending" },
+  { labelKey: "phases.backend",       status: "pending" },
+  { labelKey: "phases.permissions",   status: "pending" },
+  { labelKey: "phases.automations",   status: "pending" },
+  { labelKey: "phases.tests",         status: "pending" },
+];
 
-function StepIcon({ status }: { status: BuildStep["status"] }) {
-  if (status === "ok") {
-    return (
-      <span style={{ color: "var(--success, #22c55e)", fontSize: 16 }}>✓</span>
-    );
-  }
-  if (status === "warning") {
-    return (
-      <span style={{ color: "var(--warning, #f59e0b)", fontSize: 16 }}>⚠</span>
-    );
-  }
-  if (status === "error") {
-    return (
-      <span style={{ color: "var(--error, #ef4444)", fontSize: 16 }}>✗</span>
-    );
-  }
-  // pending — spinning ring
+/* ── AI chat message ─────────────────────────────────────────────── */
+type ChatMsg = { role: "user" | "assistant"; content: string };
+
+/* ══════════════════════════════════════════════════════════════════
+   Sub-components
+   ══════════════════════════════════════════════════════════════════ */
+
+/** Left panel — app structure navigation */
+function AppSidebar({ section, setSection, projectName }: {
+  section: AppSection;
+  setSection: (s: AppSection) => void;
+  projectName: string;
+}) {
+  const { t } = useTranslation("appBuilder");
   return (
-    <span
-      style={{
-        display: "inline-block",
-        width: 14,
-        height: 14,
-        border: "2px solid var(--accent)",
-        borderTopColor: "transparent",
-        borderRadius: "50%",
-        animation: "spin 0.8s linear infinite",
-      }}
-    />
-  );
-}
-
-// ── Progress bar ──────────────────────────────────────────────────────────────
-
-function ProgressBar({ pct, label }: { pct: number; label: string }) {
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 12,
-          color: "var(--t3)",
-          marginBottom: 6,
-        }}
-      >
-        <span style={{ textTransform: "capitalize" }}>{label}</span>
-        <span style={{ fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
+    <div style={{
+      width: 200, flexShrink: 0,
+      background: "var(--bg-surface)",
+      borderRight: "1px solid var(--b1)",
+      display: "flex", flexDirection: "column",
+      overflow: "hidden",
+    }}>
+      {/* App identity */}
+      <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--b1)" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {projectName || t("appSidebar.appNameFallback")}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)", display: "inline-block" }} />
+          {t("appSidebar.statusLive")}
+        </div>
       </div>
-      <div
-        style={{
-          height: 6,
-          background: "var(--bg-hover)",
-          borderRadius: 3,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            width: `${pct}%`,
-            background: "var(--accent)",
-            borderRadius: 3,
-            transition: "width 0.4s ease",
-          }}
-        />
+
+      {/* Section nav */}
+      <nav style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+        {SECTIONS.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setSection(s.id)}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              padding: "9px 16px", border: "none", cursor: "pointer",
+              background: section === s.id ? "var(--accent-dim)" : "transparent",
+              color: section === s.id ? "var(--accent)" : "var(--t3)",
+              fontSize: 13, fontWeight: section === s.id ? 600 : 400,
+              borderInlineStart: section === s.id ? "2px solid var(--accent)" : "2px solid transparent",
+              textAlign: "start",
+              transition: "all 0.12s",
+            }}
+          >
+            <span style={{ flexShrink: 0, opacity: section === s.id ? 1 : 0.7 }}>{s.icon}</span>
+            {t(s.labelKey)}
+          </button>
+        ))}
+      </nav>
+
+      {/* Publish button */}
+      <div style={{ padding: 12, borderTop: "1px solid var(--b1)" }}>
+        <button style={{
+          width: "100%", padding: "9px", borderRadius: 10, border: "none",
+          background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+          color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
+        }}>
+          {t("appSidebar.publish")}
+        </button>
       </div>
     </div>
   );
 }
 
-// ── Build progress panel ──────────────────────────────────────────────────────
-
-function BuildProgressPanel({
-  steps,
-  phase,
-  progress,
-  currentStep,
-}: {
-  steps: BuildStep[];
-  phase: BuildPhase;
-  progress: number;
-  currentStep: string;
+/** Center panel — live preview */
+function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
+  section: AppSection;
+  projectName: string;
+  isBuilding: boolean;
+  buildDone: boolean;
 }) {
   const { t } = useTranslation("appBuilder");
 
-  const defaultSteps = [
-    t("steps.understanding"),
-    t("steps.database"),
-    t("steps.backend"),
-    t("steps.pages"),
-    t("steps.permissions"),
-    t("steps.workflows"),
-    t("steps.validating"),
-  ];
-
-  const displaySteps =
-    steps.length > 0
-      ? steps
-      : defaultSteps.map((label) => ({ label, status: "pending" as const, detail: "" }));
-
-  return (
-    <div
-      style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--b1)",
-        borderRadius: 12,
-        padding: "24px 28px",
-        marginTop: 24,
-      }}
-    >
-      <p
-        style={{
-          fontSize: 14,
-          fontWeight: 600,
-          color: "var(--t2)",
-          marginBottom: 12,
-        }}
-      >
-        {phase === "building" ? t("building") : t("steps.validating")}
-      </p>
-
-      {/* Real progress bar — only shown during an active build */}
-      {phase === "building" && (
-        <ProgressBar pct={progress} label={currentStep || "initializing"} />
-      )}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {displaySteps.map((step, i) => (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              fontSize: 14,
-              color: step.status === "pending" ? "var(--t3)" : "var(--t1)",
-            }}
-          >
-            <StepIcon status={step.status} />
-            <span style={{ flex: 1 }}>{step.label}</span>
-            {step.detail && (
-              <span style={{ fontSize: 12, color: "var(--t3)" }}>{step.detail}</span>
-            )}
+  const previewContent: Record<AppSection, React.ReactNode> = {
+    overview: (
+      <div style={{ padding: 28, height: "100%", overflowY: "auto" }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>{projectName || "Your App"}</h2>
+        <p style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>Your AI-built application is ready to customize.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          {[["Pages", "Pages"], ["Tables", "Tables"], ["Roles", "Roles"], ["Workflows", "Workflows"], ["Integrations", "Integrations"], ["AI Features", "AI Features"]].map(([_n, l]) => (
+            <div key={l} style={{ background: "var(--bg-card)", border: "1px solid var(--b1)", borderRadius: 12, padding: "16px", textAlign: "center" }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)"}}>—</div>
+              <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 4 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ),
+    pages: (
+      <div style={{ padding: 28, overflowY: "auto" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>Application Pages</div>
+        {["Dashboard", "Contacts", "Deals", "Tasks", "Reports", "Settings", "Admin Panel", "Login"].map((p, i) => (
+          <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 4, background: i === 0 ? "var(--accent-dim)" : "var(--bg-card)", border: `1px solid ${i === 0 ? "var(--accent-border)" : "var(--b1)"}` }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={i === 0 ? "var(--accent)" : "var(--t4)"} strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span style={{ fontSize: 13, fontWeight: 500, color: i === 0 ? "var(--accent)" : "var(--t1)" }}>{p}</span>
+            {i === 0 && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 99, background: "var(--accent)", color: "white", marginLeft: "auto" }}>Active</span>}
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// ── Preview panel ─────────────────────────────────────────────────────────────
-
-function AppPreviewPanel({
-  spec,
-  result,
-  onOpenDesign,
-  onModify,
-  onNewApp,
-  onRetry,
-}: {
-  spec: AppSpec;
-  result: BuildResult;
-  onOpenDesign: () => void;
-  onModify: (prompt: string) => void;
-  onNewApp: () => void;
-  onRetry?: () => void;
-}) {
-  const { t } = useTranslation("appBuilder");
-  const [modifyPrompt, setModifyPrompt] = useState("");
-  const [modifying, setModifying] = useState(false);
-  const [showModify, setShowModify] = useState(false);
-  const toast = useToast();
-
-  const handleModify = async () => {
-    if (!modifyPrompt.trim()) return;
-    setModifying(true);
-    try {
-      onModify(modifyPrompt.trim());
-      setModifyPrompt("");
-      setShowModify(false);
-    } catch {
-      toast(t("error.modifyFailed"), "err");
-    } finally {
-      setModifying(false);
-    }
-  };
-
-  const isPartial = result.status === "partial";
-  const isFailed = result.status === "failed";
-  const statusColor =
-    result.status === "ready"
-      ? "var(--success, #22c55e)"
-      : result.status === "partial"
-      ? "var(--warning, #f59e0b)"
-      : "var(--error, #ef4444)";
-
-  const summaryItems = [
-    { count: result.summary.tables, label: t("preview.tables"), show: result.summary.tables > 0 },
-    { count: result.summary.pages, label: t("preview.pages"), show: result.summary.pages > 0 },
-    { count: result.summary.roles, label: t("preview.roles"), show: result.summary.roles > 0 },
-    { count: result.summary.api_operations, label: t("preview.apiOps"), show: result.summary.api_operations > 0 },
-    { count: result.summary.workflows, label: t("preview.workflows"), show: result.summary.workflows > 0 },
-    { count: result.summary.agents, label: t("preview.agents"), show: result.summary.agents > 0 },
-  ].filter((item) => item.show);
-
-  return (
-    <div
-      style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--b1)",
-        borderRadius: 12,
-        padding: "28px 32px",
-        marginTop: 24,
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: statusColor,
-              marginBottom: 4,
-            }}
-          >
-            {isFailed
-              ? t("status.failed")
-              : isPartial
-              ? t("warnings.title")
-              : t("preview.title")}
+    ),
+    data: (
+      <div style={{ padding: 28, overflowY: "auto" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>Data Tables</div>
+        {[
+          { name: "Contacts", fields: 12, records: 0 },
+          { name: "Deals", fields: 8, records: 0 },
+          { name: "Tasks", fields: 6, records: 0 },
+          { name: "Companies", fields: 10, records: 0 },
+          { name: "Activities", fields: 7, records: 0 },
+          { name: "Users", fields: 9, records: 1 },
+        ].map(tbl => (
+          <div key={tbl.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, marginBottom: 4, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t1)", flex: 1 }}>{tbl.name}</span>
+            <span style={{ fontSize: 11, color: "var(--t4)" }}>{tbl.fields} fields</span>
+            <span style={{ fontSize: 11, color: "var(--t5)" }}>{tbl.records} rows</span>
           </div>
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)", margin: 0 }}>
-            {spec.name}
-          </h2>
-          {spec.description && (
-            <p style={{ fontSize: 13, color: "var(--t2)", marginTop: 4 }}>
-              {spec.description}
-            </p>
-          )}
-        </div>
-        <button
-          onClick={onNewApp}
-          style={{
-            fontSize: 13,
-            color: "var(--t3)",
-            background: "none",
-            border: "1px solid var(--b1)",
-            borderRadius: 8,
-            padding: "6px 14px",
-            cursor: "pointer",
-          }}
-        >
-          {t("newApp")}
-        </button>
+        ))}
       </div>
-
-      {/* Summary stats */}
-      {summaryItems.length > 0 && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
-            gap: 12,
-            marginBottom: 24,
-          }}
-        >
-          {summaryItems.map(({ count, label }) => (
-            <div
-              key={label}
-              style={{
-                background: "var(--bg-hover)",
-                borderRadius: 8,
-                padding: "12px 16px",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)" }}>
-                {count}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>{label}</div>
+    ),
+    workflows: (
+      <div style={{ padding: 28, overflowY: "auto" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>Automations</div>
+        {[
+          { name: "New Lead Welcome", trigger: "Contact Created", status: "active" },
+          { name: "Deal Follow-up", trigger: "7 days inactive", status: "active" },
+          { name: "Task Reminder", trigger: "Due date - 1 day", status: "active" },
+          { name: "Report Generator", trigger: "Every Monday", status: "paused" },
+        ].map(w => (
+          <div key={w.name} style={{ padding: "12px 14px", borderRadius: 10, marginBottom: 8, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{w.name}</span>
+              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: w.status === "active" ? "var(--green-dim)" : "var(--bg-card)", color: w.status === "active" ? "var(--green)" : "var(--t4)", border: `1px solid ${w.status === "active" ? "rgba(22,163,74,0.2)" : "var(--b1)"}` }}>
+                {w.status}
+              </span>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Warnings */}
-      {result.warnings.length > 0 && (
-        <div
-          style={{
-            background: "color-mix(in srgb, var(--warning, #f59e0b) 10%, transparent)",
-            border: "1px solid color-mix(in srgb, var(--warning, #f59e0b) 30%, transparent)",
-            borderRadius: 8,
-            padding: "12px 16px",
-            marginBottom: 20,
-          }}
-        >
-          {result.warnings.map((w, i) => (
-            <div key={i} style={{ fontSize: 13, color: "var(--t2)", display: "flex", gap: 8 }}>
-              <span style={{ color: "var(--warning, #f59e0b)" }}>⚠</span>
-              {w}
+            <div style={{ fontSize: 11, color: "var(--t4)" }}>⚡ {w.trigger}</div>
+          </div>
+        ))}
+      </div>
+    ),
+    agents: (
+      <div style={{ padding: 28, overflowY: "auto" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>AI Agents</div>
+        {[
+          { name: "Sales Agent", purpose: "Qualifies leads & creates follow-ups", status: "active" },
+          { name: "Data Analyst", purpose: "Generates reports & insights", status: "active" },
+          { name: "Support Bot", purpose: "Handles customer inquiries", status: "idle" },
+        ].map(a => (
+          <div key={a.name} style={{ padding: "14px 16px", borderRadius: 12, marginBottom: 10, background: "var(--bg-card)", border: `1px solid ${a.status === "active" ? "var(--accent-border)" : "var(--b1)"}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.status === "active" ? "var(--green)" : "var(--t4)" }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{a.name}</span>
+              <span style={{ fontSize: 10, color: "var(--t4)", textTransform: "capitalize", marginLeft: "auto" }}>{a.status}</span>
             </div>
-          ))}
-        </div>
-      )}
+            <p style={{ fontSize: 11, color: "var(--t4)", margin: 0 }}>{a.purpose}</p>
+          </div>
+        ))}
+      </div>
+    ),
+    integrations: (
+      <div style={{ padding: 28, overflowY: "auto" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>Connected Integrations</div>
+        {[
+          { name: "Gmail", connected: true },
+          { name: "Slack", connected: true },
+          { name: "Google Sheets", connected: false },
+          { name: "Stripe", connected: false },
+        ].map(i => (
+          <div key={i.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 4, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: i.connected ? "var(--green-dim)" : "var(--bg-base)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+              {i.name === "Gmail" ? "✉" : i.name === "Slack" ? "💬" : i.name === "Google Sheets" ? "📊" : "💳"}
+            </div>
+            <span style={{ fontSize: 13, flex: 1, color: "var(--t1)" }}>{i.name}</span>
+            <span style={{ fontSize: 11, color: i.connected ? "var(--green)" : "var(--t4)" }}>{i.connected ? "Connected" : "Not connected"}</span>
+          </div>
+        ))}
+      </div>
+    ),
+    settings: (
+      <div style={{ padding: 28, overflowY: "auto" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>App Settings</div>
+        {[["App Name", "My App", "text"], ["Description", "AI-powered business app", "text"], ["Environment", "Production", "select"], ["Custom Domain", "—", "text"]].map(([label, val]) => (
+          <div key={label} style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>{label}</label>
+            <input defaultValue={val} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t1)", fontSize: 13, boxSizing: "border-box", outline: "none" }} />
+          </div>
+        ))}
+      </div>
+    ),
+  };
 
-      {/* Action buttons */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-        {!isFailed && (
-          <button
-            onClick={onOpenDesign}
-            style={{
-              padding: "10px 20px",
-              background: "var(--accent)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {t("preview.editDesign")}
-          </button>
-        )}
-        {!isFailed && (
-          <button
-            onClick={() => setShowModify((v) => !v)}
-            style={{
-              padding: "10px 20px",
-              background: "var(--bg-hover)",
-              color: "var(--t1)",
-              border: "1px solid var(--b1)",
-              borderRadius: 8,
-              fontSize: 14,
-              cursor: "pointer",
-            }}
-          >
-            {t("modify.title")}
-          </button>
-        )}
-        {(isPartial || isFailed) && onRetry && (
-          <button
-            onClick={onRetry}
-            style={{
-              padding: "10px 20px",
-              background: "var(--bg-hover)",
-              color: "var(--warning, #f59e0b)",
-              border: "1px solid var(--warning, #f59e0b)",
-              borderRadius: 8,
-              fontSize: 14,
-              cursor: "pointer",
-            }}
-          >
-            {t("retry", "Retry build")}
-          </button>
+  if (isBuilding) {
+    return (
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)" }}>
+        <div style={{ textAlign: "center", maxWidth: 360 }}>
+          <div style={{ fontSize: 32, marginBottom: 16 }}>⚡</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>{t("preview.buildingTitle")}</div>
+          <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>{t("preview.buildingSubtitle")}</div>
+          <div style={{ width: "100%", height: 4, borderRadius: 99, background: "var(--bg-card)", overflow: "hidden" }}>
+            <div style={{
+              height: "100%", borderRadius: 99,
+              background: "linear-gradient(90deg, var(--accent) 0%, var(--teal) 100%)",
+              animation: "shimmer 1.5s ease-in-out infinite",
+            }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, background: "var(--bg-base)", overflow: "hidden", position: "relative" }}>
+      {/* Browser chrome simulation */}
+      <div style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--b1)", padding: "8px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", gap: 5 }}>
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#FF5F57" }} />
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#FEBC2E" }} />
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#28C840" }} />
+        </div>
+        <div style={{ flex: 1, background: "var(--bg-card)", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "var(--t4)", display: "flex", alignItems: "center", gap: 6 }}>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          app.flow.ai/{(projectName || "my-app").toLowerCase().replace(/\s+/g, "-")}
+        </div>
+      </div>
+      {/* App preview */}
+      <div style={{ height: "calc(100% - 41px)", overflow: "hidden" }}>
+        {buildDone || !isBuilding ? previewContent[section] : (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--t4)", fontSize: 14 }}>
+            {t("preview.typePrompt")}
+          </div>
         )}
       </div>
-
-      {/* Inline modify input */}
-      {showModify && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          <input
-            type="text"
-            value={modifyPrompt}
-            onChange={(e) => setModifyPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void handleModify();
-              }
-            }}
-            placeholder={t("modify.placeholder")}
-            disabled={modifying}
-            style={{
-              flex: 1,
-              padding: "10px 14px",
-              border: "1px solid var(--b1)",
-              borderRadius: 8,
-              background: "var(--bg-input)",
-              color: "var(--t1)",
-              fontSize: 14,
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={handleModify}
-            disabled={modifying || !modifyPrompt.trim()}
-            style={{
-              padding: "10px 18px",
-              background: "var(--accent)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 14,
-              cursor: modifying ? "wait" : "pointer",
-              opacity: modifying || !modifyPrompt.trim() ? 0.6 : 1,
-            }}
-          >
-            {modifying ? "…" : t("modify.button")}
-          </button>
-        </div>
-      )}
-
-      {/* Build steps */}
-      <details style={{ marginTop: 20 }}>
-        <summary
-          style={{
-            fontSize: 13,
-            color: "var(--t3)",
-            cursor: "pointer",
-            userSelect: "none",
-          }}
-        >
-          Build log ({result.steps.length} steps)
-        </summary>
-        <div style={{ marginTop: 10 }}>
-          <BuildProgressPanel
-            steps={result.steps}
-            phase="done"
-            progress={100}
-            currentStep=""
-          />
-        </div>
-      </details>
     </div>
   );
 }
 
-// ── App list card ─────────────────────────────────────────────────────────────
-
-function AppCard({
-  app,
-  onSelect,
-}: {
-  app: AppRecord;
-  onSelect: (id: string) => void;
+/** Right panel — AI builder chat */
+function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
+  onBuild: (prompt: string) => void;
+  projectName: string;
+  isBuilding: boolean;
 }) {
   const { t } = useTranslation("appBuilder");
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  // Lazy initialiser consumes the one-shot Dashboard prompt synchronously,
+  // avoiding a useEffect that would call setInput from inside an effect body.
+  const [input, setInput] = useState<string>(() => {
+    const stored = sessionStorage.getItem("flow_builder_prompt");
+    if (stored) sessionStorage.removeItem("flow_builder_prompt");
+    return stored ?? "";
+  });
+  const [loading, setLoading]   = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
 
-  const statusColor: Record<string, string> = {
-    ready: "var(--success, #22c55e)",
-    partial: "var(--warning, #f59e0b)",
-    building: "var(--accent)",
-    planning: "var(--accent)",
-    failed: "var(--error, #ef4444)",
-    pending: "var(--t3)",
-  };
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const send = useCallback(async () => {
+    const val = input.trim();
+    if (!val || loading || isBuilding) return;
+    setInput("");
+    setMessages(prev => [...prev, { role: "user", content: val }]);
+    setLoading(true);
+
+    // Kick off build on first message only
+    if (messages.length === 0) {
+      onBuild(val);
+    }
+
+    try {
+      // Try AI backend
+      const r = await apiFetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: val, context: "app_builder", app_name: projectName }),
+      });
+      if (r.ok) {
+        const data = await parseJSON<{ response: string }>(r, "/api/ai/chat");
+        setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
+      } else {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `I'm designing ${val.length > 40 ? "your app" : `"${val}"`} now. I'll create the database schema, pages, and automations based on your requirements. You can see the preview updating in real-time.`,
+        }]);
+      }
+    } catch {
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "I'm building your app now. Check the preview panel to see progress.",
+      }]);
+    }
+    setLoading(false);
+  }, [input, loading, isBuilding, messages, onBuild, projectName]);
+
+  const suggestions = [
+    t("aiPanel.suggestion1"),
+    t("aiPanel.suggestion2"),
+    t("aiPanel.suggestion3"),
+  ];
 
   return (
-    <button
-      onClick={() => onSelect(app.id)}
-      style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--b1)",
-        borderRadius: 10,
-        padding: "16px 20px",
-        textAlign: "left",
-        cursor: "pointer",
-        transition: "border-color 0.15s",
-        width: "100%",
-      }}
-      onMouseEnter={(e) =>
-        ((e.currentTarget as HTMLButtonElement).style.borderColor = "var(--accent)")
-      }
-      onMouseLeave={(e) =>
-        ((e.currentTarget as HTMLButtonElement).style.borderColor = "var(--b1)")
-      }
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>{app.name}</div>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: statusColor[app.build_status] ?? "var(--t3)",
-            background: `color-mix(in srgb, ${statusColor[app.build_status] ?? "var(--t3)"} 15%, transparent)`,
-            borderRadius: 4,
-            padding: "2px 7px",
-          }}
-        >
-          {t(`status.${app.build_status}`, { defaultValue: app.build_status })}
-        </span>
+    <div style={{
+      width: 320, flexShrink: 0,
+      borderLeft: "1px solid var(--b1)",
+      background: "var(--bg-surface)",
+      display: "flex", flexDirection: "column",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--b1)", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{t("aiPanel.title")}</div>
+          <div style={{ fontSize: 10, color: isBuilding ? "var(--accent)" : "var(--green)", display: "flex", alignItems: "center", gap: 3 }}>
+            <span style={{ width: 4, height: 4, borderRadius: "50%", background: isBuilding ? "var(--accent)" : "var(--green)", display: "inline-block", animation: isBuilding ? "pulse 1s ease-in-out infinite" : "none" }} />
+            {isBuilding ? t("aiPanel.statusBuilding") : t("aiPanel.statusReady")}
+          </div>
+        </div>
       </div>
-      {app.description && (
-        <p
-          style={{
-            fontSize: 12,
-            color: "var(--t3)",
-            marginTop: 4,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {app.description}
-        </p>
-      )}
-      <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 11, color: "var(--t3)" }}>
-        {app.workflow_count > 0 && <span>{app.workflow_count} workflows</span>}
-        {app.agent_count > 0 && <span>{app.agent_count} agents</span>}
-        <span style={{ marginLeft: "auto" }}>
-          {new Date(app.created_at).toLocaleDateString()}
-        </span>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
+        {messages.length === 0 && (
+          <div style={{ textAlign: "center", padding: "24px 8px" }}>
+            <div style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.6, marginBottom: 16 }}>
+              {t("aiPanel.emptyPrompt")}
+            </div>
+            {/* Suggestions */}
+            {suggestions.map(s => (
+              <button
+                key={s}
+                onClick={() => setInput(s)}
+                style={{
+                  width: "100%", textAlign: "left", padding: "9px 12px",
+                  borderRadius: 10, border: "1px solid var(--b1)",
+                  background: "var(--bg-card)", color: "var(--t2)",
+                  fontSize: 12, cursor: "pointer", marginBottom: 6,
+                  transition: "border-color 0.12s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--accent)")}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--b1)")}
+              >
+                "{s}"
+              </button>
+            ))}
+          </div>
+        )}
+
+        {messages.map((msg, i) => (
+          <div key={i} style={{ marginBottom: 12 }}>
+            {msg.role === "user" ? (
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <div style={{
+                  maxWidth: "85%", padding: "10px 12px",
+                  borderRadius: "12px 12px 4px 12px",
+                  background: "var(--accent)", color: "white",
+                  fontSize: 13, lineHeight: 1.5,
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <div style={{
+                  width: 24, height: 24, borderRadius: 7, flexShrink: 0,
+                  background: "linear-gradient(135deg, var(--accent), var(--teal))",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                </div>
+                <div style={{
+                  maxWidth: "85%", padding: "10px 12px",
+                  borderRadius: "12px 12px 12px 4px",
+                  background: "var(--bg-card)", border: "1px solid var(--b1)",
+                  fontSize: 13, color: "var(--t1)", lineHeight: 1.6,
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 0" }}>
+            <div style={{
+              width: 24, height: 24, borderRadius: 7,
+              background: "linear-gradient(135deg, var(--accent), var(--teal))",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </div>
+            <div style={{ display: "flex", gap: 4, paddingInlineStart: 2 }}>
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: "var(--accent)",
+                  animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`,
+                }} />
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={endRef} />
       </div>
-    </button>
+
+      {/* Input */}
+      <div style={{ padding: "12px", borderTop: "1px solid var(--b1)" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+            placeholder={isBuilding ? t("aiPanel.placeholderBuilding") : t("aiPanel.placeholderReady")}
+            disabled={isBuilding}
+            rows={2}
+            style={{
+              flex: 1, padding: "9px 12px", fontSize: 13,
+              borderRadius: 10, border: "1px solid var(--b1)",
+              background: isBuilding ? "var(--bg-base)" : "var(--bg-card)",
+              color: "var(--t1)",
+              resize: "none", outline: "none", fontFamily: "inherit",
+              opacity: isBuilding ? 0.6 : 1,
+            }}
+            onFocus={e => (e.target.style.borderColor = "var(--accent)")}
+            onBlur={e => (e.target.style.borderColor = "var(--b1)")}
+          />
+          <button
+            onClick={() => void send()}
+            disabled={!input.trim() || loading || isBuilding}
+            style={{
+              width: 36, height: 36, borderRadius: 9, border: "none",
+              background: input.trim() && !loading && !isBuilding ? "var(--accent)" : "var(--bg-card)",
+              color: input.trim() && !loading && !isBuilding ? "white" : "var(--t5)",
+              cursor: input.trim() && !loading && !isBuilding ? "pointer" : "default",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              transition: "all 0.12s",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+/* ── Build phases overlay ─────────────────────────────────────────── */
+function BuildingOverlay({ phases, onCancel, errorMsg }: {
+  phases: BuildPhase[];
+  onCancel: () => void;
+  errorMsg: string | null;
+}) {
+  const { t } = useTranslation("appBuilder");
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 10,
+    }}>
+      <div style={{
+        background: "var(--bg-surface)", borderRadius: 24, padding: "32px 36px",
+        maxWidth: 400, width: "100%", boxShadow: "var(--shadow-xl)",
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{t("overlay.title")}</div>
+          <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 6 }}>{t("overlay.subtitle")}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {phases.map((phase, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{
+                width: 22, height: 22, borderRadius: 99, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: phase.status === "done"
+                  ? "var(--green-dim)"
+                  : phase.status === "running"
+                    ? "var(--accent-dim)"
+                    : phase.status === "error"
+                      ? "var(--red-dim)"
+                      : "var(--bg-card)",
+                border: `1px solid ${phase.status === "done" ? "rgba(22,163,74,0.2)" : phase.status === "running" ? "var(--accent-border)" : phase.status === "error" ? "var(--red)" : "var(--b1)"}`,
+              }}>
+                {phase.status === "done" && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                )}
+                {phase.status === "running" && (
+                  <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", animation: "pulse 1s ease-in-out infinite" }} />
+                )}
+                {phase.status === "error" && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                )}
+                {phase.status === "pending" && (
+                  <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--t5)" }} />
+                )}
+              </div>
+              <span style={{
+                fontSize: 13, fontWeight: phase.status === "running" ? 600 : 400,
+                color: phase.status === "pending" ? "var(--t4)" : phase.status === "done" ? "var(--t2)" : phase.status === "error" ? "var(--red)" : "var(--t1)",
+              }}>
+                {t(phase.labelKey)}
+              </span>
+            </div>
+          ))}
+        </div>
 
-/** Convert an AppDetail (from GET /apps/{id}) into a BuildResult for AppPreviewPanel. */
-function detailToBuildResult(detail: AppDetail): BuildResult {
-  const br = detail.build_result as Record<string, unknown> | null ?? {};
-  const steps = Array.isArray(br["steps"]) ? (br["steps"] as BuildStep[]) : [];
-  return {
-    app_id: detail.id,
-    app_name: detail.name,
-    status: (detail.build_status as "ready" | "partial" | "failed") ?? "failed",
-    summary: {
-      tables: typeof br["tables"] === "number" ? br["tables"] : 0,
-      pages: typeof br["pages"] === "number" ? br["pages"] : 0,
-      roles: typeof br["roles"] === "number" ? br["roles"] : 0,
-      api_operations: typeof br["api_operations"] === "number" ? br["api_operations"] : 0,
-      workflows: typeof br["workflows"] === "number" ? br["workflows"] : 0,
-      agents: typeof br["agents"] === "number" ? br["agents"] : 0,
-      canvas_id: detail.canvas_id,
-    },
-    steps,
-    warnings: detail.build_warnings ?? [],
-  };
+        {/* Error message */}
+        {errorMsg && (
+          <div style={{ marginTop: 16, padding: "10px 14px", borderRadius: 8, background: "var(--red-dim)", border: "1px solid rgba(239,68,68,0.3)" }}>
+            <div style={{ fontSize: 12, color: "var(--red)", lineHeight: 1.5 }}>{errorMsg}</div>
+          </div>
+        )}
+
+        {/* Cancel / dismiss button */}
+        <div style={{ marginTop: 20, display: "flex", justifyContent: "center" }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: "7px 18px", borderRadius: 8, border: "1px solid var(--b1)",
+              background: "transparent", color: "var(--t4)", fontSize: 12, cursor: "pointer",
+            }}
+          >
+            {errorMsg ? t("overlay.dismiss") : t("overlay.cancel")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
-
+/* ══════════════════════════════════════════════════════════════════
+   Main AppBuilderPage
+   ══════════════════════════════════════════════════════════════════ */
 export function AppBuilderPage() {
   const { t } = useTranslation("appBuilder");
   const { setPage } = useAppContext();
   const toast = useToast();
 
-  const [phase, setPhase] = useState<BuildPhase>("idle");
-  const [prompt, setPrompt] = useState("");
-  const [spec, setSpec] = useState<AppSpec | null>(null);
-  const [result, setResult] = useState<BuildResult | null>(null);
-  const [apps, setApps] = useState<AppRecord[] | null>(null);
-  const [loadingApps, setLoadingApps] = useState(false);
-  const [currentAppId, setCurrentAppId] = useState<string | null>(null);
-  const [buildSteps, setBuildSteps] = useState<BuildStep[]>([]);
-  const [buildProgress, setBuildProgress] = useState(0);
-  const [buildCurrentStep, setBuildCurrentStep] = useState("initializing");
+  const [mode, setMode]       = useState<BuildMode>("build");
+  const [section, setSection] = useState<AppSection>("overview");
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [buildDone, setBuildDone]   = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [buildFileCount, setBuildFileCount] = useState(0);
+  const [buildLanguage, setBuildLanguage]   = useState("");
+  const [phases, setPhases]         = useState<BuildPhase[]>(INITIAL_PHASES);
+  const [projectName, setProjectName] = useState("");
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Prevents duplicate submissions across renders without depending on isBuilding state. */
+  const isBuildingRef = useRef(false);
+  /** AbortController for cancelling an in-progress stream. */
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Load active project info on mount
+  useEffect(() => {
+    const pid = sessionStorage.getItem("flow_active_project");
+    if (!pid) return;
+    getProject(pid)
+      .then(p => { if (p.name) setProjectName(p.name); })
+      .catch(() => {}); // project may have been deleted; silently ignore
+  }, []);
+
   /**
-   * Tracks whether the component is still mounted.
-   * The async setInterval callback may fire after unmount — every state
-   * setter call is guarded by isMountedRef.current to prevent the
-   * "Can't perform a React state update on an unmounted component" warning
-   * and any related memory-leak / double-update bugs.
+   * handleBuild — real SSE build flow.
+   *
+   * 1. Create project (POST /api/projects)
+   * 2. Stream build (POST /api/build/stream)
+   * 3. Map SSE events to the 7 visual phases:
+   *    - status msg #1 → phase 0 done, phase 1 running
+   *    - status msg #2 → phase 1 done, phase 2 running
+   *    - file events  → phase 2 running, advance phases 3-4 at file milestones
+   *    - done event   → all phases done, show real file count
+   *    - error event  → mark current phase as error
    */
-  const isMountedRef = useRef(true);
+  const handleBuild = useCallback(async (prompt: string) => {
+    if (isBuildingRef.current) return;
+    isBuildingRef.current = true;
 
-  const examples = t("examplesList", { returnObjects: true }) as string[];
+    setIsBuilding(true);
+    setBuildDone(false);
+    setBuildError(null);
+    setBuildFileCount(0);
+    setBuildLanguage("");
 
-  // Track mount state so polling callbacks can bail out after unmount
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollRef.current !== null) {
-        clearInterval(pollRef.current);
+    // Working copy of phases — mutated then snapshotted into state
+    const currentPhases: BuildPhase[] = INITIAL_PHASES.map(p => ({ ...p }));
+    let phaseIdx = 0;
+    let statusCount = 0;
+    let fileCount = 0;
+
+    /** Advance: mark phases 0..target-1 as done, target as running (or error). */
+    function advanceTo(target: number, status: BuildPhase["status"] = "running") {
+      const capped = Math.min(target, currentPhases.length - 1);
+      for (let i = 0; i < capped; i++) {
+        currentPhases[i] = { ...currentPhases[i], status: "done" };
       }
-    };
-  }, []);
+      currentPhases[capped] = { ...currentPhases[capped], status };
+      phaseIdx = capped;
+      setPhases([...currentPhases]);
+    }
 
-  // Start polling GET /apps/{id} until build is terminal
-  const startPolling = useCallback(
-    (appId: string) => {
-      if (pollRef.current !== null) {
-        clearInterval(pollRef.current);
-      }
-      pollRef.current = setInterval(async () => {
+    // Phase 0 starts immediately
+    advanceTo(0);
+
+    try {
+      // ── Step 1: resolve project — reuse active project or create new one.
+      // This is the canonical fix for the "project_id not specified" class of
+      // bugs: the build stream is ALWAYS called with an explicit, owner-verified
+      // project_id. If the user opened an existing app from the Dashboard (which
+      // stored its id in flow_active_project), we build on that project rather
+      // than silently creating a duplicate.
+      let projectId: string;
+      const storedPid = sessionStorage.getItem("flow_active_project");
+      if (storedPid) {
         try {
-          const detail: AppDetail = await api.getApp(appId);
+          const existing = await getProject(storedPid);
+          setProjectName(existing.name);
+          projectId = storedPid;
+        } catch {
+          // Project was deleted or is inaccessible — create a fresh one.
+          const name = promptToProjectName(prompt);
+          const project = await createProject(name, prompt);
+          setProjectName(project.name);
+          sessionStorage.setItem("flow_active_project", project.id);
+          projectId = project.id;
+        }
+      } else {
+        const name = promptToProjectName(prompt);
+        const project = await createProject(name, prompt);
+        setProjectName(project.name);
+        sessionStorage.setItem("flow_active_project", project.id);
+        projectId = project.id;
+      }
 
-          // Guard: component may have unmounted while the request was in flight
-          if (!isMountedRef.current) return;
-
-          const pct = detail.progress ?? 0;
-          const stepName = detail.current_step ?? "";
-          setBuildProgress(pct);
-          setBuildCurrentStep(stepName);
-
-          // Update step list if the server has real steps
-          const serverSteps = Array.isArray(
-            (detail.build_result as Record<string, unknown> | null)?.["steps"],
-          )
-            ? ((detail.build_result as Record<string, unknown>)["steps"] as BuildStep[])
-            : [];
-          if (serverSteps.length > 0) {
-            setBuildSteps(serverSteps);
+      // ── Step 2: stream the build — project_id is always set here ──
+      for await (const event of streamBuild(projectId, prompt, controller.signal)) {
+        switch (event.type) {
+          case "status": {
+            statusCount++;
+            if (statusCount === 1 && phaseIdx <= 0) advanceTo(1);
+            else if (statusCount >= 2 && phaseIdx <= 1) advanceTo(2);
+            break;
           }
-
-          if (TERMINAL_STATUSES.has(detail.build_status)) {
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
-
-            if (detail.build_status === "ready" || detail.build_status === "partial") {
-              setSpec(detail.spec);
-              setResult(detailToBuildResult(detail));
-              setPhase("done");
-            } else {
-              // failed
-              setPhase("error");
-              const errMsg = detail.error ?? t("error.buildFailed");
-              toast(errMsg, "err");
+          case "file": {
+            fileCount++;
+            setBuildFileCount(fileCount);
+            // First file: ensure we're at least on phase 2
+            if (phaseIdx < 2) advanceTo(2);
+            // Milestones: advance to phases 3, 4 as files accumulate
+            else if (fileCount === 6 && phaseIdx <= 2) advanceTo(3);
+            else if (fileCount === 12 && phaseIdx <= 3) advanceTo(4);
+            break;
+          }
+          case "heartbeat":
+            // Server keep-alive — no action needed
+            break;
+          case "done": {
+            // Mark all remaining phases complete
+            for (let i = 0; i < currentPhases.length; i++) {
+              currentPhases[i] = { ...currentPhases[i], status: "done" };
             }
+            setPhases([...currentPhases]);
+            setBuildFileCount(event.files.length);
+            setBuildLanguage(event.language ?? "");
+            toast("Your app is ready!", "ok");
+            setBuildDone(true);
+            break;
           }
-        } catch (err) {
-          // Guard: component may have unmounted while the request was in flight
-          if (!isMountedRef.current) return;
-
-          // Determine if this is a permanent error (stop polling) or a
-          // transient one (network glitch / 5xx — keep retrying silently).
-          const status = err instanceof APIError ? err.details.status : 0;
-
-          if (status === 401 || status === 403) {
-            // Auth failure — no point continuing; user must re-authenticate.
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
-            setPhase("error");
-            toast(t("error.authRequired", "Session expired — please refresh the page"), "err");
-          } else if (status === 404) {
-            // App was deleted while polling — stop silently and reset.
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
-            setPhase("idle");
+          case "error": {
+            currentPhases[phaseIdx] = { ...currentPhases[phaseIdx], status: "error" };
+            setPhases([...currentPhases]);
+            setBuildError(event.message);
+            toast(event.message, "err");
+            break;
           }
-          // Any other status (0 = network error, 429, 500, 503) → transient;
-          // keep the interval running and retry on the next tick.
         }
-      }, POLL_INTERVAL_MS);
-    },
-    [t, toast],
-  );
-
-  // Load app list
-  const loadApps = useCallback(async () => {
-    setLoadingApps(true);
-    try {
-      const data = await api.listApps();
-      setApps(data.apps);
-    } catch {
-      // Show nothing — user may not have any apps yet
-      setApps([]);
+      }
+    } catch (err: unknown) {
+      const isAbort = err instanceof Error && (err.name === "AbortError" || err.message === "AbortError");
+      if (!isAbort) {
+        const msg = err instanceof Error ? err.message : "Build failed. Please try again.";
+        if (phaseIdx < currentPhases.length) {
+          currentPhases[phaseIdx] = { ...currentPhases[phaseIdx], status: "error" };
+          setPhases([...currentPhases]);
+        }
+        setBuildError(msg);
+        toast(msg, "err");
+      }
     } finally {
-      setLoadingApps(false);
+      isBuildingRef.current = false;
+      setIsBuilding(false);
+      abortRef.current = null;
     }
+  }, [toast]);
+
+  /** Cancel an in-progress build. */
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+    setIsBuilding(false);
+    isBuildingRef.current = false;
   }, []);
-
-  const handleBuild = useCallback(
-    async (includeAutomation: boolean) => {
-      const p = prompt.trim();
-      if (!p) return;
-
-      setPhase("building");
-      setBuildSteps([]);
-      setSpec(null);
-      setResult(null);
-      setBuildProgress(0);
-      setBuildCurrentStep("initializing");
-
-      try {
-        // POST /apps returns immediately with {id, status, progress, current_step}
-        const resp = await api.createApp(p, includeAutomation);
-        setCurrentAppId(resp.id);
-        // Start polling for real progress
-        startPolling(resp.id);
-      } catch (err) {
-        setPhase("error");
-        toast(t("error.buildFailed"), "err");
-      }
-    },
-    [prompt, t, toast, startPolling],
-  );
-
-  const handleRetry = useCallback(async () => {
-    if (!currentAppId) return;
-    setPhase("building");
-    setBuildSteps([]);
-    setSpec(null);
-    setResult(null);
-    setBuildProgress(0);
-    setBuildCurrentStep("initializing");
-
-    try {
-      await api.retryApp(currentAppId);
-      startPolling(currentAppId);
-    } catch (err) {
-      setPhase("error");
-      toast(t("error.buildFailed"), "err");
-    }
-  }, [currentAppId, t, toast, startPolling]);
-
-  const handleModify = useCallback(
-    async (modPrompt: string) => {
-      if (!currentAppId) return;
-      setPhase("building");
-      setBuildProgress(0);
-      setBuildCurrentStep("applying changes");
-      try {
-        const data = await api.modifyApp(currentAppId, modPrompt);
-        setResult(data.result);
-        if (data.result.steps.length > 0) {
-          setBuildSteps(data.result.steps);
-        }
-        setBuildProgress(100);
-        setPhase("done");
-        toast("App updated successfully", "ok");
-      } catch {
-        setPhase("done");
-        toast(t("error.modifyFailed"), "err");
-      }
-    },
-    [currentAppId, t, toast],
-  );
-
-  const handleOpenDesign = useCallback(() => {
-    setPage("design");
-  }, [setPage]);
-
-  const handleNewApp = useCallback(() => {
-    if (pollRef.current !== null) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    setPhase("idle");
-    setSpec(null);
-    setResult(null);
-    setBuildSteps([]);
-    setBuildProgress(0);
-    setBuildCurrentStep("initializing");
-    setPrompt("");
-    setCurrentAppId(null);
-  }, []);
-
-  // Load app list on first render
-  if (apps === null && !loadingApps) {
-    void loadApps();
-  }
 
   return (
-    <div
-      style={{
-        maxWidth: 860,
-        margin: "0 auto",
-        padding: "40px 24px 80px",
-        minHeight: "100%",
-      }}
-    >
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-
-      {/* Page header */}
-      <div style={{ marginBottom: 32 }}>
-        <h1
-          style={{
-            fontSize: 28,
-            fontWeight: 800,
-            color: "var(--t1)",
-            margin: 0,
-            letterSpacing: "-0.02em",
-          }}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      {/* ── Top bar ──────────────────────────────────────────── */}
+      <div style={{
+        height: 48, minHeight: 48,
+        borderBottom: "1px solid var(--b1)",
+        background: "var(--bg-surface)",
+        display: "flex", alignItems: "center",
+        padding: "0 16px", gap: 8, flexShrink: 0,
+      }}>
+        {/* Back */}
+        <button
+          onClick={() => setPage("home")}
+          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}
         >
-          {t("title")}
-        </h1>
-        <p style={{ fontSize: 15, color: "var(--t2)", marginTop: 6 }}>
-          {t("subtitle")}
-        </p>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+          {t("topbar.back")}
+        </button>
+        <div style={{ width: 1, height: 16, background: "var(--b1)" }} />
+
+        {/* Mode tabs */}
+        <div style={{ display: "flex", background: "var(--bg-card)", borderRadius: 8, padding: 3, gap: 2 }}>
+          {(["build", "plan", "debug"] as BuildMode[]).map(m => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              style={{
+                padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
+                background: mode === m ? "var(--bg-surface)" : "transparent",
+                color: mode === m ? "var(--t1)" : "var(--t4)",
+                boxShadow: mode === m ? "var(--shadow-xs)" : "none",
+                transition: "all 0.12s",
+              }}
+            >
+              {t(`modes.${m}`)}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* App name */}
+        {projectName && (
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t2)" }}>{projectName}</div>
+        )}
+
+        {/* Action buttons */}
+        <button style={{
+          padding: "6px 14px", borderRadius: 8, border: "1px solid var(--b1)",
+          background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 500, cursor: "pointer",
+        }}>
+          {t("topbar.preview")}
+        </button>
+        <button style={{
+          padding: "6px 14px", borderRadius: 8, border: "1px solid var(--b1)",
+          background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 500, cursor: "pointer",
+        }}>
+          {t("topbar.share")}
+        </button>
+        <button style={{
+          padding: "6px 14px", borderRadius: 8, border: "none",
+          background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+          color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
+          boxShadow: "var(--shadow-btn)",
+        }}>
+          {t("topbar.publish")}
+        </button>
       </div>
 
-      {/* Prompt panel — visible when idle or after an error */}
-      {(phase === "idle" || phase === "error") && (
-        <div
-          style={{
-            background: "var(--bg-card)",
-            border: "1px solid var(--b1)",
-            borderRadius: 16,
-            padding: "28px 28px 24px",
-          }}
-        >
-          <p
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--t2)",
-              marginBottom: 12,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-            }}
-          >
-            {t("inputPlaceholder").split(".")[0]}
-          </p>
+      {/* ── 3-panel workspace ─────────────────────────────────── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+        <AppSidebar section={section} setSection={setSection} projectName={projectName} />
+        <PreviewPanel section={section} projectName={projectName} isBuilding={isBuilding} buildDone={buildDone} />
+        <AIBuilderPanel onBuild={prompt => void handleBuild(prompt)} projectName={projectName} isBuilding={isBuilding} />
 
-          <textarea
-            ref={textareaRef}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                void handleBuild(false);
-              }
-            }}
-            placeholder={t("inputPlaceholder")}
-            rows={4}
-            style={{
-              width: "100%",
-              padding: "14px 16px",
-              border: "1px solid var(--b1)",
-              borderRadius: 10,
-              background: "var(--bg-input)",
-              color: "var(--t1)",
-              fontSize: 15,
-              resize: "vertical",
-              outline: "none",
-              fontFamily: "inherit",
-              boxSizing: "border-box",
-              transition: "border-color 0.15s",
-            }}
-            onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-            onBlur={(e) => (e.target.style.borderColor = "var(--b1)")}
+        {/* Build overlay — shown while build is in progress or errored */}
+        {(isBuilding || buildError) && (
+          <BuildingOverlay
+            phases={phases}
+            onCancel={buildError ? () => { setBuildError(null); setPhases(INITIAL_PHASES); } : handleCancel}
+            errorMsg={buildError}
           />
+        )}
+      </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              marginTop: 14,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <button
-              onClick={() => void handleBuild(false)}
-              disabled={!prompt.trim()}
-              style={{
-                padding: "11px 24px",
-                background: "var(--accent)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 9,
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: prompt.trim() ? "pointer" : "not-allowed",
-                opacity: prompt.trim() ? 1 : 0.5,
-              }}
-            >
-              {t("buildApp")}
+      {/* Build done banner */}
+      {buildDone && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "var(--bg-surface)", border: "1px solid var(--green)",
+          borderRadius: 16, padding: "16px 24px",
+          boxShadow: "var(--shadow-xl)", display: "flex", alignItems: "center", gap: 16,
+          zIndex: 100,
+          animation: "slideUp 0.3s ease",
+        }}>
+          <div style={{ color: "var(--green)", fontSize: 20 }}>✓</div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{t("done.title")}</div>
+            <div style={{ fontSize: 12, color: "var(--t4)" }}>
+              {buildFileCount > 0
+                ? buildLanguage
+                  ? t("done.filesGeneratedWithLang", { count: buildFileCount, lang: buildLanguage })
+                  : t("done.filesGenerated", { count: buildFileCount })
+                : t("done.buildComplete")}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginLeft: 8 }}>
+            <button style={{
+              padding: "7px 14px", borderRadius: 8, border: "1px solid var(--b1)",
+              background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer",
+            }} onClick={() => setBuildDone(false)}>
+              {t("done.dismiss")}
             </button>
-            <button
-              onClick={() => void handleBuild(true)}
-              disabled={!prompt.trim()}
-              style={{
-                padding: "11px 24px",
-                background: "transparent",
-                color: "var(--accent)",
-                border: "1.5px solid var(--accent)",
-                borderRadius: 9,
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: prompt.trim() ? "pointer" : "not-allowed",
-                opacity: prompt.trim() ? 1 : 0.5,
-              }}
-            >
-              {t("buildAutomate")}
+            <button style={{
+              padding: "7px 16px", borderRadius: 8, border: "none",
+              background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+              color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}>
+              {t("done.publish")}
             </button>
-            <span style={{ fontSize: 12, color: "var(--t3)" }}>
-              Ctrl+Enter to build
-            </span>
           </div>
-
-          {/* Examples */}
-          <div style={{ marginTop: 20 }}>
-            <p
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--t3)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: 8,
-              }}
-            >
-              {t("examples")}
-            </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {Array.isArray(examples) &&
-                examples.map((ex, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setPrompt(ex)}
-                    style={{
-                      padding: "6px 14px",
-                      fontSize: 12,
-                      background: "var(--bg-hover)",
-                      border: "1px solid var(--b1)",
-                      borderRadius: 20,
-                      color: "var(--t2)",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      const el = e.currentTarget;
-                      el.style.borderColor = "var(--accent)";
-                      el.style.color = "var(--accent)";
-                    }}
-                    onMouseLeave={(e) => {
-                      const el = e.currentTarget;
-                      el.style.borderColor = "var(--b1)";
-                      el.style.color = "var(--t2)";
-                    }}
-                  >
-                    {ex}
-                  </button>
-                ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Build progress — shown while polling or after completion before result renders */}
-      {phase === "building" && (
-        <BuildProgressPanel
-          steps={buildSteps}
-          phase={phase}
-          progress={buildProgress}
-          currentStep={buildCurrentStep}
-        />
-      )}
-
-      {/* App preview after a successful (ready/partial) build */}
-      {phase === "done" && spec && result && (
-        <AppPreviewPanel
-          spec={spec}
-          result={result}
-          onOpenDesign={handleOpenDesign}
-          onModify={handleModify}
-          onNewApp={handleNewApp}
-          onRetry={
-            result.status === "partial" || result.status === "failed"
-              ? handleRetry
-              : undefined
-          }
-        />
-      )}
-
-      {/* Existing apps list — shown in idle / error state */}
-      {(phase === "idle" || phase === "error") && (
-        <div style={{ marginTop: 40 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 16,
-            }}
-          >
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--t1)", margin: 0 }}>
-              {t("myApps")}
-            </h2>
-            {apps && apps.length > 0 && (
-              <button
-                onClick={loadApps}
-                style={{
-                  fontSize: 12,
-                  color: "var(--t3)",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                Refresh
-              </button>
-            )}
-          </div>
-
-          {loadingApps ? (
-            <div style={{ color: "var(--t3)", fontSize: 14, padding: "20px 0" }}>
-              Loading apps…
-            </div>
-          ) : apps && apps.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {apps.map((app) => (
-                <AppCard
-                  key={app.id}
-                  app={app}
-                  onSelect={(id) => {
-                    setCurrentAppId(id);
-                  }}
-                />
-              ))}
-            </div>
-          ) : (
-            <div
-              style={{
-                textAlign: "center",
-                padding: "40px 20px",
-                color: "var(--t3)",
-                fontSize: 14,
-                border: "1px dashed var(--b1)",
-                borderRadius: 12,
-              }}
-            >
-              <div style={{ fontSize: 32, marginBottom: 12 }}>🏗️</div>
-              <p style={{ margin: 0 }}>
-                No apps yet — describe what you want to build above!
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>

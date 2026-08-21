@@ -82,10 +82,30 @@
       "you": "أنت",
       "assistantFallback": "Claude",
       "now": "الآن",
-      "streamErrorPrefix": "⚠️ {{message}}"
+      "streamErrorPrefix": "⚠️ {{message}}",
+      "copyCode": "نسخ",
+      "copied": "تم النسخ!"
+    },
+    "convGroups": {
+      "today": "اليوم",
+      "thisWeek": "هذا الأسبوع",
+      "older": "أقدم"
+    },
+    "contextPanel": {
+      "title": "السياق",
+      "activeAgent": "الوكيل النشط",
+      "defaultAgent": "Claude (افتراضي)",
+      "project": "المشروع",
+      "actions": "إجراءات",
+      "export": "تصدير كـ Markdown",
+      "extractTasks": "استخراج المهام",
+      "hidePanel": "إخفاء اللوحة",
+      "showPanel": "إظهار اللوحة"
     },
     "input": {
-      "placeholder": "رسالة… (Enter للإرسال، Shift+Enter لسطر جديد)"
+      "placeholder": "رسالة… (Enter للإرسال، Shift+Enter لسطر جديد)",
+      "send": "إرسال",
+      "stop": "إيقاف"
     },
     "toast": {
       "extractedTasks_zero": "لم يتم استخراج أي مهام",

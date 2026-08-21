@@ -135,6 +135,20 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const { steps } = useAgentRunSteps(activeRunId);
   const stepsEndRef = useRef<HTMLDivElement>(null);
 
+  // Active project — resolved from sessionStorage (set by AppBuilderPage on
+  // project create). Passed to every /api/agentos/run call so that agents
+  // like run_agent.py that require a verified project context receive it.
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+    () => sessionStorage.getItem("flow_active_project"),
+  );
+
+  // Keep the displayed project ID in sync if another tab updates it
+  useEffect(() => {
+    const sync = () => setActiveProjectId(sessionStorage.getItem("flow_active_project"));
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+
   useEffect(() => {
     stepsEndRef.current?.scrollIntoView({ block: "nearest" });
   }, [steps]);
@@ -144,17 +158,20 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
     if (!val || loading) return;
     setLoading(true);
     setDelib(null);
+    // Always pass the currently active project so that the `run` agent
+    // (and any other project-scoped agent) has the project context it needs.
+    const projectId = sessionStorage.getItem("flow_active_project") ?? undefined;
     try {
       if (mode === "deliberate") {
         const runId = crypto.randomUUID();
         setActiveRunId(runId);
-        const res = await agentOsApi.deliberate(val, runId);
+        const res = await agentOsApi.deliberate(val, runId, projectId);
         setDelib({ bids: res.deliberation.bids, winner: res.deliberation.winner });
         onResult(res.result);
       } else if (mode === "plan") {
         const runId = crypto.randomUUID();
         setActiveRunId(runId);
-        const res = await agentOsApi.plan(val, runId);
+        const res = await agentOsApi.plan(val, runId, projectId);
         onResult({
           agent: "plan", success: res.success, output: res.plan.join(" → "),
           data: { results: res.results }, duration_ms: 0,
@@ -162,7 +179,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
       } else {
         const runId = crypto.randomUUID();
         setActiveRunId(runId);
-        const res = await agentOsApi.run(val, undefined, runId);
+        const res = await agentOsApi.run(val, undefined, runId, projectId);
         onResult(res);
       }
     } catch (e: unknown) {
@@ -179,7 +196,18 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   return (
     <GlassCard lift={false}>
       <div style={S.cardHeader}>
-        <span>{t("terminal.title")}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span>{t("terminal.title")}</span>
+          {activeProjectId ? (
+            <span style={{ fontSize: 10, color: "var(--green)", fontFamily: "var(--font-mono)" }}>
+              project: {activeProjectId.slice(0, 8)}…
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, color: "var(--yellow)", fontFamily: "var(--font-mono)" }}>
+              {t("terminal.noProject", { defaultValue: "no active project — open App Builder first" })}
+            </span>
+          )}
+        </div>
         <div style={S.row}>
           {(["run", "deliberate", "plan"] as const).map(m => (
             <GoldButton key={m} variant={mode === m ? "primary" : "ghost"} onClick={() => setMode(m)} style={{ padding: "5px 12px", fontSize: 12 }}>
@@ -251,6 +279,14 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
             {ex}
           </GoldButton>
         ))}
+        {/* run example — shows active project id if known */}
+        <GoldButton
+          variant="ghost"
+          onClick={() => setInput(activeProjectId ? `run --project=${activeProjectId}` : "run")}
+          style={{ padding: "4px 10px", fontSize: 11 }}
+        >
+          {activeProjectId ? `run (active project)` : "run"}
+        </GoldButton>
       </div>
     </GlassCard>
   );
@@ -277,36 +313,43 @@ function AgentGrid({ agents, isRunning }: { agents: AgentInfo[]; isRunning: (nam
             {items.map(a => {
               const rateKind = a.stats.success_rate >= 0.8 ? "green" : a.stats.success_rate >= 0.5 ? "yellow" : "red";
               const running = isRunning(a.name);
+              const statusLabel = running
+                ? t("agentGrid.running")
+                : a.stats.call_count > 0
+                  ? t("agentGrid.idle", { defaultValue: "Idle" })
+                  : t("agentGrid.ready", { defaultValue: "Ready" });
               return (
-                <div key={a.name} style={{
-                  padding: "10px 12px", borderRadius: 8,
-                  background: "var(--bg-base)",
-                  border: `1px solid ${running ? "var(--accent)" : "var(--border)"}`,
-                  transition: "border-color .2s",
-                }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
-                    <span style={{
-                      width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-                      background: running ? "var(--accent)" : "var(--t5)",
-                      animation: running ? "fadeIn .6s ease-in-out infinite alternate" : undefined,
-                    }} />
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</span>
-                    {running && (
-                      <span className="badge badge-purple">{t("agentGrid.running")}</span>
-                    )}
-                    {!running && a.stats.call_count > 0 && (
-                      <span className={`badge badge-${rateKind}`}>{(a.stats.success_rate * 100).toFixed(0)}%</span>
-                    )}
+                <div
+                  key={a.name}
+                  className={`agent-card${running ? " agent-card--running" : ""}`}
+                >
+                  <div className="agent-card__header">
+                    <span className={`agent-card__dot ${running ? "agent-card__dot--running" : "agent-card__dot--idle"}`} />
+                    <span className="agent-card__name">{a.name}</span>
+                    {running
+                      ? <span className="badge badge-purple">{t("agentGrid.running")}</span>
+                      : a.stats.call_count > 0
+                        ? <span className={`badge badge-${rateKind}`}>{(a.stats.success_rate * 100).toFixed(0)}%</span>
+                        : null
+                    }
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--t3)", marginBottom: a.stats.call_count > 0 ? 6 : 0 }}>
-                    {a.description}
+                  <div className="agent-card__desc">{a.description}</div>
+                  <div className="agent-card__meta">
+                    <span style={{ color: running ? "var(--green)" : "var(--t4)", fontWeight: 600 }}>
+                      {statusLabel}
+                    </span>
+                    {a.stats.call_count > 0 && (
+                      <>
+                        <span>·</span>
+                        <span>{a.stats.call_count} {t("agentGrid.runs", { defaultValue: "runs" })}</span>
+                        <span>·</span>
+                        <span>{a.stats.avg_ms.toFixed(0)}ms</span>
+                      </>
+                    )}
                   </div>
                   {a.stats.call_count > 0 && (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <div style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}>
                       <SuccessBar rate={a.stats.success_rate} />
-                      <span style={{ fontSize: 10, color: "var(--t3)", whiteSpace: "nowrap" as const }}>
-                        {a.stats.call_count} calls · {a.stats.avg_ms.toFixed(0)}ms
-                      </span>
                     </div>
                   )}
                 </div>

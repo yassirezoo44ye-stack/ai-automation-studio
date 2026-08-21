@@ -239,7 +239,11 @@ jobs:
         # Instead: /health exposes "commit" (RENDER_GIT_COMMIT); poll until
         # it equals the SHA this run deployed, THEN require /health/deep.
         run: |
-          URL="${{ vars.PRODUCTION_URL || 'https://ai-automation-studio-1-c2rt.onrender.com' }}"
+          URL="${{ vars.PRODUCTION_URL }}"
+          if [ -z "$URL" ]; then
+            echo "::warning::PRODUCTION_URL repository variable is not set. Falling back to the hardcoded Render URL — this may probe the wrong host if the service name changed. Set Settings → Secrets and variables → Actions → Variables → PRODUCTION_URL to suppress this warning."
+            URL="https://ai-automation-studio-1-c2rt.onrender.com"
+          fi
           echo "Polling $URL/health until running commit == $GITHUB_SHA (up to 15 min)"
           for i in $(seq 1 60); do
             sleep 15

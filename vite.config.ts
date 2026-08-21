@@ -3,8 +3,29 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
+// ── Build-time guard for split-deploy misconfiguration ──────────────────────
+// Vercel automatically sets VERCEL=1 during its builds. If VITE_API_URL is
+// empty on Vercel the SPA will silently send every API call to the Vercel
+// origin (not the Render backend) — 404 on every request, no data, no auth.
+// This plugin prints an actionable warning so the problem is caught in the
+// build log rather than discovered at runtime.
+const warnMissingApiUrl = {
+  name: "warn-missing-api-url",
+  buildStart() {
+    if (process.env.VERCEL && !process.env.VITE_API_URL) {
+      console.warn(
+        "\n⚠️  WARNING: VITE_API_URL is not set in Vercel environment variables.\n" +
+        "   All API calls will fail because they go to the Vercel URL, not the backend.\n" +
+        "   Fix: Vercel dashboard → Settings → Environment Variables →\n" +
+        "        VITE_API_URL = https://ai-automation-studio.onrender.com\n" +
+        "   Also set EXTRA_CORS_ORIGINS on Render to this Vercel domain.\n",
+      );
+    }
+  },
+};
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), warnMissingApiUrl],
   server: {
     port: 3000
   },

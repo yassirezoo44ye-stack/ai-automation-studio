@@ -47,14 +47,20 @@ services:
         sync: false
       - key: MICROSOFT_CLIENT_SECRET
         sync: false
-      # Comma-separated additional CORS origins for a split-frontend setup
-      # (e.g. https://your-app.vercel.app) — set after your first Vercel
-      # deploy once you know the assigned domain.
+      # Comma-separated additional CORS origins for the Vercel split-deploy.
+      # Without this, the browser CORS preflight blocks all API calls from
+      # the Vercel frontend to this Render backend.
+      # Set to your Vercel deployment domain, e.g.:
+      #   https://ai-automation-studio-kohl.vercel.app
+      # If you have a custom domain on Vercel, include that instead/also.
       - key: EXTRA_CORS_ORIGINS
         sync: false
       - key: SESSION_SECRET
         sync: false
       - key: OPENAI_API_KEY
+        sync: false
+      # Google Gemini — reads GEMINI_API_KEY (not GOOGLE_API_KEY which is OAuth only)
+      - key: GEMINI_API_KEY
         sync: false
       - key: SMTP_HOST
         sync: false

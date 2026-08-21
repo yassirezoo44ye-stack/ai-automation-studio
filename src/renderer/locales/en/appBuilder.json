@@ -1,4 +1,79 @@
 {
+  "sections": {
+    "overview": "Overview",
+    "pages": "Pages",
+    "data": "Data",
+    "workflows": "Workflows",
+    "agents": "Agents",
+    "integrations": "Integrations",
+    "settings": "Settings"
+  },
+  "phases": {
+    "understanding": "Understanding requirements",
+    "schema": "Designing database schema",
+    "ui": "Creating pages & UI",
+    "backend": "Setting up backend logic",
+    "permissions": "Configuring permissions",
+    "automations": "Creating automations",
+    "tests": "Running tests"
+  },
+  "appSidebar": {
+    "appNameFallback": "Untitled App",
+    "statusLive": "Live",
+    "publish": "🚀 Publish"
+  },
+  "preview": {
+    "buildingTitle": "AI is building your app…",
+    "buildingSubtitle": "Connecting to build server. Sit back and relax.",
+    "typePrompt": "Type a prompt to start building your app",
+    "title": "Your app is ready",
+    "tables": "database tables",
+    "pages": "pages",
+    "roles": "roles",
+    "apiOps": "API operations",
+    "workflows": "workflows",
+    "agents": "AI agents",
+    "openApp": "Open App",
+    "editDesign": "Edit in Design Studio",
+    "addAutomation": "Add Automation",
+    "publish": "Publish"
+  },
+  "aiPanel": {
+    "title": "AI Builder",
+    "statusBuilding": "Building…",
+    "statusReady": "Ready",
+    "emptyPrompt": "Describe what you want to build. I'll create the full application for you.",
+    "suggestion1": "Build a CRM for sales",
+    "suggestion2": "Create inventory system",
+    "suggestion3": "Make a help desk app",
+    "placeholderBuilding": "Building in progress…",
+    "placeholderReady": "Describe a change…"
+  },
+  "topbar": {
+    "back": "Apps",
+    "preview": "Preview",
+    "share": "Share",
+    "publish": "🚀 Publish"
+  },
+  "modes": {
+    "build": "Build",
+    "plan": "Plan",
+    "debug": "Debug"
+  },
+  "overlay": {
+    "title": "Building your app with AI",
+    "subtitle": "Sit back, this takes about 30 seconds",
+    "cancel": "Cancel",
+    "dismiss": "Dismiss"
+  },
+  "done": {
+    "title": "Your app is ready!",
+    "filesGenerated": "{{count}} files generated",
+    "filesGeneratedWithLang": "{{count}} files generated · {{lang}}",
+    "buildComplete": "App build complete",
+    "dismiss": "Dismiss",
+    "publish": "🚀 Publish"
+  },
   "title": "App Builder",
   "subtitle": "Build business software in minutes with AI",
   "inputPlaceholder": "Describe the business software you want to build...",
@@ -23,19 +98,6 @@
     "validating": "Validating application"
   },
   "ready": "Application ready",
-  "preview": {
-    "title": "Your app is ready",
-    "tables": "database tables",
-    "pages": "pages",
-    "roles": "roles",
-    "apiOps": "API operations",
-    "workflows": "workflows",
-    "agents": "AI agents",
-    "openApp": "Open App",
-    "editDesign": "Edit in Design Studio",
-    "addAutomation": "Add Automation",
-    "publish": "Publish"
-  },
   "modify": {
     "placeholder": "Describe what you want to change or add...",
     "button": "Apply Changes",

@@ -82,10 +82,30 @@
       "you": "You",
       "assistantFallback": "Claude",
       "now": "now",
-      "streamErrorPrefix": "⚠️ {{message}}"
+      "streamErrorPrefix": "⚠️ {{message}}",
+      "copyCode": "Copy",
+      "copied": "Copied!"
+    },
+    "convGroups": {
+      "today": "Today",
+      "thisWeek": "This Week",
+      "older": "Older"
+    },
+    "contextPanel": {
+      "title": "Context",
+      "activeAgent": "Active Agent",
+      "defaultAgent": "Claude (default)",
+      "project": "Project",
+      "actions": "Actions",
+      "export": "Export as Markdown",
+      "extractTasks": "Extract Tasks",
+      "hidePanel": "Hide panel",
+      "showPanel": "Show panel"
     },
     "input": {
-      "placeholder": "Message… (Enter to send, Shift+Enter for new line)"
+      "placeholder": "Message… (Enter to send, Shift+Enter for new line)",
+      "send": "Send",
+      "stop": "Stop"
     },
     "toast": {
       "extractedTasks_one": "Extracted {{count}} task",

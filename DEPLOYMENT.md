@@ -57,10 +57,14 @@ frontend ┘
    permissions → select "Read and write permissions". If this is left as
    read-only, the `release` job's push step will fail with a 403 — deploys
    and everything before `release` will still work fine either way.
-4. **Optional**: if production isn't at the default
-   `https://ai-automation-studio.onrender.com` (e.g. a custom domain), set
-   a repo variable `PRODUCTION_URL` (Settings → Secrets and variables →
-   Actions → Variables) so the smoke-test job checks the right host.
+4. **Required — smoke-test target URL**: set a repo **variable** (not secret)
+   `PRODUCTION_URL` so the smoke-test job probes the correct Render host.
+   Without it, the job falls back to a hardcoded URL that may be stale, and
+   a `::warning::` annotation appears in CI. The Render service URL is shown
+   on Render dashboard → your service → top of the page (e.g.
+   `https://ai-automation-studio-1-c2rt.onrender.com` or your custom domain).
+   Go to: Settings → Secrets and variables → Actions → Variables → New
+   repository variable → name `PRODUCTION_URL`, value = the Render URL.
 
 ## Ruff lint ratchet
 

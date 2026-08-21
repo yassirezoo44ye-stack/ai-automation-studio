@@ -301,6 +301,45 @@ export function AutomationPage() {
       {tab === "workflows" && (
         <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
 
+          {/* Visual workflow pipeline diagram */}
+          <GlassCard lift={false}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t2)", marginBottom: 4 }}>
+              {t("workflows.pipelineTitle", { defaultValue: "How Automations Work" })}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 4 }}>
+              {t("workflows.pipelineDesc", { defaultValue: "Events flow through your pipeline automatically" })}
+            </div>
+            <div className="wf-pipeline">
+              {[
+                { emoji: "⚡", label: t("workflows.steps.trigger", { defaultValue: "Trigger" }), sub: t("workflows.steps.triggerSub", { defaultValue: "Event / Schedule" }), bg: "var(--accent-dim)", border: "var(--accent-border)", color: "var(--accent)" },
+                { emoji: "🤖", label: t("workflows.steps.agent", { defaultValue: "AI Agent" }), sub: t("workflows.steps.agentSub", { defaultValue: "Reasoning" }), bg: "rgba(11,122,112,0.10)", border: "rgba(11,122,112,0.25)", color: "var(--teal)" },
+                { emoji: "🔀", label: t("workflows.steps.condition", { defaultValue: "Condition" }), sub: t("workflows.steps.conditionSub", { defaultValue: "Branch Logic" }), bg: "var(--yellow-dim)", border: "rgba(161,98,7,0.25)", color: "var(--yellow)" },
+                { emoji: "⚙️", label: t("workflows.steps.action", { defaultValue: "Action" }), sub: t("workflows.steps.actionSub", { defaultValue: "Transform / Run" }), bg: "var(--blue-dim)", border: "rgba(37,99,235,0.25)", color: "var(--blue)" },
+                { emoji: "🔗", label: t("workflows.steps.integration", { defaultValue: "Integration" }), sub: t("workflows.steps.integrationSub", { defaultValue: "External App" }), bg: "var(--green-dim)", border: "rgba(22,163,74,0.25)", color: "var(--green)" },
+              ].map((step, i, arr) => (
+                <div key={step.label} style={{ display: "flex", alignItems: "flex-start" }}>
+                  <div className="wf-step">
+                    <div
+                      className="wf-step__bubble"
+                      style={{ background: step.bg, borderColor: step.border }}
+                    >
+                      {step.emoji}
+                    </div>
+                    <span className="wf-step__label" style={{ color: step.color }}>{step.label}</span>
+                    <span className="wf-step__sub">{step.sub}</span>
+                  </div>
+                  {i < arr.length - 1 && (
+                    <div className="wf-connector">
+                      <svg width="20" height="14" viewBox="0 0 20 14" fill="none">
+                        <path d="M0 7h14M14 7l-5-5M14 7l-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+
           {/* Active runs */}
           <GlassCard lift={false}>
             <div style={{ ...S.cardTitle, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

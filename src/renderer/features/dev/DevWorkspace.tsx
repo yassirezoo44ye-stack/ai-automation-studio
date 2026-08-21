@@ -34,7 +34,11 @@ export function DevWorkspace() {
 
   // ── Project ───────────────────────────────────────────────────────────────
   const [projects, setProjects]   = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState("demo");
+  // Prefer the last project used by AppBuilderPage (stored on project create).
+  // Fall back to "demo" so the workspace still mounts when no project exists yet.
+  const [projectId, setProjectId] = useState(
+    () => sessionStorage.getItem("flow_active_project") ?? "demo",
+  );
 
   // ── Build ─────────────────────────────────────────────────────────────────
   const [buildPrompt, setBuildPrompt]  = useState("");
@@ -55,7 +59,22 @@ export function DevWorkspace() {
   useEffect(() => {
     apiFetch("/api/projects")
       .then(r => parseJSON<Project[]>(r, "/api/projects"))
-      .then(setProjects)
+      .then(list => {
+        setProjects(list);
+        // If the sessionStorage id doesn't match any real project, fall back
+        // to the most-recently-created one so the workspace isn't stuck on
+        // a stale or deleted project.
+        const stored = sessionStorage.getItem("flow_active_project");
+        if (stored && !list.find(p => p.id === stored)) {
+          const fallback = list[0]?.id ?? "demo";
+          setProjectId(fallback);
+          if (fallback !== "demo") {
+            sessionStorage.setItem("flow_active_project", fallback);
+          } else {
+            sessionStorage.removeItem("flow_active_project");
+          }
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -143,7 +162,17 @@ export function DevWorkspace() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <select
             value={projectId}
-            onChange={e => setProjectId(e.target.value)}
+            onChange={e => {
+              const id = e.target.value;
+              setProjectId(id);
+              // Keep the global "active project" in sync so that AgentOS
+              // CommandTerminal automatically picks up the project context.
+              if (id && id !== "demo") {
+                sessionStorage.setItem("flow_active_project", id);
+              } else {
+                sessionStorage.removeItem("flow_active_project");
+              }
+            }}
             className="g-input" style={{ width: "auto" }}
             aria-label={t("header.activeProjectLabel")}
           >

@@ -42,15 +42,27 @@ class ProjectUpdate(BaseModel):
 async def create_project(project: ProjectCreate, request: Request):
     async with get_pool().acquire() as conn:
         uid = await _owner_user_id(conn, request)
-        pid = await conn.fetchval(
-            "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) RETURNING id",
+        # Return the full row so the frontend Project type is satisfied: the
+        # previous response ({id, message}) left name/description/status/
+        # created_at undefined, which caused setProjectName(undefined) and an
+        # empty project-name display immediately after creation.
+        row = await conn.fetchrow(
+            "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) "
+            "RETURNING id, name, description, status, created_at, updated_at",
             uid, project.name, project.description,
         )
         await conn.execute(
             "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'project_created',$2)",
-            uid, json.dumps({"project_id": str(pid), "name": project.name}),
+            uid, json.dumps({"project_id": str(row["id"]), "name": project.name}),
         )
-    return {"id": str(pid), "message": "Project created"}
+    return {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "description": row["description"],
+        "status": row["status"],
+        "created_at": row["created_at"].isoformat(),
+        "updated_at": row["updated_at"].isoformat(),
+    }
 
 
 @router.get("/api/projects")

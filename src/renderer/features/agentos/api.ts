@@ -150,8 +150,17 @@ export const agentOsApi = {
   // live narrated steps (see useAgentRunSteps) before firing the request —
   // it has to be known ahead of time, since this call blocks until the
   // agent finishes (see app/agents/kernel.py's AgentKernel.run() docstring).
-  run: (input: string, workspace?: string, run_id?: string) =>
-    post<AgentResult>("/run", { input, workspace, run_id }),
+  //
+  // project_id: resolved here from sessionStorage so that agents like
+  // run_agent.py that require a verified project context receive it — callers
+  // may override it, but the default is always the currently active project.
+  run: (input: string, workspace?: string, run_id?: string, project_id?: string) =>
+    post<AgentResult>("/run", {
+      input,
+      workspace,
+      run_id,
+      project_id: project_id ?? sessionStorage.getItem("flow_active_project") ?? undefined,
+    }),
 
   collaborate: (tasks: string[], parallel = false) =>
     post<{ tasks: string[]; results: AgentResult[]; success: boolean }>(
@@ -161,14 +170,22 @@ export const agentOsApi = {
   // run_id: same client-generated correlation id as run() above — lets a
   // watcher see the whole autonomous plan (decomposition + every step)
   // as one live narrated sequence instead of only the final summary.
-  plan: (goal: string, run_id?: string) =>
+  plan: (goal: string, run_id?: string, project_id?: string) =>
     post<{ plan: string[]; results: AgentResult[]; success: boolean }>(
-      "/plan", { goal, run_id }
+      "/plan", {
+        goal,
+        run_id,
+        project_id: project_id ?? sessionStorage.getItem("flow_active_project") ?? undefined,
+      }
     ),
 
   // run_id: same client-generated correlation id as run()/plan() above.
-  deliberate: (input: string, run_id?: string) =>
-    post<DeliberateResult>("/deliberate", { input, run_id }),
+  deliberate: (input: string, run_id?: string, project_id?: string) =>
+    post<DeliberateResult>("/deliberate", {
+      input,
+      run_id,
+      project_id: project_id ?? sessionStorage.getItem("flow_active_project") ?? undefined,
+    }),
 
   downloadDeliverable,
 

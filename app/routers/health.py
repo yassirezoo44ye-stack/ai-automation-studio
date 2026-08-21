@@ -199,9 +199,21 @@ async def health_full():
         checks["ws_connections"] = 0
 
     # Config flags
+    # Safe key diagnostics — never log or return the key value itself.
+    def _key_info(env_var: str) -> dict:
+        raw = os.getenv(env_var)  # None if absent, "" if explicitly empty
+        val = raw or ""
+        stripped = val.strip()
+        return {
+            "present":       raw is not None,           # var exists in process env
+            "non_empty":     bool(val),                 # value is truthy
+            "length":        len(val),                  # 0 = empty/absent
+            "has_whitespace": val != stripped,          # leading/trailing space
+        }
+
     checks["config"] = {
         "session_secret" : bool(os.getenv("SESSION_SECRET")),
-        "anthropic_key"  : bool(os.getenv("ANTHROPIC_API_KEY")),
+        "anthropic_key"  : _key_info("ANTHROPIC_API_KEY"),
         "openai_key"     : bool(os.getenv("OPENAI_API_KEY")),
         "stripe_key"     : bool(os.getenv("STRIPE_SECRET_KEY")),
         "redis_url"      : bool(os.getenv("REDIS_URL")),
@@ -217,6 +229,65 @@ async def health_full():
         "status"   : "healthy" if ok else "degraded",
         "checks"   : checks,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ── AI provider probe (read-only, no key values exposed) ─────────────────────
+# Accessible without auth (under /api/health/ which is in PUBLIC_PREFIXES) so
+# ops can hit it from outside the app even when tokens aren't available.
+# Never returns a secret value — only bool/length/circuit state.
+
+@router.get("/api/health/providers")
+async def provider_probe():
+    """
+    Safe AI provider diagnostic. Returns per-provider availability and
+    circuit state so ops can determine which of three failure modes is active:
+
+    1. present=false  → env var absent from process environment (deploy before key was set)
+    2. present=true, non_empty=false → var present but value is empty string
+    3. present=true, non_empty=true, has_whitespace=true → leading/trailing space
+    4. available=true, circuit_state=open → key present but API calls are failing
+    5. available=true, circuit_state=closed → healthy
+    """
+    import os
+    from app.core.ai.registry.registry import platform_registry
+    from app.ai.circuit_breaker import circuit_breaker
+
+    def _key_meta(env_var: str) -> dict:
+        raw = os.getenv(env_var)
+        val = raw or ""
+        return {
+            "present":        raw is not None,
+            "non_empty":      bool(val),
+            "length":         len(val),
+            "has_whitespace": val != val.strip(),
+        }
+
+    circuits  = circuit_breaker.snapshot()
+    providers = {}
+    for pid, p in platform_registry._providers.items():
+        env_var = p._env_key()
+        key_meta = _key_meta(env_var)
+        circuit  = circuits.get(pid, {})
+        providers[pid] = {
+            "env_var":       env_var,
+            "key":           key_meta,
+            "is_available":  p.is_available,
+            "circuit_state": circuit.get("state", "closed"),
+            "consec_fails":  circuit.get("consecutive_fails", 0),
+        }
+
+    available  = platform_registry.available()
+    try:
+        default_id = platform_registry.default().provider_id
+    except RuntimeError:
+        default_id = None
+
+    return {
+        "providers":  providers,
+        "available":  available,
+        "default":    default_id,
+        "chain_empty": len(available) == 0,
     }
 
 

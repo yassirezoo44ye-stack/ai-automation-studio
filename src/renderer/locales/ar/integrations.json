@@ -1,0 +1,72 @@
+{
+  "header": {
+    "title": "التكاملات",
+    "subtitle": "{{connected}} من أصل {{available}} متصلة",
+    "orgPrefix": "{{orgName}} · "
+  },
+  "noOrg": {
+    "title": "اختر منظمة",
+    "description": "التكاملات محددة بالمنظمة. اختر منظمة من الشريط الجانبي لإدارة اتصالاتها."
+  },
+  "stats": {
+    "connected": "متصلة",
+    "available": "متاحة",
+    "comingSoon": "قريباً",
+    "total": "الإجمالي"
+  },
+  "categories": {
+    "all": "الكل",
+    "productivity": "الإنتاجية",
+    "communication": "التواصل",
+    "data": "البيانات والتخزين",
+    "developer": "التطوير",
+    "payments": "المدفوعات"
+  },
+  "status": {
+    "comingSoon": "قريباً",
+    "connected": "متصلة",
+    "notConnected": "غير متصلة",
+    "syncing": "جارٍ المزامنة…",
+    "error": "خطأ",
+    "degraded": "متدهورة",
+    "unavailable": "غير متاحة"
+  },
+  "card": {
+    "connectedAt": "متصلة منذ {{date}}",
+    "connectionError": "خطأ في الاتصال — أعد الاتصال لاستعادة الوصول",
+    "configure": "إعداد",
+    "disconnect": "قطع الاتصال",
+    "reconnect": "إعادة الاتصال",
+    "connect": "+ اتصال",
+    "comingSoon": "قريباً"
+  },
+  "modal": {
+    "title": "الاتصال بـ {{name}}",
+    "oauthNote": "تتم مصادقة OAuth من جانب الخادم. تواصل مع المسؤول لإعداد هذا التكامل.",
+    "scopesLabel": "الصلاحيات:",
+    "cancel": "إلغاء",
+    "connect": "اتصال",
+    "connecting": "جارٍ الاتصال…"
+  },
+  "search": {
+    "placeholder": "ابحث في التكاملات…"
+  },
+  "actions": {
+    "refresh": "تحديث",
+    "retry": "إعادة المحاولة"
+  },
+  "empty": {
+    "title": "لا توجد تكاملات",
+    "description": "جرّب بحثاً أو تصنيفاً مختلفاً"
+  },
+  "fields": {
+    "username": "اسم المستخدم",
+    "password": "كلمة المرور",
+    "token": "الرمز",
+    "apiKey": "مفتاح API",
+    "usernamePlaceholder": "أدخل اسم المستخدم",
+    "passwordPlaceholder": "أدخل كلمة المرور",
+    "tokenPlaceholder": "أدخل رمز JWT",
+    "apiKeyPlaceholder": "أدخل مفتاح API أو السر"
+  }
+}
