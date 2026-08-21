@@ -94,3 +94,52 @@ successful deploy to `main`.
 
 ### Other
 - feat(ai-gateway): migrate chat.py + build.py to InferenceEngine
+
+## v1.0.9
+
+### Features
+- AI Business App Builder — full orchestration feature
+
+### Fixes
+- move App Builder job handler registration after get_job_queue import
+- resolve ruff lint regressions blocking CI (restore count to 104 baseline)
+- strip trailing slash from APP_URL to prevent double-slash in email links
+- eliminate setState-in-effect lint warning in AuthPage reset tab
+- add password reset frontend page (P0 gap — backend was complete, frontend missing)
+
+### Docs
+- mark password reset frontend as resolved in PROJECT_STATUS.md
+
+### Other
+- fix(docker): include migrations in production image
+- Merge PR #1: AI Business App Builder — production-ready
+- App Builder: crash recovery, handler hardening, frontend polling fixes
+- App Builder: async build pipeline, retry, RLS, real progress polling
+- docs(auth): document sub_token logout-revocation P0 as a decision, not a silent fix
+- Merge origin/main (chore: release v1.0.8 [skip ci]) before pushing Phase 1 auth fixes
+- fix(auth): harden OAuth and refresh token lifecycle
+- fix(auth): log Google OAuth token-exchange failures without changing the client response
+- test(auth): reduce Google OAuth E2E test duplication
+- test(auth): add Google OAuth end-to-end coverage
+- feat(ai): enforce context budget in gateway enrichment
+- fix(ai): enforce context budget on live chat
+- fix(multitenancy): scope workflow engine approve/reject/visibility to caller's org
+- fix(multitenancy): scope event bus replay/dlq to caller's org
+- fix(security): restrict admin API-key scope to platform-admin allowlist
+- fix(security): close workspace-trust + identity-spoofing chain in commands/plan/agent execution
+- fix(security): derive runtime execution workspace from verified project ownership + close execution IDOR
+- fix(security): require auth + restrict topic subscription on /ws/agent
+- fix(security): harden path-traversal check with is_relative_to()
+- fix(auth): remove dead sub_token cookie fallback
+- fix(auth): repair token lifecycle and close auth gaps
+- feat(ai-gateway): migrate agents.py + design.py + tasks.py to InferenceEngine
+
+## v1.0.10
+
+### Fixes
+- harden AI provider diagnostics and migration image validation
+
+## v1.0.11
+
+### Other
+- fix(ai): resolve ProviderID values correctly on Python 3.11

@@ -10,6 +10,7 @@ All AI code goes through this registry. Never instantiate providers directly.
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from app.ai.circuit_breaker import circuit_breaker
@@ -267,31 +268,43 @@ class PlatformProviderRegistry:
     ):
         """Stream from primary provider; emit events; fall back on failure.
         Skips any provider (primary or fallback) whose circuit is open."""
-        raw_chain = self.resolve_chain(request)
-        if not raw_chain:
-            # No providers have API keys configured — operational fix required.
+        # Two-stage check so the error message is actionable:
+        #   Stage 1 — is anything configured (API key present)?
+        #   Stage 2 — does any configured provider have an open circuit?
+        configured = self.resolve_chain(request)  # already filtered to is_available=True
+        if not configured:
             log.error(
-                "No AI providers configured. "
-                "Set at least one environment variable: ANTHROPIC_API_KEY, "
-                "OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, "
-                "GROQ_API_KEY, or LOCAL_MODEL_BASE_URL"
+                "stream_with_events: no providers configured — "
+                "anthropic_configured=%s  openai_configured=%s",
+                "true" if os.getenv("ANTHROPIC_API_KEY") else "false",
+                "true" if os.getenv("OPENAI_API_KEY") else "false",
             )
-            yield StreamChunk(type="error", error="No available AI providers — circuits open or none configured.")
+            yield StreamChunk(
+                type="error",
+                error=(
+                    "No AI provider is configured. "
+                    "Set ANTHROPIC_API_KEY (or OPENAI_API_KEY) in the Render "
+                    "environment variables, then redeploy."
+                ),
+            )
             return
-
-        chain = [p for p in raw_chain if circuit_breaker.allow(p.provider_id)]
+        chain = [p for p in configured if circuit_breaker.allow(p.provider_id)]
         if not chain:
-            # Providers are configured but all circuit breakers are open —
-            # likely caused by repeated API failures (invalid key, quota exceeded,
-            # or network issue). Circuits auto-recover after 30 s of cooldown.
-            blocked = [p.provider_id for p in raw_chain]
-            log.error(
-                "AI provider circuit(s) open, requests blocked: %s. "
-                "Check API key validity and billing status. "
-                "Circuits will auto-recover after the cooldown period.",
-                blocked,
+            cooldown = int(circuit_breaker._cooldown)
+            open_ids  = [p.provider_id for p in configured
+                         if not circuit_breaker.allow(p.provider_id)]
+            log.warning(
+                "stream_with_events: all circuits open — providers=%s  cooldown=%ds",
+                open_ids, cooldown,
             )
-            yield StreamChunk(type="error", error="No available AI providers — circuits open or none configured.")
+            yield StreamChunk(
+                type="error",
+                error=(
+                    f"No available AI providers — all circuits are open "
+                    f"({', '.join(open_ids)}). "
+                    f"Retry in {cooldown}s or check GET /api/ai/providers."
+                ),
+            )
             return
 
         provider = chain[0]
