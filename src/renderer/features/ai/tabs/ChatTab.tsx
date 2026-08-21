@@ -1,7 +1,14 @@
 /**
- * ChatTab — streaming AI conversation panel.
- * Handles conversation list, message rendering, streaming, task extraction.
- * All data access goes through apiFetch; no direct provider imports.
+ * ChatTab — 3-column AI command center.
+ *
+ * Columns:
+ *   1. Conversation Rail (260px, collapsible on mobile)
+ *   2. Main Chat (flex: 1) — toolbar, messages, composer
+ *   3. Context Panel (280px, collapsible)
+ *
+ * All streaming, conversation management, and task logic is unchanged
+ * from the original implementation. RTL is handled via CSS logical
+ * properties in chat.css and `marginInlineStart` etc. in inline styles.
  */
 import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
@@ -17,6 +24,7 @@ import { GoldButton } from "../../../shared/ui/gold";
 import AxonLogo from "../../../AxonLogo";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";
 import { PRIORITY_COLOR } from "../../../constants";
+import "../chat.css";
 
 /** Extracts a user-readable message from any caught error, preferring APIError's diagnostics. */
 function describeError(err: unknown, fallback: string): string {
@@ -25,27 +33,52 @@ function describeError(err: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Group conversations into Today / This Week / Older buckets. */
+function groupConvsByDate(convs: Conv[]): { label: "today" | "thisWeek" | "older"; items: Conv[] }[] {
+  const now = Date.now();
+  const day = 86_400_000;
+  const groups: { label: "today" | "thisWeek" | "older"; items: Conv[] }[] = [
+    { label: "today",    items: [] },
+    { label: "thisWeek", items: [] },
+    { label: "older",    items: [] },
+  ];
+  for (const c of convs) {
+    const age = now - new Date(c.updated_at).getTime();
+    if (age < day)         groups[0].items.push(c);
+    else if (age < 7*day)  groups[1].items.push(c);
+    else                   groups[2].items.push(c);
+  }
+  return groups.filter(g => g.items.length > 0);
+}
+
 interface ChatTabProps {
-  agents:         Agent[];
-  projects:       Project[];
+  agents:          Agent[];
+  projects:        Project[];
   initialAgentId?: string | null;
 }
 
 export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const { t } = useTranslation("ai");
   const toast = useToast();
+
+  // ── Core state (unchanged) ────────────────────────────────────────
   const [projectId, setProjectId] = useState("demo");
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
+
+  // Layout state
+  const [contextPanelOpen, setContextPanelOpen] = useState(true);
+
   const {
     data: convs = [], status: convsStatus, error: convsError, suggestedFix: convsFix, refetch: loadConvs,
   } = useAsyncData(() => apiJSON<Conv[]>(`/api/conversations?project_id=${projectId}`), [projectId]);
-  const [activeConv, setActiveConv] = useState<string | null>(null);
+
+  const [activeConv, setActiveConv]         = useState<string | null>(null);
   // Local, mutable copy of the active conversation's messages. Backed by
   // useAsyncData below for the *load* — but sendMessage() must keep
   // appending/streaming tokens into this directly, which a hook whose only
   // externally-owned value is `data` can't support, so loaded history is
   // synced in via effect rather than read straight from the hook.
-  const [messages, setMessages]   = useState<Message[]>([]);
+  const [messages, setMessages]             = useState<Message[]>([]);
   // Which conversation `messages` actually holds content for. Lets the UI
   // tell "switching to a different, not-yet-loaded past conversation"
   // (messagesConvId out of sync with activeConv -> show a spinner, don't
@@ -54,19 +87,19 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   // the new id immediately, in the same handler that flips activeConv, so
   // the in-progress streamed reply is never hidden behind a loading state).
   const [messagesConvId, setMessagesConvId] = useState<string | null>(null);
-  const [prompt, setPrompt]       = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [searchQ, setSearchQ]     = useState("");
+  const [prompt, setPrompt]                 = useState("");
+  const [streaming, setStreaming]           = useState(false);
+  const [searchQ, setSearchQ]               = useState("");
   // Same local-copy-synced-from-hook pattern as messages: setTaskStatus
   // optimistically mutates this list, which a hook-owned `data` can't allow.
-  const [inlineTasks, setInlineTasks] = useState<Task[]>([]);
-  const [extracting, setExtracting]   = useState(false);
-  const [showTasks, setShowTasks]     = useState(false);
-  const [exporting, setExporting]     = useState(false);
+  const [inlineTasks, setInlineTasks]       = useState<Task[]>([]);
+  const [extracting, setExtracting]         = useState(false);
+  const [showTasks, setShowTasks]           = useState(false);
+  const [exporting, setExporting]           = useState(false);
   // Track *which* conversation/task is in flight so only that row's control
   // disables — an unrelated conversation's delete button, or a different
   // task's checkbox, must stay clickable while another one is in flight.
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [deletingIds, setDeletingIds]       = useState<Set<string>>(new Set());
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
@@ -89,7 +122,6 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     { enabled: !!activeConv && showTasks },
   );
   useEffect(() => {
-    // Deferred so the setState runs outside the effect's own commit.
     if (loadedTasks) void Promise.resolve().then(() => setInlineTasks(loadedTasks));
   }, [loadedTasks]);
 
@@ -103,15 +135,11 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       return msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
     },
     [activeConv],
-    { enabled: !!activeConv, isEmpty: () => false }, // an empty conversation is not an error state worth flagging
+    { enabled: !!activeConv, isEmpty: () => false },
   );
-  // Sync loaded history into the local, streaming-mutable copy. This effect
-  // only ever fires on an actual conversation switch or an explicit manual
-  // retry — sendMessage() never changes activeConv or calls reloadMessages,
-  // so it can't be clobbered by a fetch racing an in-progress stream.
+  // Sync loaded history into the local, streaming-mutable copy.
   useEffect(() => {
     if (!loadedMessages) return;
-    // Deferred so the setState runs outside the effect's own commit.
     void Promise.resolve().then(() => {
       setMessages(loadedMessages);
       setMessagesConvId(activeConv);
@@ -119,8 +147,10 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedMessages]);
 
+  // ── Actions (unchanged logic) ─────────────────────────────────────
+
   async function extractTasks() {
-    if (!activeConv || extracting) return; // prevent duplicate submissions
+    if (!activeConv || extracting) return;
     setExtracting(true);
     try {
       const path = `/api/tasks/from-conversation/${activeConv}`;
@@ -136,7 +166,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   }
 
   async function setTaskStatus(task: Task, status: string) {
-    if (pendingTaskIds.has(task.id)) return; // prevent duplicate submissions for this task
+    if (pendingTaskIds.has(task.id)) return;
     setPendingTaskIds(prev => new Set(prev).add(task.id));
     setInlineTasks(prev => prev.map(x => x.id === task.id ? { ...x, status: status as Task["status"] } : x));
     try {
@@ -146,7 +176,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       });
     } catch (err) {
       toast(describeError(err, t("chatTab.toast.updateTaskFailed")), "err");
-      loadInlineTasks(); // resync with server truth after the optimistic update failed
+      loadInlineTasks();
     } finally {
       setPendingTaskIds(prev => { const next = new Set(prev); next.delete(task.id); return next; });
     }
@@ -154,7 +184,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
   async function deleteConv(e: React.SyntheticEvent, cid: string) {
     e.stopPropagation();
-    if (deletingIds.has(cid)) return; // prevent duplicate submissions for this conversation
+    if (deletingIds.has(cid)) return;
     setDeletingIds(prev => new Set(prev).add(cid));
     try {
       const r = await apiFetch(`/api/conversations/${cid}`, { method: "DELETE" });
@@ -169,7 +199,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   }
 
   async function exportConv() {
-    if (!activeConv || exporting) return; // prevent duplicate submissions
+    if (!activeConv || exporting) return;
     setExporting(true);
     try {
       const r = await apiFetch(`/api/export/conversations/${activeConv}`);
@@ -243,66 +273,78 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     } finally { setStreaming(false); abortRef.current = null; }
   }
 
+  // ── Derived state ─────────────────────────────────────────────────
   const filteredConvs = useMemo(
     () => searchQ ? convs.filter(c => c.title.toLowerCase().includes(searchQ.toLowerCase())) : convs,
     [convs, searchQ],
   );
-  const activeAgent = useMemo(() => agents.find(a => a.id === agentId), [agents, agentId]);
+  const groupedConvs = useMemo(() => groupConvsByDate(filteredConvs), [filteredConvs]);
+  const activeAgent  = useMemo(() => agents.find(a => a.id === agentId), [agents, agentId]);
 
-  // True only while `messages` genuinely doesn't reflect activeConv yet —
-  // i.e. the user switched to a different, not-yet-loaded past conversation.
-  // False for a brand-new conversation created mid-stream, since sendMessage
-  // claims messagesConvId for it before flipping activeConv (see above) —
-  // the in-progress streamed reply must never be hidden behind a spinner.
-  const messagesOutOfSync = !!activeConv && messagesConvId !== activeConv;
+  // True only while `messages` genuinely doesn't reflect activeConv yet.
+  const messagesOutOfSync  = !!activeConv && messagesConvId !== activeConv;
   const showMessagesLoading = messagesOutOfSync && messagesStatus === "loading";
   const showMessagesError   = messagesOutOfSync && messagesStatus === "error";
 
+  // Active project label
+  const activeProjectName = projectId === "demo"
+    ? t("chatTab.sidebar.demoProject")
+    : (projects.find(p => p.id === projectId)?.name ?? projectId);
+
+  // ── Render ────────────────────────────────────────────────────────
   return (
-    <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-      {/* ── Conversation sidebar ──────────────────────────────────────────────── */}
-      <div style={{ width: 230, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--bg-panel)", backdropFilter: "blur(16px)", borderRight: "1px solid var(--border)" }}>
-        <div style={{ padding: "10px 10px 6px", display: "flex", gap: 6 }}>
-          <select value={projectId} onChange={e => setProjectId(e.target.value)} className="g-input" style={{ flex: 1, fontSize: 12, padding: "8px 12px" }}>
+    <div className="chat-layout">
+
+      {/* ═══════════════════════════════════════════════════════════
+          COLUMN 1 — Conversation Rail
+          ════════════════════════════════════════════════════════ */}
+      <aside className="chat-rail" aria-label={t("chatTab.sidebar.loading")}>
+
+        {/* Top controls */}
+        <div className="chat-rail__top">
+          <GoldButton
+            onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
+            style={{ fontSize: 12 }}
+          >
+            {t("chatTab.sidebar.newChat")}
+          </GoldButton>
+
+          <input
+            value={searchQ}
+            onChange={e => setSearchQ(e.target.value)}
+            placeholder={t("chatTab.sidebar.searchPlaceholder")}
+            className="g-input"
+            aria-label={t("chatTab.sidebar.searchPlaceholder")}
+            style={{ fontSize: 12, padding: "6px 10px" }}
+          />
+
+          <select
+            value={projectId}
+            onChange={e => setProjectId(e.target.value)}
+            className="g-input"
+            aria-label={t("chatTab.contextPanel.project")}
+            style={{ fontSize: 12, padding: "6px 10px" }}
+          >
             <option value="demo">{t("chatTab.sidebar.demoProject")}</option>
             {projects.filter(p => p.id !== "00000000-0000-0000-0000-000000000001").map(p => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-        </div>
-        <div style={{ padding: "0 10px 6px" }}>
-          <select value={agentId} onChange={e => setAgentId(e.target.value)} className="g-input" style={{ width: "100%", fontSize: 12, padding: "8px 12px" }}>
+
+          <select
+            value={agentId}
+            onChange={e => setAgentId(e.target.value)}
+            className="g-input"
+            aria-label={t("chatTab.contextPanel.activeAgent")}
+            style={{ fontSize: 12, padding: "6px 10px" }}
+          >
             <option value="default">{t("chatTab.sidebar.defaultAgent")}</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>)}
           </select>
         </div>
-        <div style={{ padding: "0 8px 6px", display: "flex", gap: 6 }}>
-          <GoldButton
-            onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
-            style={{ flex: 1, fontSize: 12 }}
-          >
-            {t("chatTab.sidebar.newChat")}
-          </GoldButton>
-          {activeConv && (
-            <button onClick={exportConv} disabled={exporting} title={t("chatTab.sidebar.exportTitle")} className="btn-icon" style={{ width: 36 }}>
-              {exporting ? "…" : "↓"}
-            </button>
-          )}
-          {activeConv && (
-            <button onClick={extractTasks} disabled={extracting} title={t("chatTab.sidebar.extractTasksTitle")} className="btn-icon" style={{ width: 36 }}>
-              {extracting ? "…" : "✅"}
-            </button>
-          )}
-        </div>
-        <div style={{ padding: "0 8px 6px" }}>
-          <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder={t("chatTab.sidebar.searchPlaceholder")} className="g-input" style={{ fontSize: 12, padding: "6px 10px" }} />
-        </div>
-        <div style={{ flex: 1, overflowY: "auto", position: "relative" }}>
-          {convsStatus === "refreshing" && (
-            <div style={{ position: "absolute", top: 6, right: 8, opacity: 0.6, zIndex: 1 }}>
-              <LoadingSpinner size={14} label="" />
-            </div>
-          )}
+
+        {/* Conversation list */}
+        <div className="chat-rail__scroll">
           {convsStatus === "loading" && <LoadingSpinner label={t("chatTab.sidebar.loading")} />}
           {convsStatus === "error" && (
             <ErrorState compact message={convsError ?? t("chatTab.sidebar.loadError")} suggestedFix={convsFix} onRetry={loadConvs} />
@@ -310,48 +352,94 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           {convsStatus === "empty" && (
             <EmptyState compact title={t("chatTab.sidebar.emptyTitle")} description={t("chatTab.sidebar.emptyDesc")} />
           )}
-          {(convsStatus === "success" || convsStatus === "refreshing") && filteredConvs.length === 0 && (
+          {(convsStatus === "success" || convsStatus === "refreshing") && filteredConvs.length === 0 && searchQ && (
             <EmptyState compact title={t("chatTab.sidebar.noMatchesTitle")} description={t("chatTab.sidebar.noMatchesDesc", { query: searchQ })} />
           )}
-          {filteredConvs.map(c => {
-            const isDeleting = deletingIds.has(c.id);
-            return (
-              <div
-                key={c.id}
-                role="button" tabIndex={0}
-                onClick={() => setActiveConv(c.id)}
-                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActiveConv(c.id); } }}
-                style={{
-                  padding: "10px 14px", cursor: "pointer", transition: "background .15s",
-                  background: c.id === activeConv ? "var(--accent-dim)" : "transparent",
-                  borderRight: c.id === activeConv ? "2px solid var(--accent)" : "2px solid transparent",
-                  ...(isDeleting ? { opacity: 0.5, pointerEvents: "none" } : {}),
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 500, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
-                  <span style={{ fontSize: 10, color: "var(--t5)" }}>{relTime(c.updated_at)}</span>
-                  <span
-                    role="button" tabIndex={0}
-                    onClick={e => { if (!isDeleting) deleteConv(e, c.id); }}
-                    onKeyDown={e => { if (!isDeleting && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); void deleteConv(e, c.id); } }}
-                    title={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
-                    aria-label={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
-                    style={{ color: "var(--t5)", fontSize: 11, cursor: isDeleting ? "default" : "pointer" }}
-                  >
-                    {isDeleting ? "…" : "✕"}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* ── Chat area ─────────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        {/* Inline tasks strip — shown while loading/erroring too now, not just once tasks exist,
-            so "Extract tasks" always gives visible feedback instead of silently doing nothing. */}
+          {groupedConvs.map(({ label, items }) => (
+            <div key={label}>
+              <div className="conv-group-label">{t(`chatTab.convGroups.${label}`)}</div>
+              {items.map(c => {
+                const isDeleting = deletingIds.has(c.id);
+                return (
+                  <div
+                    key={c.id}
+                    role="button"
+                    className={`conv-item${c.id === activeConv ? " active" : ""}`}
+                    tabIndex={0}
+                    aria-label={c.title}
+                    aria-current={c.id === activeConv ? "page" : undefined}
+                    onClick={() => { if (!isDeleting) setActiveConv(c.id); }}
+                    onKeyDown={e => {
+                      if (!isDeleting && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault(); setActiveConv(c.id);
+                      }
+                    }}
+                    style={isDeleting ? { opacity: 0.5, pointerEvents: "none" } : undefined}
+                  >
+                    <div className="conv-item__title">{c.title}</div>
+                    <span className="conv-item__time">{relTime(c.updated_at)}</span>
+                    <button
+                      className="conv-item__del"
+                      onClick={e => { if (!isDeleting) void deleteConv(e, c.id); }}
+                      aria-label={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
+                      title={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
+                    >
+                      {isDeleting ? "…" : "✕"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+
+          {convsStatus === "refreshing" && (
+            <div style={{ padding: "8px", textAlign: "center" }}>
+              <LoadingSpinner size={14} label="" />
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ═══════════════════════════════════════════════════════════
+          COLUMN 2 — Main Chat
+          ════════════════════════════════════════════════════════ */}
+      <div className="chat-main">
+
+        {/* Toolbar */}
+        <div className="chat-toolbar" role="toolbar" aria-label="Chat controls">
+          <span style={{ fontSize: 16 }}>{activeAgent?.avatar ?? "🤖"}</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: "var(--t2)" }}>
+            {activeAgent?.name ?? t("chatTab.contextPanel.defaultAgent")}
+          </span>
+          {activeConv && (
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: "var(--ta)",
+              background: "var(--accent-dim)", border: "1px solid var(--accent-border)",
+              borderRadius: "var(--r-full)", padding: "2px 8px", letterSpacing: "0.04em",
+            }}>
+              {activeProjectName}
+            </span>
+          )}
+          <div className="chat-toolbar__spacer" />
+
+          {/* Context panel toggle */}
+          <button
+            className={`chat-icon-btn${contextPanelOpen ? " active" : ""}`}
+            onClick={() => setContextPanelOpen(p => !p)}
+            aria-label={contextPanelOpen ? t("chatTab.contextPanel.hidePanel") : t("chatTab.contextPanel.showPanel")}
+            title={contextPanelOpen ? t("chatTab.contextPanel.hidePanel") : t("chatTab.contextPanel.showPanel")}
+            aria-pressed={contextPanelOpen}
+          >
+            {/* Side-panel icon */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <line x1="15" y1="3" x2="15" y2="21"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Inline tasks strip */}
         {showTasks && (inlineTasksStatus === "loading" || inlineTasksStatus === "error" || inlineTasks.length > 0) && (
           <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", background: "var(--accent-dim)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ta)", flexShrink: 0 }}>{t("chatTab.tasksBar.label")}</span>
@@ -359,105 +447,273 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             {inlineTasksStatus === "error" && (
               <ErrorState compact message={inlineTasksError ?? t("chatTab.tasksBar.loadError")} suggestedFix={inlineTasksFix} onRetry={loadInlineTasks} />
             )}
-            {inlineTasksStatus !== "loading" && inlineTasksStatus !== "error" && inlineTasks.map(t => {
-              const isPending = pendingTaskIds.has(t.id);
+            {inlineTasksStatus !== "loading" && inlineTasksStatus !== "error" && inlineTasks.map(task => {
+              const isPending = pendingTaskIds.has(task.id);
               return (
-                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "var(--bg-hover)", border: "1px solid var(--border)", fontSize: 12, opacity: isPending ? 0.6 : 1 }}>
+                <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "var(--bg-hover)", border: "1px solid var(--border)", fontSize: 12, opacity: isPending ? 0.6 : 1 }}>
                   <button
-                    onClick={() => setTaskStatus(t, t.status === "done" ? "pending" : "done")}
+                    onClick={() => void setTaskStatus(task, task.status === "done" ? "pending" : "done")}
                     disabled={isPending}
-                    style={{ background: "none", border: "none", cursor: isPending ? "default" : "pointer", padding: 0, color: t.status === "done" ? "var(--green)" : "var(--t5)", display: "flex" }}
+                    aria-label={task.status === "done" ? "Mark pending" : "Mark done"}
+                    style={{ background: "none", border: "none", cursor: isPending ? "default" : "pointer", padding: 0, color: task.status === "done" ? "var(--green)" : "var(--t5)", display: "flex" }}
                   >
-                    {t.status === "done"
-                      ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                      : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/></svg>}
+                    {task.status === "done"
+                      ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                      : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>}
                   </button>
-                  <span style={{ color: t.status === "done" ? "var(--t5)" : "var(--t2)", textDecoration: t.status === "done" ? "line-through" : "none" }}>{t.title}</span>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: PRIORITY_COLOR[t.priority], flexShrink: 0 }} title={t.priority} />
+                  <span style={{ color: task.status === "done" ? "var(--t5)" : "var(--t2)", textDecoration: task.status === "done" ? "line-through" : "none" }}>{task.title}</span>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: PRIORITY_COLOR[task.priority], flexShrink: 0 }} title={task.priority} />
                 </div>
               );
             })}
-            <button onClick={() => setShowTasks(false)} style={{ background: "none", border: "none", color: "var(--t5)", cursor: "pointer", marginLeft: "auto", fontSize: 16 }}>×</button>
+            <button
+              onClick={() => setShowTasks(false)}
+              aria-label="Close tasks"
+              style={{ background: "none", border: "none", color: "var(--t5)", cursor: "pointer", marginInlineStart: "auto", fontSize: 16 }}
+            >×</button>
           </div>
         )}
 
-        {/* Messages */}
+        {/* Messages area */}
         <div style={{ flex: 1, overflowY: "auto", padding: "32px 0", display: "flex", flexDirection: "column", gap: 0, position: "relative" }}>
           {showMessagesLoading && <LoadingSpinner fullPage label={t("chatTab.messages.loading")} />}
           {showMessagesError && (
             <ErrorState message={messagesError ?? t("chatTab.messages.loadError")} suggestedFix={messagesFix} onRetry={reloadMessages} />
           )}
+
+          {/* Empty state */}
           {!showMessagesLoading && !showMessagesError && messages.length === 0 && (
             <div style={{ margin: "auto", textAlign: "center", color: "var(--t5)", paddingBottom: 80, animation: "fadeIn .4s ease" }}>
               <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>{activeAgent ? activeAgent.name : t("chatTab.messages.emptyAgentName")}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>
+                {activeAgent ? activeAgent.name : t("chatTab.messages.emptyAgentName")}
+              </div>
               <div style={{ fontSize: 14, color: "var(--t4)", maxWidth: 320, lineHeight: 1.65, marginTop: 6 }}>
                 {activeAgent?.description ?? t("chatTab.messages.emptyDescription")}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
-                {[t("chatTab.messages.suggestion1"), t("chatTab.messages.suggestion2"), t("chatTab.messages.suggestion3"), t("chatTab.messages.suggestion4")].map(s => (
+                {[
+                  t("chatTab.messages.suggestion1"),
+                  t("chatTab.messages.suggestion2"),
+                  t("chatTab.messages.suggestion3"),
+                  t("chatTab.messages.suggestion4"),
+                ].map(s => (
                   <GoldButton key={s} variant="ghost" onClick={() => setPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
                 ))}
               </div>
             </div>
           )}
-          {/* Suppressed while a *different* conversation's history is loading/erroring, so the
-              previous conversation's messages never flash underneath the loading/error state. */}
+
+          {/* Message rows — suppressed while a *different* conversation's history
+              is loading/erroring to avoid flashing old content beneath the state. */}
           {!showMessagesLoading && !showMessagesError && messages.map((m, idx) => (
-            <MessageRow key={m.id} msg={m} isLast={idx === messages.length - 1}
-                        agentName={activeAgent?.name ?? null} agentAvatar={activeAgent?.avatar ?? null} />
+            <MessageRow
+              key={m.id}
+              msg={m}
+              isLast={idx === messages.length - 1}
+              agentName={activeAgent?.name ?? null}
+              agentAvatar={activeAgent?.avatar ?? null}
+            />
           ))}
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div style={{ padding: "14px 22px", gap: 10, borderTop: "1px solid var(--border)", display: "flex", alignItems: "flex-end", background: "var(--bg-panel)", backdropFilter: "blur(16px)" }}>
+        {/* Composer */}
+        <div style={{ padding: "10px 16px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0 }}>
           <textarea
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
             placeholder={t("chatTab.input.placeholder")}
-            className="g-input" style={{ flex: 1, maxHeight: 160, resize: "none" }} rows={1}
+            className="g-input"
+            rows={2}
+            aria-label={t("chatTab.input.placeholder")}
+            style={{ width: "100%", maxHeight: 160, resize: "none", marginBottom: 8 }}
           />
-          {streaming
-            ? <GoldButton variant="danger" onClick={() => abortRef.current?.abort()} style={{ width: 42, height: 42, padding: 0, flexShrink: 0 }}>■</GoldButton>
-            : <GoldButton onClick={() => void sendMessage()} disabled={!prompt.trim()} style={{ width: 42, height: 42, padding: 0, flexShrink: 0 }}>↑</GoldButton>}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+            {streaming ? (
+              <GoldButton
+                variant="danger"
+                onClick={() => abortRef.current?.abort()}
+                aria-label={t("chatTab.input.stop")}
+                style={{ height: 36, paddingInline: 16, fontSize: 13 }}
+              >
+                ■ {t("chatTab.input.stop")}
+              </GoldButton>
+            ) : (
+              <GoldButton
+                onClick={() => void sendMessage()}
+                disabled={!prompt.trim()}
+                aria-label={t("chatTab.input.send")}
+                style={{ height: 36, paddingInline: 16, fontSize: 13 }}
+              >
+                {t("chatTab.input.send")} ↑
+              </GoldButton>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════
+          COLUMN 3 — Context Panel (collapsible)
+          ════════════════════════════════════════════════════════ */}
+      {contextPanelOpen && (
+        <aside className="chat-context" aria-label={t("chatTab.contextPanel.title")}>
+          <div className="chat-context__header">
+            <span className="chat-context__title">{t("chatTab.contextPanel.title")}</span>
+            <button
+              className="chat-icon-btn"
+              onClick={() => setContextPanelOpen(false)}
+              aria-label={t("chatTab.contextPanel.hidePanel")}
+              title={t("chatTab.contextPanel.hidePanel")}
+              style={{ width: 24, height: 24, fontSize: 14, border: "none" }}
+            >×</button>
+          </div>
+
+          <div className="chat-context__body">
+            {/* Active agent */}
+            <div>
+              <div className="chat-context__section-label">{t("chatTab.contextPanel.activeAgent")}</div>
+              <div className="chat-context__agent-card">
+                <div className="chat-context__agent-avatar">
+                  {activeAgent?.avatar ?? "🤖"}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div className="chat-context__agent-name">
+                    {activeAgent?.name ?? t("chatTab.contextPanel.defaultAgent")}
+                  </div>
+                  {activeAgent?.description && (
+                    <div className="chat-context__agent-desc">{activeAgent.description}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Current project */}
+            <div>
+              <div className="chat-context__section-label">{t("chatTab.contextPanel.project")}</div>
+              <span style={{
+                fontSize: 12, color: "var(--t1)",
+                padding: "4px 10px", borderRadius: "var(--r-full)",
+                background: "var(--accent-dim)", border: "1px solid var(--accent-border)",
+                display: "inline-block",
+              }}>
+                {activeProjectName}
+              </span>
+            </div>
+
+            {/* Actions — only shown when a conversation is active */}
+            {activeConv && (
+              <div>
+                <div className="chat-context__section-label">{t("chatTab.contextPanel.actions")}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    className="chat-context__action-btn"
+                    onClick={() => void exportConv()}
+                    disabled={exporting}
+                    title={t("chatTab.sidebar.exportTitle")}
+                  >
+                    {/* Download icon */}
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    {exporting ? "…" : t("chatTab.contextPanel.export")}
+                  </button>
+                  <button
+                    className="chat-context__action-btn"
+                    onClick={() => void extractTasks()}
+                    disabled={extracting}
+                    title={t("chatTab.sidebar.extractTasksTitle")}
+                  >
+                    {/* Check icon */}
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    {extracting ? "…" : t("chatTab.contextPanel.extractTasks")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }
 
-// Memoized row: during streaming, only the last message's content changes —
+// ── MessageRow ────────────────────────────────────────────────────────────────
+// Memoized: during streaming only the last message's content changes —
 // memo stops React re-rendering (and re-parsing markdown for) every earlier
 // message on each streamed token.
-const MessageRow = memo(function MessageRow({ msg, isLast, agentName, agentAvatar }: {
+const MessageRow = memo(function MessageRow({
+  msg, isLast, agentName, agentAvatar,
+}: {
   msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
 }) {
   const { t } = useTranslation("ai");
-  const rowStyle: CSSProperties = msg.role === "user"
-    ? { display: "flex", gap: 14, alignItems: "flex-start", padding: "16px 32px", maxWidth: 900, width: "100%", alignSelf: "flex-end", flexDirection: "row-reverse", animation: "slideIn .22s ease" }
-    : { display: "flex", gap: 14, alignItems: "flex-start", padding: "16px 32px", maxWidth: 900, width: "100%", animation: "slideIn .22s ease" };
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    void navigator.clipboard.writeText(msg.content).then(() => {
+      setCopied(true);
+      // Reset the "Copied!" indicator after 2 s so it's ready for re-use.
+      const id = setTimeout(() => setCopied(false), 2000);
+      return () => clearTimeout(id);
+    });
+  }
+
+  const isUser = msg.role === "user";
+  const rowStyle: CSSProperties = {
+    display: "flex",
+    gap: 14,
+    alignItems: "flex-start",
+    padding: "14px 24px",
+    maxWidth: 900,
+    width: "100%",
+    animation: "slideIn .22s ease",
+    ...(isUser ? { flexDirection: "row-reverse", alignSelf: "flex-end" } : {}),
+  };
+
   return (
     <div style={rowStyle} className="msg-row">
-      {msg.role === "assistant" && (
+      {/* Assistant avatar */}
+      {!isUser && (
         <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
           <span style={{ fontSize: 18 }}>{agentAvatar ?? "◈"}</span>
         </div>
       )}
+
       <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Label + copy button */}
         <div style={{
-          fontSize: 11, fontWeight: 600, marginBottom: 7, display: "flex", alignItems: "center", gap: 8,
+          fontSize: 11, fontWeight: 600, marginBottom: 7,
+          display: "flex", alignItems: "center", gap: 8,
           letterSpacing: "0.04em", textTransform: "uppercase",
-          color: msg.role === "user" ? "var(--t5)" : "var(--ta)",
-          justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+          color: isUser ? "var(--t5)" : "var(--ta)",
+          justifyContent: isUser ? "flex-end" : "flex-start",
         }}>
-          {msg.role === "user" ? t("chatTab.messages.you") : (agentName ?? t("chatTab.messages.assistantFallback"))}
-          <span style={{ fontSize: 10, color: "var(--t5)", fontWeight: 400 }}>{isLast ? t("chatTab.messages.now") : ""}</span>
+          {isUser ? t("chatTab.messages.you") : (agentName ?? t("chatTab.messages.assistantFallback"))}
+          <span style={{ fontSize: 10, color: "var(--t5)", fontWeight: 400 }}>
+            {isLast ? t("chatTab.messages.now") : ""}
+          </span>
+          {/* Copy button — shown on .msg-row hover via chat.css */}
+          {msg.content && (
+            <button
+              className={`msg-copy-btn${copied ? " copied" : ""}`}
+              onClick={handleCopy}
+              aria-label={copied ? t("chatTab.messages.copied") : t("chatTab.messages.copyCode")}
+            >
+              {copied ? t("chatTab.messages.copied") : t("chatTab.messages.copyCode")}
+            </button>
+          )}
         </div>
-        {msg.role === "user" ? (
+
+        {/* Content */}
+        {isUser ? (
           <div style={{
             fontSize: 15, lineHeight: 1.75, color: "var(--t1)",
             background: "linear-gradient(135deg, var(--accent-dim), var(--accent-glow))",
@@ -473,7 +729,9 @@ const MessageRow = memo(function MessageRow({ msg, isLast, agentName, agentAvata
           </div>
         )}
       </div>
-      {msg.role === "user" && (
+
+      {/* User avatar */}
+      {isUser && (
         <div style={{
           width: 34, height: 34, borderRadius: 9, flexShrink: 0,
           background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
@@ -484,4 +742,3 @@ const MessageRow = memo(function MessageRow({ msg, isLast, agentName, agentAvata
     </div>
   );
 });
-
