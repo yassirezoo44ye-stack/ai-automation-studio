@@ -59,6 +59,9 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      # Google Gemini — reads GEMINI_API_KEY (not GOOGLE_API_KEY which is OAuth only)
+      - key: GEMINI_API_KEY
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
