@@ -29,9 +29,13 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
     { id: "organizations", label: pg("organizations"), sub: pgSub("organizations"), icon: Icons.organizations(), action: () => onNavigate("organizations") },
     { id: "teams",          label: pg("teams"),          sub: pgSub("teams"),          icon: Icons.teams(),         action: () => onNavigate("teams")         },
     { id: "billing",        label: pg("billing"),       sub: pgSub("billing"),          icon: Icons.billing(),       action: () => onNavigate("billing")       },
-    { id: "app-builder", label: pg("app-builder"), sub: pgSub("app-builder"), icon: Icons["app-builder"](), action: () => onNavigate("app-builder") },
-    { id: "social",      label: pg("social"),      sub: pgSub("social"),    icon: Icons.social(),      action: () => onNavigate("social")      },
-    { id: "settings",   label: pg("settings"),   sub: pgSub("settings"),     icon: Icons.settings(),   action: () => onNavigate("settings")   },
+    { id: "app-builder",   label: pg("app-builder"),   sub: pgSub("app-builder"),   icon: Icons["app-builder"](),       action: () => onNavigate("app-builder")   },
+    { id: "live-preview",  label: pg("live-preview"),  sub: pgSub("live-preview"),  icon: Icons["live-preview"](),      action: () => onNavigate("live-preview")  },
+    { id: "integrations",  label: pg("integrations"),  sub: pgSub("integrations"),  icon: Icons.integrations(),         action: () => onNavigate("integrations")  },
+    { id: "runs",          label: pg("runs"),          sub: pgSub("runs"),          icon: Icons.runs(),                 action: () => onNavigate("runs")          },
+    { id: "publish-center",label: pg("publish-center"),sub: pgSub("publish-center"),icon: Icons["publish-center"](),    action: () => onNavigate("publish-center")},
+    { id: "social",        label: pg("social"),        sub: pgSub("social"),        icon: Icons.social(),               action: () => onNavigate("social")        },
+    { id: "settings",      label: pg("settings"),      sub: pgSub("settings"),      icon: Icons.settings(),             action: () => onNavigate("settings")      },
   ];
 
   const actions: CmdItem[] = [

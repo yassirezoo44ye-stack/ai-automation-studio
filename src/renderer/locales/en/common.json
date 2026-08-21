@@ -5,7 +5,8 @@
       "home": "Home", "ai": "AI", "dev": "Dev", "design": "Design",
       "automation": "Workflows", "agentos": "AgentOS", "marketplace": "Marketplace", "plugins": "Plugins", "sandbox": "Sandbox",
       "aiRouting": "AI Routing", "observability": "Observability",
-      "appBuilder": "App Builder",
+      "appBuilder": "App Builder", "livePreview": "Live Preview",
+      "integrations": "Integrations", "runs": "Runs", "publishCenter": "Publish Center",
       "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings"
     },
     "mainNav": "Main navigation",
@@ -47,7 +48,11 @@
       "billing": { "label": "Billing", "sub": "Plan & usage" },
       "social": { "label": "Social", "sub": "Social media content" },
       "settings": { "label": "Settings", "sub": "App configuration" },
-      "app-builder": { "label": "App Builder", "sub": "Build business apps with AI" }
+      "app-builder": { "label": "App Builder", "sub": "Build business apps with AI" },
+      "live-preview": { "label": "Live Preview", "sub": "Preview your built app" },
+      "integrations": { "label": "Integrations", "sub": "Connect external services" },
+      "runs": { "label": "Runs", "sub": "Execution history & logs" },
+      "publish-center": { "label": "Publish Center", "sub": "Deploy & manage environments" }
     },
     "actions": {
       "newChat": { "label": "New Chat", "sub": "Start a conversation" },

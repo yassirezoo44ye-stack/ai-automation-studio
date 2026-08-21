@@ -11,18 +11,22 @@ import type { Page } from "../../types";
 type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 const NAV_GROUPS: { groupKey: string; items: NavItem[] }[] = [
   { groupKey: "workspace", items: [
-    { id: "home",        navKey: "home",       icon: "home"        },
-    { id: "ai",          navKey: "ai",         icon: "ai"          },
-    { id: "dev",         navKey: "dev",        icon: "dev"         },
-    { id: "design",      navKey: "design",     icon: "design"      },
-    { id: "app-builder", navKey: "appBuilder", icon: "app-builder" },
+    { id: "home",         navKey: "home",         icon: "home"           },
+    { id: "ai",           navKey: "ai",           icon: "ai"             },
+    { id: "dev",          navKey: "dev",          icon: "dev"            },
+    { id: "design",       navKey: "design",       icon: "design"         },
+    { id: "app-builder",  navKey: "appBuilder",   icon: "app-builder"    },
+    { id: "live-preview", navKey: "livePreview",  icon: "live-preview"   },
   ]},
   { groupKey: "automation", items: [
-    { id: "automation",  navKey: "automation",  icon: "automation"  },
-    { id: "agentos",     navKey: "agentos",     icon: "agentos"     },
-    { id: "marketplace", navKey: "marketplace", icon: "marketplace" },
-    { id: "plugins",     navKey: "plugins",     icon: "plugins"     },
-    { id: "sandbox",     navKey: "sandbox",     icon: "sandbox"     },
+    { id: "automation",     navKey: "automation",    icon: "automation"     },
+    { id: "agentos",        navKey: "agentos",       icon: "agentos"        },
+    { id: "integrations",   navKey: "integrations",  icon: "integrations"   },
+    { id: "runs",           navKey: "runs",          icon: "runs"           },
+    { id: "publish-center", navKey: "publishCenter", icon: "publish-center" },
+    { id: "marketplace",    navKey: "marketplace",   icon: "marketplace"    },
+    { id: "plugins",        navKey: "plugins",       icon: "plugins"        },
+    { id: "sandbox",        navKey: "sandbox",       icon: "sandbox"        },
   ]},
   { groupKey: "platform", items: [
     { id: "ai-routing",    navKey: "aiRouting",    icon: "ai-routing"    },

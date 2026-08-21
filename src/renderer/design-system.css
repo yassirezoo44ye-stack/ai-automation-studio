@@ -118,6 +118,29 @@
   --radius-md:      var(--r-md);
 
   color-scheme: light;
+
+  /* ── Flow UI design tokens (2027 aesthetic) ──────────────────────────
+     Overlays on the Axon token layer — Flow pages use these directly.
+     Named --flow-* to avoid collisions; they alias to the Axon tokens
+     where the hue matches, or define new values where it doesn't. ──── */
+  --flow-bg:          #0C0D11;
+  --flow-surface:     #141519;
+  --flow-surface-2:   #1C1D23;
+  --flow-border:      rgba(255,255,255,0.07);
+  --flow-border-2:    rgba(255,255,255,0.12);
+  --flow-primary:     #5E6AD2;
+  --flow-primary-dim: rgba(94,106,210,0.18);
+  --flow-primary-glow:rgba(94,106,210,0.30);
+  --flow-success:     #27AE60;
+  --flow-success-dim: rgba(39,174,96,0.16);
+  --flow-warning:     #E5A419;
+  --flow-warning-dim: rgba(229,164,25,0.16);
+  --flow-danger:      #E53E3E;
+  --flow-danger-dim:  rgba(229,62,62,0.16);
+  --flow-t1:          #F0F1F5;
+  --flow-t2:          #A8ABB8;
+  --flow-t3:          #6B6E7F;
+  --flow-t4:          rgba(107,110,127,0.55);
 }
 
 [data-theme="light"] input,
