@@ -179,3 +179,13 @@ successful deploy to `main`.
 - fix(agentos): propagate project_id through plan/deliberate paths
 - feat(i18n): wire Arabic i18n across AppBuilderPage, RunsPage, IntegrationsPage, HomePage
 - ci: resolve pre-existing ruff ratchet drift
+
+## v1.0.13
+
+### Fixes
+- classify AI provider billing failures and prevent App Builder 500s (#5)
+
+### Other
+- fix(lint): remove unused BillingRequiredError import from AppBuilderPage
+- feat(ui): billing error UI — 402 surfaces as recovery overlay, not crash
+- feat(ai): production-grade provider error classification and graceful propagation
