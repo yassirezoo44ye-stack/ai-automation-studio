@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
-import { apiFetch, parseJSON } from "../../utils/api";
+import { apiFetch, parseJSON, isBillingRequiredError, BillingRequiredError } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
 import {
   createProject,
@@ -599,6 +599,164 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
   );
 }
 
+/* ── Billing error overlay ────────────────────────────────────────── */
+/**
+ * Shown when the AI provider returns HTTP 402 / BILLING_REQUIRED.
+ *
+ * Requirements:
+ * - No DOM crash — rendered in place of BuildingOverlay; no throw.
+ * - Clear human-readable message, no raw exception text.
+ * - "Try again" lets the user retry immediately (useful if they just
+ *   added credits or configured a second provider).
+ * - "Add credits" links out to the provider's billing page.
+ * - "Dismiss" clears the overlay and returns to the idle state so
+ *   the user can change their prompt or check settings.
+ */
+function BillingErrorOverlay({
+  provider,
+  message,
+  action,
+  onRetry,
+  onDismiss,
+}: {
+  provider: string;
+  message: string;
+  action?: string;
+  onRetry: () => void;
+  onDismiss: () => void;
+}) {
+  const providerLabel = provider === "anthropic" ? "Anthropic" : provider === "openai" ? "OpenAI" : provider;
+  const creditsUrl    = provider === "anthropic"
+    ? "https://console.anthropic.com/plans"
+    : provider === "openai"
+      ? "https://platform.openai.com/settings/organization/billing"
+      : undefined;
+
+  return (
+    <div style={{
+      position: "absolute", inset: 0,
+      background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 10,
+    }}>
+      <div style={{
+        background: "var(--bg-surface)", borderRadius: 24, padding: "32px 36px",
+        maxWidth: 420, width: "100%", boxShadow: "var(--shadow-xl)",
+        border: "1px solid rgba(245,158,11,0.25)",
+      }}>
+        {/* Icon + title */}
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 16, margin: "0 auto 14px",
+            background: "rgba(245,158,11,0.12)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="rgba(245,158,11,0.9)" strokeWidth="1.8">
+              <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+              <line x1="1" y1="10" x2="23" y2="10"/>
+            </svg>
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>
+            AI Credits Required
+          </div>
+          <div style={{ fontSize: 12, color: "rgba(245,158,11,0.85)", fontWeight: 500 }}>
+            {providerLabel} · Billing Required
+          </div>
+        </div>
+
+        {/* Message */}
+        <div style={{
+          padding: "12px 16px",
+          borderRadius: 10,
+          background: "rgba(245,158,11,0.07)",
+          border: "1px solid rgba(245,158,11,0.18)",
+          marginBottom: 20,
+        }}>
+          <p style={{ fontSize: 13, color: "var(--t2)", lineHeight: 1.6, margin: 0 }}>
+            {message}
+          </p>
+          {action && (
+            <p style={{ fontSize: 12, color: "var(--t4)", marginTop: 8, marginBottom: 0, lineHeight: 1.5 }}>
+              {action}
+            </p>
+          )}
+        </div>
+
+        {/* What you can do */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+            Next steps
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {creditsUrl && (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ width: 16, height: 16, borderRadius: 4, background: "var(--accent-dim)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <span style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>
+                  Add credits to your {providerLabel} account, then click <em>Try Again</em>.
+                </span>
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ width: 16, height: 16, borderRadius: 4, background: "var(--accent-dim)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <span style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>
+                Or configure an additional AI provider (OpenAI, Gemini) in your workspace settings.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onDismiss}
+            style={{
+              flex: 1, padding: "9px 0", borderRadius: 10,
+              border: "1px solid var(--b1)", background: "transparent",
+              color: "var(--t3)", fontSize: 13, cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            Dismiss
+          </button>
+          {creditsUrl && (
+            <a
+              href={creditsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                flex: 1, padding: "9px 0", borderRadius: 10,
+                border: "1px solid rgba(245,158,11,0.4)",
+                background: "rgba(245,158,11,0.08)",
+                color: "rgba(245,158,11,0.9)", fontSize: 13,
+                cursor: "pointer", fontWeight: 600,
+                textDecoration: "none", textAlign: "center",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              }}
+            >
+              Add Credits
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          )}
+          <button
+            onClick={onRetry}
+            style={{
+              flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
+              background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+              color: "white", fontSize: 13, cursor: "pointer", fontWeight: 600,
+            }}
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════════
    Main AppBuilderPage
    ══════════════════════════════════════════════════════════════════ */
@@ -612,6 +770,15 @@ export function AppBuilderPage() {
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildDone, setBuildDone]   = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
+  // Billing error state — structured so the overlay can show recovery actions.
+  // Kept separate from buildError to avoid the overlay conflating billing
+  // (a permanent account-level condition) with transient build failures.
+  const [billingError, setBillingError] = useState<{
+    provider: string;
+    message: string;
+    action?: string;
+    prompt: string;   // retained so "Try Again" can replay the same request
+  } | null>(null);
   const [buildFileCount, setBuildFileCount] = useState(0);
   const [buildLanguage, setBuildLanguage]   = useState("");
   const [phases, setPhases]         = useState<BuildPhase[]>(INITIAL_PHASES);
@@ -650,6 +817,7 @@ export function AppBuilderPage() {
     setIsBuilding(true);
     setBuildDone(false);
     setBuildError(null);
+    setBillingError(null);
     setBuildFileCount(0);
     setBuildLanguage("");
 
@@ -743,8 +911,21 @@ export function AppBuilderPage() {
           case "error": {
             currentPhases[phaseIdx] = { ...currentPhases[phaseIdx], status: "error" };
             setPhases([...currentPhases]);
-            setBuildError(event.message);
-            toast(event.message, "err");
+            // SSE billing errors arrive as "BILLING_REQUIRED: <message>" from
+            // registry.stream_with_events() — surface them as a dedicated overlay
+            // rather than a raw red error string.
+            if (event.message.startsWith("BILLING_REQUIRED:")) {
+              const detail = event.message.slice("BILLING_REQUIRED:".length).trim();
+              setBillingError({
+                provider: "anthropic",
+                message: detail || "The AI provider's credit balance is too low to process this request.",
+                action: "Add credits at console.anthropic.com/plans, or configure an alternative provider (OpenAI, Gemini) in your workspace settings.",
+                prompt,
+              });
+            } else {
+              setBuildError(event.message);
+              toast(event.message, "err");
+            }
             break;
           }
         }
@@ -752,13 +933,23 @@ export function AppBuilderPage() {
     } catch (err: unknown) {
       const isAbort = err instanceof Error && (err.name === "AbortError" || err.message === "AbortError");
       if (!isAbort) {
-        const msg = err instanceof Error ? err.message : "Build failed. Please try again.";
         if (phaseIdx < currentPhases.length) {
           currentPhases[phaseIdx] = { ...currentPhases[phaseIdx], status: "error" };
           setPhases([...currentPhases]);
         }
-        setBuildError(msg);
-        toast(msg, "err");
+        // Billing errors: structured overlay — not a raw red string, no toast spam.
+        if (isBillingRequiredError(err)) {
+          setBillingError({
+            provider: err.provider,
+            message: err.message,
+            action: err.action,
+            prompt,
+          });
+        } else {
+          const msg = err instanceof Error ? err.message : "Build failed. Please try again.";
+          setBuildError(msg);
+          toast(msg, "err");
+        }
       }
     } finally {
       isBuildingRef.current = false;
@@ -855,6 +1046,25 @@ export function AppBuilderPage() {
             phases={phases}
             onCancel={buildError ? () => { setBuildError(null); setPhases(INITIAL_PHASES); } : handleCancel}
             errorMsg={buildError}
+          />
+        )}
+
+        {/* Billing error overlay — replaces generic error; never crashes the DOM */}
+        {billingError && !isBuilding && (
+          <BillingErrorOverlay
+            provider={billingError.provider}
+            message={billingError.message}
+            action={billingError.action}
+            onRetry={() => {
+              const savedPrompt = billingError.prompt;
+              setBillingError(null);
+              setPhases(INITIAL_PHASES);
+              void handleBuild(savedPrompt);
+            }}
+            onDismiss={() => {
+              setBillingError(null);
+              setPhases(INITIAL_PHASES);
+            }}
           />
         )}
       </div>

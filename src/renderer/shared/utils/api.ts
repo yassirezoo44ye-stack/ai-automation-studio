@@ -98,6 +98,31 @@ export class APIError extends Error {
   }
 }
 
+/**
+ * Thrown when the backend returns HTTP 402 with code AI_PROVIDER_BILLING_REQUIRED.
+ * Carries enough structured data for the UI to show a targeted recovery flow
+ * (add credits / select another provider) rather than a generic error banner.
+ */
+export class BillingRequiredError extends APIError {
+  readonly code = "AI_PROVIDER_BILLING_REQUIRED" as const;
+  constructor(
+    /** Provider that failed, e.g. "anthropic" */
+    public readonly provider: string,
+    message: string,
+    url: string,
+    /** Human-readable recovery hint from the backend, e.g. "Add API credits…" */
+    public readonly action?: string,
+  ) {
+    super(message, { url, status: 402, contentType: "application/json" });
+    this.name = "BillingRequiredError";
+  }
+}
+
+/** Type guard — use to branch on billing errors without depending on instanceof across modules. */
+export function isBillingRequiredError(err: unknown): err is BillingRequiredError {
+  return err instanceof BillingRequiredError;
+}
+
 // ── HTML classifier ───────────────────────────────────────────────────────────
 
 function classifyHtml(html: string): string {
@@ -151,6 +176,26 @@ export async function parseJSON<T>(res: Response, endpoint?: string): Promise<T>
     } else if (status === 404) {
       probableCause = `Endpoint not found: ${url}`;
       suggestedFix  = "Verify the route exists in the backend router and the URL is correct.";
+    } else if (status === 402) {
+      // Structured billing error — parse the body before building the generic message.
+      try {
+        const j = JSON.parse(body) as {
+          error?: { code?: string; provider?: string; message?: string; action?: string };
+        };
+        if (j?.error?.code === "AI_PROVIDER_BILLING_REQUIRED") {
+          throw new BillingRequiredError(
+            j.error.provider ?? "AI",
+            j.error.message ?? "AI provider credits are exhausted.",
+            url,
+            j.error.action,
+          );
+        }
+      } catch (innerErr) {
+        if (innerErr instanceof BillingRequiredError) throw innerErr;
+        // Body wasn't structured billing JSON — fall through to generic 402 message below.
+      }
+      probableCause = "Payment required — AI provider credits are exhausted.";
+      suggestedFix  = "Add credits to your AI provider account or configure an alternative provider.";
     } else if (status >= 500) {
       probableCause = "Internal server error.";
       suggestedFix  = "Check backend logs on the Render dashboard.";
