@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
-import { apiFetch, parseJSON, isBillingRequiredError, BillingRequiredError } from "../../utils/api";
+import { apiFetch, parseJSON, isBillingRequiredError } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
 import {
   createProject,
