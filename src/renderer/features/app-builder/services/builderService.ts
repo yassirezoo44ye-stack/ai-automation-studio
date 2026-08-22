@@ -10,7 +10,7 @@
  *
  * No fake data, no setTimeout simulation, no placeholder percentages.
  */
-import { apiFetch, parseJSON, APIError } from "../../../shared/utils/api";
+import { apiFetch, parseJSON, APIError, BillingRequiredError } from "../../../shared/utils/api";
 import type { Project } from "../../../shared/types";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -69,6 +69,28 @@ export async function* streamBuild(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+
+    // 402 — billing or auth failure detected before the stream opened.
+    // Parse the structured body and surface it as a BillingRequiredError so
+    // AppBuilderPage can show a targeted recovery UI instead of a generic banner.
+    if (res.status === 402) {
+      try {
+        const j = JSON.parse(body) as {
+          error?: { code?: string; provider?: string; message?: string; action?: string };
+        };
+        if (j?.error?.code === "AI_PROVIDER_BILLING_REQUIRED") {
+          throw new BillingRequiredError(
+            j.error.provider ?? "AI",
+            j.error.message ?? "AI provider credits are exhausted.",
+            "/api/build/stream",
+            j.error.action,
+          );
+        }
+      } catch (innerErr) {
+        if (innerErr instanceof BillingRequiredError) throw innerErr;
+      }
+    }
+
     let detail = `HTTP ${res.status}`;
     try {
       const j = JSON.parse(body);

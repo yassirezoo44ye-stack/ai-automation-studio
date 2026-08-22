@@ -22,7 +22,17 @@ _TERMINAL_MESSAGES = ("invalid api key", "insufficient_quota", "billing")
 
 
 def _is_retryable(exc: Exception) -> bool:
-    """Return True if the exception is likely transient."""
+    """Return True if the exception is likely transient.
+
+    Classified AIProviderError instances carry an explicit ``retryable``
+    flag set by the provider's error-classification logic — trust it
+    directly instead of re-parsing the message string.
+    """
+    # Classified provider errors carry an explicit retryable flag — trust it.
+    from app.ai.errors import AIProviderError  # local import avoids circular
+    if isinstance(exc, AIProviderError):
+        return exc.retryable
+
     msg = str(exc).lower()
     if any(t in msg for t in _TERMINAL_MESSAGES):
         return False

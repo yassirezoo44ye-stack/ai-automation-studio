@@ -266,15 +266,30 @@ async def provider_probe():
     circuits  = circuit_breaker.snapshot()
     providers = {}
     for pid, p in platform_registry._providers.items():
-        env_var = p._env_key()
+        env_var  = p._env_key()
         key_meta = _key_meta(env_var)
         circuit  = circuits.get(pid, {})
+        circuit_state = circuit.get("state", "closed")
+
+        # Derive a single human-readable status for ops dashboards.
+        # Billing/auth errors are tracked separately from the circuit breaker
+        # (they must NOT trip the circuit — see registry._billing_errors).
+        if not p.is_available:
+            status = "unavailable"
+        elif platform_registry._has_billing_error(pid):
+            status = "billing_required"
+        elif circuit_state == "open":
+            status = "circuit_open"
+        else:
+            status = "healthy"
+
         providers[pid] = {
             "env_var":       env_var,
             "key":           key_meta,
             "is_available":  p.is_available,
-            "circuit_state": circuit.get("state", "closed"),
+            "circuit_state": circuit_state,
             "consec_fails":  circuit.get("consecutive_fails", 0),
+            "status":        status,
         }
 
     available  = platform_registry.available()

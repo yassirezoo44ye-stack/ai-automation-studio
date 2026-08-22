@@ -23,8 +23,10 @@ import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from app.ai.errors import AIProviderError, AIProviderErrorCode
 from app.tenancy import OrgContext, require_permission
 from app.services.app_builder import (
     AppSpec, BuildResult, get_app_builder_service,
@@ -129,6 +131,26 @@ async def preview_spec(
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except AIProviderError as exc:
+        if exc.code == AIProviderErrorCode.BILLING_REQUIRED:
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "error": {
+                        "code":     "AI_PROVIDER_BILLING_REQUIRED",
+                        "provider": exc.provider,
+                        "message": (
+                            f"The {exc.provider} AI provider is unavailable because its "
+                            "API credit balance is too low. "
+                            "Add credits or configure an alternative provider."
+                        ),
+                        "retryable": False,
+                        "action": "Add API credits at console.anthropic.com/plans or set an alternative OPENAI_API_KEY.",
+                    }
+                },
+            )
+        log.error("preview_spec AI error (code=%s): %s", exc.code.value, exc.message, exc_info=True)
+        raise HTTPException(502, f"AI provider error: {exc.message}") from exc
     except Exception as exc:
         log.error("preview_spec error: %s", exc, exc_info=True)
         raise HTTPException(500, "Spec generation failed — check logs.") from exc
@@ -170,6 +192,26 @@ async def create_app(
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except AIProviderError as exc:
+        if exc.code == AIProviderErrorCode.BILLING_REQUIRED:
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "error": {
+                        "code":     "AI_PROVIDER_BILLING_REQUIRED",
+                        "provider": exc.provider,
+                        "message": (
+                            f"The {exc.provider} AI provider is unavailable because its "
+                            "API credit balance is too low. "
+                            "Add credits or configure an alternative provider."
+                        ),
+                        "retryable": False,
+                        "action": "Add API credits at console.anthropic.com/plans or set an alternative OPENAI_API_KEY.",
+                    }
+                },
+            )
+        log.error("create_app AI error (code=%s): %s", exc.code.value, exc.message, exc_info=True)
+        raise HTTPException(502, f"AI provider error: {exc.message}") from exc
     except Exception as exc:
         log.error("create_app error: %s", exc, exc_info=True)
         raise HTTPException(500, "App submission failed — check logs.") from exc
