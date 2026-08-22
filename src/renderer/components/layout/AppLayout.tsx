@@ -127,14 +127,25 @@ function WorkspaceContent() {
   const { t } = useTranslation("common");
   const { page } = useAppContext();
   const fallback = <LoadingSpinner fullPage label={t("appLayout.loadingWorkspace")} />;
-  // PageTransition (AnimatePresence) must be the OUTER wrapper so that
-  // AnimatePresence is NOT inside the ErrorBoundary that carries key={page}.
-  // Previously the tree was: ErrorBoundary(key=page) > Suspense > PageTransition.
-  // When `page` changed, React immediately unmounted the entire ErrorBoundary
-  // subtree — including the motion.div — then framer-motion's cleanup also
-  // tried to removeChild the same already-removed node → "not a child" crash.
-  // With PageTransition on the outside, AnimatePresence is stable across page
-  // changes; only ErrorBoundary and its children are remounted on key changes.
+  // PageTransition is the OUTER wrapper; ErrorBoundary[key=page] is inside it.
+  //
+  // History of the removeChild crash (framer-motion + React 19):
+  //   v1 (broken):  ErrorBoundary(key=page) > Suspense > PageTransition(AnimatePresence)
+  //     When page changed, React immediately unmounted ErrorBoundary, which removed
+  //     motion.div from the DOM. framer-motion then tried removeChild the already-gone
+  //     node → DOMException.
+  //
+  //   v2 (still broken): PageTransition(AnimatePresence mode="wait") > ErrorBoundary(key=page)
+  //     AnimatePresence held the old motion.div for its exit animation while React
+  //     simultaneously remounted ErrorBoundary inside that same motion.div. Both React
+  //     cleanup and framer-motion's exit callback called removeChild on the same node
+  //     → DOMException propagated to ErrorBoundary → "خطأ في أداة إنشاء التطبيقات".
+  //
+  //   v3 (current, fixed): PageTransition uses a plain CSS-animated <div key={page}>
+  //     React owns the entire DOM lifecycle. When page changes, React unmounts the old
+  //     div + all children cleanly (no framer-motion holding a reference), then mounts
+  //     the new div with a CSS enter animation. No imperative removeChild races possible.
+  //     ErrorBoundary[key=page] still resets on navigation (test guard preserved).
   return (
     <PageTransition pageKey={page}>
       <ErrorBoundary key={page} name={page}>

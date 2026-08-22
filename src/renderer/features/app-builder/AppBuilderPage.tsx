@@ -798,6 +798,18 @@ export function AppBuilderPage() {
       .catch(() => {}); // project may have been deleted; silently ignore
   }, []);
 
+  // Abort any in-flight build stream when the component unmounts (e.g.,
+  // user navigates away during generation). Without this, the SSE reader
+  // keeps a network connection open and the generator calls setState on
+  // the unmounted component after every event — benign in React 19 but a
+  // resource leak. isBuildingRef is also reset so a remount can build again.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      isBuildingRef.current = false;
+    };
+  }, []);
+
   /**
    * handleBuild — real SSE build flow.
    *

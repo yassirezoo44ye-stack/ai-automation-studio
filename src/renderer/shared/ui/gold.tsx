@@ -186,21 +186,34 @@ export function KpiCard({
 
 /* ── Page transition wrapper ────────────────────────────────────────────── */
 
+/**
+ * Renders children inside a plain <div> with a CSS enter animation.
+ *
+ * WHY NOT AnimatePresence + motion.div:
+ * framer-motion 12 + React 19 concurrent renderer have an incompatibility
+ * around AnimatePresence mode="wait": when the page key changes, React
+ * immediately remounts ErrorBoundary (which is a sibling inside the exiting
+ * motion.div) while framer-motion is still running the exit animation.
+ * Both React's DOM cleanup and framer-motion's exit callback call
+ * parent.removeChild() on the same node → DOMException propagates to the
+ * nearest ErrorBoundary and surfaces as "خطأ في أداة إنشاء التطبيقات".
+ *
+ * The CSS-only approach lets React own the full DOM lifecycle. When key
+ * changes, React unmounts the old div (and all children) synchronously,
+ * then mounts a new div — no framer-motion DOM ownership conflict possible.
+ * The .page-enter animation defined in design-system.css provides the same
+ * visual enter effect (opacity 0→1, translateY 8px→0) with reduced-motion
+ * support via @media (prefers-reduced-motion: reduce).
+ */
 export function PageTransition({ children, pageKey }: { children: ReactNode; pageKey: string }) {
-  const reduce = useReducedMotion();
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={pageKey}
-        style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={reduce ? { opacity: 0 } : { opacity: 0, y: -6 }}
-        transition={{ duration: reduce ? 0.05 : 0.18, ease: [0.4, 0, 0.2, 1] }}
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <div
+      key={pageKey}
+      className="page-enter"
+      style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
+    >
+      {children}
+    </div>
   );
 }
 
