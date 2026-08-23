@@ -409,13 +409,24 @@ async def build_plan(req: PlanRequest, request: Request):
     Uses a fast model to produce a JSON plan the frontend shows
     for user review and approval before starting the actual build.
     No project is created here — that happens when the user approves.
-    The endpoint is auth-gated (user must be logged in) but does not
-    require a project_id since no workspace is touched.
+
+    Execution order:
+      1. Authentication  — owner_user_id() (raises 401/403 if missing)
+      2. Rate limit      — ai_rate_limit() (raises 429 if over per-IP limit)
+      3. Quota check     — check_org_quota() (raises 429 if org exhausted)
+      4. AI completion   — InferenceEngine.complete() (real Anthropic call)
+      5. Token recording — handled inside InferenceEngine._post_complete()
     """
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
 
     ai_rate_limit(request, max_calls=20, window=60)
+
+    # Quota pre-check: verify the caller's org has remaining token budget
+    # before spending money on a provider call.  Previously this was None,
+    # allowing over-quota orgs to generate plans for free (P1 finding from
+    # Phase 2.5 audit — commit fixes audit finding, 2026-08-23).
+    org_id = await check_org_quota(request)
 
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
@@ -432,7 +443,7 @@ async def build_plan(req: PlanRequest, request: Request):
     engine = InferenceEngine(pool=get_pool())
     try:
         resp = await engine.complete(
-            request_obj, user_id=str(uid), org_id=None, auto_tools=False,
+            request_obj, user_id=str(uid), org_id=org_id, auto_tools=False,
         )
     except anthropic.BadRequestError as e:
         raise HTTPException(402, anthropic_error_message(e))
