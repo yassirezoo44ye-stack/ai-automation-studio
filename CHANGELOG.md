@@ -194,3 +194,10 @@ successful deploy to `main`.
 
 ### Other
 - feat(design-studio): add app builder tree and AI build workflow
+
+## v1.0.15
+
+### Other
+- Merge remote-tracking branch 'origin/main'
+- merge(app-builder): DOM cleanup crash fix + SSE abort + regression tests into main
+- fix(app-builder): prevent DOM cleanup crash on generation errors
