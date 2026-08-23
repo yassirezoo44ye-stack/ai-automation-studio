@@ -73,10 +73,18 @@ class TestStatsIsScoped:
             )
 
         fetch_calls = conn.fetch.call_args_list
-        assert len(fetch_calls) == 1, "expected exactly one recent_activity query"
-        sql, *params = fetch_calls[0].args
-        assert "user_id" in sql
-        assert OWNER_A_UID in params
+        assert len(fetch_calls) == 2, (
+            "expected two owner-scoped fetch queries: "
+            "failed_runs (Needs Attention) + recent_activity (usage_logs)"
+        )
+        for call in fetch_calls:
+            sql, *params = call.args
+            assert "user_id" in sql or "p.user_id" in sql, (
+                f"fetch query missing owner scope: {sql!r}"
+            )
+            assert OWNER_A_UID in params, (
+                f"fetch query not bound to owner uid: {params!r}"
+            )
 
     def test_timeseries_scopes_both_queries_to_the_owner(self):
         app = _make_app()
