@@ -6,15 +6,14 @@ function getStoredTheme(): Theme {
   try {
     const stored = localStorage.getItem("axon-theme");
     if (stored === "light" || stored === "dark" || stored === "high-contrast") return stored;
-    // Respect OS preference on first visit — high-contrast is opt-in only
-    // via Settings (see SettingsPage's THEME_OPTIONS), never auto-detected,
-    // since prefers-contrast support/semantics vary too much across
-    // browsers to safely auto-switch a whole theme on it.
-    if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) return "dark";
+    // FLOW is dark-first: new visitors always start in dark mode.
+    // Light mode is available via Settings — this is not a regression,
+    // it is the intentional FLOW visual identity decision.
+    // (High-contrast remains opt-in only, never auto-detected.)
   } catch {
     // localStorage unavailable (e.g. private browsing with storage blocked)
   }
-  return "light";
+  return "dark";
 }
 
 function applyTheme(t: Theme) {

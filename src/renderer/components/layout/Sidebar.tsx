@@ -121,7 +121,7 @@ function FlowLogo() {
         width: 30, height: 30, borderRadius: 9, flexShrink: 0,
         background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "0 2px 8px rgba(110,50,224,0.30)",
+        boxShadow: "var(--glow-pink-subtle)",
       }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
@@ -149,7 +149,7 @@ function FlowIcon() {
         width: 30, height: 30, borderRadius: 9,
         background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "0 2px 8px rgba(110,50,224,0.30)",
+        boxShadow: "var(--glow-pink-subtle)",
       }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>

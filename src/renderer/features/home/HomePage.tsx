@@ -56,6 +56,48 @@ type WorkflowRun = { id: string; name: string; status: string; started_at?: stri
 type WorkflowsResponse = { runs: WorkflowRun[] };
 type ApprovalsResponse = { pending: string[] };
 
+// ── Integration nodes ─────────────────────────────────────────────────────
+
+type NodeDef = { id: string; name: string; color: string; svg: string };
+
+const NODE_INTEGRATIONS: NodeDef[] = [
+  { id: "openai",    name: "OpenAI",      color: "green",  svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M8 12h8M12 8v8"/></svg>` },
+  { id: "claude",    name: "Claude",      color: "purple", svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>` },
+  { id: "slack",     name: "Slack",       color: "yellow", svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"/><path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/><path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/></svg>` },
+  { id: "whatsapp",  name: "WhatsApp",    color: "green",  svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>` },
+  { id: "gmail",     name: "Gmail",       color: "red",    svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>` },
+  { id: "notion",    name: "Notion",      color: "blue",   svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h7M7 16h5"/></svg>` },
+  { id: "airtable",  name: "Airtable",    color: "cyan",   svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/></svg>` },
+  { id: "sheets",    name: "Sheets",      color: "green",  svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>` },
+  { id: "stripe",    name: "Stripe",      color: "blue",   svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>` },
+  { id: "shopify",   name: "Shopify",     color: "green",  svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>` },
+  { id: "hubspot",   name: "HubSpot",     color: "orange", svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>` },
+  { id: "github",    name: "GitHub",      color: "teal",   svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>` },
+  { id: "postgres",  name: "PostgreSQL",  color: "blue",   svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>` },
+  { id: "mongodb",   name: "MongoDB",     color: "green",  svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><circle cx="12" cy="9" r="2"/></svg>` },
+  { id: "zapier",    name: "Zapier",      color: "red",    svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>` },
+  { id: "salesforce",name: "Salesforce",  color: "blue",   svg: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>` },
+];
+
+// ── Use cases ─────────────────────────────────────────────────────────────
+
+type UseCaseDef = { id: string; name: string; color: string; svg: string; prompt: string };
+
+const USE_CASES: UseCaseDef[] = [
+  { id: "support",   name: "AI Customer Support",   color: "blue",   prompt: "Build an AI customer support system with ticket management, auto-responses, and escalation rules", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>` },
+  { id: "leads",     name: "Lead Qualification",    color: "pink",   prompt: "Create an AI lead qualification system with scoring, follow-up sequences, and CRM integration", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>` },
+  { id: "content",   name: "Content Generation",   color: "purple", prompt: "Build a content generation platform for blogs, social media posts, and marketing copy with SEO optimization", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>` },
+  { id: "email",     name: "Email Automation",      color: "green",  prompt: "Create an email automation system with personalized sequences, A/B testing, and behavioral triggers", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>` },
+  { id: "analytics", name: "Data Analytics",        color: "cyan",   prompt: "Build a data analytics dashboard with AI-powered insights, automated reports, and anomaly detection", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>` },
+  { id: "ecommerce", name: "E-commerce Ops",         color: "orange", prompt: "Create an e-commerce operations system with inventory management, order tracking, and supplier automation", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>` },
+  { id: "hr",        name: "HR Onboarding",          color: "yellow", prompt: "Build an HR onboarding portal with task checklists, document management, and employee progress tracking", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
+  { id: "finance",   name: "Financial Reports",      color: "green",  prompt: "Create a financial reporting system with automated invoicing, expense tracking, budget alerts, and P&L dashboards", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>` },
+  { id: "social",    name: "Social Media Mgmt",      color: "blue",   prompt: "Build a social media management platform with AI content scheduling, analytics, and multi-platform publishing", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>` },
+  { id: "seo",       name: "SEO & Marketing",        color: "teal",   prompt: "Create an SEO and marketing automation platform with keyword research, content optimization, and campaign tracking", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` },
+  { id: "project",   name: "Project Management",     color: "purple", prompt: "Build a project management tool with task boards, time tracking, team collaboration, and AI progress summaries", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>` },
+  { id: "codereview",name: "AI Code Review",          color: "orange", prompt: "Build an AI-powered code review system with automated quality gates, security scanning, and PR summaries", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>` },
+];
+
 const EXAMPLE_PROMPTS = [
   "Build a CRM for my sales team with contacts, deals, and follow-ups",
   "Create an inventory management system with low-stock alerts",
@@ -537,6 +579,52 @@ export function HomePage() {
           {kpis.map((k, i) => (
             <KpiTile key={i} icon={k.icon} label={k.label} value={k.value} accent={k.accent} sub={k.sub} onClick={k.onClick} />
           ))}
+        </div>
+
+        {/* ── Node Integrations ──────────────────────────────────── */}
+        <div className="flow-section-header" style={{ marginBottom: 18 }}>
+          <div className="flow-section-header" style={{ marginBottom: 12 }}>
+            <span className="flow-section-title">
+              Node <span className="flow-section-title__accent">Integrations</span>
+            </span>
+            <button className="flow-section-viewall" onClick={() => setPage("integrations")}>View All →</button>
+          </div>
+          <div className="flow-nodes-grid">
+            {NODE_INTEGRATIONS.map(node => (
+              <button
+                key={node.id}
+                className={`flow-node-card flow-node--${node.color}`}
+                onClick={() => setPage("integrations")}
+                title={node.name}
+              >
+                <div className="flow-node-card__icon" dangerouslySetInnerHTML={{ __html: node.svg }} />
+                <div className="flow-node-card__name">{node.name}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Use Cases ──────────────────────────────────────────── */}
+        <div style={{ marginBottom: 20 }}>
+          <div className="flow-section-header" style={{ marginBottom: 12 }}>
+            <span className="flow-section-title">
+              Use <span className="flow-section-title__accent">Cases</span>
+            </span>
+            <button className="flow-section-viewall" onClick={handleBuildApp}>Build One →</button>
+          </div>
+          <div className="flow-cases-grid">
+            {USE_CASES.map(uc => (
+              <button
+                key={uc.id}
+                className={`flow-case-card flow-case--${uc.color}`}
+                onClick={() => { setPrompt(uc.prompt); promptRef.current?.focus(); }}
+                title={uc.name}
+              >
+                <div className="flow-case-card__icon" dangerouslySetInnerHTML={{ __html: uc.svg }} />
+                <div className="flow-case-card__name">{uc.name}</div>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── Main two-column layout ─────────────────────────────── */}
