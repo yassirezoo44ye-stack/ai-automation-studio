@@ -201,3 +201,20 @@ successful deploy to `main`.
 - Merge remote-tracking branch 'origin/main'
 - merge(app-builder): DOM cleanup crash fix + SSE abort + regression tests into main
 - fix(app-builder): prevent DOM cleanup crash on generation errors
+
+## v1.0.16
+
+### Fixes
+- expose structured AI provider billing errors in modify_app
+
+### Tests
+- fix stale stats fetch assertion (fetch_calls == 1 -> 2 with scope verification)
+
+### Other
+- feat(app-builder): wire runtime into app builder page and bottom bar
+- feat(app-builder): live runtime panel with 7-state machine
+- feat(app-builder): add typed runtime SSE service
+- fix(build): enforce org quota on build plan
+- feat(app-builder): AI Software Factory Phase 2 — build plan + copilot + bottom bar
+- fix(tests/i18n): stabilize app builder timeout + Arabic nav label
+- feat(platform): FLOW Command Center + AI-aware nav
