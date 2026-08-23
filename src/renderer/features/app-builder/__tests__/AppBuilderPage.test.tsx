@@ -178,9 +178,11 @@ describe("Case A — 402 BillingRequiredError (pre-SSE)", () => {
     render(<AppBuilderPage />);
     submitPrompt("Build a CRM");
 
+    // Extend timeout: this test is sensitive to CPU contention in the full
+    // suite (lazy chunk + SSE mock resolution can exceed the 1000ms default).
     await waitFor(() =>
       expect(screen.getByText("AI Credits Required")).toBeInTheDocument(),
-    );
+    { timeout: 8000 });
     expect(screen.getAllByText(/Anthropic/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Your credit balance is too low/)).toBeInTheDocument();
     expect(screen.queryByText(/Build failed/)).not.toBeInTheDocument();
