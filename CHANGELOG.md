@@ -218,3 +218,8 @@ successful deploy to `main`.
 - feat(app-builder): AI Software Factory Phase 2 — build plan + copilot + bottom bar
 - fix(tests/i18n): stabilize app builder timeout + Arabic nav label
 - feat(platform): FLOW Command Center + AI-aware nav
+
+## v1.0.17
+
+### Other
+- feat(ui): flow visual identity — dark-first + node integrations + use cases
