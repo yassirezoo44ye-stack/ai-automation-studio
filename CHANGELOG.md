@@ -189,3 +189,8 @@ successful deploy to `main`.
 - fix(lint): remove unused BillingRequiredError import from AppBuilderPage
 - feat(ui): billing error UI — 402 surfaces as recovery overlay, not crash
 - feat(ai): production-grade provider error classification and graceful propagation
+
+## v1.0.14
+
+### Other
+- feat(design-studio): add app builder tree and AI build workflow
