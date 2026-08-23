@@ -398,6 +398,26 @@ async def modify_app(
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except AIProviderError as exc:
+        if exc.code == AIProviderErrorCode.BILLING_REQUIRED:
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "error": {
+                        "code":      "AI_PROVIDER_BILLING_REQUIRED",
+                        "provider":  exc.provider,
+                        "message": (
+                            f"The {exc.provider} AI provider is unavailable because its "
+                            "API credit balance is too low. "
+                            "Add credits or configure an alternative provider."
+                        ),
+                        "retryable": False,
+                        "action": "Add API credits at console.anthropic.com/plans or set an alternative OPENAI_API_KEY.",
+                    }
+                },
+            )
+        log.error("modify_app %s AI error (code=%s): %s", app_id, exc.code.value, exc.message, exc_info=True)
+        raise HTTPException(502, f"AI provider error: {exc.message}") from exc
     except Exception as exc:
         log.error("modify_app %s error: %s", app_id, exc, exc_info=True)
         raise HTTPException(500, "Modification failed — check logs.") from exc
