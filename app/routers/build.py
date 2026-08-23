@@ -124,6 +124,39 @@ class _BuildParser:
         return None
 
 
+class PlanRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=2000)
+
+
+PLAN_SYSTEM = """You are a senior software architect. Analyze the user's request and produce a concise, structured build plan.
+
+Respond ONLY with valid JSON matching this exact schema — no markdown, no preamble, no trailing text:
+{
+  "name": "Application name (3-5 words)",
+  "description": "One-sentence description of what this application does",
+  "tech_stack": {"frontend": "e.g. React", "backend": "e.g. FastAPI", "database": "e.g. PostgreSQL"},
+  "pages": ["PageName", "PageName2"],
+  "database_tables": ["table_name", "table_name2"],
+  "api_routes": ["/api/resource"],
+  "agents": ["Agent Name — one-line purpose"],
+  "workflows": ["Trigger → Action → Outcome"],
+  "integrations": ["Service Name"],
+  "estimated_files": 12,
+  "complexity": "simple"
+}
+
+Rules:
+- pages: 3-8 items max (main screens users will see)
+- database_tables: 2-8 items max (core data entities)
+- api_routes: 3-8 items max (key REST endpoints)
+- agents: 0-3 items (AI agents that will automate tasks; empty array if none needed)
+- workflows: 0-3 items (automated sequences; empty array if none needed)
+- integrations: 0-4 items (external services needed; empty array if none)
+- complexity: one of "simple" | "moderate" | "complex"
+- estimated_files: realistic number (simple=5-10, moderate=10-20, complex=20-35)
+Be concise and realistic. Do not invent features not implied by the request."""
+
+
 class BuildRequest(BaseModel):
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=10000)
@@ -366,6 +399,60 @@ async def build_stream(req: BuildRequest, request: Request):
 
 def _sse(type_: str, **kw) -> str:
     return f"data: {json.dumps({'type': type_, **kw})}\n\n"
+
+
+@router.post("/api/build/plan")
+async def build_plan(req: PlanRequest, request: Request):
+    """
+    Generate a structured build plan for a prompt.
+
+    Uses a fast model to produce a JSON plan the frontend shows
+    for user review and approval before starting the actual build.
+    No project is created here — that happens when the user approves.
+    The endpoint is auth-gated (user must be logged in) but does not
+    require a project_id since no workspace is touched.
+    """
+    async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+
+    ai_rate_limit(request, max_calls=20, window=60)
+
+    request_obj = CompletionRequest(
+        messages=[Message(role="user", content=req.prompt)],
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        temperature=0.3,
+        system=PLAN_SYSTEM,
+        conversation_id=None,
+        prompt_id=None,
+        memory_enabled=False,
+        tools=None,
+        stream=False,
+    )
+    engine = InferenceEngine(pool=get_pool())
+    try:
+        resp = await engine.complete(
+            request_obj, user_id=str(uid), org_id=None, auto_tools=False,
+        )
+    except anthropic.BadRequestError as e:
+        raise HTTPException(402, anthropic_error_message(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+    raw = strip_fences(resp.content)
+    try:
+        plan = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(502, f"Plan generation failed: {raw[:200]}")
+
+    # Guarantee required array fields are present (defensive normalisation)
+    for field in ("pages", "database_tables", "api_routes", "agents", "workflows", "integrations"):
+        if not isinstance(plan.get(field), list):
+            plan[field] = []
+
+    return {"plan": plan}
 
 
 async def _require_project_owner(project_id: str, request: Request) -> None:

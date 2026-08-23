@@ -23,12 +23,20 @@ import {
   promptToProjectName,
   getProject,
 } from "./services/builderService";
+import { AICopilotPanel } from "./components/AICopilotPanel";
+import { BuildPlanPanel } from "./components/BuildPlanPanel";
+import type { BuildPlan } from "./components/BuildPlanPanel";
+import { BottomTabBar } from "./components/BottomTabBar";
+import type { BuildEventItem } from "./components/BottomTabBar";
 
 /* ── Types ──────────────────────────────────────────────────────── */
 type BuildMode  = "build" | "plan" | "debug";
 type AppSection = "overview" | "pages" | "data" | "workflows" | "agents" | "integrations" | "settings";
 // labelKey maps to "appBuilder" namespace (sections.* or phases.*)
 type BuildPhase = { labelKey: string; status: "pending" | "running" | "done" | "error" };
+
+/** Plan overlay state machine */
+type PlanState = "idle" | "planning" | "review";
 
 // labelKey maps to appBuilder namespace sections.*
 const SECTIONS: { id: AppSection; labelKey: string; icon: React.ReactNode }[] = [
@@ -52,9 +60,6 @@ const INITIAL_PHASES: BuildPhase[] = [
   { labelKey: "phases.automations",   status: "pending" },
   { labelKey: "phases.tests",         status: "pending" },
 ];
-
-/* ── AI chat message ─────────────────────────────────────────────── */
-type ChatMsg = { role: "user" | "assistant"; content: string };
 
 /* ══════════════════════════════════════════════════════════════════
    Sub-components
@@ -291,224 +296,6 @@ function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
             {t("preview.typePrompt")}
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-/** Right panel — AI builder chat */
-function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
-  onBuild: (prompt: string) => void;
-  projectName: string;
-  isBuilding: boolean;
-}) {
-  const { t } = useTranslation("appBuilder");
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  // Lazy initialiser consumes the one-shot Dashboard prompt synchronously,
-  // avoiding a useEffect that would call setInput from inside an effect body.
-  const [input, setInput] = useState<string>(() => {
-    const stored = sessionStorage.getItem("flow_builder_prompt");
-    if (stored) sessionStorage.removeItem("flow_builder_prompt");
-    return stored ?? "";
-  });
-  const [loading, setLoading]   = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const send = useCallback(async () => {
-    const val = input.trim();
-    if (!val || loading || isBuilding) return;
-    setInput("");
-    setMessages(prev => [...prev, { role: "user", content: val }]);
-    setLoading(true);
-
-    // Kick off build on first message only
-    if (messages.length === 0) {
-      onBuild(val);
-    }
-
-    try {
-      // Try AI backend
-      const r = await apiFetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: val, context: "app_builder", app_name: projectName }),
-      });
-      if (r.ok) {
-        const data = await parseJSON<{ response: string }>(r, "/api/ai/chat");
-        setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
-      } else {
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `I'm designing ${val.length > 40 ? "your app" : `"${val}"`} now. I'll create the database schema, pages, and automations based on your requirements. You can see the preview updating in real-time.`,
-        }]);
-      }
-    } catch {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "I'm building your app now. Check the preview panel to see progress.",
-      }]);
-    }
-    setLoading(false);
-  }, [input, loading, isBuilding, messages, onBuild, projectName]);
-
-  const suggestions = [
-    t("aiPanel.suggestion1"),
-    t("aiPanel.suggestion2"),
-    t("aiPanel.suggestion3"),
-  ];
-
-  return (
-    <div style={{
-      width: 320, flexShrink: 0,
-      borderLeft: "1px solid var(--b1)",
-      background: "var(--bg-surface)",
-      display: "flex", flexDirection: "column",
-      overflow: "hidden",
-    }}>
-      {/* Header */}
-      <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--b1)", display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 8,
-          background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        </div>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{t("aiPanel.title")}</div>
-          <div style={{ fontSize: 10, color: isBuilding ? "var(--accent)" : "var(--green)", display: "flex", alignItems: "center", gap: 3 }}>
-            <span style={{ width: 4, height: 4, borderRadius: "50%", background: isBuilding ? "var(--accent)" : "var(--green)", display: "inline-block", animation: isBuilding ? "pulse 1s ease-in-out infinite" : "none" }} />
-            {isBuilding ? t("aiPanel.statusBuilding") : t("aiPanel.statusReady")}
-          </div>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
-        {messages.length === 0 && (
-          <div style={{ textAlign: "center", padding: "24px 8px" }}>
-            <div style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.6, marginBottom: 16 }}>
-              {t("aiPanel.emptyPrompt")}
-            </div>
-            {/* Suggestions */}
-            {suggestions.map(s => (
-              <button
-                key={s}
-                onClick={() => setInput(s)}
-                style={{
-                  width: "100%", textAlign: "left", padding: "9px 12px",
-                  borderRadius: 10, border: "1px solid var(--b1)",
-                  background: "var(--bg-card)", color: "var(--t2)",
-                  fontSize: 12, cursor: "pointer", marginBottom: 6,
-                  transition: "border-color 0.12s",
-                }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--accent)")}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--b1)")}
-              >
-                "{s}"
-              </button>
-            ))}
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div key={i} style={{ marginBottom: 12 }}>
-            {msg.role === "user" ? (
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <div style={{
-                  maxWidth: "85%", padding: "10px 12px",
-                  borderRadius: "12px 12px 4px 12px",
-                  background: "var(--accent)", color: "white",
-                  fontSize: 13, lineHeight: 1.5,
-                }}>
-                  {msg.content}
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <div style={{
-                  width: 24, height: 24, borderRadius: 7, flexShrink: 0,
-                  background: "linear-gradient(135deg, var(--accent), var(--teal))",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                </div>
-                <div style={{
-                  maxWidth: "85%", padding: "10px 12px",
-                  borderRadius: "12px 12px 12px 4px",
-                  background: "var(--bg-card)", border: "1px solid var(--b1)",
-                  fontSize: 13, color: "var(--t1)", lineHeight: 1.6,
-                }}>
-                  {msg.content}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-
-        {loading && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 0" }}>
-            <div style={{
-              width: 24, height: 24, borderRadius: 7,
-              background: "linear-gradient(135deg, var(--accent), var(--teal))",
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-            }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            </div>
-            <div style={{ display: "flex", gap: 4, paddingInlineStart: 2 }}>
-              {[0, 1, 2].map(i => (
-                <div key={i} style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: "var(--accent)",
-                  animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`,
-                }} />
-              ))}
-            </div>
-          </div>
-        )}
-        <div ref={endRef} />
-      </div>
-
-      {/* Input */}
-      <div style={{ padding: "12px", borderTop: "1px solid var(--b1)" }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-            placeholder={isBuilding ? t("aiPanel.placeholderBuilding") : t("aiPanel.placeholderReady")}
-            disabled={isBuilding}
-            rows={2}
-            style={{
-              flex: 1, padding: "9px 12px", fontSize: 13,
-              borderRadius: 10, border: "1px solid var(--b1)",
-              background: isBuilding ? "var(--bg-base)" : "var(--bg-card)",
-              color: "var(--t1)",
-              resize: "none", outline: "none", fontFamily: "inherit",
-              opacity: isBuilding ? 0.6 : 1,
-            }}
-            onFocus={e => (e.target.style.borderColor = "var(--accent)")}
-            onBlur={e => (e.target.style.borderColor = "var(--b1)")}
-          />
-          <button
-            onClick={() => void send()}
-            disabled={!input.trim() || loading || isBuilding}
-            style={{
-              width: 36, height: 36, borderRadius: 9, border: "none",
-              background: input.trim() && !loading && !isBuilding ? "var(--accent)" : "var(--bg-card)",
-              color: input.trim() && !loading && !isBuilding ? "white" : "var(--t5)",
-              cursor: input.trim() && !loading && !isBuilding ? "pointer" : "default",
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-              transition: "all 0.12s",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -784,6 +571,17 @@ export function AppBuilderPage() {
   const [phases, setPhases]         = useState<BuildPhase[]>(INITIAL_PHASES);
   const [projectName, setProjectName] = useState("");
 
+  // ── Phase 2: Plan overlay ────────────────────────────────────────
+  const [planState, setPlanState]         = useState<PlanState>("idle");
+  const [currentPlan, setCurrentPlan]     = useState<BuildPlan | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState("");
+
+  // ── Phase 2: Build event timeline (real SSE events) ──────────────
+  const [buildEvents, setBuildEvents]     = useState<BuildEventItem[]>([]);
+
+  // ── Phase 2: Bottom panel height (resizable) ─────────────────────
+  const [bottomHeight, setBottomHeight]   = useState(200);
+
   /** Prevents duplicate submissions across renders without depending on isBuilding state. */
   const isBuildingRef = useRef(false);
   /** AbortController for cancelling an in-progress stream. */
@@ -832,6 +630,7 @@ export function AppBuilderPage() {
     setBillingError(null);
     setBuildFileCount(0);
     setBuildLanguage("");
+    setBuildEvents([]);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -888,6 +687,22 @@ export function AppBuilderPage() {
 
       // ── Step 2: stream the build — project_id is always set here ──
       for await (const event of streamBuild(projectId, prompt, controller.signal)) {
+        // Accumulate all real SSE events for the Build timeline (Phase 2).
+        // Error messages are intentionally NOT stored verbatim — the full message
+        // is shown in the BuildingOverlay / BillingErrorOverlay. Storing it again
+        // in buildEvents would create duplicate DOM text nodes that break tests
+        // using screen.getByText(). A sanitized label is sufficient for the timeline.
+        if (event.type !== "heartbeat") {
+          const evType = event.type as string;
+          const evMsg =
+            evType === "file"  ? `Generated: ${(event as unknown as { path?: string }).path ?? "file"}`
+            : evType === "done" ? `Build complete — ${(event as unknown as { files: string[]; language?: string }).files.length} files`
+            : evType === "error" ? "Build error — see panel for details"
+            : "message" in event ? (event as unknown as { message: string }).message
+            : evType;
+          setBuildEvents(prev => [...prev, { timestamp: Date.now(), type: evType as BuildEventItem["type"], message: evMsg }]);
+        }
+
         switch (event.type) {
           case "status": {
             statusCount++;
@@ -977,6 +792,43 @@ export function AppBuilderPage() {
     isBuildingRef.current = false;
   }, []);
 
+  /**
+   * handleStartBuild — Phase 2 entry point.
+   *
+   * 1. Fetches an AI-generated build plan from /api/build/plan.
+   * 2. If successful: shows BuildPlanPanel for user review.
+   *    On approval → calls handleBuild(prompt).
+   * 3. If plan fetch fails (no credits, network error, or mocked in tests):
+   *    falls through directly to handleBuild(prompt) — no disruption to
+   *    existing tests which mock apiFetch to return undefined.
+   */
+  const handleStartBuild = useCallback(async (prompt: string) => {
+    setPendingPrompt(prompt);
+    setPlanState("planning");
+    setBuildEvents([]);
+
+    try {
+      const r = await apiFetch("/api/build/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (r.ok) {
+        const data = await parseJSON<{ plan: BuildPlan }>(r, "/api/build/plan");
+        setCurrentPlan(data.plan);
+        setPlanState("review");
+        return; // Wait for user to approve plan
+      }
+      // Non-OK response → skip plan, build directly
+      setPlanState("idle");
+      void handleBuild(prompt);
+    } catch {
+      // Plan unavailable (credits, network, or test mock) → build directly
+      setPlanState("idle");
+      void handleBuild(prompt);
+    }
+  }, [handleBuild]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* ── Top bar ──────────────────────────────────────────── */}
@@ -1047,38 +899,109 @@ export function AppBuilderPage() {
       </div>
 
       {/* ── 3-panel workspace ─────────────────────────────────── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <AppSidebar section={section} setSection={setSection} projectName={projectName} />
-        <PreviewPanel section={section} projectName={projectName} isBuilding={isBuilding} buildDone={buildDone} />
-        <AIBuilderPanel onBuild={prompt => void handleBuild(prompt)} projectName={projectName} isBuilding={isBuilding} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+          <AppSidebar section={section} setSection={setSection} projectName={projectName} />
+          <PreviewPanel section={section} projectName={projectName} isBuilding={isBuilding} buildDone={buildDone} />
 
-        {/* Build overlay — shown while build is in progress or errored */}
-        {(isBuilding || buildError) && (
-          <BuildingOverlay
-            phases={phases}
-            onCancel={buildError ? () => { setBuildError(null); setPhases(INITIAL_PHASES); } : handleCancel}
-            errorMsg={buildError}
+          {/* Phase 2: AI Copilot Panel replaces old AIBuilderPanel */}
+          <AICopilotPanel
+            onBuild={prompt => void handleStartBuild(prompt)}
+            projectName={projectName}
+            isBuilding={isBuilding}
+            buildError={buildError}
+            fileCount={buildFileCount}
+            language={buildLanguage}
+            currentSection={section}
           />
-        )}
 
-        {/* Billing error overlay — replaces generic error; never crashes the DOM */}
-        {billingError && !isBuilding && (
-          <BillingErrorOverlay
-            provider={billingError.provider}
-            message={billingError.message}
-            action={billingError.action}
-            onRetry={() => {
-              const savedPrompt = billingError.prompt;
-              setBillingError(null);
-              setPhases(INITIAL_PHASES);
-              void handleBuild(savedPrompt);
-            }}
-            onDismiss={() => {
-              setBillingError(null);
-              setPhases(INITIAL_PHASES);
-            }}
-          />
-        )}
+          {/* Build overlay — shown while build is in progress or errored */}
+          {(isBuilding || buildError) && (
+            <BuildingOverlay
+              phases={phases}
+              onCancel={buildError ? () => { setBuildError(null); setPhases(INITIAL_PHASES); } : handleCancel}
+              errorMsg={buildError}
+            />
+          )}
+
+          {/* Billing error overlay — replaces generic error; never crashes the DOM */}
+          {billingError && !isBuilding && (
+            <BillingErrorOverlay
+              provider={billingError.provider}
+              message={billingError.message}
+              action={billingError.action}
+              onRetry={() => {
+                const savedPrompt = billingError.prompt;
+                setBillingError(null);
+                setPhases(INITIAL_PHASES);
+                void handleBuild(savedPrompt);
+              }}
+              onDismiss={() => {
+                setBillingError(null);
+                setPhases(INITIAL_PHASES);
+              }}
+            />
+          )}
+
+          {/* Phase 2: Build Plan overlay — shown after plan is fetched, before build starts */}
+          {planState === "planning" && (
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 20,
+            }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ display: "flex", gap: 4, justifyContent: "center", marginBottom: 12 }}>
+                  {[0,1,2].map(i => (
+                    <div key={i} style={{
+                      width: 8, height: 8, borderRadius: "50%", background: "var(--accent)",
+                      animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`,
+                    }} />
+                  ))}
+                </div>
+                <div style={{ fontSize: 14, color: "white", fontWeight: 600 }}>Generating build plan…</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>AI is analyzing your requirements</div>
+              </div>
+            </div>
+          )}
+
+          {planState === "review" && currentPlan && (
+            <BuildPlanPanel
+              plan={currentPlan}
+              prompt={pendingPrompt}
+              isRefining={false}
+              onApprove={() => {
+                setPlanState("idle");
+                void handleBuild(pendingPrompt);
+              }}
+              onModify={newPrompt => {
+                setPlanState("idle");
+                setCurrentPlan(null);
+                void handleStartBuild(newPrompt);
+              }}
+              onCancel={() => {
+                setPlanState("idle");
+                setCurrentPlan(null);
+                setPendingPrompt("");
+              }}
+            />
+          )}
+        </div>
+
+        {/* Phase 2: Bottom Tab Bar — Build timeline, Tests, Security, Logs, API, DB, Git */}
+        <BottomTabBar
+          buildEvents={buildEvents}
+          buildDone={buildDone}
+          buildError={buildError}
+          isBuilding={isBuilding}
+          fileCount={buildFileCount}
+          language={buildLanguage}
+          projectId={sessionStorage.getItem("flow_active_project")}
+          plan={currentPlan}
+          height={bottomHeight}
+          onResize={h => setBottomHeight(Math.max(120, Math.min(480, h)))}
+        />
       </div>
 
       {/* Build done banner */}

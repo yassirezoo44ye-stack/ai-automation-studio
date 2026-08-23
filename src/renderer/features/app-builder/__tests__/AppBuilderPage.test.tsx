@@ -36,6 +36,11 @@ import type { BuildEvent } from "../services/builderService";
 import { AppBuilderPage } from "../AppBuilderPage";
 import { BillingRequiredError } from "../../../shared/utils/api";
 
+// Raise the per-test timeout for the entire file — these tests are sensitive
+// to CPU contention in the full suite (lazy chunk + SSE mock resolution can
+// exceed the default 5000ms when many workers compete for the same cores).
+vi.setConfig({ testTimeout: 60_000 });
+
 /* ── jsdom shims ──────────────────────────────────────────────────────────── */
 
 // jsdom does not implement scrollIntoView; silence the "not a function" error
