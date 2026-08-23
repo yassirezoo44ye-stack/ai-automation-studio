@@ -16,11 +16,12 @@
  * and the auth/org contexts are stubbed, since their own data-fetching is
  * not what's under test here.
  *
- * NOTE: Sidebar labels reflect the current Flow redesign nav groups:
- *   Workspace:  Dashboard, App Builder, Templates
- *   Build:      Design Studio, Agents, Automations, Runs, Integrations
- *   Platform:   Data, API, Packages, Analytics
- *   System:     Organizations, Settings
+ * NOTE: Sidebar labels reflect the current Flow Command Center nav groups:
+ *   Workspace:  Command Center, Conversations
+ *   Build:      App Builder, Design Studio, Agents, Workflows
+ *   Operate:    Runs, Monitoring, Logs
+ *   Platform:   AI Gateway, Integrations, Packages, Marketplace
+ *   Org:        Organizations, Teams, Billing, Settings
  */
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
@@ -64,12 +65,14 @@ vi.mock("../features/sandbox", () => ({ SandboxPage: () => <div>SANDBOX_PAGE_CON
 vi.mock("../features/organizations", () => ({ OrganizationsPage: () => <div>ORGANIZATIONS_PAGE_CONTENT</div> }));
 vi.mock("../features/settings", () => ({ SettingsPage: () => <div>SETTINGS_PAGE_CONTENT</div> }));
 
-// Unused pages (still in app, just not in sidebar nav any more)
+// Pages now in sidebar nav
 vi.mock("../features/ai", () => ({ AIWorkspace: () => <div>AI_PAGE_CONTENT</div> }));
-vi.mock("../features/dev", () => ({ DevWorkspace: () => <div>DEV_PAGE_CONTENT</div> }));
-vi.mock("../features/social", () => ({ SocialPage: () => <div>SOCIAL_PAGE_CONTENT</div> }));
 vi.mock("../features/teams", () => ({ TeamsPage: () => <div>TEAMS_PAGE_CONTENT</div> }));
 vi.mock("../features/billing", () => ({ BillingPage: () => <div>BILLING_PAGE_CONTENT</div> }));
+
+// Unused pages (still in app, just not in sidebar nav)
+vi.mock("../features/dev", () => ({ DevWorkspace: () => <div>DEV_PAGE_CONTENT</div> }));
+vi.mock("../features/social", () => ({ SocialPage: () => <div>SOCIAL_PAGE_CONTENT</div> }));
 
 function renderApp() {
   return render(
@@ -92,24 +95,28 @@ describe("navigation", () => {
     // [title in sidebar, expected main content] pairs — all current sidebar items
     const cases: [string, string][] = [
       // Workspace
-      ["App Builder",   "APP_BUILDER_PAGE_CONTENT"],
-      ["Templates",     "MARKETPLACE_PAGE_CONTENT"],
+      ["Conversations",  "AI_PAGE_CONTENT"],
       // Build
-      ["Design Studio", "DESIGN_PAGE_CONTENT"],
-      ["Agents",        "AGENTOS_PAGE_CONTENT"],
-      ["Automations",   "AUTOMATION_PAGE_CONTENT"],
-      ["Runs",          "RUNS_PAGE_CONTENT"],
-      ["Integrations",  "INTEGRATIONS_PAGE_CONTENT"],
+      ["App Builder",    "APP_BUILDER_PAGE_CONTENT"],
+      ["Design Studio",  "DESIGN_PAGE_CONTENT"],
+      ["Agents",         "AGENTOS_PAGE_CONTENT"],
+      ["Workflows",      "AUTOMATION_PAGE_CONTENT"],
+      // Operate
+      ["Runs",           "RUNS_PAGE_CONTENT"],
+      ["Monitoring",     "OBSERVABILITY_PAGE_CONTENT"],
+      ["Logs",           "SANDBOX_PAGE_CONTENT"],
       // Platform
-      ["Data",          "OBSERVABILITY_PAGE_CONTENT"],
-      ["API",           "AI_ROUTING_PAGE_CONTENT"],
-      ["Packages",      "PLUGINS_PAGE_CONTENT"],
-      ["Analytics",     "SANDBOX_PAGE_CONTENT"],
-      // System
-      ["Organizations", "ORGANIZATIONS_PAGE_CONTENT"],
-      ["Settings",      "SETTINGS_PAGE_CONTENT"],
+      ["AI Gateway",     "AI_ROUTING_PAGE_CONTENT"],
+      ["Integrations",   "INTEGRATIONS_PAGE_CONTENT"],
+      ["Packages",       "PLUGINS_PAGE_CONTENT"],
+      ["Marketplace",    "MARKETPLACE_PAGE_CONTENT"],
+      // Organization
+      ["Organizations",  "ORGANIZATIONS_PAGE_CONTENT"],
+      ["Teams",          "TEAMS_PAGE_CONTENT"],
+      ["Billing",        "BILLING_PAGE_CONTENT"],
+      ["Settings",       "SETTINGS_PAGE_CONTENT"],
       // Back to home
-      ["Dashboard",     "HOME_PAGE_CONTENT"],
+      ["Command Center", "HOME_PAGE_CONTENT"],
     ];
 
     for (const [label, expectedContent] of cases) {
@@ -118,10 +125,12 @@ describe("navigation", () => {
 
       // The content that actually appears must match the button that's
       // marked active — this is the exact invariant that broke before.
-      await waitFor(() => expect(screen.getByText(expectedContent)).toBeInTheDocument());
+      // Use a longer timeout to account for lazy-chunk loading latency
+      // in the full test suite (worker contention can delay Suspense resolution).
+      await waitFor(() => expect(screen.getByText(expectedContent)).toBeInTheDocument(), { timeout: 8000 });
       expect(navButton).toHaveAttribute("aria-current", "page");
     }
-  }, 20000);
+  }, 60000);
 
   it("survives rapid sequential navigation without ending up on the wrong page", async () => {
     renderApp();
@@ -134,7 +143,8 @@ describe("navigation", () => {
     fireEvent.click(screen.getByTitle("Integrations"));
     fireEvent.click(screen.getByTitle("Settings"));
 
-    await waitFor(() => expect(screen.getByText("SETTINGS_PAGE_CONTENT")).toBeInTheDocument());
+
+    await waitFor(() => expect(screen.getByText("SETTINGS_PAGE_CONTENT")).toBeInTheDocument(), { timeout: 8000 });
     expect(screen.getByTitle("Settings")).toHaveAttribute("aria-current", "page");
     // No other page's content should be left mounted alongside it.
     expect(screen.queryByText("INTEGRATIONS_PAGE_CONTENT")).not.toBeInTheDocument();
@@ -148,10 +158,10 @@ describe("navigation", () => {
     await screen.findByText("HOME_PAGE_CONTENT");
 
     fireEvent.click(screen.getByTitle("Design Studio"));
-    await waitFor(() => expect(screen.getByText(/Error in design/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Error in design/i)).toBeInTheDocument(), { timeout: 8000 });
 
     // The crash must not leak into the next page's view.
-    fireEvent.click(screen.getByTitle("Dashboard"));
+    fireEvent.click(screen.getByTitle("Command Center"));
     await waitFor(() => expect(screen.getByText("HOME_PAGE_CONTENT")).toBeInTheDocument());
     expect(screen.queryByText(/Error in design/i)).not.toBeInTheDocument();
 

@@ -11,10 +11,13 @@ type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
 
 /**
- * Navigation groups — three semantic sections + system bottom.
- * "workspace" has no label (top of sidebar, most used).
- * "build" and "platform" get uppercase group labels.
- * "system" items appear after a separator with no label.
+ * Navigation groups — five semantic sections matching the Command Center spec.
+ *
+ * WORKSPACE  — daily entry points (no label, no sep)
+ * BUILD      — creation tools
+ * OPERATE    — monitoring & execution
+ * PLATFORM   — infrastructure & integrations
+ * ORGANIZATION — admin
  */
 const NAV_GROUPS: {
   groupKey: string;
@@ -27,9 +30,8 @@ const NAV_GROUPS: {
     showLabel: false,
     showSep: false,
     items: [
-      { id: "home",        navKey: "home",        icon: "home"        },
-      { id: "app-builder", navKey: "appBuilder",  icon: "app-builder" },
-      { id: "marketplace", navKey: "marketplace", icon: "templates"   },
+      { id: "home", navKey: "home", icon: "home"  },
+      { id: "ai",   navKey: "ai",   icon: "ai"    },
     ],
   },
   {
@@ -37,11 +39,20 @@ const NAV_GROUPS: {
     showLabel: true,
     showSep: true,
     items: [
-      { id: "design",       navKey: "design",       icon: "design"       },
-      { id: "agentos",      navKey: "agentos",      icon: "agentos"      },
-      { id: "automation",   navKey: "automation",   icon: "automation"   },
+      { id: "app-builder", navKey: "appBuilder",  icon: "app-builder" },
+      { id: "design",      navKey: "design",      icon: "design"      },
+      { id: "agentos",     navKey: "agentos",     icon: "agentos"     },
+      { id: "automation",  navKey: "automation",  icon: "automation"  },
+    ],
+  },
+  {
+    groupKey: "operate",
+    showLabel: true,
+    showSep: true,
+    items: [
       { id: "runs",         navKey: "runs",         icon: "runs"         },
-      { id: "integrations", navKey: "integrations", icon: "integrations" },
+      { id: "observability",navKey: "observability",icon: "data"         },
+      { id: "sandbox",      navKey: "sandbox",      icon: "analytics"    },
     ],
   },
   {
@@ -49,18 +60,20 @@ const NAV_GROUPS: {
     showLabel: true,
     showSep: true,
     items: [
-      { id: "observability", navKey: "observability", icon: "data"      },
-      { id: "ai-routing",    navKey: "aiRouting",     icon: "api"       },
-      { id: "plugins",       navKey: "plugins",       icon: "plugins"   },
-      { id: "sandbox",       navKey: "sandbox",       icon: "analytics" },
+      { id: "ai-routing",    navKey: "aiRouting",    icon: "api"          },
+      { id: "integrations",  navKey: "integrations", icon: "integrations" },
+      { id: "plugins",       navKey: "plugins",      icon: "plugins"      },
+      { id: "marketplace",   navKey: "marketplace",  icon: "templates"    },
     ],
   },
   {
-    groupKey: "system",
+    groupKey: "organization",
     showLabel: false,
     showSep: true,
     items: [
       { id: "organizations", navKey: "organizations", icon: "organizations" },
+      { id: "teams",         navKey: "teams",         icon: "teams"         },
+      { id: "billing",       navKey: "billing",       icon: "billing"       },
       { id: "settings",      navKey: "settings",      icon: "settings"      },
     ],
   },
