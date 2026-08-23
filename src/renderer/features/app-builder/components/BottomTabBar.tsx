@@ -1,13 +1,14 @@
 /**
  * BottomTabBar — tabbed panel below the 3-panel workspace.
  *
- * Tabs: Build | Tests | Security | Logs | API | Database | Git
+ * Tabs: Build | Runtime | Tests | Security | Logs | API | Database | Git
  *
  * Every status indicator is grounded in real backend state:
- *   - Build timeline: real SSE events with real timestamps
+ *   - Build timeline:  real SSE events with real timestamps
+ *   - Runtime logs:    real run/stream SSE events — separate from build events
  *   - Tests / TypeScript / ESLint: "Not configured" — no tooling exists yet
  *   - Security: shows verifiable facts (auth check, HTTPS flag, dependency audit stub)
- *   - Logs: raw SSE event stream
+ *   - Logs: raw build SSE stream
  *   - API / Database: routes & tables parsed from /api/build/plan response
  *   - Git: coming soon (no git remote wired in this workspace)
  *
@@ -15,6 +16,7 @@
  */
 import { useState } from "react";
 import type { BuildPlan } from "./BuildPlanPanel";
+import type { RuntimeState } from "./RuntimePanel";
 
 export interface BuildEventItem {
   timestamp: number;
@@ -22,7 +24,17 @@ export interface BuildEventItem {
   message: string;
 }
 
-type BottomTab = "build" | "tests" | "security" | "logs" | "api" | "database" | "git";
+/** Runtime log event — comes from POST /api/projects/{id}/run/stream */
+export interface RuntimeEventItem {
+  timestamp: number;
+  /** Mirrors the run SSE event type */
+  type: "status" | "log" | "html" | "server_ready" | "done" | "error" | "unsupported";
+  message: string;
+  /** "stdout" | "stderr" for log events; undefined for others */
+  stream?: "stdout" | "stderr";
+}
+
+type BottomTab = "build" | "runtime" | "tests" | "security" | "logs" | "api" | "database" | "git";
 
 interface Props {
   buildEvents: BuildEventItem[];
@@ -35,10 +47,15 @@ interface Props {
   plan: BuildPlan | null;
   height: number;
   onResize: (delta: number) => void;
+  /** Runtime events from POST /api/projects/{id}/run/stream */
+  runtimeEvents?: RuntimeEventItem[];
+  /** Current runtime state — drives the badge on the Runtime tab */
+  runtimeState?: RuntimeState;
 }
 
 const TABS: { id: BottomTab; label: string }[] = [
   { id: "build",    label: "Build" },
+  { id: "runtime",  label: "Runtime" },
   { id: "tests",    label: "Tests" },
   { id: "security", label: "Security" },
   { id: "logs",     label: "Logs" },
@@ -89,6 +106,8 @@ function elapsedSince(start: number, end: number): string {
 export function BottomTabBar({
   buildEvents, buildDone, buildError, isBuilding,
   fileCount, language, projectId, plan, height, onResize,
+  runtimeEvents = [],
+  runtimeState = "idle",
 }: Props) {
   const [tab, setTab] = useState<BottomTab>("build");
   const [dragging, setDragging] = useState(false);
@@ -108,6 +127,72 @@ export function BottomTabBar({
   const startTs = buildEvents.length > 0 ? buildEvents[0].timestamp : 0;
 
   const content: Record<BottomTab, React.ReactNode> = {
+
+    /* ─── RUNTIME — real run/stream SSE events (separate from build) ────── */
+    runtime: (() => {
+      const runtimeRunning = runtimeState === "running" || runtimeState === "starting";
+      const runtimeDone    = runtimeState === "stopped" || runtimeState === "failed";
+      return (
+        <div style={{ overflowY: "auto", height: "100%", background: "var(--bg-base)" }}>
+          {/* Header */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "4px 12px 4px 16px", borderBottom: "1px solid var(--b1)",
+            background: "var(--bg-surface)", flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--t4)" }}>
+              Runtime Logs
+            </span>
+            {runtimeRunning && (
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 99, background: "rgba(22,163,74,0.12)", color: "var(--green)", border: "1px solid rgba(22,163,74,0.2)" }}>
+                LIVE
+              </span>
+            )}
+            {runtimeDone && (
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 99, background: "var(--bg-card)", color: "var(--t4)", border: "1px solid var(--b1)" }}>
+                {runtimeState === "failed" ? "FAILED" : "STOPPED"}
+              </span>
+            )}
+          </div>
+
+          {runtimeEvents.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "20px", color: "var(--t5)", fontSize: 12 }}>
+              {runtimeState === "idle" || runtimeState === "ready_to_run"
+                ? "Runtime logs will appear here when you run the project."
+                : "Waiting for runtime events…"
+              }
+            </div>
+          ) : (
+            <pre style={{ margin: 0, padding: "8px 16px", fontSize: 11, fontFamily: "monospace", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              {runtimeEvents.map((ev, i) => {
+                const col =
+                  ev.type === "server_ready"  ? "var(--green)"
+                  : ev.type === "error"       ? "var(--red)"
+                  : ev.stream === "stderr"    ? "var(--yellow, #eab308)"
+                  : "var(--t3)";
+                const prefix =
+                  ev.type === "server_ready"  ? "✓ "
+                  : ev.type === "error"       ? "✗ "
+                  : ev.stream === "stderr"    ? "⚠ "
+                  : ev.type === "status"      ? "● "
+                  : "  ";
+                return (
+                  <span key={i} style={{ color: col, display: "block" }}>
+                    <span style={{ color: "var(--t5)", fontFamily: "monospace", marginRight: 8 }}>
+                      {formatTs(ev.timestamp)}
+                    </span>
+                    {prefix}{ev.message}
+                  </span>
+                );
+              })}
+              {runtimeRunning && (
+                <span style={{ color: "var(--t5)" }}>…</span>
+              )}
+            </pre>
+          )}
+        </div>
+      );
+    })(),
 
     /* ─── BUILD — real SSE event timeline ─────────────────────────────── */
     build: (
@@ -311,11 +396,16 @@ export function BottomTabBar({
 
   // Tab badge — show error dot on failing tabs
   const tabBadge: Partial<Record<BottomTab, string>> = {
-    build: buildError ? "!" : isBuilding ? "…" : buildDone ? "✓" : "",
-    tests: "",
+    build:   buildError ? "!" : isBuilding ? "…" : buildDone ? "✓" : "",
+    runtime: runtimeState === "running"  ? "▶"
+           : runtimeState === "starting" ? "…"
+           : runtimeState === "failed"   ? "!"
+           : runtimeEvents.length > 0    ? String(runtimeEvents.length)
+           : "",
+    tests:    "",
     security: "",
-    logs: buildEvents.length > 0 ? String(buildEvents.length) : "",
-    api: plan ? String(plan.api_routes.length) : "",
+    logs:     buildEvents.length > 0 ? String(buildEvents.length) : "",
+    api:      plan ? String(plan.api_routes.length) : "",
     database: plan ? String(plan.database_tables.length) : "",
   };
 
