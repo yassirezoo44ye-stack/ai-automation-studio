@@ -39,10 +39,11 @@ const NAV_GROUPS: {
     showLabel: true,
     showSep: true,
     items: [
-      { id: "app-builder", navKey: "appBuilder",  icon: "app-builder" },
-      { id: "design",      navKey: "design",      icon: "design"      },
-      { id: "agentos",     navKey: "agentos",     icon: "agentos"     },
-      { id: "automation",  navKey: "automation",  icon: "automation"  },
+      { id: "app-builder", navKey: "appBuilder",    icon: "app-builder" },
+      { id: "design",      navKey: "design",        icon: "design"      },
+      { id: "agentos",     navKey: "agentos",       icon: "agentos"     },
+      { id: "automation",  navKey: "automation",    icon: "automation"  },
+      { id: "training",    navKey: "trainingStudio",icon: "training"    },
     ],
   },
   {

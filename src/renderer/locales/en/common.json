@@ -28,7 +28,8 @@
       "settings": "Settings",
       "appBuilder": "App Builder",
       "runs": "Runs",
-      "integrations": "Integrations"
+      "integrations": "Integrations",
+      "trainingStudio": "Training Studio"
     },
     "mainNav": "Main navigation",
     "collapse": "Collapse sidebar",
@@ -71,7 +72,8 @@
       "settings": { "label": "Settings", "sub": "App configuration" },
       "app-builder": { "label": "App Builder", "sub": "Build apps with AI" },
       "runs": { "label": "Runs", "sub": "Monitor executions" },
-      "integrations": { "label": "Integrations", "sub": "Connect your tools" }
+      "integrations": { "label": "Integrations", "sub": "Connect your tools" },
+      "training": { "label": "Training Studio", "sub": "Create AI-powered training courses" }
     },
     "actions": {
       "newChat": { "label": "New Chat", "sub": "Start a conversation" },

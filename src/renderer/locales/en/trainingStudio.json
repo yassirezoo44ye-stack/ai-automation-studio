@@ -1,0 +1,68 @@
+{
+  "title": "Training Studio",
+  "subtitle": "Create AI-powered courses, videos, and quizzes",
+  "nav": {
+    "courses":     "Courses",
+    "videoGen":    "Video Generator",
+    "scripts":     "Scripts",
+    "avatars":     "Avatars & Voices",
+    "quizzes":     "Quizzes",
+    "localization":"Localization",
+    "learners":    "Learners",
+    "analytics":   "Analytics"
+  },
+  "courses": {
+    "title":       "Courses",
+    "empty":       "No courses yet. Create your first course.",
+    "create":      "New Course",
+    "search":      "Search courses…",
+    "status": {
+      "draft":     "Draft",
+      "published": "Published",
+      "archived":  "Archived"
+    }
+  },
+  "lessons": {
+    "title":       "Lessons",
+    "empty":       "No lessons yet. Add your first lesson.",
+    "add":         "Add Lesson"
+  },
+  "videos": {
+    "title":       "Videos",
+    "generate":    "Generate Video",
+    "generating":  "Generating…",
+    "provider":    "Provider",
+    "status": {
+      "draft":      "Draft",
+      "queued":     "Queued",
+      "processing": "Processing",
+      "completed":  "Completed",
+      "failed":     "Failed",
+      "cancelled":  "Cancelled"
+    }
+  },
+  "quizzes": {
+    "title":       "Quizzes",
+    "empty":       "No quizzes yet.",
+    "add":         "Add Quiz",
+    "passScore":   "Pass score"
+  },
+  "learners": {
+    "title":       "Learners",
+    "empty":       "No learners enrolled yet.",
+    "add":         "Add Learner",
+    "email":       "Email",
+    "name":        "Name"
+  },
+  "jobs": {
+    "title":       "Jobs",
+    "status": {
+      "queued":     "Queued",
+      "processing": "Processing",
+      "completed":  "Completed",
+      "failed":     "Failed",
+      "cancelled":  "Cancelled"
+    }
+  },
+  "comingSoon": "Coming soon in a future phase"
+}

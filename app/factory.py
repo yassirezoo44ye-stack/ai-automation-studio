@@ -61,6 +61,7 @@ from app.routers import team_chat        as team_chat_router
 from app.routers import integrations     as integrations_router
 from app.routers import app_builder      as app_builder_router
 from app.routers import ws_ticket        as ws_ticket_router
+from app.routers import training         as training_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -223,6 +224,11 @@ async def lifespan(app: FastAPI):
                     "ON CONFLICT DO NOTHING",
                     role, resource, action,
                 )
+
+    # ── Training Studio — references organizations/projects/users ────────────
+    from app.training import init_training_schema
+    async with pool.acquire() as conn:
+        await init_training_schema(conn)
 
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
@@ -617,6 +623,7 @@ def create_app() -> FastAPI:
     app.include_router(integrations_router.router)
     app.include_router(app_builder_router.router)
     app.include_router(ws_ticket_router.router)
+    app.include_router(training_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
