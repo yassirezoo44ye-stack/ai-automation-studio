@@ -161,6 +161,17 @@
   --radius-sm:      var(--r-sm);
   --radius-md:      var(--r-md);
 
+  /* ── DesignStudio extended aliases ────────────────────────────────── */
+  --fill-accent:    var(--accent);
+  --text-accent:    var(--ta);
+  --bg-accent:      var(--accent-dim);
+  --border-accent:  var(--ba);
+  --text-muted:     var(--t4);
+  --border-strong:  var(--b2);
+  --text-danger:    var(--red);
+  --text-success:   var(--green);
+  --text-warning:   var(--yellow);
+
   color-scheme: light;
 }
 
@@ -252,6 +263,17 @@
   --radius-sm:      var(--r-sm);
   --radius-md:      var(--r-md);
 
+  /* ── DesignStudio extended aliases ────────────────────────────────── */
+  --fill-accent:    var(--accent);
+  --text-accent:    var(--ta);
+  --bg-accent:      var(--accent-dim);
+  --border-accent:  var(--ba);
+  --text-muted:     var(--t4);
+  --border-strong:  var(--b2);
+  --text-danger:    var(--red);
+  --text-success:   var(--green);
+  --text-warning:   var(--yellow);
+
   color-scheme: dark;
 }
 
@@ -334,6 +356,17 @@
   --text-secondary: var(--t3);
   --radius-sm:      var(--r-sm);
   --radius-md:      var(--r-md);
+
+  /* ── DesignStudio extended aliases ────────────────────────────────── */
+  --fill-accent:    var(--accent);
+  --text-accent:    var(--ta);
+  --bg-accent:      var(--accent-dim);
+  --border-accent:  var(--ba);
+  --text-muted:     var(--t4);
+  --border-strong:  var(--b2);
+  --text-danger:    var(--red);
+  --text-success:   var(--green);
+  --text-warning:   var(--yellow);
 
   color-scheme: dark;
 }
@@ -437,6 +470,7 @@ input:focus, textarea:focus, select:focus {
 @keyframes toastIn   { from{opacity:0;transform:translateX(16px) scale(.96)} to{opacity:1;transform:translateX(0) scale(1)} }
 @keyframes float     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
 @keyframes glow-pulse{ 0%,100%{box-shadow:0 0 12px var(--accent-dim,rgba(255,23,68,0.3))} 50%{box-shadow:0 0 24px var(--accent-glow,rgba(255,23,68,0.6))} }
+@keyframes blink      { 0%,100%{opacity:1} 50%{opacity:0} }
 
 /* ── Typing indicator ────────────────────────────────────────────── */
 .typing { display:flex; align-items:center; gap:5px; padding:6px 0; }
@@ -1688,20 +1722,35 @@ kbd {
 
 /* ── Agent cards (AgentOS grid) ──────────────────────────────── */
 .agent-card {
-  padding: 12px 14px;
-  border-radius: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
   background: var(--bg-surface);
   border: 1px solid var(--b1);
-  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  transition: border-color var(--t-base) var(--ease),
+              box-shadow var(--t-base) var(--ease),
+              transform var(--t-base) var(--ease);
   cursor: default;
+  position: relative;
+  overflow: hidden;
 }
+.agent-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-dim), transparent);
+  opacity: 0;
+  transition: opacity var(--t-base);
+}
+.agent-card:hover::before { opacity: 1; }
 .agent-card:hover {
   border-color: var(--ba);
-  box-shadow: 0 2px 12px rgba(110,50,224,0.10);
+  box-shadow: 0 4px 16px rgba(110,50,224,0.12);
+  transform: translateY(-1px);
 }
 .agent-card--running {
   border-color: var(--accent-border);
-  box-shadow: 0 0 0 3px var(--accent-dim);
+  background: linear-gradient(135deg, var(--bg-surface) 0%, var(--accent-dim) 100%);
+  box-shadow: 0 0 0 2px var(--accent-dim), 0 4px 20px rgba(110,50,224,0.15);
 }
 .agent-card__header {
   display: flex;
@@ -2081,3 +2130,234 @@ code, kbd, samp, pre,
 .flow-ai-state--complete  { background: rgba(0,230,118,0.12); border-color: rgba(0,230,118,0.30); color: var(--green); }
 .flow-ai-state--error     { background: rgba(255,23,68,0.12); border-color: rgba(255,23,68,0.30); color: var(--red); }
 .flow-ai-state--billing   { background: rgba(255,215,64,0.12); border-color: rgba(255,215,64,0.30); color: var(--yellow); }
+
+/* ════════════════════════════════════════════════════════════════════
+   ANDROID / MOBILE — Global interactive improvements
+   Applied unconditionally (not inside a media query) because they
+   benefit all devices: eliminate 300ms tap delay, enable momentum
+   scrolling, prevent double-tap zoom on controls.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Eliminate 300ms Android tap delay on every interactive element */
+button, [role="button"], input, textarea, select, a,
+.sidebar__item, .flow-node-card, .flow-case-card,
+.flow-topbar__btn, .flow-topbar__search, .flow-section-viewall,
+.g-copilot-fab, .mobile-menu-btn {
+  touch-action: manipulation;
+}
+
+/* Momentum scrolling for all overflow containers */
+.sidebar__nav, .g-copilot-panel__list, .app-main,
+[style*="overflow-y: auto"], [style*="overflowY: auto"] {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   ANDROID / MOBILE — ≤ 768px responsive layout
+   ════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ── Safe areas: notch / edge-to-edge home bar ─────────────────── */
+  /* Copilot FAB stays above the Android gesture bar */
+  .g-copilot-fab-wrap {
+    bottom:             calc(20px + env(safe-area-inset-bottom));
+    inset-inline-end:   calc(16px + env(safe-area-inset-right));
+  }
+  /* Mobile hamburger clears the status bar / notch */
+  .mobile-menu-btn {
+    top:                calc(var(--sp-3) + env(safe-area-inset-top));
+    inset-inline-start: calc(var(--sp-3) + env(safe-area-inset-left));
+    /* Enlarge to 44×44 minimum touch target */
+    width:  44px;
+    height: 44px;
+  }
+  /* Sidebar drawer: add safe area padding at top and bottom */
+  .sidebar {
+    padding-top:    env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* ── TopBar: compact mobile header ─────────────────────────────── */
+  .flow-topbar {
+    /* Clear the fixed hamburger button on the inline-start side */
+    padding-inline-start: 56px;
+    padding-inline-end:   8px;
+    gap: 4px;
+  }
+  /* Hide search box text label — keep the icon-only trigger */
+  .flow-topbar__search > span:not(.flow-topbar__kbd) { display: none; }
+  .flow-topbar__kbd { display: none; }
+  /* Compact icon-only pill */
+  .flow-topbar__search {
+    padding: 0 10px;
+    gap: 0;
+    min-height: 36px;
+    min-width: 36px;
+  }
+  /* Enlarge all icon buttons to 44×44 touch targets */
+  .flow-topbar__btn {
+    width:  44px;
+    height: 44px;
+  }
+  /* Breadcrumb: truncate long page titles gracefully */
+  .flow-topbar__crumb {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── HomePage: 2-column KPI strip ──────────────────────────────── */
+  .home-kpi-strip {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* ── HomePage: single-column layout ────────────────────────────── */
+  .home-two-col {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  /* Right column (Quick Actions, Workflows, Nav) goes below main content */
+  /* No hide — just stacks naturally in grid order */
+
+  /* ── Node integrations: horizontal scroll on very narrow screens ─ */
+  /* (already collapses to 3-col at 500px via existing rules)         */
+  .flow-nodes-grid {
+    /* Already handles 3-col at 500px — no override needed             */
+  }
+
+  /* ── Copilot panel: full-screen bottom sheet on mobile ─────────── */
+  .g-copilot-panel {
+    position:   fixed !important;
+    inset:      auto 0 0 0 !important;
+    top:        auto !important;
+    width:      100% !important;
+    max-width:  100% !important;
+    height:     80dvh !important;
+    max-height: 80dvh !important;
+    border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
+    border-inline: none !important;
+    border-bottom: none !important;
+    /* Safe area: input stays above Android gesture bar */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* ── App Builder: stack panels vertically on mobile ────────────── */
+  .ab-panels {
+    flex-direction: column !important;
+  }
+  /* App structure nav (AppSidebar): hidden on mobile
+     The bottom tab bar (BottomTabBar) provides equivalent structure access */
+  .ab-nav {
+    display: none !important;
+  }
+  /* Runtime / Preview panel: fixed height, full width */
+  .ab-runtime {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    height: 40vh !important;
+    min-height: 180px !important;
+    max-height: 320px !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--b1) !important;
+  }
+  /* AI Copilot panel: fills remaining vertical space */
+  .ab-copilot {
+    width:  100% !important;
+    flex:   1   !important;
+    min-height: 220px !important;
+    border-left:   none !important;
+    border-inline-start: none !important;
+    border-top: 1px solid var(--b1) !important;
+  }
+
+  /* ── Sidebar items: 44px touch targets ─────────────────────────── */
+  .sidebar__item {
+    min-height: 44px;
+    padding: 10px 10px;
+  }
+
+  /* ── Notification panel: full-width on mobile ───────────────────── */
+  .g-notif-panel {
+    width: calc(100vw - 32px) !important;
+    max-width: 100vw !important;
+    inset-inline-start: 0 !important;
+    inset-inline-end:   0 !important;
+    margin: 0 16px !important;
+  }
+
+  /* ── Dialogs / overlays: mobile-safe ───────────────────────────── */
+  /* BuildingOverlay and BillingErrorOverlay modal cards */
+  .ab-panels [style*="maxWidth: 400"],
+  .ab-panels [style*="maxWidth: 420"] {
+    width: calc(100vw - 32px) !important;
+    max-width: calc(100vw - 32px) !important;
+    padding: 24px 20px !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   TABLET — 601px – 1024px
+   ════════════════════════════════════════════════════════════════════ */
+@media (min-width: 601px) and (max-width: 1024px) {
+  /* KPI strip: 4 columns still fit on tablet */
+  .home-kpi-strip {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+  /* Two-column: narrower right panel on tablet */
+  .home-two-col {
+    grid-template-columns: 1fr 240px !important;
+  }
+  /* App Builder: hide AppSidebar at tablet too, but keep copilot */
+  .ab-nav { display: none !important; }
+  .ab-runtime { flex: 1 !important; width: auto !important; }
+  .ab-copilot { width: 280px !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   TOUCH DEVICES — reduce expensive GPU effects (hover: none)
+   Applies to Android Chrome, iOS Safari, etc.
+   Does NOT apply to laptop touchscreens (they usually report hover: hover)
+   ════════════════════════════════════════════════════════════════════ */
+@media (hover: none) {
+  /* Glow on hover is meaningless on touch — suppress expensive layers */
+  .flow-node-card:hover { box-shadow: none !important; }
+  .flow-case-card:hover { box-shadow: none !important; }
+  /* Keep active state: give feedback on tap instead */
+  .flow-node-card:active { box-shadow: var(--glow-blue-subtle) !important; }
+  .flow-case-card:active { box-shadow: var(--glow-pink-subtle) !important; }
+
+  /* Copilot FAB: no scale-up hover (it would stay scaled on touch) */
+  .g-copilot-fab:hover { transform: none !important; }
+  .g-copilot-fab:active { transform: scale(0.95) !important; }
+
+  /* Sidebar items: no hover background (tap gives :active feedback) */
+  .sidebar__item:hover { background: transparent !important; color: var(--t3) !important; }
+  .sidebar__item:active { background: var(--bg-hover) !important; color: var(--t2) !important; }
+
+  /* Topbar buttons */
+  .flow-topbar__btn:hover { background: transparent !important; }
+  .flow-topbar__btn:active { background: var(--bg-hover) !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   REDUCED MOTION — extend existing rule to cover new animations
+   ════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  /* Skeleton shimmer: static instead of animated */
+  .skeleton {
+    animation: none !important;
+    background: var(--bg-card) !important;
+  }
+  /* Flow AI state pulse: frozen */
+  .flow-status--ai,
+  .flow-status--running {
+    animation: none !important;
+  }
+  @keyframes flow-ai-pulse { to { box-shadow: 0 0 8px rgba(192,81,255,0.3); } }
+  /* Node / case card transitions: instant */
+  .flow-node-card, .flow-case-card { transition: none !important; }
+  /* Glow-pulse keyframe: frozen */
+  @keyframes glow-pulse { to { box-shadow: 0 0 12px var(--accent-dim); } }
+}

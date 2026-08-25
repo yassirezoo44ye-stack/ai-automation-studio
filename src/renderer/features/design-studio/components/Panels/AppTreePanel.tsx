@@ -4,12 +4,13 @@
  * The primary left panel for Flow App Builder.
  * Shows the app structure tree: APP / DATA / AI / AUTOMATION / DEPLOY.
  *
+ * All user-visible strings use i18n (designStudio namespace).
  * The original drawing tools (Rect / Circle / Text / …) are preserved via
  * the "Insert & Design Tools" button at the bottom, which switches the
- * DesignStudio back to the classic LeftToolbar + panel mode. No Fabric.js
- * capability is lost — it is just moved to a sub-mode.
+ * DesignStudio back to the classic LeftToolbar + panel mode.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import styles from "./AppTreePanel.module.css";
 
 // ── Section types ─────────────────────────────────────────────────────────────
@@ -29,7 +30,6 @@ export type AppSection =
 
 interface TreeItem {
   id: AppSection;
-  label: string;
   icon: string;
   badge?: number;
   comingSoon?: boolean;
@@ -37,57 +37,52 @@ interface TreeItem {
 
 interface TreeGroup {
   id: string;
-  label: string;
   items: TreeItem[];
 }
 
+// Labels for groups/items come from i18n — no hardcoded strings here.
 const TREE_GROUPS: TreeGroup[] = [
   {
     id: "app",
-    label: "APP",
     items: [
-      { id: "pages",      label: "Pages",      icon: "⊟", badge: 3 },
-      { id: "components", label: "Components", icon: "◫"            },
-      { id: "navigation", label: "Navigation", icon: "≡"            },
-      { id: "theme",      label: "Theme",      icon: "◑"            },
+      { id: "pages",      icon: "⊟", badge: 3 },
+      { id: "components", icon: "◫"            },
+      { id: "navigation", icon: "≡"            },
+      { id: "theme",      icon: "◑"            },
     ],
   },
   {
     id: "data",
-    label: "DATA",
     items: [
-      { id: "tables",   label: "Tables", icon: "⊞" },
-      { id: "forms",    label: "Forms",  icon: "⊟" },
-      { id: "api-data", label: "API",    icon: "⌗"  },
+      { id: "tables",   icon: "⊞" },
+      { id: "forms",    icon: "⊟" },
+      { id: "api-data", icon: "⌗"  },
     ],
   },
   {
     id: "ai",
-    label: "AI",
     items: [
-      { id: "agents",     label: "Agents",     icon: "◉"                    },
-      { id: "ai-actions", label: "AI Actions", icon: "⚡"                    },
-      { id: "knowledge",  label: "Knowledge",  icon: "⊠", comingSoon: true  },
-      { id: "models",     label: "Models",     icon: "◈"                    },
+      { id: "agents",     icon: "◉"                    },
+      { id: "ai-actions", icon: "⚡"                    },
+      { id: "knowledge",  icon: "⊠", comingSoon: true  },
+      { id: "models",     icon: "◈"                    },
     ],
   },
   {
     id: "automation",
-    label: "AUTOMATION",
     items: [
-      { id: "workflows", label: "Workflows", icon: "⊡"                   },
-      { id: "triggers",  label: "Triggers",  icon: "◐"                   },
-      { id: "events",    label: "Events",    icon: "◔", comingSoon: true },
-      { id: "jobs",      label: "Jobs",      icon: "⊜", comingSoon: true },
+      { id: "workflows", icon: "⊡"                   },
+      { id: "triggers",  icon: "◐"                   },
+      { id: "events",    icon: "◔", comingSoon: true },
+      { id: "jobs",      icon: "⊜", comingSoon: true },
     ],
   },
   {
     id: "deploy",
-    label: "DEPLOY",
     items: [
-      { id: "deploy-preview", label: "Preview",    icon: "▶"                   },
-      { id: "production",     label: "Production", icon: "⬆", comingSoon: true },
-      { id: "domains",        label: "Domains",    icon: "⊕", comingSoon: true },
+      { id: "deploy-preview", icon: "▶"                   },
+      { id: "production",     icon: "⬆", comingSoon: true },
+      { id: "domains",        icon: "⊕", comingSoon: true },
     ],
   },
 ];
@@ -102,6 +97,8 @@ interface Props {
 }
 
 export function AppTreePanel({ activeSection, onSectionChange, onSwitchToInsert }: Props) {
+  const { t } = useTranslation("designStudio");
+
   // APP section is expanded by default so new users see page list immediately
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["app"]));
 
@@ -114,10 +111,10 @@ export function AppTreePanel({ activeSection, onSectionChange, onSwitchToInsert 
   };
 
   return (
-    <aside className={styles.panel} aria-label="App structure">
+    <aside className={styles.panel} aria-label={t("appTreePanel.ariaLabel")}>
       {/* Header */}
       <div className={styles.header}>
-        <span className={styles.headerTitle}>Flow App Builder</span>
+        <span className={styles.headerTitle}>{t("appTreePanel.headerTitle")}</span>
       </div>
 
       {/* Tree */}
@@ -128,7 +125,7 @@ export function AppTreePanel({ activeSection, onSectionChange, onSwitchToInsert 
           onClick={() => onSectionChange("overview")}
         >
           <span className={styles.icon}>⌂</span>
-          <span>Overview</span>
+          <span>{t("appTreePanel.overview")}</span>
         </button>
 
         {/* Groups */}
@@ -142,30 +139,33 @@ export function AppTreePanel({ activeSection, onSectionChange, onSwitchToInsert 
               <span className={styles.chevron}>
                 {expandedGroups.has(group.id) ? "▾" : "▸"}
               </span>
-              {group.label}
+              {t(`appTreePanel.groups.${group.id}`)}
             </button>
 
             {expandedGroups.has(group.id) && (
               <div>
-                {group.items.map(item => (
-                  <button
-                    key={item.id}
-                    className={`${styles.treeItem} ${styles.indented} ${activeSection === item.id ? styles.active : ""}`}
-                    onClick={() => !item.comingSoon && onSectionChange(item.id)}
-                    disabled={item.comingSoon}
-                    title={item.comingSoon ? "Coming soon" : item.label}
-                    aria-pressed={activeSection === item.id}
-                  >
-                    <span className={styles.icon}>{item.icon}</span>
-                    <span className={styles.label}>{item.label}</span>
-                    {item.badge !== undefined && (
-                      <span className={styles.badge}>{item.badge}</span>
-                    )}
-                    {item.comingSoon && (
-                      <span className={styles.soon}>Soon</span>
-                    )}
-                  </button>
-                ))}
+                {group.items.map(item => {
+                  const itemLabel = t(`appTreePanel.items.${item.id}`);
+                  return (
+                    <button
+                      key={item.id}
+                      className={`${styles.treeItem} ${styles.indented} ${activeSection === item.id ? styles.active : ""}`}
+                      onClick={() => !item.comingSoon && onSectionChange(item.id)}
+                      disabled={item.comingSoon}
+                      title={item.comingSoon ? t("appTreePanel.comingSoon") : itemLabel}
+                      aria-pressed={activeSection === item.id}
+                    >
+                      <span className={styles.icon}>{item.icon}</span>
+                      <span className={styles.label}>{itemLabel}</span>
+                      {item.badge !== undefined && (
+                        <span className={styles.badge}>{item.badge}</span>
+                      )}
+                      {item.comingSoon && (
+                        <span className={styles.soon}>{t("appTreePanel.comingSoon")}</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -177,10 +177,10 @@ export function AppTreePanel({ activeSection, onSectionChange, onSwitchToInsert 
         <button
           className={styles.insertBtn}
           onClick={onSwitchToInsert}
-          title="Switch to drawing and layer tools"
+          title={t("appTreePanel.insertToolsTitle")}
         >
           <span>⊞</span>
-          <span>Insert &amp; Design Tools</span>
+          <span>{t("appTreePanel.insertTools")}</span>
         </button>
       </div>
     </aside>

@@ -13,14 +13,25 @@ interface Props {
 
 interface ShadowProps { color: string; offsetX: number; offsetY: number; blur: number }
 
+const secWrap: React.CSSProperties = { padding: "12px", borderTop: "1px solid var(--b1)" };
+const secHeader: React.CSSProperties = {
+  fontSize: "11px", fontWeight: 600, color: "var(--t3)",
+  textTransform: "uppercase", letterSpacing: "0.05em",
+};
+const inpStyle: React.CSSProperties = {
+  flex: 1, padding: "4px 6px", fontSize: "12px",
+  border: "1px solid var(--border)", borderRadius: "var(--r-xs, 4px)",
+  background: "var(--bg-input)", color: "var(--t1)", outline: "none", fontFamily: "inherit",
+};
+const rowStyle: React.CSSProperties = { display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" };
+const lblStyle: React.CSSProperties = { fontSize: "11px", color: "var(--t3)", width: "48px", flexShrink: 0 };
+
 export function ShadowInspector({ getCanvas, selectedIds }: Props) {
   const { t } = useTranslation("designStudio");
   const [enabled, setEnabled]   = useState(false);
   const [shadow,  setShadow]    = useState<ShadowProps>({ color: "rgba(0,0,0,0.2)", offsetX: 4, offsetY: 4, blur: 8 });
 
   useEffect(() => {
-    // Deferred to a microtask: canvas reads + setState happen in an
-    // async callback, not synchronously inside the effect body.
     queueMicrotask(() => {
       const fc = getCanvas();
       if (!fc || !selectedIds.length) return;
@@ -50,10 +61,6 @@ export function ShadowInspector({ getCanvas, selectedIds }: Props) {
 
   if (!selectedIds.length) return null;
 
-  const inp: React.CSSProperties = { flex: 1, padding: "4px 6px", fontSize: "12px", border: "1px solid #374151", borderRadius: "4px", background: "#1f2937", color: "#f9fafb" };
-  const row: React.CSSProperties = { display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" };
-  const lbl: React.CSSProperties = { fontSize: "11px", color: "#9ca3af", width: "48px", flexShrink: 0 };
-
   const updateShadow = (patch: Partial<ShadowProps>) => {
     const next = { ...shadow, ...patch };
     setShadow(next);
@@ -61,9 +68,9 @@ export function ShadowInspector({ getCanvas, selectedIds }: Props) {
   };
 
   return (
-    <div style={{ padding: "12px", borderTop: "1px solid #1f2937" }}>
+    <div style={secWrap}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-        <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("inspectors.shadow.header")}</div>
+        <div style={secHeader}>{t("inspectors.shadow.header")}</div>
         <input type="checkbox" checked={enabled} onChange={e => {
           setEnabled(e.target.checked);
           apply(e.target.checked ? shadow : null);
@@ -72,22 +79,26 @@ export function ShadowInspector({ getCanvas, selectedIds }: Props) {
 
       {enabled && (
         <>
-          <div style={row}>
-            <span style={lbl}>{t("inspectors.shadow.color")}</span>
-            <input style={{ ...inp, flex: "0 0 28px", padding: 0, height: "28px" }} type="color" value={shadow.color.startsWith("rgba") ? "#000000" : shadow.color}
-              onChange={e => updateShadow({ color: e.target.value })} />
-            <input style={inp} type="text" value={shadow.color}
+          <div style={rowStyle}>
+            <span style={lblStyle}>{t("inspectors.shadow.color")}</span>
+            <input
+              style={{ ...inpStyle, flex: "0 0 28px", padding: 0, height: "28px", borderRadius: "var(--r-xs, 4px)" }}
+              type="color"
+              value={shadow.color.startsWith("rgba") ? "#000000" : shadow.color}
+              onChange={e => updateShadow({ color: e.target.value })}
+            />
+            <input style={inpStyle} type="text" value={shadow.color}
               onChange={e => updateShadow({ color: e.target.value })} />
           </div>
-          <div style={row}>
-            <span style={lbl}>X</span>
-            <input style={inp} type="number" value={shadow.offsetX} onChange={e => updateShadow({ offsetX: +e.target.value })} />
-            <span style={lbl}>Y</span>
-            <input style={inp} type="number" value={shadow.offsetY} onChange={e => updateShadow({ offsetY: +e.target.value })} />
+          <div style={rowStyle}>
+            <span style={lblStyle}>X</span>
+            <input style={inpStyle} type="number" value={shadow.offsetX} onChange={e => updateShadow({ offsetX: +e.target.value })} />
+            <span style={lblStyle}>Y</span>
+            <input style={inpStyle} type="number" value={shadow.offsetY} onChange={e => updateShadow({ offsetY: +e.target.value })} />
           </div>
-          <div style={row}>
-            <span style={lbl}>{t("inspectors.shadow.blur")}</span>
-            <input style={inp} type="number" min={0} value={shadow.blur} onChange={e => updateShadow({ blur: +e.target.value })} />
+          <div style={rowStyle}>
+            <span style={lblStyle}>{t("inspectors.shadow.blur")}</span>
+            <input style={inpStyle} type="number" min={0} value={shadow.blur} onChange={e => updateShadow({ blur: +e.target.value })} />
           </div>
         </>
       )}

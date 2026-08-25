@@ -39,6 +39,27 @@ const WEIGHTS = [
   { jsonKey: "black",    value: 900 },
 ];
 
+const secWrap: React.CSSProperties = { padding: "12px", borderTop: "1px solid var(--b1)" };
+const secHeader: React.CSSProperties = {
+  fontSize: "11px", fontWeight: 600, color: "var(--t3)",
+  marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em",
+};
+const selStyle: React.CSSProperties = {
+  width: "100%", padding: "4px 6px", fontSize: "12px",
+  border: "1px solid var(--border)", borderRadius: "var(--r-xs, 4px)",
+  background: "var(--bg-input)", color: "var(--t1)", outline: "none", fontFamily: "inherit",
+};
+const inpStyle: React.CSSProperties = { ...selStyle };
+
+const btnStyle = (active: boolean): React.CSSProperties => ({
+  padding: "4px 8px", fontSize: "12px",
+  border: `1px solid ${active ? "var(--fill-accent)" : "var(--border)"}`,
+  borderRadius: "var(--r-xs, 4px)",
+  background: active ? "var(--fill-accent)" : "var(--bg-input)",
+  color: active ? "#fff" : "var(--t1)",
+  cursor: "pointer", fontFamily: "inherit",
+});
+
 export function TypographyInspector({ getCanvas, selectedIds }: Props) {
   const { t } = useTranslation("designStudio");
   const [textObjs, setTextObjs] = useState<IText[]>([]);
@@ -51,8 +72,6 @@ export function TypographyInspector({ getCanvas, selectedIds }: Props) {
   const [underline,    setUnderline]    = useState(false);
 
   useEffect(() => {
-    // Deferred to a microtask: canvas reads + setState happen in an
-    // async callback, not synchronously inside the effect body.
     queueMicrotask(() => {
       const fc = getCanvas();
       if (!fc || !selectedIds.length) { setTextObjs([]); return; }
@@ -82,51 +101,44 @@ export function TypographyInspector({ getCanvas, selectedIds }: Props) {
 
   if (!textObjs.length) return null;
 
-  const sel: React.CSSProperties = { width: "100%", padding: "4px 6px", fontSize: "12px", border: "1px solid #374151", borderRadius: "4px", background: "#1f2937", color: "#f9fafb" };
-  const inp: React.CSSProperties = { ...sel };
-  const btn = (active: boolean): React.CSSProperties => ({
-    padding: "4px 8px", fontSize: "12px", border: `1px solid ${active ? "#4f46e5" : "#374151"}`,
-    borderRadius: "4px", background: active ? "#4f46e5" : "#1f2937", color: "#f9fafb", cursor: "pointer",
-  });
-
   return (
-    <div style={{ padding: "12px", borderTop: "1px solid #1f2937" }}>
-      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("inspectors.typography.header")}</div>
+    <div style={secWrap}>
+      <div style={secHeader}>{t("inspectors.typography.header")}</div>
 
       <div style={{ marginBottom: "8px" }}>
-        <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>{t("inspectors.typography.fontFamily")}</div>
-        <select style={sel} value={fontFamily} onChange={e => { setFontFamily(e.target.value); void applyFont({ fontFamily: e.target.value }); }}>
+        <div style={{ fontSize: "11px", color: "var(--t3)", marginBottom: "2px" }}>{t("inspectors.typography.fontFamily")}</div>
+        <select style={selStyle} value={fontFamily} onChange={e => { setFontFamily(e.target.value); void applyFont({ fontFamily: e.target.value }); }}>
           {SYSTEM_FONTS.map(f => <option key={f} value={f}>{f.split(",")[0]}</option>)}
         </select>
       </div>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>{t("inspectors.typography.size")}</div>
-          <input style={inp} type="number" min={6} max={400} value={fontSize}
+          <div style={{ fontSize: "11px", color: "var(--t3)", marginBottom: "2px" }}>{t("inspectors.typography.size")}</div>
+          <input style={inpStyle} type="number" min={6} max={400} value={fontSize}
             onChange={e => setFontSize(+e.target.value)}
             onBlur={e => void applyFont({ fontSize: +e.target.value })} />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>{t("inspectors.typography.weight")}</div>
-          <select style={sel} value={fontWeight} onChange={e => { setFontWeight(+e.target.value); void applyFont({ fontWeight: +e.target.value }); }}>
+          <div style={{ fontSize: "11px", color: "var(--t3)", marginBottom: "2px" }}>{t("inspectors.typography.weight")}</div>
+          <select style={selStyle} value={fontWeight} onChange={e => { setFontWeight(+e.target.value); void applyFont({ fontWeight: +e.target.value }); }}>
             {WEIGHTS.map(w => <option key={w.value} value={w.value}>{t(`inspectors.typography.weights.${w.jsonKey}`)}</option>)}
           </select>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
-        <button style={btn(fontStyle === "italic")} onClick={() => { const v: "italic" | "normal" = fontStyle === "italic" ? "normal" : "italic"; setFontStyle(v); void applyFont({ fontStyle: v }); }}>I</button>
-        <button style={btn(underline)} onClick={() => { const v = !underline; setUnderline(v); void applyFont({ underline: v }); }}>U</button>
+        <button style={btnStyle(fontStyle === "italic")} onClick={() => { const v: "italic" | "normal" = fontStyle === "italic" ? "normal" : "italic"; setFontStyle(v); void applyFont({ fontStyle: v }); }}><em>I</em></button>
+        <button style={btnStyle(underline)} onClick={() => { const v = !underline; setUnderline(v); void applyFont({ underline: v }); }}><u>U</u></button>
         {(["left","center","right","justify"] as const).map(a => (
-          <button key={a} style={btn(textAlign === a)} onClick={() => { setTextAlign(a); void applyFont({ textAlign: a }); }}>{a[0].toUpperCase()}</button>
+          <button key={a} style={btnStyle(textAlign === a)} onClick={() => { setTextAlign(a); void applyFont({ textAlign: a }); }}>{a[0].toUpperCase()}</button>
         ))}
       </div>
 
       <div style={{ display: "flex", gap: "8px" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "2px" }}>{t("inspectors.typography.lineHeight")}</div>
-          <input style={inp} type="number" step="0.1" min={0.5} max={4} value={lineHeight}
+          <div style={{ fontSize: "11px", color: "var(--t3)", marginBottom: "2px" }}>{t("inspectors.typography.lineHeight")}</div>
+          <input style={inpStyle} type="number" step="0.1" min={0.5} max={4} value={lineHeight}
             onChange={e => setLineHeight(+e.target.value)}
             onBlur={e => void applyFont({ lineHeight: +e.target.value })} />
         </div>

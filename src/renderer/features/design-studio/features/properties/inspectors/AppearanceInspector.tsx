@@ -12,6 +12,23 @@ interface Props {
   selectedIds: string[];
 }
 
+const secWrap: React.CSSProperties = { padding: "12px", borderTop: "1px solid var(--b1)" };
+const secHeader: React.CSSProperties = {
+  fontSize: "11px", fontWeight: 600, color: "var(--t3)",
+  marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em",
+};
+const rowStyle: React.CSSProperties = { display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" };
+const lblStyle: React.CSSProperties = { fontSize: "11px", color: "var(--t3)", width: "48px", flexShrink: 0 };
+const swatchStyle: React.CSSProperties = {
+  width: "28px", height: "28px", borderRadius: "var(--r-xs, 4px)",
+  border: "1px solid var(--border)", cursor: "pointer", flexShrink: 0, padding: 0,
+};
+const inpStyle: React.CSSProperties = {
+  flex: 1, padding: "4px 6px", fontSize: "12px",
+  border: "1px solid var(--border)", borderRadius: "var(--r-xs, 4px)",
+  background: "var(--bg-input)", color: "var(--t1)", outline: "none", fontFamily: "inherit",
+};
+
 export function AppearanceInspector({ getCanvas, selectedIds }: Props) {
   const { t } = useTranslation("designStudio");
   const [fill,        setFill]        = useState("#4f46e5");
@@ -19,8 +36,6 @@ export function AppearanceInspector({ getCanvas, selectedIds }: Props) {
   const [strokeWidth, setStrokeWidth] = useState(0);
 
   useEffect(() => {
-    // Deferred to a microtask: canvas reads + setState happen in an
-    // async callback, not synchronously inside the effect body.
     queueMicrotask(() => {
       const fc = getCanvas();
       if (!fc || !selectedIds.length) return;
@@ -48,38 +63,33 @@ export function AppearanceInspector({ getCanvas, selectedIds }: Props) {
 
   if (!selectedIds.length) return null;
 
-  const row: React.CSSProperties = { display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" };
-  const lbl: React.CSSProperties = { fontSize: "11px", color: "#9ca3af", width: "48px", flexShrink: 0 };
-  const swatch: React.CSSProperties = { width: "28px", height: "28px", borderRadius: "4px", border: "1px solid #374151", cursor: "pointer", flexShrink: 0 };
-  const inp: React.CSSProperties = { flex: 1, padding: "4px 6px", fontSize: "12px", border: "1px solid #374151", borderRadius: "4px", background: "#1f2937", color: "#f9fafb" };
-
   return (
-    <div style={{ padding: "12px", borderTop: "1px solid #1f2937" }}>
-      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("inspectors.appearance.header")}</div>
+    <div style={secWrap}>
+      <div style={secHeader}>{t("inspectors.appearance.header")}</div>
 
-      <div style={row}>
-        <span style={lbl}>{t("inspectors.appearance.fill")}</span>
-        <input type="color" style={{ ...swatch, padding: 0 }} value={fill}
+      <div style={rowStyle}>
+        <span style={lblStyle}>{t("inspectors.appearance.fill")}</span>
+        <input type="color" style={swatchStyle} value={fill}
           onChange={e => setFill(e.target.value)}
           onBlur={e => void applyColor("fill", e.target.value)} />
-        <input style={inp} type="text" value={fill}
+        <input style={inpStyle} type="text" value={fill}
           onChange={e => setFill(e.target.value)}
           onBlur={e => void applyColor("fill", e.target.value)} />
       </div>
 
-      <div style={row}>
-        <span style={lbl}>{t("inspectors.appearance.stroke")}</span>
-        <input type="color" style={{ ...swatch, padding: 0 }} value={stroke}
+      <div style={rowStyle}>
+        <span style={lblStyle}>{t("inspectors.appearance.stroke")}</span>
+        <input type="color" style={swatchStyle} value={stroke}
           onChange={e => setStroke(e.target.value)}
           onBlur={e => void applyColor("stroke", e.target.value)} />
-        <input style={inp} type="text" value={stroke}
+        <input style={inpStyle} type="text" value={stroke}
           onChange={e => setStroke(e.target.value)}
           onBlur={e => void applyColor("stroke", e.target.value)} />
       </div>
 
-      <div style={row}>
-        <span style={lbl}>{t("inspectors.appearance.width")}</span>
-        <input style={{ ...inp, flex: "0 0 60px" }} type="number" min={0} max={50} value={strokeWidth}
+      <div style={rowStyle}>
+        <span style={lblStyle}>{t("inspectors.appearance.width")}</span>
+        <input style={{ ...inpStyle, flex: "0 0 60px" }} type="number" min={0} max={50} value={strokeWidth}
           onChange={e => setStrokeWidth(+e.target.value)}
           onBlur={e => applyStrokeWidth(+e.target.value)} />
       </div>

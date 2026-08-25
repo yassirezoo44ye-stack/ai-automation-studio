@@ -2,6 +2,8 @@
  * AIPanel — AI-powered design tools.
  * Full-design generation, color palette, font pairing, design suggestions.
  * Delegates to AIDesignEngine service.
+ *
+ * All colours use CSS tokens — fully light/dark/high-contrast aware.
  */
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,8 +18,7 @@ interface Props {
 
 type Tool = "generate" | "image" | "palette" | "fonts" | "suggestions";
 
-// Mirrors DESIGN_SIZES in app/routers/design.py — keys are sent to the
-// backend verbatim, so they stay in English regardless of UI language.
+// Mirrors DESIGN_SIZES in app/routers/design.py
 const DESIGN_TEMPLATES: { key: string; labelKey: string; width: number; height: number }[] = [
   { key: "Instagram Post",  labelKey: "instagramPost",  width: 1080, height: 1080 },
   { key: "Instagram Story", labelKey: "instagramStory", width: 1080, height: 1920 },
@@ -28,52 +29,80 @@ const DESIGN_TEMPLATES: { key: string; labelKey: string; width: number; height: 
   { key: "Presentation",    labelKey: "presentation",   width: 1920, height: 1080 },
 ];
 
-const s: Record<string, React.CSSProperties> = {
-  root:     { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  tabs:     { display: "flex", borderBottom: "1px solid #1f2937" },
-  tab:      { flex: 1, padding: "8px 4px", fontSize: "11px", border: "none", background: "transparent", cursor: "pointer", borderBottom: "2px solid transparent" },
-  body:     { flex: 1, overflowY: "auto", padding: "12px 10px" },
-  label:    { fontSize: "11px", color: "#9ca3af", marginBottom: "4px" },
-  input:    { width: "100%", padding: "6px 8px", fontSize: "12px", border: "1px solid #374151", borderRadius: "4px", background: "#1f2937", color: "#f9fafb", outline: "none", boxSizing: "border-box" as const, resize: "vertical" as const },
-  btn:      { width: "100%", padding: "7px 12px", fontSize: "12px", background: "#4f46e5", color: "#fff", border: "none", borderRadius: "5px", cursor: "pointer", marginTop: "8px" },
-  result:   { marginTop: "10px" },
-  imgGrid:  { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "8px" },
-  genImg:   { width: "100%", aspectRatio: "1", objectFit: "cover" as const, borderRadius: "4px", border: "1px solid #374151", cursor: "pointer" },
-  comingSoon: { color: "#6b7280", fontSize: "11px", marginTop: "6px", textAlign: "center" as const },
-  colorRow: { display: "flex", gap: "6px", flexWrap: "wrap" as const, marginTop: "8px" },
-  swatch:   { width: "36px", height: "36px", borderRadius: "6px", border: "1px solid #374151", cursor: "pointer", position: "relative" as const },
-  fontItem: { padding: "8px", borderRadius: "6px", border: "1px solid #374151", marginTop: "6px", background: "#1f2937" },
-  fontH:    { fontSize: "14px", fontWeight: 700, color: "#f9fafb" },
-  fontSub:  { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
-  suggItem: { padding: "8px 10px", borderRadius: "6px", border: "1px solid #374151", marginTop: "6px", background: "#1f2937", cursor: "pointer" },
-  suggTitle:{ fontSize: "12px", fontWeight: 600, color: "#c7d2fe" },
-  suggDesc: { fontSize: "11px", color: "#9ca3af", marginTop: "2px" },
-  error:    { color: "#f87171", fontSize: "11px", marginTop: "6px" },
-  loading:  { color: "#6b7280", fontSize: "12px", textAlign: "center" as const, padding: "16px 0" },
+// ── Token-based style constants ───────────────────────────────────────────────
+
+const panelRoot: React.CSSProperties = { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" };
+const tabBar: React.CSSProperties = { display: "flex", borderBottom: "1px solid var(--b1)", flexShrink: 0 };
+const tabBase: React.CSSProperties = {
+  flex: 1, padding: "8px 4px", fontSize: "10px", border: "none",
+  background: "transparent", cursor: "pointer", borderBottom: "2px solid transparent",
+  fontFamily: "inherit", transition: "color 0.15s, border-color 0.15s",
+};
+const body: React.CSSProperties = { flex: 1, overflowY: "auto", padding: "12px 10px" };
+const inputBase: React.CSSProperties = {
+  width: "100%", padding: "6px 8px", fontSize: "12px",
+  border: "1px solid var(--border)", borderRadius: "var(--r-xs, 4px)",
+  background: "var(--bg-input)", color: "var(--t1)",
+  outline: "none", boxSizing: "border-box", resize: "vertical",
+  fontFamily: "inherit",
+};
+const btnStyle: React.CSSProperties = {
+  width: "100%", padding: "7px 12px", fontSize: "12px",
+  background: "var(--fill-accent)", color: "#fff",
+  border: "none", borderRadius: "var(--r-xs, 5px)",
+  cursor: "pointer", marginTop: "8px", fontFamily: "inherit",
+  transition: "opacity 0.15s",
+};
+const btnDisabled: React.CSSProperties = { ...btnStyle, opacity: 0.5, cursor: "not-allowed" };
+const colorRow: React.CSSProperties = { display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" };
+const swatch: React.CSSProperties = {
+  width: "36px", height: "36px", borderRadius: "var(--r-xs, 6px)",
+  border: "1px solid var(--border)", cursor: "pointer", position: "relative",
+};
+const fontItemStyle: React.CSSProperties = {
+  padding: "8px", borderRadius: "var(--r-xs, 6px)",
+  border: "1px solid var(--border)", marginTop: "6px",
+  background: "var(--bg-input)",
+};
+const suggItem: React.CSSProperties = {
+  padding: "8px 10px", borderRadius: "var(--r-xs, 6px)",
+  border: "1px solid var(--border)", marginTop: "6px",
+  background: "var(--bg-input)", cursor: "pointer",
+};
+const imgGrid: React.CSSProperties = {
+  display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "8px",
 };
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div style={{ marginBottom: "10px" }}><div style={s.label}>{label}</div>{children}</div>;
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function SectionLabel({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: "10px" }}>
+      <div style={{ fontSize: "11px", color: "var(--t3)", marginBottom: "4px" }}>{label}</div>
+      {children}
+    </div>
+  );
 }
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export function AIPanel({ getCanvas, onApplyDesign }: Props) {
   const { t } = useTranslation("designStudio");
-  const [tool, setTool]     = useState<Tool>("generate");
-  const [busy, setBusy]     = useState(false);
-  const [error, setError]   = useState("");
+  const [tool, setTool]   = useState<Tool>("generate");
+  const [busy, setBusy]   = useState(false);
+  const [error, setError] = useState("");
 
   // Generate full design
-  const [genPrompt, setGenPrompt] = useState("");
+  const [genPrompt,   setGenPrompt]   = useState("");
   const [genTemplate, setGenTemplate] = useState(DESIGN_TEMPLATES[0].key);
 
-  // Text-to-Image — no backend yet; kept dormant with its Generate button
-  // disabled (see aiPanel.comingSoon) rather than deleted.
+  // Text-to-Image — kept dormant, button disabled
   const [imgPrompt, setImgPrompt] = useState("");
-  const [images, setImages]       = useState<string[]>([]);
+  const [images,    setImages]    = useState<string[]>([]);
 
   // Color Palette
   const [palPrompt, setPalPrompt] = useState("");
-  const [palette, setPalette]     = useState<ColorPaletteResult["colors"]>([]);
+  const [palette,   setPalette]   = useState<ColorPaletteResult["colors"]>([]);
 
   // Font Pairings
   const [fontStyle, setFontStyle] = useState("modern");
@@ -128,38 +157,45 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
   const TAB_IDS: Tool[] = ["generate", "image", "palette", "fonts", "suggestions"];
 
   return (
-    <div style={s.root}>
-      <div style={s.tabs} role="tablist" aria-label={t("aiPanel.toolsAriaLabel")}>
+    <div style={panelRoot}>
+      {/* ── Tab bar ────────────────────────────────────────────────── */}
+      <div style={tabBar} role="tablist" aria-label={t("aiPanel.toolsAriaLabel")}>
         {TAB_IDS.map(id => (
           <button
             key={id}
             role="tab"
             aria-selected={tool === id}
             style={{
-              ...s.tab,
-              color: tool === id ? "var(--accent-2)" : "#6b7280",
-              borderBottomColor: tool === id ? "var(--accent-2)" : "transparent",
+              ...tabBase,
+              color: tool === id ? "var(--fill-accent)" : "var(--t3)",
+              borderBottomColor: tool === id ? "var(--fill-accent)" : "transparent",
+              fontWeight: tool === id ? 600 : 400,
             }}
             onClick={() => { setTool(id); setError(""); }}
-          >{t(`aiPanel.tabs.${id}`)}</button>
+          >
+            {t(`aiPanel.tabs.${id}`)}
+          </button>
         ))}
       </div>
 
-      <div style={s.body}>
+      {/* ── Body ───────────────────────────────────────────────────── */}
+      <div style={body}>
+
+        {/* Generate Design */}
         {tool === "generate" && (
           <>
-            <Section label={t("aiPanel.describeDesign")}>
+            <SectionLabel label={t("aiPanel.describeDesign")}>
               <textarea
-                style={{ ...s.input, minHeight: "64px" }}
+                style={{ ...inputBase, minHeight: "64px" }}
                 value={genPrompt}
                 onChange={e => setGenPrompt(e.target.value)}
                 placeholder={t("aiPanel.designPromptPlaceholder")}
                 aria-label={t("aiPanel.designPromptAriaLabel")}
               />
-            </Section>
-            <Section label={t("aiPanel.designFormat")}>
+            </SectionLabel>
+            <SectionLabel label={t("aiPanel.designFormat")}>
               <select
-                style={s.input}
+                style={{ ...inputBase, resize: "none" }}
                 value={genTemplate}
                 onChange={e => setGenTemplate(e.target.value)}
                 aria-label={t("aiPanel.designFormatAriaLabel")}
@@ -168,41 +204,52 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
                   <option key={tpl.key} value={tpl.key}>{t(`aiPanel.designFormats.${tpl.labelKey}`)}</option>
                 ))}
               </select>
-            </Section>
-            <button style={s.btn} onClick={run} disabled={busy || !genPrompt.trim()}>
+            </SectionLabel>
+            <button
+              style={busy || !genPrompt.trim() ? btnDisabled : btnStyle}
+              onClick={run}
+              disabled={busy || !genPrompt.trim()}
+            >
               {busy ? t("aiPanel.generating") : t("aiPanel.generateDesign")}
             </button>
-            {error && <div style={s.error}>{error}</div>}
+            {error && <div style={{ color: "var(--text-danger)", fontSize: "11px", marginTop: "6px" }}>{error}</div>}
           </>
         )}
 
+        {/* Text-to-Image (Coming Soon) */}
         {tool === "image" && (
           <>
-            <Section label={t("aiPanel.describeImage")}>
+            <SectionLabel label={t("aiPanel.describeImage")}>
               <textarea
-                style={{ ...s.input, minHeight: "64px" }}
+                style={{ ...inputBase, minHeight: "64px" }}
                 value={imgPrompt}
                 onChange={e => setImgPrompt(e.target.value)}
                 placeholder={t("aiPanel.imagePromptPlaceholder")}
                 aria-label={t("aiPanel.imagePromptAriaLabel")}
               />
-            </Section>
-            <button style={s.btn} disabled title={t("aiPanel.comingSoon")}>
+            </SectionLabel>
+            <button style={btnDisabled} disabled title={t("aiPanel.comingSoon")}>
               {t("aiPanel.generateImage")}
             </button>
-            <div style={s.comingSoon}>{t("aiPanel.comingSoon")}</div>
+            <div style={{ color: "var(--t4)", fontSize: "11px", marginTop: "6px", textAlign: "center" }}>
+              {t("aiPanel.comingSoon")}
+            </div>
             {images.length > 0 && (
-              <div style={s.imgGrid}>
+              <div style={imgGrid}>
                 {images.map((src, i) => (
                   <button
                     key={i}
                     type="button"
-                    style={{ ...s.genImg, padding: 0, border: "none", background: "none", cursor: "pointer" }}
+                    style={{ padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: "var(--r-xs, 4px)", overflow: "hidden" }}
                     onClick={() => void insertImage(src)}
                     title={t("aiPanel.addToCanvasTitle")}
                     aria-label={t("aiPanel.addGeneratedImageAriaLabel", { num: i + 1 })}
                   >
-                    <img src={src} alt={t("aiPanel.generatedImageAlt", { num: i + 1 })} style={{ width: "100%", height: "100%", display: "block" }} />
+                    <img
+                      src={src}
+                      alt={t("aiPanel.generatedImageAlt", { num: i + 1 })}
+                      style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }}
+                    />
                   </button>
                 ))}
               </div>
@@ -210,36 +257,43 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
           </>
         )}
 
+        {/* Color Palette */}
         {tool === "palette" && (
           <>
-            <Section label={t("aiPanel.describeBrand")}>
+            <SectionLabel label={t("aiPanel.describeBrand")}>
               <input
-                style={s.input}
+                style={{ ...inputBase, resize: "none" }}
                 value={palPrompt}
                 onChange={e => setPalPrompt(e.target.value)}
                 placeholder={t("aiPanel.palettePromptPlaceholder")}
                 aria-label={t("aiPanel.palettePromptAriaLabel")}
               />
-            </Section>
-            <button style={s.btn} onClick={run} disabled={busy || !palPrompt.trim()}>
+            </SectionLabel>
+            <button
+              style={busy || !palPrompt.trim() ? btnDisabled : btnStyle}
+              onClick={run}
+              disabled={busy || !palPrompt.trim()}
+            >
               {busy ? t("aiPanel.generating") : t("aiPanel.generatePalette")}
             </button>
-            {error && <div style={s.error}>{error}</div>}
+            {error && <div style={{ color: "var(--text-danger)", fontSize: "11px", marginTop: "6px" }}>{error}</div>}
             {palette.length > 0 && (
-              <div style={s.colorRow}>
+              <div style={colorRow}>
                 {palette.map((c, i) => (
-                  <div key={i} style={{ ...s.swatch, background: c.hex }} title={t("aiPanel.colorSwatchTitle", { name: c.name, hex: c.hex })} />
+                  <div key={i} style={{ ...swatch, background: c.hex }}
+                    title={t("aiPanel.colorSwatchTitle", { name: c.name, hex: c.hex })} />
                 ))}
               </div>
             )}
           </>
         )}
 
+        {/* Font Pairings */}
         {tool === "fonts" && (
           <>
-            <Section label={t("aiPanel.style")}>
+            <SectionLabel label={t("aiPanel.style")}>
               <select
-                style={s.input}
+                style={{ ...inputBase, resize: "none" }}
                 value={fontStyle}
                 onChange={e => setFontStyle(e.target.value)}
                 aria-label={t("aiPanel.fontStyleAriaLabel")}
@@ -248,34 +302,43 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
                   <option key={v} value={v}>{t(`aiPanel.fontStyles.${v}`)}</option>
                 ))}
               </select>
-            </Section>
-            <button style={s.btn} onClick={run} disabled={busy}>
+            </SectionLabel>
+            <button style={busy ? btnDisabled : btnStyle} onClick={run} disabled={busy}>
               {busy ? t("aiPanel.pairing") : t("aiPanel.getFontPairings")}
             </button>
-            {error && <div style={s.error}>{error}</div>}
+            {error && <div style={{ color: "var(--text-danger)", fontSize: "11px", marginTop: "6px" }}>{error}</div>}
             {fontPairs.map((pair, i) => (
-              <div key={i} style={s.fontItem}>
-                <div style={{ ...s.fontH, fontFamily: pair.heading.family }}>{pair.heading.family}</div>
-                <div style={{ ...s.fontSub, fontFamily: pair.body.family }}>{t("aiPanel.bodyLabel", { family: pair.body.family, label: pair.label })}</div>
+              <div key={i} style={fontItemStyle}>
+                <div style={{ fontSize: "14px", fontWeight: 700, color: "var(--t1)", fontFamily: pair.heading.family }}>
+                  {pair.heading.family}
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "2px", fontFamily: pair.body.family }}>
+                  {t("aiPanel.bodyLabel", { family: pair.body.family, label: pair.label })}
+                </div>
               </div>
             ))}
           </>
         )}
 
+        {/* Suggestions */}
         {tool === "suggestions" && (
           <>
-            <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: 0 }}>
+            <p style={{ fontSize: "12px", color: "var(--t3)", marginTop: 0, marginBottom: "10px", lineHeight: 1.5 }}>
               {t("aiPanel.suggestionsDescription")}
             </p>
-            <button style={s.btn} onClick={run} disabled={busy}>
+            <button style={busy ? btnDisabled : btnStyle} onClick={run} disabled={busy}>
               {busy ? t("aiPanel.analyzing") : t("aiPanel.analyzeCanvas")}
             </button>
-            {error && <div style={s.error}>{error}</div>}
-            {busy && <div style={s.loading}>{t("aiPanel.thinking")}</div>}
+            {error && <div style={{ color: "var(--text-danger)", fontSize: "11px", marginTop: "6px" }}>{error}</div>}
+            {busy && (
+              <div style={{ color: "var(--t3)", fontSize: "12px", textAlign: "center", padding: "16px 0" }}>
+                {t("aiPanel.thinking")}
+              </div>
+            )}
             {suggestions.map((sug, i) => (
-              <div key={i} style={s.suggItem}>
-                <div style={s.suggTitle}>{sug.title}</div>
-                <div style={s.suggDesc}>{sug.summary}</div>
+              <div key={i} style={suggItem}>
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-accent)" }}>{sug.title}</div>
+                <div style={{ fontSize: "11px", color: "var(--t3)", marginTop: "2px" }}>{sug.summary}</div>
               </div>
             ))}
           </>

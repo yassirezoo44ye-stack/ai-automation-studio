@@ -40,13 +40,26 @@ function getActiveProps(canvas: FabricCanvas): ObjectProps | null {
   };
 }
 
+/** Shared inspector token styles — token-based, no hardcoded colours. */
+const inp: React.CSSProperties = {
+  width: "100%", padding: "4px 6px", fontSize: "12px",
+  border: "1px solid var(--border)", borderRadius: "var(--r-xs, 4px)",
+  background: "var(--bg-input)", color: "var(--t1)", outline: "none",
+  fontFamily: "inherit",
+};
+const lbl: React.CSSProperties = { fontSize: "11px", color: "var(--t3)", marginBottom: "2px" };
+const secHeader: React.CSSProperties = {
+  fontSize: "11px", fontWeight: 600, color: "var(--t3)",
+  marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em",
+};
+const secWrap: React.CSSProperties = { padding: "12px" };
+const row: React.CSSProperties = { display: "flex", gap: "8px", marginBottom: "8px" };
+
 export function PositionInspector({ getCanvas, selectedIds }: Props) {
   const { t } = useTranslation("designStudio");
   const [props, setProps] = useState<ObjectProps | null>(null);
 
   useEffect(() => {
-    // Deferred to a microtask: canvas reads + setState happen in an
-    // async callback, not synchronously inside the effect body.
     queueMicrotask(() => {
       const fc = getCanvas();
       if (!fc || !selectedIds.length) { setProps(null); return; }
@@ -82,23 +95,17 @@ export function PositionInspector({ getCanvas, selectedIds }: Props) {
 
   if (!props) {
     return (
-      <div style={{ padding: "12px", color: "#9ca3af", fontSize: "12px", textAlign: "center" }}>
+      <div style={{ padding: "12px", color: "var(--t4)", fontSize: "12px", textAlign: "center" }}>
         {t("inspectors.position.emptyState")}
       </div>
     );
   }
 
-  const row: React.CSSProperties = { display: "flex", gap: "8px", marginBottom: "8px" };
-  const label: React.CSSProperties = { fontSize: "11px", color: "#9ca3af", marginBottom: "2px" };
-  const input: React.CSSProperties = {
-    width: "100%", padding: "4px 6px", fontSize: "12px", border: "1px solid #374151",
-    borderRadius: "4px", background: "#1f2937", color: "#f9fafb", outline: "none",
-  };
-  const group = (lbl: string, field: keyof ObjectProps) => (
+  const group = (label: string, field: keyof ObjectProps) => (
     <div style={{ flex: 1 }}>
-      <div style={label}>{lbl}</div>
+      <div style={lbl}>{label}</div>
       <input
-        style={input}
+        style={inp}
         type="number"
         value={props[field]}
         onChange={e => {
@@ -111,8 +118,8 @@ export function PositionInspector({ getCanvas, selectedIds }: Props) {
   );
 
   return (
-    <div style={{ padding: "12px" }}>
-      <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("inspectors.position.header")}</div>
+    <div style={secWrap}>
+      <div style={secHeader}>{t("inspectors.position.header")}</div>
       <div style={row}>{group("X", "x")}{group("Y", "y")}</div>
       <div style={row}>{group("W", "width")}{group("H", "height")}</div>
       <div style={row}>{group("°", "angle")}{group("%", "opacity")}</div>

@@ -198,6 +198,41 @@
     "thinking": "Thinking…",
     "requestFailed": "Request failed"
   },
+  "appTreePanel": {
+    "ariaLabel": "App structure",
+    "headerTitle": "Flow App Builder",
+    "overview": "Overview",
+    "comingSoon": "Coming soon",
+    "insertTools": "Insert & Design Tools",
+    "insertToolsTitle": "Switch to drawing and layer tools",
+    "groups": {
+      "app":        "APP",
+      "data":       "DATA",
+      "ai":         "AI",
+      "automation": "AUTOMATION",
+      "deploy":     "DEPLOY"
+    },
+    "items": {
+      "pages":          "Pages",
+      "components":     "Components",
+      "navigation":     "Navigation",
+      "theme":          "Theme",
+      "tables":         "Tables",
+      "forms":          "Forms",
+      "api-data":       "API",
+      "agents":         "Agents",
+      "ai-actions":     "AI Actions",
+      "knowledge":      "Knowledge",
+      "models":         "Models",
+      "workflows":      "Workflows",
+      "triggers":       "Triggers",
+      "events":         "Events",
+      "jobs":           "Jobs",
+      "deploy-preview": "Preview",
+      "production":     "Production",
+      "domains":        "Domains"
+    }
+  },
   "leftToolbar": {
     "ariaLabel": "Drawing tools",
     "toolTitleWithShortcut": "{{label}} ({{shortcut}})",
