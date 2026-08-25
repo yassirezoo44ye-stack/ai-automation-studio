@@ -11,17 +11,30 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { API } from "../utils/api";
+import { apiFetch, API } from "../utils/api";
 
 const MAX_BACKOFF_MS = 30_000;
 
-function wsUrl(token: string): string {
+function wsUrl(auth: string, isTicket: boolean): string {
   const base = API || window.location.origin;
   const url = new URL(base.startsWith("http") ? base : window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws/system";
-  url.search = `?token=${encodeURIComponent(token)}`;
+  url.search = isTicket
+    ? `?ticket=${encodeURIComponent(auth)}`
+    : `?token=${encodeURIComponent(auth)}`;
   return url.toString();
+}
+
+async function fetchWsTicket(): Promise<string | null> {
+  try {
+    const res = await apiFetch("/api/ws/ticket", { method: "POST" });
+    if (!res.ok) return null;
+    const data = await res.json() as { ticket?: string };
+    return data.ticket ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function useAgentLiveness() {
@@ -39,9 +52,11 @@ export function useAgentLiveness() {
 
     let cancelled = false;
 
-    function connect() {
+    async function connect() {
       if (cancelled) return;
-      const ws = new WebSocket(wsUrl(accessToken as string));
+      const ticket = await fetchWsTicket();
+      const auth   = ticket ?? (accessToken as string);
+      const ws = new WebSocket(wsUrl(auth, ticket !== null));
       wsRef.current = ws;
 
       ws.onopen = () => { reconnectAttemptRef.current = 0; };
@@ -64,13 +79,13 @@ export function useAgentLiveness() {
         if (cancelled) return;
         const attempt = ++reconnectAttemptRef.current;
         const delay = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
-        reconnectTimerRef.current = setTimeout(connect, delay);
+        reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
       };
 
       ws.onerror = () => { ws.close(); };
     }
 
-    connect();
+    void connect();
     return () => {
       cancelled = true;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);

@@ -248,6 +248,15 @@ async def start_persistent(
     if sys.platform == "linux":
         kwargs["preexec_fn"] = _apply_resource_limits
 
+    # Windows: CREATE_NEW_PROCESS_GROUP so that taskkill /T /F can kill the
+    # entire subtree (including uvicorn's --reload child worker).  Without
+    # this flag, process.terminate() only kills the controller process and
+    # the worker lingers — holding the port for up to 30 s (P2 finding from
+    # Phase 3.5 audit). On non-Windows platforms this flag is ignored.
+    if sys.platform == "win32":
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        kwargs["creationflags"] = CREATE_NEW_PROCESS_GROUP
+
     proc = await asyncio.create_subprocess_exec(*cmd, **kwargs)
     log.info("start_persistent: pid=%d cmd=%s", proc.pid, cmd)
     return proc

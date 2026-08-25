@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -111,10 +112,22 @@ async def kill(project_id: str) -> None:
         return
     try:
         if rp.alive:
-            rp.process.terminate()
-            await asyncio.sleep(0.4)
-        if rp.alive:
-            rp.process.kill()
+            if sys.platform == "win32":
+                # taskkill /T kills the entire process tree rooted at this PID
+                # (including uvicorn --reload's child worker). Plain
+                # process.terminate() on Windows only kills the controller —
+                # the worker lingers and holds the port.  /F forces immediate
+                # termination without waiting for a graceful shutdown signal.
+                import subprocess as _sp
+                _sp.run(
+                    ["taskkill", "/T", "/F", "/PID", str(rp.process.pid)],
+                    capture_output=True,
+                )
+            else:
+                rp.process.terminate()
+                await asyncio.sleep(0.4)
+            if rp.alive:
+                rp.process.kill()
     except Exception as e:
         log.warning("kill %s: %s", project_id, e)
     _release(project_id)
