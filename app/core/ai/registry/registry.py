@@ -372,9 +372,16 @@ class PlatformProviderRegistry:
                     "stream_with_events: all providers billing/auth failed — providers=%s",
                     billing_failed,
                 )
+                # Prefix with "BILLING_REQUIRED:" so AppBuilderPage.tsx (and any
+                # other SSE consumer that checks event.message.startsWith()) can
+                # surface the dedicated BillingErrorOverlay instead of a generic
+                # red error banner.  The primary provider is included so the
+                # frontend can link to the correct provider billing page.
+                primary_failed = billing_failed[0] if billing_failed else "unknown"
                 yield StreamChunk(
                     type="error",
                     error=(
+                        f"BILLING_REQUIRED:{primary_failed}: "
                         f"No available AI providers — "
                         f"provider{'s' if len(billing_failed) > 1 else ''} "
                         f"{', '.join(billing_failed)} require billing or authentication fix. "

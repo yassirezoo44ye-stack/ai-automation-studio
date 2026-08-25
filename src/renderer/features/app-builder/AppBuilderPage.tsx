@@ -591,13 +591,17 @@ export function AppBuilderPage() {
           case "error": {
             currentPhases[phaseIdx] = { ...currentPhases[phaseIdx], status: "error" };
             setPhases([...currentPhases]);
-            // SSE billing errors arrive as "BILLING_REQUIRED: <message>" from
-            // registry.stream_with_events() — surface them as a dedicated overlay
-            // rather than a raw red error string.
+            // SSE billing errors arrive as "BILLING_REQUIRED:{provider}: <message>"
+            // from registry.stream_with_events() — surface them as a dedicated
+            // overlay rather than a raw red error string.
+            // Format: "BILLING_REQUIRED:{provider_id}: {human message}"
             if (event.message.startsWith("BILLING_REQUIRED:")) {
-              const detail = event.message.slice("BILLING_REQUIRED:".length).trim();
+              const rest = event.message.slice("BILLING_REQUIRED:".length);
+              const colonIdx = rest.indexOf(": ");
+              const provider = colonIdx >= 0 ? rest.slice(0, colonIdx) : "anthropic";
+              const detail   = colonIdx >= 0 ? rest.slice(colonIdx + 2).trim() : rest.trim();
               setBillingError({
-                provider: "anthropic",
+                provider: provider || "anthropic",
                 message: detail || "The AI provider's credit balance is too low to process this request.",
                 action: "Add credits at console.anthropic.com/plans, or configure an alternative provider (OpenAI, Gemini) in your workspace settings.",
                 prompt,

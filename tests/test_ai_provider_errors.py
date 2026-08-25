@@ -372,3 +372,155 @@ class TestErrorSafety:
         r = repr(err)
         assert "RATE_LIMITED" in r
         assert "anthropic" in r
+
+
+# ── Regression: BILLING_REQUIRED prefix in stream_with_events SSE error ───────
+
+class TestBillingRequiredSSEPrefix:
+    """
+    Regression test: stream_with_events() must prefix billing/auth SSE errors
+    with "BILLING_REQUIRED:{provider}:" so the frontend's BillingErrorOverlay
+    is shown instead of a generic error banner.
+
+    Root cause: AppBuilderPage.tsx line 668 checks
+        event.message.startsWith("BILLING_REQUIRED:")
+    but the old code yielded a plain English string with no prefix — the
+    BillingErrorOverlay was never shown for SSE-path billing errors.
+    """
+
+    def _make_registry_with_billing_error(self, provider_id: str):
+        """Return a PlatformProviderRegistry instance with provider marked billing-failed."""
+        from app.core.ai.registry.registry import PlatformProviderRegistry
+        from app.core.ai.registry.registry import _BILLING_ERROR_TTL
+
+        reg = PlatformProviderRegistry.__new__(PlatformProviderRegistry)
+        reg._billing_errors = {}
+        from app.plugins.registry_guard import OwnershipTracker
+        reg._owners = OwnershipTracker("AI provider")
+
+        fake_provider = MagicMock()
+        fake_provider.provider_id = provider_id
+        fake_provider.is_available = True
+        fake_provider.default_model.return_value = "claude-sonnet-4-6"
+        reg._providers = {provider_id: fake_provider}
+        reg._builtin_ids = {provider_id}
+
+        # Mark provider with a billing error (within TTL)
+        exc = AIProviderError(
+            AIProviderErrorCode.BILLING_REQUIRED,
+            provider=provider_id,
+            message="Credit balance too low.",
+            retryable=False,
+        )
+        reg._mark_billing_error(provider_id, exc)
+        return reg
+
+    def test_billing_sse_error_starts_with_billing_required_prefix(self):
+        """
+        When ALL configured providers have billing errors, stream_with_events()
+        must yield StreamChunk(type='error', error='BILLING_REQUIRED:{provider}: ...').
+        """
+        import asyncio
+        from app.ai.models import CompletionRequest, Message
+
+        reg = self._make_registry_with_billing_error("anthropic")
+
+        request = CompletionRequest(
+            messages=[Message(role="user", content="build me an app")],
+            model="claude-sonnet-4-6",
+        )
+
+        with patch("app.core.ai.registry.registry.circuit_breaker") as mock_cb:
+            mock_cb.allow.return_value = True  # circuit is closed — error is billing only
+
+            async def _collect():
+                chunks = []
+                async for chunk in reg.stream_with_events(request):
+                    chunks.append(chunk)
+                return chunks
+
+            chunks = asyncio.run(_collect())
+
+        assert len(chunks) == 1, f"Expected exactly 1 error chunk, got {chunks}"
+        chunk = chunks[0]
+        assert chunk.type == "error", f"Expected type='error', got type={chunk.type!r}"
+        assert chunk.error is not None, "StreamChunk.error must not be None"
+        assert chunk.error.startswith("BILLING_REQUIRED:"), (
+            f"SSE billing error must start with 'BILLING_REQUIRED:' for "
+            f"frontend BillingErrorOverlay detection. Got: {chunk.error!r}"
+        )
+
+    def test_billing_sse_error_encodes_provider_id(self):
+        """The provider_id must appear right after 'BILLING_REQUIRED:' in the error."""
+        import asyncio
+        from app.ai.models import CompletionRequest, Message
+
+        reg = self._make_registry_with_billing_error("anthropic")
+        request = CompletionRequest(
+            messages=[Message(role="user", content="build me an app")],
+            model="claude-sonnet-4-6",
+        )
+
+        with patch("app.core.ai.registry.registry.circuit_breaker") as mock_cb:
+            mock_cb.allow.return_value = True
+
+            async def _collect():
+                return [c async for c in reg.stream_with_events(request)]
+
+            chunks = asyncio.run(_collect())
+
+        error_msg = chunks[0].error
+        # Format: "BILLING_REQUIRED:{provider}: {human message}"
+        rest = error_msg[len("BILLING_REQUIRED:"):]
+        provider_id, _, _ = rest.partition(": ")
+        assert provider_id == "anthropic", (
+            f"Provider ID in SSE error prefix must be 'anthropic', got {provider_id!r}"
+        )
+
+    def test_auth_failure_also_uses_billing_required_prefix(self):
+        """AUTHENTICATION_FAILED is treated the same as BILLING_REQUIRED (both in
+        NO_CIRCUIT_CODES and both trigger _mark_billing_error). The SSE error must
+        still use the BILLING_REQUIRED: prefix so the frontend shows the overlay."""
+        import asyncio
+        from app.ai.models import CompletionRequest, Message
+        from app.core.ai.registry.registry import PlatformProviderRegistry
+        from app.plugins.registry_guard import OwnershipTracker
+
+        reg = PlatformProviderRegistry.__new__(PlatformProviderRegistry)
+        reg._billing_errors = {}
+        reg._owners = OwnershipTracker("AI provider")
+
+        fake_provider = MagicMock()
+        fake_provider.provider_id = "anthropic"
+        fake_provider.is_available = True
+        fake_provider.default_model.return_value = "claude-sonnet-4-6"
+        reg._providers = {"anthropic": fake_provider}
+        reg._builtin_ids = {"anthropic"}
+
+        # Mark with AUTHENTICATION_FAILED (not BILLING_REQUIRED)
+        auth_exc = AIProviderError(
+            AIProviderErrorCode.AUTHENTICATION_FAILED,
+            provider="anthropic",
+            message="Anthropic API key is invalid.",
+            retryable=False,
+        )
+        reg._mark_billing_error("anthropic", auth_exc)
+
+        request = CompletionRequest(
+            messages=[Message(role="user", content="build me an app")],
+            model="claude-sonnet-4-6",
+        )
+
+        with patch("app.core.ai.registry.registry.circuit_breaker") as mock_cb:
+            mock_cb.allow.return_value = True
+
+            async def _collect():
+                return [c async for c in reg.stream_with_events(request)]
+
+            chunks = asyncio.run(_collect())
+
+        assert len(chunks) == 1
+        assert chunks[0].error.startswith("BILLING_REQUIRED:"), (
+            f"Auth failure SSE error must also start with 'BILLING_REQUIRED:'. "
+            f"Got: {chunks[0].error!r}"
+        )
