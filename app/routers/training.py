@@ -416,8 +416,7 @@ async def generate_video(
         )
         if not video:
             raise _not_found("Video")
-        if video["provider_video_id"] if dict(video).get("provider_video_id") else None:
-            pass  # already has a provider video — allow re-generation
+        # Re-generation is allowed even when provider_video_id is already set.
 
         registry = get_video_registry()
         provider = registry.get(video["provider"]) or registry.get_default()
