@@ -74,6 +74,25 @@
       "cancelled": "أُلغيت"
     }
   },
+  "errors": {
+    "emptyWorkspace": {
+      "title": "تعذّر تشغيل المشروع",
+      "detail": "مجلد المشروع لا يحتوي على ملفات مصدر معروفة.",
+      "guidance": "افتح منشئ التطبيقات لإنشاء ملفات المشروع أو رفعها، أو ابنِ المشروع أولاً من تبويب البناء.",
+      "supportedTypes": "المدعوم: Node.js (package.json) — Python (requirements.txt / *.py) — Docker (Dockerfile)",
+      "retryButton": "إعادة المحاولة",
+      "openBuilderButton": "فتح منشئ التطبيقات"
+    },
+    "runtimeNotSupported": {
+      "title": "بيئة التشغيل غير مدعومة",
+      "detail": "لم يتمكن النظام من اكتشاف بيئة تشغيل متوافقة لهذا المشروع.",
+      "retryButton": "إعادة المحاولة"
+    },
+    "executionFailed": {
+      "title": "فشل التنفيذ",
+      "retryButton": "إعادة المحاولة"
+    }
+  },
   "toast": {
     "resultSuccess": "✓ {{agent}}: تم",
     "resultFailed": "✗ {{error}}",

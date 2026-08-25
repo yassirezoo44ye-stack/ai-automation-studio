@@ -74,6 +74,25 @@
       "cancelled": "cancelled"
     }
   },
+  "errors": {
+    "emptyWorkspace": {
+      "title": "Cannot Run Project",
+      "detail": "The project workspace has no recognisable source files.",
+      "guidance": "Open the App Builder to generate or upload files, or build the project from the Build tab.",
+      "supportedTypes": "Supported: Node.js (package.json), Python (requirements.txt / *.py), Docker (Dockerfile)",
+      "retryButton": "Retry",
+      "openBuilderButton": "Open App Builder"
+    },
+    "runtimeNotSupported": {
+      "title": "Runtime Not Supported",
+      "detail": "No compatible runtime was detected for this project.",
+      "retryButton": "Retry"
+    },
+    "executionFailed": {
+      "title": "Execution Failed",
+      "retryButton": "Retry"
+    }
+  },
   "toast": {
     "resultSuccess": "✓ {{agent}}: done",
     "resultFailed": "✗ {{error}}",

@@ -285,6 +285,11 @@ class TestRunAgentEventHandling:
              patch("app.agents.liveness.publish_step", AsyncMock()), \
              patch("app.core.db.get_pool", return_value=pool), \
              patch("app.core.filesystem.WORKSPACES", Path(tmp)):
+            # Pre-flight guard: workspace must contain project files so
+            # _detect_runtime_type() passes and the engine is reached.
+            ws = Path(tmp) / ctx.project_id
+            ws.mkdir(parents=True, exist_ok=True)
+            (ws / "package.json").write_text('{"name":"test"}')
             result = run(RunAgent().execute(ctx))
 
         assert result.success is True
@@ -311,6 +316,9 @@ class TestRunAgentEventHandling:
              patch("app.agents.liveness.publish_step", AsyncMock()), \
              patch("app.core.db.get_pool", return_value=pool), \
              patch("app.core.filesystem.WORKSPACES", Path(tmp)):
+            ws = Path(tmp) / ctx.project_id
+            ws.mkdir(parents=True, exist_ok=True)
+            (ws / "package.json").write_text('{"name":"test"}')
             result = run(RunAgent().execute(ctx))
 
         assert result.success is False
@@ -335,6 +343,9 @@ class TestRunAgentEventHandling:
              patch("app.agents.liveness.publish_step", fake_publish), \
              patch("app.core.db.get_pool", return_value=pool), \
              patch("app.core.filesystem.WORKSPACES", Path(tmp)):
+            ws = Path(tmp) / ctx.project_id
+            ws.mkdir(parents=True, exist_ok=True)
+            (ws / "package.json").write_text('{"name":"test"}')
             run(RunAgent().execute(ctx))
 
         narrated = [c.args[2] for c in fake_publish.call_args_list]
