@@ -223,3 +223,19 @@ successful deploy to `main`.
 
 ### Other
 - feat(ui): flow visual identity — dark-first + node integrations + use cases
+
+## v1.0.18
+
+### Fixes
+- align SSE billing errors with frontend handling
+
+### Other
+- fix(ci): restore lint gates — ruff 121→79, ESLint 0 errors/warnings
+- fix(i18n): complete Arabic translation for App Builder
+- feat(ui): android-ready mobile upgrade — PWA viewport, runtime console, SVG icons, workspace layout
+- fix(ai-gateway): preserve billing error in complete_with_events
+- fix(agentos): resolve "Runtime ''unknown''" error with workspace pre-flight
+- feat(design-studio): UI PRO PRO PRO MAX — token compliance, SVG icons, i18n
+- feat(training): build production training studio UI
+- feat(training-studio): Phase 1 foundation — DB + provider interface + shell UI
+- security(ws): add one-time websocket authentication and process cleanup
