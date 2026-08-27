@@ -131,10 +131,6 @@ const ICON_COLOR: Record<string, string> = {
   "linear":           "#5E6AD2",
 };
 
-const ICON_DARK: Record<string, boolean> = {
-  "notion": true,
-  "github": true,
-};
 
 function IntegrationSvgIcon({ id, size = 22 }: { id: string; size?: number }) {
   const fill = ICON_COLOR[id] ?? "var(--accent)";
@@ -162,7 +158,6 @@ function IntegrationSvgIcon({ id, size = 22 }: { id: string; size?: number }) {
     // Fallback: first two chars of name
     return null;
   }
-  const isDark = ICON_DARK[id];
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24"

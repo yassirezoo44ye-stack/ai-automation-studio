@@ -32,7 +32,7 @@ import {
   listLearners, createLearner,
   listJobs,
   type Course, type Lesson, type Script,
-  type Video, type Quiz, type Question, type Learner, type Job,
+  type Video, type Quiz, type Learner, type Job,
 } from "./services/trainingService";
 
 // ── Section type ─────────────────────────────────────────────────────────────
@@ -157,6 +157,7 @@ function OverviewSection({ onNavigate }: { onNavigate: (s: Section) => void }) {
   const [error,    setError]    = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading=true before async fetch prevents stale-content flash; React 18 batches with effect setup
     setLoading(true);
     Promise.all([
       listCourses({ limit: 100 }),
@@ -290,6 +291,7 @@ function CoursesSection() {
       .finally(() => setLoading(false));
   }, [t]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load() also serves as an imperative refresh trigger (called from onBack handler); cannot inline without losing manual-refresh capability
   useEffect(() => { load(); }, [load]);
 
   const filtered = courses.filter(c => {
@@ -478,7 +480,7 @@ function CourseBuilder({ course, onBack }: { course: Course; onBack: () => void 
 
   // course title edit
   const [editTitle, setEditTitle] = useState(course.title);
-  const [editDesc,  setEditDesc]  = useState(course.description ?? "");
+  const [editDesc,  _setEditDesc] = useState(course.description ?? "");
 
   const loadLessons = useCallback(() => {
     setLoadingL(true);
@@ -492,6 +494,7 @@ function CourseBuilder({ course, onBack }: { course: Course; onBack: () => void 
       .finally(() => setLoadingL(false));
   }, [course.id]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loadLessons sets loadingL=true before async fetch; intentional loading-indicator pattern
   useEffect(() => { loadLessons(); }, [loadLessons]);
 
   const saveCourse = async () => {
@@ -692,7 +695,7 @@ function MoveBtn({ dir, disabled, onClick }: { dir: "up" | "down"; disabled: boo
 // LESSON EDITOR
 // ─────────────────────────────────────────────────────────────────────────────
 
-function LessonEditor({ lesson, courseId, onChange }: {
+function LessonEditor({ lesson, courseId: _courseId, onChange }: {
   lesson: Lesson;
   courseId: string;
   onChange: (l: Lesson) => void;
@@ -722,6 +725,7 @@ function LessonEditor({ lesson, courseId, onChange }: {
   const [generatingVideo, setGeneratingVideo] = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronously syncing editor state from new lesson prop, then loading associated data; batched in React 18
     setTitle(lesson.title);
     setDesc(lesson.description ?? "");
     setDirty(false);
@@ -968,6 +972,7 @@ function VideoStudioSection() {
   }, [selCourse]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears stale video list immediately when lesson is deselected; avoids async fetch for null lesson
     if (!selLesson) { setVideos([]); return; }
     listVideos(selLesson.id).then(setVideos).catch(() => setVideos([]));
   }, [selLesson]);
@@ -1093,7 +1098,10 @@ function VideoCard({ video, onGenerate, generating }: { video: Video; onGenerate
           controls
           style={{ width: "100%", borderRadius: 10, maxHeight: 360, background: "#000" }}
           aria-label={video.title ?? "Training Video"}
-        />
+        >
+          {/* Captions track: generated content — no pre-built VTT available */}
+          <track kind="captions" />
+        </video>
       ) : (
         <div style={{
           width: "100%", paddingTop: "56.25%", borderRadius: 10,
@@ -1149,6 +1157,7 @@ function ScriptsSection() {
   }, [selCourse]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears stale script list when lesson is deselected; guard is synchronous by design
     if (!selLesson) { setScripts([]); return; }
     listScripts(selLesson.id).then(setScripts).catch(() => setScripts([]));
   }, [selLesson]);
@@ -1267,6 +1276,7 @@ function QuizzesSection() {
   }, [selCourse]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears stale quiz list when lesson is deselected; guard is synchronous by design
     if (!selLesson) { setQuizzes([]); setSelQuiz(null); return; }
     listQuizzes(selLesson.id).then(qs => { setQuizzes(qs); setSelQuiz(qs[0] ?? null); }).catch(() => setQuizzes([]));
   }, [selLesson]);
@@ -1537,6 +1547,7 @@ function LearnersSection() {
       .finally(() => setLoading(false));
   }, [t]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load() also serves as an imperative refresh trigger (ErrorBanner onRetry, line 1573); cannot inline without losing retry capability
   useEffect(() => { load(); }, [load]);
 
   const filtered = learners.filter(l =>

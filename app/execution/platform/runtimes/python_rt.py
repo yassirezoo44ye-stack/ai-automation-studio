@@ -97,7 +97,6 @@ class PythonRuntime(AbstractRuntime):
         if not py:
             raise python_missing()
 
-        venv_dir = ws / ".venv"
         pip_cmd  = [py, "-m", "pip", "install", "-r", str(req), "--quiet"]
         env      = {**os.environ, "PIP_NO_COLOR": "1"}
 
@@ -119,10 +118,10 @@ class PythonRuntime(AbstractRuntime):
                     text=True,
                 )
                 out, err = proc.communicate(timeout=_INSTALL_TIMEOUT)
-                for l in out.splitlines():
-                    lines_out.append(l)
-                for l in err.splitlines():
-                    lines_err.append(l)
+                for line in out.splitlines():
+                    lines_out.append(line)
+                for line in err.splitlines():
+                    lines_err.append(line)
                 return proc.returncode, lines_out, lines_err
             except subprocess.TimeoutExpired:
                 return -1, lines_out, ["pip install timed out"]

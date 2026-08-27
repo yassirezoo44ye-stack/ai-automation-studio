@@ -42,6 +42,7 @@ from app.execution.platform.runtimes    import (
 )
 
 __all__ = [
+    # Core engine & context
     "UnifiedExecutionEngine",
     "ExecutionContext", "ExecutionSandbox",
     "BuildCache", "get_cache",
@@ -49,7 +50,20 @@ __all__ = [
     "ExecutionMetrics", "PhaseMetrics",
     "ExecutionReport",
     "TypedEvent", "EVENT_REGISTRY",
+    # Typed events
+    "ExecutionStarted", "ProbeCompleted", "ValidationPassed",
+    "ValidationFailed", "BuildPlanGenerated", "InstallStarted", "InstallProgress",
+    "InstallCompleted", "InstallFailed", "BuildStarted", "BuildProgress",
+    "BuildCompleted", "BuildFailed", "ServerStarting", "ServerReady",
+    "HealthCheckPassed", "ArtifactCollected", "ExecutionFailed", "ExecutionFinished",
+    "CleanupStarted", "CleanupFinished", "Heartbeat", "LogLine", "StatusUpdate",
+    "HtmlOutput", "UnsupportedRuntime", "ExecutionReportEvent",
+    # Platform errors
     "PlatformError", "ErrorCategory",
+    "EnvironmentError", "ValidationError", "DependencyError", "BuildError",
+    "LaunchError", "RuntimeError_", "SandboxError", "ArtifactError",
+    "NetworkError", "TimeoutError_", "InternalError",
+    # Runtimes
     "RuntimeRegistry", "get_registry",
     "AbstractRuntime",
     "NodeRuntime", "PythonRuntime", "DockerRuntime", "ElectronRuntime",
