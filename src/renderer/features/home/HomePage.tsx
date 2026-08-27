@@ -575,7 +575,7 @@ export function HomePage() {
         </div>
 
         {/* ── KPI Strip — 8 metrics ──────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
+        <div className="home-kpi-strip" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
           {kpis.map((k, i) => (
             <KpiTile key={i} icon={k.icon} label={k.label} value={k.value} accent={k.accent} sub={k.sub} onClick={k.onClick} />
           ))}
@@ -628,7 +628,7 @@ export function HomePage() {
         </div>
 
         {/* ── Main two-column layout ─────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
+        <div className="home-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 16 }}>
 
           {/* ── LEFT COLUMN ─────────────────────────────────────── */}
           <div>
@@ -808,7 +808,7 @@ export function HomePage() {
           </div>
 
           {/* ── RIGHT COLUMN ────────────────────────────────────── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="home-right-col" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
             {/* Quick Actions */}
             <div>

@@ -14,7 +14,7 @@
  *
  * Nothing here is fabricated. If a check isn't real, it says "Not configured".
  */
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { BuildPlan } from "./BuildPlanPanel";
 import type { RuntimeState } from "./RuntimePanel";
 
@@ -103,6 +103,233 @@ function elapsedSince(start: number, end: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+/* ── Runtime Console ────────────────────────────────────────────────────── */
+type LogFilter = "all" | "stdout" | "stderr" | "errors";
+
+function RuntimeConsole({
+  runtimeEvents,
+  runtimeState,
+}: {
+  runtimeEvents: RuntimeEventItem[];
+  runtimeState: RuntimeState;
+}) {
+  const [search, setSearch]    = useState("");
+  const [paused, setPaused]    = useState(false);
+  const [filter, setFilter]    = useState<LogFilter>("all");
+  const [cleared, setCleared]  = useState(0); // epoch of last clear — items before are hidden
+  const logEndRef  = useRef<HTMLDivElement>(null);
+  const logBoxRef  = useRef<HTMLDivElement>(null);
+
+  const runtimeRunning = runtimeState === "running" || runtimeState === "starting";
+  const runtimeDone    = runtimeState === "stopped" || runtimeState === "failed";
+
+  // Auto-scroll to bottom unless paused
+  useEffect(() => {
+    if (!paused && logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [runtimeEvents.length, paused]);
+
+  // Detect manual scroll-up → auto-pause
+  const handleScroll = useCallback(() => {
+    if (!logBoxRef.current) return;
+    const el = logBoxRef.current;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    if (paused && atBottom) setPaused(false);
+    if (!paused && !atBottom) setPaused(true);
+  }, [paused]);
+
+  const q = search.trim().toLowerCase();
+
+  const visible = runtimeEvents.filter(ev => {
+    if (ev.timestamp < cleared) return false;
+    if (filter === "stderr" && ev.stream !== "stderr") return false;
+    if (filter === "stdout" && ev.stream !== "stdout") return false;
+    if (filter === "errors" && ev.type !== "error") return false;
+    if (q && !ev.message.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  function lineColor(ev: RuntimeEventItem): string {
+    if (ev.type === "server_ready") return "var(--green)";
+    if (ev.type === "error")        return "var(--red)";
+    if (ev.stream === "stderr")     return "var(--yellow, #eab308)";
+    if (ev.type === "status")       return "var(--accent)";
+    return "var(--t3)";
+  }
+
+  function linePrefix(ev: RuntimeEventItem): string {
+    if (ev.type === "server_ready") return "✓ ";
+    if (ev.type === "error")        return "✗ ";
+    if (ev.stream === "stderr")     return "⚠ ";
+    if (ev.type === "status")       return "● ";
+    return "  ";
+  }
+
+  function highlight(text: string): React.ReactNode {
+    if (!q) return text;
+    const idx = text.toLowerCase().indexOf(q);
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark style={{ background: "rgba(234,179,8,0.4)", color: "inherit", borderRadius: 2 }}>
+          {text.slice(idx, idx + q.length)}
+        </mark>
+        {text.slice(idx + q.length)}
+      </>
+    );
+  }
+
+  const FILTER_BTNS: { id: LogFilter; label: string }[] = [
+    { id: "all",    label: "All" },
+    { id: "stdout", label: "stdout" },
+    { id: "stderr", label: "stderr" },
+    { id: "errors", label: "Errors" },
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-base)" }}>
+      {/* ── Toolbar ── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        padding: "5px 10px 5px 14px", borderBottom: "1px solid var(--b1)",
+        background: "var(--bg-surface)", flexShrink: 0, flexWrap: "wrap",
+      }}>
+        {/* Status badge */}
+        {runtimeRunning && (
+          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 99, background: "rgba(22,163,74,0.12)", color: "var(--green)", border: "1px solid rgba(22,163,74,0.2)", flexShrink: 0 }}>
+            LIVE
+          </span>
+        )}
+        {runtimeDone && (
+          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 99, background: "var(--bg-card)", color: "var(--t4)", border: "1px solid var(--b1)", flexShrink: 0 }}>
+            {runtimeState === "failed" ? "FAILED" : "STOPPED"}
+          </span>
+        )}
+
+        {/* Filter buttons */}
+        <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+          {FILTER_BTNS.map(fb => (
+            <button
+              key={fb.id}
+              onClick={() => setFilter(fb.id)}
+              style={{
+                padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600,
+                border: `1px solid ${filter === fb.id ? "var(--accent-border)" : "var(--b1)"}`,
+                background: filter === fb.id ? "var(--accent-dim)" : "transparent",
+                color: filter === fb.id ? "var(--accent)" : "var(--t4)",
+                cursor: "pointer",
+              }}
+            >
+              {fb.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div style={{ flex: 1, minWidth: 100, position: "relative" }}>
+          <svg
+            width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", color: "var(--t5)", pointerEvents: "none" }}
+          >
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search logs…"
+            style={{
+              width: "100%", paddingLeft: 24, paddingRight: 8, paddingBlock: 3,
+              fontSize: 11, borderRadius: 6, border: "1px solid var(--b1)",
+              background: "var(--bg-base)", color: "var(--t1)", outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        {/* Pause / resume */}
+        <button
+          onClick={() => setPaused(p => !p)}
+          title={paused ? "Resume auto-scroll" : "Pause auto-scroll"}
+          style={{
+            padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600,
+            border: `1px solid ${paused ? "var(--accent-border)" : "var(--b1)"}`,
+            background: paused ? "var(--accent-dim)" : "transparent",
+            color: paused ? "var(--accent)" : "var(--t4)", cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          {paused ? "⏸ Paused" : "⏵ Live"}
+        </button>
+
+        {/* Clear */}
+        <button
+          onClick={() => { setCleared(Date.now()); setSearch(""); }}
+          title="Clear console"
+          style={{
+            padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600,
+            border: "1px solid var(--b1)", background: "transparent", color: "var(--t4)", cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          Clear
+        </button>
+
+        {/* Count */}
+        {visible.length > 0 && (
+          <span style={{ fontSize: 10, color: "var(--t5)", flexShrink: 0 }}>
+            {visible.length}{q ? ` / ${runtimeEvents.length}` : ""} lines
+          </span>
+        )}
+      </div>
+
+      {/* ── Log body ── */}
+      <div
+        ref={logBoxRef}
+        onScroll={handleScroll}
+        style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}
+      >
+        {visible.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "20px", color: "var(--t5)", fontSize: 12 }}>
+            {q
+              ? `No matches for "${search}"`
+              : runtimeState === "idle" || runtimeState === "ready_to_run"
+                ? "Runtime logs will appear here when you run the project."
+                : "Waiting for runtime events…"
+            }
+          </div>
+        ) : (
+          visible.map((ev, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 8,
+                padding: "1px 12px", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.65,
+              }}
+            >
+              <span style={{ color: "var(--t5)", flexShrink: 0, userSelect: "none", minWidth: 64 }}>
+                {formatTs(ev.timestamp)}
+              </span>
+              <span style={{ color: lineColor(ev), flexShrink: 0, userSelect: "none", width: 14, textAlign: "center" }}>
+                {linePrefix(ev).trim() || "·"}
+              </span>
+              <span style={{ color: lineColor(ev), flex: 1, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+                {highlight(ev.message)}
+              </span>
+            </div>
+          ))
+        )}
+        <div ref={logEndRef} />
+        {runtimeRunning && !paused && (
+          <div style={{ padding: "4px 12px", color: "var(--t5)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+            <span style={{ animation: "blink 1.2s step-end infinite" }}>▋</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function BottomTabBar({
   buildEvents, buildDone, buildError, isBuilding,
   fileCount, language, projectId, plan, height, onResize,
@@ -128,71 +355,10 @@ export function BottomTabBar({
 
   const content: Record<BottomTab, React.ReactNode> = {
 
-    /* ─── RUNTIME — real run/stream SSE events (separate from build) ────── */
-    runtime: (() => {
-      const runtimeRunning = runtimeState === "running" || runtimeState === "starting";
-      const runtimeDone    = runtimeState === "stopped" || runtimeState === "failed";
-      return (
-        <div style={{ overflowY: "auto", height: "100%", background: "var(--bg-base)" }}>
-          {/* Header */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "4px 12px 4px 16px", borderBottom: "1px solid var(--b1)",
-            background: "var(--bg-surface)", flexShrink: 0,
-          }}>
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--t4)" }}>
-              Runtime Logs
-            </span>
-            {runtimeRunning && (
-              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 99, background: "rgba(22,163,74,0.12)", color: "var(--green)", border: "1px solid rgba(22,163,74,0.2)" }}>
-                LIVE
-              </span>
-            )}
-            {runtimeDone && (
-              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 99, background: "var(--bg-card)", color: "var(--t4)", border: "1px solid var(--b1)" }}>
-                {runtimeState === "failed" ? "FAILED" : "STOPPED"}
-              </span>
-            )}
-          </div>
-
-          {runtimeEvents.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "20px", color: "var(--t5)", fontSize: 12 }}>
-              {runtimeState === "idle" || runtimeState === "ready_to_run"
-                ? "Runtime logs will appear here when you run the project."
-                : "Waiting for runtime events…"
-              }
-            </div>
-          ) : (
-            <pre style={{ margin: 0, padding: "8px 16px", fontSize: 11, fontFamily: "monospace", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-              {runtimeEvents.map((ev, i) => {
-                const col =
-                  ev.type === "server_ready"  ? "var(--green)"
-                  : ev.type === "error"       ? "var(--red)"
-                  : ev.stream === "stderr"    ? "var(--yellow, #eab308)"
-                  : "var(--t3)";
-                const prefix =
-                  ev.type === "server_ready"  ? "✓ "
-                  : ev.type === "error"       ? "✗ "
-                  : ev.stream === "stderr"    ? "⚠ "
-                  : ev.type === "status"      ? "● "
-                  : "  ";
-                return (
-                  <span key={i} style={{ color: col, display: "block" }}>
-                    <span style={{ color: "var(--t5)", fontFamily: "monospace", marginRight: 8 }}>
-                      {formatTs(ev.timestamp)}
-                    </span>
-                    {prefix}{ev.message}
-                  </span>
-                );
-              })}
-              {runtimeRunning && (
-                <span style={{ color: "var(--t5)" }}>…</span>
-              )}
-            </pre>
-          )}
-        </div>
-      );
-    })(),
+    /* ─── RUNTIME — terminal-style console with search/filter/pause/clear ── */
+    runtime: (
+      <RuntimeConsole runtimeEvents={runtimeEvents} runtimeState={runtimeState} />
+    ),
 
     /* ─── BUILD — real SSE event timeline ─────────────────────────────── */
     build: (

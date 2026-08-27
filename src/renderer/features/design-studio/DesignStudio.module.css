@@ -14,51 +14,117 @@
   overflow: hidden;
 }
 
-/* ── Left panel ─────────────────────────────────────────────────────────────── */
+/* ── Left panel (unified sidebar) ───────────────────────────────────────────── */
 
 .leftPanel {
+  display:           flex;
+  flex-direction:    column;
+  width:             220px;
+  min-width:         200px;
+  border-inline-end: 1px solid var(--border);
+  background:        var(--surface-1);
+  flex-shrink:       0;
+  overflow:          hidden;
+}
+
+/* Workspace section — top half, scrollable, capped so Design is always visible */
+.workspaceSection {
+  flex:       0 0 auto;
+  max-height: 42%;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Design section — fills remaining space */
+.designSection {
+  flex:           1;
   display:        flex;
   flex-direction: column;
-  width:          220px;
-  min-width:      200px;
-  border-inline-end: 1px solid var(--border);
-  background:     var(--surface-1);
-  flex-shrink:    0;
   overflow:       hidden;
+  min-height:     0;
+  border-top:     1px solid var(--border);
 }
 
-.panelTabs {
-  display:     flex;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+/* Section label (WORKSPACE / DESIGN headings) */
+.sectionLabel {
+  padding:        6px 12px 4px;
+  font-size:      10px;
+  font-weight:    700;
+  color:          var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  flex-shrink:    0;
+  user-select:    none;
 }
 
-.panelTab {
-  flex:          1;
-  padding:       7px 4px;
+/* Vertical nav list for Design panel items */
+.designNav {
+  flex-shrink:    0;
+  display:        flex;
+  flex-direction: column;
+}
+
+/* Individual Design nav item */
+.designNavItem {
+  display:       flex;
+  align-items:   center;
+  gap:           7px;
+  width:         100%;
+  padding:       4px 12px;
   border:        none;
   background:    transparent;
-  font-size:     11px;
   color:         var(--text-secondary);
+  font-size:     12px;
   cursor:        pointer;
-  transition:    color 0.15s, border-color 0.15s;
-  border-bottom: 2px solid transparent;
+  text-align:    left;
+  transition:    background 0.1s, color 0.1s;
+  min-height:    28px;
 }
 
-.panelTab:hover { color: var(--text-primary); }
+.designNavItem:hover {
+  background: var(--surface-2);
+  color:      var(--text-primary);
+}
 
-.panelTab.active {
-  color:        var(--text-primary);
-  font-weight:  600;
-  border-color: var(--accent);
+.designNavItem.active {
+  background:  var(--bg-accent);
+  color:       var(--text-accent);
+  font-weight: 600;
+}
+
+.designNavItem:focus-visible {
+  outline:        2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Icon slot — empty in Phase 2; Phase 3 inserts SVG here */
+.navIcon {
+  width:           14px;
+  height:          14px;
+  flex-shrink:     0;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  color:           currentColor;
+  opacity:         0.6;
+}
+
+.navLabel {
+  flex:        1;
+  line-height: 1.2;
 }
 
 .panelContent {
-  flex:     1;
-  overflow: hidden;
-  display:  flex;
+  flex:           1;
+  overflow:       hidden;
+  display:        flex;
   flex-direction: column;
 }
+
+/* Legacy tab classes — kept for any component that may reference them */
+.panelTabs  { display: none; }
+.panelTab   { display: none; }
 
 /* ── Canvas area ─────────────────────────────────────────────────────────────── */
 

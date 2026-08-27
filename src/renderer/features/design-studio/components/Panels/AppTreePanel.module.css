@@ -1,14 +1,10 @@
 /* AppTreePanel — App Builder left panel */
 
 .panel {
-  display:           flex;
-  flex-direction:    column;
-  width:             220px;
-  min-width:         180px;
-  border-inline-end: 1px solid var(--border);
-  background:        var(--surface-1);
-  flex-shrink:       0;
-  overflow:          hidden;
+  display:        flex;
+  flex-direction: column;
+  width:          100%;
+  background:     var(--surface-1);
 }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
@@ -30,9 +26,7 @@
 /* ── Scrollable tree ─────────────────────────────────────────────────────── */
 
 .tree {
-  flex:       1;
-  overflow-y: auto;
-  padding:    4px 0 8px;
+  padding: 4px 0 8px;
 }
 
 /* ── Group section ───────────────────────────────────────────────────────── */
@@ -62,8 +56,17 @@
 .groupHeader:hover { color: var(--text-secondary); }
 
 .chevron {
-  font-size:  9px;
-  flex-shrink:0;
+  flex-shrink: 0;
+  display:     flex;
+  align-items: center;
+  justify-content: center;
+  /* SVG chevron is 9×9; keep it crisp */
+}
+
+.chevron svg {
+  width:   9px;
+  height:  9px;
+  display: block;
 }
 
 /* ── Tree item ───────────────────────────────────────────────────────────── */
@@ -103,9 +106,19 @@
 .indented { padding-left: 22px; }
 
 .icon {
-  font-size:  13px;
-  opacity:    0.7;
-  flex-shrink:0;
+  opacity:         0.7;
+  flex-shrink:     0;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+}
+
+/* Normalize imported Icons (18×18) and local SVGs (16×16) to the same
+   visual size within the compact tree layout. */
+.icon svg {
+  width:  14px;
+  height: 14px;
+  display:block;
 }
 
 .label { flex: 1; }
@@ -136,31 +149,3 @@
   flex-shrink:  0;
 }
 
-/* ── Footer ──────────────────────────────────────────────────────────────── */
-
-.footer {
-  padding:    8px;
-  border-top: 1px solid var(--border);
-  flex-shrink:0;
-}
-
-.insertBtn {
-  display:       flex;
-  align-items:   center;
-  gap:           8px;
-  width:         100%;
-  padding:       7px 10px;
-  border:        1px dashed var(--border);
-  border-radius: var(--radius, 8px);
-  background:    transparent;
-  color:         var(--text-secondary);
-  font-size:     12px;
-  cursor:        pointer;
-  transition:    all 0.15s;
-}
-
-.insertBtn:hover {
-  border-color:var(--border-accent);
-  color:       var(--text-accent);
-  background:  var(--bg-accent);
-}

@@ -139,58 +139,120 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
   errorMsg: string | null;
 }) {
   const { t } = useTranslation("appBuilder");
+
+  const doneCount   = phases.filter(p => p.status === "done").length;
+  const totalPhases = phases.length;
+  const pct         = totalPhases > 0 ? Math.round((doneCount / totalPhases) * 100) : 0;
+  const hasError    = phases.some(p => p.status === "error") || !!errorMsg;
+  const isBuilding  = phases.some(p => p.status === "running");
+
   return (
     <div style={{
       position: "absolute", inset: 0,
-      background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)",
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 10,
     }}>
       <div style={{
-        background: "var(--bg-surface)", borderRadius: 24, padding: "32px 36px",
-        maxWidth: 400, width: "100%", boxShadow: "var(--shadow-xl)",
+        background: "var(--bg-surface)",
+        borderRadius: 24, padding: "30px 32px",
+        maxWidth: 420, width: "100%",
+        boxShadow: "var(--shadow-xl), 0 0 0 1px rgba(110,50,224,0.12)",
+        border: `1px solid ${hasError ? "rgba(239,68,68,0.3)" : "var(--accent-border)"}`,
       }}>
+        {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{t("overlay.title")}</div>
-          <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 6 }}>{t("overlay.subtitle")}</div>
+          <div style={{
+            width: 52, height: 52, borderRadius: 16, margin: "0 auto 14px",
+            background: hasError ? "var(--red-dim)" : "var(--accent-dim)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {hasError ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            ) : isBuilding ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" style={{ animation: "spin 2s linear infinite" }}>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              </svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+            )}
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>
+            {t("overlay.title")}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("overlay.subtitle")}</div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {phases.map((phase, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+
+        {/* Overall progress bar */}
+        {!hasError && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--t5)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                Progress
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>{pct}%</span>
+            </div>
+            <div style={{ height: 5, borderRadius: 99, background: "var(--bg-card)", overflow: "hidden" }}>
               <div style={{
-                width: 22, height: 22, borderRadius: 99, flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: phase.status === "done"
-                  ? "var(--green-dim)"
-                  : phase.status === "running"
-                    ? "var(--accent-dim)"
-                    : phase.status === "error"
-                      ? "var(--red-dim)"
-                      : "var(--bg-card)",
-                border: `1px solid ${phase.status === "done" ? "rgba(22,163,74,0.2)" : phase.status === "running" ? "var(--accent-border)" : phase.status === "error" ? "var(--red)" : "var(--b1)"}`,
+                height: "100%",
+                width: `${pct}%`,
+                background: "linear-gradient(90deg, var(--accent) 0%, var(--teal) 100%)",
+                borderRadius: 99,
+                transition: "width 0.6s ease",
+                boxShadow: "0 0 8px rgba(110,50,224,0.5)",
+              }} />
+            </div>
+          </div>
+        )}
+
+        {/* Phase list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {phases.map((phase, i) => {
+            const isDone    = phase.status === "done";
+            const isRunning = phase.status === "running";
+            const isErr     = phase.status === "error";
+            const isPending = phase.status === "pending";
+            return (
+              <div key={i} style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "8px 10px", borderRadius: 9,
+                background: isRunning ? "var(--accent-dim)" : isDone ? "rgba(22,163,74,0.05)" : "transparent",
+                border: isRunning ? "1px solid var(--accent-border)" : isDone ? "1px solid rgba(22,163,74,0.12)" : "1px solid transparent",
               }}>
-                {phase.status === "done" && (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                {/* Phase indicator */}
+                <div style={{
+                  width: 20, height: 20, borderRadius: 99, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: isDone ? "var(--green-dim)" : isRunning ? "var(--accent)" : isErr ? "var(--red-dim)" : "var(--bg-card)",
+                  border: `1px solid ${isDone ? "rgba(22,163,74,0.3)" : isRunning ? "transparent" : isErr ? "rgba(239,68,68,0.3)" : "var(--b1)"}`,
+                }}>
+                  {isDone && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                  {isRunning && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "white", animation: "pulse 1s ease-in-out infinite" }} />}
+                  {isErr && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
+                  {isPending && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--t5)" }} />}
+                </div>
+                <span style={{
+                  fontSize: 12, fontWeight: isRunning ? 700 : isDone ? 500 : 400,
+                  color: isPending ? "var(--t5)" : isDone ? "var(--t2)" : isErr ? "var(--red)" : "var(--t1)",
+                  flex: 1,
+                }}>
+                  {t(phase.labelKey)}
+                </span>
+                {isRunning && (
+                  <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>running…</span>
                 )}
-                {phase.status === "running" && (
-                  <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", animation: "pulse 1s ease-in-out infinite" }} />
-                )}
-                {phase.status === "error" && (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                )}
-                {phase.status === "pending" && (
-                  <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--t5)" }} />
+                {isDone && (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
                 )}
               </div>
-              <span style={{
-                fontSize: 13, fontWeight: phase.status === "running" ? 600 : 400,
-                color: phase.status === "pending" ? "var(--t4)" : phase.status === "done" ? "var(--t2)" : phase.status === "error" ? "var(--red)" : "var(--t1)",
-              }}>
-                {t(phase.labelKey)}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Error message */}
@@ -200,13 +262,22 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
           </div>
         )}
 
-        {/* Cancel / dismiss button */}
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "center" }}>
+        {/* Cancel / dismiss */}
+        <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
           <button
             onClick={onCancel}
             style={{
-              padding: "7px 18px", borderRadius: 8, border: "1px solid var(--b1)",
+              padding: "7px 20px", borderRadius: 8, border: "1px solid var(--b1)",
               background: "transparent", color: "var(--t4)", fontSize: 12, cursor: "pointer",
+              transition: "border-color 0.12s, color 0.12s",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--ba)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--t2)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--b1)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--t4)";
             }}
           >
             {errorMsg ? t("overlay.dismiss") : t("overlay.cancel")}
@@ -942,10 +1013,14 @@ export function AppBuilderPage() {
 
       {/* ── 3-panel workspace ─────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-          <AppSidebar section={section} setSection={setSection} projectName={projectName} />
+        <div className="ab-panels" style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+          {/* ab-nav: hidden on mobile — accessible via bottom-sheet tabs */}
+          <div className="ab-nav">
+            <AppSidebar section={section} setSection={setSection} projectName={projectName} />
+          </div>
 
-          {/* Phase 3: RuntimePanel replaces static PreviewPanel */}
+          {/* ab-runtime: flex:1 on desktop; full-width limited-height on mobile */}
+          <div className="ab-runtime" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
           <RuntimePanel
             runtimeState={runtimeState}
             previewUrl={previewUrl}
@@ -959,6 +1034,8 @@ export function AppBuilderPage() {
             onRestart={() => void handleRestart()}
             onExplainError={handleExplainError}
           />
+
+          </div>{/* /ab-runtime */}
 
           {/* Phase 2: AI Copilot Panel replaces old AIBuilderPanel */}
           <AICopilotPanel

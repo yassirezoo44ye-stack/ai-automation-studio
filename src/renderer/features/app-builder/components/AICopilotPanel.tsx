@@ -159,7 +159,7 @@ export function AICopilotPanel({
   const placeholder = actionPlaceholder(effectiveAction, projectName, buildError);
 
   return (
-    <div style={{
+    <div className="ab-copilot" style={{
       width: 300, flexShrink: 0,
       borderLeft: "1px solid var(--b1)",
       background: "var(--bg-surface)",

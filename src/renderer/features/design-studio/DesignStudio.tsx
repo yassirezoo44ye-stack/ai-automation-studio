@@ -48,18 +48,14 @@ import type { Template }             from "./types/canvas.types";
 import { findById, loadJSONToCanvas } from "./utils/fabricUtils";
 import styles                        from "./DesignStudio.module.css";
 
-// ── Left-panel mode ───────────────────────────────────────────────────────────
-/** "tree" → App Builder tree panel  |  "insert" → original LeftToolbar + panels */
-type LeftPanelMode = "tree" | "insert";
 
 function DesignStudioInner() {
   const { t } = useTranslation("designStudio");
   const toast = useToast();
   const { state, dispatch, setTool, setSelectedIds, setPanel } = useDesign();
 
-  // ── New App Builder state ─────────────────────────────────────────────────
+  // ── App Builder state ─────────────────────────────────────────────────────
   const [studioMode,       setStudioMode]       = useState<StudioMode>("design");
-  const [leftPanelMode,    setLeftPanelMode]     = useState<LeftPanelMode>("tree");
   const [activeSection,    setActiveSection]     = useState<AppSection | null>(null);
   const [showAICommandBar, setShowAICommandBar]  = useState(false);
 
@@ -309,64 +305,70 @@ function DesignStudioInner() {
       />
 
       <div className={styles.body}>
-        {/* ── Left panel: App Builder tree OR original Insert/Design tools ── */}
-        {leftPanelMode === "tree" ? (
-          /* App Builder tree panel */
-          <AppTreePanel
-            activeSection={activeSection}
-            onSectionChange={setActiveSection}
-            onSwitchToInsert={() => setLeftPanelMode("insert")}
-          />
-        ) : (
-          /* Original LeftToolbar + panel tabs — 100% preserved, zero changes */
-          <>
-            <LeftToolbar activeTool={state.tool} onToolChange={handleToolChange} />
-            <div className={styles.leftPanel}>
-              <div className={styles.panelTabs} role="tablist" aria-label={t("shell.panelTabsAriaLabel")}>
-                {SIDE_PANELS.map(p => (
-                  <button
-                    key={p.id}
-                    role="tab"
-                    aria-selected={state.activePanel === p.id}
-                    className={`${styles.panelTab} ${state.activePanel === p.id ? styles.active : ""}`}
-                    onClick={() => setPanel(p.id)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-                {/* "← App" button returns to the tree */}
-                <button
-                  className={styles.panelTab}
-                  onClick={() => setLeftPanelMode("tree")}
-                  title="Back to App Builder tree"
-                  style={{ flexShrink: 0, fontWeight: 700, color: "var(--text-accent)" }}
-                >
-                  ← App
-                </button>
-              </div>
-              <div className={styles.panelContent}>
-                {state.activePanel === "layers"     && (
-                  <LayersPanel state={state} getCanvas={getCanvas} onSelect={handleLayerSelect} />
-                )}
-                {state.activePanel === "assets"     && <AssetsPanel onInsert={handleInsertImage} />}
-                {state.activePanel === "templates"  && (
-                  <TemplatesPanel onApply={tpl => void handleApplyTemplate(tpl)} />
-                )}
-                {state.activePanel === "pages"      && <PagesPanel />}
-                {state.activePanel === "brand"      && <BrandKitPanel />}
-                {state.activePanel === "components" && <ComponentsPanel getCanvas={getCanvas} />}
-                {state.activePanel === "tokens"     && <TokensPanel />}
-                {state.activePanel === "history"    && <HistoryPanel />}
-                {state.activePanel === "ai"         && (
-                  <AIPanel
-                    getCanvas={getCanvas}
-                    onApplyDesign={(json, w, h) => void handleApplyGeneratedDesign(json, w, h)}
-                  />
-                )}
-              </div>
+        {/* ── Left column: drawing tools + unified sidebar ─────────────────── */}
+        <LeftToolbar activeTool={state.tool} onToolChange={handleToolChange} />
+        <div className={styles.leftPanel}>
+
+          {/* Workspace section: APP / DATA / AI / AUTOMATION / DEPLOY tree */}
+          <div className={styles.workspaceSection}>
+            <AppTreePanel
+              activeSection={activeSection}
+              onSectionChange={setActiveSection}
+            />
+          </div>
+
+          {/* Design section: panel nav + panel content */}
+          <div className={styles.designSection}>
+            <div className={styles.sectionLabel} aria-hidden="true">
+              {t("shell.designSectionLabel")}
             </div>
-          </>
-        )}
+
+            {/* Vertical panel nav — each item is always visible, no mode toggle */}
+            <div
+              className={styles.designNav}
+              role="tablist"
+              aria-label={t("shell.panelTabsAriaLabel")}
+            >
+              {SIDE_PANELS.map(p => (
+                <button
+                  key={p.id}
+                  role="tab"
+                  aria-selected={state.activePanel === p.id}
+                  className={`${styles.designNavItem} ${state.activePanel === p.id ? styles.active : ""}`}
+                  onClick={() => setPanel(p.id)}
+                  title={p.label}
+                  aria-label={p.label}
+                >
+                  {/* Icon slot — Phase 3 will place SVG here */}
+                  <span className={styles.navIcon} aria-hidden="true" />
+                  <span className={styles.navLabel}>{p.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Active panel content */}
+            <div className={styles.panelContent} role="tabpanel">
+              {state.activePanel === "layers"     && (
+                <LayersPanel state={state} getCanvas={getCanvas} onSelect={handleLayerSelect} />
+              )}
+              {state.activePanel === "assets"     && <AssetsPanel onInsert={handleInsertImage} />}
+              {state.activePanel === "templates"  && (
+                <TemplatesPanel onApply={tpl => void handleApplyTemplate(tpl)} />
+              )}
+              {state.activePanel === "pages"      && <PagesPanel />}
+              {state.activePanel === "brand"      && <BrandKitPanel />}
+              {state.activePanel === "components" && <ComponentsPanel getCanvas={getCanvas} />}
+              {state.activePanel === "tokens"     && <TokensPanel />}
+              {state.activePanel === "history"    && <HistoryPanel />}
+              {state.activePanel === "ai"         && (
+                <AIPanel
+                  getCanvas={getCanvas}
+                  onApplyDesign={(json, w, h) => void handleApplyGeneratedDesign(json, w, h)}
+                />
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* ── Canvas area (unchanged) ──────────────────────────────────────── */}
         <div className={styles.canvasArea}>

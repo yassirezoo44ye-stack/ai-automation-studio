@@ -59,6 +59,135 @@ function StatCard({ label, value, color, icon }: { label: string; value: number;
   );
 }
 
+/* ── Visual timeline helpers ─────────────────────────────────────── */
+interface TimelineStep {
+  label: string;
+  ts: string | null;
+  state: "done" | "active" | "pending" | "error";
+  detail?: string;
+}
+
+function buildTimeline(run: Run, now: number): TimelineStep[] {
+  const isDone    = run.status === "completed";
+  const isFailed  = run.status === "failed";
+  const isRunning = run.status === "running";
+  const isPending = run.status === "pending";
+  const isCancelled = run.status === "cancelled";
+
+  const fmt = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : null;
+
+  return [
+    {
+      label: "Queued",
+      ts: fmt(run.created_at),
+      state: "done",
+      detail: fmt(run.created_at) ?? undefined,
+    },
+    {
+      label: "Started",
+      ts: fmt(run.started_at),
+      state: run.started_at ? "done" : isPending ? "pending" : "pending",
+      detail: run.started_at ? fmt(run.started_at) ?? undefined : undefined,
+    },
+    {
+      label: isRunning ? "Running" : isFailed ? "Failed" : isCancelled ? "Cancelled" : isDone ? "Completed" : "In Progress",
+      ts: null,
+      state: isRunning ? "active"
+           : isFailed  ? "error"
+           : isDone    ? "done"
+           : isCancelled ? "error"
+           : run.started_at ? "active" : "pending",
+      detail: isRunning
+        ? `${run.progress}% · ${elapsed(run, now)}`
+        : isDone || isFailed || isCancelled
+          ? elapsed(run, now)
+          : undefined,
+    },
+    {
+      label: "Finished",
+      ts: fmt(run.finished_at),
+      state: run.finished_at
+        ? (isFailed ? "error" : "done")
+        : (isDone ? "done" : "pending"),
+      detail: run.finished_at ? fmt(run.finished_at) ?? undefined : undefined,
+    },
+  ];
+}
+
+function TimelineView({ run, now }: { run: Run; now: number }) {
+  const steps = buildTimeline(run, now);
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
+        Execution Timeline
+      </div>
+      <div style={{ position: "relative", paddingLeft: 20 }}>
+        {/* Connecting line */}
+        <div style={{
+          position: "absolute", left: 7, top: 8, bottom: 8,
+          width: 1.5, background: "var(--b2)",
+        }} />
+        {steps.map((step, i) => {
+          const dotColor =
+            step.state === "done"    ? "var(--green)"
+            : step.state === "active"  ? "var(--blue)"
+            : step.state === "error"   ? "var(--red)"
+            : "var(--b2)";
+          const dotBg =
+            step.state === "done"    ? "var(--green-dim)"
+            : step.state === "active"  ? "var(--blue-dim)"
+            : step.state === "error"   ? "var(--red-dim)"
+            : "var(--bg-base)";
+          const isActive = step.state === "active";
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: i < steps.length - 1 ? 16 : 0 }}>
+              {/* Dot */}
+              <div style={{
+                width: 15, height: 15, borderRadius: "50%", flexShrink: 0,
+                background: dotBg, border: `1.5px solid ${dotColor}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                position: "relative", zIndex: 1,
+                marginTop: 1,
+                animation: isActive ? "pulse 1s ease-in-out infinite" : "none",
+              }}>
+                {step.state === "done" && (
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={dotColor} strokeWidth="3.5">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                )}
+                {step.state === "error" && (
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke={dotColor} strokeWidth="3.5">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                )}
+                {isActive && (
+                  <div style={{ width: 5, height: 5, borderRadius: "50%", background: dotColor }} />
+                )}
+              </div>
+              {/* Content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: step.state === "pending" ? "var(--t5)" : "var(--t1)" }}>
+                  {step.label}
+                </div>
+                {step.detail && (
+                  <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 2 }}>{step.detail}</div>
+                )}
+              </div>
+              {/* Timestamp */}
+              {step.ts && (
+                <span style={{ fontSize: 10, color: "var(--t5)", flexShrink: 0, fontFamily: "var(--font-mono)", paddingTop: 2 }}>
+                  {step.ts}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── Run detail drawer ───────────────────────────────────────────── */
 function RunDetail({ run, now, onClose }: { run: Run; now: number; onClose: () => void }) {
   const { t } = useTranslation("runs");
@@ -70,45 +199,68 @@ function RunDetail({ run, now, onClose }: { run: Run; now: number; onClose: () =
       background: "var(--bg-surface)", display: "flex", flexDirection: "column",
       overflow: "hidden",
     }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--b1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{t("detail.title")}</div>
-        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", fontSize: 22, lineHeight: 1 }}>×</button>
-      </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 600, background: colors.bg, color: colors.color }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: colors.color }} />
+      {/* Header */}
+      <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--b1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{t("detail.title")}</div>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            padding: "2px 10px", borderRadius: 99, fontSize: 11, fontWeight: 600,
+            background: colors.bg, color: colors.color,
+          }}>
+            <span style={{
+              width: 5, height: 5, borderRadius: "50%", background: colors.color, flexShrink: 0,
+              animation: run.status === "running" ? "pulse 1s ease-in-out infinite" : "none",
+            }} />
             {statusLabel}
           </div>
         </div>
-        {([
-          [t("detail.runId"),   run.id,                                                           true  ],
-          [t("detail.type"),    run.kind.replace(/_/g, " "),                                      false ],
-          [t("detail.source"),  run.source === "job" ? t("detail.sourceJob") : t("detail.sourceAgent"), false],
-          [t("detail.duration"),elapsed(run, now),                                                false ],
-          [t("detail.started"), run.started_at ? new Date(run.started_at).toLocaleString() : "—", false],
-          [t("detail.finished"),run.finished_at ? new Date(run.finished_at).toLocaleString() : "—",false],
-        ] as [string, string, boolean][]).map(([label, value, mono]) => (
-          <div key={label} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>
-            <div style={{ fontSize: 13, color: "var(--t1)", fontFamily: mono ? "var(--font-mono)" : "inherit", wordBreak: "break-all" }}>{value}</div>
-          </div>
-        ))}
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", fontSize: 20, lineHeight: 1, padding: "2px 4px" }}>×</button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}>
+        {/* Timeline */}
+        <TimelineView run={run} now={now} />
+
+        {/* Progress bar for running runs */}
         {run.status === "running" && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("detail.progress")}</div>
-              <span style={{ fontSize: 11, color: "var(--t4)" }}>{run.progress}%</span>
+          <div style={{ marginBottom: 18, padding: "12px 14px", borderRadius: 10, background: "var(--blue-dim)", border: "1px solid rgba(37,99,235,0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--blue)" }}>{t("detail.progress")}</div>
+              <span style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600 }}>{run.progress}%</span>
             </div>
-            <div style={{ height: 6, borderRadius: 99, background: "var(--bg-card)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${run.progress}%`, background: "var(--blue)", borderRadius: 99 }} />
+            <div style={{ height: 5, borderRadius: 99, background: "rgba(37,99,235,0.15)", overflow: "hidden" }}>
+              <div style={{
+                height: "100%", width: `${run.progress}%`,
+                background: "linear-gradient(90deg, var(--blue) 0%, var(--accent) 100%)",
+                borderRadius: 99, transition: "width 0.5s ease",
+              }} />
             </div>
           </div>
         )}
+
+        {/* Metadata */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {([
+            [t("detail.runId"),   run.id,  true ],
+            [t("detail.type"),    run.kind.replace(/_/g, " "), false],
+            [t("detail.source"),  run.source === "job" ? t("detail.sourceJob") : t("detail.sourceAgent"), false],
+            [t("detail.duration"),elapsed(run, now), false],
+          ] as [string, string, boolean][]).map(([label, value, mono]) => (
+            <div key={label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--t5)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
+              <div style={{ fontSize: 12, color: "var(--t1)", fontFamily: mono ? "var(--font-mono)" : "inherit", wordBreak: "break-all" }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Error */}
         {run.error && (
-          <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--red-dim)", border: "1px solid rgba(239,68,68,0.3)" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", marginBottom: 4, textTransform: "uppercase" }}>{t("detail.error")}</div>
-            <div style={{ fontSize: 12, color: "var(--red)", lineHeight: 1.5 }}>{run.error}</div>
+          <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 10, background: "var(--red-dim)", border: "1px solid rgba(239,68,68,0.3)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              {t("detail.error")}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--red)", lineHeight: 1.6, fontFamily: "var(--font-mono)" }}>{run.error}</div>
           </div>
         )}
       </div>

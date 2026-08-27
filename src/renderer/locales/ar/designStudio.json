@@ -1,6 +1,7 @@
 {
   "shell": {
     "panelTabsAriaLabel": "لوحات التصميم",
+    "designSectionLabel": "التصميم",
     "sidePanels": {
       "layers": "الطبقات",
       "assets": "الأصول",
@@ -200,7 +201,7 @@
   },
   "appTreePanel": {
     "ariaLabel": "هيكل التطبيق",
-    "headerTitle": "منشئ تطبيق Flow",
+    "headerTitle": "مساحة العمل",
     "overview": "نظرة عامة",
     "comingSoon": "قريبًا",
     "insertTools": "أدوات الإدراج والتصميم",
