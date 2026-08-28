@@ -239,3 +239,8 @@ successful deploy to `main`.
 - feat(training): build production training studio UI
 - feat(training-studio): Phase 1 foundation — DB + provider interface + shell UI
 - security(ws): add one-time websocket authentication and process cleanup
+
+## v1.0.19
+
+### Other
+- fix(security): update CSP connect-src to production backend (viio)
