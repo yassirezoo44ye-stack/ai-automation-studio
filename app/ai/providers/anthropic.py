@@ -259,6 +259,11 @@ class AnthropicProvider(BaseProvider):
         model = self.resolve_model(request.model)
         client = self._client()
         kwargs = _build_kwargs(request, model)
+        # messages.stream() does not accept temperature in all SDK versions;
+        # omitting it lets the API use its own default (1.0).  The complete()
+        # path calls messages.create() which does accept temperature, so
+        # _build_kwargs() is intentionally left unchanged.
+        kwargs.pop("temperature", None)
 
         input_tokens = 0
         output_tokens = 0

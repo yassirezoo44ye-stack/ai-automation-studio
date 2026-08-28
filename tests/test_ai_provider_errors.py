@@ -372,3 +372,113 @@ class TestErrorSafety:
         r = repr(err)
         assert "RATE_LIMITED" in r
         assert "anthropic" in r
+
+
+# ── Case H: stream() must not forward temperature to messages.stream() ────────
+
+class TestCaseH_StreamNoTemperature:
+    """Regression test: AnthropicProvider.stream() must never pass temperature
+    to client.messages.stream(), which rejects it in some SDK versions with
+    TypeError: AsyncMessages.stream() got an unexpected keyword argument 'temperature'.
+
+    Covers the App Builder streaming path that was broken in production.
+    """
+
+    @pytest.mark.asyncio
+    async def test_stream_does_not_forward_temperature(self):
+        from app.ai.providers.anthropic import AnthropicProvider
+        from app.ai.models import CompletionRequest, Message
+
+        # Minimal async stream mock: yields one text chunk then completes.
+        final_msg = MagicMock()
+        final_msg.usage = MagicMock(input_tokens=10, output_tokens=5)
+        final_msg.content = []
+
+        stream_ctx = MagicMock()
+        stream_ctx.__aenter__ = AsyncMock(return_value=stream_ctx)
+        stream_ctx.__aexit__ = AsyncMock(return_value=False)
+        stream_ctx.text_stream = _aiter(["Hello"])
+        stream_ctx.get_final_message = AsyncMock(return_value=final_msg)
+
+        captured_kwargs: dict = {}
+
+        def fake_stream(**kwargs):
+            captured_kwargs.update(kwargs)
+            return stream_ctx
+
+        provider = AnthropicProvider()
+        request = CompletionRequest(
+            messages=[Message(role="user", content="Build a CRM")],
+            temperature=1.0,
+        )
+
+        with patch.object(provider, "_api_key", return_value="sk-test"), \
+             patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+            mock_client.messages.stream = fake_stream
+
+            chunks = [chunk async for chunk in provider.stream(request)]
+
+        # temperature must be absent from the kwargs passed to messages.stream()
+        assert "temperature" not in captured_kwargs, (
+            f"temperature should not be forwarded to messages.stream(); "
+            f"got kwargs keys: {list(captured_kwargs.keys())}"
+        )
+        # stream must still deliver content (no TypeError, no empty response)
+        assert any(c.type == "delta" for c in chunks)
+        # usage and done events must be emitted
+        assert any(c.type == "done" for c in chunks)
+
+    @pytest.mark.asyncio
+    async def test_stream_error_handling_preserved(self):
+        """Existing error handling must survive the temperature-pop fix."""
+        from app.ai.providers.anthropic import AnthropicProvider
+        from app.ai.models import CompletionRequest, Message
+        from app.ai.errors import AIProviderError
+
+        provider = AnthropicProvider()
+        request = CompletionRequest(
+            messages=[Message(role="user", content="Build something")],
+            temperature=0.3,
+        )
+
+        import anthropic as _sdk
+
+        def failing_stream(**_kwargs):
+            raise _sdk.RateLimitError(
+                "Rate limit exceeded",
+                response=MagicMock(status_code=429),
+                body="Rate limit exceeded",
+            )
+
+        with patch.object(provider, "_api_key", return_value="sk-test"), \
+             patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+            mock_client.messages.stream = failing_stream
+
+            with pytest.raises(AIProviderError) as exc_info:
+                async for _ in provider.stream(request):
+                    pass
+
+        assert exc_info.value.code == AIProviderErrorCode.RATE_LIMITED
+
+
+def _aiter(items):
+    """Return an async iterable over items (avoids async generator syntax)."""
+    class _AI:
+        def __aiter__(self):
+            return _AIT(iter(items))
+
+    class _AIT:
+        def __init__(self, it):
+            self._it = it
+
+        async def __anext__(self):
+            try:
+                return next(self._it)
+            except StopIteration:
+                raise StopAsyncIteration
+
+    return _AI()
