@@ -244,3 +244,8 @@ successful deploy to `main`.
 
 ### Other
 - fix(security): update CSP connect-src to production backend (viio)
+
+## v1.0.20
+
+### Other
+- fix(agent-builder): remove unsupported Anthropic stream temperature
