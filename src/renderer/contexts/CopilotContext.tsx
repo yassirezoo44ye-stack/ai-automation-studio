@@ -28,6 +28,7 @@ const PAGE_LABELS: Record<Page, string> = {
   billing: "Billing", plugins: "Plugins", sandbox: "Sandbox", "ai-routing": "AI Routing",
   observability: "Observability",
   "app-builder": "App Builder", runs: "Runs", integrations: "Integrations",
+  training: "Training Studio",
 };
 
 export function CopilotProvider({ children }: { children: ReactNode }) {

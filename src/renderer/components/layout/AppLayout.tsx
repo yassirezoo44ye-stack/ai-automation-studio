@@ -28,7 +28,8 @@ const AIRoutingPage     = lazy(() => import("../../features/ai-routing").then(m 
 const ObservabilityPage = lazy(() => import("../../features/observability").then(m => ({ default: m.ObservabilityPage })));
 const AppBuilderPage  = lazy(() => import("../../features/app-builder").then(m => ({ default: m.AppBuilderPage })));
 const RunsPage        = lazy(() => import("../../features/runs").then(m => ({ default: m.RunsPage })));
-const IntegrationsPage = lazy(() => import("../../features/integrations").then(m => ({ default: m.IntegrationsPage })));
+const IntegrationsPage    = lazy(() => import("../../features/integrations").then(m => ({ default: m.IntegrationsPage })));
+const TrainingStudioPage  = lazy(() => import("../../features/training-studio").then(m => ({ default: m.TrainingStudioPage })));
 
 /** Map page keys → sidebar nav translation keys */
 const PAGE_NAV_KEY: Record<string, string> = {
@@ -51,6 +52,7 @@ const PAGE_NAV_KEY: Record<string, string> = {
   "app-builder":  "appBuilder",
   "runs":         "runs",
   "integrations": "integrations",
+  "training":     "trainingStudio",
 };
 
 function SunIcon() {
@@ -169,6 +171,7 @@ function WorkspaceContent() {
           {page === "app-builder"   && <AppBuilderPage />}
           {page === "runs"          && <RunsPage />}
           {page === "integrations"  && <IntegrationsPage />}
+          {page === "training"      && <TrainingStudioPage />}
         </Suspense>
       </ErrorBoundary>
     </PageTransition>

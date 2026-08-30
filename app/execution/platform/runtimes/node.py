@@ -154,8 +154,6 @@ class NodeRuntime(AbstractRuntime):
 
         loop = asyncio.get_event_loop()
 
-        server_ready_info: dict = {}
-
         def _stream_launch():
             events = []
             try:

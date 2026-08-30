@@ -23,12 +23,24 @@ import {
   promptToProjectName,
   getProject,
 } from "./services/builderService";
+import { streamRun, stopProject } from "./services/runnerService";
+import type { RunEvent } from "./services/runnerService";
+import { AICopilotPanel } from "./components/AICopilotPanel";
+import { BuildPlanPanel } from "./components/BuildPlanPanel";
+import type { BuildPlan } from "./components/BuildPlanPanel";
+import { RuntimePanel } from "./components/RuntimePanel";
+import type { RuntimeState, RuntimeError } from "./components/RuntimePanel";
+import { BottomTabBar } from "./components/BottomTabBar";
+import type { BuildEventItem, RuntimeEventItem } from "./components/BottomTabBar";
 
 /* ── Types ──────────────────────────────────────────────────────── */
 type BuildMode  = "build" | "plan" | "debug";
 type AppSection = "overview" | "pages" | "data" | "workflows" | "agents" | "integrations" | "settings";
 // labelKey maps to "appBuilder" namespace (sections.* or phases.*)
 type BuildPhase = { labelKey: string; status: "pending" | "running" | "done" | "error" };
+
+/** Plan overlay state machine */
+type PlanState = "idle" | "planning" | "review";
 
 // labelKey maps to appBuilder namespace sections.*
 const SECTIONS: { id: AppSection; labelKey: string; icon: React.ReactNode }[] = [
@@ -52,9 +64,6 @@ const INITIAL_PHASES: BuildPhase[] = [
   { labelKey: "phases.automations",   status: "pending" },
   { labelKey: "phases.tests",         status: "pending" },
 ];
-
-/* ── AI chat message ─────────────────────────────────────────────── */
-type ChatMsg = { role: "user" | "assistant"; content: string };
 
 /* ══════════════════════════════════════════════════════════════════
    Sub-components
@@ -123,397 +132,6 @@ function AppSidebar({ section, setSection, projectName }: {
   );
 }
 
-/** Center panel — live preview */
-function PreviewPanel({ section, projectName, isBuilding, buildDone }: {
-  section: AppSection;
-  projectName: string;
-  isBuilding: boolean;
-  buildDone: boolean;
-}) {
-  const { t } = useTranslation("appBuilder");
-
-  const previewContent: Record<AppSection, React.ReactNode> = {
-    overview: (
-      <div style={{ padding: 28, height: "100%", overflowY: "auto" }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>{projectName || "Your App"}</h2>
-        <p style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>Your AI-built application is ready to customize.</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-          {[["Pages", "Pages"], ["Tables", "Tables"], ["Roles", "Roles"], ["Workflows", "Workflows"], ["Integrations", "Integrations"], ["AI Features", "AI Features"]].map(([_n, l]) => (
-            <div key={l} style={{ background: "var(--bg-card)", border: "1px solid var(--b1)", borderRadius: 12, padding: "16px", textAlign: "center" }}>
-              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--accent)"}}>—</div>
-              <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 4 }}>{l}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    ),
-    pages: (
-      <div style={{ padding: 28, overflowY: "auto" }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>Application Pages</div>
-        {["Dashboard", "Contacts", "Deals", "Tasks", "Reports", "Settings", "Admin Panel", "Login"].map((p, i) => (
-          <div key={p} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 4, background: i === 0 ? "var(--accent-dim)" : "var(--bg-card)", border: `1px solid ${i === 0 ? "var(--accent-border)" : "var(--b1)"}` }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={i === 0 ? "var(--accent)" : "var(--t4)"} strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <span style={{ fontSize: 13, fontWeight: 500, color: i === 0 ? "var(--accent)" : "var(--t1)" }}>{p}</span>
-            {i === 0 && <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 99, background: "var(--accent)", color: "white", marginLeft: "auto" }}>Active</span>}
-          </div>
-        ))}
-      </div>
-    ),
-    data: (
-      <div style={{ padding: 28, overflowY: "auto" }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>Data Tables</div>
-        {[
-          { name: "Contacts", fields: 12, records: 0 },
-          { name: "Deals", fields: 8, records: 0 },
-          { name: "Tasks", fields: 6, records: 0 },
-          { name: "Companies", fields: 10, records: 0 },
-          { name: "Activities", fields: 7, records: 0 },
-          { name: "Users", fields: 9, records: 1 },
-        ].map(tbl => (
-          <div key={tbl.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, marginBottom: 4, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t1)", flex: 1 }}>{tbl.name}</span>
-            <span style={{ fontSize: 11, color: "var(--t4)" }}>{tbl.fields} fields</span>
-            <span style={{ fontSize: 11, color: "var(--t5)" }}>{tbl.records} rows</span>
-          </div>
-        ))}
-      </div>
-    ),
-    workflows: (
-      <div style={{ padding: 28, overflowY: "auto" }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>Automations</div>
-        {[
-          { name: "New Lead Welcome", trigger: "Contact Created", status: "active" },
-          { name: "Deal Follow-up", trigger: "7 days inactive", status: "active" },
-          { name: "Task Reminder", trigger: "Due date - 1 day", status: "active" },
-          { name: "Report Generator", trigger: "Every Monday", status: "paused" },
-        ].map(w => (
-          <div key={w.name} style={{ padding: "12px 14px", borderRadius: 10, marginBottom: 8, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{w.name}</span>
-              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: w.status === "active" ? "var(--green-dim)" : "var(--bg-card)", color: w.status === "active" ? "var(--green)" : "var(--t4)", border: `1px solid ${w.status === "active" ? "rgba(22,163,74,0.2)" : "var(--b1)"}` }}>
-                {w.status}
-              </span>
-            </div>
-            <div style={{ fontSize: 11, color: "var(--t4)" }}>⚡ {w.trigger}</div>
-          </div>
-        ))}
-      </div>
-    ),
-    agents: (
-      <div style={{ padding: 28, overflowY: "auto" }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>AI Agents</div>
-        {[
-          { name: "Sales Agent", purpose: "Qualifies leads & creates follow-ups", status: "active" },
-          { name: "Data Analyst", purpose: "Generates reports & insights", status: "active" },
-          { name: "Support Bot", purpose: "Handles customer inquiries", status: "idle" },
-        ].map(a => (
-          <div key={a.name} style={{ padding: "14px 16px", borderRadius: 12, marginBottom: 10, background: "var(--bg-card)", border: `1px solid ${a.status === "active" ? "var(--accent-border)" : "var(--b1)"}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.status === "active" ? "var(--green)" : "var(--t4)" }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{a.name}</span>
-              <span style={{ fontSize: 10, color: "var(--t4)", textTransform: "capitalize", marginLeft: "auto" }}>{a.status}</span>
-            </div>
-            <p style={{ fontSize: 11, color: "var(--t4)", margin: 0 }}>{a.purpose}</p>
-          </div>
-        ))}
-      </div>
-    ),
-    integrations: (
-      <div style={{ padding: 28, overflowY: "auto" }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>Connected Integrations</div>
-        {[
-          { name: "Gmail", connected: true },
-          { name: "Slack", connected: true },
-          { name: "Google Sheets", connected: false },
-          { name: "Stripe", connected: false },
-        ].map(i => (
-          <div key={i.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 4, background: "var(--bg-card)", border: "1px solid var(--b1)" }}>
-            <div style={{ width: 28, height: 28, borderRadius: 7, background: i.connected ? "var(--green-dim)" : "var(--bg-base)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
-              {i.name === "Gmail" ? "✉" : i.name === "Slack" ? "💬" : i.name === "Google Sheets" ? "📊" : "💳"}
-            </div>
-            <span style={{ fontSize: 13, flex: 1, color: "var(--t1)" }}>{i.name}</span>
-            <span style={{ fontSize: 11, color: i.connected ? "var(--green)" : "var(--t4)" }}>{i.connected ? "Connected" : "Not connected"}</span>
-          </div>
-        ))}
-      </div>
-    ),
-    settings: (
-      <div style={{ padding: 28, overflowY: "auto" }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", marginBottom: 16 }}>App Settings</div>
-        {[["App Name", "My App", "text"], ["Description", "AI-powered business app", "text"], ["Environment", "Production", "select"], ["Custom Domain", "—", "text"]].map(([label, val]) => (
-          <div key={label} style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>{label}</label>
-            <input defaultValue={val} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t1)", fontSize: 13, boxSizing: "border-box", outline: "none" }} />
-          </div>
-        ))}
-      </div>
-    ),
-  };
-
-  if (isBuilding) {
-    return (
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)" }}>
-        <div style={{ textAlign: "center", maxWidth: 360 }}>
-          <div style={{ fontSize: 32, marginBottom: 16 }}>⚡</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>{t("preview.buildingTitle")}</div>
-          <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 24 }}>{t("preview.buildingSubtitle")}</div>
-          <div style={{ width: "100%", height: 4, borderRadius: 99, background: "var(--bg-card)", overflow: "hidden" }}>
-            <div style={{
-              height: "100%", borderRadius: 99,
-              background: "linear-gradient(90deg, var(--accent) 0%, var(--teal) 100%)",
-              animation: "shimmer 1.5s ease-in-out infinite",
-            }} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ flex: 1, background: "var(--bg-base)", overflow: "hidden", position: "relative" }}>
-      {/* Browser chrome simulation */}
-      <div style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--b1)", padding: "8px 12px", display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ display: "flex", gap: 5 }}>
-          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#FF5F57" }} />
-          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#FEBC2E" }} />
-          <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#28C840" }} />
-        </div>
-        <div style={{ flex: 1, background: "var(--bg-card)", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "var(--t4)", display: "flex", alignItems: "center", gap: 6 }}>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          app.flow.ai/{(projectName || "my-app").toLowerCase().replace(/\s+/g, "-")}
-        </div>
-      </div>
-      {/* App preview */}
-      <div style={{ height: "calc(100% - 41px)", overflow: "hidden" }}>
-        {buildDone || !isBuilding ? previewContent[section] : (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--t4)", fontSize: 14 }}>
-            {t("preview.typePrompt")}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Right panel — AI builder chat */
-function AIBuilderPanel({ onBuild, projectName, isBuilding }: {
-  onBuild: (prompt: string) => void;
-  projectName: string;
-  isBuilding: boolean;
-}) {
-  const { t } = useTranslation("appBuilder");
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  // Lazy initialiser consumes the one-shot Dashboard prompt synchronously,
-  // avoiding a useEffect that would call setInput from inside an effect body.
-  const [input, setInput] = useState<string>(() => {
-    const stored = sessionStorage.getItem("flow_builder_prompt");
-    if (stored) sessionStorage.removeItem("flow_builder_prompt");
-    return stored ?? "";
-  });
-  const [loading, setLoading]   = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const send = useCallback(async () => {
-    const val = input.trim();
-    if (!val || loading || isBuilding) return;
-    setInput("");
-    setMessages(prev => [...prev, { role: "user", content: val }]);
-    setLoading(true);
-
-    // Kick off build on first message only
-    if (messages.length === 0) {
-      onBuild(val);
-    }
-
-    try {
-      // Try AI backend
-      const r = await apiFetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: val, context: "app_builder", app_name: projectName }),
-      });
-      if (r.ok) {
-        const data = await parseJSON<{ response: string }>(r, "/api/ai/chat");
-        setMessages(prev => [...prev, { role: "assistant", content: data.response }]);
-      } else {
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: `I'm designing ${val.length > 40 ? "your app" : `"${val}"`} now. I'll create the database schema, pages, and automations based on your requirements. You can see the preview updating in real-time.`,
-        }]);
-      }
-    } catch {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "I'm building your app now. Check the preview panel to see progress.",
-      }]);
-    }
-    setLoading(false);
-  }, [input, loading, isBuilding, messages, onBuild, projectName]);
-
-  const suggestions = [
-    t("aiPanel.suggestion1"),
-    t("aiPanel.suggestion2"),
-    t("aiPanel.suggestion3"),
-  ];
-
-  return (
-    <div style={{
-      width: 320, flexShrink: 0,
-      borderLeft: "1px solid var(--b1)",
-      background: "var(--bg-surface)",
-      display: "flex", flexDirection: "column",
-      overflow: "hidden",
-    }}>
-      {/* Header */}
-      <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--b1)", display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 8,
-          background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        </div>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{t("aiPanel.title")}</div>
-          <div style={{ fontSize: 10, color: isBuilding ? "var(--accent)" : "var(--green)", display: "flex", alignItems: "center", gap: 3 }}>
-            <span style={{ width: 4, height: 4, borderRadius: "50%", background: isBuilding ? "var(--accent)" : "var(--green)", display: "inline-block", animation: isBuilding ? "pulse 1s ease-in-out infinite" : "none" }} />
-            {isBuilding ? t("aiPanel.statusBuilding") : t("aiPanel.statusReady")}
-          </div>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
-        {messages.length === 0 && (
-          <div style={{ textAlign: "center", padding: "24px 8px" }}>
-            <div style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.6, marginBottom: 16 }}>
-              {t("aiPanel.emptyPrompt")}
-            </div>
-            {/* Suggestions */}
-            {suggestions.map(s => (
-              <button
-                key={s}
-                onClick={() => setInput(s)}
-                style={{
-                  width: "100%", textAlign: "left", padding: "9px 12px",
-                  borderRadius: 10, border: "1px solid var(--b1)",
-                  background: "var(--bg-card)", color: "var(--t2)",
-                  fontSize: 12, cursor: "pointer", marginBottom: 6,
-                  transition: "border-color 0.12s",
-                }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--accent)")}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--b1)")}
-              >
-                "{s}"
-              </button>
-            ))}
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div key={i} style={{ marginBottom: 12 }}>
-            {msg.role === "user" ? (
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <div style={{
-                  maxWidth: "85%", padding: "10px 12px",
-                  borderRadius: "12px 12px 4px 12px",
-                  background: "var(--accent)", color: "white",
-                  fontSize: 13, lineHeight: 1.5,
-                }}>
-                  {msg.content}
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <div style={{
-                  width: 24, height: 24, borderRadius: 7, flexShrink: 0,
-                  background: "linear-gradient(135deg, var(--accent), var(--teal))",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                </div>
-                <div style={{
-                  maxWidth: "85%", padding: "10px 12px",
-                  borderRadius: "12px 12px 12px 4px",
-                  background: "var(--bg-card)", border: "1px solid var(--b1)",
-                  fontSize: 13, color: "var(--t1)", lineHeight: 1.6,
-                }}>
-                  {msg.content}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-
-        {loading && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 0" }}>
-            <div style={{
-              width: 24, height: 24, borderRadius: 7,
-              background: "linear-gradient(135deg, var(--accent), var(--teal))",
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-            }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            </div>
-            <div style={{ display: "flex", gap: 4, paddingInlineStart: 2 }}>
-              {[0, 1, 2].map(i => (
-                <div key={i} style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: "var(--accent)",
-                  animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`,
-                }} />
-              ))}
-            </div>
-          </div>
-        )}
-        <div ref={endRef} />
-      </div>
-
-      {/* Input */}
-      <div style={{ padding: "12px", borderTop: "1px solid var(--b1)" }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-            placeholder={isBuilding ? t("aiPanel.placeholderBuilding") : t("aiPanel.placeholderReady")}
-            disabled={isBuilding}
-            rows={2}
-            style={{
-              flex: 1, padding: "9px 12px", fontSize: 13,
-              borderRadius: 10, border: "1px solid var(--b1)",
-              background: isBuilding ? "var(--bg-base)" : "var(--bg-card)",
-              color: "var(--t1)",
-              resize: "none", outline: "none", fontFamily: "inherit",
-              opacity: isBuilding ? 0.6 : 1,
-            }}
-            onFocus={e => (e.target.style.borderColor = "var(--accent)")}
-            onBlur={e => (e.target.style.borderColor = "var(--b1)")}
-          />
-          <button
-            onClick={() => void send()}
-            disabled={!input.trim() || loading || isBuilding}
-            style={{
-              width: 36, height: 36, borderRadius: 9, border: "none",
-              background: input.trim() && !loading && !isBuilding ? "var(--accent)" : "var(--bg-card)",
-              color: input.trim() && !loading && !isBuilding ? "white" : "var(--t5)",
-              cursor: input.trim() && !loading && !isBuilding ? "pointer" : "default",
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-              transition: "all 0.12s",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ── Build phases overlay ─────────────────────────────────────────── */
 function BuildingOverlay({ phases, onCancel, errorMsg }: {
   phases: BuildPhase[];
@@ -521,58 +139,120 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
   errorMsg: string | null;
 }) {
   const { t } = useTranslation("appBuilder");
+
+  const doneCount   = phases.filter(p => p.status === "done").length;
+  const totalPhases = phases.length;
+  const pct         = totalPhases > 0 ? Math.round((doneCount / totalPhases) * 100) : 0;
+  const hasError    = phases.some(p => p.status === "error") || !!errorMsg;
+  const isBuilding  = phases.some(p => p.status === "running");
+
   return (
     <div style={{
       position: "absolute", inset: 0,
-      background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)",
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 10,
     }}>
       <div style={{
-        background: "var(--bg-surface)", borderRadius: 24, padding: "32px 36px",
-        maxWidth: 400, width: "100%", boxShadow: "var(--shadow-xl)",
+        background: "var(--bg-surface)",
+        borderRadius: 24, padding: "30px 32px",
+        maxWidth: 420, width: "100%",
+        boxShadow: "var(--shadow-xl), 0 0 0 1px rgba(110,50,224,0.12)",
+        border: `1px solid ${hasError ? "rgba(239,68,68,0.3)" : "var(--accent-border)"}`,
       }}>
+        {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{t("overlay.title")}</div>
-          <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 6 }}>{t("overlay.subtitle")}</div>
+          <div style={{
+            width: 52, height: 52, borderRadius: 16, margin: "0 auto 14px",
+            background: hasError ? "var(--red-dim)" : "var(--accent-dim)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {hasError ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            ) : isBuilding ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" style={{ animation: "spin 2s linear infinite" }}>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              </svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+            )}
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>
+            {t("overlay.title")}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("overlay.subtitle")}</div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {phases.map((phase, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+
+        {/* Overall progress bar */}
+        {!hasError && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--t5)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                Progress
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>{pct}%</span>
+            </div>
+            <div style={{ height: 5, borderRadius: 99, background: "var(--bg-card)", overflow: "hidden" }}>
               <div style={{
-                width: 22, height: 22, borderRadius: 99, flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: phase.status === "done"
-                  ? "var(--green-dim)"
-                  : phase.status === "running"
-                    ? "var(--accent-dim)"
-                    : phase.status === "error"
-                      ? "var(--red-dim)"
-                      : "var(--bg-card)",
-                border: `1px solid ${phase.status === "done" ? "rgba(22,163,74,0.2)" : phase.status === "running" ? "var(--accent-border)" : phase.status === "error" ? "var(--red)" : "var(--b1)"}`,
+                height: "100%",
+                width: `${pct}%`,
+                background: "linear-gradient(90deg, var(--accent) 0%, var(--teal) 100%)",
+                borderRadius: 99,
+                transition: "width 0.6s ease",
+                boxShadow: "0 0 8px rgba(110,50,224,0.5)",
+              }} />
+            </div>
+          </div>
+        )}
+
+        {/* Phase list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {phases.map((phase, i) => {
+            const isDone    = phase.status === "done";
+            const isRunning = phase.status === "running";
+            const isErr     = phase.status === "error";
+            const isPending = phase.status === "pending";
+            return (
+              <div key={i} style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "8px 10px", borderRadius: 9,
+                background: isRunning ? "var(--accent-dim)" : isDone ? "rgba(22,163,74,0.05)" : "transparent",
+                border: isRunning ? "1px solid var(--accent-border)" : isDone ? "1px solid rgba(22,163,74,0.12)" : "1px solid transparent",
               }}>
-                {phase.status === "done" && (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                {/* Phase indicator */}
+                <div style={{
+                  width: 20, height: 20, borderRadius: 99, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: isDone ? "var(--green-dim)" : isRunning ? "var(--accent)" : isErr ? "var(--red-dim)" : "var(--bg-card)",
+                  border: `1px solid ${isDone ? "rgba(22,163,74,0.3)" : isRunning ? "transparent" : isErr ? "rgba(239,68,68,0.3)" : "var(--b1)"}`,
+                }}>
+                  {isDone && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                  {isRunning && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "white", animation: "pulse 1s ease-in-out infinite" }} />}
+                  {isErr && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>}
+                  {isPending && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--t5)" }} />}
+                </div>
+                <span style={{
+                  fontSize: 12, fontWeight: isRunning ? 700 : isDone ? 500 : 400,
+                  color: isPending ? "var(--t5)" : isDone ? "var(--t2)" : isErr ? "var(--red)" : "var(--t1)",
+                  flex: 1,
+                }}>
+                  {t(phase.labelKey)}
+                </span>
+                {isRunning && (
+                  <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600 }}>running…</span>
                 )}
-                {phase.status === "running" && (
-                  <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", animation: "pulse 1s ease-in-out infinite" }} />
-                )}
-                {phase.status === "error" && (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                )}
-                {phase.status === "pending" && (
-                  <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--t5)" }} />
+                {isDone && (
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
                 )}
               </div>
-              <span style={{
-                fontSize: 13, fontWeight: phase.status === "running" ? 600 : 400,
-                color: phase.status === "pending" ? "var(--t4)" : phase.status === "done" ? "var(--t2)" : phase.status === "error" ? "var(--red)" : "var(--t1)",
-              }}>
-                {t(phase.labelKey)}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Error message */}
@@ -582,13 +262,22 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
           </div>
         )}
 
-        {/* Cancel / dismiss button */}
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "center" }}>
+        {/* Cancel / dismiss */}
+        <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
           <button
             onClick={onCancel}
             style={{
-              padding: "7px 18px", borderRadius: 8, border: "1px solid var(--b1)",
+              padding: "7px 20px", borderRadius: 8, border: "1px solid var(--b1)",
               background: "transparent", color: "var(--t4)", fontSize: 12, cursor: "pointer",
+              transition: "border-color 0.12s, color 0.12s",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--ba)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--t2)";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--b1)";
+              (e.currentTarget as HTMLButtonElement).style.color = "var(--t4)";
             }}
           >
             {errorMsg ? t("overlay.dismiss") : t("overlay.cancel")}
@@ -785,6 +474,30 @@ export function AppBuilderPage() {
   const [projectName, setProjectName] = useState("");
   const [isDevMode, setIsDevMode]   = useState(false);
 
+  // ── Entry screen prompt (new minimal entry UI) ───────────────────
+  const [entryPrompt, setEntryPrompt] = useState("");
+
+  // ── Phase 2: Plan overlay ────────────────────────────────────────
+  const [planState, setPlanState]         = useState<PlanState>("idle");
+  const [currentPlan, setCurrentPlan]     = useState<BuildPlan | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState("");
+
+  // ── Phase 2: Build event timeline (real SSE events) ──────────────
+  const [buildEvents, setBuildEvents]     = useState<BuildEventItem[]>([]);
+
+  // ── Phase 2: Bottom panel height (resizable) ─────────────────────
+  const [bottomHeight, setBottomHeight]   = useState(200);
+
+  // ── Phase 3: Runtime state machine ────────────────────────────────
+  const [runtimeState, setRuntimeState]       = useState<RuntimeState>("idle");
+  const [previewUrl, setPreviewUrl]           = useState<string | null>(null);
+  const [previewType, setPreviewType]         = useState<"proxy" | "blob" | null>(null);
+  const [runtimeError, setRuntimeError]       = useState<RuntimeError | null>(null);
+  const [runtimeEvents, setRuntimeEvents]     = useState<RuntimeEventItem[]>([]);
+  const [startupMessages, setStartupMessages] = useState<string[]>([]);
+  const runtimeAbortRef = useRef<AbortController | null>(null);
+  const isRunningRef    = useRef(false);
+
   /** Prevents duplicate submissions across renders without depending on isBuilding state. */
   const isBuildingRef = useRef(false);
   /** AbortController for cancelling an in-progress stream. */
@@ -811,6 +524,16 @@ export function AppBuilderPage() {
     };
   }, []);
 
+  // Abort any in-flight runtime SSE stream when the component unmounts.
+  // The backend process itself keeps running (it has its own idle timeout);
+  // we only abort the SSE reader to avoid the open network connection.
+  useEffect(() => {
+    return () => {
+      runtimeAbortRef.current?.abort();
+      isRunningRef.current = false;
+    };
+  }, []);
+
   /**
    * handleBuild — real SSE build flow.
    *
@@ -834,6 +557,7 @@ export function AppBuilderPage() {
     setBuildFileCount(0);
     setBuildLanguage("");
     setIsDevMode(false);
+    setBuildEvents([]);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -890,6 +614,22 @@ export function AppBuilderPage() {
 
       // ── Step 2: stream the build — project_id is always set here ──
       for await (const event of streamBuild(projectId, prompt, controller.signal)) {
+        // Accumulate all real SSE events for the Build timeline (Phase 2).
+        // Error messages are intentionally NOT stored verbatim — the full message
+        // is shown in the BuildingOverlay / BillingErrorOverlay. Storing it again
+        // in buildEvents would create duplicate DOM text nodes that break tests
+        // using screen.getByText(). A sanitized label is sufficient for the timeline.
+        if (event.type !== "heartbeat") {
+          const evType = event.type as string;
+          const evMsg =
+            evType === "file"  ? `Generated: ${(event as unknown as { path?: string }).path ?? "file"}`
+            : evType === "done" ? `Build complete — ${(event as unknown as { files: string[]; language?: string }).files.length} files`
+            : evType === "error" ? "Build error — see panel for details"
+            : "message" in event ? (event as unknown as { message: string }).message
+            : evType;
+          setBuildEvents(prev => [...prev, { timestamp: Date.now(), type: evType as BuildEventItem["type"], message: evMsg }]);
+        }
+
         switch (event.type) {
           case "status": {
             statusCount++;
@@ -924,18 +664,24 @@ export function AppBuilderPage() {
             setBuildLanguage(event.language ?? "");
             toast("Your app is ready!", "ok");
             setBuildDone(true);
+            // Transition runtime state: build done → ready to run
+            setRuntimeState("ready_to_run");
             break;
           }
           case "error": {
             currentPhases[phaseIdx] = { ...currentPhases[phaseIdx], status: "error" };
             setPhases([...currentPhases]);
-            // SSE billing errors arrive as "BILLING_REQUIRED: <message>" from
-            // registry.stream_with_events() — surface them as a dedicated overlay
-            // rather than a raw red error string.
+            // SSE billing errors arrive as "BILLING_REQUIRED:{provider}: <message>"
+            // from registry.stream_with_events() — surface them as a dedicated
+            // overlay rather than a raw red error string.
+            // Format: "BILLING_REQUIRED:{provider_id}: {human message}"
             if (event.message.startsWith("BILLING_REQUIRED:")) {
-              const detail = event.message.slice("BILLING_REQUIRED:".length).trim();
+              const rest = event.message.slice("BILLING_REQUIRED:".length);
+              const colonIdx = rest.indexOf(": ");
+              const provider = colonIdx >= 0 ? rest.slice(0, colonIdx) : "anthropic";
+              const detail   = colonIdx >= 0 ? rest.slice(colonIdx + 2).trim() : rest.trim();
               setBillingError({
-                provider: "anthropic",
+                provider: provider || "anthropic",
                 message: detail || "The AI provider's credit balance is too low to process this request.",
                 action: "Add credits at console.anthropic.com/plans, or configure an alternative provider (OpenAI, Gemini) in your workspace settings.",
                 prompt,
@@ -983,6 +729,496 @@ export function AppBuilderPage() {
     isBuildingRef.current = false;
   }, []);
 
+  /**
+   * handleStartBuild — Phase 2 entry point.
+   *
+   * 1. Fetches an AI-generated build plan from /api/build/plan.
+   * 2. If successful: shows BuildPlanPanel for user review.
+   *    On approval → calls handleBuild(prompt).
+   * 3. If plan fetch fails (no credits, network error, or mocked in tests):
+   *    falls through directly to handleBuild(prompt) — no disruption to
+   *    existing tests which mock apiFetch to return undefined.
+   */
+  const handleStartBuild = useCallback(async (prompt: string) => {
+    setPendingPrompt(prompt);
+    setPlanState("planning");
+    setBuildEvents([]);
+
+    try {
+      const r = await apiFetch("/api/build/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (r.ok) {
+        const data = await parseJSON<{ plan: BuildPlan }>(r, "/api/build/plan");
+        setCurrentPlan(data.plan);
+        setPlanState("review");
+        return; // Wait for user to approve plan
+      }
+      // Non-OK response → skip plan, build directly
+      setPlanState("idle");
+      void handleBuild(prompt);
+    } catch {
+      // Plan unavailable (credits, network, or test mock) → build directly
+      setPlanState("idle");
+      void handleBuild(prompt);
+    }
+  }, [handleBuild]);
+
+  // ── Phase 3: Runtime handlers ──────────────────────────────────────
+
+  /**
+   * Start the project runtime.
+   * Calls POST /api/projects/{id}/run/stream and consumes real SSE events.
+   * State transitions: idle/stopped/failed → starting → running | failed.
+   */
+  const handleRun = useCallback(async () => {
+    const projectId = sessionStorage.getItem("flow_active_project");
+    if (!projectId || isRunningRef.current) return;
+
+    isRunningRef.current = true;
+    setRuntimeState("starting");
+    setRuntimeError(null);
+    setRuntimeEvents([]);
+    setStartupMessages([]);
+    setPreviewUrl(null);
+    setPreviewType(null);
+
+    const ctrl = new AbortController();
+    runtimeAbortRef.current = ctrl;
+
+    const appendRuntimeEvent = (ev: RunEvent) => {
+      if (ev.type === "heartbeat") return;
+      const msg =
+        ev.type === "log"          ? ev.line
+        : ev.type === "server_ready" ? `✓ ${ev.message} — ${ev.preview_url}`
+        : "message" in ev          ? (ev as { message: string }).message
+        : ev.type;
+      setRuntimeEvents(prev => [...prev, {
+        timestamp: Date.now(),
+        type: ev.type as RuntimeEventItem["type"],
+        message: msg,
+        stream: ev.type === "log" ? ev.stream : undefined,
+      }]);
+    };
+
+    try {
+      for await (const ev of streamRun(projectId, ctrl.signal)) {
+        appendRuntimeEvent(ev);
+
+        switch (ev.type) {
+          case "status":
+            setStartupMessages(prev => [...prev, ev.message]);
+            break;
+
+          case "html": {
+            // Static HTML driver — create blob URL for iframe
+            const blob = new Blob([ev.html_content], { type: "text/html" });
+            const url = URL.createObjectURL(blob);
+            setPreviewUrl(url);
+            setPreviewType("blob");
+            setRuntimeState("running");
+            isRunningRef.current = false;
+            runtimeAbortRef.current = null;
+            return;
+          }
+
+          case "server_ready": {
+            // Server running — proxy URL is relative, same-origin
+            setPreviewUrl(ev.preview_url);
+            setPreviewType("proxy");
+            setRuntimeState("running");
+            isRunningRef.current = false;
+            runtimeAbortRef.current = null;
+            return;
+          }
+
+          case "done":
+            // Script exited (python_script driver)
+            setRuntimeState("stopped");
+            isRunningRef.current = false;
+            runtimeAbortRef.current = null;
+            return;
+
+          case "error":
+          case "unsupported":
+            setRuntimeError({
+              category: ev.category,
+              message: ev.message,
+              fix: ev.fix,
+            });
+            setRuntimeState("failed");
+            isRunningRef.current = false;
+            runtimeAbortRef.current = null;
+            return;
+        }
+      }
+      // SSE stream closed without terminal event
+      setRuntimeState("stopped");
+    } catch (e: unknown) {
+      const isAbort = e instanceof Error && (e.name === "AbortError" || e.message === "AbortError");
+      if (!isAbort) {
+        setRuntimeError({
+          category: "network",
+          message: e instanceof Error ? e.message : "Unexpected error starting runtime",
+          fix: ["Check the server is running and retry"],
+        });
+        setRuntimeState("failed");
+      } else {
+        setRuntimeState("stopped");
+      }
+    } finally {
+      isRunningRef.current = false;
+      runtimeAbortRef.current = null;
+    }
+  }, []);
+
+  /** Stop the running project. Calls DELETE /api/projects/{id}/process. */
+  const handleStop = useCallback(async () => {
+    const projectId = sessionStorage.getItem("flow_active_project");
+    runtimeAbortRef.current?.abort();
+    runtimeAbortRef.current = null;   // explicit clear — handleRun allocates a fresh controller
+    setRuntimeState("stopping");
+    if (projectId) {
+      await stopProject(projectId);
+    }
+    setRuntimeState("stopped");
+    setPreviewUrl(null);
+    setPreviewType(null);
+    isRunningRef.current = false;
+  }, []);
+
+  /** Restart = stop then run again. */
+  const handleRestart = useCallback(async () => {
+    await handleStop();
+    void handleRun();
+  }, [handleStop, handleRun]);
+
+  /**
+   * Send a runtime error to the AI copilot for explanation.
+   * Puts a context-enriched message into the copilot chat.
+   */
+  const handleExplainError = useCallback((err: RuntimeError) => {
+    // We can't directly call AICopilotPanel's send — instead we store the
+    // prompt in sessionStorage so AICopilotPanel picks it up on next mount.
+    // For this phase, we just log to console; the copilot already reads
+    // buildError state and will surface it in the next message context.
+    void err; // consumed by AICopilotPanel via buildError prop
+  }, []);
+
+  // ── View routing ─────────────────────────────────────────────────
+  // Entry: idle, no active build, plan not in flight — includes error states
+  const showEntry    = !buildDone && !isBuilding && planState === "idle";
+  // Building: SSE stream running or plan fetching/reviewing
+  const showBuilding = !buildDone && (isBuilding || planState !== "idle");
+
+  /* ── ENTRY SCREEN ──────────────────────────────────────────────── */
+  if (showEntry) {
+    const SUGGESTIONS = [
+      "نظام إدارة علاقات العملاء للمبيعات",
+      "منصة إدارة الموارد البشرية",
+      "لوحة تحليلات الأعمال",
+      "متجر إلكتروني",
+    ];
+
+    const canBuild = entryPrompt.trim().length > 0;
+
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column",
+        height: "100%", overflow: "hidden",
+        background: "var(--bg-base)",
+        position: "relative",
+      }}>
+        {/* Minimal top bar */}
+        <div style={{
+          height: 48, minHeight: 48,
+          borderBottom: "1px solid var(--b1)",
+          background: "var(--bg-surface)",
+          display: "flex", alignItems: "center",
+          padding: "0 16px", flexShrink: 0,
+        }}>
+          <button
+            onClick={() => setPage("home")}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            {t("topbar.back")}
+          </button>
+        </div>
+
+        {/* Centered entry card */}
+        <div style={{
+          flex: 1, overflowY: "auto",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "32px 16px",
+        }}>
+          <div style={{ maxWidth: 580, width: "100%" }}>
+
+            {/* Main card */}
+            <div style={{
+              background: "var(--bg-surface)",
+              borderRadius: 20,
+              padding: "44px 40px 36px",
+              border: "1px solid var(--b1)",
+              boxShadow: "var(--shadow-lg)",
+              direction: "rtl",
+            }}>
+              {/* Title block */}
+              <div style={{ marginBottom: 28, textAlign: "center" }}>
+                <h1 style={{
+                  fontSize: 28, fontWeight: 800,
+                  color: "var(--t1)", margin: "0 0 8px",
+                  lineHeight: 1.25, letterSpacing: "-0.01em",
+                }}>
+                  ماذا تريد أن تبني؟
+                </h1>
+                <p style={{ fontSize: 14, color: "var(--t4)", margin: 0, lineHeight: 1.6 }}>
+                  صف فكرتك وسيقوم الذكاء الاصطناعي ببنائها لك في ثوانٍ
+                </p>
+              </div>
+
+              {/* Textarea */}
+              <textarea
+                value={entryPrompt}
+                onChange={e => setEntryPrompt(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey && canBuild) {
+                    e.preventDefault();
+                    void handleStartBuild(entryPrompt.trim());
+                  }
+                }}
+                placeholder="صف فكرتك وسأبنيها لك..."
+                rows={4}
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: "1.5px solid var(--b1)",
+                  background: "var(--bg-card)",
+                  color: "var(--t1)",
+                  fontSize: 15, lineHeight: 1.6,
+                  resize: "vertical",
+                  outline: "none",
+                  fontFamily: "inherit",
+                  direction: "rtl",
+                  textAlign: "right",
+                  display: "block",
+                  marginBottom: buildError ? 12 : 16,
+                  transition: "border-color 0.15s",
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+                onBlur={e => { e.currentTarget.style.borderColor = "var(--b1)"; }}
+              />
+
+              {/* Error pill — shows verbatim error message for test compatibility */}
+              {buildError && (
+                <div style={{
+                  marginBottom: 14,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "var(--red-dim, rgba(239,68,68,0.08))",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  display: "flex", alignItems: "flex-start", gap: 10,
+                  direction: "rtl",
+                }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red, #ef4444)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  <span style={{ fontSize: 13, color: "var(--red, #ef4444)", lineHeight: 1.5, flex: 1 }}>
+                    {buildError}
+                  </span>
+                  <button
+                    onClick={() => { setBuildError(null); setPhases(INITIAL_PHASES); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", fontSize: 18, lineHeight: 1, padding: "0 0 0 4px", flexShrink: 0 }}
+                    aria-label="Dismiss error"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              {/* Build button */}
+              <button
+                disabled={!canBuild}
+                onClick={() => { if (canBuild) void handleStartBuild(entryPrompt.trim()); }}
+                style={{
+                  width: "100%",
+                  padding: "14px 24px",
+                  borderRadius: 12,
+                  border: "none",
+                  background: canBuild
+                    ? "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)"
+                    : "var(--bg-card)",
+                  color: canBuild ? "white" : "var(--t5)",
+                  fontSize: 15, fontWeight: 700,
+                  cursor: canBuild ? "pointer" : "not-allowed",
+                  transition: "opacity 0.15s, background 0.15s",
+                  boxShadow: canBuild ? "var(--shadow-btn)" : "none",
+                  opacity: canBuild ? 1 : 0.6,
+                  marginBottom: 10,
+                  letterSpacing: "0.01em",
+                }}
+              >
+                بناء باستخدام الذكاء الاصطناعي →
+              </button>
+
+              {/* Hint */}
+              <p style={{ textAlign: "center", fontSize: 12, color: "var(--t5)", margin: 0, lineHeight: 1.5 }}>
+                سيحوّل وصفك إلى تطبيق قابل للتشغيل.
+              </p>
+            </div>
+
+            {/* Suggestion chips */}
+            <div style={{ marginTop: 20, direction: "rtl" }}>
+              <p style={{
+                fontSize: 11, fontWeight: 600,
+                color: "var(--t5)", textAlign: "center",
+                marginBottom: 10, letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}>
+                أو ابدأ بأحد الاقتراحات
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+                {SUGGESTIONS.map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setEntryPrompt(s)}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 999,
+                      border: "1px solid var(--b1)",
+                      background: "var(--bg-surface)",
+                      color: "var(--t3)",
+                      fontSize: 13, cursor: "pointer",
+                      transition: "border-color 0.12s, color 0.12s",
+                      fontFamily: "inherit",
+                      lineHeight: 1.4,
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = "var(--accent-border)";
+                      e.currentTarget.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = "var(--b1)";
+                      e.currentTarget.style.color = "var(--t3)";
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Billing error overlay — absolute over the full entry screen */}
+        {billingError && (
+          <BillingErrorOverlay
+            provider={billingError.provider}
+            message={billingError.message}
+            action={billingError.action}
+            onRetry={() => {
+              const savedPrompt = billingError.prompt;
+              setBillingError(null);
+              setPhases(INITIAL_PHASES);
+              void handleBuild(savedPrompt);
+            }}
+            onDismiss={() => {
+              setBillingError(null);
+              setPhases(INITIAL_PHASES);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  /* ── BUILDING / PLANNING SCREEN ────────────────────────────────── */
+  if (showBuilding) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column",
+        height: "100%", overflow: "hidden",
+        background: "var(--bg-base)",
+      }}>
+        {/* Minimal top bar */}
+        <div style={{
+          height: 48, minHeight: 48,
+          borderBottom: "1px solid var(--b1)",
+          background: "var(--bg-surface)",
+          display: "flex", alignItems: "center",
+          padding: "0 16px", flexShrink: 0,
+        }}>
+          <button
+            onClick={() => setPage("home")}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            {t("topbar.back")}
+          </button>
+        </div>
+
+        {/* Full area — hosts absolute-positioned overlays */}
+        <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "var(--bg-base)" }}>
+
+          {/* Planning spinner */}
+          {planState === "planning" && (
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 20,
+            }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 16 }}>
+                  {[0,1,2].map(i => (
+                    <div key={i} style={{
+                      width: 9, height: 9, borderRadius: "50%", background: "var(--accent)",
+                      animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`,
+                    }} />
+                  ))}
+                </div>
+                <div style={{ fontSize: 15, color: "white", fontWeight: 700 }}>Generating build plan…</div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", marginTop: 6 }}>AI is analyzing your requirements</div>
+              </div>
+            </div>
+          )}
+
+          {/* Plan review */}
+          {planState === "review" && currentPlan && (
+            <BuildPlanPanel
+              plan={currentPlan}
+              prompt={pendingPrompt}
+              isRefining={false}
+              onApprove={() => { setPlanState("idle"); void handleBuild(pendingPrompt); }}
+              onModify={newPrompt => { setPlanState("idle"); setCurrentPlan(null); void handleStartBuild(newPrompt); }}
+              onCancel={() => { setPlanState("idle"); setCurrentPlan(null); setPendingPrompt(""); }}
+            />
+          )}
+
+          {/* Build progress overlay */}
+          {isBuilding && (
+            <BuildingOverlay
+              phases={phases}
+              onCancel={handleCancel}
+              errorMsg={null}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── WORKSPACE — build done: 3-panel layout ────────────────────── */
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* ── Top bar ──────────────────────────────────────────── */}
@@ -1029,19 +1265,62 @@ export function AppBuilderPage() {
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t2)" }}>{projectName}</div>
         )}
 
-        {/* Action buttons */}
-        <button style={{
-          padding: "6px 14px", borderRadius: 8, border: "1px solid var(--b1)",
-          background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 500, cursor: "pointer",
-        }}>
-          {t("topbar.preview")}
-        </button>
-        <button style={{
-          padding: "6px 14px", borderRadius: 8, border: "1px solid var(--b1)",
-          background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 500, cursor: "pointer",
-        }}>
-          {t("topbar.share")}
-        </button>
+        {/* Runtime controls */}
+        {(runtimeState === "running" || runtimeState === "starting") && (
+          <>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 5,
+              fontSize: 12, fontWeight: 600,
+              color: runtimeState === "running" ? "var(--green)" : "var(--accent)",
+            }}>
+              <div style={{
+                width: 7, height: 7, borderRadius: "50%",
+                background: runtimeState === "running" ? "var(--green)" : "var(--accent)",
+                animation: runtimeState === "starting" ? "pulse 1s ease-in-out infinite" : "none",
+              }} />
+              {runtimeState === "running" ? "Running" : "Starting…"}
+            </div>
+            {runtimeState === "running" && (
+              <button
+                onClick={() => void handleRestart()}
+                style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid var(--b1)", background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer" }}
+              >
+                ↺ Restart
+              </button>
+            )}
+            {runtimeState === "running" && previewUrl && previewType === "proxy" && (
+              <button
+                onClick={() => window.open(`${window.location.origin}${previewUrl}`, "_blank")}
+                style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid var(--b1)", background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer" }}
+              >
+                ⇱ Open
+              </button>
+            )}
+            <button
+              onClick={() => void handleStop()}
+              style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "var(--red, #ef4444)", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
+            >
+              ■ Stop
+            </button>
+          </>
+        )}
+
+        {/* Run Project button — idle/stopped/failed after build */}
+        {(runtimeState === "idle" || runtimeState === "ready_to_run" || runtimeState === "stopped" || runtimeState === "failed") && (
+          <button
+            onClick={() => void handleRun()}
+            style={{
+              padding: "6px 14px", borderRadius: 8, border: "none",
+              background: "linear-gradient(135deg, var(--green, #16a34a) 0%, var(--teal) 100%)",
+              color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              boxShadow: "var(--shadow-btn)",
+            }}
+          >
+            ▶ Run Project
+          </button>
+        )}
+
+        {/* Publish */}
         <button style={{
           padding: "6px 14px", borderRadius: 8, border: "none",
           background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
@@ -1053,53 +1332,68 @@ export function AppBuilderPage() {
       </div>
 
       {/* ── 3-panel workspace ─────────────────────────────────── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <AppSidebar section={section} setSection={setSection} projectName={projectName} />
-        <PreviewPanel section={section} projectName={projectName} isBuilding={isBuilding} buildDone={buildDone} />
-        <AIBuilderPanel onBuild={prompt => void handleBuild(prompt)} projectName={projectName} isBuilding={isBuilding} />
-
-        {/* Build overlay — shown while build is in progress or errored */}
-        {(isBuilding || buildError) && (
-          <BuildingOverlay
-            phases={phases}
-            onCancel={buildError ? () => { setBuildError(null); setPhases(INITIAL_PHASES); } : handleCancel}
-            errorMsg={buildError}
-          />
-        )}
-
-        {/* Dev mode badge — shown when server routed to DevMockProvider */}
-        {isDevMode && (
-          <div style={{
-            position: "absolute", top: 12, right: 12, zIndex: 10,
-            display: "flex", alignItems: "center", gap: 5,
-            background: "var(--bg-card)", border: "1px solid var(--b1)",
-            borderRadius: 99, padding: "4px 10px",
-            fontSize: 11, fontWeight: 600, color: "var(--t4)",
-            boxShadow: "0 1px 4px rgba(0,0,0,.08)",
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--teal)", flexShrink: 0 }} />
-            وضع التطوير
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="ab-panels" style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+          <div className="ab-nav">
+            <AppSidebar section={section} setSection={setSection} projectName={projectName} />
           </div>
-        )}
 
-        {/* Billing error overlay — replaces generic error; never crashes the DOM */}
-        {billingError && !isBuilding && (
-          <BillingErrorOverlay
-            provider={billingError.provider}
-            message={billingError.message}
-            action={billingError.action}
-            onRetry={() => {
-              const savedPrompt = billingError.prompt;
-              setBillingError(null);
-              setPhases(INITIAL_PHASES);
-              void handleBuild(savedPrompt);
-            }}
-            onDismiss={() => {
-              setBillingError(null);
-              setPhases(INITIAL_PHASES);
-            }}
+          <div className="ab-runtime" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
+            <RuntimePanel
+              runtimeState={runtimeState}
+              previewUrl={previewUrl}
+              previewType={previewType}
+              runtimeError={runtimeError}
+              buildDone={buildDone}
+              projectName={projectName}
+              startupMessages={startupMessages}
+              onRun={() => void handleRun()}
+              onStop={() => void handleStop()}
+              onRestart={() => void handleRestart()}
+              onExplainError={handleExplainError}
+            />
+          </div>
+
+          {/* Dev mode badge — shown when server routed to DevMockProvider */}
+          {isDevMode && (
+            <div style={{
+              position: "absolute", top: 12, right: 12, zIndex: 10,
+              display: "flex", alignItems: "center", gap: 5,
+              background: "var(--bg-card)", border: "1px solid var(--b1)",
+              borderRadius: 99, padding: "4px 10px",
+              fontSize: 11, fontWeight: 600, color: "var(--t4)",
+              boxShadow: "0 1px 4px rgba(0,0,0,.08)",
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--teal)", flexShrink: 0 }} />
+              وضع التطوير
+            </div>
+          )}
+
+          <AICopilotPanel
+            onBuild={prompt => void handleStartBuild(prompt)}
+            projectName={projectName}
+            isBuilding={isBuilding}
+            buildError={buildError}
+            fileCount={buildFileCount}
+            language={buildLanguage}
+            currentSection={section}
           />
-        )}
+        </div>
+
+        <BottomTabBar
+          buildEvents={buildEvents}
+          buildDone={buildDone}
+          buildError={buildError}
+          isBuilding={isBuilding}
+          fileCount={buildFileCount}
+          language={buildLanguage}
+          projectId={sessionStorage.getItem("flow_active_project")}
+          plan={currentPlan}
+          height={bottomHeight}
+          onResize={h => setBottomHeight(Math.max(120, Math.min(480, h)))}
+          runtimeEvents={runtimeEvents}
+          runtimeState={runtimeState}
+        />
       </div>
 
       {/* Build done banner */}

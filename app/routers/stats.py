@@ -23,6 +23,12 @@ async def get_stats(request: Request):
         completed     = await conn.fetchval(
             "SELECT COUNT(*) FROM agent_runs ar JOIN projects p ON ar.project_id=p.id "
             "WHERE p.user_id=$1 AND ar.status='completed'", uid)
+        failed        = await conn.fetchval(
+            "SELECT COUNT(*) FROM agent_runs ar JOIN projects p ON ar.project_id=p.id "
+            "WHERE p.user_id=$1 AND ar.status IN ('failed','error')", uid)
+        active        = await conn.fetchval(
+            "SELECT COUNT(*) FROM agent_runs ar JOIN projects p ON ar.project_id=p.id "
+            "WHERE p.user_id=$1 AND ar.status IN ('running','pending')", uid)
         conv_count    = await conn.fetchval(
             "SELECT COUNT(*) FROM conversations c JOIN projects p ON c.project_id=p.id "
             "WHERE p.user_id=$1", uid)
@@ -30,17 +36,35 @@ async def get_stats(request: Request):
             "SELECT COUNT(*) FROM messages m "
             "JOIN conversations c ON m.conversation_id=c.id "
             "JOIN projects p ON c.project_id=p.id WHERE p.user_id=$1", uid)
+        # Recent failed runs for "Needs Attention"
+        failed_runs   = await conn.fetch(
+            "SELECT ar.id, ar.agent_type, ar.error_message, ar.started_at, p.name as project_name "
+            "FROM agent_runs ar JOIN projects p ON ar.project_id=p.id "
+            "WHERE p.user_id=$1 AND ar.status IN ('failed','error') "
+            "ORDER BY ar.started_at DESC LIMIT 5", uid)
         logs          = await conn.fetch(
             "SELECT action, details, created_at FROM usage_logs "
-            "WHERE user_id=$1 ORDER BY created_at DESC LIMIT 10", uid,
+            "WHERE user_id=$1 ORDER BY created_at DESC LIMIT 20", uid,
         )
     return {
         "projects":       int(project_count),
         "agent_runs":     int(run_count),
         "completed_runs": int(completed),
+        "failed_runs":    int(failed),
+        "active_runs":    int(active),
         "conversations":  int(conv_count),
         "messages":       int(msg_count),
         "success_rate":   round(int(completed) / max(int(run_count), 1) * 100, 1),
+        "failed_run_items": [
+            {
+                "id":           str(r["id"]),
+                "agent_type":   r["agent_type"],
+                "error":        r["error_message"] or "Unknown error",
+                "project_name": r["project_name"],
+                "time":         r["started_at"].isoformat(),
+            }
+            for r in failed_runs
+        ],
         "recent_activity": [
             {
                 "action":  r["action"],

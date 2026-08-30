@@ -20,6 +20,13 @@ interface Props {
   onSendBackward: () => void;
 }
 
+const layerBtn: React.CSSProperties = {
+  flex: 1, padding: "6px 8px", fontSize: "11px",
+  border: "1px solid var(--border)", borderRadius: "var(--r-xs, 4px)",
+  background: "var(--bg-input)", color: "var(--t2)",
+  cursor: "pointer", fontFamily: "inherit", transition: "background 0.12s, border-color 0.12s",
+};
+
 export function PropertiesPanel({ getCanvas, selectedIds, onBringForward, onSendBackward }: Props) {
   const { t } = useTranslation("designStudio");
 
@@ -27,7 +34,7 @@ export function PropertiesPanel({ getCanvas, selectedIds, onBringForward, onSend
     return (
       <div style={{
         padding: "16px 12px",
-        color: "#6b7280",
+        color: "var(--t4)",
         fontSize: "12px",
         textAlign: "center",
         lineHeight: 1.5,
@@ -37,19 +44,16 @@ export function PropertiesPanel({ getCanvas, selectedIds, onBringForward, onSend
     );
   }
 
-  const layerBtn: React.CSSProperties = {
-    flex: 1, padding: "6px 8px", fontSize: "12px", border: "1px solid #374151",
-    borderRadius: "4px", background: "#1f2937", color: "#f9fafb", cursor: "pointer",
-  };
-
   return (
     <div style={{ overflowY: "auto", maxHeight: "100%" }}>
-      <div style={{ display: "flex", gap: "8px", padding: "12px 12px 0" }}>
+      <div style={{ display: "flex", gap: "6px", padding: "10px 12px 0" }}>
         <button
           onClick={onBringForward}
           title={t("propertiesPanel.bringForward")}
           aria-label={t("propertiesPanel.bringForward")}
           style={layerBtn}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--ba)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; }}
         >
           {t("propertiesPanel.bringForward")}
         </button>
@@ -58,6 +62,8 @@ export function PropertiesPanel({ getCanvas, selectedIds, onBringForward, onSend
           title={t("propertiesPanel.sendBackward")}
           aria-label={t("propertiesPanel.sendBackward")}
           style={layerBtn}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--ba)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; }}
         >
           {t("propertiesPanel.sendBackward")}
         </button>

@@ -77,7 +77,97 @@ function SuccessBar({ rate, height = 6 }: { rate: number; height?: number }) {
   );
 }
 
-function ResultBox({ result }: { result: AgentResult }) {
+// ── Runtime error helpers ─────────────────────────────────────────────────────
+
+/**
+ * Returns true if this failure is a "no runtime detected" error — either the
+ * early workspace check in run_agent.py (error_code: EMPTY_WORKSPACE) or the
+ * engine-level fallback (message contains "Runtime" and "not supported").
+ */
+function isRuntimeError(result: AgentResult): boolean {
+  const code = result.data?.error_code as string | undefined;
+  if (code === "EMPTY_WORKSPACE") return true;
+  const err = result.error ?? "";
+  return (
+    err.includes("not recognisable source files") ||
+    err.includes("Runtime '") ||
+    (err.includes("runtime") && err.includes("not supported"))
+  );
+}
+
+function isEmptyWorkspaceError(result: AgentResult): boolean {
+  return (result.data?.error_code as string | undefined) === "EMPTY_WORKSPACE";
+}
+
+// ── Runtime Error Card ────────────────────────────────────────────────────────
+
+function RuntimeErrorCard({ result, onRetry }: { result: AgentResult; onRetry: () => void }) {
+  const { t } = useTranslation("agentos");
+  const empty = isEmptyWorkspaceError(result);
+  const title = empty
+    ? t("errors.emptyWorkspace.title")
+    : t("errors.runtimeNotSupported.title");
+  const detail = empty
+    ? t("errors.emptyWorkspace.detail")
+    : t("errors.runtimeNotSupported.detail");
+
+  return (
+    <GlassCard lift={false} style={{
+      marginTop: 12,
+      background: "var(--red-dim)",
+      border: "1px solid var(--red)",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+        <span style={{
+          width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+          background: "var(--red)", color: "#fff",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 16,
+        }}>✗</span>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--red)" }}>{title}</div>
+          <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>
+            {result.agent} · {result.duration_ms.toFixed(0)}ms
+          </div>
+        </div>
+      </div>
+
+      {/* Detail */}
+      <div style={{
+        padding: "10px 12px", borderRadius: 8,
+        background: "var(--bg-base)", border: "1px solid var(--border)",
+        marginBottom: 12,
+      }}>
+        <div style={{ fontSize: 13, color: "var(--t1)", marginBottom: 6 }}>{detail}</div>
+        {empty && (
+          <>
+            <div style={{ fontSize: 12, color: "var(--t2)", marginBottom: 4 }}>
+              {t("errors.emptyWorkspace.guidance")}
+            </div>
+            <div style={{
+              fontSize: 11, color: "var(--t3)",
+              fontFamily: "var(--font-mono)", marginTop: 6,
+            }}>
+              {t("errors.emptyWorkspace.supportedTypes")}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+        <GoldButton onClick={onRetry} style={{ padding: "6px 16px", fontSize: 12 }}>
+          {t(empty ? "errors.emptyWorkspace.retryButton" : "errors.runtimeNotSupported.retryButton")}
+        </GoldButton>
+      </div>
+    </GlassCard>
+  );
+}
+
+// ── Result Box ────────────────────────────────────────────────────────────────
+
+function ResultBox({ result, onRetry }: { result: AgentResult; onRetry?: () => void }) {
   const { t } = useTranslation("agentos");
   const toast = useToast();
   const border = result.success ? "var(--green)" : "var(--red)";
@@ -93,6 +183,12 @@ function ResultBox({ result }: { result: AgentResult }) {
       toast(t("terminal.deliverable.downloadFailed", { error: String(e) }), "err");
     }
   }, [deliverableId, deliverableLabel, toast, t]);
+
+  // Show structured, actionable UI for runtime / workspace errors instead of
+  // the raw backend error text.
+  if (!result.success && isRuntimeError(result)) {
+    return <RuntimeErrorCard result={result} onRetry={onRetry ?? (() => {})} />;
+  }
 
   return (
     <GlassCard lift={false} style={{ marginTop: 12, background: result.success ? "var(--green-dim)" : "var(--red-dim)", border: `1px solid ${border}` }}>
@@ -573,6 +669,9 @@ export function AgentOSPage() {
   const [status, setStatus]         = useState<SystemStatus | null>(null);
   const [perfData, setPerfData]     = useState<PerfData | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  // Ref to the CommandTerminal container — used by the retry button on
+  // RuntimeErrorCard to scroll back to the terminal so the user can re-run.
+  const terminalRef = useRef<HTMLDivElement>(null);
   const { runningDeltas } = useAgentLiveness();
   const isAgentRunning = useCallback(
     (name: string) => runningDeltas.get(name)
@@ -664,8 +763,16 @@ export function AgentOSPage() {
       <div style={S.body}>
         {tab === "terminal" && (
           <>
-            <CommandTerminal onResult={handleResult} />
-            {results.map((r, i) => <ResultBox key={i} result={r} />)}
+            <div ref={terminalRef}>
+              <CommandTerminal onResult={handleResult} />
+            </div>
+            {results.map((r, i) => (
+              <ResultBox
+                key={i}
+                result={r}
+                onRetry={() => terminalRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              />
+            ))}
           </>
         )}
         {tab === "agents" && <AgentGrid agents={agents} isRunning={isAgentRunning} />}

@@ -131,8 +131,7 @@ async def agent_ws(ws: WebSocket, session_id: str):
     the "subscribe" message exists in src/renderer), so tightening this
     carries no regression risk to an active feature.
     """
-    token   = ws.query_params.get("token", "")
-    user_id = _user_id_from_ws_token(token)
+    user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
         return
@@ -261,8 +260,7 @@ async def system_ws(ws: WebSocket):
     per-tenant secret, but the channel still requires a valid session so
     it isn't wide open to anyone on the internet, matching every other
     WS endpoint here that carries live operational data."""
-    token   = ws.query_params.get("token", "")
-    user_id = _user_id_from_ws_token(token)
+    user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
         return
@@ -307,8 +305,7 @@ async def system_run_ws(ws: WebSocket, run_id: str):
     run_id with no owner on record — not yet started, or started by an
     unauthenticated caller — falls back to any authenticated user, same
     as deliverables' "no owner recorded" case."""
-    token   = ws.query_params.get("token", "")
-    user_id = _user_id_from_ws_token(token)
+    user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
         return
@@ -346,7 +343,12 @@ def _user_id_from_ws_token(token: str) -> str | None:
     """Browsers can't set an Authorization header on a WS handshake, so the
     access token travels as a query param instead. Same JWT the REST API
     already issues (app.core.jwt_utils) — its `sub` claim IS the user id,
-    no extra DB round-trip needed."""
+    no extra DB round-trip needed.
+
+    DEPRECATED PATH: token in URL is logged by reverse proxies. New clients
+    should use ?ticket= (see app/routers/ws_ticket.py). This function is
+    kept for backward compatibility and will be removed in a future release.
+    """
     if not token:
         return None
     try:
@@ -354,6 +356,32 @@ def _user_id_from_ws_token(token: str) -> str | None:
         return decode_access_token(token).get("sub")
     except Exception:
         return None
+
+
+def _user_id_from_ws_params(ws: WebSocket) -> str | None:
+    """Resolve user identity from WS query params.
+
+    Preference order:
+      1. ?ticket=<opaque> — short-lived single-use ticket (secure; not logged as JWT)
+      2. ?token=<jwt>     — legacy; JWT in URL is visible in access logs (P1 risk)
+
+    New clients must use the ticket path. Token path is kept for backward
+    compatibility only.
+    """
+    # 1. Ticket path (preferred, secure)
+    ticket = ws.query_params.get("ticket", "")
+    if ticket:
+        from app.routers.ws_ticket import consume_ticket
+        user_id = consume_ticket(ticket)
+        if user_id:
+            return user_id
+        # Invalid/expired ticket — don't fall through to token path.
+        # A caller that correctly obtained a ticket should not also send a token.
+        return None
+
+    # 2. Legacy token path (backward compat)
+    token = ws.query_params.get("token", "")
+    return _user_id_from_ws_token(token)
 
 
 @router.websocket("/ws/notifications")
@@ -371,8 +399,7 @@ async def notifications_ws(ws: WebSocket):
     `presence:{user_id}`, so {"type": "event", "topic": "presence:{user_id}",
     "data": {"user_id": ..., "online": ...}} frames for this user's org-mates
     arrive here too, interleaved with notification events."""
-    token   = ws.query_params.get("token", "")
-    user_id = _user_id_from_ws_token(token)
+    user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
         return
@@ -452,8 +479,7 @@ async def chat_ws(ws: WebSocket, room_key: str):
     (POST /api/orgs/{org_id}/chat/messages or .../teams/{team_id}/chat/
     messages), which broadcasts here after persisting. Clients should fetch
     the REST history endpoint on connect/reconnect to backfill."""
-    token   = ws.query_params.get("token", "")
-    user_id = _user_id_from_ws_token(token)
+    user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
         return

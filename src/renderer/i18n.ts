@@ -43,6 +43,8 @@ import runsEn from "./locales/en/runs.json";
 import runsAr from "./locales/ar/runs.json";
 import integrationsEn from "./locales/en/integrations.json";
 import integrationsAr from "./locales/ar/integrations.json";
+import trainingStudioEn from "./locales/en/trainingStudio.json";
+import trainingStudioAr from "./locales/ar/trainingStudio.json";
 
 void i18next.use(initReactI18next).init({
   resources: {
@@ -52,6 +54,7 @@ void i18next.use(initReactI18next).init({
       marketplace: marketplaceEn, aiRouting: aiRoutingEn, observability: observabilityEn, ai: aiEn,
       designStudio: designStudioEn, teams: teamsEn, billing: billingEn, agentos: agentosEn, dev: devEn,
       appBuilder: appBuilderEn, runs: runsEn, integrations: integrationsEn,
+      trainingStudio: trainingStudioEn,
     },
     ar: {
       common: commonAr, home: homeAr, settings: settingsAr, auth: authAr, social: socialAr,
@@ -59,6 +62,7 @@ void i18next.use(initReactI18next).init({
       marketplace: marketplaceAr, aiRouting: aiRoutingAr, observability: observabilityAr, ai: aiAr,
       designStudio: designStudioAr, teams: teamsAr, billing: billingAr, agentos: agentosAr, dev: devAr,
       appBuilder: appBuilderAr, runs: runsAr, integrations: integrationsAr,
+      trainingStudio: trainingStudioAr,
     },
   },
   lng: "en",
@@ -67,7 +71,7 @@ void i18next.use(initReactI18next).init({
   ns: [
     "common", "home", "settings", "auth", "social", "organizations", "sandbox", "plugins",
     "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos", "dev",
-    "appBuilder", "runs", "integrations",
+    "appBuilder", "runs", "integrations", "trainingStudio",
   ],
   interpolation: { escapeValue: false },
   returnEmptyString: false,

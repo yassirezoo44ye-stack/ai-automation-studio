@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from pathlib import Path
 
 from app.agents.base import AgentContext, AgentPermissions, AgentResult, EvolvableAgent
 
@@ -15,6 +16,35 @@ _FAILURE_EVENT_TYPES = frozenset({
     "validation_failed", "install_failed", "build_failed",
     "execution_failed", "unsupported",
 })
+
+# Detection criteria that mirror RuntimeRegistry's four built-in adapters.
+# Keep these in sync with:
+#   app/execution/platform/runtimes/node.py       (priority 10)
+#   app/execution/platform/runtimes/python_rt.py  (priority 20)
+#   app/execution/platform/runtimes/docker_rt.py  (priority 30)
+#   app/execution/platform/runtimes/electron_rt.py (priority 40)
+_RUNTIME_INDICATORS: list[tuple[str, list[str]]] = [
+    ("Node.js",  ["package.json", "*.js", "*.ts", "*.jsx", "*.tsx"]),
+    ("Python",   ["requirements.txt", "pyproject.toml", "*.py"]),
+    ("Docker",   ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"]),
+]
+
+
+def _detect_runtime_type(workspace: Path) -> str | None:
+    """Return a human-readable runtime label if any indicator is found, else None.
+
+    Only checks the workspace root — matching the four built-in runtimes'
+    detect() implementations exactly — so the result is consistent with
+    what RuntimeRegistry.select() would decide.
+    """
+    for label, indicators in _RUNTIME_INDICATORS:
+        for pattern in indicators:
+            if "*" in pattern:
+                if any(True for _ in workspace.glob(pattern)):
+                    return label
+            elif (workspace / pattern).exists():
+                return label
+    return None
 
 
 class RunAgent(EvolvableAgent):
@@ -70,12 +100,47 @@ class RunAgent(EvolvableAgent):
         ws = project_workspace(str(pid))
         project_id = str(pid)
 
+        # ── Workspace content validation ──────────────────────────────────────
+        # Check BEFORE calling UnifiedExecutionEngine so the user gets a clear,
+        # actionable message instead of the generic "Runtime 'unknown' is not
+        # supported in this sandbox" that the engine emits when no runtime
+        # matches an empty or unrecognised workspace.
+        #
+        # This mirrors RuntimeRegistry.select()'s detection logic — if we
+        # can't find an indicator here, the engine will also find nothing.
+        detected_runtime = _detect_runtime_type(ws)
+        if detected_runtime is None:
+            return AgentResult.fail(
+                self.name,
+                (
+                    f"Project '{ws.name}' has no recognisable source files.\n\n"
+                    "To run a project, the workspace must contain at least one of:\n"
+                    "  • package.json or *.js / *.ts files  → Node.js runtime\n"
+                    "  • requirements.txt, pyproject.toml, or *.py files  → Python runtime\n"
+                    "  • Dockerfile or docker-compose.yml  → Docker runtime\n\n"
+                    "Steps to fix:\n"
+                    "  1. Open the App Builder and generate or upload project files.\n"
+                    "  2. Or build the project first from the Dev → Build tab.\n"
+                    "  3. Then run this command again."
+                ),
+                data={
+                    "workspace"  : str(ws),
+                    "error_code" : "EMPTY_WORKSPACE",
+                    "project_id" : project_id,
+                },
+            )
+
+        await ctx.step(
+            f"Detected runtime: {detected_runtime} — starting {ws.name}…",
+            "terminal",
+            workspace=str(ws),
+            runtime=detected_runtime,
+        )
+
         try:
             from app.execution.platform.engine import UnifiedExecutionEngine
             execution_id = str(uuid.uuid4())
             engine = UnifiedExecutionEngine()
-
-            await ctx.step(f"Starting {ws.name}…", "terminal", workspace=str(ws))
 
             events: list[dict] = []
             async for raw_event in engine.run(ws, project_id, execution_id):
@@ -94,7 +159,11 @@ class RunAgent(EvolvableAgent):
                     return AgentResult.fail(
                         self.name,
                         event.get("message", f"execution failed: {event.get('type')}"),
-                        data={"events": events[-10:], "workspace": str(ws)},
+                        data={
+                            "events"    : events[-10:],
+                            "workspace" : str(ws),
+                            "error_code": event.get("error_code", "EXECUTION_FAILED"),
+                        },
                     )
 
             return AgentResult.ok(
@@ -104,6 +173,7 @@ class RunAgent(EvolvableAgent):
                     "workspace"   : str(ws),
                     "execution_id": execution_id,
                     "event_count" : len(events),
+                    "runtime"     : detected_runtime,
                 },
             )
         except Exception as exc:

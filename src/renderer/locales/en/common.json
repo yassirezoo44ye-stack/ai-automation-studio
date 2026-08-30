@@ -2,21 +2,34 @@
   "sidebar": {
     "groups": {
       "workspace": "Workspace",
-      "automation": "Automation",
+      "build": "Build",
+      "operate": "Operate",
       "platform": "Platform",
       "organization": "Organization",
-      "build": "Build",
-      "system": "System",
-      "more": "More"
+      "automation": "Automation",
+      "system": "System"
     },
     "nav": {
-      "home": "Dashboard", "ai": "AI", "dev": "Dev", "design": "Design Studio",
-      "automation": "Automations", "agentos": "Agents", "marketplace": "Templates", "plugins": "Packages", "sandbox": "Analytics",
-      "aiRouting": "API", "observability": "Data",
-      "organizations": "Organizations", "teams": "Teams", "billing": "Billing", "social": "Social", "settings": "Settings",
+      "home": "Command Center",
+      "ai": "Conversations",
+      "dev": "Dev",
+      "design": "Design Studio",
+      "automation": "Workflows",
+      "agentos": "Agents",
+      "marketplace": "Marketplace",
+      "plugins": "Packages",
+      "sandbox": "Logs",
+      "aiRouting": "AI Gateway",
+      "observability": "Monitoring",
+      "organizations": "Organizations",
+      "teams": "Teams",
+      "billing": "Billing",
+      "social": "Social",
+      "settings": "Settings",
       "appBuilder": "App Builder",
       "runs": "Runs",
-      "integrations": "Integrations"
+      "integrations": "Integrations",
+      "trainingStudio": "Training Studio"
     },
     "mainNav": "Main navigation",
     "collapse": "Collapse sidebar",
@@ -59,7 +72,8 @@
       "settings": { "label": "Settings", "sub": "App configuration" },
       "app-builder": { "label": "App Builder", "sub": "Build apps with AI" },
       "runs": { "label": "Runs", "sub": "Monitor executions" },
-      "integrations": { "label": "Integrations", "sub": "Connect your tools" }
+      "integrations": { "label": "Integrations", "sub": "Connect your tools" },
+      "training": { "label": "Training Studio", "sub": "Create AI-powered training courses" }
     },
     "actions": {
       "newChat": { "label": "New Chat", "sub": "Start a conversation" },

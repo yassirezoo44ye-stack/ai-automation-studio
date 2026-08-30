@@ -1198,3 +1198,132 @@ class TestBuildJobHandlerErrorHardening:
         svc = AppBuilderService.__new__(AppBuilderService)
         src = inspect.getsource(svc.build_job_handler)
         assert 'payload["app_id"]' in src or "payload['app_id']" in src
+
+
+# ── AI Provider Billing Error Contract (Phase 4) ──────────────────────────────
+
+class TestAIProviderBillingErrorContract:
+    """
+    Verify the structured billing-error contract across all endpoints that
+    invoke the AI provider (create_app, preview_spec, modify_app).
+
+    Approach: source-level inspection, consistent with the rest of this file.
+    HTTP-layer tests require a live DB; contract properties are verifiable
+    from the source without one.
+    """
+
+    def _router_src(self, fn_name: str) -> str:
+        import inspect
+        from app.routers import app_builder as router_mod
+        return inspect.getsource(getattr(router_mod, fn_name))
+
+    # ── create_app ────────────────────────────────────────────────────────────
+
+    def test_create_app_catches_ai_provider_error(self):
+        src = self._router_src("create_app")
+        assert "AIProviderError" in src, (
+            "create_app must catch AIProviderError to prevent 500 on provider failures"
+        )
+
+    def test_create_app_billing_returns_402(self):
+        src = self._router_src("create_app")
+        assert "BILLING_REQUIRED" in src
+        assert "402" in src, "create_app must return HTTP 402 for billing failures"
+
+    def test_create_app_billing_response_is_structured(self):
+        src = self._router_src("create_app")
+        assert "AI_PROVIDER_BILLING_REQUIRED" in src, (
+            "create_app must return error.code='AI_PROVIDER_BILLING_REQUIRED'"
+        )
+        assert '"retryable": False' in src or "'retryable': False" in src, (
+            "create_app billing response must set retryable=False"
+        )
+
+    def test_create_app_billing_never_leaks_api_key(self):
+        src = self._router_src("create_app")
+        # The 402 response must not read raw credential attributes from the
+        # exception or request (e.g. exc.api_key, request.headers.get("Authorization")).
+        # exc.provider and exc.message are explicitly safe (see AIProviderError docstring).
+        assert "exc.api_key" not in src, (
+            "create_app must not expose exc.api_key in the 402 response"
+        )
+        assert 'get("Authorization")' not in src and 'get("authorization")' not in src, (
+            "create_app must not read Authorization header into the 402 response"
+        )
+
+    # ── preview_spec ──────────────────────────────────────────────────────────
+
+    def test_preview_spec_catches_ai_provider_error(self):
+        src = self._router_src("preview_spec")
+        assert "AIProviderError" in src
+
+    def test_preview_spec_billing_returns_402(self):
+        src = self._router_src("preview_spec")
+        assert "402" in src
+        assert "AI_PROVIDER_BILLING_REQUIRED" in src
+
+    # ── modify_app ────────────────────────────────────────────────────────────
+
+    def test_modify_app_catches_ai_provider_error(self):
+        """modify_app must catch AIProviderError so billing failures don't become 500."""
+        src = self._router_src("modify_app")
+        assert "AIProviderError" in src, (
+            "modify_app must catch AIProviderError (Phase 4 billing error contract)"
+        )
+
+    def test_modify_app_billing_returns_402(self):
+        src = self._router_src("modify_app")
+        assert "BILLING_REQUIRED" in src, (
+            "modify_app must handle BILLING_REQUIRED specifically"
+        )
+        assert "402" in src, "modify_app must return 402 for billing failures"
+
+    def test_modify_app_billing_response_is_structured(self):
+        src = self._router_src("modify_app")
+        assert "AI_PROVIDER_BILLING_REQUIRED" in src
+        assert "retryable" in src and "False" in src
+
+    def test_modify_app_non_billing_ai_error_returns_502(self):
+        """Non-billing AI errors (rate limit, timeout, etc.) must become 502, not 500."""
+        src = self._router_src("modify_app")
+        assert "502" in src, (
+            "modify_app must return 502 for non-billing AI provider errors, not 500"
+        )
+
+    def test_modify_app_billing_error_before_generic_exception(self):
+        """AIProviderError handler must come BEFORE the generic Exception handler."""
+        src = self._router_src("modify_app")
+        ai_idx   = src.find("AIProviderError")
+        gen_idx  = src.find("except Exception")
+        assert ai_idx != -1, "AIProviderError not found in modify_app"
+        assert gen_idx != -1, "Generic except Exception not found in modify_app"
+        assert ai_idx < gen_idx, (
+            "AIProviderError handler must appear before 'except Exception' "
+            "so billing errors aren't swallowed into the generic 500 handler"
+        )
+
+    # ── Shared contract ───────────────────────────────────────────────────────
+
+    def test_billing_response_includes_provider_field(self):
+        """All 402 responses must expose which provider failed so UX can be specific."""
+        for fn in ("create_app", "preview_spec", "modify_app"):
+            src = self._router_src(fn)
+            assert '"provider"' in src or "'provider'" in src, (
+                f"{fn} 402 response must include a 'provider' field"
+            )
+
+    def test_billing_response_includes_action_field(self):
+        """All 402 responses must include an actionable recovery hint."""
+        for fn in ("create_app", "preview_spec", "modify_app"):
+            src = self._router_src(fn)
+            assert '"action"' in src or "'action'" in src, (
+                f"{fn} 402 response must include an 'action' field with recovery instructions"
+            )
+
+    def test_non_retryable_flag_set_in_all_billing_responses(self):
+        """retryable=False must appear in every billing error response."""
+        for fn in ("create_app", "preview_spec", "modify_app"):
+            src = self._router_src(fn)
+            assert "False" in src and "retryable" in src, (
+                f"{fn} must set retryable=False in the billing 402 response"
+            )

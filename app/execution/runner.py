@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import secrets
 import shlex
 from pathlib import Path
 from typing import AsyncIterator, AsyncGenerator, Optional
@@ -56,8 +57,10 @@ async def run_stream(
     project_id: str,
     ws: Path,
     command_override: Optional[str],
+    request_id: Optional[str] = None,
 ) -> AsyncIterator[str]:
-    async for chunk in _with_heartbeat(_run(project_id, ws, command_override)):
+    rid = request_id or secrets.token_hex(8)
+    async for chunk in _with_heartbeat(_run(project_id, ws, command_override, rid)):
         yield chunk
 
 
@@ -65,11 +68,13 @@ async def run_sync(
     project_id: str,
     ws: Path,
     command_override: Optional[str],
+    request_id: Optional[str] = None,
 ) -> dict:
+    rid = request_id or secrets.token_hex(8)
     last: dict = {"type": "error", "category": "execution",
                   "message": "No response from execution engine",
                   "fix": ["Retry the operation"], "severity": "high", "recoverable": True}
-    async for chunk in _run(project_id, ws, command_override):
+    async for chunk in _run(project_id, ws, command_override, rid):
         if chunk.startswith("data: "):
             try:
                 ev = json.loads(chunk[6:])
@@ -82,7 +87,14 @@ async def run_sync(
 
 # ── Core ──────────────────────────────────────────────────────────────────────
 
-async def _run(project_id: str, ws: Path, command_override: Optional[str]):
+async def _run(project_id: str, ws: Path, command_override: Optional[str], request_id: str = ""):
+    # runtime_id is stable for this run's lifetime; request_id comes from the HTTP layer.
+    runtime_id = secrets.token_hex(8)
+
+    def _ev_r(type_: str, **kw) -> str:
+        """Emit SSE event with observability fields for distributed tracing."""
+        return _ev(type_, request_id=request_id, runtime_id=runtime_id, **kw)
+
     if not ws.exists():
         yield sse_error(
             category="config",
@@ -102,14 +114,14 @@ async def _run(project_id: str, ws: Path, command_override: Optional[str]):
         return
 
     info = det.detect(ws)
-    log.info("run project=%s type=%s strategy=%s entry=%s",
-             project_id, info.project_type, info.run_strategy, info.entry_point)
+    log.info("run project=%s type=%s strategy=%s entry=%s request_id=%s runtime_id=%s",
+             project_id, info.project_type, info.run_strategy, info.entry_point, request_id, runtime_id)
 
-    yield _ev("status",
-              message=f"🔍 Detected: {info.project_type} ({info.confidence} confidence)",
-              project_type=info.project_type,
-              entry_point=info.entry_point,
-              run_strategy=info.run_strategy)
+    yield _ev_r("status",
+                message=f"🔍 Detected: {info.project_type} ({info.confidence} confidence)",
+                project_type=info.project_type,
+                entry_point=info.entry_point,
+                run_strategy=info.run_strategy)
 
     # ── Phase 2: preflight gate ───────────────────────────────────────────────
     if info.run_strategy not in _NO_PREFLIGHT_STRATEGIES:

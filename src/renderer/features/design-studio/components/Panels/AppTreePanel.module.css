@@ -1,0 +1,151 @@
+/* AppTreePanel — App Builder left panel */
+
+.panel {
+  display:        flex;
+  flex-direction: column;
+  width:          100%;
+  background:     var(--surface-1);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  padding:       10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink:   0;
+}
+
+.headerTitle {
+  font-size:      10px;
+  font-weight:    700;
+  color:          var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+/* ── Scrollable tree ─────────────────────────────────────────────────────── */
+
+.tree {
+  padding: 4px 0 8px;
+}
+
+/* ── Group section ───────────────────────────────────────────────────────── */
+
+.group {
+  margin-top: 4px;
+}
+
+.groupHeader {
+  display:       flex;
+  align-items:   center;
+  gap:           5px;
+  width:         100%;
+  padding:       3px 10px;
+  border:        none;
+  background:    transparent;
+  color:         var(--text-muted);
+  font-size:     10px;
+  font-weight:   700;
+  letter-spacing:0.09em;
+  text-transform:uppercase;
+  cursor:        pointer;
+  text-align:    left;
+  transition:    color 0.12s;
+}
+
+.groupHeader:hover { color: var(--text-secondary); }
+
+.chevron {
+  flex-shrink: 0;
+  display:     flex;
+  align-items: center;
+  justify-content: center;
+  /* SVG chevron is 9×9; keep it crisp */
+}
+
+.chevron svg {
+  width:   9px;
+  height:  9px;
+  display: block;
+}
+
+/* ── Tree item ───────────────────────────────────────────────────────────── */
+
+.treeItem {
+  display:     flex;
+  align-items: center;
+  gap:         7px;
+  width:       100%;
+  padding:     5px 12px;
+  border:      none;
+  background:  transparent;
+  color:       var(--text-secondary);
+  font-size:   12px;
+  cursor:      pointer;
+  text-align:  left;
+  border-radius:0;
+  transition:  background 0.1s, color 0.1s;
+}
+
+.treeItem:hover:not(:disabled) {
+  background: var(--surface-2);
+  color:      var(--text-primary);
+}
+
+.treeItem:disabled {
+  opacity: 0.45;
+  cursor:  default;
+}
+
+.treeItem.active {
+  background: var(--bg-accent);
+  color:      var(--text-accent);
+}
+
+/* indent for group children */
+.indented { padding-left: 22px; }
+
+.icon {
+  opacity:         0.7;
+  flex-shrink:     0;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+}
+
+/* Normalize imported Icons (18×18) and local SVGs (16×16) to the same
+   visual size within the compact tree layout. */
+.icon svg {
+  width:  14px;
+  height: 14px;
+  display:block;
+}
+
+.label { flex: 1; }
+
+/* ── Badge (page count, etc.) ────────────────────────────────────────────── */
+
+.badge {
+  font-size:    10px;
+  font-weight:  600;
+  background:   var(--surface-2);
+  color:        var(--text-muted);
+  border-radius:10px;
+  padding:      0 5px;
+  min-width:    16px;
+  text-align:   center;
+  flex-shrink:  0;
+}
+
+/* ── "Soon" label ────────────────────────────────────────────────────────── */
+
+.soon {
+  font-size:    9px;
+  font-weight:  600;
+  background:   var(--surface-2);
+  color:        var(--text-muted);
+  border-radius:4px;
+  padding:      1px 5px;
+  flex-shrink:  0;
+}
+

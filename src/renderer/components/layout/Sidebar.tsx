@@ -11,12 +11,13 @@ type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
 
 /**
- * Navigation groups — Progressive Disclosure layout.
+ * Navigation groups — five semantic sections matching the Command Center spec.
  *
- * PRIMARY  — five core daily actions (no label, no separator)
- * MORE     — advanced / infrequent destinations, demoted below a separator
- *
- * All existing routes are preserved; secondary items are just less prominent.
+ * WORKSPACE  — daily entry points (no label, no sep)
+ * BUILD      — creation tools
+ * OPERATE    — monitoring & execution
+ * PLATFORM   — infrastructure & integrations
+ * ORGANIZATION — admin
  */
 const NAV_GROUPS: {
   groupKey: string;
@@ -25,36 +26,56 @@ const NAV_GROUPS: {
   items: NavItem[];
 }[] = [
   {
-    // Primary — what users reach for every day
     groupKey: "workspace",
     showLabel: false,
     showSep: false,
     items: [
-      { id: "home",         navKey: "home",         icon: "home"         },
-      { id: "app-builder",  navKey: "appBuilder",   icon: "app-builder"  },
-      { id: "agentos",      navKey: "agentos",      icon: "agentos"      },
-      { id: "automation",   navKey: "automation",   icon: "automation"   },
-      { id: "integrations", navKey: "integrations", icon: "integrations" },
+      { id: "home", navKey: "home", icon: "home"  },
+      { id: "ai",   navKey: "ai",   icon: "ai"    },
     ],
   },
   {
-    // More — advanced and occasional destinations
-    groupKey: "more",
+    groupKey: "build",
     showLabel: true,
     showSep: true,
     items: [
-      { id: "ai",            navKey: "ai",            icon: "ai"            },
-      { id: "runs",          navKey: "runs",           icon: "runs"          },
-      { id: "observability", navKey: "observability",  icon: "data"          },
-      { id: "ai-routing",    navKey: "aiRouting",      icon: "api"           },
-      { id: "marketplace",   navKey: "marketplace",    icon: "templates"     },
-      { id: "design",        navKey: "design",         icon: "design"        },
-      { id: "sandbox",       navKey: "sandbox",        icon: "analytics"     },
-      { id: "plugins",       navKey: "plugins",        icon: "plugins"       },
-      { id: "organizations", navKey: "organizations",  icon: "organizations" },
-      { id: "teams",         navKey: "teams",          icon: "teams"         },
-      { id: "billing",       navKey: "billing",        icon: "billing"       },
-      { id: "settings",      navKey: "settings",       icon: "settings"      },
+      { id: "app-builder", navKey: "appBuilder",    icon: "app-builder" },
+      { id: "design",      navKey: "design",        icon: "design"      },
+      { id: "agentos",     navKey: "agentos",       icon: "agentos"     },
+      { id: "automation",  navKey: "automation",    icon: "automation"  },
+      { id: "training",    navKey: "trainingStudio",icon: "training"    },
+    ],
+  },
+  {
+    groupKey: "operate",
+    showLabel: true,
+    showSep: true,
+    items: [
+      { id: "runs",         navKey: "runs",         icon: "runs"         },
+      { id: "observability",navKey: "observability",icon: "data"         },
+      { id: "sandbox",      navKey: "sandbox",      icon: "analytics"    },
+    ],
+  },
+  {
+    groupKey: "platform",
+    showLabel: true,
+    showSep: true,
+    items: [
+      { id: "ai-routing",    navKey: "aiRouting",    icon: "api"          },
+      { id: "integrations",  navKey: "integrations", icon: "integrations" },
+      { id: "plugins",       navKey: "plugins",      icon: "plugins"      },
+      { id: "marketplace",   navKey: "marketplace",  icon: "templates"    },
+    ],
+  },
+  {
+    groupKey: "organization",
+    showLabel: false,
+    showSep: true,
+    items: [
+      { id: "organizations", navKey: "organizations", icon: "organizations" },
+      { id: "teams",         navKey: "teams",         icon: "teams"         },
+      { id: "billing",       navKey: "billing",       icon: "billing"       },
+      { id: "settings",      navKey: "settings",      icon: "settings"      },
     ],
   },
 ];
@@ -101,7 +122,7 @@ function FlowLogo() {
         width: 30, height: 30, borderRadius: 9, flexShrink: 0,
         background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "0 2px 8px rgba(110,50,224,0.30)",
+        boxShadow: "var(--glow-pink-subtle)",
       }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
@@ -129,7 +150,7 @@ function FlowIcon() {
         width: 30, height: 30, borderRadius: 9,
         background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "0 2px 8px rgba(110,50,224,0.30)",
+        boxShadow: "var(--glow-pink-subtle)",
       }}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>

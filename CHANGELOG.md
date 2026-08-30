@@ -143,3 +143,119 @@ successful deploy to `main`.
 
 ### Other
 - fix(ai): resolve ProviderID values correctly on Python 3.11
+
+## v1.0.12
+
+### Features
+- Flow UI redesign + real backend integration (App Builder, Runs, Integrations)
+- Flow UI/UX redesign — sidebar, topbar, dashboard, agents, automations
+- connect App Builder, Runs, Integrations to real backend APIs
+- Flow UI redesign — new sidebar, dashboard, App Builder, Runs, Integrations
+
+### Fixes
+- use pid.value instead of str(pid) in registry default() — Python 3.11 Enum.__str__ returns 'ProviderID.anthropic' not 'anthropic'
+- resolve removeChild crash on page navigation
+- add migrations/ to Docker image — resolves Render startup ModuleNotFoundError
+- propagate active project_id to AgentOS run_agent and DevWorkspace
+
+### Tests
+- build_stream edge cases — valid/missing/unauthorized project_id, provider available/unavailable, generated files, preview, i18n
+
+### Other
+- Merge remote-tracking branch 'origin/main' into claude/flow-ui-redesign-rye5o6
+- feat(ai-workspace): 3-column layout redesign — conversation rail, context panel, RTL
+- diag: safe provider probe endpoint + key presence/length in health/full
+- fix(config): correct GEMINI_API_KEY env var name in docs and render.yaml
+- diag: distinguish 'no keys' vs 'circuits open' in stream_with_events log
+- fix(migrations): add __init__.py to make migrations a proper Python package
+- fix(projects): return full Project object from POST /api/projects
+- feat(home): App Builder Command Center + project_id propagation fix
+- fix(ui): resolve react-hooks/set-state-in-effect warnings
+- merge: integrate auth/CI hotfixes from remote into conflict resolution
+- merge: resolve Flow UI redesign conflicts with main
+- fix(auth): API key requests silently 401'd by api_auth_middleware
+- fix(ci): smoke-test URL warning, PRODUCTION_URL required, render.yaml CORS docs
+- fix(prod): Phase 1 — split-deploy connectivity, security headers, build guard
+- fix(agentos): propagate project_id through plan/deliberate paths
+- feat(i18n): wire Arabic i18n across AppBuilderPage, RunsPage, IntegrationsPage, HomePage
+- ci: resolve pre-existing ruff ratchet drift
+
+## v1.0.13
+
+### Fixes
+- classify AI provider billing failures and prevent App Builder 500s (#5)
+
+### Other
+- fix(lint): remove unused BillingRequiredError import from AppBuilderPage
+- feat(ui): billing error UI — 402 surfaces as recovery overlay, not crash
+- feat(ai): production-grade provider error classification and graceful propagation
+
+## v1.0.14
+
+### Other
+- feat(design-studio): add app builder tree and AI build workflow
+
+## v1.0.15
+
+### Other
+- Merge remote-tracking branch 'origin/main'
+- merge(app-builder): DOM cleanup crash fix + SSE abort + regression tests into main
+- fix(app-builder): prevent DOM cleanup crash on generation errors
+
+## v1.0.16
+
+### Fixes
+- expose structured AI provider billing errors in modify_app
+
+### Tests
+- fix stale stats fetch assertion (fetch_calls == 1 -> 2 with scope verification)
+
+### Other
+- feat(app-builder): wire runtime into app builder page and bottom bar
+- feat(app-builder): live runtime panel with 7-state machine
+- feat(app-builder): add typed runtime SSE service
+- fix(build): enforce org quota on build plan
+- feat(app-builder): AI Software Factory Phase 2 — build plan + copilot + bottom bar
+- fix(tests/i18n): stabilize app builder timeout + Arabic nav label
+- feat(platform): FLOW Command Center + AI-aware nav
+
+## v1.0.17
+
+### Other
+- feat(ui): flow visual identity — dark-first + node integrations + use cases
+
+## v1.0.18
+
+### Fixes
+- align SSE billing errors with frontend handling
+
+### Other
+- fix(ci): restore lint gates — ruff 121→79, ESLint 0 errors/warnings
+- fix(i18n): complete Arabic translation for App Builder
+- feat(ui): android-ready mobile upgrade — PWA viewport, runtime console, SVG icons, workspace layout
+- fix(ai-gateway): preserve billing error in complete_with_events
+- fix(agentos): resolve "Runtime ''unknown''" error with workspace pre-flight
+- feat(design-studio): UI PRO PRO PRO MAX — token compliance, SVG icons, i18n
+- feat(training): build production training studio UI
+- feat(training-studio): Phase 1 foundation — DB + provider interface + shell UI
+- security(ws): add one-time websocket authentication and process cleanup
+
+## v1.0.19
+
+### Other
+- fix(security): update CSP connect-src to production backend (viio)
+
+## v1.0.20
+
+### Other
+- fix(agent-builder): remove unsupported Anthropic stream temperature
+
+## v1.0.21
+
+### Other
+- feat(app-builder): redesign entry screen as focused minimal build prompt
+
+## v1.0.22
+
+### Other
+- fix(ci): correct smoke-test fallback URL to viio production service

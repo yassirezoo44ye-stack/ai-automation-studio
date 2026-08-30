@@ -2,7 +2,7 @@
    Axon Design System v2
    ══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;900&family=Noto+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ── Tokens ──────────────────────────────────────────────────────────
    Canva-style identity: light-first, purple/teal brand, friendly rounded
@@ -77,8 +77,8 @@
   --shadow-btn:  0 4px 20px rgba(110,50,224,0.28);
   --shadow-inset:inset 0 0 0 1px rgba(110,50,224,0.18);
 
-  /* Typography — public fallback stack only (no proprietary "Canva Sans") */
-  --font-sans: 'Noto Sans','Segoe UI',system-ui,-apple-system,sans-serif;
+  /* Typography — Cairo-first for Arabic+Latin, JetBrains Mono for code */
+  --font-sans: 'Cairo','Noto Sans','Segoe UI',system-ui,-apple-system,sans-serif;
   --font-mono: 'JetBrains Mono','Cascadia Code','Fira Code','Consolas',monospace;
 
   /* Spacing scale (4px base) */
@@ -100,6 +100,49 @@
   --t-base: 180ms;
   --t-slow: 320ms;
 
+  /* ── FLOW Brand Palette ────────────────────────────────────────────
+     Raw color values — theme-agnostic, always accessible via var().
+     Use semantic tokens (--accent, --green, etc.) in components;
+     use --flow-* only for FLOW-specific decorative elements. ───── */
+  --flow-bg:               #090909;
+  --flow-surface:          #131313;
+  --flow-surface-elevated: #1C1C1C;
+  --flow-pink:             #FF1744;
+  --flow-pink-hover:       #FF4569;
+  --flow-green:            #00E676;
+  --flow-blue:             #2979FF;
+  --flow-yellow:           #FFD740;
+  --flow-purple:           #C051FF;
+  --flow-cyan:             #00E5FF;
+  --flow-orange:           #FF6D00;
+
+  /* Semantic aliases — components use these for intent */
+  --color-primary: var(--flow-pink);
+  --color-success: var(--flow-green);
+  --color-info:    var(--flow-blue);
+  --color-warning: var(--flow-yellow);
+  --color-ai:      var(--flow-purple);
+  --color-danger:  var(--flow-pink);
+
+  /* Glow system — controlled, semantic, not decorative everywhere.
+     Use: hover states, active indicators, AI activity, important CTAs. */
+  --glow-pink-subtle:   0 0  8px rgba(255,23,68,0.15);
+  --glow-pink-medium:   0 0 16px rgba(255,23,68,0.25);
+  --glow-pink-strong:   0 0 28px rgba(255,23,68,0.45);
+  --glow-green-subtle:  0 0  8px rgba(0,230,118,0.15);
+  --glow-green-medium:  0 0 16px rgba(0,230,118,0.25);
+  --glow-green-strong:  0 0 28px rgba(0,230,118,0.45);
+  --glow-blue-subtle:   0 0  8px rgba(41,121,255,0.15);
+  --glow-blue-medium:   0 0 16px rgba(41,121,255,0.25);
+  --glow-blue-strong:   0 0 28px rgba(41,121,255,0.45);
+  --glow-yellow-subtle: 0 0  8px rgba(255,215,64,0.15);
+  --glow-yellow-medium: 0 0 16px rgba(255,215,64,0.25);
+  --glow-purple-subtle: 0 0  8px rgba(192,81,255,0.15);
+  --glow-purple-medium: 0 0 16px rgba(192,81,255,0.25);
+  --glow-purple-strong: 0 0 28px rgba(192,81,255,0.45);
+  --glow-cyan-subtle:   0 0  8px rgba(0,229,255,0.15);
+  --glow-cyan-medium:   0 0 16px rgba(0,229,255,0.25);
+
   /* Skeleton shimmer */
   --skeleton-base: rgba(23,20,40,0.06);
   --skeleton-shine: rgba(23,20,40,0.12);
@@ -118,6 +161,17 @@
   --radius-sm:      var(--r-sm);
   --radius-md:      var(--r-md);
 
+  /* ── DesignStudio extended aliases ────────────────────────────────── */
+  --fill-accent:    var(--accent);
+  --text-accent:    var(--ta);
+  --bg-accent:      var(--accent-dim);
+  --border-accent:  var(--ba);
+  --text-muted:     var(--t4);
+  --border-strong:  var(--b2);
+  --text-danger:    var(--red);
+  --text-success:   var(--green);
+  --text-warning:   var(--yellow);
+
   color-scheme: light;
 }
 
@@ -125,67 +179,81 @@
 [data-theme="light"] textarea,
 [data-theme="light"] select { color-scheme: light; }
 
-/* ── Dark theme (Canva-dark companion) ───────────────────────────────
-   A genuine dark variant of the purple/teal identity — not the old gold
-   palette. :root above is now the default/primary light identity. ──── */
+/* ── FLOW Dark Theme ─────────────────────────────────────────────────
+   FLOW is dark-first. This palette drives the primary production look:
+   near-black surfaces, FLOW Pink as the primary accent (replaces Canva
+   purple), FLOW Green as success/secondary. Backgrounds use the exact
+   reference hex values: #090909 / #131313 / #1C1C1C.
+
+   All components that consume var(--accent) / var(--bg-*) / var(--t*)
+   tokens automatically pick up this palette — no component-level edits
+   required for the core visual switch. ──────────────────────────────── */
 [data-theme="dark"] {
-  --bg-base:     #15121F;
-  --bg-surface:  #1E1A2E;
-  --bg-elevated: #262038;
-  --bg-overlay:  rgba(0,0,0,0.60);
-  --bg-card:     rgba(255,255,255,0.035);
-  --bg-card-h:   rgba(167,139,250,0.06);
-  --bg-glass:    #262038;
-  --bg-input:    rgba(255,255,255,0.045);
+  /* Backgrounds — FLOW reference values */
+  --bg-base:     #090909;
+  --bg-surface:  #131313;
+  --bg-elevated: #1C1C1C;
+  --bg-overlay:  rgba(0,0,0,0.75);
+  --bg-card:     rgba(255,255,255,0.025);
+  --bg-card-h:   rgba(255,23,68,0.06);
+  --bg-glass:    #131313;
+  --bg-input:    rgba(255,255,255,0.04);
 
-  --accent:        #A78BFA;
-  --accent-2:      #C4B5FD;
-  --accent-light:  #B9A4F7;
-  --accent-bright: #DDD6FE;
-  --accent-dim:    rgba(167,139,250,0.14);
-  --accent-glow:   rgba(167,139,250,0.20);
-  --accent-border: rgba(167,139,250,0.30);
+  /* FLOW Pink — primary accent */
+  --accent:        #FF1744;
+  --accent-2:      #FF4569;
+  --accent-light:  #FF6B84;
+  --accent-bright: #FF99AA;
+  --accent-dim:    rgba(255,23,68,0.12);
+  --accent-glow:   rgba(255,23,68,0.22);
+  --accent-border: rgba(255,23,68,0.30);
 
-  --teal:     #2DD4BF;
-  --teal-dim: rgba(45,212,191,0.16);
+  /* FLOW Green — secondary / success */
+  --teal:     #00E676;
+  --teal-dim: rgba(0,230,118,0.12);
 
-  --green:        #34D399;
-  --green-dim:    rgba(22,163,74,0.16);
-  --red:          #F87171;
-  --red-dim:      rgba(220,38,38,0.16);
-  --yellow:       #FBBF24;
-  --yellow-dim:   rgba(251,191,36,0.16);
-  --blue:         #60A5FA;
-  --blue-dim:     rgba(96,165,250,0.16);
-  --purple-dim:   rgba(167,139,250,0.16);
+  /* Semantic semantic — FLOW reference values */
+  --green:        #00E676;
+  --green-dim:    rgba(0,230,118,0.12);
+  --red:          #FF1744;
+  --red-dim:      rgba(255,23,68,0.12);
+  --yellow:       #FFD740;
+  --yellow-dim:   rgba(255,215,64,0.12);
+  --blue:         #2979FF;
+  --blue-dim:     rgba(41,121,255,0.14);
+  --purple-dim:   rgba(192,81,255,0.14);
 
-  --t1: #F5F3FA;
-  --t2: #DFDAEE;
-  --t3: #B3A9CC;
-  --t4: rgba(179,169,204,0.60);
-  --t5: rgba(179,169,204,0.32);
-  --ta: #C4B5FD;
+  /* Text — neutral-cool, not purple-tinted */
+  --t1: #F5F5F5;
+  --t2: #E0E0E0;
+  --t3: #9E9E9E;
+  --t4: rgba(158,158,158,0.65);
+  --t5: rgba(158,158,158,0.35);
+  --ta: #FF4569;
 
-  --b1:  rgba(255,255,255,0.08);
-  --b2:  rgba(255,255,255,0.14);
-  --ba:  rgba(167,139,250,0.35);
-  --ba2: rgba(167,139,250,0.55);
+  /* Borders */
+  --b1:  rgba(255,255,255,0.07);
+  --b2:  rgba(255,255,255,0.12);
+  --ba:  rgba(255,23,68,0.35);
+  --ba2: rgba(255,23,68,0.55);
 
-  --shadow-xs:   0 1px 2px  rgba(0,0,0,0.30);
-  --shadow-sm:   0 2px 8px  rgba(0,0,0,0.38);
-  --shadow-md:   0 4px 16px rgba(0,0,0,0.46);
-  --shadow-lg:   0 8px 32px rgba(0,0,0,0.55);
-  --shadow-xl:   0 16px 48px rgba(0,0,0,0.65);
-  --shadow-glow: 0 0 0 3px rgba(167,139,250,0.20);
-  --shadow-btn:  0 4px 20px rgba(167,139,250,0.30);
-  --shadow-inset:inset 0 0 0 1px rgba(167,139,250,0.22);
+  /* Shadows — deep blacks, no purple tint */
+  --shadow-xs:   0 1px 2px  rgba(0,0,0,0.50);
+  --shadow-sm:   0 2px 8px  rgba(0,0,0,0.60);
+  --shadow-md:   0 4px 16px rgba(0,0,0,0.70);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.80);
+  --shadow-xl:   0 16px 48px rgba(0,0,0,0.90);
+  --shadow-glow: 0 0 0 3px rgba(255,23,68,0.15);
+  --shadow-btn:  0 4px 20px rgba(255,23,68,0.35);
+  --shadow-inset:inset 0 0 0 1px rgba(255,23,68,0.20);
 
-  --skeleton-base:  rgba(255,255,255,0.06);
-  --skeleton-shine: rgba(255,255,255,0.12);
+  --skeleton-base:  rgba(255,255,255,0.04);
+  --skeleton-shine: rgba(255,255,255,0.08);
 
-  --border:    rgba(255,255,255,0.09);
-  --bg-hover:  rgba(255,255,255,0.05);
-  --bg-panel:  #1A1626;
+  /* Legacy aliases (backward compat) */
+  --border:    rgba(255,255,255,0.07);
+  --bg-hover:  rgba(255,255,255,0.04);
+  --bg-panel:  #0D0D0D;
 
   --surface-1:      var(--bg-elevated);
   --surface-2:      var(--bg-surface);
@@ -194,6 +262,17 @@
   --text-secondary: var(--t3);
   --radius-sm:      var(--r-sm);
   --radius-md:      var(--r-md);
+
+  /* ── DesignStudio extended aliases ────────────────────────────────── */
+  --fill-accent:    var(--accent);
+  --text-accent:    var(--ta);
+  --bg-accent:      var(--accent-dim);
+  --border-accent:  var(--ba);
+  --text-muted:     var(--t4);
+  --border-strong:  var(--b2);
+  --text-danger:    var(--red);
+  --text-success:   var(--green);
+  --text-warning:   var(--yellow);
 
   color-scheme: dark;
 }
@@ -278,6 +357,17 @@
   --radius-sm:      var(--r-sm);
   --radius-md:      var(--r-md);
 
+  /* ── DesignStudio extended aliases ────────────────────────────────── */
+  --fill-accent:    var(--accent);
+  --text-accent:    var(--ta);
+  --bg-accent:      var(--accent-dim);
+  --border-accent:  var(--ba);
+  --text-muted:     var(--t4);
+  --border-strong:  var(--b2);
+  --text-danger:    var(--red);
+  --text-success:   var(--green);
+  --text-warning:   var(--yellow);
+
   color-scheme: dark;
 }
 
@@ -317,23 +407,24 @@ svg         { display: block; }
 /* ── Scrollbars ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar              { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track        { background: transparent; }
-::-webkit-scrollbar-thumb        { background: rgba(110,50,224,0.25); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover  { background: rgba(110,50,224,0.50); }
+::-webkit-scrollbar-thumb        { background: var(--accent-dim, rgba(110,50,224,0.25)); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover  { background: var(--accent-glow, rgba(110,50,224,0.50)); }
 ::-webkit-scrollbar-corner       { background: transparent; }
 
 /* ── Focus ring ──────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid rgba(110,50,224,0.65);
+  outline: 2px solid var(--accent, rgba(110,50,224,0.65));
   outline-offset: 2px;
   border-radius: var(--r-sm);
+  opacity: 0.85;
 }
 
 /* ── Inputs focus ────────────────────────────────────────────────── */
 input::placeholder, textarea::placeholder { color: var(--t5); }
 input:focus, textarea:focus, select:focus {
   /* !important: must override inline style objects (S.*) — removable after the Golden-phase styling migration */
-  box-shadow: 0 0 0 2.5px rgba(110,50,224,0.35) !important;
-  border-color: rgba(110,50,224,0.55) !important;
+  box-shadow: 0 0 0 2.5px var(--accent-dim, rgba(110,50,224,0.35)) !important;
+  border-color: var(--accent-border, rgba(110,50,224,0.55)) !important;
 }
 
 /* ── Animations ──────────────────────────────────────────────────── */
@@ -378,7 +469,8 @@ input:focus, textarea:focus, select:focus {
 @keyframes pulse     { 0%,100%{opacity:1} 50%{opacity:.45} }
 @keyframes toastIn   { from{opacity:0;transform:translateX(16px) scale(.96)} to{opacity:1;transform:translateX(0) scale(1)} }
 @keyframes float     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
-@keyframes glow-pulse{ 0%,100%{box-shadow:0 0 12px rgba(110,50,224,0.3)} 50%{box-shadow:0 0 24px rgba(110,50,224,0.6)} }
+@keyframes glow-pulse{ 0%,100%{box-shadow:0 0 12px var(--accent-dim,rgba(255,23,68,0.3))} 50%{box-shadow:0 0 24px var(--accent-glow,rgba(255,23,68,0.6))} }
+@keyframes blink      { 0%,100%{opacity:1} 50%{opacity:0} }
 
 /* ── Typing indicator ────────────────────────────────────────────── */
 .typing { display:flex; align-items:center; gap:5px; padding:6px 0; }
@@ -399,7 +491,7 @@ input:focus, textarea:focus, select:focus {
     transform var(--t-base) var(--ease) !important;
 }
 .nav-item:hover {
-  background: rgba(110,50,224,0.10) !important;
+  background: var(--accent-dim) !important;
   color: var(--t1) !important;
   transform: translateX(2px);
 }
@@ -415,7 +507,7 @@ input:focus, textarea:focus, select:focus {
 }
 .card-hover:hover {
   border-color: var(--ba) !important;
-  box-shadow:   0 0 20px rgba(110,50,224,0.10) !important;
+  box-shadow:   var(--glow-pink-subtle) !important;
   transform:    translateY(-1px);
 }
 
@@ -1630,20 +1722,35 @@ kbd {
 
 /* ── Agent cards (AgentOS grid) ──────────────────────────────── */
 .agent-card {
-  padding: 12px 14px;
-  border-radius: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
   background: var(--bg-surface);
   border: 1px solid var(--b1);
-  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  transition: border-color var(--t-base) var(--ease),
+              box-shadow var(--t-base) var(--ease),
+              transform var(--t-base) var(--ease);
   cursor: default;
+  position: relative;
+  overflow: hidden;
 }
+.agent-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-dim), transparent);
+  opacity: 0;
+  transition: opacity var(--t-base);
+}
+.agent-card:hover::before { opacity: 1; }
 .agent-card:hover {
   border-color: var(--ba);
-  box-shadow: 0 2px 12px rgba(110,50,224,0.10);
+  box-shadow: 0 4px 16px rgba(110,50,224,0.12);
+  transform: translateY(-1px);
 }
 .agent-card--running {
   border-color: var(--accent-border);
-  box-shadow: 0 0 0 3px var(--accent-dim);
+  background: linear-gradient(135deg, var(--bg-surface) 0%, var(--accent-dim) 100%);
+  box-shadow: 0 0 0 2px var(--accent-dim), 0 4px 20px rgba(110,50,224,0.15);
 }
 .agent-card__header {
   display: flex;
@@ -1693,6 +1800,564 @@ kbd {
 }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(22,163,74,0.20); }
-  50%       { box-shadow: 0 0 0 6px rgba(22,163,74,0.06); }
+  0%, 100% { box-shadow: 0 0 0 3px rgba(0,230,118,0.20); }
+  50%       { box-shadow: 0 0 0 6px rgba(0,230,118,0.06); }
+}
+
+.agent-card:hover {
+  border-color: var(--ba);
+  box-shadow: var(--glow-pink-subtle);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   FLOW Visual System — Integration Nodes & Use Case Cards
+   Premium dark card system: controlled glows, semantic borders,
+   translateY hover — never glow everything all the time.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Node card (integration grid) ────────────────────────────────── */
+.flow-node-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--b1);
+  border-radius: var(--r-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition:
+    transform     180ms var(--ease),
+    border-color  180ms var(--ease),
+    box-shadow    180ms var(--ease);
+  padding: 12px 8px;
+  aspect-ratio: 1;
+}
+.flow-node-card:hover { transform: translateY(-3px); }
+
+.flow-node-card__icon {
+  width: 44px; height: 44px;
+  border-radius: var(--r-md);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.flow-node-card__name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--t3);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Semantic color variants — border at rest + glow on hover */
+.flow-node--blue:hover   { border-color: rgba(41,121,255,0.50);  box-shadow: var(--glow-blue-medium);   }
+.flow-node--green:hover  { border-color: rgba(0,230,118,0.45);   box-shadow: var(--glow-green-medium);  }
+.flow-node--red:hover    { border-color: rgba(255,23,68,0.45);   box-shadow: var(--glow-pink-medium);   }
+.flow-node--purple:hover { border-color: rgba(192,81,255,0.45);  box-shadow: var(--glow-purple-medium); }
+.flow-node--yellow:hover { border-color: rgba(255,215,64,0.45);  box-shadow: var(--glow-yellow-medium); }
+.flow-node--cyan:hover   { border-color: rgba(0,229,255,0.45);   box-shadow: var(--glow-cyan-medium);   }
+.flow-node--orange:hover { border-color: rgba(255,109,0,0.45);   box-shadow: 0 0 16px rgba(255,109,0,0.25); }
+.flow-node--teal:hover   { border-color: rgba(0,191,165,0.45);   box-shadow: 0 0 16px rgba(0,191,165,0.25); }
+
+/* ── Node grid layout ─────────────────────────────────────────────── */
+.flow-nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 10px;
+}
+@media (max-width: 1100px) { .flow-nodes-grid { grid-template-columns: repeat(6, 1fr); } }
+@media (max-width:  800px) { .flow-nodes-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width:  500px) { .flow-nodes-grid { grid-template-columns: repeat(3, 1fr); } }
+
+/* ── Use case card ────────────────────────────────────────────────── */
+.flow-case-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--b1);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition:
+    transform     180ms var(--ease),
+    border-color  180ms var(--ease),
+    box-shadow    180ms var(--ease);
+}
+.flow-case-card:hover { transform: translateY(-2px); }
+
+.flow-case-card__icon {
+  width: 44px; height: 44px;
+  border-radius: var(--r-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.flow-case-card__name {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--t1);
+}
+.flow-case-card__sub {
+  font-size: 11px;
+  color: var(--t4);
+  margin-top: 2px;
+}
+
+/* Semantic case-card variants */
+.flow-case--pink   { border-color: rgba(255,23,68,0.20); }
+.flow-case--pink:hover   { border-color: rgba(255,23,68,0.45);  box-shadow: var(--glow-pink-subtle);   }
+.flow-case--pink   .flow-case-card__icon { background: rgba(255,23,68,0.12); }
+
+.flow-case--blue   { border-color: rgba(41,121,255,0.20); }
+.flow-case--blue:hover   { border-color: rgba(41,121,255,0.45); box-shadow: var(--glow-blue-subtle);   }
+.flow-case--blue   .flow-case-card__icon { background: rgba(41,121,255,0.12); }
+
+.flow-case--green  { border-color: rgba(0,230,118,0.18); }
+.flow-case--green:hover  { border-color: rgba(0,230,118,0.45); box-shadow: var(--glow-green-subtle);   }
+.flow-case--green  .flow-case-card__icon { background: rgba(0,230,118,0.10); }
+
+.flow-case--yellow { border-color: rgba(255,215,64,0.18); }
+.flow-case--yellow:hover { border-color: rgba(255,215,64,0.45); box-shadow: var(--glow-yellow-subtle); }
+.flow-case--yellow .flow-case-card__icon { background: rgba(255,215,64,0.10); }
+
+.flow-case--purple { border-color: rgba(192,81,255,0.18); }
+.flow-case--purple:hover { border-color: rgba(192,81,255,0.45); box-shadow: var(--glow-purple-subtle); }
+.flow-case--purple .flow-case-card__icon { background: rgba(192,81,255,0.12); }
+
+.flow-case--cyan   { border-color: rgba(0,229,255,0.18); }
+.flow-case--cyan:hover   { border-color: rgba(0,229,255,0.45);  box-shadow: var(--glow-cyan-subtle);   }
+.flow-case--cyan   .flow-case-card__icon { background: rgba(0,229,255,0.10); }
+
+.flow-case--orange { border-color: rgba(255,109,0,0.18); }
+.flow-case--orange:hover { border-color: rgba(255,109,0,0.45); box-shadow: 0 0 8px rgba(255,109,0,0.15); }
+.flow-case--orange .flow-case-card__icon { background: rgba(255,109,0,0.12); }
+
+.flow-case--teal   { border-color: rgba(0,191,165,0.18); }
+.flow-case--teal:hover   { border-color: rgba(0,191,165,0.45); box-shadow: 0 0 8px rgba(0,191,165,0.15); }
+.flow-case--teal   .flow-case-card__icon { background: rgba(0,191,165,0.10); }
+
+.flow-case--indigo { border-color: rgba(83,60,255,0.18); }
+.flow-case--indigo:hover { border-color: rgba(83,60,255,0.45); box-shadow: 0 0 8px rgba(83,60,255,0.15); }
+.flow-case--indigo .flow-case-card__icon { background: rgba(83,60,255,0.12); }
+
+/* ── Use case grid ────────────────────────────────────────────────── */
+.flow-cases-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+@media (max-width: 900px) { .flow-cases-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 600px) { .flow-cases-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 400px) { .flow-cases-grid { grid-template-columns: 1fr; } }
+
+/* ── FLOW KPI card ────────────────────────────────────────────────── */
+.flow-kpi-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--b1);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color var(--t-base) var(--ease);
+}
+.flow-kpi-card:hover { border-color: rgba(255,255,255,0.12); }
+
+.flow-kpi-card__icon {
+  width: 44px; height: 44px;
+  border-radius: var(--r-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.flow-kpi-card__value {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+  color: var(--t1);
+}
+.flow-kpi-card__label { font-size: 11.5px; color: var(--t3); margin-top: 3px; }
+.flow-kpi-card__delta {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.flow-kpi-card__delta--up   { color: var(--green); }
+.flow-kpi-card__delta--down { color: var(--red); }
+.flow-kpi-card__delta--warn { color: var(--yellow); }
+
+/* ── FLOW section header ──────────────────────────────────────────── */
+.flow-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.flow-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--t1);
+}
+.flow-section-title__accent { color: var(--accent); }
+.flow-section-viewall {
+  font-size: 12px;
+  color: var(--t4);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  transition: color var(--t-base) var(--ease);
+}
+.flow-section-viewall:hover { color: var(--t1); }
+
+/* ── FLOW activity card ───────────────────────────────────────────── */
+.flow-activity-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--b1);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color var(--t-base) var(--ease);
+}
+.flow-activity-card:hover { border-color: rgba(255,255,255,0.12); }
+
+/* ── FLOW status dot ──────────────────────────────────────────────── */
+.flow-status {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.flow-status--ok      { background: var(--green); box-shadow: 0 0 6px rgba(0,230,118,0.5); }
+.flow-status--warn    { background: var(--yellow); box-shadow: 0 0 6px rgba(255,215,64,0.4); }
+.flow-status--err     { background: var(--red); box-shadow: 0 0 6px rgba(255,23,68,0.5); }
+.flow-status--idle    { background: var(--t5); }
+.flow-status--running {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(0,230,118,0.5);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.flow-status--ai {
+  background: var(--flow-purple, #C051FF);
+  box-shadow: 0 0 8px rgba(192,81,255,0.5);
+  animation: flow-ai-pulse 2s ease-in-out infinite;
+}
+
+@keyframes flow-ai-pulse {
+  0%, 100% { box-shadow: 0 0  8px rgba(192,81,255,0.3); }
+  50%       { box-shadow: 0 0 20px rgba(192,81,255,0.7); }
+}
+
+/* ── Glow utility classes (controlled — use sparingly) ────────────── */
+.flow-glow-pink   { box-shadow: var(--glow-pink-medium); }
+.flow-glow-green  { box-shadow: var(--glow-green-medium); }
+.flow-glow-blue   { box-shadow: var(--glow-blue-medium); }
+.flow-glow-yellow { box-shadow: var(--glow-yellow-medium); }
+.flow-glow-purple { box-shadow: var(--glow-purple-medium); }
+
+/* ── Tabular number utility ───────────────────────────────────────── */
+.flow-num { font-variant-numeric: tabular-nums; }
+
+/* ── LTR technical content override ──────────────────────────────────
+   Code, logs, UUIDs, API paths, URLs, and terminal output must always
+   read left-to-right regardless of the page direction. Apply to any
+   element wrapping technical strings in an RTL layout. ─────────────── */
+.flow-ltr,
+code, kbd, samp, pre,
+[data-ltr] {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+}
+
+/* ── FLOW upgrade card ────────────────────────────────────────────── */
+.flow-upgrade-card {
+  background: linear-gradient(135deg, rgba(255,23,68,0.15) 0%, rgba(192,81,255,0.15) 100%);
+  border: 1px solid rgba(255,23,68,0.25);
+  border-radius: var(--r-lg);
+  padding: 14px;
+  text-align: center;
+}
+.flow-upgrade-card__title { font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 2px; }
+.flow-upgrade-card__sub   { font-size: 11px; color: var(--t4); margin-bottom: 10px; }
+.flow-upgrade-card__btn {
+  display: block; width: 100%;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: var(--r-md);
+  padding: 7px; font-family: inherit;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: opacity 150ms var(--ease);
+}
+.flow-upgrade-card__btn:hover { opacity: 0.85; }
+
+/* ── FLOW Logo text ───────────────────────────────────────────────── */
+.flow-logo-text {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+}
+
+/* ── AI Copilot state chip ────────────────────────────────────────── */
+.flow-ai-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--r-full);
+  border: 1px solid;
+}
+.flow-ai-state--idle      { background: var(--bg-card); border-color: var(--b1); color: var(--t4); }
+.flow-ai-state--thinking  { background: rgba(192,81,255,0.12); border-color: rgba(192,81,255,0.30); color: var(--flow-purple, #C051FF); }
+.flow-ai-state--planning  { background: rgba(41,121,255,0.12); border-color: rgba(41,121,255,0.30); color: var(--blue); }
+.flow-ai-state--executing { background: rgba(255,23,68,0.12); border-color: rgba(255,23,68,0.30); color: var(--accent); }
+.flow-ai-state--complete  { background: rgba(0,230,118,0.12); border-color: rgba(0,230,118,0.30); color: var(--green); }
+.flow-ai-state--error     { background: rgba(255,23,68,0.12); border-color: rgba(255,23,68,0.30); color: var(--red); }
+.flow-ai-state--billing   { background: rgba(255,215,64,0.12); border-color: rgba(255,215,64,0.30); color: var(--yellow); }
+
+/* ════════════════════════════════════════════════════════════════════
+   ANDROID / MOBILE — Global interactive improvements
+   Applied unconditionally (not inside a media query) because they
+   benefit all devices: eliminate 300ms tap delay, enable momentum
+   scrolling, prevent double-tap zoom on controls.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Eliminate 300ms Android tap delay on every interactive element */
+button, [role="button"], input, textarea, select, a,
+.sidebar__item, .flow-node-card, .flow-case-card,
+.flow-topbar__btn, .flow-topbar__search, .flow-section-viewall,
+.g-copilot-fab, .mobile-menu-btn {
+  touch-action: manipulation;
+}
+
+/* Momentum scrolling for all overflow containers */
+.sidebar__nav, .g-copilot-panel__list, .app-main,
+[style*="overflow-y: auto"], [style*="overflowY: auto"] {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   ANDROID / MOBILE — ≤ 768px responsive layout
+   ════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ── Safe areas: notch / edge-to-edge home bar ─────────────────── */
+  /* Copilot FAB stays above the Android gesture bar */
+  .g-copilot-fab-wrap {
+    bottom:             calc(20px + env(safe-area-inset-bottom));
+    inset-inline-end:   calc(16px + env(safe-area-inset-right));
+  }
+  /* Mobile hamburger clears the status bar / notch */
+  .mobile-menu-btn {
+    top:                calc(var(--sp-3) + env(safe-area-inset-top));
+    inset-inline-start: calc(var(--sp-3) + env(safe-area-inset-left));
+    /* Enlarge to 44×44 minimum touch target */
+    width:  44px;
+    height: 44px;
+  }
+  /* Sidebar drawer: add safe area padding at top and bottom */
+  .sidebar {
+    padding-top:    env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* ── TopBar: compact mobile header ─────────────────────────────── */
+  .flow-topbar {
+    /* Clear the fixed hamburger button on the inline-start side */
+    padding-inline-start: 56px;
+    padding-inline-end:   8px;
+    gap: 4px;
+  }
+  /* Hide search box text label — keep the icon-only trigger */
+  .flow-topbar__search > span:not(.flow-topbar__kbd) { display: none; }
+  .flow-topbar__kbd { display: none; }
+  /* Compact icon-only pill */
+  .flow-topbar__search {
+    padding: 0 10px;
+    gap: 0;
+    min-height: 36px;
+    min-width: 36px;
+  }
+  /* Enlarge all icon buttons to 44×44 touch targets */
+  .flow-topbar__btn {
+    width:  44px;
+    height: 44px;
+  }
+  /* Breadcrumb: truncate long page titles gracefully */
+  .flow-topbar__crumb {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── HomePage: 2-column KPI strip ──────────────────────────────── */
+  .home-kpi-strip {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* ── HomePage: single-column layout ────────────────────────────── */
+  .home-two-col {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  /* Right column (Quick Actions, Workflows, Nav) goes below main content */
+  /* No hide — just stacks naturally in grid order */
+
+  /* ── Node integrations: horizontal scroll on very narrow screens ─ */
+  /* (already collapses to 3-col at 500px via existing rules)         */
+  .flow-nodes-grid {
+    /* Already handles 3-col at 500px — no override needed             */
+  }
+
+  /* ── Copilot panel: full-screen bottom sheet on mobile ─────────── */
+  .g-copilot-panel {
+    position:   fixed !important;
+    inset:      auto 0 0 0 !important;
+    top:        auto !important;
+    width:      100% !important;
+    max-width:  100% !important;
+    height:     80dvh !important;
+    max-height: 80dvh !important;
+    border-radius: var(--r-xl) var(--r-xl) 0 0 !important;
+    border-inline: none !important;
+    border-bottom: none !important;
+    /* Safe area: input stays above Android gesture bar */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* ── App Builder: stack panels vertically on mobile ────────────── */
+  .ab-panels {
+    flex-direction: column !important;
+  }
+  /* App structure nav (AppSidebar): hidden on mobile
+     The bottom tab bar (BottomTabBar) provides equivalent structure access */
+  .ab-nav {
+    display: none !important;
+  }
+  /* Runtime / Preview panel: fixed height, full width */
+  .ab-runtime {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    height: 40vh !important;
+    min-height: 180px !important;
+    max-height: 320px !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--b1) !important;
+  }
+  /* AI Copilot panel: fills remaining vertical space */
+  .ab-copilot {
+    width:  100% !important;
+    flex:   1   !important;
+    min-height: 220px !important;
+    border-left:   none !important;
+    border-inline-start: none !important;
+    border-top: 1px solid var(--b1) !important;
+  }
+
+  /* ── Sidebar items: 44px touch targets ─────────────────────────── */
+  .sidebar__item {
+    min-height: 44px;
+    padding: 10px 10px;
+  }
+
+  /* ── Notification panel: full-width on mobile ───────────────────── */
+  .g-notif-panel {
+    width: calc(100vw - 32px) !important;
+    max-width: 100vw !important;
+    inset-inline-start: 0 !important;
+    inset-inline-end:   0 !important;
+    margin: 0 16px !important;
+  }
+
+  /* ── Dialogs / overlays: mobile-safe ───────────────────────────── */
+  /* BuildingOverlay and BillingErrorOverlay modal cards */
+  .ab-panels [style*="maxWidth: 400"],
+  .ab-panels [style*="maxWidth: 420"] {
+    width: calc(100vw - 32px) !important;
+    max-width: calc(100vw - 32px) !important;
+    padding: 24px 20px !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   TABLET — 601px – 1024px
+   ════════════════════════════════════════════════════════════════════ */
+@media (min-width: 601px) and (max-width: 1024px) {
+  /* KPI strip: 4 columns still fit on tablet */
+  .home-kpi-strip {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+  /* Two-column: narrower right panel on tablet */
+  .home-two-col {
+    grid-template-columns: 1fr 240px !important;
+  }
+  /* App Builder: hide AppSidebar at tablet too, but keep copilot */
+  .ab-nav { display: none !important; }
+  .ab-runtime { flex: 1 !important; width: auto !important; }
+  .ab-copilot { width: 280px !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   TOUCH DEVICES — reduce expensive GPU effects (hover: none)
+   Applies to Android Chrome, iOS Safari, etc.
+   Does NOT apply to laptop touchscreens (they usually report hover: hover)
+   ════════════════════════════════════════════════════════════════════ */
+@media (hover: none) {
+  /* Glow on hover is meaningless on touch — suppress expensive layers */
+  .flow-node-card:hover { box-shadow: none !important; }
+  .flow-case-card:hover { box-shadow: none !important; }
+  /* Keep active state: give feedback on tap instead */
+  .flow-node-card:active { box-shadow: var(--glow-blue-subtle) !important; }
+  .flow-case-card:active { box-shadow: var(--glow-pink-subtle) !important; }
+
+  /* Copilot FAB: no scale-up hover (it would stay scaled on touch) */
+  .g-copilot-fab:hover { transform: none !important; }
+  .g-copilot-fab:active { transform: scale(0.95) !important; }
+
+  /* Sidebar items: no hover background (tap gives :active feedback) */
+  .sidebar__item:hover { background: transparent !important; color: var(--t3) !important; }
+  .sidebar__item:active { background: var(--bg-hover) !important; color: var(--t2) !important; }
+
+  /* Topbar buttons */
+  .flow-topbar__btn:hover { background: transparent !important; }
+  .flow-topbar__btn:active { background: var(--bg-hover) !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   REDUCED MOTION — extend existing rule to cover new animations
+   ════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  /* Skeleton shimmer: static instead of animated */
+  .skeleton {
+    animation: none !important;
+    background: var(--bg-card) !important;
+  }
+  /* Flow AI state pulse: frozen */
+  .flow-status--ai,
+  .flow-status--running {
+    animation: none !important;
+  }
+  @keyframes flow-ai-pulse { to { box-shadow: 0 0 8px rgba(192,81,255,0.3); } }
+  /* Node / case card transitions: instant */
+  .flow-node-card, .flow-case-card { transition: none !important; }
+  /* Glow-pulse keyframe: frozen */
+  @keyframes glow-pulse { to { box-shadow: 0 0 12px var(--accent-dim); } }
 }

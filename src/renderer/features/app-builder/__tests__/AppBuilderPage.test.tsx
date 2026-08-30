@@ -36,6 +36,11 @@ import type { BuildEvent } from "../services/builderService";
 import { AppBuilderPage } from "../AppBuilderPage";
 import { BillingRequiredError } from "../../../shared/utils/api";
 
+// Raise the per-test timeout for the entire file — these tests are sensitive
+// to CPU contention in the full suite (lazy chunk + SSE mock resolution can
+// exceed the default 5000ms when many workers compete for the same cores).
+vi.setConfig({ testTimeout: 60_000 });
+
 /* ── jsdom shims ──────────────────────────────────────────────────────────── */
 
 // jsdom does not implement scrollIntoView; silence the "not a function" error
@@ -178,9 +183,11 @@ describe("Case A — 402 BillingRequiredError (pre-SSE)", () => {
     render(<AppBuilderPage />);
     submitPrompt("Build a CRM");
 
+    // Extend timeout: this test is sensitive to CPU contention in the full
+    // suite (lazy chunk + SSE mock resolution can exceed the 1000ms default).
     await waitFor(() =>
       expect(screen.getByText("AI Credits Required")).toBeInTheDocument(),
-    );
+    { timeout: 8000 });
     expect(screen.getAllByText(/Anthropic/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Your credit balance is too low/)).toBeInTheDocument();
     expect(screen.queryByText(/Build failed/)).not.toBeInTheDocument();

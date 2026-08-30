@@ -1,6 +1,7 @@
 {
   "shell": {
     "panelTabsAriaLabel": "لوحات التصميم",
+    "designSectionLabel": "التصميم",
     "sidePanels": {
       "layers": "الطبقات",
       "assets": "الأصول",
@@ -197,6 +198,41 @@
     "analyzeCanvas": "تحليل اللوحة",
     "thinking": "جارٍ التفكير…",
     "requestFailed": "فشل الطلب"
+  },
+  "appTreePanel": {
+    "ariaLabel": "هيكل التطبيق",
+    "headerTitle": "مساحة العمل",
+    "overview": "نظرة عامة",
+    "comingSoon": "قريبًا",
+    "insertTools": "أدوات الإدراج والتصميم",
+    "insertToolsTitle": "التبديل إلى أدوات الرسم والطبقات",
+    "groups": {
+      "app":        "التطبيق",
+      "data":       "البيانات",
+      "ai":         "الذكاء الاصطناعي",
+      "automation": "الأتمتة",
+      "deploy":     "النشر"
+    },
+    "items": {
+      "pages":          "الصفحات",
+      "components":     "المكوّنات",
+      "navigation":     "التنقل",
+      "theme":          "المظهر",
+      "tables":         "الجداول",
+      "forms":          "النماذج",
+      "api-data":       "واجهة برمجية",
+      "agents":         "الوكلاء",
+      "ai-actions":     "إجراءات الذكاء الاصطناعي",
+      "knowledge":      "قاعدة المعرفة",
+      "models":         "النماذج",
+      "workflows":      "سير العمل",
+      "triggers":       "المحفّزات",
+      "events":         "الأحداث",
+      "jobs":           "المهام",
+      "deploy-preview": "معاينة",
+      "production":     "الإنتاج",
+      "domains":        "النطاقات"
+    }
   },
   "leftToolbar": {
     "ariaLabel": "أدوات الرسم",

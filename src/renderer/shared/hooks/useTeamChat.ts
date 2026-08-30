@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { apiJSON, API } from "../utils/api";
+import { apiJSON, apiFetch, API } from "../utils/api";
 
 export interface ChatMessage {
   id: string;
@@ -29,13 +29,29 @@ export type ChatConnectionStatus = "connecting" | "live" | "reconnecting" | "off
 
 const MAX_BACKOFF_MS = 30_000;
 
-function wsUrl(roomKey: string, token: string): string {
+function wsUrl(roomKey: string, auth: string, isTicket: boolean): string {
   const base = API || window.location.origin;
   const url = new URL(base.startsWith("http") ? base : window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `/ws/chat/${roomKey}`;
-  url.search = `?token=${encodeURIComponent(token)}`;
+  // Prefer ticket (opaque, not logged) over token (JWT, logged by proxies).
+  url.search = isTicket
+    ? `?ticket=${encodeURIComponent(auth)}`
+    : `?token=${encodeURIComponent(auth)}`;
   return url.toString();
+}
+
+async function fetchWsTicket(token: string): Promise<string | null> {
+  try {
+    const res = await apiFetch("/api/ws/ticket", { method: "POST" });
+    if (!res.ok) return null;
+    const data = await res.json() as { ticket?: string };
+    return data.ticket ?? null;
+  } catch {
+    return null;
+  }
+  // token param kept for future scope-binding; currently unused in this fn.
+  void token;
 }
 
 export function useTeamChat(organizationId: string | null, teamId: string | null) {
@@ -81,10 +97,13 @@ export function useTeamChat(organizationId: string | null, teamId: string | null
 
     let cancelled = false;
 
-    function connect() {
+    async function connect() {
       if (cancelled) return;
       setConnectionStatus(prev => (prev === "live" ? prev : "connecting"));
-      const ws = new WebSocket(wsUrl(roomKey, accessToken as string));
+      // Fetch a single-use ticket to avoid JWT in WS upgrade URL (P1 security).
+      const ticket = await fetchWsTicket(accessToken as string);
+      const auth   = ticket ?? (accessToken as string);
+      const ws = new WebSocket(wsUrl(roomKey, auth, ticket !== null));
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -111,13 +130,13 @@ export function useTeamChat(organizationId: string | null, teamId: string | null
         setConnectionStatus("reconnecting");
         const attempt = ++reconnectAttemptRef.current;
         const delay = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
-        reconnectTimerRef.current = setTimeout(connect, delay);
+        reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
       };
 
       ws.onerror = () => { ws.close(); };
     }
 
-    connect();
+    void connect();
     return () => {
       cancelled = true;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);

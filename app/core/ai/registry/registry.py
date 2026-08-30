@@ -329,6 +329,26 @@ class PlatformProviderRegistry:
                         # "error" tag above still records what happened.
 
             if tries == 0:
+                # Mirror stream_with_events: if all skips were billing/auth
+                # errors, raise AIProviderError so the router can return 402
+                # instead of a generic RuntimeError that becomes a 500.
+                billing_failed = [
+                    p.provider_id for p in chain
+                    if self._has_billing_error(p.provider_id)
+                ]
+                if billing_failed:
+                    primary = billing_failed[0]
+                    raise AIProviderError(
+                        AIProviderErrorCode.BILLING_REQUIRED,
+                        provider=primary,
+                        message=(
+                            f"AI provider '{primary}' is unavailable due to an "
+                            "account-level billing or authentication error. "
+                            "Add credits at console.anthropic.com/plans or "
+                            "verify the API key."
+                        ),
+                        retryable=False,
+                    )
                 raise RuntimeError("No available AI providers — every provider's circuit is open.")
             span.set_tag("error", str(last_err))
             raise last_err
@@ -374,9 +394,16 @@ class PlatformProviderRegistry:
                     "stream_with_events: all providers billing/auth failed — providers=%s",
                     billing_failed,
                 )
+                # Prefix with "BILLING_REQUIRED:" so AppBuilderPage.tsx (and any
+                # other SSE consumer that checks event.message.startsWith()) can
+                # surface the dedicated BillingErrorOverlay instead of a generic
+                # red error banner.  The primary provider is included so the
+                # frontend can link to the correct provider billing page.
+                primary_failed = billing_failed[0] if billing_failed else "unknown"
                 yield StreamChunk(
                     type="error",
                     error=(
+                        f"BILLING_REQUIRED:{primary_failed}: "
                         f"No available AI providers — "
                         f"provider{'s' if len(billing_failed) > 1 else ''} "
                         f"{', '.join(billing_failed)} require billing or authentication fix. "

@@ -156,13 +156,30 @@ class UnifiedExecutionEngine:
         # ── Runtime selection ─────────────────────────────────────────────────
         runtime = self._registry.select(workspace)
         if not runtime:
-            err = unsupported_runtime("unknown", "no runtime matched the workspace")
+            registered = [rt.name for rt in self._registry.all()]
+            err = unsupported_runtime(
+                "none",
+                (
+                    f"No runtime matched workspace '{workspace.name}'. "
+                    f"Registered adapters checked: {registered}. "
+                    "Expected one of: package.json/JS/TS (Node.js), "
+                    "requirements.txt/pyproject.toml/*.py (Python), "
+                    "Dockerfile (Docker)."
+                ),
+            )
             emit(ExecutionFailed(
                 execution_id = execution_id,
                 error_code   = err.code,
                 category     = err.category.value,
-                message      = err.message,
-                fix          = err.fix,
+                message      = (
+                    f"No runtime could be detected for project '{workspace.name}'. "
+                    "The workspace may be empty or contain an unsupported project type."
+                ),
+                fix          = [
+                    "Add a package.json (Node.js), requirements.txt (Python), "
+                    "or Dockerfile to the project root.",
+                    "Build the project first from the Dev → Build tab.",
+                ],
             ))
             report.finish(success=False, error_code=err.code, error_message=err.message)
             emit(ExecutionReportEvent(execution_id=execution_id, report=report.to_dict()))
