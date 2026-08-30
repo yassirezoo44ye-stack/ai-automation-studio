@@ -254,8 +254,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password, remember }),
     });
     if (!res.ok) {
-      const err = await parseJSON<{ detail?: string }>(res, "/api/auth/login").catch(() => ({ detail: "Login failed" }));
-      throw new Error(err.detail ?? "Login failed");
+      // parseJSON throws APIError for any non-2xx before reading the body,
+      // so calling it here always loses the actual backend message. Read the
+      // body directly instead so "Invalid email or password" (401) etc. reach
+      // the user rather than the generic "Login failed" fallback.
+      let detail = "Login failed";
+      try {
+        const body = await res.json() as { detail?: string };
+        if (body?.detail) detail = body.detail;
+      } catch {
+        // non-JSON body — keep the fallback
+      }
+      throw new Error(detail);
     }
     const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token: string; user: AuthUser }>(res, "/api/auth/login");
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
@@ -272,8 +282,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ name, email, password }),
     });
     if (!res.ok) {
-      const err = await parseJSON<{ detail?: string }>(res, "/api/auth/register").catch(() => ({ detail: "Registration failed" }));
-      throw new Error(err.detail ?? "Registration failed");
+      // parseJSON throws APIError for any non-2xx before reading the body,
+      // so calling it here always loses the actual backend message. Read the
+      // body directly instead so "Email already registered" (409), validation
+      // errors (422), etc. reach the user rather than the generic fallback.
+      let detail = "Registration failed";
+      try {
+        const body = await res.json() as { detail?: string };
+        if (body?.detail) detail = body.detail;
+      } catch {
+        // non-JSON body — keep the fallback
+      }
+      throw new Error(detail);
     }
     return parseJSON<{ message: string }>(res, "/api/auth/register");
   }, []);
