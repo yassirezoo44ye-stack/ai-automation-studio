@@ -48,7 +48,7 @@ class TestDevMockProvider:
             messages=[Message(role="user", content="build a CRM")],
             max_tokens=8192,
         )
-        resp = asyncio.get_event_loop().run_until_complete(p.complete(req))
+        resp = asyncio.run(p.complete(req))
         # Must contain the build-stream file delimiter so the parser can work
         assert "<<<FILE:" in resp.content
         assert "<<<ENDFILE>>>" in resp.content
@@ -77,7 +77,7 @@ class TestDevMockProvider:
 
         # Patch asyncio.sleep so the test doesn't take 3 s
         with patch("asyncio.sleep", new=AsyncMock()):
-            types, text_buf = asyncio.get_event_loop().run_until_complete(_collect())
+            types, text_buf = asyncio.run(_collect())
 
         assert "delta" in types
         assert types[-2] == "usage"
