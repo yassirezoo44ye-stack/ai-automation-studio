@@ -473,6 +473,9 @@ export function AppBuilderPage() {
   const [phases, setPhases]         = useState<BuildPhase[]>(INITIAL_PHASES);
   const [projectName, setProjectName] = useState("");
 
+  // ── Entry screen prompt (new minimal entry UI) ───────────────────
+  const [entryPrompt, setEntryPrompt] = useState("");
+
   // ── Phase 2: Plan overlay ────────────────────────────────────────
   const [planState, setPlanState]         = useState<PlanState>("idle");
   const [currentPlan, setCurrentPlan]     = useState<BuildPlan | null>(null);
@@ -898,6 +901,318 @@ export function AppBuilderPage() {
     void err; // consumed by AICopilotPanel via buildError prop
   }, []);
 
+  // ── View routing ─────────────────────────────────────────────────
+  // Entry: idle, no active build, plan not in flight — includes error states
+  const showEntry    = !buildDone && !isBuilding && planState === "idle";
+  // Building: SSE stream running or plan fetching/reviewing
+  const showBuilding = !buildDone && (isBuilding || planState !== "idle");
+
+  /* ── ENTRY SCREEN ──────────────────────────────────────────────── */
+  if (showEntry) {
+    const SUGGESTIONS = [
+      "نظام إدارة علاقات العملاء للمبيعات",
+      "منصة إدارة الموارد البشرية",
+      "لوحة تحليلات الأعمال",
+      "متجر إلكتروني",
+    ];
+
+    const canBuild = entryPrompt.trim().length > 0;
+
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column",
+        height: "100%", overflow: "hidden",
+        background: "var(--bg-base)",
+        position: "relative",
+      }}>
+        {/* Minimal top bar */}
+        <div style={{
+          height: 48, minHeight: 48,
+          borderBottom: "1px solid var(--b1)",
+          background: "var(--bg-surface)",
+          display: "flex", alignItems: "center",
+          padding: "0 16px", flexShrink: 0,
+        }}>
+          <button
+            onClick={() => setPage("home")}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            {t("topbar.back")}
+          </button>
+        </div>
+
+        {/* Centered entry card */}
+        <div style={{
+          flex: 1, overflowY: "auto",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "32px 16px",
+        }}>
+          <div style={{ maxWidth: 580, width: "100%" }}>
+
+            {/* Main card */}
+            <div style={{
+              background: "var(--bg-surface)",
+              borderRadius: 20,
+              padding: "44px 40px 36px",
+              border: "1px solid var(--b1)",
+              boxShadow: "var(--shadow-lg)",
+              direction: "rtl",
+            }}>
+              {/* Title block */}
+              <div style={{ marginBottom: 28, textAlign: "center" }}>
+                <h1 style={{
+                  fontSize: 28, fontWeight: 800,
+                  color: "var(--t1)", margin: "0 0 8px",
+                  lineHeight: 1.25, letterSpacing: "-0.01em",
+                }}>
+                  ماذا تريد أن تبني؟
+                </h1>
+                <p style={{ fontSize: 14, color: "var(--t4)", margin: 0, lineHeight: 1.6 }}>
+                  صف فكرتك وسيقوم الذكاء الاصطناعي ببنائها لك في ثوانٍ
+                </p>
+              </div>
+
+              {/* Textarea */}
+              <textarea
+                value={entryPrompt}
+                onChange={e => setEntryPrompt(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey && canBuild) {
+                    e.preventDefault();
+                    void handleStartBuild(entryPrompt.trim());
+                  }
+                }}
+                placeholder="صف فكرتك وسأبنيها لك..."
+                rows={4}
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: "1.5px solid var(--b1)",
+                  background: "var(--bg-card)",
+                  color: "var(--t1)",
+                  fontSize: 15, lineHeight: 1.6,
+                  resize: "vertical",
+                  outline: "none",
+                  fontFamily: "inherit",
+                  direction: "rtl",
+                  textAlign: "right",
+                  display: "block",
+                  marginBottom: buildError ? 12 : 16,
+                  transition: "border-color 0.15s",
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+                onBlur={e => { e.currentTarget.style.borderColor = "var(--b1)"; }}
+              />
+
+              {/* Error pill — shows verbatim error message for test compatibility */}
+              {buildError && (
+                <div style={{
+                  marginBottom: 14,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "var(--red-dim, rgba(239,68,68,0.08))",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  display: "flex", alignItems: "flex-start", gap: 10,
+                  direction: "rtl",
+                }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red, #ef4444)" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  <span style={{ fontSize: 13, color: "var(--red, #ef4444)", lineHeight: 1.5, flex: 1 }}>
+                    {buildError}
+                  </span>
+                  <button
+                    onClick={() => { setBuildError(null); setPhases(INITIAL_PHASES); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", fontSize: 18, lineHeight: 1, padding: "0 0 0 4px", flexShrink: 0 }}
+                    aria-label="Dismiss error"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              {/* Build button */}
+              <button
+                disabled={!canBuild}
+                onClick={() => { if (canBuild) void handleStartBuild(entryPrompt.trim()); }}
+                style={{
+                  width: "100%",
+                  padding: "14px 24px",
+                  borderRadius: 12,
+                  border: "none",
+                  background: canBuild
+                    ? "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)"
+                    : "var(--bg-card)",
+                  color: canBuild ? "white" : "var(--t5)",
+                  fontSize: 15, fontWeight: 700,
+                  cursor: canBuild ? "pointer" : "not-allowed",
+                  transition: "opacity 0.15s, background 0.15s",
+                  boxShadow: canBuild ? "var(--shadow-btn)" : "none",
+                  opacity: canBuild ? 1 : 0.6,
+                  marginBottom: 10,
+                  letterSpacing: "0.01em",
+                }}
+              >
+                بناء باستخدام الذكاء الاصطناعي →
+              </button>
+
+              {/* Hint */}
+              <p style={{ textAlign: "center", fontSize: 12, color: "var(--t5)", margin: 0, lineHeight: 1.5 }}>
+                سيحوّل وصفك إلى تطبيق قابل للتشغيل.
+              </p>
+            </div>
+
+            {/* Suggestion chips */}
+            <div style={{ marginTop: 20, direction: "rtl" }}>
+              <p style={{
+                fontSize: 11, fontWeight: 600,
+                color: "var(--t5)", textAlign: "center",
+                marginBottom: 10, letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}>
+                أو ابدأ بأحد الاقتراحات
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+                {SUGGESTIONS.map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setEntryPrompt(s)}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 999,
+                      border: "1px solid var(--b1)",
+                      background: "var(--bg-surface)",
+                      color: "var(--t3)",
+                      fontSize: 13, cursor: "pointer",
+                      transition: "border-color 0.12s, color 0.12s",
+                      fontFamily: "inherit",
+                      lineHeight: 1.4,
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = "var(--accent-border)";
+                      e.currentTarget.style.color = "var(--accent)";
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = "var(--b1)";
+                      e.currentTarget.style.color = "var(--t3)";
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Billing error overlay — absolute over the full entry screen */}
+        {billingError && (
+          <BillingErrorOverlay
+            provider={billingError.provider}
+            message={billingError.message}
+            action={billingError.action}
+            onRetry={() => {
+              const savedPrompt = billingError.prompt;
+              setBillingError(null);
+              setPhases(INITIAL_PHASES);
+              void handleBuild(savedPrompt);
+            }}
+            onDismiss={() => {
+              setBillingError(null);
+              setPhases(INITIAL_PHASES);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  /* ── BUILDING / PLANNING SCREEN ────────────────────────────────── */
+  if (showBuilding) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column",
+        height: "100%", overflow: "hidden",
+        background: "var(--bg-base)",
+      }}>
+        {/* Minimal top bar */}
+        <div style={{
+          height: 48, minHeight: 48,
+          borderBottom: "1px solid var(--b1)",
+          background: "var(--bg-surface)",
+          display: "flex", alignItems: "center",
+          padding: "0 16px", flexShrink: 0,
+        }}>
+          <button
+            onClick={() => setPage("home")}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            {t("topbar.back")}
+          </button>
+        </div>
+
+        {/* Full area — hosts absolute-positioned overlays */}
+        <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "var(--bg-base)" }}>
+
+          {/* Planning spinner */}
+          {planState === "planning" && (
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 20,
+            }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 16 }}>
+                  {[0,1,2].map(i => (
+                    <div key={i} style={{
+                      width: 9, height: 9, borderRadius: "50%", background: "var(--accent)",
+                      animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`,
+                    }} />
+                  ))}
+                </div>
+                <div style={{ fontSize: 15, color: "white", fontWeight: 700 }}>Generating build plan…</div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", marginTop: 6 }}>AI is analyzing your requirements</div>
+              </div>
+            </div>
+          )}
+
+          {/* Plan review */}
+          {planState === "review" && currentPlan && (
+            <BuildPlanPanel
+              plan={currentPlan}
+              prompt={pendingPrompt}
+              isRefining={false}
+              onApprove={() => { setPlanState("idle"); void handleBuild(pendingPrompt); }}
+              onModify={newPrompt => { setPlanState("idle"); setCurrentPlan(null); void handleStartBuild(newPrompt); }}
+              onCancel={() => { setPlanState("idle"); setCurrentPlan(null); setPendingPrompt(""); }}
+            />
+          )}
+
+          {/* Build progress overlay */}
+          {isBuilding && (
+            <BuildingOverlay
+              phases={phases}
+              onCancel={handleCancel}
+              errorMsg={null}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── WORKSPACE — build done: 3-panel layout ────────────────────── */
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* ── Top bar ──────────────────────────────────────────── */}
@@ -944,8 +1259,7 @@ export function AppBuilderPage() {
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t2)" }}>{projectName}</div>
         )}
 
-        {/* ── Runtime controls (Phase 3) ─────────────────────── */}
-        {/* Running: show status badge + Stop + Restart + Open Preview */}
+        {/* Runtime controls */}
         {(runtimeState === "running" || runtimeState === "starting") && (
           <>
             <div style={{
@@ -985,8 +1299,8 @@ export function AppBuilderPage() {
           </>
         )}
 
-        {/* Idle/stopped/failed after build: show Run Project */}
-        {buildDone && (runtimeState === "idle" || runtimeState === "ready_to_run" || runtimeState === "stopped" || runtimeState === "failed") && (
+        {/* Run Project button — idle/stopped/failed after build */}
+        {(runtimeState === "idle" || runtimeState === "ready_to_run" || runtimeState === "stopped" || runtimeState === "failed") && (
           <button
             onClick={() => void handleRun()}
             style={{
@@ -1000,7 +1314,7 @@ export function AppBuilderPage() {
           </button>
         )}
 
-        {/* Deploy (distinct from Run) */}
+        {/* Publish */}
         <button style={{
           padding: "6px 14px", borderRadius: 8, border: "none",
           background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
@@ -1014,30 +1328,26 @@ export function AppBuilderPage() {
       {/* ── 3-panel workspace ─────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div className="ab-panels" style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-          {/* ab-nav: hidden on mobile — accessible via bottom-sheet tabs */}
           <div className="ab-nav">
             <AppSidebar section={section} setSection={setSection} projectName={projectName} />
           </div>
 
-          {/* ab-runtime: flex:1 on desktop; full-width limited-height on mobile */}
           <div className="ab-runtime" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
-          <RuntimePanel
-            runtimeState={runtimeState}
-            previewUrl={previewUrl}
-            previewType={previewType}
-            runtimeError={runtimeError}
-            buildDone={buildDone}
-            projectName={projectName}
-            startupMessages={startupMessages}
-            onRun={() => void handleRun()}
-            onStop={() => void handleStop()}
-            onRestart={() => void handleRestart()}
-            onExplainError={handleExplainError}
-          />
+            <RuntimePanel
+              runtimeState={runtimeState}
+              previewUrl={previewUrl}
+              previewType={previewType}
+              runtimeError={runtimeError}
+              buildDone={buildDone}
+              projectName={projectName}
+              startupMessages={startupMessages}
+              onRun={() => void handleRun()}
+              onStop={() => void handleStop()}
+              onRestart={() => void handleRestart()}
+              onExplainError={handleExplainError}
+            />
+          </div>
 
-          </div>{/* /ab-runtime */}
-
-          {/* Phase 2: AI Copilot Panel replaces old AIBuilderPanel */}
           <AICopilotPanel
             onBuild={prompt => void handleStartBuild(prompt)}
             projectName={projectName}
@@ -1047,82 +1357,8 @@ export function AppBuilderPage() {
             language={buildLanguage}
             currentSection={section}
           />
-
-          {/* Build overlay — shown while build is in progress or errored */}
-          {(isBuilding || buildError) && (
-            <BuildingOverlay
-              phases={phases}
-              onCancel={buildError ? () => { setBuildError(null); setPhases(INITIAL_PHASES); } : handleCancel}
-              errorMsg={buildError}
-            />
-          )}
-
-          {/* Billing error overlay — replaces generic error; never crashes the DOM */}
-          {billingError && !isBuilding && (
-            <BillingErrorOverlay
-              provider={billingError.provider}
-              message={billingError.message}
-              action={billingError.action}
-              onRetry={() => {
-                const savedPrompt = billingError.prompt;
-                setBillingError(null);
-                setPhases(INITIAL_PHASES);
-                void handleBuild(savedPrompt);
-              }}
-              onDismiss={() => {
-                setBillingError(null);
-                setPhases(INITIAL_PHASES);
-              }}
-            />
-          )}
-
-          {/* Phase 2: Build Plan overlay — shown after plan is fetched, before build starts */}
-          {planState === "planning" && (
-            <div style={{
-              position: "absolute", inset: 0,
-              background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              zIndex: 20,
-            }}>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ display: "flex", gap: 4, justifyContent: "center", marginBottom: 12 }}>
-                  {[0,1,2].map(i => (
-                    <div key={i} style={{
-                      width: 8, height: 8, borderRadius: "50%", background: "var(--accent)",
-                      animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`,
-                    }} />
-                  ))}
-                </div>
-                <div style={{ fontSize: 14, color: "white", fontWeight: 600 }}>Generating build plan…</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>AI is analyzing your requirements</div>
-              </div>
-            </div>
-          )}
-
-          {planState === "review" && currentPlan && (
-            <BuildPlanPanel
-              plan={currentPlan}
-              prompt={pendingPrompt}
-              isRefining={false}
-              onApprove={() => {
-                setPlanState("idle");
-                void handleBuild(pendingPrompt);
-              }}
-              onModify={newPrompt => {
-                setPlanState("idle");
-                setCurrentPlan(null);
-                void handleStartBuild(newPrompt);
-              }}
-              onCancel={() => {
-                setPlanState("idle");
-                setCurrentPlan(null);
-                setPendingPrompt("");
-              }}
-            />
-          )}
         </div>
 
-        {/* Phase 2: Bottom Tab Bar — Build timeline, Tests, Security, Logs, API, DB, Git */}
         <BottomTabBar
           buildEvents={buildEvents}
           buildDone={buildDone}
