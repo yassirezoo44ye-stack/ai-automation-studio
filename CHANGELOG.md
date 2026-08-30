@@ -271,3 +271,9 @@ successful deploy to `main`.
 - merge: sync with main, resolve conflicts — preserve DevMockProvider
 - feat(ui): simplify FLOW home page and sidebar — Progressive Disclosure
 - fix(agent-builder): remove unsupported Anthropic stream temperature
+
+## v1.0.24
+
+### Other
+- fix(auth): surface actual backend error in register/login error handlers (#7)
+- fix(auth): surface actual backend error in register/login error handlers
