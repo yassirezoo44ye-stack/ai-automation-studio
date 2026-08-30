@@ -259,3 +259,15 @@ successful deploy to `main`.
 
 ### Other
 - fix(ci): correct smoke-test fallback URL to viio production service
+
+## v1.0.23
+
+### Features
+- zero-cost dev mode for owner account via DevMockProvider (#6)
+- zero-cost dev mode for owner account via DevMockProvider
+
+### Other
+- fix(test): replace get_event_loop().run_until_complete with asyncio.run()
+- merge: sync with main, resolve conflicts — preserve DevMockProvider
+- feat(ui): simplify FLOW home page and sidebar — Progressive Disclosure
+- fix(agent-builder): remove unsupported Anthropic stream temperature
