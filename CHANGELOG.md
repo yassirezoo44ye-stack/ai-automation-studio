@@ -249,3 +249,8 @@ successful deploy to `main`.
 
 ### Other
 - fix(agent-builder): remove unsupported Anthropic stream temperature
+
+## v1.0.21
+
+### Other
+- feat(app-builder): redesign entry screen as focused minimal build prompt
