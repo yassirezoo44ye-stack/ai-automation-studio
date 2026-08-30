@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.inference.engine import InferenceEngine
-from app.core.auth import owner_user_id
+from app.core.auth import owner_user_id, owner_email
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
 from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
@@ -26,6 +26,37 @@ from app.execution import process_mgr
 from app.execution.runner import run_stream, run_sync
 
 log = logging.getLogger(__name__)
+
+# ── Dev / owner account ───────────────────────────────────────────────────────
+#
+# The dev account bypasses Anthropic credits by routing to DevMockProvider,
+# a free in-process provider.  This is NOT a billing bypass — it is a
+# legitimate alternative provider, identical in principle to LocalProvider.
+#
+# Security properties:
+#   • The email is resolved from the HMAC-verified auth token (owner_email()),
+#     not from the request body or any header the caller controls.
+#   • Routing to dev_mock does NOT escalate permissions — tenancy, RLS,
+#     project ownership, rate limits, and org quota all apply unchanged.
+#   • Normal users are NEVER routed to dev_mock; this code path is only
+#     reached when the authenticated identity exactly matches _DEV_ACCOUNT.
+#
+# Keep this in sync with tests/test_dev_mode.py's _DEV_ACCOUNT constant.
+_DEV_ACCOUNT: str = "yassirezoo44.ye@gmail.com"
+
+
+def _is_dev_account(request: Request) -> bool:
+    """True iff the authenticated user is the dev/owner account.
+
+    Uses the HMAC or JWT-verified email from owner_email() — never a raw
+    request param.  Returns False on any error (auth exceptions, missing
+    credentials) so the function is always safe to call.
+    """
+    try:
+        return owner_email(request) == _DEV_ACCOUNT
+    except Exception:
+        return False
+
 
 router = APIRouter(tags=["build"])
 
@@ -234,6 +265,10 @@ async def build_stream(req: BuildRequest, request: Request):
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, req.project_id, uid)
 
+    # Detect dev/owner account AFTER auth — email resolved from verified token,
+    # not from any caller-controlled header or body field.
+    dev_mode = _is_dev_account(request)
+
     async def event_stream():
         # Slot held for the whole stream (handler returns before tokens flow).
         try:
@@ -243,11 +278,17 @@ async def build_stream(req: BuildRequest, request: Request):
             yield _sse("error", message="Server is at capacity — please retry shortly.")
             return
         try:
-            yield _sse("status", message="🤖 Connecting to Claude…")
+            if dev_mode:
+                # Dev/owner account: no Anthropic credits needed.
+                # DevMockProvider is free, in-process, and exercises the real SSE pipeline.
+                yield _sse("status", message="🔧 وضع التطوير — المحاكي المحلي")
+                yield _sse("dev_mode", provider="dev_mock")
+            else:
+                yield _sse("status", message="🤖 Connecting to Claude…")
 
             request_obj = CompletionRequest(
                 messages=[Message(role="user", content=req.prompt)],
-                model="claude-sonnet-4-6",
+                model=None if dev_mode else "claude-sonnet-4-6",
                 max_tokens=8192,
                 temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
                 system=BUILD_UNIFIED_SYSTEM,
@@ -256,6 +297,7 @@ async def build_stream(req: BuildRequest, request: Request):
                 memory_enabled=False,
                 tools=None,
                 stream=True,
+                provider="dev_mock" if dev_mode else None,
             )
             engine = InferenceEngine(pool=get_pool())
             parser = _BuildParser()

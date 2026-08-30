@@ -783,6 +783,7 @@ export function AppBuilderPage() {
   const [buildLanguage, setBuildLanguage]   = useState("");
   const [phases, setPhases]         = useState<BuildPhase[]>(INITIAL_PHASES);
   const [projectName, setProjectName] = useState("");
+  const [isDevMode, setIsDevMode]   = useState(false);
 
   /** Prevents duplicate submissions across renders without depending on isBuilding state. */
   const isBuildingRef = useRef(false);
@@ -832,6 +833,7 @@ export function AppBuilderPage() {
     setBillingError(null);
     setBuildFileCount(0);
     setBuildLanguage("");
+    setIsDevMode(false);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -907,6 +909,10 @@ export function AppBuilderPage() {
           }
           case "heartbeat":
             // Server keep-alive — no action needed
+            break;
+          case "dev_mode":
+            // Backend confirmed this request uses the development mock provider.
+            setIsDevMode(true);
             break;
           case "done": {
             // Mark all remaining phases complete
@@ -1059,6 +1065,21 @@ export function AppBuilderPage() {
             onCancel={buildError ? () => { setBuildError(null); setPhases(INITIAL_PHASES); } : handleCancel}
             errorMsg={buildError}
           />
+        )}
+
+        {/* Dev mode badge — shown when server routed to DevMockProvider */}
+        {isDevMode && (
+          <div style={{
+            position: "absolute", top: 12, right: 12, zIndex: 10,
+            display: "flex", alignItems: "center", gap: 5,
+            background: "var(--bg-card)", border: "1px solid var(--b1)",
+            borderRadius: 99, padding: "4px 10px",
+            fontSize: 11, fontWeight: 600, color: "var(--t4)",
+            boxShadow: "0 1px 4px rgba(0,0,0,.08)",
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--teal)", flexShrink: 0 }} />
+            وضع التطوير
+          </div>
         )}
 
         {/* Billing error overlay — replaces generic error; never crashes the DOM */}

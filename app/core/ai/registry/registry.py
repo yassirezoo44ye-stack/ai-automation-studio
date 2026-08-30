@@ -28,6 +28,7 @@ from app.core.ai.events.events import (
 from app.core.ai.providers.openrouter import OpenRouterProvider
 from app.core.ai.providers.groq import GroqProvider
 from app.core.ai.providers.local import LocalProvider
+from app.ai.providers.dev_mock import DevMockProvider
 from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
 
@@ -83,6 +84,7 @@ class PlatformProviderRegistry:
             OpenRouterProvider(),
             GroqProvider(),
             LocalProvider(),
+            DevMockProvider(),  # dev/owner account only — not in default() chain
         ]:
             self._providers[p.provider_id] = p
             self._builtin_ids.add(p.provider_id)
