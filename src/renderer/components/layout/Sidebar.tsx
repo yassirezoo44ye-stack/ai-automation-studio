@@ -11,10 +11,12 @@ type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
 
 /**
- * Navigation groups — three semantic sections + system bottom.
- * "workspace" has no label (top of sidebar, most used).
- * "build" and "platform" get uppercase group labels.
- * "system" items appear after a separator with no label.
+ * Navigation groups — Progressive Disclosure layout.
+ *
+ * PRIMARY  — five core daily actions (no label, no separator)
+ * MORE     — advanced / infrequent destinations, demoted below a separator
+ *
+ * All existing routes are preserved; secondary items are just less prominent.
  */
 const NAV_GROUPS: {
   groupKey: string;
@@ -23,45 +25,36 @@ const NAV_GROUPS: {
   items: NavItem[];
 }[] = [
   {
+    // Primary — what users reach for every day
     groupKey: "workspace",
     showLabel: false,
     showSep: false,
     items: [
-      { id: "home",        navKey: "home",        icon: "home"        },
-      { id: "app-builder", navKey: "appBuilder",  icon: "app-builder" },
-      { id: "marketplace", navKey: "marketplace", icon: "templates"   },
-    ],
-  },
-  {
-    groupKey: "build",
-    showLabel: true,
-    showSep: true,
-    items: [
-      { id: "design",       navKey: "design",       icon: "design"       },
+      { id: "home",         navKey: "home",         icon: "home"         },
+      { id: "app-builder",  navKey: "appBuilder",   icon: "app-builder"  },
       { id: "agentos",      navKey: "agentos",      icon: "agentos"      },
       { id: "automation",   navKey: "automation",   icon: "automation"   },
-      { id: "runs",         navKey: "runs",         icon: "runs"         },
       { id: "integrations", navKey: "integrations", icon: "integrations" },
     ],
   },
   {
-    groupKey: "platform",
+    // More — advanced and occasional destinations
+    groupKey: "more",
     showLabel: true,
     showSep: true,
     items: [
-      { id: "observability", navKey: "observability", icon: "data"      },
-      { id: "ai-routing",    navKey: "aiRouting",     icon: "api"       },
-      { id: "plugins",       navKey: "plugins",       icon: "plugins"   },
-      { id: "sandbox",       navKey: "sandbox",       icon: "analytics" },
-    ],
-  },
-  {
-    groupKey: "system",
-    showLabel: false,
-    showSep: true,
-    items: [
-      { id: "organizations", navKey: "organizations", icon: "organizations" },
-      { id: "settings",      navKey: "settings",      icon: "settings"      },
+      { id: "ai",            navKey: "ai",            icon: "ai"            },
+      { id: "runs",          navKey: "runs",           icon: "runs"          },
+      { id: "observability", navKey: "observability",  icon: "data"          },
+      { id: "ai-routing",    navKey: "aiRouting",      icon: "api"           },
+      { id: "marketplace",   navKey: "marketplace",    icon: "templates"     },
+      { id: "design",        navKey: "design",         icon: "design"        },
+      { id: "sandbox",       navKey: "sandbox",        icon: "analytics"     },
+      { id: "plugins",       navKey: "plugins",        icon: "plugins"       },
+      { id: "organizations", navKey: "organizations",  icon: "organizations" },
+      { id: "teams",         navKey: "teams",          icon: "teams"         },
+      { id: "billing",       navKey: "billing",        icon: "billing"       },
+      { id: "settings",      navKey: "settings",       icon: "settings"      },
     ],
   },
 ];

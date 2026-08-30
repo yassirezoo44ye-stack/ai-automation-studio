@@ -6,7 +6,8 @@
       "platform": "Platform",
       "organization": "Organization",
       "build": "Build",
-      "system": "System"
+      "system": "System",
+      "more": "More"
     },
     "nav": {
       "home": "Dashboard", "ai": "AI", "dev": "Dev", "design": "Design Studio",
