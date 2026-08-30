@@ -472,6 +472,7 @@ export function AppBuilderPage() {
   const [buildLanguage, setBuildLanguage]   = useState("");
   const [phases, setPhases]         = useState<BuildPhase[]>(INITIAL_PHASES);
   const [projectName, setProjectName] = useState("");
+  const [isDevMode, setIsDevMode]   = useState(false);
 
   // ── Entry screen prompt (new minimal entry UI) ───────────────────
   const [entryPrompt, setEntryPrompt] = useState("");
@@ -555,6 +556,7 @@ export function AppBuilderPage() {
     setBillingError(null);
     setBuildFileCount(0);
     setBuildLanguage("");
+    setIsDevMode(false);
     setBuildEvents([]);
 
     const controller = new AbortController();
@@ -647,6 +649,10 @@ export function AppBuilderPage() {
           }
           case "heartbeat":
             // Server keep-alive — no action needed
+            break;
+          case "dev_mode":
+            // Backend confirmed this request uses the development mock provider.
+            setIsDevMode(true);
             break;
           case "done": {
             // Mark all remaining phases complete
@@ -1347,6 +1353,21 @@ export function AppBuilderPage() {
               onExplainError={handleExplainError}
             />
           </div>
+
+          {/* Dev mode badge — shown when server routed to DevMockProvider */}
+          {isDevMode && (
+            <div style={{
+              position: "absolute", top: 12, right: 12, zIndex: 10,
+              display: "flex", alignItems: "center", gap: 5,
+              background: "var(--bg-card)", border: "1px solid var(--b1)",
+              borderRadius: 99, padding: "4px 10px",
+              fontSize: 11, fontWeight: 600, color: "var(--t4)",
+              boxShadow: "0 1px 4px rgba(0,0,0,.08)",
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--teal)", flexShrink: 0 }} />
+              وضع التطوير
+            </div>
+          )}
 
           <AICopilotPanel
             onBuild={prompt => void handleStartBuild(prompt)}

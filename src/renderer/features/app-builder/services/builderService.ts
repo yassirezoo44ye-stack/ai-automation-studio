@@ -19,13 +19,15 @@ export type BuildEventHeartbeat = { type: "heartbeat"; ts: number };
 export type BuildEventFile      = { type: "file";      path: string; content: string };
 export type BuildEventDone      = { type: "done";      description: string; files: string[]; run_command: string; language: string };
 export type BuildEventError     = { type: "error";     message: string };
+export type BuildEventDevMode   = { type: "dev_mode";  provider: string };
 
 export type BuildEvent =
   | BuildEventStatus
   | BuildEventHeartbeat
   | BuildEventFile
   | BuildEventDone
-  | BuildEventError;
+  | BuildEventError
+  | BuildEventDevMode;
 
 /* ── Project creation ───────────────────────────────────────────── */
 export async function createProject(
