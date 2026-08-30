@@ -254,3 +254,8 @@ successful deploy to `main`.
 
 ### Other
 - feat(app-builder): redesign entry screen as focused minimal build prompt
+
+## v1.0.22
+
+### Other
+- fix(ci): correct smoke-test fallback URL to viio production service
