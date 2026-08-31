@@ -277,3 +277,8 @@ successful deploy to `main`.
 ### Other
 - fix(auth): surface actual backend error in register/login error handlers (#7)
 - fix(auth): surface actual backend error in register/login error handlers
+
+## v1.0.25
+
+### Other
+- fix(android): support rotation and preserve app builder drafts
