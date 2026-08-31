@@ -149,11 +149,13 @@ beforeEach(() => {
   streamBuildSpy = vi.spyOn(builderService, "streamBuild");
 
   sessionStorage.removeItem("flow_active_project");
+  sessionStorage.removeItem("flow:app-builder:draft");
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
   sessionStorage.removeItem("flow_active_project");
+  sessionStorage.removeItem("flow:app-builder:draft");
 });
 
 /* ── Helper: submit a prompt from the AI chat panel ─────────────────────── */
@@ -472,5 +474,65 @@ describe("Case H — Arabic RTL", () => {
     expect(screen.getByText(/رصيدك منخفض/)).toBeInTheDocument();
 
     document.documentElement.dir = prevDir;
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Case I — Prompt persistence (P0 regression gate)
+   Rule: USER INPUT > INTERNAL STATE RESET
+   Any setEntryPrompt("") or state reset must NOT clear what the user typed.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("Case I — Prompt persistence", () => {
+  const DRAFT_KEY = "flow:app-builder:draft";
+
+  afterEach(() => {
+    sessionStorage.removeItem(DRAFT_KEY);
+  });
+
+  it("draft is saved to sessionStorage as the user types", () => {
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "أريد منصة SaaS" } });
+
+    // Draft must be persisted immediately on every change
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("أريد منصة SaaS");
+  });
+
+  it("draft survives a remount (navigation away and back)", () => {
+    const userText = "أريد منصة SaaS كاملة مع إدارة المستخدمين";
+    // Simulate what was saved in a previous mount
+    sessionStorage.setItem(DRAFT_KEY, userText);
+
+    const { unmount } = render(<AppBuilderPage />);
+    unmount();
+
+    // Remount — must restore draft
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(textarea.value).toBe(userText);
+  });
+
+  it("prompt is NOT cleared on build error", async () => {
+    const userText = "اصنع لي تطبيق للمهام";
+    sessionStorage.setItem(DRAFT_KEY, userText);
+
+    streamBuildSpy.mockReturnValue(
+      makeEventStream([
+        { type: "error", message: "Build failed — an unexpected error occurred. Please try again." },
+      ]),
+    );
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(textarea.value).toBe(userText);
+
+    submitPrompt(userText);
+    await waitFor(() =>
+      expect(screen.getByText(/Build failed.*unexpected error|unexpected error.*Build failed/i)).toBeInTheDocument(),
+    );
+
+    // Draft must still be in sessionStorage after error
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe(userText);
   });
 });

@@ -1,7 +1,12 @@
 {
   "header": {
     "title": "Dev Workspace",
-    "status": { "building": "Building…", "built": "Built", "buildFailed": "Build failed", "running": "Running" },
+    "status": {
+      "building": "Building…",
+      "built": "Built",
+      "buildFailed": "Build failed",
+      "running": "Running"
+    },
     "activeProjectLabel": "Active project",
     "demoProject": "Demo Project",
     "downloadZip": "⬇ ZIP",
@@ -29,7 +34,7 @@
     "buildErrorTitle": "⚠ Build error",
     "building": "Building",
     "templatesLabel": "TEMPLATES",
-    "connecting": "Connecting to Claude…",
+    "connecting": "Connecting to AI…",
     "writingFile": "Writing {{path}}…",
     "builtFiles": "Built {{count}} files",
     "builtToast": "Built: {{description}}",
@@ -67,12 +72,28 @@
     "targetLabel": "Target",
     "packageTargetAriaLabel": "Package target",
     "langs": {
-      "python": { "label": "Python", "desc": "PyInstaller / Briefcase" },
-      "web": { "label": "Web App", "desc": "Electron wrap (.exe) / Capacitor (.apk)" },
-      "electron": { "label": "Electron", "desc": "Electron Builder NSIS" },
-      "docker": { "label": "Full-Stack", "desc": "Docker Compose — deploy-ready ZIP" }
+      "python": {
+        "label": "Python",
+        "desc": "PyInstaller / Briefcase"
+      },
+      "web": {
+        "label": "Web App",
+        "desc": "Electron wrap (.exe) / Capacitor (.apk)"
+      },
+      "electron": {
+        "label": "Electron",
+        "desc": "Electron Builder NSIS"
+      },
+      "docker": {
+        "label": "Full-Stack",
+        "desc": "Docker Compose — deploy-ready ZIP"
+      }
     },
-    "targets": { "exe": "Windows .exe", "apk": "Android .apk", "zip": "Deploy ZIP" },
+    "targets": {
+      "exe": "Windows .exe",
+      "apk": "Android .apk",
+      "zip": "Deploy ZIP"
+    },
     "webExeHint": "⚡ Web → Windows .exe — the web app is wrapped inside Electron, then built as a distributable NSIS installer.",
     "dockerHint": "🐳 Full-Stack Deploy Package — bundles every project file with deployment scripts, a .env.example, and complete Docker Compose instructions.",
     "checkingEnv": "Checking build environment…",

@@ -2256,7 +2256,7 @@ button, [role="button"], input, textarea, select, a,
   .ab-runtime {
     flex: 0 0 auto !important;
     width: 100% !important;
-    height: 40vh !important;
+    height: 40dvh !important; /* dvh adjusts when Android soft-keyboard opens */
     min-height: 180px !important;
     max-height: 320px !important;
     border-right: none !important;

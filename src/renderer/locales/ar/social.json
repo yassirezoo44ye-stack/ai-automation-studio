@@ -1,6 +1,9 @@
 {
   "header": "السوشيال ميديا",
-  "tabs": { "youtube": "يوتيوب", "facebook": "التواصل الاجتماعي" },
+  "tabs": {
+    "youtube": "يوتيوب",
+    "facebook": "التواصل الاجتماعي"
+  },
   "youtube": {
     "videoLink": "رابط الفيديو",
     "views": "مشاهدة",
@@ -15,7 +18,7 @@
     "q4": "Summarize in English",
     "emptyTitle": "محلل يوتيوب",
     "emptyDesc": "الصق رابط فيديو وابدأ التحليل بالذكاء الاصطناعي",
-    "askPrompt": "اسأل Claude عن محتوى الفيديو",
+    "askPrompt": "اسأل الذكاء الاصطناعي عن محتوى الفيديو",
     "inputPlaceholder": "اسأل عن الفيديو…",
     "infoLoaded": "تم تحميل معلومات الفيديو",
     "transcriptLoadedWithLang": "تم تحميل النص ({{language}})",

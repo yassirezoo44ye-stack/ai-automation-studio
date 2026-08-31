@@ -1,7 +1,10 @@
 {
   "workspace": {
     "title": "مساحة عمل الذكاء الاصطناعي",
-    "tabs": { "chat": "محادثة", "agents": "الوكلاء" },
+    "tabs": {
+      "chat": "محادثة",
+      "agents": "الوكلاء"
+    },
     "newAgent": "+ وكيل جديد",
     "loadAgentsError": "تعذر تحميل الوكلاء"
   },
@@ -52,7 +55,7 @@
   "chatTab": {
     "sidebar": {
       "demoProject": "مشروع تجريبي",
-      "defaultAgent": "🤖 Claude (افتراضي)",
+      "defaultAgent": "🤖 مساعد FLOW",
       "newChat": "+ محادثة جديدة",
       "exportTitle": "تصدير كملف Markdown",
       "extractTasksTitle": "استخراج المهام",
@@ -80,7 +83,7 @@
       "suggestion3": "أصلح الخطأ في الكود",
       "suggestion4": "أنشئ تطبيق ويب",
       "you": "أنت",
-      "assistantFallback": "Claude",
+      "assistantFallback": "مساعد FLOW",
       "now": "الآن",
       "streamErrorPrefix": "⚠️ {{message}}",
       "copyCode": "نسخ",
@@ -94,7 +97,7 @@
     "contextPanel": {
       "title": "السياق",
       "activeAgent": "الوكيل النشط",
-      "defaultAgent": "Claude (افتراضي)",
+      "defaultAgent": "مساعد FLOW",
       "project": "المشروع",
       "actions": "إجراءات",
       "export": "تصدير كـ Markdown",

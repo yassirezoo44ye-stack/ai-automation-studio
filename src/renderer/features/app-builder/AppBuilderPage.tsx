@@ -475,7 +475,18 @@ export function AppBuilderPage() {
   const [isDevMode, setIsDevMode]   = useState(false);
 
   // ── Entry screen prompt (new minimal entry UI) ───────────────────
-  const [entryPrompt, setEntryPrompt] = useState("");
+  // Persist the draft so navigation/remount/rotation never clears what the user typed.
+  // Rule: USER INPUT > INTERNAL STATE RESET — the saved draft wins on mount;
+  //       only an explicit build submission should clear it.
+  const DRAFT_KEY = "flow:app-builder:draft";
+  const [entryPrompt, setEntryPromptRaw] = useState<string>(() => {
+    try { return sessionStorage.getItem(DRAFT_KEY) ?? ""; } catch { return ""; }
+  });
+  /** Always call this instead of setEntryPromptRaw to keep sessionStorage in sync. */
+  const setEntryPrompt = (value: string) => {
+    setEntryPromptRaw(value);
+    try { sessionStorage.setItem(DRAFT_KEY, value); } catch { /* storage unavailable (rotation/iframe) */ }
+  };
 
   // ── Phase 2: Plan overlay ────────────────────────────────────────
   const [planState, setPlanState]         = useState<PlanState>("idle");

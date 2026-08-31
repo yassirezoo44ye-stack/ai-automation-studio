@@ -318,7 +318,7 @@ async def build_stream(req: BuildRequest, request: Request):
                 yield _sse("status", message="🔧 وضع التطوير — المحاكي المحلي")
                 yield _sse("dev_mode", provider="dev_mock")
             else:
-                yield _sse("status", message="🤖 Connecting to Claude…")
+                yield _sse("status", message="🤖 Connecting to AI…")
 
             request_obj = CompletionRequest(
                 messages=[Message(role="user", content=req.prompt)],
@@ -415,7 +415,7 @@ async def build_stream(req: BuildRequest, request: Request):
 
             if not parser.completed_files:
                 yield _sse("error",
-                           message="Claude did not produce any files. Try rephrasing your request.")
+                           message="The AI did not produce any files. Try rephrasing your request.")
                 return
 
             meta: dict = {}
@@ -443,7 +443,14 @@ async def build_stream(req: BuildRequest, request: Request):
 
         except Exception as e:
             log.exception("build_stream error")
-            yield _sse("error", message=str(e))
+            # Surface a safe error summary.  AIProviderError.BILLING_REQUIRED is
+            # formatted for the frontend overlay; all other exceptions yield str(e)
+            # (network/timeout messages) — never a traceback or DB credential.
+            from app.ai.errors import AIProviderError, AIProviderErrorCode
+            if isinstance(e, AIProviderError) and e.code == AIProviderErrorCode.BILLING_REQUIRED:
+                yield _sse("error", message=f"BILLING_REQUIRED:{e.provider}: {e.message}")
+            else:
+                yield _sse("error", message=str(e))
         finally:
             await bulkhead_cm.__aexit__(None, None, None)
 

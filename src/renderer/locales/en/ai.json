@@ -1,7 +1,10 @@
 {
   "workspace": {
     "title": "AI Workspace",
-    "tabs": { "chat": "Chat", "agents": "Agents" },
+    "tabs": {
+      "chat": "Chat",
+      "agents": "Agents"
+    },
     "newAgent": "+ New Agent",
     "loadAgentsError": "Could not load agents"
   },
@@ -52,7 +55,7 @@
   "chatTab": {
     "sidebar": {
       "demoProject": "Demo Project",
-      "defaultAgent": "🤖 Claude (default)",
+      "defaultAgent": "🤖 FLOW AI",
       "newChat": "+ New Chat",
       "exportTitle": "Export as Markdown",
       "extractTasksTitle": "Extract tasks",
@@ -80,7 +83,7 @@
       "suggestion3": "Debug my script",
       "suggestion4": "Build a web app",
       "you": "You",
-      "assistantFallback": "Claude",
+      "assistantFallback": "FLOW AI",
       "now": "now",
       "streamErrorPrefix": "⚠️ {{message}}",
       "copyCode": "Copy",
@@ -94,7 +97,7 @@
     "contextPanel": {
       "title": "Context",
       "activeAgent": "Active Agent",
-      "defaultAgent": "Claude (default)",
+      "defaultAgent": "FLOW AI",
       "project": "Project",
       "actions": "Actions",
       "export": "Export as Markdown",

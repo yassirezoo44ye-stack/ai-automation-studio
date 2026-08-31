@@ -1,7 +1,12 @@
 {
   "header": {
     "title": "بيئة التطوير",
-    "status": { "building": "جارٍ البناء…", "built": "تم البناء", "buildFailed": "فشل البناء", "running": "قيد التشغيل" },
+    "status": {
+      "building": "جارٍ البناء…",
+      "built": "تم البناء",
+      "buildFailed": "فشل البناء",
+      "running": "قيد التشغيل"
+    },
     "activeProjectLabel": "المشروع النشط",
     "demoProject": "مشروع تجريبي",
     "downloadZip": "⬇ ZIP",
@@ -29,7 +34,7 @@
     "buildErrorTitle": "⚠ خطأ في البناء",
     "building": "جارٍ البناء",
     "templatesLabel": "قوالب",
-    "connecting": "جارٍ الاتصال بـ Claude…",
+    "connecting": "جارٍ الاتصال بالذكاء الاصطناعي…",
     "writingFile": "جارٍ كتابة {{path}}…",
     "builtFiles": "تم بناء {{count}} ملف",
     "builtToast": "تم البناء: {{description}}",
@@ -67,12 +72,28 @@
     "targetLabel": "الهدف",
     "packageTargetAriaLabel": "هدف التغليف",
     "langs": {
-      "python": { "label": "Python", "desc": "PyInstaller / Briefcase" },
-      "web": { "label": "تطبيق ويب", "desc": "تغليف Electron (.exe) / Capacitor (.apk)" },
-      "electron": { "label": "Electron", "desc": "Electron Builder NSIS" },
-      "docker": { "label": "المكدّس الكامل", "desc": "Docker Compose — ملف ZIP جاهز للنشر" }
+      "python": {
+        "label": "Python",
+        "desc": "PyInstaller / Briefcase"
+      },
+      "web": {
+        "label": "تطبيق ويب",
+        "desc": "تغليف Electron (.exe) / Capacitor (.apk)"
+      },
+      "electron": {
+        "label": "Electron",
+        "desc": "Electron Builder NSIS"
+      },
+      "docker": {
+        "label": "المكدّس الكامل",
+        "desc": "Docker Compose — ملف ZIP جاهز للنشر"
+      }
     },
-    "targets": { "exe": "Windows .exe", "apk": "Android .apk", "zip": "ZIP للنشر" },
+    "targets": {
+      "exe": "Windows .exe",
+      "apk": "Android .apk",
+      "zip": "ZIP للنشر"
+    },
     "webExeHint": "⚡ ويب ← Windows .exe — يتم تغليف تطبيق الويب داخل Electron ثم بناؤه كمثبِّت NSIS قابل للتوزيع.",
     "dockerHint": "🐳 حزمة نشر المكدّس الكامل — تجمع كل ملفات المشروع مع سكربتات النشر وملف .env.example وتعليمات Docker Compose كاملة.",
     "checkingEnv": "جارٍ فحص بيئة البناء…",

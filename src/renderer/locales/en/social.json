@@ -1,6 +1,9 @@
 {
   "header": "Social Media",
-  "tabs": { "youtube": "YouTube", "facebook": "Social" },
+  "tabs": {
+    "youtube": "YouTube",
+    "facebook": "Social"
+  },
   "youtube": {
     "videoLink": "Video link",
     "views": "views",
@@ -15,7 +18,7 @@
     "q4": "Summarize in English",
     "emptyTitle": "YouTube Analyzer",
     "emptyDesc": "Paste a video link and start the AI analysis",
-    "askPrompt": "Ask Claude about the video's content",
+    "askPrompt": "Ask AI about the video's content",
     "inputPlaceholder": "Ask about the video…",
     "infoLoaded": "Video info loaded",
     "transcriptLoadedWithLang": "Transcript loaded ({{language}})",
