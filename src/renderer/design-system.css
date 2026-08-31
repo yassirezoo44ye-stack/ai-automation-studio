@@ -2252,11 +2252,13 @@ button, [role="button"], input, textarea, select, a,
   .ab-nav {
     display: none !important;
   }
-  /* Runtime / Preview panel: fixed height, full width */
+  /* Runtime / Preview panel: fixed height, full width.
+     dvh (dynamic viewport height) shrinks when the Android soft keyboard is
+     visible, preventing the panel from being clipped behind the keyboard. */
   .ab-runtime {
     flex: 0 0 auto !important;
     width: 100% !important;
-    height: 40vh !important;
+    height: 40dvh !important;
     min-height: 180px !important;
     max-height: 320px !important;
     border-right: none !important;
@@ -2271,7 +2273,39 @@ button, [role="button"], input, textarea, select, a,
     border-inline-start: none !important;
     border-top: 1px solid var(--b1) !important;
   }
+}
 
+/* ════════════════════════════════════════════════════════════════════
+   LANDSCAPE PHONE — ≤768px wide AND ≤500px tall
+   Landscape on a typical Android phone (e.g. 800×360 or 844×390).
+   The portrait breakpoint above already applies (width is still ≤768px
+   on most phones in landscape), but the 40dvh runtime height becomes
+   too small (~144px at 360px tall) and conflicts with min-height 180px.
+   These overrides keep both panels usable without horizontal overflow.
+   ════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) and (max-height: 500px) {
+  /* Compact runtime panel: ~35% of the short landscape viewport */
+  .ab-runtime {
+    height: 35dvh !important;
+    min-height: 120px !important;
+    max-height: 160px !important;
+  }
+  /* Copilot panel: lower minimum so both panels fit without overflow */
+  .ab-copilot {
+    min-height: 130px !important;
+  }
+  /* Entry screen: allow card to scroll rather than overflow in landscape */
+  .ab-entry-scroll {
+    align-items: flex-start !important;
+    padding-top: 16px !important;
+    padding-bottom: 16px !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   MOBILE (continued) — rules that apply to all ≤768px orientations
+   ════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
   /* ── Sidebar items: 44px touch targets ─────────────────────────── */
   .sidebar__item {
     min-height: 44px;

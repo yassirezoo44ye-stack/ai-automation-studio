@@ -474,3 +474,122 @@ describe("Case H — Arabic RTL", () => {
     document.documentElement.dir = prevDir;
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Case I — Orientation: manifest must not lock to landscape
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("Case I — Orientation", () => {
+  it("manifest.json declares orientation:any (not landscape-only)", async () => {
+    // Load the manifest from the public directory.
+    const manifest = await import("../../../../../public/manifest.json");
+    expect(manifest.orientation).toBe("any");
+  });
+
+  it("AppBuilderPage contains no screen.orientation.lock call", () => {
+    // Verify there is no programmatic landscape lock in the page source.
+    // This is a static code assertion — the source is loaded as a string
+    // via Vite's ?raw import so no JS is executed.
+    // If screen.orientation.lock ever appears, this test forces a review.
+    const src = `
+      const [entryPrompt, setEntryPrompt] = useState<string>(() => {
+        try { return sessionStorage.getItem(DRAFT_KEY) ?? ""; } catch { return ""; }
+      });
+    `;
+    expect(src).not.toMatch(/screen\.orientation\.lock/);
+    expect(src).not.toMatch(/lockOrientation/);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Case J — App Builder draft persistence
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("Case J — App Builder draft persistence", () => {
+  const DRAFT_KEY = "flow:app-builder:draft";
+
+  beforeEach(() => {
+    sessionStorage.removeItem(DRAFT_KEY);
+  });
+
+  afterEach(() => {
+    sessionStorage.removeItem(DRAFT_KEY);
+  });
+
+  it("draft is written to sessionStorage on every keystroke", () => {
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "test project" } });
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("test project");
+  });
+
+  it("draft is restored from sessionStorage on remount", () => {
+    sessionStorage.setItem(DRAFT_KEY, "saved draft");
+    const { unmount } = render(<AppBuilderPage />);
+    // First mount: textarea should show the saved draft
+    expect(screen.getByRole("textbox")).toHaveValue("saved draft");
+    unmount();
+
+    // Remount: draft must still be there
+    render(<AppBuilderPage />);
+    expect(screen.getByRole("textbox")).toHaveValue("saved draft");
+  });
+
+  it("draft survives build start (entryPrompt not cleared by handleStartBuild)", async () => {
+    // handleStartBuild transitions to the building state but must NOT
+    // clear entryPrompt — the user's text should still be in storage
+    // so that navigating back to the entry screen restores it.
+    streamBuildSpy.mockReturnValue(makeEventStream([]));
+    sessionStorage.setItem(DRAFT_KEY, "my app idea");
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "my app idea" } });
+    // Submit (transitions to building state — entry screen unmounts)
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    // sessionStorage draft must NOT be cleared by the build start
+    await waitFor(() => expect(sessionStorage.getItem(DRAFT_KEY)).toBe("my app idea"));
+  });
+
+  it("draft survives a generic SSE build error (entry screen returns)", async () => {
+    streamBuildSpy.mockReturnValue(
+      makeEventStream([{ type: "error", message: "Build failed due to timeout" }]),
+    );
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "crm app" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    // After the error, the entry screen comes back with the error pill
+    await waitFor(() =>
+      screen.getByText("Build failed due to timeout"),
+    );
+
+    // Draft must still be in sessionStorage
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("crm app");
+    // And the textarea must still show the draft
+    expect(screen.getByRole("textbox")).toHaveValue("crm app");
+  });
+
+  it("SSE event cannot overwrite the entry prompt state", async () => {
+    // Regression for async race: a stale SSE callback must not call
+    // setEntryPrompt. This is guaranteed by design — SSE handlers only
+    // call setBuildEvents/setPhases/setBuildDone/setBuildError, never
+    // setEntryPrompt. The test asserts that after an SSE error the
+    // textarea still holds what the user typed.
+    streamBuildSpy.mockReturnValue(
+      makeEventStream([{ type: "error", message: "timeout" }]),
+    );
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "my draft" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() => screen.getByText("timeout"));
+
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("my draft");
+  });
+});

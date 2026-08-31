@@ -475,7 +475,14 @@ export function AppBuilderPage() {
   const [isDevMode, setIsDevMode]   = useState(false);
 
   // ── Entry screen prompt (new minimal entry UI) ───────────────────
-  const [entryPrompt, setEntryPrompt] = useState("");
+  // Persisted to sessionStorage so the draft survives page navigation
+  // (AppBuilderPage unmounts when the user switches to another page).
+  // sessionStorage is project-scoped: it clears when the browser tab
+  // closes, which is the right lifetime for an unsent build prompt.
+  const DRAFT_KEY = "flow:app-builder:draft";
+  const [entryPrompt, setEntryPrompt] = useState<string>(() => {
+    try { return sessionStorage.getItem(DRAFT_KEY) ?? ""; } catch { return ""; }
+  });
 
   // ── Phase 2: Plan overlay ────────────────────────────────────────
   const [planState, setPlanState]         = useState<PlanState>("idle");
@@ -533,6 +540,14 @@ export function AppBuilderPage() {
       isRunningRef.current = false;
     };
   }, []);
+
+  // Persist the entry-screen draft on every keystroke so it survives
+  // page navigation (the component unmounts when the user switches pages).
+  // Wrapped in try/catch: sessionStorage may be unavailable in private
+  // browsing or sandboxed environments — silently ignore those cases.
+  useEffect(() => {
+    try { sessionStorage.setItem(DRAFT_KEY, entryPrompt); } catch { /* storage unavailable */ }
+  }, [entryPrompt]);
 
   /**
    * handleBuild — real SSE build flow.
@@ -950,8 +965,10 @@ export function AppBuilderPage() {
           </button>
         </div>
 
-        {/* Centered entry card */}
-        <div style={{
+        {/* Centered entry card — ab-entry-scroll: CSS overrides align-items
+            to flex-start in landscape so the card is scrollable without the
+            centered content being clipped above the viewport top. */}
+        <div className="ab-entry-scroll" style={{
           flex: 1, overflowY: "auto",
           display: "flex", alignItems: "center", justifyContent: "center",
           padding: "32px 16px",
