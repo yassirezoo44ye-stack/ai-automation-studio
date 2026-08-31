@@ -43,10 +43,15 @@ import { AIPanel }                   from "./components/Panels/AIPanel";
 import { PropertiesPanel }           from "./components/Panels/PropertiesPanel";
 import { ExportModal }               from "./components/Modals/ExportModal";
 import { AICommandBar }              from "./components/Modals/AICommandBar";
+import { AICommandBarInline }        from "./components/AICommandBarInline";
+import type { AICommandResult }      from "./components/AICommandBarInline";
 import type { PanelId, Tool }        from "./types/canvas.types";
 import type { Template }             from "./types/canvas.types";
 import { findById, loadJSONToCanvas } from "./utils/fabricUtils";
+import { AIDesignEngine }            from "./features/ai/AIDesignEngine";
 import styles                        from "./DesignStudio.module.css";
+
+const _aiEngine = new AIDesignEngine();
 
 
 function DesignStudioInner() {
@@ -264,6 +269,39 @@ function DesignStudioInner() {
     setShowAICommandBar(false);
   }, [toast]);
 
+  // ── Persistent AI command bar handler ────────────────────────────────────
+  // Executes a free-text design command and applies the result to the canvas.
+  const handleAICommand = useCallback(async (
+    prompt: string,
+    selectedIds: string[],
+  ): Promise<AICommandResult> => {
+    const contextHint = selectedIds.length > 0
+      ? `Selected elements: ${selectedIds.join(", ")}. `
+      : "";
+    const fullPrompt = contextHint + prompt;
+
+    const result = await _aiEngine.generateDesign({ prompt: fullPrompt });
+
+    // Apply canvas JSON if the AI returned one
+    if (result?.canvas_json) {
+      const fc = getCanvas();
+      if (fc) {
+        const currentPage = state.project.pages.find(
+          p => p.id === state.project.currentPageId
+        );
+        if (currentPage) {
+          fc.set({ width: currentPage.width, height: currentPage.height });
+        }
+        await loadJSONToCanvas(fc, result.canvas_json);
+        saveSnapshot("ai command");
+      }
+    }
+
+    return {
+      message: t("aiCommandBar.done", { defaultValue: "✓ Done — design updated." }),
+    };
+  }, [getCanvas, saveSnapshot, state.project, t]);
+
   const currentPage = state.project.pages.find(p => p.id === state.project.currentPageId);
 
   // Side-panel list for Insert mode (original set, unchanged)
@@ -400,6 +438,13 @@ function DesignStudioInner() {
           </div>
         </div>
       </div>
+
+      {/* ── Persistent AI command bar ────────────────────────────────────── */}
+      <AICommandBarInline
+        selectedIds={state.selectedIds}
+        onCommand={handleAICommand}
+        className={styles.commandBar}
+      />
 
       {/* ── Page strip (unchanged) ───────────────────────────────────────── */}
       <div className={styles.pageStrip} role="navigation" aria-label={t("shell.pageNavAriaLabel")}>

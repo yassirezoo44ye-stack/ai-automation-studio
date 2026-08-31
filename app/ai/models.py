@@ -135,12 +135,22 @@ class CompletionResponse(BaseModel):
 # ── Streaming chunk ───────────────────────────────────────────────────────────
 
 class StreamChunk(BaseModel):
-    type: Literal["delta", "tool_call", "usage", "done", "error", "conv_id"]
+    type: Literal[
+        "delta", "tool_call", "usage", "done", "error", "conv_id",
+        # Emitted by stream_with_events when the primary provider fails and the
+        # registry automatically routes the request to a fallback provider.
+        # Fields: previous_provider (failed), provider_id (now active).
+        "provider_switched",
+    ]
     text: Optional[str] = None
     tool_call: Optional[ToolCall] = None
     usage: Optional[UsageStats] = None
     error: Optional[str] = None
     conv_id: Optional[str] = None
+    # provider_switched fields
+    previous_provider: Optional[str] = None
+    provider_id: Optional[str] = None
+    failure_reason: Optional[str] = None
 
 
 # ── Prompt versioning ─────────────────────────────────────────────────────────

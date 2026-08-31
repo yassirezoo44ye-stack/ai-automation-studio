@@ -162,6 +162,13 @@
   flex-shrink: 0;
 }
 
+/* ── Persistent AI command bar ───────────────────────────────────────────────── */
+
+.commandBar {
+  /* overrides AICommandBarInline's inline border-top so it sits naturally */
+  flex-shrink: 0;
+}
+
 /* ── Page strip ──────────────────────────────────────────────────────────────── */
 
 .pageStrip {

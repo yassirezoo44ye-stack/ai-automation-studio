@@ -207,9 +207,17 @@ class PlatformProviderRegistry:
     # ── Failover chain ────────────────────────────────────────────────────────
 
     def resolve_chain(self, request: CompletionRequest) -> list[BaseProvider]:
-        """Return ordered list: [primary, ...fallbacks], all available."""
+        """Return ordered list: [primary, ...fallbacks], all available.
+
+        When no explicit fallback_providers are supplied the method
+        auto-appends every other configured provider in the global
+        preference order so that billing failures and open circuits
+        automatically route to the next healthy provider without the
+        caller having to enumerate fallbacks.
+        """
         primary_id   = str(request.provider or "")
         fallback_ids = [str(f) for f in (request.fallback_providers or [])]
+        has_explicit_fallbacks = bool(request.fallback_providers)
 
         if primary_id:
             chain_ids = [primary_id] + [f for f in fallback_ids if f != primary_id]
@@ -220,6 +228,18 @@ class PlatformProviderRegistry:
             except RuntimeError:
                 return []
             chain_ids = [primary_id] + fallback_ids
+
+        # Auto-populate the full preference order as implicit fallbacks when
+        # the caller did not explicitly specify any.  This ensures billing/auth
+        # failures and open circuits fall over to the next healthy provider
+        # automatically rather than returning an error immediately.
+        if not has_explicit_fallbacks:
+            _preference_order = [
+                ProviderID.anthropic.value, ProviderID.openai.value,
+                ProviderID.gemini.value, "openrouter", "groq", "local",
+            ]
+            extra = [pid for pid in _preference_order if pid not in chain_ids]
+            chain_ids = chain_ids + extra
 
         return [
             self._providers[pid]
@@ -453,10 +473,15 @@ class PlatformProviderRegistry:
                 selection_reason="registry_default",
             ))
 
+            primary_exc: Exception | None = None
+            primary_failed_provider = provider.provider_id
+            primary_failure_code: str = AIProviderErrorCode.UNKNOWN.value
+
             try:
                 async for chunk in provider.stream(request):
                     yield chunk
                 circuit_breaker.record_success(provider.provider_id)
+                return  # primary succeeded — done
             except AIProviderError as exc:
                 span.set_tag("error", f"{exc.code.value}: {exc.message}")
                 if exc.code in NO_CIRCUIT_CODES:
@@ -472,33 +497,8 @@ class PlatformProviderRegistry:
                     "Stream failed on %s (code=%s): %s — attempting fallback",
                     provider.provider_id, exc.code.value, exc.message,
                 )
-
-                for fallback in chain[1:]:
-                    if self._has_billing_error(fallback.provider_id):
-                        log.debug("billing error active for fallback %s — skipping", fallback.provider_id)
-                        continue
-                    try:
-                        resp = await fallback.complete(request)
-                        circuit_breaker.record_success(fallback.provider_id)
-                        span.set_tag("provider_id", fallback.provider_id)
-                        yield StreamChunk(type="delta", text=resp.content)
-                        if resp.tool_calls:
-                            for tc in resp.tool_calls:
-                                yield StreamChunk(type="tool_call", tool_call=tc)
-                        yield StreamChunk(type="usage", usage=resp.usage)
-                        yield StreamChunk(type="done")
-                        return
-                    except AIProviderError as fb_exc:
-                        if fb_exc.code in NO_CIRCUIT_CODES:
-                            self._mark_billing_error(fallback.provider_id, fb_exc)
-                        else:
-                            circuit_breaker.record_failure(fallback.provider_id)
-                        log.warning("Fallback %s also failed (code=%s): %s", fallback.provider_id, fb_exc.code.value, fb_exc.message)
-                    except Exception as fb_exc:
-                        circuit_breaker.record_failure(fallback.provider_id)
-                        log.warning("Fallback %s also failed: %s", fallback.provider_id, fb_exc)
-
-                yield StreamChunk(type="error", error=f"{exc.code.value}: {exc.message}")
+                primary_exc = exc
+                primary_failure_code = exc.code.value
             except Exception as exc:
                 span.set_tag("error", str(exc))
                 circuit_breaker.record_failure(provider.provider_id)
@@ -508,33 +508,125 @@ class PlatformProviderRegistry:
                     attempt=0,
                 ))
                 log.warning("Stream failed on %s: %s — attempting fallback", provider.provider_id, exc)
+                primary_exc = exc
+                primary_failure_code = AIProviderErrorCode.UNKNOWN.value
 
-                for fallback in chain[1:]:
-                    if self._has_billing_error(fallback.provider_id):
-                        log.debug("billing error active for fallback %s — skipping", fallback.provider_id)
-                        continue
-                    try:
-                        resp = await fallback.complete(request)
-                        circuit_breaker.record_success(fallback.provider_id)
-                        span.set_tag("provider_id", fallback.provider_id)
-                        yield StreamChunk(type="delta", text=resp.content)
-                        if resp.tool_calls:
-                            for tc in resp.tool_calls:
-                                yield StreamChunk(type="tool_call", tool_call=tc)
-                        yield StreamChunk(type="usage", usage=resp.usage)
-                        yield StreamChunk(type="done")
-                        return
-                    except AIProviderError as fb_exc:
-                        if fb_exc.code in NO_CIRCUIT_CODES:
-                            self._mark_billing_error(fallback.provider_id, fb_exc)
-                        else:
-                            circuit_breaker.record_failure(fallback.provider_id)
-                        log.warning("Fallback %s also failed (code=%s): %s", fallback.provider_id, fb_exc.code.value, fb_exc.message)
-                    except Exception as fb_exc:
+            # ── Fallback chain ─────────────────────────────────────────────────
+            # Walk remaining providers in order; try streaming first, fall back
+            # to complete() only if the provider does not expose .stream().
+            # Tracks which providers failed and why for a structured final error.
+            all_failures: list[dict] = [
+                {"id": primary_failed_provider, "reason": primary_failure_code.lower()}
+            ]
+
+            for fallback in chain[1:]:
+                if self._has_billing_error(fallback.provider_id):
+                    log.debug("billing error active for fallback %s — skipping", fallback.provider_id)
+                    all_failures.append({"id": fallback.provider_id, "reason": "billing_required"})
+                    continue
+                if not circuit_breaker.allow(fallback.provider_id):
+                    log.debug("circuit open for fallback %s — skipping", fallback.provider_id)
+                    all_failures.append({"id": fallback.provider_id, "reason": "circuit_open"})
+                    continue
+
+                # Notify: automatic provider switch (logged internally; surfaced to UI)
+                log.warning(
+                    "provider_failover: %s → %s (primary_reason=%s)",
+                    primary_failed_provider, fallback.provider_id, primary_failure_code,
+                )
+                yield StreamChunk(
+                    type="provider_switched",
+                    previous_provider=primary_failed_provider,
+                    provider_id=fallback.provider_id,
+                    failure_reason=primary_failure_code.lower(),
+                )
+
+                try:
+                    # Prefer streaming if available (provider.stream is defined
+                    # on all BaseProvider subclasses, so always try it first).
+                    async for chunk in fallback.stream(request):
+                        yield chunk
+                    circuit_breaker.record_success(fallback.provider_id)
+                    span.set_tag("provider_id", fallback.provider_id)
+                    return
+                except NotImplementedError:
+                    # Provider does not support streaming — fall back to complete()
+                    pass
+                except AIProviderError as fb_exc:
+                    if fb_exc.code in NO_CIRCUIT_CODES:
+                        self._mark_billing_error(fallback.provider_id, fb_exc)
+                    else:
                         circuit_breaker.record_failure(fallback.provider_id)
-                        log.warning("Fallback %s also failed: %s", fallback.provider_id, fb_exc)
+                    log.warning(
+                        "Fallback stream %s failed (code=%s): %s — trying complete()",
+                        fallback.provider_id, fb_exc.code.value, fb_exc.message,
+                    )
+                    # Fall through to complete() attempt below
+                except Exception as fb_exc:
+                    circuit_breaker.record_failure(fallback.provider_id)
+                    log.warning(
+                        "Fallback stream %s failed: %s — trying complete()",
+                        fallback.provider_id, fb_exc,
+                    )
+                    # Fall through to complete() attempt below
 
-                yield StreamChunk(type="error", error=str(exc))
+                # complete() fallback for providers that don't support stream
+                # or whose stream() failed transiently
+                try:
+                    resp = await fallback.complete(request)
+                    circuit_breaker.record_success(fallback.provider_id)
+                    span.set_tag("provider_id", fallback.provider_id)
+                    yield StreamChunk(type="delta", text=resp.content)
+                    if resp.tool_calls:
+                        for tc in resp.tool_calls:
+                            yield StreamChunk(type="tool_call", tool_call=tc)
+                    yield StreamChunk(type="usage", usage=resp.usage)
+                    yield StreamChunk(type="done")
+                    return
+                except AIProviderError as fb_exc:
+                    if fb_exc.code in NO_CIRCUIT_CODES:
+                        self._mark_billing_error(fallback.provider_id, fb_exc)
+                    else:
+                        circuit_breaker.record_failure(fallback.provider_id)
+                    all_failures.append({"id": fallback.provider_id, "reason": fb_exc.code.value.lower()})
+                    log.warning(
+                        "Fallback complete() %s also failed (code=%s): %s",
+                        fallback.provider_id, fb_exc.code.value, fb_exc.message,
+                    )
+                except Exception as fb_exc:
+                    circuit_breaker.record_failure(fallback.provider_id)
+                    all_failures.append({"id": fallback.provider_id, "reason": "unknown"})
+                    log.warning("Fallback complete() %s also failed: %s", fallback.provider_id, fb_exc)
+
+            # All providers exhausted — emit structured error
+            all_billing = all(
+                f["reason"] in ("billing_required", "authentication_failed")
+                for f in all_failures
+            )
+            structured = {
+                "code": "AI_PROVIDERS_UNAVAILABLE",
+                "providers": all_failures,
+            }
+            import json as _json
+            structured_msg = _json.dumps(structured)
+
+            if all_billing and all_failures:
+                primary_id = all_failures[0]["id"]
+                yield StreamChunk(
+                    type="error",
+                    error=(
+                        f"BILLING_REQUIRED:{primary_id}: "
+                        f"No available AI providers — "
+                        f"all configured providers require billing or authentication fix. "
+                        f"Details: {structured_msg}"
+                    ),
+                )
+            else:
+                msg = str(primary_exc) if primary_exc else "Unknown error"
+                yield StreamChunk(
+                    type="error",
+                    error=f"AI_PROVIDERS_UNAVAILABLE: {msg} Details: {structured_msg}",
+                )
 
 
 # Module-level singleton for the platform

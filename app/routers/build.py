@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.ai.errors import AIProviderError, AIProviderErrorCode
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id, owner_email
@@ -371,6 +372,20 @@ async def build_stream(req: BuildRequest, request: Request):
                             dest.parent.mkdir(parents=True, exist_ok=True)
                             await asyncio.to_thread(dest.write_text, content, "utf-8")
                             yield _sse("file", path=path, content=content)
+                elif ctype == "provider_switched":
+                    # Primary provider failed; registry automatically switched to a fallback.
+                    # Surface a user-facing notification (no stack trace, no provider internals).
+                    prev = chunk.get("previous_provider", "")
+                    curr = chunk.get("provider_id", "")
+                    reason = chunk.get("failure_reason", "")
+                    log.warning(
+                        "build_stream provider_failover: %s → %s (reason=%s)",
+                        prev, curr, reason,
+                    )
+                    yield _sse("provider_switched",
+                               message="تم التحويل تلقائياً إلى مزود AI آخر / Automatically switched to a fallback AI provider.",
+                               previous_provider=prev,
+                               current_provider=curr)
                 elif ctype == "usage" and chunk.get("usage"):
                     total_tokens = chunk["usage"].get("total_tokens", 0)
                 elif ctype == "error":
@@ -487,6 +502,28 @@ async def build_plan(req: PlanRequest, request: Request):
         resp = await engine.complete(
             request_obj, user_id=str(uid), org_id=org_id, auto_tools=False,
         )
+    except AIProviderError as e:
+        # Structured provider errors: billing → 402, unavailable → 503
+        if e.code == AIProviderErrorCode.BILLING_REQUIRED:
+            raise HTTPException(402, detail={
+                "code": "BILLING_REQUIRED",
+                "provider": e.provider,
+                "message": (
+                    f"AI provider '{e.provider}' requires billing. "
+                    "Add credits or configure an alternative provider."
+                ),
+            })
+        if e.code == AIProviderErrorCode.AUTHENTICATION_FAILED:
+            raise HTTPException(403, detail={
+                "code": "AUTHENTICATION_FAILED",
+                "provider": e.provider,
+                "message": f"AI provider '{e.provider}' authentication failed. Check the API key.",
+            })
+        raise HTTPException(503, detail={
+            "code": e.code.value,
+            "provider": e.provider,
+            "message": e.message,
+        })
     except anthropic.BadRequestError as e:
         raise HTTPException(402, anthropic_error_message(e))
     except RuntimeError as e:
