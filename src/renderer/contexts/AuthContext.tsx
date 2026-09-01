@@ -145,8 +145,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // 5xx or unexpected — backend problem, keep the stored token for retry
           return { token: null, networkError: `Server error (${res.status}). Please try again.` };
         }
-        const data = await parseJSON<{ access_token: string; refresh_token: string }>(res, "/api/auth/refresh");
+        const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token?: string }>(res, "/api/auth/refresh");
         localStorage.setItem(REFRESH_KEY, data.refresh_token);
+        // SUB_TOKEN_P0_DECISION.md Option A: sub_token now has a short TTL and
+        // is re-minted by the backend on every refresh — store the new one
+        // here the same way login/oauth-exchange already do, or it would go
+        // stale ~20 min after login despite the session otherwise staying alive.
+        if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
         setGlobalToken(data.access_token);
         setAccessToken(data.access_token);
         scheduleRefresh();

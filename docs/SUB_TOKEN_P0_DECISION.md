@@ -1,7 +1,18 @@
 # P0 decision: `sub_token` is not revoked by logout / logout-all
 
-Status: **DOCUMENTED, NOT IMPLEMENTED** — analysis only, per explicit instruction not to
-silently change authentication architecture. Needs your go-ahead before any code lands.
+Status: **Option A implemented (2026-09-01)** — mitigation shipped, real fix still pending.
+`TOKEN_TTL` (`app/core/config.py`) cut from 30 days to 20 minutes; `refresh_token()`
+(`app/routers/auth_users.py`) now re-mints `sub_token` alongside `access_token` on every
+`/refresh` call; frontend `doRefresh()` (`AuthContext.tsx`) stores the re-minted token.
+Verified: 180 security tests, 64 auth-lifecycle/OAuth tests, 8 frontend AuthContext tests,
+clean `tsc` — no regressions. **A captured `sub_token` is now valid for at most ~20 minutes
+instead of up to 30 days**, but Logout/Logout-all still don't actively revoke it (it just
+expires fast on its own) — that's still true statelessness, not real logout-binding.
+
+**Option B vs Option C is still an open decision, not yet made** — this file's own
+recommendation (Option C, via the existing Redis/cache adapter) stands unless you decide
+otherwise. Nothing below this line has changed; it still describes the un-implemented
+full-fix options.
 
 ## What's actually true (verified against current code, not assumed)
 

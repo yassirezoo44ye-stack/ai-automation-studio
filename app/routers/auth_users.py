@@ -406,10 +406,21 @@ async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
             raise HTTPException(401, "Session expired")
 
     access_token = make_access_token(str(session["user_id"]), session["email"])
+
+    # SUB_TOKEN_P0_DECISION.md Option A: sub_token now carries a short TTL
+    # (TOKEN_TTL, app/core/config.py) instead of 30 days, so it must be
+    # re-minted here alongside access_token on every refresh cycle — the
+    # frontend's scheduleRefresh() already runs every ~13 min, well inside
+    # the new TTL, so this keeps a legitimate session's sub_token alive
+    # transparently while bounding how long a captured one stays valid.
+    from app.core.auth import make_token as _make_sub_token
+    sub_token = _make_sub_token(session["email"], trial=True, days_remaining=30)
+
     return {
         "access_token": access_token,
         "refresh_token": new_refresh,
         "token_type": "bearer",
+        "sub_token": sub_token,
     }
 
 

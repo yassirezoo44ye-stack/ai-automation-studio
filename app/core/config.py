@@ -29,7 +29,13 @@ if not SESSION_SECRET:
         file=sys.stderr,
     )
     sys.exit(1)
-TOKEN_TTL: int = 3600 * 24 * 30  # 30 days
+TOKEN_TTL: int = 60 * 20  # 20 minutes — sub_token is re-minted on every /refresh
+# call (see refresh_token() in app/routers/auth_users.py) alongside the access
+# token, so a short TTL costs nothing in practice but bounds how long a
+# captured sub_token stays valid after logout/expiry. Was 30 days; that let a
+# leaked sub_token (XSS, log leak, shared device) outlive Logout/Logout-all by
+# weeks since neither endpoint touches it — see docs/SUB_TOKEN_P0_DECISION.md
+# (Option A: mitigation, not full logout-binding — Option C tracked separately).
 
 # ── Stripe ────────────────────────────────────────────────────────────────────
 _stripe.api_key          = os.getenv("STRIPE_SECRET_KEY", "")
