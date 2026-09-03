@@ -2,7 +2,7 @@
  * AppTreePanel
  *
  * The primary left panel for Flow App Builder (Workspace section).
- * Shows the app structure tree: APP / DATA / AI / AUTOMATION / DEPLOY.
+ * Shows the app structure tree: APP / DATA / AI / AUTOMATION / DEPLOY / AI_TOOLS.
  *
  * Icons: SVG with currentColor — decorative icons use aria-hidden="true".
  * Shared icons imported from the project icon library; items without a
@@ -10,6 +10,7 @@
  *
  * Phase 2: removed dual-mode toggle (onSwitchToInsert / footer).
  * Phase 3: migrated all emoji/Unicode visual icons to SVG.
+ * Phase 4: added AI_TOOLS group (6 curated categories from the tools guide).
  */
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -30,7 +31,10 @@ export type AppSection =
   // AUTOMATION
   | "workflows" | "triggers" | "events" | "jobs"
   // DEPLOY
-  | "deploy-preview" | "production" | "domains";
+  | "deploy-preview" | "production" | "domains"
+  // AI_TOOLS (curated tool catalogue — slides 2-7)
+  | "ai-assistants" | "no-code-dev" | "content-production"
+  | "productivity"   | "creativity-design" | "automation-int";
 
 // ── Local SVG icons (items without a match in the shared library) ─────────────
 // All: 16×16 viewBox, stroke="currentColor", aria-hidden="true".
@@ -111,6 +115,81 @@ interface TreeGroup {
   items: TreeItem[];
 }
 
+// ── AI Tools local SVG icons ──────────────────────────────────────────────────
+
+const BotIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect x="3" y="5" width="10" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+    <circle cx="6"  cy="9" r="1" fill="currentColor"/>
+    <circle cx="10" cy="9" r="1" fill="currentColor"/>
+    <path d="M8 2v3M6 13.5v1M10 13.5v1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+
+const CodeBlockIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <polyline points="5 5 2 8 5 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    <polyline points="11 5 14 8 11 11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    <line x1="9.5" y1="3" x2="6.5" y2="13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+
+const VideoIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect x="1.5" y="3.5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M10.5 6.5l4-2v7l-4-2V6.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ProductivityIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect x="2" y="2" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <rect x="8.5" y="2" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <rect x="2" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+  </svg>
+);
+
+const PaletteIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3"/>
+    <circle cx="5.5" cy="6.5" r="1" fill="currentColor"/>
+    <circle cx="8"   cy="5"   r="1" fill="currentColor"/>
+    <circle cx="10.5" cy="6.5" r="1" fill="currentColor"/>
+    <path d="M11.5 10.5a3.5 3.5 0 0 1-7 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+
+const IntegrationIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="3.5"  cy="8"   r="2" stroke="currentColor" strokeWidth="1.3"/>
+    <circle cx="12.5" cy="3.5" r="2" stroke="currentColor" strokeWidth="1.3"/>
+    <circle cx="12.5" cy="12.5" r="2" stroke="currentColor" strokeWidth="1.3"/>
+    <line x1="5.5" y1="7"  x2="10.5" y2="4.5"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    <line x1="5.5" y1="9"  x2="10.5" y2="11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+
+// ── Data model ────────────────────────────────────────────────────────────────
+
+interface TreeItem {
+  id:        AppSection;
+  icon:      ReactNode;          // SVG ReactNode — replaces emoji string
+  badge?:    number;
+  comingSoon?: boolean;
+}
+
+interface TreeGroup {
+  id:    string;
+  items: TreeItem[];
+}
+
 // Labels for groups/items come from i18n — no hardcoded strings here.
 // Priority: existing Icons library > local SVG component.
 const TREE_GROUPS: TreeGroup[] = [
@@ -157,6 +236,18 @@ const TREE_GROUPS: TreeGroup[] = [
       { id: "domains",        icon: <Icons.social />,  comingSoon: true   },
     ],
   },
+  // ── AI TOOLS group — curated tool catalogue (slides 2–7) ─────────────────
+  {
+    id: "ai-tools",
+    items: [
+      { id: "ai-assistants",      icon: <BotIcon />          },   // ChatGPT · Claude · Perplexity
+      { id: "no-code-dev",        icon: <CodeBlockIcon />    },   // Cursor · Lovable · Replit
+      { id: "content-production", icon: <VideoIcon />        },   // HeyGen · Synthesia · Descript
+      { id: "productivity",       icon: <ProductivityIcon /> },   // NotebookLM · Gamma · Granola
+      { id: "creativity-design",  icon: <PaletteIcon />      },   // Kling · ElevenLabs · Google Veo
+      { id: "automation-int",     icon: <IntegrationIcon />  },   // n8n · Claude Code · Zapier
+    ],
+  },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -169,8 +260,8 @@ interface Props {
 export function AppTreePanel({ activeSection, onSectionChange }: Props) {
   const { t } = useTranslation("designStudio");
 
-  // APP section is expanded by default so new users see page list immediately
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["app"]));
+  // APP and AI_TOOLS sections are expanded by default
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["app", "ai-tools"]));
 
   const toggleGroup = (id: string) => {
     setExpandedGroups(prev => {

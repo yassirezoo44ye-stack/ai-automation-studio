@@ -41,6 +41,7 @@ import { TokensPanel }               from "./components/Panels/TokensPanel";
 import { HistoryPanel }              from "./components/Panels/HistoryPanel";
 import { AIPanel }                   from "./components/Panels/AIPanel";
 import { PropertiesPanel }           from "./components/Panels/PropertiesPanel";
+import { AIToolsSectionPanel, isAiToolsSection } from "./components/Panels/AIToolsSectionPanel";
 import { ExportModal }               from "./components/Modals/ExportModal";
 import { AICommandBar }              from "./components/Modals/AICommandBar";
 import type { PanelId, Tool }        from "./types/canvas.types";
@@ -370,9 +371,13 @@ function DesignStudioInner() {
           </div>
         </div>
 
-        {/* ── Canvas area (unchanged) ──────────────────────────────────────── */}
+        {/* ── Canvas area / AI Tools section ──────────────────────────────── */}
         <div className={styles.canvasArea}>
-          <CanvasView fabricCanvas={fabricCanvas} state={state} />
+          {isAiToolsSection(activeSection) ? (
+            <AIToolsSectionPanel section={activeSection} />
+          ) : (
+            <CanvasView fabricCanvas={fabricCanvas} state={state} />
+          )}
         </div>
 
         {/* ── Right properties panel (unchanged) ──────────────────────────── */}
