@@ -69,6 +69,10 @@ PUBLIC_PREFIXES: tuple = (
     "/api/stripe/",
     "/api/health/",
     "/health",
+    # Automation webhooks — HMAC-SHA256 authenticated at the handler level,
+    # not by the global JWT middleware. The signing secret is validated inside
+    # the handler before any business logic runs.
+    "/api/webhooks/auto/",
 )
 
 # ── Platform admins ───────────────────────────────────────────────────────────

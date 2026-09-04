@@ -49,6 +49,11 @@ _RLS_TABLES: tuple[tuple[str, str], ...] = (
     # can re-apply on any boot that runs before migration 010 has set them.
     ("app_builder_apps", "organization_id"),
     ("app_builder_versions", "organization_id"),
+    # Automation Engine — Phase 5 Gate 3
+    ("automation_definitions", "organization_id"),
+    ("automation_runs", "organization_id"),
+    ("automation_run_steps", "organization_id"),
+    ("automation_approvals", "organization_id"),
 )
 
 

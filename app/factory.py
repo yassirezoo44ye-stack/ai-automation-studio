@@ -62,6 +62,8 @@ from app.routers import integrations     as integrations_router
 from app.routers import app_builder      as app_builder_router
 from app.routers import ws_ticket        as ws_ticket_router
 from app.routers import training         as training_router
+from app.routers import automation_api   as automation_api_router
+from app.routers import automation_webhooks as automation_webhooks_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -194,6 +196,23 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await init_integrations_schema(conn)
 
+    # ── Automation Engine — Phase 5 Gate 3 (after integrations, before RLS)
+    from app.core.workflow.automation_schema import (
+        ensure_automation_definitions_table,
+        ensure_automation_runs_table,
+        ensure_automation_run_steps_table,
+        ensure_automation_approvals_table,
+    )
+    from app.core.workflow.persistence import get_automation_persistence
+    await ensure_automation_definitions_table()
+    await ensure_automation_runs_table()
+    await ensure_automation_run_steps_table()
+    await ensure_automation_approvals_table()
+    # Startup recovery: mark any runs that were 'running'/'compensating' when
+    # the server last stopped as 'interrupted' — Engine A's in-memory state
+    # is gone after a restart and those runs will never complete.
+    await get_automation_persistence().mark_interrupted_runs()
+
     # ── Scoped Row Level Security (defense-in-depth on tenancy tables) ─────
     from app.tenancy import enable_scoped_rls
     async with pool.acquire() as conn:
@@ -224,6 +243,30 @@ async def lifespan(app: FastAPI):
                     "ON CONFLICT DO NOTHING",
                     role, resource, action,
                 )
+
+    # ── Automation permissions — Phase 5 Gate 3 ────────────────────────────
+    # Seed role_permissions rows for automation:read / automation:write.
+    # ON CONFLICT DO NOTHING is idempotent — safe to run on every boot.
+    async with pool.acquire() as conn:
+        for role, resource, action in [
+            # automation:read — everyone who can read anything in the org
+            ("owner",     "automation", "read"),
+            ("admin",     "automation", "read"),
+            ("manager",   "automation", "read"),
+            ("developer", "automation", "read"),
+            ("operator",  "automation", "read"),
+            ("viewer",    "automation", "read"),
+            # automation:write — builder roles
+            ("owner",     "automation", "write"),
+            ("admin",     "automation", "write"),
+            ("manager",   "automation", "write"),
+            ("developer", "automation", "write"),
+        ]:
+            await conn.execute(
+                "INSERT INTO role_permissions (role, resource, action) VALUES ($1,$2,$3) "
+                "ON CONFLICT DO NOTHING",
+                role, resource, action,
+            )
 
     # ── Training Studio — references organizations/projects/users ────────────
     from app.training import init_training_schema
@@ -274,6 +317,18 @@ async def lifespan(app: FastAPI):
     # 'building' for longer than the stale thresholds as 'failed' so the
     # user can trigger a retry rather than waiting forever.
     await _abs_svc.recover_stale_builds()
+
+    # ── Automation JobQueue handlers — Phase 5 Gate 3 ─────────────────────
+    from app.services.automation_jobs import (
+        handle_automation_schedule_trigger,
+        handle_automation_webhook_trigger,
+    )
+    get_job_queue().register_handler(
+        "automation.trigger.schedule", handle_automation_schedule_trigger,
+    )
+    get_job_queue().register_handler(
+        "automation.trigger.webhook", handle_automation_webhook_trigger,
+    )
 
     # ── Integration SDK — register the example provider + health probe.
     # No real third-party provider is registered here (see
@@ -624,6 +679,8 @@ def create_app() -> FastAPI:
     app.include_router(app_builder_router.router)
     app.include_router(ws_ticket_router.router)
     app.include_router(training_router.router)
+    app.include_router(automation_api_router.router)
+    app.include_router(automation_webhooks_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

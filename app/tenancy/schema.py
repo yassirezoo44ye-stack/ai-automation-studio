@@ -195,9 +195,14 @@ DEFAULT_PERMISSIONS: dict[str, list[tuple[str, str]]] = {
     "operator": [
         ("*", "read"),
         ("workflows", "execute"), ("agents", "execute"), ("jobs", "manage"),
+        ("automation", "read"),
     ],
     "viewer": [("*", "read")],
 }
+
+# Automation permissions seeded separately in factory.py lifespan (Phase 5 Gate 3)
+# so they can be added after the DEFAULT_PERMISSIONS block without disrupting
+# existing seeds. See app/factory.py lifespan block for the INSERT logic.
 
 
 _MIGRATIONS: tuple[str, ...] = (
