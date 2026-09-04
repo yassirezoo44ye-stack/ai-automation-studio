@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OrgProvider }   from "./contexts/OrgContext";
 import { AppProvider }   from "./contexts/AppContext";
@@ -7,6 +8,7 @@ import { NotificationProvider } from "./contexts/NotificationContext";
 import { CopilotProvider } from "./contexts/CopilotContext";
 import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
+import { LandingPage }   from "./features/landing/LandingPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
 import "./design-system.css";
 
@@ -14,8 +16,11 @@ import "./design-system.css";
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
+type AuthView = "landing" | "login" | "register";
+
 function AppInner() {
   const { user, loading, bootstrapError } = useAuth();
+  const [authView, setAuthView] = useState<AuthView>("landing");
 
   if (loading) {
     return <LoadingSpinner fullPage label="Starting Flow…" />;
@@ -43,22 +48,39 @@ function AppInner() {
     );
   }
 
-  if (!user) {
-    return <AuthPage />;
+  // Authenticated — render the full app
+  if (user) {
+    return (
+      <ToastProvider>
+        <OrgProvider>
+          <AppProvider>
+            <NotificationProvider>
+              <CopilotProvider>
+                <AppLayout />
+              </CopilotProvider>
+            </NotificationProvider>
+          </AppProvider>
+        </OrgProvider>
+      </ToastProvider>
+    );
   }
 
+  // Not authenticated — show landing page or auth form
+  if (authView === "landing") {
+    return (
+      <LandingPage
+        onSignIn={() => setAuthView("login")}
+        onSignUp={() => setAuthView("register")}
+      />
+    );
+  }
+
+  // Login or register
   return (
-    <ToastProvider>
-      <OrgProvider>
-        <AppProvider>
-          <NotificationProvider>
-            <CopilotProvider>
-              <AppLayout />
-            </CopilotProvider>
-          </NotificationProvider>
-        </AppProvider>
-      </OrgProvider>
-    </ToastProvider>
+    <AuthPage
+      initialTab={authView === "register" ? "register" : "login"}
+      onBack={() => setAuthView("landing")}
+    />
   );
 }
 

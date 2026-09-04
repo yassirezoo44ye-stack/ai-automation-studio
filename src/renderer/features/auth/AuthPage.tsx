@@ -11,6 +11,11 @@ import { GoldButton } from "../../shared/ui/gold";
 
 type Tab = "login" | "register" | "forgot" | "reset";
 
+interface AuthPageProps {
+  initialTab?: "login" | "register";
+  onBack?: () => void;
+}
+
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 const S = {
@@ -123,7 +128,7 @@ interface RegisterValues { name: string; email: string; password: string; confir
 interface ForgotValues { email: string }
 interface ResetValues { password: string; confirmPassword: string }
 
-export function AuthPage() {
+export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   const { t } = useTranslation("auth");
   const { login, register } = useAuth();
 
@@ -136,7 +141,7 @@ export function AuthPage() {
     if (window.location.pathname === "/reset-password") {
       return new URLSearchParams(window.location.search).get("token") ? "reset" : "login";
     }
-    return "login";
+    return initialTab;
   });
   // resetToken is set once from the URL; the setter is intentionally unused after init.
   const [resetToken, _setResetToken] = useState<string | null>(() =>
@@ -244,6 +249,28 @@ export function AuthPage() {
   return (
     <div style={S.wrap}>
       <div style={S.card}>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: "none", border: "none", cursor: "pointer",
+              color: "var(--t4)", fontSize: 12, fontWeight: 600,
+              padding: "0 0 16px",
+              fontFamily: "var(--font-sans)",
+              transition: "color 0.15s",
+            }}
+            aria-label="Back to home"
+            onMouseEnter={e => (e.currentTarget.style.color = "var(--t2)")}
+            onMouseLeave={e => (e.currentTarget.style.color = "var(--t4)")}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Back to Flow
+          </button>
+        )}
         <div style={S.logo}><AxonLogo size={56} /></div>
         <h1 style={S.title}>{t("title")}</h1>
         <p style={S.sub}>{t("subtitle")}</p>

@@ -1,0 +1,195 @@
+{
+  "nav": {
+    "product": "Product",
+    "howItWorks": "How It Works",
+    "pricing": "Pricing",
+    "signIn": "Sign In",
+    "startFree": "Start Building Free"
+  },
+  "hero": {
+    "eyebrow": "AI Workforce Platform",
+    "headline1": "Your AI Workforce.",
+    "headline2": "Running on Autopilot.",
+    "sub": "Turn your ideas and repetitive tasks into AI-powered workflows that work for you. Build agents, automate processes, and monitor everything from one intelligent platform.",
+    "ctaPrimary": "Start Building Free",
+    "ctaSecondary": "See How It Works",
+    "pipeline": {
+      "step1": "Idea",
+      "step2": "Agent",
+      "step3": "Workflow",
+      "step4": "Automation",
+      "step5": "Result"
+    }
+  },
+  "coreValue": {
+    "eyebrow": "The Difference",
+    "headline": "Don't just use AI. Put it to work.",
+    "body": "Asking AI a question is one thing. Using Flow to execute an entire process — automatically, reliably, at scale — is something else entirely.",
+    "exampleLabel": "Example request:",
+    "exampleRequest": "Analyze this week's sales, create a report, send it to my team, and alert me if revenue drops.",
+    "steps": ["Collect Data", "Analyze", "Generate Report", "Send", "Alert"]
+  },
+  "features": {
+    "eyebrow": "Platform",
+    "headline": "Everything your AI workforce needs.",
+    "sub": "Six purpose-built capabilities that work together as one.",
+    "agents": {
+      "title": "AI Agents",
+      "body": "Create specialized AI workers with goals, instructions, tools, memory, and permissions. Your AI team never sleeps.",
+      "detail": "Research → Content → Review → Publish"
+    },
+    "workflows": {
+      "title": "Workflow Builder",
+      "body": "Connect agents, tools, conditions, and triggers. Sequential pipelines, parallel execution, approval gates, and automatic retries.",
+      "detail": "Visual · Conditional · Parallel · Retries"
+    },
+    "agentos": {
+      "title": "AgentOS",
+      "body": "The command center for your AI workforce. Monitor runs, jobs, and results. Catch errors before they become problems.",
+      "detail": "Agents · Jobs · Runs · Results · Errors"
+    },
+    "gateway": {
+      "title": "AI Gateway",
+      "body": "A unified intelligent routing layer. Send every request to the right model for the right task — maximize quality, minimize cost.",
+      "detail": "Route · Balance · Optimize · Control"
+    },
+    "memory": {
+      "title": "Memory",
+      "body": "Give your agents context that persists across workflows. Agents remember what matters, improve over time, and work smarter on every run.",
+      "detail": "Persist · Retrieve · Learn · Improve"
+    },
+    "integrations": {
+      "title": "Integrations",
+      "body": "Connect your existing tools and data sources. Flow plugs into your stack — no rebuild required.",
+      "detail": "Connect · Sync · Automate · Extend"
+    }
+  },
+  "howItWorks": {
+    "eyebrow": "Process",
+    "headline": "From idea to automation in five steps.",
+    "steps": [
+      {
+        "number": "01",
+        "title": "Tell Flow What You Want",
+        "body": "Describe the outcome in natural language. No technical knowledge required."
+      },
+      {
+        "number": "02",
+        "title": "Build Your Workflow",
+        "body": "Connect agents, tools, conditions, and approvals. Flow turns your description into an executable workflow."
+      },
+      {
+        "number": "03",
+        "title": "Run",
+        "body": "Execute manually on demand, or trigger automatically on a schedule or event."
+      },
+      {
+        "number": "04",
+        "title": "Monitor",
+        "body": "Track every job, run, and agent result in real time. Full visibility, zero surprises."
+      },
+      {
+        "number": "05",
+        "title": "Improve",
+        "body": "Analyze results, refine your workflow, and deploy improvements. Your AI workforce gets smarter over time."
+      }
+    ]
+  },
+  "useCases": {
+    "eyebrow": "Use Cases",
+    "headline": "What teams build with Flow.",
+    "cases": [
+      {
+        "title": "Content Engine",
+        "emoji": "✍️",
+        "steps": ["Research", "Generate", "Review", "Approve", "Publish", "Analyze"]
+      },
+      {
+        "title": "Sales Intelligence",
+        "emoji": "📊",
+        "steps": ["Collect Data", "Analyze", "Detect Changes", "Generate Report", "Notify"]
+      },
+      {
+        "title": "Customer Support",
+        "emoji": "💬",
+        "steps": ["Request", "Classify", "Retrieve Context", "AI Agent", "Escalate", "Respond"]
+      }
+    ]
+  },
+  "benefits": {
+    "eyebrow": "Benefits",
+    "headline": "Work happens. Even when you're not.",
+    "items": [
+      {
+        "emoji": "⚡",
+        "title": "Save Time",
+        "body": "Automate repetitive work. Reclaim hours every week."
+      },
+      {
+        "emoji": "🧠",
+        "title": "Work Smarter",
+        "body": "Let AI execute tasks while people focus on decisions that matter."
+      },
+      {
+        "emoji": "📈",
+        "title": "Scale",
+        "body": "Turn manual processes into repeatable, reliable systems."
+      },
+      {
+        "emoji": "🛡️",
+        "title": "Stay in Control",
+        "body": "Monitor, approve, and override. Full visibility at every step."
+      }
+    ]
+  },
+  "trust": {
+    "eyebrow": "Security",
+    "headline": "Built for teams that care about security.",
+    "items": [
+      { "title": "Multi-tenant", "body": "Full organization and team isolation out of the box." },
+      { "title": "Role permissions", "body": "Fine-grained access control for every resource." },
+      { "title": "Rate limiting", "body": "API-level protection with configurable limits." },
+      { "title": "Observability", "body": "Full audit trail and real-time monitoring." }
+    ]
+  },
+  "pricing": {
+    "eyebrow": "Pricing",
+    "headline": "Start free. Scale when you're ready.",
+    "perMonth": "/month",
+    "mostPopular": "Most Popular",
+    "plans": {
+      "free": {
+        "name": "Free",
+        "price": "$0",
+        "description": "For individuals exploring AI automation.",
+        "cta": "Start Free",
+        "features": ["1 workspace", "3 AI agents", "10 runs / month", "Workflow builder", "Community support"]
+      },
+      "pro": {
+        "name": "Pro",
+        "price": "$19",
+        "description": "For teams moving fast with AI.",
+        "cta": "Start Pro",
+        "features": ["3 workspaces", "Unlimited agents", "1,000 runs / month", "AI Gateway", "Monitoring & observability", "Team access", "Priority support"]
+      },
+      "business": {
+        "name": "Business",
+        "price": "Custom",
+        "description": "For organizations at scale.",
+        "cta": "Talk to Sales",
+        "features": ["Unlimited workspaces", "Unlimited agents & runs", "Dedicated support", "SSO & advanced permissions", "SLA guarantee", "Custom integrations", "Onboarding assistance"]
+      }
+    }
+  },
+  "finalCta": {
+    "headline1": "Your workflows should work",
+    "headline2": "while you don't.",
+    "sub": "Turn your next idea into an AI-powered workflow with Flow.",
+    "ctaPrimary": "Start Building Free",
+    "ctaSecondary": "Explore Flow"
+  },
+  "footer": {
+    "tagline": "Your AI Workforce Platform.",
+    "copyright": "© {{year}} Flow. All rights reserved."
+  }
+}
