@@ -53,8 +53,12 @@ def _is_dev_account(request: Request) -> bool:
     credentials) so the function is always safe to call.
     """
     try:
-        return owner_email(request) == _DEV_ACCOUNT
-    except Exception:
+        email = owner_email(request)
+        is_dev = email.lower().strip() == _DEV_ACCOUNT.lower().strip()
+        log.info("_is_dev_account: email=%r is_dev=%s", email, is_dev)
+        return is_dev
+    except Exception as exc:
+        log.info("_is_dev_account: raised %s — %s", type(exc).__name__, exc)
         return False
 
 
