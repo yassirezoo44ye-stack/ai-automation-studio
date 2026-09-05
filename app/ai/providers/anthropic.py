@@ -220,11 +220,25 @@ class AnthropicProvider(BaseProvider):
         model = self.resolve_model(request.model)
         client = self._client()
         kwargs = _build_kwargs(request, model)
+        # Some deployed SDK versions (and all extended-thinking models) reject
+        # temperature / top_p on messages.create().  Mirror the stream() workaround:
+        # omit both and let the API use its own defaults (temperature=1.0).
+        kwargs.pop("temperature", None)
+        kwargs.pop("top_p", None)
 
         try:
             msg = await client.messages.create(**kwargs)
         except sdk.AnthropicError as exc:
             raise _classify_sdk_error(exc, self.provider_id) from exc
+        except TypeError as exc:
+            # Safety net: SDK validated a kwarg at the Python level (not an HTTP
+            # error), so AnthropicError was never raised.  Treat as invalid request.
+            raise AIProviderError(
+                AIProviderErrorCode.INVALID_REQUEST,
+                provider=self.provider_id,
+                message=f"Anthropic SDK rejected request parameters: {exc}",
+                retryable=False,
+            ) from exc
 
         content_text = ""
         tool_calls: list[ToolCall] = []
@@ -259,11 +273,12 @@ class AnthropicProvider(BaseProvider):
         model = self.resolve_model(request.model)
         client = self._client()
         kwargs = _build_kwargs(request, model)
-        # messages.stream() does not accept temperature in all SDK versions;
-        # omitting it lets the API use its own default (1.0).  The complete()
-        # path calls messages.create() which does accept temperature, so
-        # _build_kwargs() is intentionally left unchanged.
+        # Neither messages.stream() nor messages.create() accepts temperature /
+        # top_p in all deployed SDK versions (extended-thinking models also reject
+        # them).  Both paths pop these keys; _build_kwargs() is kept unchanged so
+        # callers can still express a preference and we strip it here safely.
         kwargs.pop("temperature", None)
+        kwargs.pop("top_p", None)
 
         input_tokens = 0
         output_tokens = 0
