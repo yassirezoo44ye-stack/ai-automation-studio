@@ -298,9 +298,10 @@ async def build_stream(req: BuildRequest, request: Request):
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, req.project_id, uid)
 
-    # Detect dev/owner account AFTER auth — email resolved from verified token,
-    # not from any caller-controlled header or body field.
-    dev_mode = _is_dev_account(request)
+    # dev_mock routing was removed: the owner account now uses the real Claude
+    # API (claude-sonnet-4-6) exactly like every other user.  DevMockProvider
+    # is still registered for integration tests via provider="dev_mock" but is
+    # no longer automatically applied to any authenticated user.
 
     async def event_stream():
         # Slot held for the whole stream (handler returns before tokens flow).
@@ -311,17 +312,11 @@ async def build_stream(req: BuildRequest, request: Request):
             yield _sse("error", message="Server is at capacity — please retry shortly.")
             return
         try:
-            if dev_mode:
-                # Dev/owner account: no Anthropic credits needed.
-                # DevMockProvider is free, in-process, and exercises the real SSE pipeline.
-                yield _sse("status", message="🔧 وضع التطوير — المحاكي المحلي")
-                yield _sse("dev_mode", provider="dev_mock")
-            else:
-                yield _sse("status", message="🤖 Connecting to Claude…")
+            yield _sse("status", message="🤖 جارٍ الاتصال بـ Claude…")
 
             request_obj = CompletionRequest(
                 messages=[Message(role="user", content=req.prompt)],
-                model=None if dev_mode else "claude-sonnet-4-6",
+                model="claude-sonnet-4-6",
                 max_tokens=8192,
                 temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
                 system=BUILD_UNIFIED_SYSTEM,
@@ -330,7 +325,6 @@ async def build_stream(req: BuildRequest, request: Request):
                 memory_enabled=False,
                 tools=None,
                 stream=True,
-                provider="dev_mock" if dev_mode else None,
             )
             engine = InferenceEngine(pool=get_pool())
             parser = _BuildParser()
