@@ -155,6 +155,28 @@ class _BuildParser:
         return None
 
 
+async def _dev_mock_chunks(provider, request_obj):
+    """
+    Adapt DevMockProvider.stream() (yields StreamChunk objects) to the dict
+    format consumed by build_stream's event_stream() (which expects dicts with
+    keys "type", "text", "usage", "error").
+
+    This thin adapter keeps the event_stream loop generic — it works unchanged
+    whether the source is InferenceEngine (already yields dicts) or DevMockProvider.
+    """
+    async for sc in provider.stream(request_obj):
+        if sc.type == "delta":
+            yield {"type": "delta", "text": sc.text or ""}
+        elif sc.type == "usage" and sc.usage:
+            yield {"type": "usage", "usage": {
+                "total_tokens": sc.usage.total_tokens,
+            }}
+        elif sc.type == "done":
+            yield {"type": "done"}
+        elif sc.type == "error":
+            yield {"type": "error", "error": getattr(sc, "error", "dev_mock error")}
+
+
 class PlanRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=2000)
 
@@ -289,7 +311,12 @@ async def build_stream(req: BuildRequest, request: Request):
     from app.core.reliability import get_bulkhead
     bulkhead = get_bulkhead("build", 8)
     ai_rate_limit(request, max_calls=10, window=60)
-    org_id = await check_org_quota(request)
+    # Owner/dev account: skip platform quota check — routes to free dev_mock provider
+    dev_mode = _is_dev_account(request)
+    if not dev_mode:
+        org_id = await check_org_quota(request)
+    else:
+        org_id = None
     # Unlike every other endpoint in this file, req.project_id was never
     # verified against the caller here — uid was fetched but only used
     # later for the usage_logs insert, never to check ownership before
@@ -297,11 +324,6 @@ async def build_stream(req: BuildRequest, request: Request):
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, req.project_id, uid)
-
-    # dev_mock routing was removed: the owner account now uses the real Claude
-    # API (claude-sonnet-4-6) exactly like every other user.  DevMockProvider
-    # is still registered for integration tests via provider="dev_mock" but is
-    # no longer automatically applied to any authenticated user.
 
     async def event_stream():
         # Slot held for the whole stream (handler returns before tokens flow).
@@ -312,21 +334,46 @@ async def build_stream(req: BuildRequest, request: Request):
             yield _sse("error", message="Server is at capacity — please retry shortly.")
             return
         try:
-            yield _sse("status", message="🤖 جارٍ الاتصال بـ Claude…")
+            if dev_mode:
+                yield _sse("status", message="✨ جارٍ إنشاء تطبيقك…")
+            else:
+                yield _sse("status", message="🤖 جارٍ الاتصال بـ Claude…")
 
-            request_obj = CompletionRequest(
-                messages=[Message(role="user", content=req.prompt)],
-                model="claude-sonnet-4-6",
-                max_tokens=8192,
-                temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
-                system=BUILD_UNIFIED_SYSTEM,
-                conversation_id=None,
-                prompt_id=None,
-                memory_enabled=False,
-                tools=None,
-                stream=True,
-            )
-            engine = InferenceEngine(pool=get_pool())
+            if dev_mode:
+                # Free in-process provider — no Anthropic credits consumed.
+                # Prompt-aware: selects one of 5 templates based on Arabic/English keywords.
+                from app.ai.providers.dev_mock import DevMockProvider
+                _provider = DevMockProvider()
+                request_obj = CompletionRequest(
+                    messages=[Message(role="user", content=req.prompt)],
+                    model="dev-mock-v2",
+                    max_tokens=8192,
+                    system=BUILD_UNIFIED_SYSTEM,
+                    conversation_id=None,
+                    prompt_id=None,
+                    memory_enabled=False,
+                    tools=None,
+                    stream=True,
+                )
+                chunk_source = _dev_mock_chunks(_provider, request_obj)
+            else:
+                request_obj = CompletionRequest(
+                    messages=[Message(role="user", content=req.prompt)],
+                    model="claude-sonnet-4-6",
+                    max_tokens=8192,
+                    temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
+                    system=BUILD_UNIFIED_SYSTEM,
+                    conversation_id=None,
+                    prompt_id=None,
+                    memory_enabled=False,
+                    tools=None,
+                    stream=True,
+                )
+                engine = InferenceEngine(pool=get_pool())
+                chunk_source = engine.stream(
+                    request_obj, user_id=str(uid), org_id=None, auto_tools=False,
+                )
+
             parser = _BuildParser()
             ws = workspace(req.project_id)
             buf = ""
@@ -334,9 +381,7 @@ async def build_stream(req: BuildRequest, request: Request):
             stream_error: Optional[str] = None
             total_tokens = 0
 
-            async for chunk in engine.stream(
-                request_obj, user_id=str(uid), org_id=None, auto_tools=False,
-            ):
+            async for chunk in chunk_source:
                 ctype = chunk.get("type")
                 if ctype == "delta":
                     text = chunk.get("text") or ""
@@ -376,7 +421,7 @@ async def build_stream(req: BuildRequest, request: Request):
                 yield _sse("error", message=stream_error)
                 return
 
-            if total_tokens:
+            if total_tokens and not dev_mode:
                 try:
                     await record_org_tokens(org_id, total_tokens, req.project_id)
                 except Exception:
