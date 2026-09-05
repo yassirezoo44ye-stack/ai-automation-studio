@@ -31,15 +31,12 @@ interface Props {
   initialPrompt?: string;
 }
 
+// Simplified to 3 friendly actions — advanced actions (debug/refactor/test/secure/optimize)
+// remain in the CopilotAction type for programmatic use but are hidden from the UI.
 const ACTIONS: { id: CopilotAction; label: string; desc: string; color: string }[] = [
-  { id: "generate",  label: "Generate",  desc: "Build or add features",          color: "var(--accent)" },
-  { id: "modify",    label: "Modify",    desc: "Change existing functionality",   color: "var(--blue)"   },
-  { id: "explain",   label: "Explain",   desc: "Understand the codebase",         color: "var(--teal)"   },
-  { id: "debug",     label: "Debug",     desc: "Fix errors & unexpected behavior", color: "var(--red)"   },
-  { id: "refactor",  label: "Refactor",  desc: "Improve code quality",            color: "var(--yellow)" },
-  { id: "test",      label: "Test",      desc: "Generate test cases",             color: "var(--green)"  },
-  { id: "secure",    label: "Secure",    desc: "Find security issues",            color: "var(--orange, #F97316)" },
-  { id: "optimize",  label: "Optimize",  desc: "Performance & efficiency",        color: "var(--purple, var(--accent))" },
+  { id: "generate", label: "✨ أضف / أبنِ", desc: "أضف ميزة جديدة أو ابنِ التطبيق من الصفر", color: "var(--accent)" },
+  { id: "modify",   label: "✏️ عدّل",       desc: "غيّر شيئاً موجوداً في تطبيقك",           color: "var(--blue)"   },
+  { id: "explain",  label: "💡 اشرح",       desc: "افهم كيف يعمل تطبيقك",                  color: "var(--teal)"   },
 ];
 
 function actionPlaceholder(action: CopilotAction, projectName: string, error: string | null): string {
@@ -183,7 +180,7 @@ export function AICopilotPanel({
             </svg>
           </div>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--t1)" }}>AI Copilot</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--t1)" }}>مساعدي الذكي 🤖</div>
             <div style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 3, color: isBuilding ? "var(--accent)" : "var(--green)" }}>
               <span style={{
                 width: 4, height: 4, borderRadius: "50%",
@@ -191,7 +188,7 @@ export function AICopilotPanel({
                 display: "inline-block",
                 animation: isBuilding ? "pulse 1s ease-in-out infinite" : "none",
               }} />
-              {isBuilding ? "Building…" : "Ready"}
+              {isBuilding ? "جارٍ البناء…" : "جاهز"}
             </div>
           </div>
         </div>
@@ -237,9 +234,9 @@ export function AICopilotPanel({
             {action === "generate" ? (
               <>
                 <div style={{ fontSize: 12, color: "var(--t4)", lineHeight: 1.6, marginBottom: 12 }}>
-                  Describe what you want to build. I'll create the full application.
+                  صِف ما تريد بناءه وسأنشئ التطبيق الكامل لك ✨
                 </div>
-                {["Build a CRM for sales", "Create inventory system", "Make a help desk app"].map(s => (
+                {["ابنِ نظام إدارة عملاء", "أنشئ نظام مخزون", "ابنِ تطبيق دعم العملاء"].map(s => (
                   <button
                     key={s}
                     onClick={() => setInput(s)}

@@ -53,15 +53,14 @@ interface Props {
   runtimeState?: RuntimeState;
 }
 
+// Simplified: only Build, Runtime, and Logs are visible.
+// Developer tabs (tests, security, api, database, git) remain in the
+// BottomTab type and their panels are still rendered — hidden from the bar
+// so everyday users see a clean interface.
 const TABS: { id: BottomTab; label: string }[] = [
-  { id: "build",    label: "Build" },
-  { id: "runtime",  label: "Runtime" },
-  { id: "tests",    label: "Tests" },
-  { id: "security", label: "Security" },
-  { id: "logs",     label: "Logs" },
-  { id: "api",      label: "API Routes" },
-  { id: "database", label: "Database" },
-  { id: "git",      label: "Git" },
+  { id: "build",   label: "بناء"    },
+  { id: "runtime", label: "تشغيل"  },
+  { id: "logs",    label: "السجل"  },
 ];
 
 function StatusDot({ status }: { status: "pass" | "fail" | "skip" | "running" }) {

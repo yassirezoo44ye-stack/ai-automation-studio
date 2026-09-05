@@ -42,15 +42,14 @@ type BuildPhase = { labelKey: string; status: "pending" | "running" | "done" | "
 /** Plan overlay state machine */
 type PlanState = "idle" | "planning" | "review";
 
-// labelKey maps to appBuilder namespace sections.*
+// Simplified: 3 sections visible to everyday users.
+// Technical sections (data, workflows, agents, integrations) remain in the
+// AppSection type and their panels are still rendered — they are just hidden
+// from the nav so beginners are never overwhelmed.
 const SECTIONS: { id: AppSection; labelKey: string; icon: React.ReactNode }[] = [
-  { id: "overview",     labelKey: "sections.overview",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
-  { id: "pages",        labelKey: "sections.pages",        icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
-  { id: "data",         labelKey: "sections.data",         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> },
-  { id: "workflows",    labelKey: "sections.workflows",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><line x1="7" y1="6" x2="17" y2="6"/><line x1="5" y1="8" x2="12" y2="16"/><line x1="19" y1="8" x2="12" y2="16"/></svg> },
-  { id: "agents",       labelKey: "sections.agents",       icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
-  { id: "integrations", labelKey: "sections.integrations", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> },
-  { id: "settings",     labelKey: "sections.settings",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06"/></svg> },
+  { id: "overview",  labelKey: "sections.overview",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
+  { id: "pages",     labelKey: "sections.pages",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
+  { id: "settings",  labelKey: "sections.settings",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06"/></svg> },
 ];
 
 /* ── Build phases ────────────────────────────────────────────────── */
@@ -1256,24 +1255,9 @@ export function AppBuilderPage() {
         </button>
         <div style={{ width: 1, height: 16, background: "var(--b1)" }} />
 
-        {/* Mode tabs */}
-        <div style={{ display: "flex", background: "var(--bg-card)", borderRadius: 8, padding: 3, gap: 2 }}>
-          {(["build", "plan", "debug"] as BuildMode[]).map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              style={{
-                padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-                background: mode === m ? "var(--bg-surface)" : "transparent",
-                color: mode === m ? "var(--t1)" : "var(--t4)",
-                boxShadow: mode === m ? "var(--shadow-xs)" : "none",
-                transition: "all 0.12s",
-              }}
-            >
-              {t(`modes.${m}`)}
-            </button>
-          ))}
-        </div>
+        {/* Mode tabs — only "build" shown; plan/debug hidden for simplicity */}
+        {/* plan and debug remain accessible via setMode() from code, just not surfaced in the UI */}
+        {null}
 
         <div style={{ flex: 1 }} />
 
