@@ -282,3 +282,10 @@ successful deploy to `main`.
 
 ### Other
 - fix(android): support rotation and preserve app builder drafts
+
+## v1.0.26
+
+### Other
+- ux: simplify sidebar from 18 items to 7 for everyday users
+- feat(landing): add Flow marketing landing page with EN/AR i18n
+- security(auth): shorten sub_token TTL and re-mint it on refresh (Option A)
