@@ -289,3 +289,8 @@ successful deploy to `main`.
 - ux: simplify sidebar from 18 items to 7 for everyday users
 - feat(landing): add Flow marketing landing page with EN/AR i18n
 - security(auth): shorten sub_token TTL and re-mint it on refresh (Option A)
+
+## v1.0.27
+
+### Other
+- ux: set app-builder as the default landing page after login
