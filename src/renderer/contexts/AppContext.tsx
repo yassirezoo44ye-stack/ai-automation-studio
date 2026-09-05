@@ -22,7 +22,7 @@ function applyTheme(t: Theme) {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [page, setPageState] = useState<Page>("home");
+  const [page, setPageState] = useState<Page>("app-builder");
   // Page switches run as a transition so a lazy chunk that hasn't loaded yet
   // never interrupts an in-flight commit: React keeps the current page fully
   // rendered and interactive until the new one is ready, then swaps both the

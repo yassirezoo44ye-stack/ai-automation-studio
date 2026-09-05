@@ -92,20 +92,21 @@ describe("navigation", () => {
    */
   it("clicking each sidebar item renders that page and marks it active — never disagreeing", async () => {
     renderApp();
-    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
+    // Default page is now app-builder (first screen the user sees after login)
+    await screen.findByText("APP_BUILDER_PAGE_CONTENT", {}, { timeout: 8000 });
 
     // [title in sidebar, expected main content] pairs — simplified sidebar only
     const cases: [string, string][] = [
       // Main tools
+      ["Home",         "HOME_PAGE_CONTENT"],
       ["My AI",        "AI_PAGE_CONTENT"],
-      ["Build an App", "APP_BUILDER_PAGE_CONTENT"],
       ["Design",       "DESIGN_PAGE_CONTENT"],
       ["Automate",     "AUTOMATION_PAGE_CONTENT"],
       ["Marketing",    "SOCIAL_PAGE_CONTENT"],
       // Account
       ["Settings",     "SETTINGS_PAGE_CONTENT"],
-      // Back to home
-      ["Home",         "HOME_PAGE_CONTENT"],
+      // Back to app-builder
+      ["Build an App", "APP_BUILDER_PAGE_CONTENT"],
     ];
 
     for (const [label, expectedContent] of cases) {
@@ -123,11 +124,11 @@ describe("navigation", () => {
 
   it("survives rapid sequential navigation without ending up on the wrong page", async () => {
     renderApp();
-    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
+    await screen.findByText("APP_BUILDER_PAGE_CONTENT", {}, { timeout: 8000 });
 
     // Fire clicks back-to-back with no awaits in between — the scenario
     // that used to desync Sidebar from <main>.
-    fireEvent.click(screen.getByTitle("Build an App"));
+    fireEvent.click(screen.getByTitle("Home"));
     fireEvent.click(screen.getByTitle("Design"));
     fireEvent.click(screen.getByTitle("Automate"));
     fireEvent.click(screen.getByTitle("Settings"));
@@ -136,22 +137,22 @@ describe("navigation", () => {
     await waitFor(() => expect(screen.getByText("SETTINGS_PAGE_CONTENT")).toBeInTheDocument(), { timeout: 8000 });
     expect(screen.getByTitle("Settings")).toHaveAttribute("aria-current", "page");
     // No other page's content should be left mounted alongside it.
+    expect(screen.queryByText("HOME_PAGE_CONTENT")).not.toBeInTheDocument();
     expect(screen.queryByText("DESIGN_PAGE_CONTENT")).not.toBeInTheDocument();
     expect(screen.queryByText("AUTOMATION_PAGE_CONTENT")).not.toBeInTheDocument();
-    expect(screen.queryByText("APP_BUILDER_PAGE_CONTENT")).not.toBeInTheDocument();
   });
 
   it("resets ErrorBoundary when navigating away from a page that crashed", async () => {
     designShouldThrow = true;
     renderApp();
-    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
+    await screen.findByText("APP_BUILDER_PAGE_CONTENT", {}, { timeout: 8000 });
 
     fireEvent.click(screen.getByTitle("Design"));
     await waitFor(() => expect(screen.getByText(/Error in design/i)).toBeInTheDocument(), { timeout: 8000 });
 
     // The crash must not leak into the next page's view.
-    fireEvent.click(screen.getByTitle("Home"));
-    await waitFor(() => expect(screen.getByText("HOME_PAGE_CONTENT")).toBeInTheDocument(), { timeout: 8000 });
+    fireEvent.click(screen.getByTitle("Build an App"));
+    await waitFor(() => expect(screen.getByText("APP_BUILDER_PAGE_CONTENT")).toBeInTheDocument(), { timeout: 8000 });
     expect(screen.queryByText(/Error in design/i)).not.toBeInTheDocument();
 
     designShouldThrow = false;
