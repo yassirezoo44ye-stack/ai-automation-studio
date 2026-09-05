@@ -764,18 +764,29 @@ export function AppBuilderPage() {
   /**
    * handleStartBuild — Phase 2 entry point.
    *
-   * 1. Fetches an AI-generated build plan from /api/build/plan.
-   * 2. If successful: shows BuildPlanPanel for user review.
-   *    On approval → calls handleBuild(prompt).
-   * 3. If plan fetch fails (no credits, network error, or mocked in tests):
-   *    falls through directly to handleBuild(prompt) — no disruption to
-   *    existing tests which mock apiFetch to return undefined.
+   * 1. When already in workspace (buildDone=true — triggered from AICopilotPanel
+   *    modify/generate): skip the plan step entirely.  The BuildPlanPanel lives
+   *    inside the showBuilding branch which requires !buildDone, so the review
+   *    UI is invisible during a modify — fetching a plan and returning early
+   *    would silently swallow the request.  Go straight to handleBuild instead.
+   *
+   * 2. Entry-screen builds: fetch /api/build/plan for user review.
+   *    If the plan call fails (no credits, network, mocked in tests):
+   *    fall through directly to handleBuild(prompt).
    */
   const handleStartBuild = useCallback(async (prompt: string) => {
     setPendingPrompt(prompt);
-    setPlanState("planning");
     setBuildEvents([]);
 
+    // Workspace modify — BuildPlanPanel is hidden when buildDone=true, so skip
+    // the plan step and rebuild directly.
+    if (buildDone) {
+      setPlanState("idle");
+      void handleBuild(prompt);
+      return;
+    }
+
+    setPlanState("planning");
     try {
       const r = await apiFetch("/api/build/plan", {
         method: "POST",
@@ -796,7 +807,7 @@ export function AppBuilderPage() {
       setPlanState("idle");
       void handleBuild(prompt);
     }
-  }, [handleBuild]);
+  }, [handleBuild, buildDone]);
 
   // ── Phase 3: Runtime handlers ──────────────────────────────────────
 
