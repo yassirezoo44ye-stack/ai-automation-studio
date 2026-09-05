@@ -593,14 +593,253 @@ function setPeriod(btn,p){document.querySelectorAll('.period button').forEach(fu
 <<<ENDMETA>>>
 """
 
+# ── Dynamic landing page builder ─────────────────────────────────────────────
+
+
+def _parse_landing_vars(prompt: str) -> dict:
+    """Extract product info from any Arabic/English prompt for a landing page."""
+    v: dict = {
+        "name":     "منتجي الرقمي",
+        "tagline":  "ابدأ رحلتك نحو النجاح",
+        "price":    "29",
+        "currency": "درهم",
+        "features": [],
+        "headline": "تعبت من البحث بلا نتيجة؟",
+        "headline2": "الحل أصبح بين يديك",
+        "sub":      "كل ما تحتاجه في ملف واحد",
+        "delivery": "رابط تحميل مباشر عبر واتساب",
+    }
+
+    # ── Product name ──────────────────────────────────────────────────────────
+    m = re.search(r'اسم[^:\n]*:\s*([^\n]{2,60})', prompt)
+    if m:
+        v["name"] = m.group(1).strip().strip('"\'"«»')
+
+    # ── Tagline / slogan ──────────────────────────────────────────────────────
+    m = re.search(r'الشعار[^:\n]*:\s*([^\n]{2,80})', prompt)
+    if m:
+        v["tagline"] = m.group(1).strip()
+
+    # ── Price & currency ──────────────────────────────────────────────────────
+    m = re.search(r'(\d+)\s*(درهم|ريال|دولار|جنيه|ج\.م|د\.إ)', prompt)
+    if m:
+        v["price"]    = m.group(1)
+        v["currency"] = m.group(2)
+
+    # ── Feature bullets (✓ ✔ * • or plain * lines) ───────────────────────────
+    feats = re.findall(r'[✓✔•]\s*([^\n]{3,80})', prompt)
+    if not feats:
+        feats = re.findall(r'^\s*\*\s+(.{3,80})$', prompt, re.MULTILINE)
+    if feats:
+        v["features"] = [f.strip() for f in feats[:6]]
+    else:
+        # fall back to numbered or dashed lines
+        feats = re.findall(r'^\s*\d+[.)]\s+(.{3,60})$', prompt, re.MULTILINE)
+        v["features"] = [f.strip() for f in feats[:6]]
+
+    if not v["features"]:
+        v["features"] = ["محتوى شامل وعملي", "قابل للتطبيق فوراً", "يوفّر عليك ساعات من البحث"]
+
+    # ── Ad headline (line after "العنوان:") ───────────────────────────────────
+    m = re.search(r'العنوان[^:\n]*:\s*\n?((?:[^\n]+\n?){1,3})', prompt)
+    if m:
+        lines = [l.strip() for l in m.group(1).splitlines() if l.strip()]
+        if lines:
+            v["headline"]  = lines[0][:80]
+        if len(lines) > 1:
+            v["headline2"] = lines[1][:80]
+
+    # ── Sub / description ─────────────────────────────────────────────────────
+    m = re.search(r'النص[^:\n]*:\s*\n?([^\n]{10,120})', prompt)
+    if m:
+        v["sub"] = m.group(1).strip()[:120]
+
+    # ── Delivery method ────────────────────────────────────────────────────────
+    m = re.search(r'طريقة التسليم[\s\S]{0,20}:\s*\n?([\s\S]{5,100}?)(?:\n\n|\Z)', prompt)
+    if m:
+        v["delivery"] = m.group(1).strip()[:100]
+
+    return v
+
+
+def _build_landing(prompt: str) -> str:
+    """Generate a fully customised landing-page HTML from any product prompt."""
+    v   = _parse_landing_vars(prompt)
+    name      = v["name"]
+    tagline   = v["tagline"]
+    price     = v["price"]
+    currency  = v["currency"]
+    headline  = v["headline"]
+    headline2 = v["headline2"]
+    sub       = v["sub"]
+    delivery  = v["delivery"]
+    features  = v["features"]
+
+    feat_icons = ["📘", "📋", "🎯", "💡", "🗓️", "🌐"]
+    feat_html  = "\n".join(
+        f'    <div class="feat-card">'
+        f'<div class="feat-icon">{feat_icons[i % len(feat_icons)]}</div>'
+        f'<p>{feat}</p></div>'
+        for i, feat in enumerate(features)
+    )
+    price_items = "\n".join(
+        f"      <li>{feat}</li>" for feat in features
+    )
+
+    html = f"""\
+<<<FILE: index.html>>>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{name}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:system-ui,sans-serif;color:#1a1a2e;background:#fff}}
+nav{{background:#fff;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;box-shadow:0 1px 8px rgba(0,0,0,.06);z-index:10}}
+.logo{{font-size:20px;font-weight:800;color:#7c3aed}}
+.nav-cta{{background:#7c3aed;color:#fff;border:none;padding:10px 22px;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit}}
+.hero{{background:linear-gradient(135deg,#7c3aed 0%,#a855f7 50%,#ec4899 100%);color:#fff;padding:80px 24px;text-align:center}}
+.hero .eyebrow{{font-size:13px;font-weight:600;letter-spacing:.08em;opacity:.85;margin-bottom:16px;text-transform:uppercase}}
+.hero h1{{font-size:clamp(26px,5vw,48px);font-weight:900;line-height:1.2;margin-bottom:12px}}
+.hero h2{{font-size:clamp(18px,3vw,28px);font-weight:700;opacity:.9;margin-bottom:20px}}
+.hero .sub{{font-size:16px;opacity:.85;max-width:560px;margin:0 auto 32px;line-height:1.6}}
+.hero-btns{{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}}
+.btn-p{{background:#fff;color:#7c3aed;border:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px;cursor:pointer;font-family:inherit;transition:transform .15s}}
+.btn-p:hover{{transform:scale(1.03)}}
+.btn-s{{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.6);padding:14px 32px;border-radius:10px;font-weight:600;font-size:15px;cursor:pointer;font-family:inherit}}
+.proof{{background:#f8f4ff;padding:18px;text-align:center;font-size:14px;color:#6b21a8;font-weight:500}}
+.features{{padding:60px 24px;max-width:960px;margin:0 auto}}
+.features h2{{text-align:center;font-size:28px;font-weight:800;margin-bottom:8px}}
+.features .sub{{text-align:center;color:#64748b;margin-bottom:36px}}
+.feat-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}}
+.feat-card{{background:#f8f4ff;border-radius:14px;padding:22px;display:flex;align-items:flex-start;gap:14px}}
+.feat-icon{{font-size:28px;flex-shrink:0}}
+.feat-card p{{font-size:14px;color:#374151;line-height:1.6;font-weight:500}}
+.pricing{{background:#0f0f1a;color:#fff;padding:60px 24px}}
+.pricing h2{{text-align:center;font-size:28px;font-weight:800;margin-bottom:8px}}
+.pricing .sub{{text-align:center;color:#94a3b8;margin-bottom:36px}}
+.price-box{{max-width:400px;margin:0 auto;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:20px;padding:36px;text-align:center}}
+.price-box .amount{{font-size:52px;font-weight:900;margin:12px 0}}
+.price-box ul{{list-style:none;margin:20px 0;text-align:right}}
+.price-box li{{padding:8px 0;font-size:14px;border-bottom:1px solid rgba(255,255,255,.15)}}
+.price-box li::before{{content:"✓ ";font-weight:700}}
+.price-box .cta{{background:#fff;color:#7c3aed;border:none;width:100%;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:20px;font-family:inherit}}
+.delivery{{background:#f8f4ff;padding:24px;max-width:600px;margin:0 auto 60px;border-radius:14px;text-align:center}}
+.delivery h3{{font-weight:700;margin-bottom:8px}}
+.delivery p{{color:#64748b;font-size:14px;line-height:1.6}}
+.testi{{padding:60px 24px;max-width:960px;margin:0 auto}}
+.testi h2{{text-align:center;font-size:26px;font-weight:800;margin-bottom:36px}}
+.testi-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}}
+.testi-card{{background:#f8f4ff;border-radius:14px;padding:22px}}
+.stars{{color:#f59e0b;font-size:15px;margin-bottom:8px}}
+.testi-text{{font-size:14px;color:#374151;line-height:1.6;margin-bottom:10px}}
+.testi-author{{font-size:13px;font-weight:600;color:#7c3aed}}
+footer{{background:#0f0f1a;color:#64748b;text-align:center;padding:20px;font-size:13px}}
+.modal{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}}
+.modal.open{{display:flex}}
+.mbox{{background:#fff;border-radius:20px;padding:32px;width:440px;max-width:92vw;text-align:center}}
+.mbox h3{{font-size:20px;font-weight:800;margin-bottom:8px}}
+.mbox p{{color:#64748b;margin-bottom:20px;font-size:14px}}
+.mbox input{{width:100%;padding:12px 16px;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:10px}}
+.mbox input:focus{{outline:none;border-color:#7c3aed}}
+.mbox .submit{{width:100%;background:#7c3aed;color:#fff;border:none;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}}
+.mbox .cl{{background:none;border:none;color:#94a3b8;cursor:pointer;margin-top:10px;font-size:13px}}
+</style>
+</head>
+<body>
+<nav>
+  <div class="logo">✦ {name}</div>
+  <button class="nav-cta" onclick="openModal()">احصل عليه الآن</button>
+</nav>
+<div class="hero">
+  <div class="eyebrow">🔥 عرض محدود</div>
+  <h1>{headline}</h1>
+  <h2>{headline2}</h2>
+  <div class="sub">{sub}</div>
+  <div class="hero-btns">
+    <button class="btn-p" onclick="openModal()">احصل عليه الآن 🚀</button>
+    <button class="btn-s" onclick="document.querySelector('.features').scrollIntoView({{behavior:'smooth'}})">اعرف أكثر</button>
+  </div>
+</div>
+<div class="proof">⭐ {tagline}</div>
+<div class="features">
+  <h2>ماذا ستحصل عليه؟</h2>
+  <p class="sub">كل ما تحتاجه في مكان واحد</p>
+  <div class="feat-grid">
+{feat_html}
+  </div>
+</div>
+<div class="pricing">
+  <h2>السعر</h2>
+  <p class="sub">استثمار بسيط، نتائج حقيقية</p>
+  <div class="price-box">
+    <div class="amount">{price} {currency}</div>
+    <ul>
+{price_items}
+    </ul>
+    <button class="cta" onclick="openModal()">اشترِ الآن — {price} {currency} فقط</button>
+  </div>
+</div>
+<div style="background:#fff;padding:40px 24px">
+  <div class="delivery">
+    <h3>📦 طريقة التسليم</h3>
+    <p>{delivery}</p>
+  </div>
+</div>
+<div class="testi">
+  <h2>ماذا يقول العملاء؟</h2>
+  <div class="testi-grid">
+    <div class="testi-card"><div class="stars">★★★★★</div><p class="testi-text">"محتوى احترافي وعملي جداً، استفدت منه كثيراً وطبّقته فوراً."</p><div class="testi-author">— أحمد م.</div></div>
+    <div class="testi-card"><div class="stars">★★★★★</div><p class="testi-text">"وفّر عليّ وقتاً وجهداً كبيراً. أنصح به كل شخص يريد نتائج سريعة."</p><div class="testi-author">— سارة ك.</div></div>
+    <div class="testi-card"><div class="stars">★★★★★</div><p class="testi-text">"استثمار يستحق كل {currency}. النتائج تتكلم عن نفسها."</p><div class="testi-author">— محمد ع.</div></div>
+  </div>
+</div>
+<footer>جميع الحقوق محفوظة © 2025 — {name}</footer>
+<div class="modal" id="modal">
+  <div class="mbox">
+    <h3>🎉 احصل على {name} الآن</h3>
+    <p>أدخل بياناتك وسنرسل لك رابط التحميل فوراً على واتساب</p>
+    <input id="mName" placeholder="اسمك الكريم">
+    <input id="mPhone" type="tel" placeholder="رقم الواتساب (مع رمز الدولة)">
+    <button class="submit" onclick="submitOrder()">إتمام الطلب — {price} {currency}</button>
+    <br><button class="cl" onclick="closeModal()">إغلاق</button>
+  </div>
+</div>
+<script>
+function openModal(){{document.getElementById('modal').classList.add('open')}}
+function closeModal(){{document.getElementById('modal').classList.remove('open')}}
+function submitOrder(){{
+  var n=document.getElementById('mName').value.trim(),p=document.getElementById('mPhone').value.trim();
+  if(!n||!p){{alert('يرجى تعبئة جميع الحقول');return;}}
+  document.querySelector('.mbox').innerHTML='<div style="font-size:56px;margin-bottom:16px">✅</div><h3 style="font-size:20px;font-weight:800;margin-bottom:8px">تم استلام طلبك!</h3><p style="color:#64748b">سيتم التواصل معك على واتساب خلال دقائق لإتمام الدفع وإرسال {name}.</p>';
+}}
+document.getElementById('modal').addEventListener('click',function(e){{if(e.target===this)closeModal()}});
+</script>
+</body></html>
+<<<ENDFILE>>>
+<<<FILE: README.md>>>
+# {name}
+صفحة الهبوط — افتح index.html في متصفح حديث.
+الشعار: {tagline}
+السعر: {price} {currency}
+<<<ENDFILE>>>
+<<<META>>>
+{{"description":"{name} — صفحة هبوط احترافية","run_command":"open index.html","language":"html"}}
+<<<ENDMETA>>>
+"""
+    return html
+
+
 # ── Keyword → template map ────────────────────────────────────────────────────
 
 _KEYWORDS: list[tuple[str, str]] = [
     # (regex_pattern, template_key)
     # E-commerce / متجر
-    (r"متجر|shop|store|تسوق|بيع|منتجات|سلة|ecommerce|e-commerce|بضاعة", "ecommerce"),
+    (r"متجر|shop|store|تسوق|سلة|ecommerce|e-commerce|بضاعة", "ecommerce"),
     # Landing / digital product / صفحة هبوط
-    (r"صفحة هبوط|landing|منتج رقمي|pdf|دليل|كورس|course|ebook|هبوط|تسويق|درهم|إعلان|واتساب بزنس|خطة.*يوم|يوم.*خطة", "landing"),
+    (r"صفحة هبوط|landing|منتج رقمي|pdf|دليل|كورس|course|ebook|هبوط|تسويق|درهم|ريال|إعلان|واتساب بزنس|خطة.*يوم|يوم.*خطة|اسم.*المشروع|الشعار|سعر البيع|قنوات البيع", "landing"),
     # Analytics / تحليلات
     (r"تحليل|analytics|dashboard|لوحة.*بيانات|إحصاء|إحصائيات|رسم بياني|chart|report|تقرير", "analytics"),
     # Tasks / مهام
@@ -609,24 +848,30 @@ _KEYWORDS: list[tuple[str, str]] = [
     (r"crm|علاقات.*عملاء|عملاء.*علاقات|صفقات|مبيعات|leads|عميل|sales|contacts", "crm"),
 ]
 
-_TEMPLATES: dict[str, str] = {
-    "crm": _TEMPLATE_CRM,
+_STATIC_TEMPLATES: dict[str, str] = {
+    "crm":       _TEMPLATE_CRM,
     "ecommerce": _TEMPLATE_ECOMMERCE,
-    "tasks": _TEMPLATE_TASKS,
-    "landing": _TEMPLATE_LANDING,
+    "tasks":     _TEMPLATE_TASKS,
     "analytics": _TEMPLATE_ANALYTICS,
 }
 
 
 def _select_template(prompt: str) -> str:
-    """Pick the best-fit template based on prompt keywords (Arabic + English)."""
-    text = prompt.lower()
+    """
+    Pick the best-fit template based on prompt keywords.
+
+    Landing pages are built dynamically from the prompt content so the
+    output reflects the user's actual product (name, price, features, etc.)
+    rather than a generic placeholder.
+    """
     for pattern, key in _KEYWORDS:
-        if re.search(pattern, text, re.IGNORECASE):
-            log.info("DevMockProvider: matched template=%r for prompt snippet=%r", key, text[:80])
-            return _TEMPLATES[key]
-    log.info("DevMockProvider: no keyword match — using landing template as default")
-    return _TEMPLATES["landing"]   # most useful generic default
+        if re.search(pattern, prompt, re.IGNORECASE):
+            log.info("DevMockProvider: matched key=%r snippet=%r", key, prompt[:80])
+            if key == "landing":
+                return _build_landing(prompt)
+            return _STATIC_TEMPLATES[key]
+    log.info("DevMockProvider: no keyword match — building landing from prompt")
+    return _build_landing(prompt)   # best generic default for any product description
 
 
 # ── Provider ──────────────────────────────────────────────────────────────────
