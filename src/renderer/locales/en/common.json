@@ -10,11 +10,11 @@
       "system": "System"
     },
     "nav": {
-      "home": "Command Center",
-      "ai": "Conversations",
+      "home": "Home",
+      "ai": "My AI",
       "dev": "Dev",
-      "design": "Design Studio",
-      "automation": "Workflows",
+      "design": "Design",
+      "automation": "Automate",
       "agentos": "Agents",
       "marketplace": "Marketplace",
       "plugins": "Packages",
@@ -24,12 +24,12 @@
       "organizations": "Organizations",
       "teams": "Teams",
       "billing": "Billing",
-      "social": "Social",
+      "social": "Marketing",
       "settings": "Settings",
-      "appBuilder": "App Builder",
+      "appBuilder": "Build an App",
       "runs": "Runs",
       "integrations": "Integrations",
-      "trainingStudio": "Training Studio"
+      "trainingStudio": "Training"
     },
     "mainNav": "Main navigation",
     "collapse": "Collapse sidebar",

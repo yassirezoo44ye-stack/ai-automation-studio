@@ -2,14 +2,14 @@
   "sidebar": {
     "groups": { "workspace": "مساحة العمل", "build": "البناء", "operate": "التشغيل", "platform": "المنصة", "organization": "المؤسسة", "automation": "الأتمتة", "system": "النظام" },
     "nav": {
-      "home": "لوحة التحكم", "ai": "الذكاء الاصطناعي", "dev": "التطوير", "design": "استوديو التصميم",
-      "automation": "التشغيل التلقائي", "agentos": "الوكلاء", "marketplace": "القوالب", "plugins": "الحزم", "sandbox": "التحليلات",
-      "aiRouting": "API", "observability": "البيانات",
-      "organizations": "المؤسسات", "teams": "الفرق", "billing": "الفوترة", "social": "التواصل الاجتماعي", "settings": "الإعدادات",
-      "appBuilder": "منشئ التطبيقات",
+      "home": "الرئيسية", "ai": "مساعدي الذكي", "dev": "التطوير", "design": "التصميم",
+      "automation": "الأتمتة", "agentos": "الوكلاء", "marketplace": "القوالب", "plugins": "الحزم", "sandbox": "السجلات",
+      "aiRouting": "البوابة الذكية", "observability": "المراقبة",
+      "organizations": "المؤسسات", "teams": "الفرق", "billing": "الفوترة", "social": "التسويق", "settings": "الإعدادات",
+      "appBuilder": "أبني تطبيقاً",
       "runs": "التشغيلات",
       "integrations": "التكاملات",
-      "trainingStudio": "استوديو التدريب"
+      "trainingStudio": "التدريب"
     },
     "mainNav": "التنقل الرئيسي",
     "collapse": "طي الشريط الجانبي",

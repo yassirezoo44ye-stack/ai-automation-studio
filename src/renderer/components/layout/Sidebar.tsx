@@ -11,13 +11,15 @@ type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
 
 /**
- * Navigation groups — five semantic sections matching the Command Center spec.
+ * Navigation groups — simplified to two sections for everyday users.
  *
- * WORKSPACE  — daily entry points (no label, no sep)
- * BUILD      — creation tools
- * OPERATE    — monitoring & execution
- * PLATFORM   — infrastructure & integrations
- * ORGANIZATION — admin
+ * MAIN     — the six tools a user actually needs day-to-day
+ * ACCOUNT  — settings at the bottom
+ *
+ * Developer / admin pages (agentos, training, runs, observability, sandbox,
+ * ai-routing, integrations, plugins, marketplace, organizations, teams, billing)
+ * are still reachable via AppContext.setPage() but are intentionally hidden
+ * from the sidebar to keep the UI approachable.
  */
 const NAV_GROUPS: {
   groupKey: string;
@@ -30,52 +32,20 @@ const NAV_GROUPS: {
     showLabel: false,
     showSep: false,
     items: [
-      { id: "home", navKey: "home", icon: "home"  },
-      { id: "ai",   navKey: "ai",   icon: "ai"    },
+      { id: "home",        navKey: "home",       icon: "home"        },
+      { id: "ai",          navKey: "ai",         icon: "ai"          },
+      { id: "app-builder", navKey: "appBuilder", icon: "app-builder" },
+      { id: "design",      navKey: "design",     icon: "design"      },
+      { id: "automation",  navKey: "automation", icon: "automation"  },
+      { id: "social",      navKey: "social",     icon: "social"      },
     ],
   },
   {
-    groupKey: "build",
-    showLabel: true,
-    showSep: true,
-    items: [
-      { id: "app-builder", navKey: "appBuilder",    icon: "app-builder" },
-      { id: "design",      navKey: "design",        icon: "design"      },
-      { id: "agentos",     navKey: "agentos",       icon: "agentos"     },
-      { id: "automation",  navKey: "automation",    icon: "automation"  },
-      { id: "training",    navKey: "trainingStudio",icon: "training"    },
-    ],
-  },
-  {
-    groupKey: "operate",
-    showLabel: true,
-    showSep: true,
-    items: [
-      { id: "runs",         navKey: "runs",         icon: "runs"         },
-      { id: "observability",navKey: "observability",icon: "data"         },
-      { id: "sandbox",      navKey: "sandbox",      icon: "analytics"    },
-    ],
-  },
-  {
-    groupKey: "platform",
-    showLabel: true,
-    showSep: true,
-    items: [
-      { id: "ai-routing",    navKey: "aiRouting",    icon: "api"          },
-      { id: "integrations",  navKey: "integrations", icon: "integrations" },
-      { id: "plugins",       navKey: "plugins",      icon: "plugins"      },
-      { id: "marketplace",   navKey: "marketplace",  icon: "templates"    },
-    ],
-  },
-  {
-    groupKey: "organization",
+    groupKey: "account",
     showLabel: false,
     showSep: true,
     items: [
-      { id: "organizations", navKey: "organizations", icon: "organizations" },
-      { id: "teams",         navKey: "teams",         icon: "teams"         },
-      { id: "billing",       navKey: "billing",       icon: "billing"       },
-      { id: "settings",      navKey: "settings",      icon: "settings"      },
+      { id: "settings", navKey: "settings", icon: "settings" },
     ],
   },
 ];

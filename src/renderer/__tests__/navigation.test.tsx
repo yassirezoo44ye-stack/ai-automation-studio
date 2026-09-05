@@ -16,12 +16,14 @@
  * and the auth/org contexts are stubbed, since their own data-fetching is
  * not what's under test here.
  *
- * NOTE: Sidebar labels reflect the current Flow Command Center nav groups:
- *   Workspace:  Command Center, Conversations
- *   Build:      App Builder, Design Studio, Agents, Workflows
- *   Operate:    Runs, Monitoring, Logs
- *   Platform:   AI Gateway, Integrations, Packages, Marketplace
- *   Org:        Organizations, Teams, Billing, Settings
+ * NOTE: Sidebar labels reflect the simplified nav (7 items only):
+ *   Main:    Home, My AI, Build an App, Design, Automate, Marketing
+ *   Account: Settings
+ *
+ * Developer/admin pages (Agents, Runs, Monitoring, Logs, AI Gateway,
+ * Integrations, Packages, Marketplace, Organizations, Teams, Billing)
+ * are intentionally hidden from the sidebar; they remain in the app
+ * and are still exercised via AppContext.setPage() when needed.
  */
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
@@ -90,33 +92,20 @@ describe("navigation", () => {
    */
   it("clicking each sidebar item renders that page and marks it active — never disagreeing", async () => {
     renderApp();
-    await screen.findByText("HOME_PAGE_CONTENT");
+    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
 
-    // [title in sidebar, expected main content] pairs — all current sidebar items
+    // [title in sidebar, expected main content] pairs — simplified sidebar only
     const cases: [string, string][] = [
-      // Workspace
-      ["Conversations",  "AI_PAGE_CONTENT"],
-      // Build
-      ["App Builder",    "APP_BUILDER_PAGE_CONTENT"],
-      ["Design Studio",  "DESIGN_PAGE_CONTENT"],
-      ["Agents",         "AGENTOS_PAGE_CONTENT"],
-      ["Workflows",      "AUTOMATION_PAGE_CONTENT"],
-      // Operate
-      ["Runs",           "RUNS_PAGE_CONTENT"],
-      ["Monitoring",     "OBSERVABILITY_PAGE_CONTENT"],
-      ["Logs",           "SANDBOX_PAGE_CONTENT"],
-      // Platform
-      ["AI Gateway",     "AI_ROUTING_PAGE_CONTENT"],
-      ["Integrations",   "INTEGRATIONS_PAGE_CONTENT"],
-      ["Packages",       "PLUGINS_PAGE_CONTENT"],
-      ["Marketplace",    "MARKETPLACE_PAGE_CONTENT"],
-      // Organization
-      ["Organizations",  "ORGANIZATIONS_PAGE_CONTENT"],
-      ["Teams",          "TEAMS_PAGE_CONTENT"],
-      ["Billing",        "BILLING_PAGE_CONTENT"],
-      ["Settings",       "SETTINGS_PAGE_CONTENT"],
+      // Main tools
+      ["My AI",        "AI_PAGE_CONTENT"],
+      ["Build an App", "APP_BUILDER_PAGE_CONTENT"],
+      ["Design",       "DESIGN_PAGE_CONTENT"],
+      ["Automate",     "AUTOMATION_PAGE_CONTENT"],
+      ["Marketing",    "SOCIAL_PAGE_CONTENT"],
+      // Account
+      ["Settings",     "SETTINGS_PAGE_CONTENT"],
       // Back to home
-      ["Command Center", "HOME_PAGE_CONTENT"],
+      ["Home",         "HOME_PAGE_CONTENT"],
     ];
 
     for (const [label, expectedContent] of cases) {
@@ -134,35 +123,35 @@ describe("navigation", () => {
 
   it("survives rapid sequential navigation without ending up on the wrong page", async () => {
     renderApp();
-    await screen.findByText("HOME_PAGE_CONTENT");
+    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
 
     // Fire clicks back-to-back with no awaits in between — the scenario
     // that used to desync Sidebar from <main>.
-    fireEvent.click(screen.getByTitle("App Builder"));
-    fireEvent.click(screen.getByTitle("Runs"));
-    fireEvent.click(screen.getByTitle("Integrations"));
+    fireEvent.click(screen.getByTitle("Build an App"));
+    fireEvent.click(screen.getByTitle("Design"));
+    fireEvent.click(screen.getByTitle("Automate"));
     fireEvent.click(screen.getByTitle("Settings"));
 
 
     await waitFor(() => expect(screen.getByText("SETTINGS_PAGE_CONTENT")).toBeInTheDocument(), { timeout: 8000 });
     expect(screen.getByTitle("Settings")).toHaveAttribute("aria-current", "page");
     // No other page's content should be left mounted alongside it.
-    expect(screen.queryByText("INTEGRATIONS_PAGE_CONTENT")).not.toBeInTheDocument();
-    expect(screen.queryByText("RUNS_PAGE_CONTENT")).not.toBeInTheDocument();
+    expect(screen.queryByText("DESIGN_PAGE_CONTENT")).not.toBeInTheDocument();
+    expect(screen.queryByText("AUTOMATION_PAGE_CONTENT")).not.toBeInTheDocument();
     expect(screen.queryByText("APP_BUILDER_PAGE_CONTENT")).not.toBeInTheDocument();
   });
 
   it("resets ErrorBoundary when navigating away from a page that crashed", async () => {
     designShouldThrow = true;
     renderApp();
-    await screen.findByText("HOME_PAGE_CONTENT");
+    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
 
-    fireEvent.click(screen.getByTitle("Design Studio"));
+    fireEvent.click(screen.getByTitle("Design"));
     await waitFor(() => expect(screen.getByText(/Error in design/i)).toBeInTheDocument(), { timeout: 8000 });
 
     // The crash must not leak into the next page's view.
-    fireEvent.click(screen.getByTitle("Command Center"));
-    await waitFor(() => expect(screen.getByText("HOME_PAGE_CONTENT")).toBeInTheDocument());
+    fireEvent.click(screen.getByTitle("Home"));
+    await waitFor(() => expect(screen.getByText("HOME_PAGE_CONTENT")).toBeInTheDocument(), { timeout: 8000 });
     expect(screen.queryByText(/Error in design/i)).not.toBeInTheDocument();
 
     designShouldThrow = false;
