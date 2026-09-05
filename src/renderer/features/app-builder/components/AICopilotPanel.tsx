@@ -108,12 +108,17 @@ export function AICopilotPanel({
     setMessages(prev => [...prev, { role: "user", content: val, timestamp: now }]);
     setLoading(true);
 
-    // For "generate" action with no existing project — kick off a real build
-    if (action === "generate" && messages.length === 0 && fileCount === 0) {
+    // "generate" and "modify" always route to the build pipeline
+    // (/api/build/stream), which uses dev_mock for the owner account and
+    // real Claude for normal users.  This is the only path that actually
+    // changes files in the project workspace.
+    if (action === "generate" || action === "modify") {
       onBuild(val);
+      setLoading(false);
+      return;
     }
 
-    // All actions: call /api/ai/chat with context-enriched message
+    // Informational actions (explain, debug, refactor…) → /api/ai/chat
     const contextualMsg = buildContextPrompt(action, val, {
       projectName, error: buildError, fileCount, language, section: currentSection,
     });
@@ -132,25 +137,23 @@ export function AICopilotPanel({
         const data = await parseJSON<{ response: string }>(r, "/api/ai/chat");
         setMessages(prev => [...prev, { role: "assistant", content: data.response, timestamp: Date.now() }]);
       } else {
+        // Surface the real error — never hide it behind a generic English message
+        const errBody = await r.text().catch(() => "");
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: `I understand you want to ${action} in ${projectName || "your app"}. ${
-            action === "debug" && buildError
-              ? `The error "${buildError.slice(0, 100)}" suggests a configuration issue. Try reviewing the generated files and checking the run command.`
-              : "Let me know more specifics and I'll provide detailed guidance."
-          }`,
+          content: `⚠️ خطأ ${r.status}${errBody ? ": " + errBody.slice(0, 120) : ""}. حاول مرة أخرى.`,
           timestamp: Date.now(),
         }]);
       }
-    } catch {
+    } catch (err) {
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: "I'm analyzing your request. Check the build output for technical details.",
+        content: `⚠️ تعذّر الاتصال: ${err instanceof Error ? err.message : "حاول مرة أخرى."}`,
         timestamp: Date.now(),
       }]);
     }
     setLoading(false);
-  }, [input, loading, isBuilding, messages, action, onBuild, projectName, buildError, fileCount, language, currentSection]);
+  }, [input, loading, isBuilding, action, onBuild, projectName, buildError, fileCount, language, currentSection]);
 
   const currentAction = ACTIONS.find(a => a.id === effectiveAction)!;
   const placeholder = actionPlaceholder(effectiveAction, projectName, buildError);

@@ -69,10 +69,12 @@ const INITIAL_PHASES: BuildPhase[] = [
    ══════════════════════════════════════════════════════════════════ */
 
 /** Left panel — app structure navigation */
-function AppSidebar({ section, setSection, projectName }: {
+function AppSidebar({ section, setSection, projectName, onDownload, isDownloading }: {
   section: AppSection;
   setSection: (s: AppSection) => void;
   projectName: string;
+  onDownload: () => void;
+  isDownloading: boolean;
 }) {
   const { t } = useTranslation("appBuilder");
   return (
@@ -117,14 +119,26 @@ function AppSidebar({ section, setSection, projectName }: {
         ))}
       </nav>
 
-      {/* Publish button */}
+      {/* Export / download button — downloads workspace as ZIP.
+          Labelled "تصدير" because no deployment backend exists yet. */}
       <div style={{ padding: 12, borderTop: "1px solid var(--b1)" }}>
-        <button style={{
-          width: "100%", padding: "9px", borderRadius: 10, border: "none",
-          background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-          color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
-        }}>
-          {t("appSidebar.publish")}
+        <button
+          data-testid="sidebar-export-btn"
+          onClick={onDownload}
+          disabled={isDownloading}
+          style={{
+            width: "100%", padding: "9px", borderRadius: 10, border: "none",
+            background: isDownloading
+              ? "var(--b2)"
+              : "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+            color: isDownloading ? "var(--t4)" : "white",
+            fontSize: 12, fontWeight: 600,
+            cursor: isDownloading ? "not-allowed" : "pointer",
+            opacity: isDownloading ? 0.7 : 1,
+            transition: "all 0.15s",
+          }}
+        >
+          {isDownloading ? "⏳ جارٍ التصدير…" : "⬇ تصدير"}
         </button>
       </div>
     </div>
@@ -472,6 +486,10 @@ export function AppBuilderPage() {
   const [phases, setPhases]         = useState<BuildPhase[]>(INITIAL_PHASES);
   const [projectName, setProjectName] = useState("");
   const [isDevMode, setIsDevMode]   = useState(false);
+
+  // ── Export / download ────────────────────────────────────────────
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // ── Entry screen prompt (new minimal entry UI) ───────────────────
   // Persisted to sessionStorage so the draft survives page navigation
@@ -921,6 +939,42 @@ export function AppBuilderPage() {
     void err; // consumed by AICopilotPanel via buildError prop
   }, []);
 
+  // ── Export / download project as ZIP ────────────────────────────
+  // Calls GET /api/projects/{id}/download which returns a ZIP archive of the
+  // workspace.  Guards against duplicate requests with isDownloading flag.
+  // Named "export" in the UI (not "publish") because no deployment occurs.
+  const handleDownload = useCallback(async () => {
+    const projectId = sessionStorage.getItem("flow_active_project");
+    if (!projectId || isDownloading) return;
+    setIsDownloading(true);
+    setDownloadError(null);
+    try {
+      const r = await apiFetch(`/api/projects/${projectId}/download`);
+      if (!r.ok) {
+        const errBody = await r.text().catch(() => "");
+        setDownloadError(`خطأ ${r.status}${errBody ? ": " + errBody.slice(0, 120) : ""}`);
+        return;
+      }
+      const blob = await r.blob();
+      // Honour backend-supplied filename from Content-Disposition if present
+      const cd       = r.headers.get("Content-Disposition") ?? "";
+      const match    = cd.match(/filename[^;=\n]*=(['"]?)([^'";\n]+)\1/);
+      const filename = match ? match[2] : `project-${projectId.slice(0, 8)}.zip`;
+      const url = URL.createObjectURL(blob);
+      const a   = document.createElement("a");
+      a.href     = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "فشل التصدير — حاول مرة أخرى.");
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [isDownloading]);
+
   // ── View routing ─────────────────────────────────────────────────
   // Entry: idle, no active build, plan not in flight — includes error states
   const showEntry    = !buildDone && !isBuilding && planState === "idle";
@@ -1239,6 +1293,7 @@ export function AppBuilderPage() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {/* ── Top bar ──────────────────────────────────────────── */}
       <div style={{
+        position: "relative",
         height: 48, minHeight: 48,
         borderBottom: "1px solid var(--b1)",
         background: "var(--bg-surface)",
@@ -1321,22 +1376,52 @@ export function AppBuilderPage() {
           </button>
         )}
 
-        {/* Publish */}
-        <button style={{
-          padding: "6px 14px", borderRadius: 8, border: "none",
-          background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-          color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
-          boxShadow: "var(--shadow-btn)",
-        }}>
-          {t("topbar.publish")}
+        {/* Export / download — downloads workspace ZIP; no deployment backend yet */}
+        <button
+          data-testid="topbar-export-btn"
+          onClick={handleDownload}
+          disabled={isDownloading}
+          style={{
+            padding: "6px 14px", borderRadius: 8, border: "none",
+            background: isDownloading
+              ? "var(--b2)"
+              : "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+            color: isDownloading ? "var(--t4)" : "white",
+            fontSize: 12, fontWeight: 600,
+            cursor: isDownloading ? "not-allowed" : "pointer",
+            boxShadow: isDownloading ? "none" : "var(--shadow-btn)",
+            opacity: isDownloading ? 0.7 : 1,
+            transition: "all 0.15s",
+          }}
+        >
+          {isDownloading ? "⏳…" : "⬇ تصدير"}
         </button>
+        {downloadError && (
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 16,
+            background: "var(--red-dim, rgba(239,68,68,.12))",
+            border: "1px solid rgba(239,68,68,.3)",
+            borderRadius: 8, padding: "6px 12px",
+            fontSize: 12, color: "var(--red, #ef4444)",
+            zIndex: 200, whiteSpace: "nowrap", maxWidth: 320,
+            overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            {downloadError}
+          </div>
+        )}
       </div>
 
       {/* ── 3-panel workspace ─────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div className="ab-panels" style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
           <div className="ab-nav">
-            <AppSidebar section={section} setSection={setSection} projectName={projectName} />
+            <AppSidebar
+              section={section}
+              setSection={setSection}
+              projectName={projectName}
+              onDownload={handleDownload}
+              isDownloading={isDownloading}
+            />
           </div>
 
           <div className="ab-runtime" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
@@ -1425,12 +1510,23 @@ export function AppBuilderPage() {
             }} onClick={() => setBuildDone(false)}>
               {t("done.dismiss")}
             </button>
-            <button style={{
-              padding: "7px 16px", borderRadius: 8, border: "none",
-              background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-              color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer",
-            }}>
-              {t("done.publish")}
+            <button
+              data-testid="done-export-btn"
+              onClick={handleDownload}
+              disabled={isDownloading}
+              style={{
+                padding: "7px 16px", borderRadius: 8, border: "none",
+                background: isDownloading
+                  ? "var(--b2)"
+                  : "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+                color: isDownloading ? "var(--t4)" : "white",
+                fontSize: 12, fontWeight: 600,
+                cursor: isDownloading ? "not-allowed" : "pointer",
+                opacity: isDownloading ? 0.7 : 1,
+                transition: "all 0.15s",
+              }}
+            >
+              {isDownloading ? "⏳ جارٍ التصدير…" : "⬇ تصدير"}
             </button>
           </div>
         </div>
