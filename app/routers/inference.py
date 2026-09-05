@@ -124,6 +124,52 @@ def _to_gateway_request(req: InferenceRequest) -> CompletionRequest:
 
 # ── Inference endpoints ───────────────────────────────────────────────────────
 
+
+class AIChatRequest(BaseModel):
+    """Simple single-turn request from the App Builder copilot (explain/debug).
+
+    Intentionally minimal — mirrors exactly what AICopilotPanel.send() posts:
+      { message, context?, app_name? }
+    and returns { response } so the frontend needs no changes.
+    """
+    message:  str           = Field(..., min_length=1, max_length=8000)
+    context:  Optional[str] = None
+    app_name: Optional[str] = None
+
+
+@router.post("/chat")
+async def ai_chat(req: AIChatRequest, request: Request):
+    """Single-turn AI chat for the App Builder copilot (explain / debug actions).
+
+    Wraps the InferenceEngine in the same way /complete does, but with a
+    simpler request model that matches what the frontend already sends.
+    No conversation history — each call is stateless.
+    """
+    ai_rate_limit(request)
+    uid = await _user_id(request)
+
+    system_parts = ["أنت مساعد برمجة ذكي متخصص في تطبيقات Flow. أجب بإيجاز وعملية."]
+    if req.context:
+        system_parts.append(f"السياق: {req.context}")
+    if req.app_name:
+        system_parts.append(f"التطبيق: {req.app_name}")
+
+    p = platform if platform._pool else platform.__class__(pool=_pool())
+    completion_req = CompletionRequest(
+        messages=[Message(role="user", content=req.message)],  # type: ignore[arg-type]
+        system="\n".join(system_parts),
+        max_tokens=1024,
+        temperature=0.7,
+    )
+    resp = await p.complete(
+        completion_req,
+        user_id=uid,
+        org_id=await _org_id(request),
+        auto_tools=False,
+    )
+    return {"response": resp.content}
+
+
 @router.post("/complete")
 async def complete(req: InferenceRequest, request: Request):
     """Non-streaming AI completion. Delegates entirely to InferenceEngine."""
