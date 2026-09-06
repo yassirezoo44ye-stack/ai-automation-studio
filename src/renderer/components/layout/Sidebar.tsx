@@ -32,12 +32,11 @@ const NAV_GROUPS: {
     showLabel: false,
     showSep: false,
     items: [
-      { id: "home",        navKey: "home",       icon: "home"        },
-      { id: "ai",          navKey: "ai",         icon: "ai"          },
+      // Simplified sidebar — keep only the two tools users need day-to-day.
+      // home / ai / automation / social are still reachable via setPage()
+      // but hidden here so the nav feels approachable to new users.
       { id: "app-builder", navKey: "appBuilder", icon: "app-builder" },
       { id: "design",      navKey: "design",     icon: "design"      },
-      { id: "automation",  navKey: "automation", icon: "automation"  },
-      { id: "social",      navKey: "social",     icon: "social"      },
     ],
   },
   {
@@ -100,7 +99,7 @@ function FlowLogo() {
       </div>
       <div>
         <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "-0.4px", color: "var(--t1)", lineHeight: 1.2 }}>Flow</div>
-        <div style={{ fontSize: 9.5, color: "var(--t5)", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>AI Business OS</div>
+        <div style={{ fontSize: 9.5, color: "var(--t5)", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>مساعدك الذكي</div>
       </div>
     </div>
   );

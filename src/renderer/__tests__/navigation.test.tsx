@@ -16,12 +16,11 @@
  * and the auth/org contexts are stubbed, since their own data-fetching is
  * not what's under test here.
  *
- * NOTE: Sidebar labels reflect the simplified nav (7 items only):
- *   Main:    Home, My AI, Build an App, Design, Automate, Marketing
+ * NOTE: Sidebar labels reflect the simplified nav (3 items only):
+ *   Main:    Build an App, Design
  *   Account: Settings
  *
- * Developer/admin pages (Agents, Runs, Monitoring, Logs, AI Gateway,
- * Integrations, Packages, Marketplace, Organizations, Teams, Billing)
+ * All other pages (Home, My AI, Automate, Marketing, and all admin pages)
  * are intentionally hidden from the sidebar; they remain in the app
  * and are still exercised via AppContext.setPage() when needed.
  */
@@ -97,15 +96,11 @@ describe("navigation", () => {
 
     // [title in sidebar, expected main content] pairs — simplified sidebar only
     const cases: [string, string][] = [
-      // Main tools
-      ["Home",         "HOME_PAGE_CONTENT"],
-      ["My AI",        "AI_PAGE_CONTENT"],
+      // Main tools (only two visible)
       ["Design",       "DESIGN_PAGE_CONTENT"],
-      ["Automate",     "AUTOMATION_PAGE_CONTENT"],
-      ["Marketing",    "SOCIAL_PAGE_CONTENT"],
       // Account
       ["Settings",     "SETTINGS_PAGE_CONTENT"],
-      // Back to app-builder
+      // Back to app-builder (default page)
       ["Build an App", "APP_BUILDER_PAGE_CONTENT"],
     ];
 
@@ -128,18 +123,15 @@ describe("navigation", () => {
 
     // Fire clicks back-to-back with no awaits in between — the scenario
     // that used to desync Sidebar from <main>.
-    fireEvent.click(screen.getByTitle("Home"));
+    fireEvent.click(screen.getByTitle("Build an App"));
     fireEvent.click(screen.getByTitle("Design"));
-    fireEvent.click(screen.getByTitle("Automate"));
     fireEvent.click(screen.getByTitle("Settings"));
-
 
     await waitFor(() => expect(screen.getByText("SETTINGS_PAGE_CONTENT")).toBeInTheDocument(), { timeout: 8000 });
     expect(screen.getByTitle("Settings")).toHaveAttribute("aria-current", "page");
     // No other page's content should be left mounted alongside it.
-    expect(screen.queryByText("HOME_PAGE_CONTENT")).not.toBeInTheDocument();
+    expect(screen.queryByText("APP_BUILDER_PAGE_CONTENT")).not.toBeInTheDocument();
     expect(screen.queryByText("DESIGN_PAGE_CONTENT")).not.toBeInTheDocument();
-    expect(screen.queryByText("AUTOMATION_PAGE_CONTENT")).not.toBeInTheDocument();
   });
 
   it("resets ErrorBoundary when navigating away from a page that crashed", async () => {
