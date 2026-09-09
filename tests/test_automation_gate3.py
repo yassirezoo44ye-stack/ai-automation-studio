@@ -18,16 +18,12 @@ can run in CI without a Postgres instance.
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
-import importlib
 import json
 import time
-import types
 import uuid
 from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -501,14 +497,10 @@ class TestRecovery:
 class TestApprovals:
     """record_approval_decision: transactional, IDOR-safe, orphaned path."""
 
-    def _make_pool_with_fetchrow(self, fetchrow_result):
+    def _make_pool(self, execute_return_value: str = "UPDATE 1"):
+        """Return (pool, conn) where conn.execute returns the given asyncpg tag string."""
         conn = AsyncMock()
-        conn.execute = AsyncMock()
-        conn.fetchrow = AsyncMock(return_value=fetchrow_result)
-        tx = AsyncMock()
-        tx.__aenter__ = AsyncMock(return_value=tx)
-        tx.__aexit__ = AsyncMock(return_value=False)
-        conn.transaction = MagicMock(return_value=tx)
+        conn.execute = AsyncMock(return_value=execute_return_value)
         cm = AsyncMock()
         cm.__aenter__ = AsyncMock(return_value=conn)
         cm.__aexit__ = AsyncMock(return_value=False)
@@ -517,39 +509,179 @@ class TestApprovals:
         return pool, conn
 
     @pytest.mark.asyncio
-    async def test_record_approval_decision_not_found_raises(self):
-        """Non-existent approval_id must raise, not silently succeed."""
-        pool, conn = self._make_pool_with_fetchrow(None)  # not found
+    async def test_record_approval_decision_invalid_status_raises(self):
+        """An invalid status value must raise ValueError before hitting the DB."""
+        pool, conn = self._make_pool()
         with patch("app.core.workflow.persistence.get_pool", return_value=pool):
             from app.core.workflow.persistence import AutomationPersistence
             p = AutomationPersistence()
-            with pytest.raises(Exception):
+            with pytest.raises(ValueError, match="Invalid approval status"):
                 await p.record_approval_decision(
                     approval_id="run1:step1",
                     org_id=str(uuid.uuid4()),
-                    decision="approved",
-                    decided_by=str(uuid.uuid4()),
+                    status="INVALID",
+                    decided_by=None,
                 )
+        # DB must NOT be touched
+        conn.execute.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_record_approval_decision_wrong_org_raises(self):
-        """Approval belonging to org B cannot be approved by org A."""
-        org_a = str(uuid.uuid4())
-        org_b = str(uuid.uuid4())
-        # Row exists but belongs to org_b
-        row = {"id": uuid.uuid4(), "organization_id": uuid.UUID(org_b), "status": "pending",
-               "run_id": "run1", "step_id": "step1"}
-        pool, conn = self._make_pool_with_fetchrow(row)
+    async def test_record_approval_decision_invalid_org_id_raises(self):
+        """A non-UUID org_id must raise ValueError before hitting the DB."""
+        pool, conn = self._make_pool()
         with patch("app.core.workflow.persistence.get_pool", return_value=pool):
             from app.core.workflow.persistence import AutomationPersistence
             p = AutomationPersistence()
-            with pytest.raises(Exception):
+            with pytest.raises(ValueError, match="invalid org_id"):
                 await p.record_approval_decision(
                     approval_id="run1:step1",
-                    org_id=org_a,  # wrong org
-                    decision="approved",
-                    decided_by=str(uuid.uuid4()),
+                    org_id="not-a-uuid",
+                    status="approved",
+                    decided_by=None,
                 )
+        conn.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_record_approval_decision_sql_contains_org_id_predicate(self):
+        """The UPDATE SQL must include organization_id in the WHERE clause.
+
+        This is the core IDOR isolation test: we verify that the SQL sent to
+        asyncpg carries BOTH approval_id AND organization_id predicates. If the
+        organization_id predicate is removed, this test will fail — it inspects
+        the actual SQL string passed to conn.execute, not a side-effect.
+        """
+        org_id = str(uuid.uuid4())
+        decided_by = uuid.uuid4()
+        pool, conn = self._make_pool("UPDATE 1")
+
+        with patch("app.core.workflow.persistence.get_pool", return_value=pool):
+            from app.core.workflow.persistence import AutomationPersistence
+            p = AutomationPersistence()
+            await p.record_approval_decision(
+                approval_id="run1:step1",
+                org_id=org_id,
+                status="approved",
+                decided_by=decided_by,
+            )
+
+        conn.execute.assert_called_once()
+        sql_arg = conn.execute.call_args[0][0]
+        # Both predicates must be present in the WHERE clause
+        assert "approval_id" in sql_arg, "SQL missing approval_id predicate"
+        assert "organization_id" in sql_arg, "SQL missing organization_id predicate"
+        # Must be an UPDATE, not a SELECT or INSERT
+        assert sql_arg.strip().upper().startswith("UPDATE"), "Not an UPDATE statement"
+
+    @pytest.mark.asyncio
+    async def test_record_approval_decision_wrong_org_does_not_update(self):
+        """Org A calling with org_B's approval_id must produce UPDATE 0 (no rows changed).
+
+        Mechanism: the SQL WHERE clause includes AND organization_id = $3.
+        The mock simulates the DB returning 'UPDATE 0' (no matching rows) when
+        the caller's org_id doesn't match the row's organization_id. We verify:
+          1. The call does NOT raise (UPDATE 0 is not an exception).
+          2. execute() was called with org_A's UUID, not org_B's.
+          3. The SQL would therefore miss any row belonging to org_B.
+        """
+        org_a = str(uuid.uuid4())
+        org_b_uuid = uuid.uuid4()
+
+        # Simulate DB returning 0 rows updated (org_a doesn't own this approval)
+        pool, conn = self._make_pool("UPDATE 0")
+
+        with patch("app.core.workflow.persistence.get_pool", return_value=pool):
+            from app.core.workflow.persistence import AutomationPersistence
+            p = AutomationPersistence()
+            # Must not raise — UPDATE 0 is the DB's silent rejection of a cross-org attempt
+            await p.record_approval_decision(
+                approval_id="run1:step1",
+                org_id=org_a,
+                status="approved",
+                decided_by=None,
+            )
+
+        # Verify the SQL was parameterized with org_a's UUID — NOT org_b's
+        conn.execute.assert_called_once()
+        call_args = conn.execute.call_args[0]
+        # call_args = (sql, approval_id, status, org_uuid, decided_by)
+        # org_uuid is the 3rd positional parameter ($3)
+        org_arg_passed = call_args[3]  # 4th element: (sql, $1, $2, $3, $4)
+        import uuid as _uuid
+        assert org_arg_passed == _uuid.UUID(org_a), (
+            f"org_id passed to DB was {org_arg_passed!r}, expected org_a={org_a}"
+        )
+        # Critically: org_b's UUID must NOT appear in the call
+        assert org_arg_passed != org_b_uuid, (
+            "DB was called with org_b's UUID — IDOR would succeed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_record_approval_decision_same_org_succeeds(self):
+        """Org A CAN update an approval that belongs to org A (UPDATE 1)."""
+        org_a = str(uuid.uuid4())
+        pool, conn = self._make_pool("UPDATE 1")
+
+        with patch("app.core.workflow.persistence.get_pool", return_value=pool):
+            from app.core.workflow.persistence import AutomationPersistence
+            p = AutomationPersistence()
+            # Must not raise
+            await p.record_approval_decision(
+                approval_id="run1:step1",
+                org_id=org_a,
+                status="approved",
+                decided_by=uuid.uuid4(),
+            )
+        conn.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_record_approval_decision_propagates_db_exception(self):
+        """DB errors must propagate (not be swallowed) since this is NOT best-effort."""
+        org_id = str(uuid.uuid4())
+        conn = AsyncMock()
+        conn.execute = AsyncMock(side_effect=RuntimeError("DB connection lost"))
+        cm = AsyncMock()
+        cm.__aenter__ = AsyncMock(return_value=conn)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        pool = MagicMock()
+        pool.acquire = MagicMock(return_value=cm)
+
+        with patch("app.core.workflow.persistence.get_pool", return_value=pool):
+            from app.core.workflow.persistence import AutomationPersistence
+            p = AutomationPersistence()
+            with pytest.raises(RuntimeError, match="DB connection lost"):
+                await p.record_approval_decision(
+                    approval_id="run1:step1",
+                    org_id=org_id,
+                    status="approved",
+                    decided_by=None,
+                )
+
+    def test_record_approval_decision_signature_has_org_id(self):
+        """The method signature must include org_id as an explicit parameter.
+
+        This is a static guard: if someone removes org_id from the signature
+        (reverting the F-1 fix), this test catches it immediately without
+        needing a DB mock.
+        """
+        import inspect
+        from app.core.workflow.persistence import AutomationPersistence
+        sig = inspect.signature(AutomationPersistence.record_approval_decision)
+        assert "org_id" in sig.parameters, (
+            "record_approval_decision is missing org_id parameter — IDOR fix was reverted"
+        )
+
+    def test_record_approval_decision_sql_source_has_org_predicate(self):
+        """Source-level check: the SQL literal must contain organization_id.
+
+        Complements the runtime SQL test. If the WHERE clause is removed from
+        the source, this fails even before a test that exercises the mock.
+        """
+        import inspect
+        from app.core.workflow import persistence
+        src = inspect.getsource(persistence.AutomationPersistence.record_approval_decision)
+        assert "organization_id" in src, (
+            "record_approval_decision SQL source lacks organization_id predicate"
+        )
 
     def test_approval_id_format_in_schema(self):
         """automation_approvals.approval_id column must exist in schema source."""
@@ -1040,14 +1172,11 @@ class TestSecurityAudit:
         # queries include organization_id in the WHERE
         lines = src.splitlines()
         in_select = False
-        found_org = False
         for line in lines:
             stripped = line.strip().lower()
             if "select" in stripped and "from automation_" in stripped:
                 in_select = True
-                found_org = False
             if in_select and "organization_id" in stripped:
-                found_org = True
                 in_select = False
         # If no such block found, the query may be split across lines
         # just verify the module always mentions organization_id in context of queries

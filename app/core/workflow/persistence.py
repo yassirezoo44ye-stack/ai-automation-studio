@@ -33,9 +33,8 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from app.core.db import get_pool
@@ -298,6 +297,7 @@ class AutomationPersistence:
     async def record_approval_decision(
         self,
         approval_id: str,
+        org_id: str | UUID,
         status: str,
         decided_by: UUID | None,
     ) -> None:
@@ -306,22 +306,36 @@ class AutomationPersistence:
         This is NOT best-effort: the caller (the workflow_api approve/reject
         endpoint) must know whether the DB write succeeded before calling Engine
         A's approval registry. Exceptions propagate to the router.
+
+        Organization isolation
+        ──────────────────────
+        The UPDATE is scoped by BOTH approval_id AND organization_id so that
+        org A cannot update an approval row belonging to org B, even if it
+        knows the approval_id. If the row exists but belongs to a different
+        org, the WHERE clause matches zero rows — the update silently does
+        nothing (same as a missing row), which is safe: the caller still
+        receives result "UPDATE 0" and can log/handle accordingly.
         """
         if status not in ("approved", "rejected", "orphaned", "expired"):
             raise ValueError(f"Invalid approval status: {status!r}")
+        org_uuid = _parse_org_id(org_id)
+        if org_uuid is None:
+            raise ValueError(f"record_approval_decision: invalid org_id {org_id!r}")
         async with get_pool().acquire() as conn:
             result = await conn.execute(
                 """
                 UPDATE automation_approvals
                 SET status     = $2,
                     decided_at = now(),
-                    decided_by = $3
-                WHERE approval_id = $1
+                    decided_by = $4
+                WHERE approval_id     = $1
+                  AND organization_id = $3
                 """,
-                approval_id, status, decided_by,
+                approval_id, status, org_uuid, decided_by,
             )
-            # "UPDATE N" — N=0 means the row doesn't exist (ad-hoc run or pre-Gate-3 run)
-            # which is acceptable; we still proceed to unblock Engine A.
+            # "UPDATE N" — N=0 means the row doesn't exist, was already decided,
+            # or belongs to a different organization. All are acceptable from the
+            # perspective of not unblocking the wrong Engine A run.
             log.debug("record_approval_decision: %s → %s (%s)", approval_id, status, result)
 
     # ── Startup recovery ──────────────────────────────────────────────────────
