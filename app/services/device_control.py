@@ -594,8 +594,24 @@ class DeviceControlService:
     ) -> dict:
         """
         Transition session from draft → starting → active.
-        Issues per-device session authorizations.
+        Issues per-device session authorizations and delivers personalized
+        session_start frames directly to each device's live WS connection.
+
+        BLOCKER 1 FIX: Idle agents have session_id=None in the registry so
+        _broadcast_to_session() (which filters by conn.session_id) would never
+        reach them.  We look up each device by device_id instead and assign
+        the session_id into the in-memory conn object here.
+
+        BLOCKER 2 FIX: The session_token (raw value) is delivered only over the
+        authenticated, TLS-encrypted WS channel.  It is NEVER logged, never put
+        in a URL, and never sent to the browser.
         """
+        # Collect per-device tokens and layout inside the transaction
+        # so raw tokens and layout rows are both available for frame construction.
+        device_tokens: dict[str, str] = {}   # device_id → raw_token  (NEVER LOGGED)
+        primary_device_id_str = ""
+        layout_rows: list = []
+
         async with get_pool().acquire() as conn:
             async with conn.transaction():
                 row = await conn.fetchrow(
@@ -610,6 +626,8 @@ class DeviceControlService:
                 if row["status"] not in ("draft",):
                     raise ValueError(f"Session cannot be started from status '{row['status']}'")
 
+                primary_device_id_str = str(row["primary_device_id"])
+
                 await conn.execute(
                     "UPDATE device_control_sessions "
                     "SET status='starting', started_at=NOW(), updated_at=NOW() "
@@ -617,17 +635,24 @@ class DeviceControlService:
                     uuid.UUID(session_id),
                 )
 
-                # Issue per-device authorizations
-                members = await conn.fetch(
-                    "SELECT device_id FROM device_control_session_members "
-                    "WHERE session_id=$1 AND enabled=TRUE",
+                # Fetch members WITH layout geometry — agents need this for edge detection
+                layout_rows = await conn.fetch(
+                    """
+                    SELECT device_id, position_x, position_y, width, height,
+                           sort_order, enabled
+                    FROM device_control_session_members
+                    WHERE session_id=$1 AND enabled=TRUE
+                    ORDER BY sort_order
+                    """,
                     uuid.UUID(session_id),
                 )
 
+                # Issue per-device authorizations; collect raw tokens for WS delivery
                 exp = time.time() + SESSION_AUTH_TTL_S
-                for m in members:
+                for m in layout_rows:
                     raw_tok = secrets.token_urlsafe(32)
                     tok_hash = _hash_token(raw_tok)
+                    device_tokens[str(m["device_id"])] = raw_tok  # hold for delivery below
                     await conn.execute(
                         """
                         INSERT INTO device_session_authorizations
@@ -652,18 +677,74 @@ class DeviceControlService:
                     uuid.UUID(session_id),
                 )
 
-        # Notify all connected agents in this session
-        await self._broadcast_to_session(session_id, {
-            "version": 1,
-            "type":    "session_start",
-            "session_id": session_id,
-            "timestamp": int(time.time() * 1000),
-        })
+        # Build the layout list included in every session_start frame so agents
+        # can initialise edge-detection geometry without a DB round-trip.
+        layout: list[dict] = [
+            {
+                "device_id":  str(m["device_id"]),
+                "position_x": m["position_x"],
+                "position_y": m["position_y"],
+                "width":      m["width"],
+                "height":     m["height"],
+                "sort_order": m["sort_order"],
+                "enabled":    m["enabled"],
+            }
+            for m in layout_rows
+        ]
+
+        # ── BLOCKER 1+2 FIX: deliver personalized session_start per device ──
+        # We bypass _broadcast_to_session() because that filters by conn.session_id
+        # which is None for all idle agents.  Instead we look each device up by
+        # device_id directly in the registry.
+        #
+        # The session_token field carries a per-device raw auth token.  It is:
+        #   • delivered exclusively over the authenticated TLS WebSocket channel
+        #   • NEVER logged (not at INFO, WARN, or DEBUG level)
+        #   • NEVER placed in a URL or query-string
+        #   • NEVER forwarded to the browser or to any AI layer
+        now_ms = int(time.time() * 1000)
+        offline_devices: list[str] = []
+
+        for device_id_str, raw_tok in device_tokens.items():
+            conn_obj = _registry.get(device_id_str)
+            if conn_obj is None:
+                # Device is offline.  Token is persisted in DB; the agent fetches it
+                # via GET /api/devices/{id}/session-token when it reconnects.
+                offline_devices.append(device_id_str)
+                continue
+
+            # BLOCKER 1: assign session_id so all_in_session() now includes this conn
+            conn_obj.session_id = session_id
+
+            # BLOCKER 2: send raw token inside the authenticated WS — never log it
+            is_primary_device = (device_id_str == primary_device_id_str)
+            frame: dict = {
+                "version":           1,
+                "type":              "session_start",
+                "session_id":        session_id,
+                "session_token":     raw_tok,            # raw — NEVER LOG
+                "is_primary":        is_primary_device,
+                "primary_device_id": primary_device_id_str,
+                "members":           layout,
+                "timestamp":         now_ms,
+            }
+            try:
+                await conn_obj.ws.send_text(json.dumps(frame))
+            except Exception:
+                offline_devices.append(device_id_str)
+
+        if offline_devices:
+            log.info(
+                "session_start %s: %d device(s) offline — token held in DB for reconnect",
+                session_id[:8],
+                len(offline_devices),
+            )
 
         asyncio.create_task(write_audit(
             actor_email, "control_session_started",
             resource="device_sessions", resource_id=session_id,
             details={"org_id": org_id},
+            # raw tokens are intentionally NOT included in the audit record
         ))
 
         try:

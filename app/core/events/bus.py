@@ -36,6 +36,10 @@ EVENT_TYPES = frozenset({
     "integration.connected", "integration.disconnected",
     "integration.sync_started", "integration.sync_completed", "integration.sync_failed",
     "integration.webhook_received", "integration.health_changed",
+    # Multi-Device Control
+    "device.registered", "device.connected", "device.disconnected", "device.revoked",
+    "device_control.session_started", "device_control.session_stopped",
+    "device_control.device_switched",
 })
 
 Handler = Callable[["Event"], Awaitable[None]]

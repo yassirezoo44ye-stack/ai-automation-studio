@@ -79,12 +79,103 @@ _ALLOWED_TYPES = frozenset({
 # Mouse move is high-frequency — coalesce window in seconds
 _MOUSE_COALESCE_S = 0.016   # ~60 Hz cap
 
-# Timestamp drift tolerance (reject frames more than 30s in the future)
-_MAX_FUTURE_DRIFT_S = 30
+# Timestamp drift tolerances
+_MAX_FUTURE_DRIFT_S = 30    # Reject timestamps more than 30 s in the future
+_MAX_PAST_DRIFT_S   = 60    # REPLAY: Reject timestamps older than 60 s
+
+
+# ── Rate-limit buckets (per-connection, 1-second sliding window) ───────────────
+
+class _RateLimiter:
+    """
+    Simple per-connection 1-second sliding-window rate limiter.
+
+    Protects against:
+      • Flooding keyboard events (max 50/s)
+      • Flooding mouse button events (max 30/s)
+      • Flooding scroll events (max 30/s)
+      • Flooding any non-mouse-move event (max 100/s total)
+
+    These limits are high enough that normal human input never trips them;
+    they only block automated/replayed floods.  Mouse moves are NOT rate-limited
+    here because they are already coalesced to ~60 Hz in the routing layer.
+    """
+    KEY_LIMIT   = 50
+    BTN_LIMIT   = 30
+    SCROLL_LIMIT = 30
+    TOTAL_LIMIT  = 100
+
+    def __init__(self) -> None:
+        self._window_start = time.monotonic()
+        self._key_count    = 0
+        self._btn_count    = 0
+        self._scroll_count = 0
+        self._total_count  = 0
+
+    def _reset_if_needed(self) -> None:
+        now = time.monotonic()
+        if now - self._window_start >= 1.0:
+            self._window_start = now
+            self._key_count    = 0
+            self._btn_count    = 0
+            self._scroll_count = 0
+            self._total_count  = 0
+
+    def check(self, msg_type: str) -> bool:
+        """Returns True if the frame is within limits, False if it should be dropped."""
+        self._reset_if_needed()
+        self._total_count += 1
+        if self._total_count > self.TOTAL_LIMIT:
+            return False
+        if msg_type in ("key_down", "key_up"):
+            self._key_count += 1
+            return self._key_count <= self.KEY_LIMIT
+        if msg_type in ("mouse_down", "mouse_up"):
+            self._btn_count += 1
+            return self._btn_count <= self.BTN_LIMIT
+        if msg_type == "mouse_scroll":
+            self._scroll_count += 1
+            return self._scroll_count <= self.SCROLL_LIMIT
+        return True
+
+
+# ── Sequence tracker for key-event replay protection ──────────────────────────
+
+class _KeySeqTracker:
+    """
+    Per-connection monotonic sequence-number tracker for key frames.
+
+    The agent includes a "seq" integer that increments with every key event.
+    We reject any frame whose seq ≤ the last accepted seq, which prevents:
+      • exact-frame replay attacks
+      • packet-reorder attacks on key ordering
+
+    On reconnect (new _KeySeqTracker instance) the sequence resets — this is
+    correct because a reconnect resets the agent's seq counter too.
+    """
+    def __init__(self) -> None:
+        self._last_seq: int | None = None
+
+    def check_and_advance(self, seq: int | None) -> bool:
+        """Return False to reject the frame, True to accept."""
+        if seq is None:
+            return True  # frame has no seq field — not a key event, pass through
+        if self._last_seq is not None and seq <= self._last_seq:
+            return False  # replay or out-of-order
+        self._last_seq = seq
+        return True
 
 
 def _validate_frame(msg: dict) -> bool:
-    """Validate an incoming control frame. Never log input payloads."""
+    """
+    Validate an incoming control frame. Never log input payloads.
+
+    Checks:
+      • dict with version == 1
+      • type is in the allowlist
+      • timestamp is not unreasonably far in the future (>30 s)
+      • timestamp is not a replay from the distant past (>60 s)
+    """
     if not isinstance(msg, dict):
         return False
     if msg.get("version") != 1:
@@ -95,8 +186,11 @@ def _validate_frame(msg: dict) -> bool:
     if ts is not None:
         try:
             t = float(ts) / 1000  # ms → s
-            if t > time.time() + _MAX_FUTURE_DRIFT_S:
+            now = time.time()
+            if t > now + _MAX_FUTURE_DRIFT_S:
                 return False  # Reject obviously future timestamps
+            if t < now - _MAX_PAST_DRIFT_S:
+                return False  # REPLAY: reject stale timestamps
         except (TypeError, ValueError):
             return False
     return True
@@ -258,6 +352,8 @@ async def device_agent_ws(ws: WebSocket, device_id: str):
         hb_task = asyncio.create_task(_heartbeat_loop(ws, float(HEARTBEAT_INTERVAL_S)))
 
         last_mouse_forward = 0.0   # For mouse-move coalescing
+        rate_limiter  = _RateLimiter()       # per-connection rate limiter
+        key_seq       = _KeySeqTracker()     # per-connection key replay tracker
 
         while True:
             try:
@@ -289,6 +385,17 @@ async def device_agent_ws(ws: WebSocket, device_id: str):
                 continue
 
             mtype = msg["type"]
+
+            # ── Rate limiting ──────────────────────────────────────────────
+            # mouse_move is already coalesced below; rate-limit everything else
+            if mtype != "mouse_move" and not rate_limiter.check(mtype):
+                # Drop silently — flooding from legitimate human input is impossible
+                continue
+
+            # ── Key-event replay protection ────────────────────────────────
+            if mtype in ("key_down", "key_up"):
+                if not key_seq.check_and_advance(msg.get("seq")):
+                    continue   # duplicate or out-of-order — drop silently
 
             if mtype == "heartbeat":
                 conn_obj.last_heartbeat = time.monotonic()

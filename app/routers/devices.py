@@ -4,9 +4,15 @@ Device Control HTTP API — /api/devices and /api/device-sessions.
 All endpoints are organization-scoped via OrgContext.
 All write operations require explicit RBAC permissions.
 Enrollment token generation and device revocation are audit-logged.
+
+BLOCKER 2 FALLBACK: GET /api/devices/{id}/session-token lets an agent that
+reconnects after a session was already started fetch a fresh session auth token
+authenticated only by its device credential (HTTP Basic Auth, no browser JWT).
+The raw token is returned once over TLS and is NEVER logged.
 """
 from __future__ import annotations
 
+import base64
 import logging
 import uuid
 from typing import Optional
@@ -220,6 +226,78 @@ async def rotate_device_credential(
     except ValueError as e:
         raise HTTPException(404, str(e))
     return result
+
+
+# ── Agent-only token fetch (BLOCKER 2 fallback) ───────────────────────────────
+
+@router.get("/{device_id}/session-token")
+async def get_device_session_token(
+    device_id: str,
+    session_id: str,
+    request: Request,
+):
+    """
+    Fallback for agents that reconnect AFTER a session has already been started.
+
+    When an agent was offline during start_session(), the server stored its token
+    hash in device_session_authorizations but could not deliver the raw token.
+    This endpoint lets the agent exchange its device credential for a fresh raw
+    token so it can authenticate on the WebSocket.
+
+    Authentication: HTTP Basic Auth using (device_id, credential) — same
+    credential stored via DPAPI on the agent, verified by SHA-256 hash comparison.
+    NO browser JWT is used here; this endpoint is machine-to-machine only.
+
+    SECURITY:
+      • credential verified by SHA-256 hash comparison — plaintext never stored
+      • raw session_token returned exactly once over TLS
+      • response is NEVER cached (Cache-Control: no-store)
+      • token bound to this specific (device_id, session_id) pair
+      • NEVER log the returned token value
+    """
+    _check_enabled()
+
+    # Parse HTTP Basic Auth: Authorization: Basic base64(device_id:credential)
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Basic "):
+        raise HTTPException(
+            401,
+            "Device credential required (HTTP Basic Auth: device_id:credential)",
+            headers={"WWW-Authenticate": "Basic realm=\"Flow Device Agent\""},
+        )
+    try:
+        decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+        basic_device_id, raw_credential = decoded.split(":", 1)
+    except Exception:
+        raise HTTPException(401, "Malformed Basic auth header")
+
+    # Enforce that the URL device_id matches the credential's owner
+    if basic_device_id != device_id:
+        raise HTTPException(403, "device_id mismatch")
+
+    svc = get_device_control_service()
+
+    # Verify device credential (SHA-256 comparison — same as WS auth)
+    device_info = await svc.authenticate_device(device_id, raw_credential)
+    if device_info is None:
+        raise HTTPException(401, "Invalid device credential")
+
+    org_id = device_info["organization_id"]
+
+    # Issue / rotate token for this (device, session) pair
+    raw_tok = await svc.get_session_token_for_device(org_id, session_id, device_id)
+    if raw_tok is None:
+        raise HTTPException(
+            403,
+            "Device is not an enabled member of this active session",
+        )
+
+    # Return raw token; never log it here or anywhere in the call chain
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={"session_token": raw_tok},   # raw — NEVER LOG
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 # ── Session endpoints ─────────────────────────────────────────────────────────

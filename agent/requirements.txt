@@ -1,0 +1,18 @@
+# Flow Device Agent — Python dependencies
+# Verified against actual imports in agent/ source tree.
+#
+# Core transport (agent/transport/websocket_client.py)
+websockets>=12.0
+#
+# Enrollment HTTP client (agent/__main__.py — POST /api/devices/enroll)
+aiohttp>=3.9
+#
+# Windows credential storage (agent/security/credentials.py — win32crypt.Crypt*)
+# and tray menu access (agent/windows/tray.py — pystray TaskbarIcon callbacks)
+pywin32>=306
+#
+# System-tray icon (agent/windows/tray.py — soft import; agent runs without it)
+pystray>=0.19
+#
+# Tray icon image generation (agent/windows/tray.py — Image.new / ImageDraw)
+Pillow>=10.0
