@@ -65,6 +65,8 @@ from app.routers import training         as training_router
 # Multi-Device Control
 from app.routers import devices          as devices_router
 from app.routers import ws_device        as ws_device_router
+# Flow Next — Discover (Phase 1)
+from app.routers import discover         as discover_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -237,6 +239,11 @@ async def lifespan(app: FastAPI):
     from app.services.device_control_schema import init_device_control_schema
     async with pool.acquire() as conn:
         await init_device_control_schema(conn)
+
+    # ── Flow Next — Discover (Phase 1) ────────────────────────────────────────────
+    from app.routers.discover import init_flow_creations_schema
+    async with pool.acquire() as conn:
+        await init_flow_creations_schema(conn)
 
     # -- Multi-Device Control AgentOS tools
     # Registers five device_control_* tools into the global tool registry.
@@ -640,6 +647,8 @@ def create_app() -> FastAPI:
     app.include_router(devices_router.router)
     app.include_router(devices_router.sessions_router)
     app.include_router(ws_device_router.router)
+    # Flow Next — Discover (Phase 1)
+    app.include_router(discover_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

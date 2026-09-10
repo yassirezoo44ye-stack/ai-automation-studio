@@ -1,0 +1,52 @@
+{
+  "title": "Discover",
+  "subtitle": "Explore and share creations",
+  "tabs": {
+    "feed": "Public Feed",
+    "mine": "My Creations"
+  },
+  "filters": {
+    "all": "All",
+    "APP": "Apps",
+    "AGENT": "Agents",
+    "WORKFLOW": "Workflows",
+    "AUTOMATION": "Automations",
+    "TEMPLATE": "Templates",
+    "DEVICE_WORKFLOW": "Device Flows"
+  },
+  "card": {
+    "try": "Try",
+    "clone": "Clone",
+    "open": "Open",
+    "publish": "Publish",
+    "unpublish": "Unpublish",
+    "delete": "Delete",
+    "private": "Private",
+    "public": "Public"
+  },
+  "detail": {
+    "title": "Creation Detail",
+    "close": "Close",
+    "by": "by",
+    "type": "Type",
+    "visibility": "Visibility",
+    "created": "Created",
+    "tags": "Tags"
+  },
+  "empty": {
+    "feed": "No public creations yet. Be the first to publish one!",
+    "mine": "You haven't published any creations yet.",
+    "filtered": "No creations match the selected filter."
+  },
+  "actions": {
+    "cloning": "Cloning…",
+    "cloned": "Cloned successfully",
+    "cloneError": "Could not clone this creation",
+    "cloneUnsupported": "This type cannot be cloned",
+    "published": "Published to Discover",
+    "unpublished": "Moved to private",
+    "deleted": "Creation deleted"
+  },
+  "loading": "Loading creations…",
+  "error": "Failed to load creations"
+}

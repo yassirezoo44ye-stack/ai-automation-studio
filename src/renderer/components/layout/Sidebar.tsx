@@ -37,6 +37,7 @@ const NAV_GROUPS: {
       // but hidden here so the nav feels approachable to new users.
       { id: "app-builder", navKey: "appBuilder", icon: "app-builder" },
       { id: "design",      navKey: "design",     icon: "design"      },
+      { id: "discover",    navKey: "discover",   icon: "discover"    },
     ],
   },
   {

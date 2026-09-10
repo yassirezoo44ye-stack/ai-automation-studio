@@ -49,6 +49,8 @@ _RLS_TABLES: tuple[tuple[str, str], ...] = (
     # can re-apply on any boot that runs before migration 010 has set them.
     ("app_builder_apps", "organization_id"),
     ("app_builder_versions", "organization_id"),
+    # Flow Next — Discover (Phase 1)
+    ("flow_creations", "organization_id"),
 )
 
 

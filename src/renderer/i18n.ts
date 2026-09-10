@@ -49,6 +49,8 @@ import landingEn from "./locales/en/landing.json";
 import landingAr from "./locales/ar/landing.json";
 import devicesEn from "./locales/en/devices.json";
 import devicesAr from "./locales/ar/devices.json";
+import discoverEn from "./locales/en/discover.json";
+import discoverAr from "./locales/ar/discover.json";
 
 void i18next.use(initReactI18next).init({
   resources: {
@@ -59,6 +61,7 @@ void i18next.use(initReactI18next).init({
       designStudio: designStudioEn, teams: teamsEn, billing: billingEn, agentos: agentosEn, dev: devEn,
       appBuilder: appBuilderEn, runs: runsEn, integrations: integrationsEn,
       trainingStudio: trainingStudioEn, landing: landingEn, devices: devicesEn,
+      discover: discoverEn,
     },
     ar: {
       common: commonAr, home: homeAr, settings: settingsAr, auth: authAr, social: socialAr,
@@ -67,6 +70,7 @@ void i18next.use(initReactI18next).init({
       designStudio: designStudioAr, teams: teamsAr, billing: billingAr, agentos: agentosAr, dev: devAr,
       appBuilder: appBuilderAr, runs: runsAr, integrations: integrationsAr,
       trainingStudio: trainingStudioAr, landing: landingAr, devices: devicesAr,
+      discover: discoverAr,
     },
   },
   lng: "en",
@@ -76,6 +80,7 @@ void i18next.use(initReactI18next).init({
     "common", "home", "settings", "auth", "social", "organizations", "sandbox", "plugins",
     "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos", "dev",
     "appBuilder", "runs", "integrations", "trainingStudio", "landing", "devices",
+    "discover",
   ],
   interpolation: { escapeValue: false },
   returnEmptyString: false,

@@ -29,6 +29,7 @@ const PAGE_LABELS: Record<Page, string> = {
   observability: "Observability",
   "app-builder": "App Builder", runs: "Runs", integrations: "Integrations",
   training: "Training Studio",
+  discover: "Discover",
 };
 
 export function CopilotProvider({ children }: { children: ReactNode }) {

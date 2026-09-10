@@ -29,7 +29,8 @@
       "appBuilder": "Build an App",
       "runs": "Runs",
       "integrations": "Integrations",
-      "trainingStudio": "Training"
+      "trainingStudio": "Training",
+      "discover": "Discover"
     },
     "mainNav": "Main navigation",
     "collapse": "Collapse sidebar",
