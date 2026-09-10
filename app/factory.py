@@ -62,6 +62,9 @@ from app.routers import integrations     as integrations_router
 from app.routers import app_builder      as app_builder_router
 from app.routers import ws_ticket        as ws_ticket_router
 from app.routers import training         as training_router
+# Multi-Device Control
+from app.routers import devices          as devices_router
+from app.routers import ws_device        as ws_device_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -229,6 +232,15 @@ async def lifespan(app: FastAPI):
     from app.training import init_training_schema
     async with pool.acquire() as conn:
         await init_training_schema(conn)
+
+    # -- Multi-Device Control schema
+    from app.services.device_control_schema import init_device_control_schema
+    async with pool.acquire() as conn:
+        await init_device_control_schema(conn)
+
+    # -- Multi-Device Control AgentOS tools
+    # Registers five device_control_* tools into the global tool registry.
+    import app.ai.tools_device_control  # noqa: F401 -- side-effect import
 
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
@@ -624,6 +636,10 @@ def create_app() -> FastAPI:
     app.include_router(app_builder_router.router)
     app.include_router(ws_ticket_router.router)
     app.include_router(training_router.router)
+    # Multi-Device Control
+    app.include_router(devices_router.router)
+    app.include_router(devices_router.sessions_router)
+    app.include_router(ws_device_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

@@ -178,6 +178,31 @@ class AgentDef:
 
 
 @dataclass
+class MultiDeviceConfig:
+    """
+    Optional multi-device control configuration for App Builder apps.
+
+    When present, the App Builder will set up an AgentOS agent that can help
+    the operator list devices, validate session configurations, and propose
+    DRAFT sessions for human approval.
+
+    Security note: the LLM-generated `primary_device_id` and `target_device_ids`
+    are NEVER executed directly. They are validated by `device_control_validate_session`
+    at tool-call time, scoped to the org from the JWT context — not from this config.
+    Human approval is always required before a session becomes active.
+    """
+    enabled: bool = False
+    # Suggested primary device hostname/name pattern (hint for the LLM — not executed)
+    primary_device_hint: Optional[str] = None
+    # Maximum concurrent sessions for this app (0 = use platform default)
+    max_concurrent_sessions: int = 0
+    # Whether the app's AI agent should suggest device sessions proactively
+    suggest_sessions: bool = False
+    # Optional descriptive label shown in the session proposal UI
+    agent_display_name: str = "Device Control Agent"
+
+
+@dataclass
 class AppSpec:
     name: str
     description: str
@@ -189,6 +214,8 @@ class AppSpec:
     agents: list[AgentDef]
     integrations: list[str]
     settings: dict[str, Any]
+    # Optional: multi-device control integration (Gate J)
+    multi_device_config: Optional[MultiDeviceConfig] = None
 
 
 # ── Build result ──────────────────────────────────────────────────────────────
@@ -254,7 +281,8 @@ Return ONLY a JSON object with this exact shape (no markdown, no commentary):
     {"name": "<Name>", "description": "<what it does>", "system_prompt": "<instructions>"}
   ],
   "integrations": ["<integration_name>"],
-  "settings": {}
+  "settings": {},
+  "multi_device_config": null
 }
 
 Rules:
@@ -268,6 +296,20 @@ Rules:
   stripe, zapier, webhook — only when clearly useful.
 - For "Build + Automate" requests, populate workflows and agents;
   otherwise leave them empty arrays.
+- multi_device_config: only set to a non-null object for apps where
+  the user explicitly wants to control multiple computers simultaneously
+  (call-center monitoring, broadcast studio, server room management, etc.).
+  When set, use this shape:
+  {
+    "enabled": true,
+    "primary_device_hint": "<optional hostname pattern>",
+    "max_concurrent_sessions": 0,
+    "suggest_sessions": false,
+    "agent_display_name": "<human-friendly name>"
+  }
+  NEVER set enabled:true unless the user's request clearly involves
+  multi-device / multi-monitor / KVM control. For all other apps, set
+  multi_device_config to null.
 """
 
 # Trigger keywords that map to specific engine capabilities
@@ -428,6 +470,18 @@ class AppBuilderService:
         if not isinstance(settings, dict):
             settings = {}
 
+        # Parse multi_device_config (Gate J)
+        multi_device_config: Optional[MultiDeviceConfig] = None
+        raw_mdc = data.get("multi_device_config")
+        if isinstance(raw_mdc, dict) and raw_mdc.get("enabled") is True:
+            multi_device_config = MultiDeviceConfig(
+                enabled=True,
+                primary_device_hint=str(raw_mdc.get("primary_device_hint") or "")[:200] or None,
+                max_concurrent_sessions=max(0, int(raw_mdc.get("max_concurrent_sessions", 0))),
+                suggest_sessions=bool(raw_mdc.get("suggest_sessions", False)),
+                agent_display_name=str(raw_mdc.get("agent_display_name") or "Device Control Agent")[:120],
+            )
+
         return AppSpec(
             name=name,
             description=description,
@@ -439,6 +493,7 @@ class AppBuilderService:
             agents=agents,
             integrations=integrations,
             settings=settings,
+            multi_device_config=multi_device_config,
         )
 
     # ── Async build submission ────────────────────────────────────────────────

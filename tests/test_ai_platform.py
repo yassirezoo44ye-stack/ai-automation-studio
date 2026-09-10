@@ -852,8 +852,13 @@ class TestBuiltinAgents:
 
     def test_eight_agents(self):
         from app.core.ai.agents.builtin import BUILTIN_AGENTS
-        expected = {"architect", "backend", "frontend", "design", "qa", "documentation", "devops", "research"}
-        assert set(BUILTIN_AGENTS.keys()) == expected
+        # Core 8 original agents (Gate J added device_control_coordinator as a 9th)
+        core_eight = {"architect", "backend", "frontend", "design", "qa", "documentation", "devops", "research"}
+        assert core_eight.issubset(set(BUILTIN_AGENTS.keys())), (
+            f"Missing core agents: {core_eight - set(BUILTIN_AGENTS.keys())}"
+        )
+        # device_control_coordinator is expected (Gate J)
+        assert "device_control_coordinator" in BUILTIN_AGENTS
 
     def test_unknown_raises(self):
         from app.core.ai.agents.builtin import create_builtin

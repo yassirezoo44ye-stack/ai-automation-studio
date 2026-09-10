@@ -1,0 +1,64 @@
+{
+  "page": {
+    "title": "Multi-Device Control",
+    "subtitle": "Control up to 5 computers from one keyboard and mouse",
+    "refresh": "Refresh",
+    "enrollDevice": "Enroll Device"
+  },
+  "devices": {
+    "title": "Enrolled Devices",
+    "loading": "Loading devices…",
+    "empty": "No devices enrolled yet"
+  },
+  "session": {
+    "title": "Control Session",
+    "newSession": "New Session",
+    "createTitle": "Create Control Session",
+    "activeTitle": "Session Active",
+    "unnamed": "Untitled Session",
+    "primary": "Primary",
+    "secondary": "Secondary",
+    "devices": "Devices",
+    "started": "Started",
+    "noSessions": "No sessions configured",
+    "needTwo": "Add at least one secondary device",
+    "needTwoOnline": "Need at least 2 enrolled devices",
+    "noPrimary": "Select a primary device",
+    "selectPrimary": "Primary device (has the mouse & keyboard)",
+    "selectSecondary": "Secondary devices",
+    "pickDevice": "— Select primary —",
+    "create": "Create Session",
+    "creating": "Creating…",
+    "start": "Start",
+    "stop": "Stop Session",
+    "back": "Back",
+    "created": "Created {{date}}"
+  },
+  "layout": {
+    "title": "Screen Layout",
+    "dragHint": "Drag devices to arrange their positions. Click a secondary device to enable/disable it.",
+    "primary": "PRIMARY"
+  },
+  "modal": {
+    "title": "Enroll a New Device",
+    "instructions": "Generate a one-time enrollment token, then run the Flow Device Agent on the target computer using that token. The token expires after 5 minutes and can only be used once.",
+    "step1": "Click \"Generate Token\" below",
+    "step2": "Download and install the Flow Device Agent on the target computer",
+    "step3": "Run the agent with the enrollment token",
+    "tokenLabel": "Enrollment Token (copy now — shown once)",
+    "copy": "Copy",
+    "expiresAt": "Expires {{date}}",
+    "securityWarning": "This token is shown only once. Copy it now — it cannot be retrieved again.",
+    "agentCommand": "Run on the target computer:",
+    "generate": "Generate Token",
+    "generating": "Generating…",
+    "generateAnother": "Generate Another",
+    "close": "Close"
+  },
+  "confirm": {
+    "revoke": "Revoke this device? It will no longer be able to connect. This cannot be undone.",
+    "delete": "Permanently delete this device? All session history will be lost.",
+    "ok": "Confirm",
+    "cancel": "Cancel"
+  }
+}

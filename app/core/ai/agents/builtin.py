@@ -238,17 +238,75 @@ class ResearchAgent(_BaseAgent):
         super().__init__(bus=bus, config=config, pool=pool, executor=executor)
 
 
+# ── Multi-Device Control Coordinator ──────────────────────────────────────────
+
+class DeviceControlCoordinator(_BaseAgent):
+    """
+    AgentRuntime-backed coordinator for multi-device control sessions.
+
+    This agent is used when the AgentOS /run endpoint (or an App Builder
+    workflow) delegates to the device-control tool set. It runs a focused
+    LLM tool loop over the five device_control_* tools registered in the
+    global tool registry.
+
+    Security constraints (enforced at tool level, NOT here):
+    - org_id must be bound via set_device_control_context() BEFORE run()
+    - The LLM may only list devices, validate, propose (DRAFT) sessions,
+      check status, and stop sessions — it cannot start or enroll devices
+    - No credentials, tokens, or session secrets are ever surfaced to the LLM
+    """
+    _agent_name = "device_control_coordinator"
+
+    def __init__(self, bus: EventBus, pool: Any = None, executor: Any = None) -> None:
+        config = AgentConfig(
+            name="device_control_coordinator",
+            system_prompt=(
+                "You are a multi-device control coordinator for the Flow platform. "
+                "You help operators set up sessions where one keyboard and mouse "
+                "controls up to 5 computers simultaneously.\n\n"
+                "Available tools:\n"
+                "  device_control_list_devices — list online/offline devices\n"
+                "  device_control_validate_session — validate a proposed configuration\n"
+                "  device_control_propose_session — create a DRAFT session (approval required)\n"
+                "  device_control_session_status — check session status\n"
+                "  device_control_stop_session — stop an active session\n\n"
+                "HARD RULES:\n"
+                "1. Never start a session — only PROPOSE drafts. A human must approve "
+                "   and start the session through the Flow UI.\n"
+                "2. Use only device IDs returned by device_control_list_devices.\n"
+                "3. Never reveal credentials, enrollment tokens, or session tokens.\n"
+                "4. Never issue keyboard or mouse events directly.\n"
+                "5. Maximum 5 devices per session (primary + up to 4 secondaries).\n"
+                "Always confirm that human approval is required before a session activates."
+            ),
+            provider_id="anthropic",
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2048,
+            temperature=0.1,
+            max_rounds=6,
+            tools=[
+                "device_control_list_devices",
+                "device_control_validate_session",
+                "device_control_propose_session",
+                "device_control_session_status",
+                "device_control_stop_session",
+            ],
+        )
+        super().__init__(bus=bus, config=config, pool=pool, executor=executor)
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 BUILTIN_AGENTS: dict[str, type[_BaseAgent]] = {
-    "architect":     ArchitectAgent,
-    "backend":       BackendAgent,
-    "frontend":      FrontendAgent,
-    "design":        DesignAgent,
-    "qa":            QAAgent,
-    "documentation": DocumentationAgent,
-    "devops":        DevOpsAgent,
-    "research":      ResearchAgent,
+    "architect":                  ArchitectAgent,
+    "backend":                    BackendAgent,
+    "frontend":                   FrontendAgent,
+    "design":                     DesignAgent,
+    "qa":                         QAAgent,
+    "documentation":              DocumentationAgent,
+    "devops":                     DevOpsAgent,
+    "research":                   ResearchAgent,
+    "device_control_coordinator": DeviceControlCoordinator,
 }
 
 
