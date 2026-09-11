@@ -62,6 +62,8 @@ from app.routers import integrations     as integrations_router
 from app.routers import app_builder      as app_builder_router
 from app.routers import ws_ticket        as ws_ticket_router
 from app.routers import training         as training_router
+# Business Lab — Plan & Validation Engine
+from app.routers import business_plans   as business_plans_router
 # Automation — Phase 5 Gate 3
 from app.core.workflow import automation_api     as automation_api_router
 from app.core.workflow import automation_webhooks as automation_webhooks_router
@@ -240,6 +242,11 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await init_automation_schema(conn)
     await mark_interrupted_runs()
+
+    # ── Business Lab — Plan & Validation Engine ─────────────────────────
+    from app.core.business.schema import ensure_business_plans_schema
+    async with pool.acquire() as conn:
+        await ensure_business_plans_schema(conn)
 
     # ── Training Studio — references organizations/projects/users ────────────
     from app.training import init_training_schema
@@ -680,6 +687,8 @@ def create_app() -> FastAPI:
     app.include_router(app_builder_router.router)
     app.include_router(ws_ticket_router.router)
     app.include_router(training_router.router)
+    # Business Lab — Plan & Validation Engine
+    app.include_router(business_plans_router.router)
     # Automation — Phase 5 Gate 3
     app.include_router(automation_api_router.router)
     app.include_router(automation_api_router.runs_router)

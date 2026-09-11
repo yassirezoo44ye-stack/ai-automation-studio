@@ -1,0 +1,1 @@
+export { BusinessLabPage } from "./BusinessLabPage";
