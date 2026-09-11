@@ -62,6 +62,9 @@ from app.routers import integrations     as integrations_router
 from app.routers import app_builder      as app_builder_router
 from app.routers import ws_ticket        as ws_ticket_router
 from app.routers import training         as training_router
+# Automation — Phase 5 Gate 3
+from app.core.workflow import automation_api     as automation_api_router
+from app.core.workflow import automation_webhooks as automation_webhooks_router
 # Multi-Device Control
 from app.routers import devices          as devices_router
 from app.routers import ws_device        as ws_device_router
@@ -230,6 +233,14 @@ async def lifespan(app: FastAPI):
                     role, resource, action,
                 )
 
+    # ── Automation — schema init + startup recovery ──────────────────────
+    from app.core.workflow.automation_schema import (
+        init_automation_schema, mark_interrupted_runs,
+    )
+    async with pool.acquire() as conn:
+        await init_automation_schema(conn)
+    await mark_interrupted_runs()
+
     # ── Training Studio — references organizations/projects/users ────────────
     from app.training import init_training_schema
     async with pool.acquire() as conn:
@@ -287,12 +298,36 @@ async def lifespan(app: FastAPI):
     get_job_queue().register_handler(
         "app_builder.build", _abs_svc.build_job_handler
     )
+    # ── Automation job handlers (Phase 5 Gate 3) ──────────────────────────
+    from app.core.workflow.automation_scheduler import (
+        handle_manual_trigger, handle_webhook_trigger, handle_schedule_trigger,
+        start_scheduler,
+    )
+    get_job_queue().register_handler("automation.trigger.manual",   handle_manual_trigger)
+    get_job_queue().register_handler("automation.trigger.webhook",  handle_webhook_trigger)
+    get_job_queue().register_handler("automation.trigger.schedule", handle_schedule_trigger)
+    # Seed automation permissions for existing roles
+    async with pool.acquire() as conn:
+        for role, resource, action in [
+            ("manager",   "automation", "read"),
+            ("manager",   "automation", "write"),
+            ("developer", "automation", "read"),
+            ("developer", "automation", "write"),
+            ("operator",  "automation", "read"),
+            ("viewer",    "automation", "read"),
+        ]:
+            await conn.execute(
+                "INSERT INTO role_permissions (role, resource, action) VALUES ($1,$2,$3) "
+                "ON CONFLICT DO NOTHING",
+                role, resource, action,
+            )
     # Recover builds that were interrupted by a server restart.  The job
     # queue only re-dispatches PENDING jobs — RUNNING jobs from the previous
     # process are orphaned.  This marks any app that has been stuck in
     # 'building' for longer than the stale thresholds as 'failed' so the
     # user can trigger a retry rather than waiting forever.
     await _abs_svc.recover_stale_builds()
+    start_scheduler()
 
     # ── Integration SDK — register the example provider + health probe.
     # No real third-party provider is registered here (see
@@ -355,6 +390,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # ── Shutdown ────────────────────────────────────────────────────────────
+    from app.core.workflow.automation_scheduler import stop_scheduler
+    await stop_scheduler()
     svc_registry.stop_all()
     maintenance_task.cancel()
     cleanup_task.cancel()
@@ -643,6 +680,10 @@ def create_app() -> FastAPI:
     app.include_router(app_builder_router.router)
     app.include_router(ws_ticket_router.router)
     app.include_router(training_router.router)
+    # Automation — Phase 5 Gate 3
+    app.include_router(automation_api_router.router)
+    app.include_router(automation_api_router.runs_router)
+    app.include_router(automation_webhooks_router.router)
     # Multi-Device Control
     app.include_router(devices_router.router)
     app.include_router(devices_router.sessions_router)

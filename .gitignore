@@ -21,3 +21,4 @@ workspaces/
 .backups/
 logs/
 .release-notes.md
+build_work/

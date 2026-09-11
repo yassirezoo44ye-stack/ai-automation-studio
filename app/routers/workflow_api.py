@@ -27,6 +27,7 @@ own runs are visible under the new scoping.
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -34,6 +35,8 @@ from app.core.workflow import (
     WorkflowBuilder, RetryPolicy, get_workflow_engine,
 )
 from app.tenancy.context import OrgContext, org_context
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -75,20 +78,76 @@ def list_pending_approvals(ctx: OrgContext = Depends(org_context)):
 
 
 @router.post("/approvals/{run_id}/{step_id}/approve")
-def approve_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_context)):
+async def approve_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_context)):
+    """Approve a human-approval gate.
+
+    Persistence is DB-first: the approval decision is written to
+    automation_approvals before the engine signal is sent. If the engine
+    returns False (run already gone from in-memory state) the DB record is
+    marked 'orphaned' and the caller receives 409 so they know the runtime
+    did not continue the run.
+    """
+    from app.core.workflow.persistence import record_approval_decision
+
     engine = get_workflow_engine()
-    # 404 either way (not 403) — a caller outside this org must not be
-    # able to tell "doesn't exist" apart from "exists, isn't yours".
-    if not engine.approve(run_id, step_id, org_id=ctx.org_id):
-        raise HTTPException(404, f"Workflow run {run_id!r} not found")
+    approval_id = f"{run_id}:{step_id}"
+
+    # 1. Persist decision first (DB-first semantic from spec)
+    try:
+        db_found = await record_approval_decision(approval_id, "approved", ctx.user_id)
+    except Exception as exc:
+        log.error("approve_step: DB write failed for %s: %s", approval_id, exc)
+        raise HTTPException(503, "Could not persist approval decision; try again")
+
+    # 2. Signal the in-memory engine
+    engine_ok = engine.approve(run_id, step_id, org_id=ctx.org_id)
+
+    if not engine_ok:
+        # Run is no longer in engine (interrupted/expired).
+        # Mark DB record 'orphaned' (best-effort — ignore secondary failure).
+        if db_found:
+            try:
+                await record_approval_decision(approval_id, "orphaned", ctx.user_id)
+            except Exception:
+                pass
+        raise HTTPException(
+            409,
+            f"Approval for {run_id!r}/{step_id!r} was saved but the run is no longer active",
+        )
+
     return {"approved": True, "run_id": run_id, "step_id": step_id}
 
 
 @router.post("/approvals/{run_id}/{step_id}/reject")
-def reject_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_context)):
+async def reject_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_context)):
+    """Reject a human-approval gate.
+
+    Same DB-first semantics as approve_step.
+    """
+    from app.core.workflow.persistence import record_approval_decision
+
     engine = get_workflow_engine()
-    if not engine.reject(run_id, step_id, org_id=ctx.org_id):
-        raise HTTPException(404, f"Workflow run {run_id!r} not found")
+    approval_id = f"{run_id}:{step_id}"
+
+    try:
+        db_found = await record_approval_decision(approval_id, "rejected", ctx.user_id)
+    except Exception as exc:
+        log.error("reject_step: DB write failed for %s: %s", approval_id, exc)
+        raise HTTPException(503, "Could not persist rejection decision; try again")
+
+    engine_ok = engine.reject(run_id, step_id, org_id=ctx.org_id)
+
+    if not engine_ok:
+        if db_found:
+            try:
+                await record_approval_decision(approval_id, "orphaned", ctx.user_id)
+            except Exception:
+                pass
+        raise HTTPException(
+            409,
+            f"Rejection for {run_id!r}/{step_id!r} was saved but the run is no longer active",
+        )
+
     return {"rejected": True, "run_id": run_id, "step_id": step_id}
 
 
