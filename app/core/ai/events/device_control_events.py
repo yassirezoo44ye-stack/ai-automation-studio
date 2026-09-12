@@ -14,10 +14,10 @@ Payload rules (enforced by convention, not code — keep them):
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from app.core.ai.events.events import AIEvent, _id, _ts  # reuse helpers
+from app.core.ai.events.events import AIEvent  # reuse helpers
 
 
 # ── Session proposed (draft created by AgentOS) ───────────────────────────────

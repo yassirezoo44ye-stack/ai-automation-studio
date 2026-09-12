@@ -32,6 +32,7 @@ export function useDeviceSession(): UseDeviceSessionResult {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetch(); }, [fetch]);
 
   const activeSession = sessions.find(s => s.status === "active") ?? null;

@@ -34,7 +34,6 @@ import { BottomTabBar } from "./components/BottomTabBar";
 import type { BuildEventItem, RuntimeEventItem } from "./components/BottomTabBar";
 
 /* ── Types ──────────────────────────────────────────────────────── */
-type BuildMode  = "build" | "plan" | "debug";
 type AppSection = "overview" | "pages" | "data" | "workflows" | "agents" | "integrations" | "settings";
 // labelKey maps to "appBuilder" namespace (sections.* or phases.*)
 type BuildPhase = { labelKey: string; status: "pending" | "running" | "done" | "error" };
@@ -69,12 +68,14 @@ const INITIAL_PHASES: BuildPhase[] = [
    ══════════════════════════════════════════════════════════════════ */
 
 /** Left panel — app structure navigation */
-function AppSidebar({ section, setSection, projectName, onDownload, isDownloading }: {
+function AppSidebar({ section, setSection, projectName, onDownload, isDownloading, runtimeState }: {
   section: AppSection;
   setSection: (s: AppSection) => void;
   projectName: string;
   onDownload: () => void;
   isDownloading: boolean;
+  /** P0-C: badge is shown only when the project is actually running or in preview. */
+  runtimeState: RuntimeState;
 }) {
   const { t } = useTranslation("appBuilder");
   return (
@@ -90,10 +91,20 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {projectName || t("appSidebar.appNameFallback")}
         </div>
-        <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)", display: "inline-block" }} />
-          {t("appSidebar.statusLive")}
-        </div>
+        {/* P0-C: "Live" badge — only when a real server subprocess is running */}
+        {runtimeState === "running" && (
+          <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)", display: "inline-block" }} />
+            {t("appSidebar.statusLive")}
+          </div>
+        )}
+        {/* P0-C: "Preview" badge — static HTML served from blob URL, no server */}
+        {runtimeState === "preview" && (
+          <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} />
+            {t("appSidebar.statusPreview")}
+          </div>
+        )}
       </div>
 
       {/* Section nav */}
@@ -467,7 +478,6 @@ export function AppBuilderPage() {
   const { setPage } = useAppContext();
   const toast = useToast();
 
-  const [mode, setMode]       = useState<BuildMode>("build");
   const [section, setSection] = useState<AppSection>("overview");
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildDone, setBuildDone]   = useState(false);
@@ -856,12 +866,13 @@ export function AppBuilderPage() {
             break;
 
           case "html": {
-            // Static HTML driver — create blob URL for iframe
+            // Static HTML driver — create blob URL for iframe.
+            // P0-C: use "preview" (not "running") — no real server subprocess.
             const blob = new Blob([ev.html_content], { type: "text/html" });
             const url = URL.createObjectURL(blob);
             setPreviewUrl(url);
             setPreviewType("blob");
-            setRuntimeState("running");
+            setRuntimeState("preview");
             isRunningRef.current = false;
             runtimeAbortRef.current = null;
             return;
@@ -1432,6 +1443,7 @@ export function AppBuilderPage() {
               projectName={projectName}
               onDownload={handleDownload}
               isDownloading={isDownloading}
+              runtimeState={runtimeState}
             />
           </div>
 

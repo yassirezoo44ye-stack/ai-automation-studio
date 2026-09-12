@@ -48,7 +48,6 @@ import time
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from starlette.websockets import WebSocketState
 
 from app.services.device_control import (
     _DeviceConn,

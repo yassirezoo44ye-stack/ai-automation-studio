@@ -30,13 +30,8 @@ Tests cover:
 """
 from __future__ import annotations
 
-import asyncio
-import importlib
-import inspect
 import json
-import types
 from dataclasses import fields as dc_fields
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -323,7 +318,7 @@ def test_device_control_coordinator_no_start_tool():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_app_spec_has_multi_device_config_field():
-    from app.services.app_builder import AppSpec, MultiDeviceConfig
+    from app.services.app_builder import AppSpec
 
     spec_field_names = {f.name for f in dc_fields(AppSpec)}
     assert "multi_device_config" in spec_field_names
@@ -640,7 +635,6 @@ def test_propose_session_response_includes_approval_required():
     import asyncio
     from app.ai.tools_device_control import (
         device_control_propose_session,
-        set_device_control_context,
         _dc_org_id_var,
         _dc_user_id_var,
         _dc_user_email_var,

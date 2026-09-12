@@ -14,7 +14,6 @@ Coverage:
 from __future__ import annotations
 
 import hashlib
-import pytest
 
 
 # ── Pure-math tests (no DB required) ─────────────────────────────────────────

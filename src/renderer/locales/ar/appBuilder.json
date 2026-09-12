@@ -20,6 +20,7 @@
   "appSidebar": {
     "appNameFallback": "تطبيق بلا اسم",
     "statusLive": "مباشر",
+    "statusPreview": "معاينة",
     "publish": "🚀 نشر"
   },
   "preview": {

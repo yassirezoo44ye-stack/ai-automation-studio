@@ -5,10 +5,43 @@
     "refresh": "Refresh",
     "enrollDevice": "Enroll Device"
   },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "Connecting…",
+    "revoked": "Revoked",
+    "control_active": "Session Active",
+    "control_disabled": "Control Off"
+  },
+  "role": {
+    "primary": "Primary",
+    "secondary": "Secondary"
+  },
+  "topology": {
+    "hint": "Your primary device's keyboard and mouse seamlessly control all connected secondary devices"
+  },
+  "platform": {
+    "windows": "Windows",
+    "macos": "macOS",
+    "linux": "Linux",
+    "unknown": "Unknown"
+  },
   "devices": {
     "title": "Enrolled Devices",
     "loading": "Loading devices…",
-    "empty": "No devices enrolled yet"
+    "empty": "No devices enrolled yet",
+    "emptyHint": "Enroll your first device to start a multi-device session",
+    "lastSeen": {
+      "justNow": "just now",
+      "minutesAgo": "{{n}}m ago",
+      "hoursAgo": "{{n}}h ago",
+      "daysAgo": "{{n}}d ago",
+      "never": "never seen"
+    },
+    "actions": {
+      "revoke": "Revoke device",
+      "delete": "Delete device"
+    }
   },
   "session": {
     "title": "Control Session",
@@ -21,6 +54,10 @@
     "devices": "Devices",
     "started": "Started",
     "noSessions": "No sessions configured",
+    "noHistory": "No session history",
+    "allSessions": "Sessions",
+    "historyTitle": "Session History",
+    "memberCount": "{{count}} devices",
     "needTwo": "Add at least one secondary device",
     "needTwoOnline": "Need at least 2 enrolled devices",
     "noPrimary": "Select a primary device",
@@ -29,14 +66,23 @@
     "pickDevice": "— Select primary —",
     "create": "Create Session",
     "creating": "Creating…",
-    "start": "Start",
+    "start": "Start Session",
     "stop": "Stop Session",
     "back": "Back",
-    "created": "Created {{date}}"
+    "created": "Created {{date}}",
+    "status": {
+      "draft": "Draft",
+      "starting": "Starting…",
+      "active": "Active",
+      "stopping": "Stopping…",
+      "stopped": "Stopped",
+      "expired": "Expired",
+      "failed": "Failed"
+    }
   },
   "layout": {
     "title": "Screen Layout",
-    "dragHint": "Drag devices to arrange their positions. Click a secondary device to enable/disable it.",
+    "dragHint": "Drag devices to arrange their positions. Click a secondary device to enable or disable it.",
     "primary": "PRIMARY"
   },
   "modal": {
@@ -47,6 +93,7 @@
     "step3": "Run the agent with the enrollment token",
     "tokenLabel": "Enrollment Token (copy now — shown once)",
     "copy": "Copy",
+    "copied": "Copied!",
     "expiresAt": "Expires {{date}}",
     "securityWarning": "This token is shown only once. Copy it now — it cannot be retrieved again.",
     "agentCommand": "Run on the target computer:",

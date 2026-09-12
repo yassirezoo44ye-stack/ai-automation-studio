@@ -14,6 +14,12 @@ Usage:
   # Show version:
   python -m agent version
 
+  # Register agent to start on Windows login (packaged .exe only):
+  python -m agent startup <install_path>
+
+  # Remove Windows autostart registration:
+  python -m agent remove-startup
+
 Environment variables (override stored config):
   FLOW_SERVER_URL   — WebSocket server URL (wss://...)
   FLOW_DEVICE_ID    — Device UUID (overrides stored)
@@ -23,6 +29,7 @@ SECURITY NOTES:
   - Credentials are stored using Windows DPAPI (never plaintext)
   - Raw credentials are never logged
   - Failsafe hotkey: Ctrl+Shift+Alt+F12 releases all hooks locally
+  - Autostart uses HKCU (user scope) — no administrator privileges required
 """
 from __future__ import annotations
 
@@ -68,6 +75,22 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # version
     sub.add_parser("version", help="Print agent version")
+
+    # startup — register HKCU autostart (Gate K.2)
+    startup_p = sub.add_parser(
+        "startup",
+        help="Register agent to start on Windows login (HKCU, no UAC required)",
+    )
+    startup_p.add_argument(
+        "install_path",
+        help="Directory containing flow-agent.exe (e.g. %%LOCALAPPDATA%%\\FlowAgent\\app)",
+    )
+
+    # remove-startup — remove HKCU autostart (Gate K.2)
+    sub.add_parser(
+        "remove-startup",
+        help="Remove Windows autostart registration",
+    )
 
     return p
 
@@ -205,6 +228,85 @@ def cmd_version() -> int:
     return 0
 
 
+# ── Windows autostart (Gate K.2) ──────────────────────────────────────────────
+# Uses HKCU\Software\Microsoft\Windows\CurrentVersion\Run — no UAC required.
+# winreg is stdlib on Windows; on non-Windows this command is rejected early.
+
+_AUTOSTART_REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_AUTOSTART_REG_KEY  = "FlowAgent"
+
+
+def cmd_startup(args: argparse.Namespace) -> int:
+    """
+    Register the agent to start on Windows login.
+
+    Writes:
+      HKCU\\...\\Run\\FlowAgent = "<install_path>\\flow-agent.exe" run
+
+    The executable is quoted so paths with spaces are handled correctly.
+    No administrator privileges required (HKCU scope).
+    """
+    if sys.platform != "win32":
+        print("autostart is only supported on Windows.")
+        return 1
+
+    import winreg
+    from pathlib import Path
+
+    install_path = Path(args.install_path).resolve()
+    exe_path = install_path / "flow-agent.exe"
+    # Quote the path in case it contains spaces; 'run' is the subcommand
+    reg_value = f'"{exe_path}" run'
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            _AUTOSTART_REG_PATH,
+            0,
+            winreg.KEY_SET_VALUE,
+        ) as key:
+            winreg.SetValueEx(key, _AUTOSTART_REG_KEY, 0, winreg.REG_SZ, reg_value)
+    except OSError as e:
+        log.error("could not write autostart registry key: %s", e)
+        return 1
+
+    print(f"✅ Flow Agent will start on login.")
+    print(f"   Registry: HKCU\\...\\Run\\{_AUTOSTART_REG_KEY}")
+    print(f"   Value:    {reg_value}")
+    return 0
+
+
+def cmd_remove_startup() -> int:
+    """
+    Remove the Windows autostart registration.
+
+    Deletes HKCU\\...\\Run\\FlowAgent if it exists.
+    No administrator privileges required (HKCU scope).
+    """
+    if sys.platform != "win32":
+        print("autostart is only supported on Windows.")
+        return 1
+
+    import winreg
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            _AUTOSTART_REG_PATH,
+            0,
+            winreg.KEY_SET_VALUE,
+        ) as key:
+            winreg.DeleteValue(key, _AUTOSTART_REG_KEY)
+        print(f"✅ Autostart removed (HKCU\\...\\Run\\{_AUTOSTART_REG_KEY} deleted).")
+    except FileNotFoundError:
+        print(f"ℹ️  No autostart entry found (HKCU\\...\\Run\\{_AUTOSTART_REG_KEY}).")
+    except OSError as e:
+        log.error("could not remove autostart registry key: %s", e)
+        return 1
+
+    return 0
+
+
 # ── Version ────────────────────────────────────────────────────────────────────
 
 def _get_version() -> str:
@@ -232,6 +334,12 @@ def main() -> None:
 
     if args.command == "run":
         sys.exit(asyncio.run(cmd_run(args)))
+
+    if args.command == "startup":
+        sys.exit(cmd_startup(args))
+
+    if args.command == "remove-startup":
+        sys.exit(cmd_remove_startup())
 
     parser.print_help()
     sys.exit(1)

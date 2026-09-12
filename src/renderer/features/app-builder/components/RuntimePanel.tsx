@@ -24,6 +24,7 @@ export type RuntimeState =
   | "ready_to_run"
   | "starting"
   | "running"
+  | "preview"    // P0-C: static HTML blob URL — not a real running server
   | "stopping"
   | "stopped"
   | "failed";

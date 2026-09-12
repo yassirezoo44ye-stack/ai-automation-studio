@@ -24,8 +24,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-import asyncpg
-
 from app.core.workflow.engine import (
     RetryPolicy, WorkflowBuilder, WorkflowEngine, WorkflowRun,
 )

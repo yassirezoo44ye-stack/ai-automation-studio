@@ -21,7 +21,6 @@ import asyncpg
 
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.inference.engine import InferenceEngine
-from app.core.ssrf_guard import assert_public_url  # protects any URL the AI suggests
 
 log = logging.getLogger(__name__)
 

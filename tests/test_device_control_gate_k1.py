@@ -12,11 +12,10 @@ All tests are pure-Python (no DB, no real Windows API, no real WS connection).
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,7 +97,7 @@ class TestSessionAssignment(unittest.IsolatedAsyncioTestCase):
         start_session() must send one frame per device, each with the correct
         is_primary flag and the session_token field present.
         """
-        from app.services.device_control import _ControlRegistry, _DeviceConn, _registry
+        from app.services.device_control import _DeviceConn, _registry
 
         ws_primary = AsyncMock()
         ws_secondary = AsyncMock()
@@ -205,7 +204,8 @@ class TestMouseForwardingAfterDeviceSwitch(unittest.IsolatedAsyncioTestCase):
 
     def _make_controller(self, is_primary: bool = True):
         """Return a DeviceAgentController with a mock WS client."""
-        import sys, os
+        import sys
+        import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         from agent.core.controller import DeviceAgentController
         ctrl = DeviceAgentController(
@@ -515,7 +515,8 @@ class TestDeviceSessionTokenEndpoint(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_auth_header_returns_401(self):
         from fastapi.testclient import TestClient
-        import sys, os
+        import sys
+        import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         try:
             from app.routers.devices import router as dev_router
@@ -532,7 +533,8 @@ class TestDeviceSessionTokenEndpoint(unittest.IsolatedAsyncioTestCase):
     async def test_malformed_basic_auth_returns_401(self):
         import base64
         from fastapi.testclient import TestClient
-        import sys, os
+        import sys
+        import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         try:
             from app.routers.devices import router as dev_router
@@ -599,7 +601,8 @@ class TestStaticE2ETrace(unittest.TestCase):
           5. WS router receives frame → routes to secondary's WS
           6. Secondary receives → inject_mouse_move(translated_x, translated_y)
         """
-        import sys, os
+        import sys
+        import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         from agent.core.controller import DeviceAgentController
 
@@ -667,7 +670,8 @@ class TestEdgeCrossingDeviceIdType(unittest.TestCase):
     """
 
     def _make_controller_with_layout(self):
-        import sys, os
+        import sys
+        import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         from agent.core.controller import DeviceAgentController
         ctrl = DeviceAgentController(
@@ -689,7 +693,6 @@ class TestEdgeCrossingDeviceIdType(unittest.TestCase):
 
     def test_current_device_id_is_string_after_crossing(self):
         """After edge crossing, _current_device_id must be a string, not a dict."""
-        import asyncio
         from unittest.mock import patch
         ctrl = self._make_controller_with_layout()
 
@@ -711,7 +714,6 @@ class TestEdgeCrossingDeviceIdType(unittest.TestCase):
         be able to switch back to primary. This requires _current_device_id to be a
         string so _find_member() can look up 'dev-secondary' in the layout.
         """
-        import asyncio
         from unittest.mock import patch
         ctrl = self._make_controller_with_layout()
 
@@ -732,7 +734,6 @@ class TestEdgeCrossingDeviceIdType(unittest.TestCase):
 
     def test_on_secondary_returns_correct_bool_after_real_crossing(self):
         """_on_secondary() must return True exactly when on secondary (string comparison)."""
-        import asyncio
         from unittest.mock import patch
         ctrl = self._make_controller_with_layout()
 

@@ -12,7 +12,7 @@
  *     Export   → download buttons
  */
 import { useState, useEffect, useRef, useCallback } from "react";
-import { businessService, Plan, PlanDetail, Section } from "./services/businessService";
+import { businessService, type Plan, type PlanDetail, type Section } from "./services/businessService";
 
 // ── Status badge colours ──────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -196,6 +196,9 @@ function SectionCard({ section }: { section: Section }) {
     }}>
       <div
         onClick={() => setOpen(o => !o)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setOpen(o => !o); }}
+        role="button"
+        tabIndex={0}
         style={{
           display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
           cursor: "pointer", background: "var(--bg-card,#fff)",
@@ -248,6 +251,7 @@ export function BusinessLabPage() {
     try { setPlans(await businessService.listPlans()); } catch { /* ignore */ }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadPlans(); }, [loadPlans]);
 
   // Load detail + start stream when plan selected
@@ -355,7 +359,12 @@ export function BusinessLabPage() {
             </div>
           )}
           {plans.map(p => (
-            <div key={p.id} onClick={() => void selectPlan(p.id)} style={{
+            <div key={p.id}
+              onClick={() => void selectPlan(p.id)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") void selectPlan(p.id); }}
+              role="button"
+              tabIndex={0}
+              style={{
               padding: "10px 14px", cursor: "pointer",
               background: selected === p.id ? "var(--accent-subtle,#ede9fe)" : "transparent",
               borderRight: selected === p.id ? "3px solid var(--accent,#8b5cf6)" : "3px solid transparent",

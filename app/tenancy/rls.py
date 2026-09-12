@@ -54,6 +54,11 @@ _RLS_TABLES: tuple[tuple[str, str], ...] = (
     ("automation_runs", "organization_id"),
     ("automation_run_steps", "organization_id"),
     ("automation_approvals", "organization_id"),
+    # Multi-Device Control
+    ("devices", "organization_id"),
+    ("device_enrollment_tokens", "organization_id"),
+    ("device_control_sessions", "organization_id"),
+    ("device_session_authorizations", "organization_id"),
     # Flow Next — Discover (Phase 1)
     ("flow_creations", "organization_id"),
 )

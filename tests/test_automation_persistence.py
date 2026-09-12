@@ -508,7 +508,6 @@ class TestSchedulerIdempotencyKey(unittest.TestCase):
 
     def test_same_minute_same_key(self):
         from app.core.workflow.automation_scheduler import _floor_minute
-        def_id = str(uuid.uuid4())
         ts1    = 1700000060.0
         ts2    = 1700000090.0
         self.assertEqual(_floor_minute(ts1), _floor_minute(ts2))

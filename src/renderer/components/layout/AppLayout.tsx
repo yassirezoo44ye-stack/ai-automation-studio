@@ -30,6 +30,8 @@ const AppBuilderPage  = lazy(() => import("../../features/app-builder").then(m =
 const RunsPage        = lazy(() => import("../../features/runs").then(m => ({ default: m.RunsPage })));
 const IntegrationsPage    = lazy(() => import("../../features/integrations").then(m => ({ default: m.IntegrationsPage })));
 const TrainingStudioPage  = lazy(() => import("../../features/training-studio").then(m => ({ default: m.TrainingStudioPage })));
+const DevicesPage         = lazy(() => import("../../features/devices").then(m => ({ default: m.DevicesPage })));
+const BusinessLabPage     = lazy(() => import("../../features/business-lab").then(m => ({ default: m.BusinessLabPage })));
 const DiscoverPage        = lazy(() => import("../../features/discover").then(m => ({ default: m.DiscoverPage })));
 
 /** Map page keys → sidebar nav translation keys */
@@ -54,6 +56,8 @@ const PAGE_NAV_KEY: Record<string, string> = {
   "runs":         "runs",
   "integrations": "integrations",
   "training":     "trainingStudio",
+  "devices":        "devices",
+  "business-lab":   "businessLab",
   "discover":       "discover",
 };
 
@@ -174,6 +178,8 @@ function WorkspaceContent() {
           {page === "runs"          && <RunsPage />}
           {page === "integrations"  && <IntegrationsPage />}
           {page === "training"      && <TrainingStudioPage />}
+          {page === "devices"       && <DevicesPage />}
+          {page === "business-lab"  && <BusinessLabPage />}
           {page === "discover"      && <DiscoverPage />}
         </Suspense>
       </ErrorBoundary>

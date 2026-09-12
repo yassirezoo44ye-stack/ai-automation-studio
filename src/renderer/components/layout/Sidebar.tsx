@@ -38,6 +38,8 @@ const NAV_GROUPS: {
       { id: "app-builder", navKey: "appBuilder", icon: "app-builder" },
       { id: "design",      navKey: "design",     icon: "design"      },
       { id: "discover",    navKey: "discover",   icon: "discover"    },
+      { id: "devices",       navKey: "devices",      icon: "devices"       },
+      { id: "business-lab",  navKey: "businessLab",  icon: "business-lab"  },
     ],
   },
   {

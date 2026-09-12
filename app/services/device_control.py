@@ -225,8 +225,6 @@ class DeviceControlService:
 
                 org_id = str(row["organization_id"])
                 workspace_id = str(row["workspace_id"]) if row["workspace_id"] else None
-                token_id = str(row["id"])
-
                 # Mark token used atomically
                 await conn.execute(
                     "UPDATE device_enrollment_tokens SET used_at=NOW(), device_id=$1 WHERE id=$2",

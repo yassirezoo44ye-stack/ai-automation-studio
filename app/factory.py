@@ -235,7 +235,7 @@ async def lifespan(app: FastAPI):
                     role, resource, action,
                 )
 
-    # ── Automation — schema init + startup recovery ──────────────────────
+    # ── Automation — schema init + startup recovery ──────────────────────────
     from app.core.workflow.automation_schema import (
         init_automation_schema, mark_interrupted_runs,
     )
@@ -243,7 +243,7 @@ async def lifespan(app: FastAPI):
         await init_automation_schema(conn)
     await mark_interrupted_runs()
 
-    # ── Business Lab — Plan & Validation Engine ─────────────────────────
+    # ── Business Lab — Plan & Validation Engine ─────────────────────────────────
     from app.core.business.schema import ensure_business_plans_schema
     async with pool.acquire() as conn:
         await ensure_business_plans_schema(conn)
@@ -253,19 +253,22 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await init_training_schema(conn)
 
-    # -- Multi-Device Control schema
+    # ── Multi-Device Control schema ──────────────────────────────────────────
     from app.services.device_control_schema import init_device_control_schema
     async with pool.acquire() as conn:
         await init_device_control_schema(conn)
 
-    # ── Flow Next — Discover (Phase 1) ────────────────────────────────────────────
+    # ── Flow Next — Discover (Phase 1) ──────────────────────────────────────────
     from app.routers.discover import init_flow_creations_schema
     async with pool.acquire() as conn:
         await init_flow_creations_schema(conn)
 
-    # -- Multi-Device Control AgentOS tools
-    # Registers five device_control_* tools into the global tool registry.
-    import app.ai.tools_device_control  # noqa: F401 -- side-effect import
+    # ── Multi-Device Control AgentOS tools ────────────────────────────────────
+    # Importing this module registers all five device_control_* tools into the
+    # global tool registry via the @tool() decorator. Must happen AFTER the DB
+    # pool and schema are initialised (tools need the service layer at call time,
+    # not at import time, but we register early so the kernel can discover them).
+    import app.ai.tools_device_control  # noqa: F401 — side-effect import
 
     # ── Event bus (Redis Streams when available) ────────────────────────────
     from app.core.events import get_event_bus
@@ -305,7 +308,7 @@ async def lifespan(app: FastAPI):
     get_job_queue().register_handler(
         "app_builder.build", _abs_svc.build_job_handler
     )
-    # ── Automation job handlers (Phase 5 Gate 3) ──────────────────────────
+    # ── Automation job handlers (Phase 5 Gate 3) ──────────────────────────────
     from app.core.workflow.automation_scheduler import (
         handle_manual_trigger, handle_webhook_trigger, handle_schedule_trigger,
         start_scheduler,

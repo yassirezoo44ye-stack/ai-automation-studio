@@ -29,6 +29,8 @@ const PAGE_LABELS: Record<Page, string> = {
   observability: "Observability",
   "app-builder": "App Builder", runs: "Runs", integrations: "Integrations",
   training: "Training Studio",
+  "business-lab": "Business Lab",
+  devices: "Devices",
   discover: "Discover",
 };
 

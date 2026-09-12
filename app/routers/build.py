@@ -299,6 +299,27 @@ async def build_program(req: BuildRequest, request: Request):
     }
 
 
+def _build_prompt_with_spec(prompt: str, spec_context: str) -> str:
+    """
+    Inject a validated AppSpec JSON into the code-generation prompt (P0-A).
+
+    When spec_context is non-empty, Claude receives the validated entity names,
+    column types, pages, and roles produced by generate_spec() — structured
+    information that steers code generation toward the correct data model and
+    away of freely invented schema.  When spec_context is empty (dev-mock path
+    or spec-gen failure), the raw prompt is returned unchanged so the fallback
+    is identical to the pre-P0-A behaviour.
+    """
+    if not spec_context:
+        return prompt
+    return (
+        "<validated_app_spec>\n"
+        f"{spec_context}\n"
+        "</validated_app_spec>\n\n"
+        f"Build this application: {prompt}"
+    )
+
+
 @router.post("/api/build/stream")
 async def build_stream(req: BuildRequest, request: Request):
     """
@@ -343,6 +364,46 @@ async def build_stream(req: BuildRequest, request: Request):
             else:
                 yield _sse("status", message="🤖 جارٍ الاتصال بـ Claude…")
 
+            # ── P0-A: Generate validated AppSpec to inform code generation ──
+            # Calls generate_spec() via the existing AI Gateway so all provider
+            # routing, cost tracking, and context budgeting apply automatically.
+            # The structured spec (entity names, column types, pages, roles) is
+            # injected into Claude's code-gen prompt as <validated_app_spec> XML.
+            # Skipped for dev-mock (no credits needed) and on any error (graceful
+            # degradation — raw prompt is used instead, identical to pre-P0 behaviour).
+            _spec_context = ""
+            if not dev_mode:
+                try:
+                    from app.services.app_builder import get_app_builder_service
+                    _svc = get_app_builder_service(get_pool())
+                    _spec = await _svc.generate_spec(
+                        req.prompt,
+                        org_id=str(org_id),
+                        user_id=str(uid),
+                    )
+                    _spec_context = json.dumps({
+                        "app_name": _spec.name,
+                        "entities": [
+                            {
+                                "name": e.name,
+                                "display_name": e.display_name,
+                                "columns": [
+                                    {"name": c.name, "type": c.type}
+                                    for c in e.columns
+                                ],
+                            }
+                            for e in _spec.entities
+                        ],
+                        "pages": [p.name for p in _spec.pages],
+                        "roles": [r.name for r in _spec.roles],
+                    }, indent=2)
+                    yield _sse("status", message="✅ تم التحقق من هيكل التطبيق")
+                except Exception as _spec_exc:
+                    log.warning(
+                        "P0-A: spec generation skipped (%s) — using raw prompt",
+                        _spec_exc,
+                    )
+
             if dev_mode:
                 # Free in-process provider — no Anthropic credits consumed.
                 # Prompt-aware: selects one of 5 templates based on Arabic/English keywords.
@@ -362,7 +423,9 @@ async def build_stream(req: BuildRequest, request: Request):
                 chunk_source = _dev_mock_chunks(_provider, request_obj)
             else:
                 request_obj = CompletionRequest(
-                    messages=[Message(role="user", content=req.prompt)],
+                    # P0-A: inject validated AppSpec as structured context
+                    messages=[Message(role="user",
+                                      content=_build_prompt_with_spec(req.prompt, _spec_context))],
                     model="claude-sonnet-4-6",
                     max_tokens=8192,
                     temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)

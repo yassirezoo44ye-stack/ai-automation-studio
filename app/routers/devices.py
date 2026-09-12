@@ -20,7 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
-from app.tenancy.context import OrgContext, org_context, require_permission
+from app.tenancy.context import OrgContext, require_permission
 from app.services.device_control import get_device_control_service, DEVICE_CONTROL_ENABLED
 
 log = logging.getLogger(__name__)

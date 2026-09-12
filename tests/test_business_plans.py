@@ -16,13 +16,7 @@ when DATABASE_URL is absent (CI without a DB service).
 """
 from __future__ import annotations
 
-import importlib
-import json
-import os
-import re
-import sys
-import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 import pytest
 
 

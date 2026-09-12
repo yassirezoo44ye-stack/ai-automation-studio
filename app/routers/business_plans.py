@@ -12,7 +12,6 @@ Security:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any, Optional
@@ -23,8 +22,7 @@ from fastapi.responses import StreamingResponse
 from app.core.auth import owner_user_id
 from app.core.db import get_pool, acquire_scoped
 from app.core.business.models import (
-    CreatePlanRequest, ExportRequest, PlanDetailOut, PlanOut,
-    RetryRequest, SectionOut, FactOut, CompetitorOut, ScoreOut,
+    CreatePlanRequest, ExportRequest, RetryRequest,
 )
 from app.core.business.scoring import compute_score
 from app.core.business.export import export_plan

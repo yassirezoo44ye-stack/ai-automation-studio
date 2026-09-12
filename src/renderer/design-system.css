@@ -2333,6 +2333,11 @@ button, [role="button"], input, textarea, select, a,
 
 /* ════════════════════════════════════════════════════════════════════
    TABLET — 601px – 1024px
+   Home KPI + two-col layout rules apply from 601px.
+   App Builder panel-sizing rules (ab-runtime / ab-copilot) start at
+   769px only — below that the mobile column-layout is already active
+   (max-width: 768px above) and a fixed ab-copilot width conflicts with
+   the column flow, leaving empty space to the right of the 280px panel.
    ════════════════════════════════════════════════════════════════════ */
 @media (min-width: 601px) and (max-width: 1024px) {
   /* KPI strip: 4 columns still fit on tablet */
@@ -2345,6 +2350,13 @@ button, [role="button"], input, textarea, select, a,
   }
   /* App Builder: hide AppSidebar at tablet too, but keep copilot */
   .ab-nav { display: none !important; }
+}
+
+/* App Builder side-by-side panel sizing — row layout only above 768px.
+   Applying these at 601px would conflict with the mobile column layout
+   (ab-panels: flex-direction:column) active at max-width:768px, giving
+   ab-copilot a fixed 280px width in a column that is 600+px wide. */
+@media (min-width: 769px) and (max-width: 1024px) {
   .ab-runtime { flex: 1 !important; width: auto !important; }
   .ab-copilot { width: 280px !important; }
 }

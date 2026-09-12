@@ -98,6 +98,10 @@ function DetailPanel({ creation: c, orgId, onClose, onAction, isMine }: DetailPa
       <div
         style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)" }}
         onClick={onClose}
+        onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+        role="button"
+        tabIndex={-1}
+        aria-label="Close panel"
       />
       {/* Panel */}
       <div style={{
@@ -373,6 +377,7 @@ export function DiscoverPage() {
     }
   }, [tab, filter, currentOrgId, t]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
 
   const handleAction = async (action: string, id: string) => {

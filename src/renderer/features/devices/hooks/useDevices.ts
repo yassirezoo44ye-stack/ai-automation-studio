@@ -29,6 +29,7 @@ export function useDevices(): UseDevicesResult {
     }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetch(); }, [fetch]);
 
   const revokeDevice = useCallback(async (deviceId: string) => {

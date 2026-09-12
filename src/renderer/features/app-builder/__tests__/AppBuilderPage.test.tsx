@@ -593,3 +593,257 @@ describe("Case J — App Builder draft persistence", () => {
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("my draft");
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Case K — Prompt NEVER erased by any lifecycle event
+   Covers: done, cancel, retry, unknown SSE type, all-events regression guard.
+   Rule: USER INPUT > INTERNAL STATE RESET.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("Case K — Prompt never erased by any lifecycle event", () => {
+  const DRAFT_KEY = "flow:app-builder:draft";
+
+  beforeEach(() => { sessionStorage.removeItem(DRAFT_KEY); });
+  afterEach(() => { sessionStorage.removeItem(DRAFT_KEY); });
+
+  it("draft preserved in sessionStorage after build succeeds (done event)", async () => {
+    // When build succeeds the component transitions to the workspace (no textarea
+    // visible), but the draft must survive in sessionStorage so the user can
+    // return to the entry screen and find their original text.
+    streamBuildSpy.mockReturnValue(
+      makeEventStream([
+        { type: "status", message: "Starting…" },
+        {
+          type: "done",
+          description: "ok",
+          files: ["index.ts", "app.py"],
+          run_command: "python app.py",
+          language: "TypeScript",
+        },
+      ]),
+    );
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "my final SaaS" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    // Wait for build completion (workspace shown — no textarea in DOM)
+    await waitFor(() => expect(screen.queryByRole("textbox")).not.toBeInTheDocument());
+
+    // Draft must be preserved for when user navigates back
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("my final SaaS");
+  });
+
+  it("draft preserved in textarea after cancel", async () => {
+    // Start a stalled build, cancel it, and verify the entry textarea shows
+    // the original draft.
+    const stall = { onAbort: undefined as (() => void) | undefined };
+    streamBuildSpy.mockReturnValue(stalledStream(stall));
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "important app idea" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    // Wait for the building overlay's Cancel button
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "overlay.cancel" })).toBeInTheDocument(),
+    );
+
+    // Cancel
+    fireEvent.click(screen.getByRole("button", { name: "overlay.cancel" }));
+
+    // Entry screen returns — textarea must show original draft
+    await waitFor(() =>
+      expect(screen.getByRole("textbox")).toHaveValue("important app idea"),
+    );
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("important app idea");
+  });
+
+  it("billing retry preserves draft in sessionStorage", async () => {
+    // Two consecutive billing errors (retry also fails) — draft must survive both.
+    streamBuildSpy.mockReturnValue(
+      throwingStream(
+        new BillingRequiredError("anthropic", "Balance too low.", "/api/build/stream"),
+      ),
+    );
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "saas draft" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() => screen.getByText("AI Credits Required"));
+    // Draft preserved before retry
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("saas draft");
+
+    // Retry (also fails with billing)
+    streamBuildSpy.mockReturnValue(
+      throwingStream(
+        new BillingRequiredError("anthropic", "Still too low.", "/api/build/stream"),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+    await waitFor(() => screen.getByText("AI Credits Required"));
+
+    // Draft must still be in sessionStorage after retry
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("saas draft");
+  });
+
+  it("unknown SSE event type (future provider_switched) does not clear entryPrompt", async () => {
+    // The backend might emit new event types (e.g. provider_switched) in the
+    // future. The switch statement has no default: unknown types pass through
+    // silently. This test ensures such events can never erase entryPrompt.
+    streamBuildSpy.mockReturnValue(
+      makeEventStream([
+        // Simulate a hypothetical provider_switched event — not in BuildEvent type yet
+        { type: "provider_switched", provider: "openai" } as unknown as BuildEvent,
+        { type: "error", message: "provider switched but then failed" },
+      ]),
+    );
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "my irreplaceable idea" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() =>
+      screen.getByText("provider switched but then failed"),
+    );
+
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("my irreplaceable idea");
+    expect(screen.getByRole("textbox")).toHaveValue("my irreplaceable idea");
+  });
+
+  it("regression guard: all SSE event types pass through without touching entryPrompt", async () => {
+    // Runs every known SSE event type through handleBuild and asserts that
+    // entryPrompt is never cleared. This is the canonical regression guard —
+    // if a future commit adds setEntryPrompt() inside handleBuild or an SSE
+    // handler, this test fails.
+    streamBuildSpy.mockReturnValue(
+      makeEventStream([
+        { type: "status",    message: "Understanding…" },
+        { type: "heartbeat", ts: Date.now() },
+        { type: "file",      path: "index.ts", content: "export {};" },
+        { type: "dev_mode",  provider: "mock" },
+        { type: "error",     message: "REGRESSION_GUARD_TERMINAL_ERROR" },
+      ]),
+    );
+
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "REGRESSION_GUARD_PROMPT" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(() =>
+      screen.getByText("REGRESSION_GUARD_TERMINAL_ERROR"),
+    );
+
+    // After all events the entry prompt must be exactly what the user typed
+    expect(sessionStorage.getItem(DRAFT_KEY)).toBe("REGRESSION_GUARD_PROMPT");
+    expect(screen.getByRole("textbox")).toHaveValue("REGRESSION_GUARD_PROMPT");
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Case L — AI Independence: storage must never hold provider credentials
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("Case L — AI Independence: storage security", () => {
+  const DRAFT_KEY = "flow:app-builder:draft";
+  // Pattern that would indicate a provider API key leaked into storage
+  const CREDENTIAL_PATTERN = /sk-ant|sk-proj|sk-or-v1|gsk_|AIzaSy|ANTHROPIC_API_KEY|Bearer\s+[A-Za-z0-9]/i;
+
+  beforeEach(() => { sessionStorage.removeItem(DRAFT_KEY); });
+  afterEach(() => { sessionStorage.removeItem(DRAFT_KEY); });
+
+  it("DRAFT_KEY stores only plain user text — no credential patterns", () => {
+    render(<AppBuilderPage />);
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "build a CRM for my sales team" } });
+
+    const stored = sessionStorage.getItem(DRAFT_KEY) ?? "";
+    expect(stored).toBe("build a CRM for my sales team");
+    expect(stored).not.toMatch(CREDENTIAL_PATTERN);
+  });
+
+  it("sessionStorage contains no AI provider API key after a failed build", async () => {
+    streamBuildSpy.mockReturnValue(
+      makeEventStream([{ type: "error", message: "build failed" }]),
+    );
+
+    render(<AppBuilderPage />);
+    submitPrompt("launch my product");
+
+    await waitFor(() => screen.getByText("build failed"));
+
+    // Scan every sessionStorage entry for credential patterns
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i)!;
+      const value = sessionStorage.getItem(key) ?? "";
+      expect(value).not.toMatch(CREDENTIAL_PATTERN);
+    }
+  });
+
+  it("AppBuilderPage source contains no hardcoded provider API key values", async () => {
+    // Static guard: import the raw source and verify no literal key is embedded.
+    // This test would fail immediately if a developer accidentally hardcoded a key.
+    const { default: raw } = await import("../AppBuilderPage.tsx?raw") as { default: string };
+    expect(raw).not.toMatch(/sk-ant-[A-Za-z0-9]/);
+    expect(raw).not.toMatch(/sk-proj-[A-Za-z0-9]/);
+    expect(raw).not.toMatch(/ANTHROPIC_API_KEY\s*=\s*["'][A-Za-z0-9]/);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Case M — Provider error messaging: must not claim FLOW is suspended
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("Case M — Provider error messaging", () => {
+  it("billing error overlay shows AI Credits Required, not FLOW Service Suspended", async () => {
+    streamBuildSpy.mockReturnValue(
+      throwingStream(
+        new BillingRequiredError("anthropic", "Credit balance too low.", "/api/build/stream"),
+      ),
+    );
+
+    render(<AppBuilderPage />);
+    submitPrompt("any prompt");
+
+    await waitFor(() => screen.getByText("AI Credits Required"));
+
+    // Must identify the AI provider issue specifically
+    expect(screen.getByText("AI Credits Required")).toBeInTheDocument();
+
+    // Must NOT claim that the FLOW platform itself is suspended/stopped
+    expect(screen.queryByText(/FLOW.*suspend/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/service.*suspend/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/platform.*suspend/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/تم تعليق.*FLOW/)).not.toBeInTheDocument();
+  });
+
+  it("billing retry replays the exact original prompt to streamBuild", async () => {
+    // billingError.prompt stores the prompt from the first failed build.
+    // The retry must replay that exact text — never an empty string or stale value.
+    const capturedPrompts: string[] = [];
+
+    streamBuildSpy.mockImplementation((_pid: string, prompt: string) => {
+      capturedPrompts.push(prompt);
+      return throwingStream(
+        new BillingRequiredError("anthropic", "Balance too low.", "/api/build/stream"),
+      );
+    });
+
+    render(<AppBuilderPage />);
+    submitPrompt("my original SaaS pitch");
+
+    await waitFor(() => screen.getByText("AI Credits Required"));
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+
+    await waitFor(() => expect(capturedPrompts.length).toBe(2), { timeout: 8000 });
+
+    expect(capturedPrompts[0]).toBe("my original SaaS pitch");
+    expect(capturedPrompts[1]).toBe("my original SaaS pitch");
+  });
+});

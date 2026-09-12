@@ -30,6 +30,8 @@
       "runs": "Runs",
       "integrations": "Integrations",
       "trainingStudio": "Training",
+      "devices": "Devices",
+      "businessLab": "Business Lab",
       "discover": "Discover"
     },
     "mainNav": "Main navigation",
