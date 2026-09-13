@@ -17,8 +17,10 @@ Template selection:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
+import unicodedata
 from typing import AsyncGenerator
 
 from app.ai.models import (
@@ -832,6 +834,360 @@ document.getElementById('modal').addEventListener('click',function(e){{if(e.targ
     return html
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Plan-based multi-file generation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _slug(name: str) -> str:
+    """Convert any name (Arabic or English) to a URL-safe ASCII slug."""
+    try:
+        norm = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    except Exception:
+        norm = ""
+    cleaned = re.sub(r"[^a-z0-9]+", "-", norm.lower()).strip("-")
+    # Fallback for non-Latin names (Arabic etc.): stable hash-based slug
+    return cleaned or f"page{abs(hash(name)) % 9000 + 1000}"
+
+
+def _pascal(name: str) -> str:
+    """Convert any name to a PascalCase JS identifier."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    words = re.sub(r"[^a-zA-Z0-9]+", " ", ascii_name).split()
+    if not words:
+        return f"Page{abs(hash(name)) % 9000 + 1000}"
+    return "".join(w.capitalize() for w in words)
+
+
+def _build_from_plan(prompt: str, plan_data: dict) -> str:
+    """
+    Generate a plan-driven multi-file HTML application for the dev-mock path.
+
+    Always produces (minimum 4 files):
+      - index.html          entry point with sidebar navigation
+      - styles.css          RTL-aware base styles
+      - app.js              client-side routing + state management
+      - README.md           project summary drawn from the approved plan
+
+    Conditionally produces (based on plan contents):
+      - pages/<slug>.js     one per plan page (up to 6), renders page content
+      - data/schema.sql     CREATE TABLE stubs for each database_table
+      - api/routes.json     route catalogue for each api_route
+
+    Typical total: 7–11 files — proving Plan → Generator → multi-file → Runtime.
+    """
+    app_name   = plan_data.get("name", "My App")
+    description = plan_data.get("description", prompt[:100])
+    pages       = (plan_data.get("pages", []) or [])[:6]
+    db_tables   = plan_data.get("database_tables", []) or []
+    api_routes  = plan_data.get("api_routes", []) or []
+    agents      = plan_data.get("agents", []) or []
+    workflows   = plan_data.get("workflows", []) or []
+    integrations = plan_data.get("integrations", []) or []
+    tech_stack  = plan_data.get("tech_stack", {}) or {}
+
+    if not pages:
+        pages = ["Home"]
+
+    # Build the output incrementally
+    out: list[str] = []
+
+    def file_block(path: str, content: str) -> None:
+        out.append(f"<<<FILE: {path}>>>\n{content}\n<<<ENDFILE>>>")
+
+    # ── 1. index.html ─────────────────────────────────────────────────────────
+    nav_items = "\n        ".join(
+        f'<li><a href="#" class="nav-link" data-page="{_slug(p)}" onclick="showPage(\'{_slug(p)}\');return false;">{p}</a></li>'
+        for p in pages
+    )
+    page_containers = "\n    ".join(
+        f'<section id="page-{_slug(p)}" class="page-section" hidden></section>'
+        for p in pages
+    )
+    page_scripts = "\n  ".join(
+        f'<script src="pages/{_slug(p)}.js"></script>'
+        for p in pages
+    )
+    first_slug = _slug(pages[0])
+
+    index_html = f"""\
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{app_name}</title>
+<link rel="stylesheet" href="styles.css">
+{page_scripts}
+<script src="app.js" defer></script>
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="logo">✦ {app_name}</div>
+    <ul class="nav-links">
+        {nav_items}
+    </ul>
+    <div class="sidebar-footer">{description[:60]}</div>
+  </nav>
+  <main class="content">
+    <header class="topbar">
+      <h1 id="page-title">{pages[0]}</h1>
+    </header>
+    <div class="page-wrapper">
+    {page_containers}
+    </div>
+  </main>
+</div>
+</body>
+</html>"""
+    file_block("index.html", index_html)
+
+    # ── 2. styles.css ─────────────────────────────────────────────────────────
+    styles_css = """\
+/* ── Reset & variables ── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8fafc;--sidebar:#0f172a;--sidebar-fg:#94a3b8;
+  --sidebar-hover:#1e293b;--sidebar-active:#6366f1;
+  --fg:#1e293b;--border:#e2e8f0;--card:#fff;
+  --accent:#6366f1;--radius:12px;
+}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg);height:100vh;overflow:hidden}
+
+/* ── Layout ── */
+.layout{display:flex;height:100vh}
+.sidebar{width:240px;background:var(--sidebar);color:var(--sidebar-fg);
+  display:flex;flex-direction:column;gap:0;flex-shrink:0}
+.logo{padding:20px 20px 8px;font-size:18px;font-weight:800;color:#fff}
+.nav-links{list-style:none;flex:1;padding:8px 12px}
+.nav-links li{margin:2px 0}
+.nav-link{display:block;padding:10px 14px;border-radius:8px;color:var(--sidebar-fg);
+  text-decoration:none;font-size:14px;transition:background .15s,color .15s}
+.nav-link:hover{background:var(--sidebar-hover);color:#e2e8f0}
+.nav-link.active{background:var(--accent);color:#fff}
+.sidebar-footer{padding:12px 20px 20px;font-size:11px;color:#475569;line-height:1.5}
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{padding:16px 24px;border-bottom:1px solid var(--border);background:var(--card)}
+.topbar h1{font-size:18px;font-weight:700;color:var(--fg)}
+.page-wrapper{flex:1;overflow-y:auto;padding:24px}
+.page-section{animation:fadeIn .2s ease}
+
+/* ── Page content defaults ── */
+.page-header{margin-bottom:20px}
+.page-header h2{font-size:22px;font-weight:700;margin-bottom:6px}
+.page-header p{color:#64748b;font-size:14px}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:var(--card);border-radius:var(--radius);padding:20px;
+  box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.stat-card .value{font-size:28px;font-weight:800;color:var(--accent)}
+.stat-card .label{font-size:12px;color:#94a3b8;margin-top:4px}
+.data-table{width:100%;border-collapse:collapse;background:var(--card);
+  border-radius:var(--radius);overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.data-table th{text-align:right;padding:12px 16px;font-size:12px;
+  color:#64748b;border-bottom:1px solid var(--border);background:#f8fafc}
+.data-table td{padding:12px 16px;font-size:13px;border-bottom:1px solid var(--border)}
+.btn{padding:8px 16px;border:none;border-radius:8px;cursor:pointer;
+  font-size:13px;font-weight:600;font-family:inherit;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-secondary{background:#f1f5f9;color:var(--fg)}
+.empty-state{text-align:center;padding:48px 24px;color:#94a3b8}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.empty-state p{font-size:14px}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}"""
+    file_block("styles.css", styles_css)
+
+    # ── 3. app.js ─────────────────────────────────────────────────────────────
+    pages_list_js = ", ".join(f'"{_slug(p)}"' for p in pages)
+    page_title_map = json.dumps({_slug(p): p for p in pages}, ensure_ascii=False)
+
+    app_js = f"""\
+/* ── {app_name} — Client-side router ── */
+const PAGES = [{pages_list_js}];
+const PAGE_TITLES = {page_title_map};
+
+function showPage(pageId) {{
+  // Hide all sections
+  document.querySelectorAll('.page-section').forEach(function(el) {{ el.hidden = true; }});
+  // Show target
+  var target = document.getElementById('page-' + pageId);
+  if (target) {{
+    target.hidden = false;
+    // Render via page module if available
+    var fnKey = 'renderPage_' + pageId;
+    if (typeof window[fnKey] === 'function') {{
+      if (!target.dataset.rendered) {{
+        window[fnKey](target);
+        target.dataset.rendered = '1';
+      }}
+    }}
+  }}
+  // Update nav active state
+  document.querySelectorAll('.nav-link').forEach(function(link) {{
+    link.classList.toggle('active', link.dataset.page === pageId);
+  }});
+  // Update topbar title
+  var titleEl = document.getElementById('page-title');
+  if (titleEl) titleEl.textContent = PAGE_TITLES[pageId] || pageId;
+  // Store current page
+  try {{ sessionStorage.setItem('currentPage', pageId); }} catch(e) {{}}
+}}
+
+document.addEventListener('DOMContentLoaded', function() {{
+  var saved = null;
+  try {{ saved = sessionStorage.getItem('currentPage'); }} catch(e) {{}}
+  showPage((saved && PAGES.includes(saved)) ? saved : '{first_slug}');
+}});"""
+    file_block("app.js", app_js)
+
+    # ── 4. pages/<slug>.js ────────────────────────────────────────────────────
+    for idx, page in enumerate(pages):
+        slug   = _slug(page)
+        icon   = ["🏠", "📦", "🛒", "💳", "📋", "⚙️"][idx % 6]
+        # Provide a page-specific stat count so each page looks different
+        count1 = (idx + 1) * 7 + 3
+        count2 = (idx + 1) * 4 + 1
+
+        page_js = f"""\
+/* ── Page: {page} ── */
+window['renderPage_{slug}'] = function(container) {{
+  container.innerHTML = [
+    '<div class="page-header">',
+    '  <h2>{icon} {page}</h2>',
+    '  <p>إدارة بيانات {page} وعرض المعلومات المرتبطة بها.</p>',
+    '</div>',
+    '<div class="card-grid">',
+    '  <div class="stat-card"><div class="value">{count1}</div><div class="label">إجمالي السجلات</div></div>',
+    '  <div class="stat-card"><div class="value">{count2}</div><div class="label">إضافة هذا الأسبوع</div></div>',
+    '  <div class="stat-card"><div class="value">100%</div><div class="label">نسبة الاكتمال</div></div>',
+    '</div>',
+    '<div style="display:flex;gap:10px;margin-bottom:16px">',
+    '  <button class="btn btn-primary" onclick="alert(\'قريباً: إضافة سجل جديد\')">+ إضافة</button>',
+    '  <button class="btn btn-secondary">تصدير</button>',
+    '</div>',
+    '<table class="data-table">',
+    '  <thead><tr><th>#</th><th>الاسم</th><th>التاريخ</th><th>الحالة</th></tr></thead>',
+    '  <tbody>',
+    '    <tr><td>1</td><td>سجل تجريبي أول</td><td>2026-09-13</td><td>✅ نشط</td></tr>',
+    '    <tr><td>2</td><td>سجل تجريبي ثانٍ</td><td>2026-09-12</td><td>✅ نشط</td></tr>',
+    '    <tr><td>3</td><td>سجل تجريبي ثالث</td><td>2026-09-11</td><td>⏸ معلّق</td></tr>',
+    '  </tbody>',
+    '</table>',
+  ].join('\\n');
+}};"""
+        file_block(f"pages/{slug}.js", page_js)
+
+    # ── 5. data/schema.sql (if db_tables present) ────────────────────────────
+    if db_tables:
+        safe_tables = [
+            re.sub(r"[^a-z0-9_]", "_",
+                   unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode().lower().replace(" ", "_"))
+            or f"table_{i}"
+            for i, t in enumerate(db_tables[:8])
+        ]
+        sql_stmts = "\n\n".join(
+            f"CREATE TABLE IF NOT EXISTS {t} (\n"
+            f"  id          SERIAL PRIMARY KEY,\n"
+            f"  name        TEXT    NOT NULL DEFAULT '',\n"
+            f"  status      TEXT    NOT NULL DEFAULT 'active',\n"
+            f"  created_at  TIMESTAMP NOT NULL DEFAULT NOW(),\n"
+            f"  updated_at  TIMESTAMP NOT NULL DEFAULT NOW()\n"
+            f");"
+            for t in safe_tables
+        )
+        schema_sql = f"-- {app_name} — Database Schema\n-- Generated from approved build plan\n\n{sql_stmts}"
+        file_block("data/schema.sql", schema_sql)
+
+    # ── 6. api/routes.json (if api_routes present) ───────────────────────────
+    if api_routes:
+        routes_doc = {
+            "app": app_name,
+            "version": "1.0.0",
+            "description": description,
+            "routes": [
+                {
+                    "path": r,
+                    "methods": ["GET", "POST"],
+                    "description": f"Resource endpoint: {r}",
+                    "auth": "Bearer token required",
+                }
+                for r in api_routes[:8]
+            ],
+        }
+        file_block("api/routes.json", json.dumps(routes_doc, ensure_ascii=False, indent=2))
+
+    # ── 7. README.md ──────────────────────────────────────────────────────────
+    readme_lines = [
+        f"# {app_name}",
+        "",
+        f"> {description}",
+        "",
+        "## Tech Stack",
+    ]
+    for k, v in (tech_stack.items() if tech_stack else []):
+        if v:
+            readme_lines.append(f"- **{k.title()}**: {v}")
+    if not tech_stack:
+        readme_lines += ["- HTML / CSS / JavaScript (no build step)"]
+    readme_lines += ["", "## Pages"]
+    for p in pages:
+        readme_lines.append(f"- `{p}`")
+    if db_tables:
+        readme_lines += ["", "## Database Tables"]
+        for t in db_tables:
+            readme_lines.append(f"- `{t}`")
+    if api_routes:
+        readme_lines += ["", "## API Routes"]
+        for r in api_routes:
+            readme_lines.append(f"- `{r}`")
+    if agents:
+        readme_lines += ["", "## AI Agents"]
+        for a in agents:
+            readme_lines.append(f"- {a}")
+    if workflows:
+        readme_lines += ["", "## Workflows"]
+        for w in workflows:
+            readme_lines.append(f"- {w}")
+    if integrations:
+        readme_lines += ["", "## Integrations"]
+        for i in integrations:
+            readme_lines.append(f"- {i}")
+    readme_lines += [
+        "",
+        "## Getting Started",
+        "",
+        "1. Open `index.html` in a modern browser.",
+        "2. Navigate between pages using the sidebar.",
+        "3. No build step required for the development preview.",
+        "",
+        "## File Structure",
+        "",
+        "```",
+        "index.html          # Entry point with sidebar navigation",
+        "styles.css          # RTL-aware base styles",
+        "app.js              # Client-side router",
+    ]
+    for p in pages:
+        readme_lines.append(f"pages/{_slug(p)}.js       # {p} page module")
+    if db_tables:
+        readme_lines.append("data/schema.sql     # Database schema")
+    if api_routes:
+        readme_lines.append("api/routes.json     # API route catalogue")
+    readme_lines.append("```")
+    file_block("README.md", "\n".join(readme_lines))
+
+    # ── META ──────────────────────────────────────────────────────────────────
+    meta_obj = {
+        "description": description[:120],
+        "run_command": "open index.html",
+        "language": "html",
+    }
+    out.append(f"<<<META>>>\n{json.dumps(meta_obj, ensure_ascii=False)}\n<<<ENDMETA>>>")
+
+    return "\n".join(out)
+
+
 # ── Keyword → template map ────────────────────────────────────────────────────
 
 _KEYWORDS: list[tuple[str, str]] = [
@@ -858,12 +1214,43 @@ _STATIC_TEMPLATES: dict[str, str] = {
 
 def _select_template(prompt: str) -> str:
     """
-    Pick the best-fit template based on prompt keywords.
+    Pick the best generation strategy for the prompt.
 
-    Landing pages are built dynamically from the prompt content so the
-    output reflects the user's actual product (name, price, features, etc.)
-    rather than a generic placeholder.
+    Priority:
+      1. Approved plan XML (<approved_plan>…</approved_plan>) — triggers
+         plan-based multi-file generation that mirrors the user-reviewed
+         Build Plan (pages, DB, API routes, agents, workflows, integrations).
+         This replaces the old "2-file keyword template" path for builds that
+         started from the plan-approval flow.
+      2. Keyword matching — falls back to the existing static templates when
+         no plan XML is present (backward-compatible for direct /api/build/stream
+         calls without a plan, e.g. the BuildTab in the dev panel).
     """
+    # ── 1. Approved plan takes priority ──────────────────────────────────────
+    plan_match = re.search(r"<approved_plan>\s*([\s\S]*?)\s*</approved_plan>", prompt)
+    if plan_match:
+        try:
+            plan_data = json.loads(plan_match.group(1))
+            # Extract the user's original prompt (text after the XML wrapper)
+            user_prompt = re.sub(r"^[\s\S]*?</approved_plan>\s*", "", prompt).strip()
+            user_prompt = re.sub(r"^Build this application:\s*", "", user_prompt).strip()
+            if not user_prompt:
+                user_prompt = plan_data.get("description", prompt[:80])
+            log.info(
+                "DevMockProvider: plan-based generation app=%r pages=%d tables=%d routes=%d",
+                plan_data.get("name", "?"),
+                len(plan_data.get("pages", [])),
+                len(plan_data.get("database_tables", [])),
+                len(plan_data.get("api_routes", [])),
+            )
+            return _build_from_plan(user_prompt, plan_data)
+        except Exception as exc:
+            log.warning(
+                "DevMockProvider: plan parse failed (%s) — falling back to keyword templates",
+                exc,
+            )
+
+    # ── 2. Keyword-based templates (legacy / direct-call path) ───────────────
     for pattern, key in _KEYWORDS:
         if re.search(pattern, prompt, re.IGNORECASE):
             log.info("DevMockProvider: matched key=%r snippet=%r", key, prompt[:80])

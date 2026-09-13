@@ -588,7 +588,7 @@ export function AppBuilderPage() {
    *    - done event   → all phases done, show real file count
    *    - error event  → mark current phase as error
    */
-  const handleBuild = useCallback(async (prompt: string) => {
+  const handleBuild = useCallback(async (prompt: string, approvedPlan?: BuildPlan | null) => {
     if (isBuildingRef.current) return;
     isBuildingRef.current = true;
 
@@ -655,7 +655,9 @@ export function AppBuilderPage() {
       }
 
       // ── Step 2: stream the build — project_id is always set here ──
-      for await (const event of streamBuild(projectId, prompt, controller.signal)) {
+      // Pass the approved plan (when present) so the backend injects it into
+      // the code-generation context, producing files that match the reviewed plan.
+      for await (const event of streamBuild(projectId, prompt, controller.signal, approvedPlan)) {
         // Accumulate all real SSE events for the Build timeline (Phase 2).
         // Error messages are intentionally NOT stored verbatim — the full message
         // is shown in the BuildingOverlay / BillingErrorOverlay. Storing it again
@@ -1291,7 +1293,7 @@ export function AppBuilderPage() {
               plan={currentPlan}
               prompt={pendingPrompt}
               isRefining={false}
-              onApprove={() => { setPlanState("idle"); void handleBuild(pendingPrompt); }}
+              onApprove={() => { setPlanState("idle"); void handleBuild(pendingPrompt, currentPlan); }}
               onModify={newPrompt => { setPlanState("idle"); setCurrentPlan(null); void handleStartBuild(newPrompt); }}
               onCancel={() => { setPlanState("idle"); setCurrentPlan(null); setPendingPrompt(""); }}
             />

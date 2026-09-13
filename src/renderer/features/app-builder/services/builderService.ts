@@ -62,10 +62,17 @@ export async function* streamBuild(
   projectId: string,
   prompt: string,
   signal?: AbortSignal,
+  /** Optional: approved BuildPlan from /api/build/plan.
+   *  When present, the backend injects it into the code-generation context so
+   *  the generator produces files that match the pages, DB, and API routes the
+   *  user reviewed — rather than a free-form interpretation of the raw prompt. */
+  approvedPlan?: object | null,
 ): AsyncGenerator<BuildEvent> {
+  const body: Record<string, unknown> = { project_id: projectId, prompt };
+  if (approvedPlan) body.plan = approvedPlan;
   const res = await apiFetch("/api/build/stream", {
     method: "POST",
-    body: JSON.stringify({ project_id: projectId, prompt }),
+    body: JSON.stringify(body),
     signal,
   });
 

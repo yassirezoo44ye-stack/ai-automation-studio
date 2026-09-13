@@ -217,6 +217,12 @@ Be concise and realistic. Do not invent features not implied by the request."""
 class BuildRequest(BaseModel):
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=10000)
+    # Optional: approved BuildPlan from /api/build/plan.
+    # When present, injected into the code-generation prompt so the generator
+    # produces files that match the pages, DB tables, and API routes the user
+    # reviewed and approved — rather than free-form interpretation of the prompt.
+    # Not a security-sensitive field: it only steers output style, not auth/quota.
+    plan: Optional[dict] = None
 
 
 class RunRequest2(BaseModel):
@@ -320,6 +326,30 @@ def _build_prompt_with_spec(prompt: str, spec_context: str) -> str:
     )
 
 
+def _build_prompt_with_plan(prompt: str, plan: Optional[dict]) -> str:
+    """
+    Inject an approved BuildPlan JSON into the code-generation prompt.
+
+    When plan is non-empty, the code generator (Claude or DevMockProvider) receives
+    the exact pages, DB tables, API routes, agents, and workflows the user reviewed
+    and approved via the Build Plan panel — so generated files match the approved
+    design instead of free-form prompt interpretation.
+
+    This is called AFTER _build_prompt_with_spec so both validated spec and approved
+    plan are available to the generator.  The plan XML wrapper lets DevMockProvider
+    detect it and branch into plan-based multi-file generation.
+    """
+    if not plan:
+        return prompt
+    plan_json = json.dumps(plan, ensure_ascii=False, indent=2)
+    return (
+        "<approved_plan>\n"
+        f"{plan_json}\n"
+        "</approved_plan>\n\n"
+        f"Build this application: {prompt}"
+    )
+
+
 @router.post("/api/build/stream")
 async def build_stream(req: BuildRequest, request: Request):
     """
@@ -406,11 +436,14 @@ async def build_stream(req: BuildRequest, request: Request):
 
             if dev_mode:
                 # Free in-process provider — no Anthropic credits consumed.
-                # Prompt-aware: selects one of 5 templates based on Arabic/English keywords.
+                # Inject approved plan (when present) so DevMockProvider can
+                # branch into plan-based multi-file generation instead of the
+                # keyword-template path that only produced 2 files.
                 from app.ai.providers.dev_mock import DevMockProvider
                 _provider = DevMockProvider()
+                _dev_content = _build_prompt_with_plan(req.prompt, req.plan)
                 request_obj = CompletionRequest(
-                    messages=[Message(role="user", content=req.prompt)],
+                    messages=[Message(role="user", content=_dev_content)],
                     model="dev-mock-v2",
                     max_tokens=8192,
                     system=BUILD_UNIFIED_SYSTEM,
@@ -422,10 +455,11 @@ async def build_stream(req: BuildRequest, request: Request):
                 )
                 chunk_source = _dev_mock_chunks(_provider, request_obj)
             else:
+                # P0-A spec context + approved plan both injected for real Claude.
+                _base_prompt = _build_prompt_with_spec(req.prompt, _spec_context)
+                _final_content = _build_prompt_with_plan(_base_prompt, req.plan)
                 request_obj = CompletionRequest(
-                    # P0-A: inject validated AppSpec as structured context
-                    messages=[Message(role="user",
-                                      content=_build_prompt_with_spec(req.prompt, _spec_context))],
+                    messages=[Message(role="user", content=_final_content)],
                     model="claude-sonnet-4-6",
                     max_tokens=8192,
                     temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
