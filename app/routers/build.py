@@ -54,7 +54,7 @@ def _is_dev_account(request: Request) -> bool:
     """
     try:
         email = owner_email(request)
-        is_dev = email.lower().strip() == _DEV_ACCOUNT.lower().strip()
+        is_dev = email == _DEV_ACCOUNT
         log.info("_is_dev_account: email=%r is_dev=%s", email, is_dev)
         return is_dev
     except Exception as exc:
