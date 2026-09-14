@@ -222,7 +222,12 @@ def _detect(ws: Path) -> ProjectInfo:
         )
 
     js_entries = [f for f in ("main.js", "index.js", "server.js", "app.js") if f in fset]
-    if js_entries:
+    # Only route bare JS files to Node when there is no index.html present.
+    # If index.html exists alongside app.js / index.js the project is a static
+    # frontend bundle — not a Node.js server — and should use the static driver.
+    # Projects that require Node will have a package.json (handled above) or a
+    # server entry (server.js / main.js) without an accompanying index.html.
+    if js_entries and "index.html" not in fset:
         return ProjectInfo(
             project_type="node", run_strategy="node",
             entry_point=js_entries[0], confidence="medium",
