@@ -17,7 +17,9 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { DesignProvider, useDesign } from "./stores/designStore";
 import { apiFetch } from "../../utils/api";
+import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
+import { getTemplate } from "./services/templateService";
 import { importPipeline } from "./core/import/ImportPipeline";
 import { useFabricCanvas }           from "./hooks/useFabricCanvas";
 import { useHistory }                from "./hooks/useHistory";
@@ -53,6 +55,9 @@ function DesignStudioInner() {
   const { t } = useTranslation("designStudio");
   const toast = useToast();
   const { state, dispatch, setTool, setSelectedIds, setPanel } = useDesign();
+  const { feedIntent, setFeedIntent } = useAppContext();
+  // Capture feedIntent at mount time to avoid re-running the effect on context changes
+  const mountFeedIntentRef = useRef(feedIntent);
 
   // ── App Builder state ─────────────────────────────────────────────────────
   const [studioMode,       setStudioMode]       = useState<StudioMode>("design");
@@ -201,6 +206,18 @@ function DesignStudioInner() {
     await loadJSONToCanvas(fc, canvasJson);
     saveSnapshot("ai generate design");
   }, [getCanvas, saveSnapshot]);
+
+  // Consume feedIntent on mount — if sourceId matches a built-in template, apply it
+  // instead of loading the last saved canvas (hasLoadedSavedDesignRef blocks that path)
+  useEffect(() => {
+    const intent = mountFeedIntentRef.current;
+    if (!intent?.sourceId) return;
+    const tpl = getTemplate(intent.sourceId);
+    if (!tpl) return;
+    hasLoadedSavedDesignRef.current = true; // prevent resume-last-design from overwriting
+    void handleApplyTemplate(tpl);
+    setFeedIntent(null);
+  }, [handleApplyTemplate, setFeedIntent]);
 
   const handleBringForward = useCallback(() => { bringForward(); saveSnapshot("bring forward"); }, [bringForward, saveSnapshot]);
   const handleSendBackward = useCallback(() => { sendBackward(); saveSnapshot("send backward"); }, [sendBackward, saveSnapshot]);

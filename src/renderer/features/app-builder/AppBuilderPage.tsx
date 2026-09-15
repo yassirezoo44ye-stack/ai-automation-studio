@@ -546,6 +546,20 @@ export function AppBuilderPage() {
       .catch(() => {}); // project may have been deleted; silently ignore
   }, []);
 
+  // Consume feedIntent on mount — pre-fill entryPrompt if the intent carries a prompt
+  const { feedIntent, setFeedIntent } = useAppContext();
+  const mountFeedIntentRef = useRef(feedIntent);
+  useEffect(() => {
+    const intent = mountFeedIntentRef.current;
+    if (!intent) return;
+    const prompt = (intent.sourceMeta?.prompt as string | undefined) ?? "";
+    if (prompt) {
+      setEntryPrompt(prompt);
+      try { sessionStorage.setItem(DRAFT_KEY, prompt); } catch { /* ignore */ }
+    }
+    setFeedIntent(null);
+  }, [setFeedIntent]);
+
   // Abort any in-flight build stream when the component unmounts (e.g.,
   // user navigates away during generation). Without this, the SSE reader
   // keeps a network connection open and the generator calls setState on

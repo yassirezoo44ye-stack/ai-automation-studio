@@ -13,18 +13,17 @@ interface FeedCardProps {
 }
 
 export function FeedCard({ item, state, isActive, onLike, onSave }: FeedCardProps) {
-  const { setPage } = useAppContext();
+  const { setPage, setFeedIntent } = useAppContext();
 
-  /** Navigate to the target builder page (Phase 1). */
   const handleBuild = useCallback(() => {
+    setFeedIntent({
+      sourceId:    item.sourceId,
+      sourceType:  item.sourceType,
+      sourceMeta:  item.sourceMeta,
+      originItemId: item.id,
+    });
     setPage(item.targetPage);
-    /*
-     * Phase 2 hook:
-     * If item.sourceId is set, we'll want to pass it to the target page
-     * so it auto-loads the template/project. For now, navigation alone is
-     * sufficient and the data model already carries sourceId + sourceMeta.
-     */
-  }, [item.targetPage, setPage]);
+  }, [item.id, item.sourceId, item.sourceType, item.sourceMeta, item.targetPage, setPage, setFeedIntent]);
 
   const handleShare = useCallback(() => {
     try {

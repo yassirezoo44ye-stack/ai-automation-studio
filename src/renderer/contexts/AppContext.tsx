@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useTransition } from "react";
 import type { Page } from "../types";
-import { AppContext, type Theme } from "./app";
+import { AppContext, type Theme, type FeedIntent } from "./app";
 
 function getStoredTheme(): Theme {
   try {
@@ -36,6 +36,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     startPageTransition(() => setPageState(p));
   }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [feedIntent, setFeedIntentState] = useState<FeedIntent | null>(null);
+  const setFeedIntent = useCallback((intent: FeedIntent | null) => setFeedIntentState(intent), []);
   const [theme, setThemeState] = useState<Theme>(() => {
     const t = getStoredTheme();
     applyTheme(t);
@@ -49,7 +51,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const toggleTheme = useCallback(() => setThemeState(prev => prev === "dark" ? "light" : "dark"), []);
 
   return (
-    <AppContext.Provider value={{ page, setPage, isPageTransitioning, sidebarCollapsed, setSidebarCollapsed, theme, setTheme, toggleTheme }}>
+    <AppContext.Provider value={{ page, setPage, isPageTransitioning, sidebarCollapsed, setSidebarCollapsed, theme, setTheme, toggleTheme, feedIntent, setFeedIntent }}>
       {children}
     </AppContext.Provider>
   );

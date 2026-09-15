@@ -1,16 +1,17 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { FeedTopBar } from "./components/FeedTopBar";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
 import { MOCK_FEED } from "./mock/feedData";
-import type { FeedTab, FeedItemState } from "./types/feed.types";
+import { loadFeedItems } from "./services/feedService";
+import type { FeedTab, FeedItem, FeedItemState } from "./types/feed.types";
 import "./FeedPage.css";
 
-/** Build the initial local interaction state from the mock seed values */
-function initStates(): Record<string, FeedItemState> {
+/** Build the initial local interaction state from an item array */
+function initStates(items: FeedItem[]): Record<string, FeedItemState> {
   return Object.fromEntries(
-    MOCK_FEED.map(item => [
+    items.map(item => [
       item.id,
       {
         liked: item.userLiked ?? false,
@@ -25,9 +26,26 @@ function initStates(): Record<string, FeedItemState> {
 export function FeedPage() {
   const { t } = useTranslation("feed");
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
-  const [states, setStates] = useState<Record<string, FeedItemState>>(initStates);
+  const [items, setItems]     = useState<FeedItem[]>(MOCK_FEED);
+  const [loading, setLoading] = useState(true);
+  const [states, setStates]   = useState<Record<string, FeedItemState>>(() => initStates(MOCK_FEED));
 
-  const { activeIndex, containerRef } = useFeedNavigation({ total: MOCK_FEED.length });
+  // Load real data on mount; fall back to MOCK_FEED on error/empty (handled inside loadFeedItems)
+  useEffect(() => {
+    let cancelled = false;
+    loadFeedItems()
+      .then(loaded => {
+        if (cancelled) return;
+        setItems(loaded);
+        setStates(initStates(loaded));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const { activeIndex, containerRef } = useFeedNavigation({ total: items.length });
 
   /* ── Interaction handlers ──────────────────────────────────── */
   const toggleLike = useCallback((id: string) => {
@@ -51,7 +69,7 @@ export function FeedPage() {
   }, []);
 
   /* ── Navigation indicator ──────────────────────────────────── */
-  const total = MOCK_FEED.length;
+  const total = items.length;
   const progressPct = total > 1 ? (activeIndex / (total - 1)) * 100 : 0;
 
   return (
@@ -64,6 +82,11 @@ export function FeedPage() {
         <div className="feed-progress__bar" style={{ width: `${progressPct}%` }} />
       </div>
 
+      {/* Loading overlay — shows MOCK_FEED cards underneath while real data loads */}
+      {loading && (
+        <div className="feed-loading" aria-live="polite" aria-label="Loading feed…" />
+      )}
+
       {/* Scrollable card stack */}
       <div
         ref={containerRef}
@@ -71,11 +94,11 @@ export function FeedPage() {
         aria-label={t("page.feedLabel")}
         tabIndex={0}
       >
-        {MOCK_FEED.map((item, idx) => (
+        {items.map((item, idx) => (
           <FeedCard
             key={item.id}
             item={item}
-            state={states[item.id]}
+            state={states[item.id] ?? { liked: false, saved: false, likes: 0, saves: 0 }}
             isActive={idx === activeIndex}
             onLike={() => toggleLike(item.id)}
             onSave={() => toggleSave(item.id)}
@@ -85,7 +108,7 @@ export function FeedPage() {
 
       {/* Dot indicator */}
       <div className="feed-dots" aria-hidden>
-        {MOCK_FEED.map((item, idx) => (
+        {items.map((item, idx) => (
           <span
             key={item.id}
             className={`feed-dot${idx === activeIndex ? " feed-dot--active" : ""}`}

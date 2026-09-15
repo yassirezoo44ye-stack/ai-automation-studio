@@ -7,7 +7,8 @@ export type FeedContentType =
   | "AGENT"
   | "WORKFLOW"
   | "TEMPLATE"
-  | "DESIGN";
+  | "DESIGN"
+  | "DEVICE_WORKFLOW";
 
 /** Top-bar navigation tabs */
 export type FeedTab = "for-you" | "following" | "explore";
@@ -65,9 +66,11 @@ export interface FeedItem {
   ctaType: CTAType;
   /** Page to navigate to when CTA is pressed */
   targetPage: Page;
-  /** Future: ID of the template / automation / project to open in the builder */
+  /** ID of the template / automation / project to open in the builder */
   sourceId?: string;
-  /** Future: additional builder context (prompt, config, etc.) */
+  /** How this item originated — used by target pages to know how to load it */
+  sourceType?: "creation" | "template" | "listing" | "slug";
+  /** Additional builder context (prompt, config, etc.) */
   sourceMeta?: Record<string, unknown>;
   /** Whether the current user has liked/saved this item (local state seed) */
   userLiked?: boolean;
