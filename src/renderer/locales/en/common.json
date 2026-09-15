@@ -32,7 +32,8 @@
       "trainingStudio": "Training",
       "devices": "Devices",
       "businessLab": "Business Lab",
-      "discover": "Discover"
+      "discover": "Discover",
+      "feed": "Flow Feed"
     },
     "mainNav": "Main navigation",
     "collapse": "Collapse sidebar",

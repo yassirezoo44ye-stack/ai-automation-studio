@@ -32,6 +32,7 @@ const PAGE_LABELS: Record<Page, string> = {
   "business-lab": "Business Lab",
   devices: "Devices",
   discover: "Discover",
+  feed: "Flow Feed",
 };
 
 export function CopilotProvider({ children }: { children: ReactNode }) {

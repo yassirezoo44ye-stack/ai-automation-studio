@@ -1,0 +1,40 @@
+{
+  "page": {
+    "ariaLabel": "فلو فيد",
+    "feedLabel": "خلاصة المحتوى"
+  },
+  "topBar": {
+    "ariaLabel": "تنقل الخلاصة",
+    "forYou": "لك",
+    "following": "المتابَعون",
+    "explore": "اكتشف"
+  },
+  "types": {
+    "app": "تطبيق",
+    "automation": "تلقائي",
+    "agent": "وكيل",
+    "workflow": "سير عمل",
+    "template": "قالب",
+    "design": "تصميم"
+  },
+  "actions": {
+    "panelLabel": "إجراءات المحتوى",
+    "like": "إعجاب",
+    "comment": "تعليقات",
+    "share": "مشاركة",
+    "copied": "تم النسخ!",
+    "save": "حفظ",
+    "build": "ابنِ هذا"
+  },
+  "card": {
+    "tags": "الوسوم"
+  },
+  "cta": {
+    "buildApp": "ابنِ هذا التطبيق",
+    "useAutomation": "استخدم هذا التلقائي",
+    "buildAgent": "ابنِ هذا الوكيل",
+    "runWorkflow": "نفّذ هذا السير",
+    "useTemplate": "استخدم القالب",
+    "openDesign": "افتح في الاستوديو"
+  }
+}

@@ -51,6 +51,8 @@ import devicesEn from "./locales/en/devices.json";
 import devicesAr from "./locales/ar/devices.json";
 import discoverEn from "./locales/en/discover.json";
 import discoverAr from "./locales/ar/discover.json";
+import feedEn from "./locales/en/feed.json";
+import feedAr from "./locales/ar/feed.json";
 
 void i18next.use(initReactI18next).init({
   resources: {
@@ -62,6 +64,7 @@ void i18next.use(initReactI18next).init({
       appBuilder: appBuilderEn, runs: runsEn, integrations: integrationsEn,
       trainingStudio: trainingStudioEn, landing: landingEn, devices: devicesEn,
       discover: discoverEn,
+      feed: feedEn,
     },
     ar: {
       common: commonAr, home: homeAr, settings: settingsAr, auth: authAr, social: socialAr,
@@ -71,6 +74,7 @@ void i18next.use(initReactI18next).init({
       appBuilder: appBuilderAr, runs: runsAr, integrations: integrationsAr,
       trainingStudio: trainingStudioAr, landing: landingAr, devices: devicesAr,
       discover: discoverAr,
+      feed: feedAr,
     },
   },
   lng: "en",
@@ -80,7 +84,7 @@ void i18next.use(initReactI18next).init({
     "common", "home", "settings", "auth", "social", "organizations", "sandbox", "plugins",
     "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos", "dev",
     "appBuilder", "runs", "integrations", "trainingStudio", "landing", "devices",
-    "discover",
+    "discover", "feed",
   ],
   interpolation: { escapeValue: false },
   returnEmptyString: false,

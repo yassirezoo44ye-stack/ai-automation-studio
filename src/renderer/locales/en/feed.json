@@ -1,0 +1,40 @@
+{
+  "page": {
+    "ariaLabel": "Flow Feed",
+    "feedLabel": "Content feed"
+  },
+  "topBar": {
+    "ariaLabel": "Feed navigation",
+    "forYou": "For You",
+    "following": "Following",
+    "explore": "Explore"
+  },
+  "types": {
+    "app": "App",
+    "automation": "Automation",
+    "agent": "Agent",
+    "workflow": "Workflow",
+    "template": "Template",
+    "design": "Design"
+  },
+  "actions": {
+    "panelLabel": "Content actions",
+    "like": "Like",
+    "comment": "Comments",
+    "share": "Share",
+    "copied": "Copied!",
+    "save": "Save",
+    "build": "Build This"
+  },
+  "card": {
+    "tags": "Tags"
+  },
+  "cta": {
+    "buildApp": "Build This App",
+    "useAutomation": "Use This Automation",
+    "buildAgent": "Build This Agent",
+    "runWorkflow": "Run This Workflow",
+    "useTemplate": "Use Template",
+    "openDesign": "Open in Studio"
+  }
+}

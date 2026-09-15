@@ -33,6 +33,7 @@ const TrainingStudioPage  = lazy(() => import("../../features/training-studio").
 const DevicesPage         = lazy(() => import("../../features/devices").then(m => ({ default: m.DevicesPage })));
 const BusinessLabPage     = lazy(() => import("../../features/business-lab").then(m => ({ default: m.BusinessLabPage })));
 const DiscoverPage        = lazy(() => import("../../features/discover").then(m => ({ default: m.DiscoverPage })));
+const FeedPage            = lazy(() => import("../../features/feed").then(m => ({ default: m.FeedPage })));
 
 /** Map page keys → sidebar nav translation keys */
 const PAGE_NAV_KEY: Record<string, string> = {
@@ -59,6 +60,7 @@ const PAGE_NAV_KEY: Record<string, string> = {
   "devices":        "devices",
   "business-lab":   "businessLab",
   "discover":       "discover",
+  "feed":           "feed",
 };
 
 function SunIcon() {
@@ -181,6 +183,7 @@ function WorkspaceContent() {
           {page === "devices"       && <DevicesPage />}
           {page === "business-lab"  && <BusinessLabPage />}
           {page === "discover"      && <DiscoverPage />}
+          {page === "feed"          && <FeedPage />}
         </Suspense>
       </ErrorBoundary>
     </PageTransition>
