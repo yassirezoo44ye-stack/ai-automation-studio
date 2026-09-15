@@ -17,7 +17,7 @@ import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.tenancy.context import OrgContext, require_permission
@@ -106,7 +106,7 @@ class UpdateLayoutRequest(BaseModel):
 # ── Device endpoints ──────────────────────────────────────────────────────────
 
 @router.get("/")
-async def list_devices(ctx: OrgContext = require_permission("devices", "read")):  # type: ignore[assignment]
+async def list_devices(ctx: OrgContext = Depends(require_permission("devices", "read"))):  # type: ignore[assignment]
     """List all active (non-revoked) devices in the organization."""
     _check_enabled()
     svc = get_device_control_service()
@@ -116,7 +116,7 @@ async def list_devices(ctx: OrgContext = require_permission("devices", "read")):
 @router.get("/{device_id}")
 async def get_device(
     device_id: str,
-    ctx: OrgContext = require_permission("devices", "read"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("devices", "read")),  # type: ignore[assignment]
 ):
     _check_enabled()
     svc = get_device_control_service()
@@ -129,7 +129,7 @@ async def get_device(
 @router.post("/enroll-token")
 async def create_enrollment_token(
     request: Request,
-    ctx: OrgContext = require_permission("devices", "create"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("devices", "create")),  # type: ignore[assignment]
 ):
     """
     Generate a single-use enrollment token for registering a new device.
@@ -179,7 +179,7 @@ async def enroll_device(body: EnrollRequest):
 @router.post("/{device_id}/revoke")
 async def revoke_device(
     device_id: str,
-    ctx: OrgContext = require_permission("devices", "revoke"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("devices", "revoke")),  # type: ignore[assignment]
 ):
     """
     Permanently revoke a device. The device credential is invalidated and
@@ -198,7 +198,7 @@ async def revoke_device(
 @router.delete("/{device_id}")
 async def delete_device(
     device_id: str,
-    ctx: OrgContext = require_permission("devices", "delete"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("devices", "delete")),  # type: ignore[assignment]
 ):
     """Delete (revoke) a device. Alias for revoke for REST completeness."""
     _check_enabled()
@@ -213,7 +213,7 @@ async def delete_device(
 @router.post("/{device_id}/rotate-credential")
 async def rotate_device_credential(
     device_id: str,
-    ctx: OrgContext = require_permission("devices", "update"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("devices", "update")),  # type: ignore[assignment]
 ):
     """
     Issue a new device credential, invalidating the old one.
@@ -303,7 +303,7 @@ async def get_device_session_token(
 # ── Session endpoints ─────────────────────────────────────────────────────────
 
 @sessions_router.get("/")
-async def list_sessions(ctx: OrgContext = require_permission("device_sessions", "read")):  # type: ignore[assignment]
+async def list_sessions(ctx: OrgContext = Depends(require_permission("device_sessions", "read"))):  # type: ignore[assignment]
     _check_enabled()
     svc = get_device_control_service()
     return await svc.list_sessions(ctx.org_id)
@@ -312,7 +312,7 @@ async def list_sessions(ctx: OrgContext = require_permission("device_sessions", 
 @sessions_router.post("/")
 async def create_session(
     body: CreateSessionRequest,
-    ctx: OrgContext = require_permission("device_sessions", "create"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("device_sessions", "create")),  # type: ignore[assignment]
 ):
     _check_enabled()
     svc = get_device_control_service()
@@ -333,7 +333,7 @@ async def create_session(
 @sessions_router.get("/{session_id}")
 async def get_session(
     session_id: str,
-    ctx: OrgContext = require_permission("device_sessions", "read"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("device_sessions", "read")),  # type: ignore[assignment]
 ):
     _check_enabled()
     svc = get_device_control_service()
@@ -346,7 +346,7 @@ async def get_session(
 @sessions_router.post("/{session_id}/start")
 async def start_session(
     session_id: str,
-    ctx: OrgContext = require_permission("device_sessions", "control"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("device_sessions", "control")),  # type: ignore[assignment]
 ):
     _check_enabled()
     svc = get_device_control_service()
@@ -360,7 +360,7 @@ async def start_session(
 @sessions_router.post("/{session_id}/stop")
 async def stop_session(
     session_id: str,
-    ctx: OrgContext = require_permission("device_sessions", "control"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("device_sessions", "control")),  # type: ignore[assignment]
 ):
     _check_enabled()
     svc = get_device_control_service()
@@ -375,7 +375,7 @@ async def stop_session(
 async def update_layout(
     session_id: str,
     body: UpdateLayoutRequest,
-    ctx: OrgContext = require_permission("device_sessions", "control"),  # type: ignore[assignment]
+    ctx: OrgContext = Depends(require_permission("device_sessions", "control")),  # type: ignore[assignment]
 ):
     _check_enabled()
     svc = get_device_control_service()
