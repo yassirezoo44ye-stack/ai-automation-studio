@@ -372,6 +372,14 @@ export function RuntimePanel({
           onRestart={onRestart}
         />
       )}
+      {runtimeState === "preview" && previewUrl && previewType && (
+        <RunningView
+          previewUrl={previewUrl}
+          previewType={previewType}
+          onStop={onStop}
+          onRestart={onRestart}
+        />
+      )}
       {runtimeState === "stopping" && <StoppingView />}
       {runtimeState === "stopped" && (
         <StoppedView onRun={onRun} />
