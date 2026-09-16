@@ -38,10 +38,15 @@ def _check_enabled() -> None:
 
 class EnrollmentTokenResponse(BaseModel):
     token_id: str
-    token: str
-    prefix: str
+    enrollment_token: str
+    token_prefix: str
     expires_in: int
-    expires_at: float
+    expires_at: str
+    workspace_id: Optional[str] = None
+
+
+class CreateEnrollmentTokenRequest(BaseModel):
+    workspace_id: Optional[str] = None
 
 
 class EnrollRequest(BaseModel):
@@ -126,9 +131,9 @@ async def get_device(
     return device
 
 
-@router.post("/enroll-token")
+@router.post("/enroll-token", response_model=EnrollmentTokenResponse)
 async def create_enrollment_token(
-    request: Request,
+    body: CreateEnrollmentTokenRequest,
     ctx: OrgContext = Depends(require_permission("devices", "create")),  # type: ignore[assignment]
 ):
     """
@@ -137,12 +142,11 @@ async def create_enrollment_token(
     """
     _check_enabled()
     svc = get_device_control_service()
-    workspace_id = request.query_params.get("workspace_id")
     result = await svc.create_enrollment_token(
         org_id=ctx.org_id,
         created_by_user_id=ctx.user_id,
         created_by_email=ctx.user_email,
-        workspace_id=workspace_id or None,
+        workspace_id=body.workspace_id or None,
     )
     return result
 

@@ -750,5 +750,237 @@ class TestEdgeCrossingDeviceIdType(unittest.TestCase):
         assert ctrl._on_secondary() is False  # switched back
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ENROLLMENT TOKEN RESPONSE CONTRACT
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestEnrollmentTokenResponseContract(unittest.TestCase):
+    """
+    HTTP contract tests for POST /api/devices/enroll-token.
+
+    Verifies that the response shape matches what the frontend EnrollmentToken
+    type expects:  enrollment_token, token_prefix, expires_at (ISO-8601), workspace_id.
+    """
+
+    def _make_client(self, mock_svc, mock_ctx):
+        """Build a minimal FastAPI test client with auth + service mocked out."""
+        import inspect
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        import app.routers.devices as dev_mod
+
+        app = FastAPI()
+        app.include_router(dev_mod.router)
+
+        # Override the auth dependency — grab the exact closure stored in the route
+        ctx_dep = inspect.signature(
+            dev_mod.create_enrollment_token
+        ).parameters["ctx"].default.dependency
+        app.dependency_overrides[ctx_dep] = lambda: mock_ctx
+
+        return TestClient(app, raise_server_exceptions=False)
+
+    def _mock_ctx(self):
+        from unittest.mock import MagicMock
+        ctx = MagicMock()
+        ctx.org_id = "org-test-1"
+        ctx.user_id = "user-test-1"
+        ctx.user_email = "test@example.com"
+        return ctx
+
+    def _mock_svc(self, workspace_id="ws-abc"):
+        import datetime
+        from unittest.mock import AsyncMock, MagicMock
+        expires_iso = datetime.datetime(2030, 6, 15, 12, 0, 0,
+                                        tzinfo=datetime.timezone.utc).isoformat()
+        svc = MagicMock()
+        svc.create_enrollment_token = AsyncMock(return_value={
+            "token_id":         "tok-contract-001",
+            "enrollment_token": "rawtoken_contract_abc123",
+            "token_prefix":     "rawt",
+            "expires_in":       3600,
+            "expires_at":       expires_iso,
+            "workspace_id":     workspace_id,
+        })
+        return svc
+
+    def test_response_uses_enrollment_token_not_token(self):
+        """Field must be 'enrollment_token', not the old 'token'."""
+        from unittest.mock import patch
+        mock_ctx = self._mock_ctx()
+        mock_svc = self._mock_svc()
+        client = self._make_client(mock_svc, mock_ctx)
+
+        with patch("app.routers.devices.get_device_control_service",
+                   return_value=mock_svc), \
+             patch("app.routers.devices.DEVICE_CONTROL_ENABLED", True):
+            resp = client.post("/api/devices/enroll-token",
+                               json={"workspace_id": "ws-abc"})
+
+        if resp.status_code == 503:
+            return  # feature disabled in this env — skip
+
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        data = resp.json()
+        assert "enrollment_token" in data, (
+            "'enrollment_token' missing from response — frontend DeviceRegistrationModal "
+            "reads token.enrollment_token and will get undefined"
+        )
+        assert "token" not in data, (
+            "old field 'token' must not appear — frontend does not read it"
+        )
+
+    def test_response_uses_token_prefix_not_prefix(self):
+        """Field must be 'token_prefix', not the old 'prefix'."""
+        from unittest.mock import patch
+        mock_ctx = self._mock_ctx()
+        mock_svc = self._mock_svc()
+        client = self._make_client(mock_svc, mock_ctx)
+
+        with patch("app.routers.devices.get_device_control_service",
+                   return_value=mock_svc), \
+             patch("app.routers.devices.DEVICE_CONTROL_ENABLED", True):
+            resp = client.post("/api/devices/enroll-token",
+                               json={"workspace_id": "ws-abc"})
+
+        if resp.status_code == 503:
+            return
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "token_prefix" in data, "'token_prefix' missing from response"
+        assert "prefix" not in data, "old field 'prefix' must not appear"
+
+    def test_response_all_required_fields_present(self):
+        """token_id, enrollment_token, token_prefix, expires_in, expires_at, workspace_id."""
+        from unittest.mock import patch
+        mock_ctx = self._mock_ctx()
+        mock_svc = self._mock_svc(workspace_id="ws-xyz")
+        client = self._make_client(mock_svc, mock_ctx)
+
+        with patch("app.routers.devices.get_device_control_service",
+                   return_value=mock_svc), \
+             patch("app.routers.devices.DEVICE_CONTROL_ENABLED", True):
+            resp = client.post("/api/devices/enroll-token",
+                               json={"workspace_id": "ws-xyz"})
+
+        if resp.status_code == 503:
+            return
+
+        assert resp.status_code == 200
+        data = resp.json()
+        for field in ("token_id", "enrollment_token", "token_prefix",
+                      "expires_in", "expires_at", "workspace_id"):
+            assert field in data, f"Required field '{field}' missing from response"
+        assert isinstance(data["expires_in"], int)
+        assert data["workspace_id"] == "ws-xyz"
+
+    def test_expires_at_is_iso_string_not_epoch_float(self):
+        """
+        expires_at must be an ISO-8601 string so that JS new Date(expires_at)
+        gives a valid future date.  A Unix epoch float (seconds) interpreted as
+        milliseconds by JS would give a date in 1970.
+        """
+        import datetime
+        from unittest.mock import patch
+        mock_ctx = self._mock_ctx()
+        mock_svc = self._mock_svc()
+        client = self._make_client(mock_svc, mock_ctx)
+
+        with patch("app.routers.devices.get_device_control_service",
+                   return_value=mock_svc), \
+             patch("app.routers.devices.DEVICE_CONTROL_ENABLED", True):
+            resp = client.post("/api/devices/enroll-token", json={})
+
+        if resp.status_code == 503:
+            return
+
+        assert resp.status_code == 200
+        data = resp.json()
+        expires_str = data["expires_at"]
+        assert isinstance(expires_str, str), (
+            f"expires_at must be a string, got {type(expires_str).__name__}: {expires_str!r}"
+        )
+        parsed = datetime.datetime.fromisoformat(expires_str)
+        assert parsed.year > 2025, (
+            f"expires_at '{expires_str}' parsed to year {parsed.year}. "
+            "A Unix epoch float in seconds, when treated as milliseconds by "
+            "JS new Date(), resolves to 1970. This would be the old bug."
+        )
+
+    def test_workspace_id_reflected_in_response(self):
+        """workspace_id sent in request body must appear in response."""
+        from unittest.mock import patch
+        mock_ctx = self._mock_ctx()
+        mock_svc = self._mock_svc(workspace_id="ws-reflect-test")
+        client = self._make_client(mock_svc, mock_ctx)
+
+        with patch("app.routers.devices.get_device_control_service",
+                   return_value=mock_svc), \
+             patch("app.routers.devices.DEVICE_CONTROL_ENABLED", True):
+            resp = client.post("/api/devices/enroll-token",
+                               json={"workspace_id": "ws-reflect-test"})
+
+        if resp.status_code == 503:
+            return
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("workspace_id") == "ws-reflect-test", (
+            f"workspace_id in response is {data.get('workspace_id')!r}, "
+            "expected 'ws-reflect-test'"
+        )
+
+    def test_null_workspace_id_accepted(self):
+        """workspace_id=null (no workspace) must not cause a 422 or 500."""
+        from unittest.mock import patch
+        mock_ctx = self._mock_ctx()
+        mock_svc = self._mock_svc(workspace_id=None)
+        client = self._make_client(mock_svc, mock_ctx)
+
+        with patch("app.routers.devices.get_device_control_service",
+                   return_value=mock_svc), \
+             patch("app.routers.devices.DEVICE_CONTROL_ENABLED", True):
+            resp = client.post("/api/devices/enroll-token",
+                               json={"workspace_id": None})
+
+        if resp.status_code == 503:
+            return
+
+        assert resp.status_code == 200, (
+            f"null workspace_id should be accepted, got {resp.status_code}: {resp.text}"
+        )
+        assert resp.json().get("workspace_id") is None
+
+    def test_service_called_with_workspace_id_from_body(self):
+        """
+        workspace_id must be read from the request BODY (not query_params).
+        Old bug: endpoint used request.query_params.get('workspace_id') → always None.
+        """
+        from unittest.mock import patch
+        mock_ctx = self._mock_ctx()
+        mock_svc = self._mock_svc(workspace_id="ws-body-test")
+        client = self._make_client(mock_svc, mock_ctx)
+
+        with patch("app.routers.devices.get_device_control_service",
+                   return_value=mock_svc), \
+             patch("app.routers.devices.DEVICE_CONTROL_ENABLED", True):
+            resp = client.post("/api/devices/enroll-token",
+                               json={"workspace_id": "ws-body-test"})
+
+        if resp.status_code == 503:
+            return
+
+        assert resp.status_code == 200
+        # The service must have been called with the correct workspace_id from body
+        mock_svc.create_enrollment_token.assert_called_once()
+        _, kwargs = mock_svc.create_enrollment_token.call_args
+        assert kwargs.get("workspace_id") == "ws-body-test", (
+            f"Service was called with workspace_id={kwargs.get('workspace_id')!r}; "
+            "expected 'ws-body-test' from request body. "
+            "Old bug: workspace_id was read from query_params and was always None."
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,7 @@ Responsibilities:
 from __future__ import annotations
 
 import asyncio
+import datetime
 import hashlib
 import json
 import logging
@@ -177,11 +178,14 @@ class DeviceControlService:
         )
 
         return {
-            "token_id":    token_id,
-            "token":       raw,       # shown to user once, then gone
-            "prefix":      prefix,
-            "expires_in":  ENROLLMENT_TTL_S,
-            "expires_at":  expires_at_epoch,
+            "token_id":         token_id,
+            "enrollment_token": raw,
+            "token_prefix":     prefix,
+            "expires_in":       ENROLLMENT_TTL_S,
+            "expires_at":       datetime.datetime.fromtimestamp(
+                                    expires_at_epoch, tz=datetime.timezone.utc
+                                ).isoformat(),
+            "workspace_id":     workspace_id,
         }
 
     async def consume_enrollment_token(

@@ -38,8 +38,10 @@ export interface DisplayInfo {
 }
 
 export interface EnrollmentToken {
+  token_id: string;
   enrollment_token: string;
   token_prefix: string;
+  expires_in: number;
   expires_at: string;
   workspace_id: string | null;
 }
