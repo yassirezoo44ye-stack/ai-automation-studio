@@ -917,11 +917,12 @@ class DeviceControlService:
             "primary_device_id": str(row["primary_device_id"]) if row["primary_device_id"] else None,
             "status":           row["status"],
             "started_at":       row["started_at"].isoformat() if row["started_at"] else None,
-            "ended_at":         row["ended_at"].isoformat() if row["ended_at"] else None,
+            "stopped_at":       row["ended_at"].isoformat() if row["ended_at"] else None,
             "created_at":       row["created_at"].isoformat(),
             "members": [
                 {
                     "device_id":     str(m["device_id"]),
+                    "is_primary":    str(m["device_id"]) == str(row["primary_device_id"]),
                     "name":          m["name"],
                     "platform":      m["platform"],
                     "device_status": m["device_status"],

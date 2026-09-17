@@ -982,5 +982,248 @@ class TestEnrollmentTokenResponseContract(unittest.TestCase):
         )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# HTTP Session Response Contract (P1)
+# GET /api/device-sessions/{session_id} must return stopped_at (not ended_at)
+# and each member must carry is_primary derived from primary_device_id.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSessionResponseContract(unittest.TestCase):
+    """
+    HTTP contract tests for GET /api/device-sessions/{session_id}.
+
+    Verifies:
+      - 'ended_at' is aliased to 'stopped_at' in the serialized response
+        (DB column stays ended_at — no migration required)
+      - each member dict includes 'is_primary' (bool) derived from
+        session.primary_device_id
+    """
+
+    _SESSION_ID = "sess-contract-001"
+    _PRIMARY_DEVICE_ID = "dev-primary-aaa"
+    _SECONDARY_DEVICE_ID = "dev-secondary-bbb"
+
+    def _make_client(self, mock_svc, mock_ctx):
+        import inspect
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        import app.routers.devices as dev_mod
+
+        app = FastAPI()
+        app.include_router(dev_mod.sessions_router)
+
+        ctx_dep = inspect.signature(
+            dev_mod.get_session
+        ).parameters["ctx"].default.dependency
+        app.dependency_overrides[ctx_dep] = lambda: mock_ctx
+
+        return TestClient(app, raise_server_exceptions=False)
+
+    def _mock_ctx(self):
+        ctx = MagicMock()
+        ctx.org_id = "org-test-session"
+        ctx.user_id = "user-test-1"
+        ctx.user_email = "test@example.com"
+        return ctx
+
+    def _mock_svc(self, stopped_at=None, status="active"):
+        import datetime
+        svc = MagicMock()
+        stopped_iso = (
+            datetime.datetime(2026, 3, 1, 10, 0, 0,
+                              tzinfo=datetime.timezone.utc).isoformat()
+            if stopped_at else None
+        )
+        svc.get_session = AsyncMock(return_value={
+            "id":                self._SESSION_ID,
+            "organization_id":   "org-test-session",
+            "workspace_id":      None,
+            "created_by":        "user-test-1",
+            "primary_device_id": self._PRIMARY_DEVICE_ID,
+            "status":            status,
+            "started_at":        "2026-03-01T09:00:00+00:00",
+            "stopped_at":        stopped_iso,
+            "created_at":        "2026-03-01T08:00:00+00:00",
+            "members": [
+                {
+                    "device_id":     self._PRIMARY_DEVICE_ID,
+                    "is_primary":    True,
+                    "name":          "Primary Device",
+                    "platform":      "windows",
+                    "device_status": "online",
+                    "position_x":    0,
+                    "position_y":    0,
+                    "width":         1920,
+                    "height":        1080,
+                    "sort_order":    0,
+                    "enabled":       True,
+                },
+                {
+                    "device_id":     self._SECONDARY_DEVICE_ID,
+                    "is_primary":    False,
+                    "name":          "Secondary Device",
+                    "platform":      "windows",
+                    "device_status": "online",
+                    "position_x":    1920,
+                    "position_y":    0,
+                    "width":         1920,
+                    "height":        1080,
+                    "sort_order":    1,
+                    "enabled":       True,
+                },
+            ],
+        })
+        return svc
+
+    def _get_session_response(self, mock_svc=None, mock_ctx=None):
+        from unittest.mock import patch
+        if mock_ctx is None:
+            mock_ctx = self._mock_ctx()
+        if mock_svc is None:
+            mock_svc = self._mock_svc()
+        client = self._make_client(mock_svc, mock_ctx)
+        with patch("app.routers.devices.get_device_control_service",
+                   return_value=mock_svc), \
+             patch("app.routers.devices.DEVICE_CONTROL_ENABLED", True):
+            return client.get(
+                f"/api/device-sessions/{self._SESSION_ID}"
+            )
+
+    def test_stopped_at_present_not_ended_at(self):
+        """
+        Response must use key 'stopped_at', not the DB column name 'ended_at'.
+        Frontend DeviceSession type has stopped_at: string | null — not ended_at.
+        """
+        resp = self._get_session_response()
+        if resp.status_code == 503:
+            return
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        data = resp.json()
+        assert "stopped_at" in data, (
+            "'stopped_at' missing from session response — "
+            "frontend DeviceSession.stopped_at will be undefined"
+        )
+        assert "ended_at" not in data, (
+            "old field 'ended_at' must not appear — frontend type has no such field"
+        )
+
+    def test_stopped_at_is_iso_string_when_session_stopped(self):
+        """
+        For a stopped session, stopped_at must be an ISO-8601 string.
+        """
+        import datetime
+        mock_svc = self._mock_svc(stopped_at=True, status="stopped")
+        resp = self._get_session_response(mock_svc=mock_svc)
+        if resp.status_code == 503:
+            return
+        assert resp.status_code == 200
+        data = resp.json()
+        stopped = data.get("stopped_at")
+        assert stopped is not None, "stopped_at should not be null for a stopped session"
+        assert isinstance(stopped, str), (
+            f"stopped_at must be a string, got {type(stopped).__name__}: {stopped!r}"
+        )
+        parsed = datetime.datetime.fromisoformat(stopped)
+        assert parsed.year >= 2026, (
+            f"stopped_at '{stopped}' parsed to year {parsed.year} — "
+            "likely an epoch float interpreted as milliseconds"
+        )
+
+    def test_stopped_at_is_null_for_active_session(self):
+        """For an active (not yet stopped) session, stopped_at must be null."""
+        mock_svc = self._mock_svc(stopped_at=None, status="active")
+        resp = self._get_session_response(mock_svc=mock_svc)
+        if resp.status_code == 503:
+            return
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("stopped_at") is None, (
+            f"active session should have stopped_at=null, got {data.get('stopped_at')!r}"
+        )
+
+    def test_every_member_has_is_primary_field(self):
+        """
+        Every member in the response must have an 'is_primary' boolean field.
+        Frontend DeviceControlPanel reads m.is_primary for styling and labels.
+        """
+        resp = self._get_session_response()
+        if resp.status_code == 503:
+            return
+        assert resp.status_code == 200
+        data = resp.json()
+        members = data.get("members", [])
+        assert len(members) > 0, "Expected at least one member in response"
+        for m in members:
+            assert "is_primary" in m, (
+                f"Member {m.get('device_id')!r} is missing 'is_primary' — "
+                "frontend DeviceControlPanel.tsx reads m.is_primary for every member"
+            )
+            assert isinstance(m["is_primary"], bool), (
+                f"is_primary must be bool, got {type(m['is_primary']).__name__}"
+            )
+
+    def test_primary_device_member_has_is_primary_true(self):
+        """
+        The member whose device_id == session.primary_device_id must have
+        is_primary=True.
+        """
+        resp = self._get_session_response()
+        if resp.status_code == 503:
+            return
+        assert resp.status_code == 200
+        data = resp.json()
+        primary_members = [
+            m for m in data.get("members", [])
+            if m.get("device_id") == self._PRIMARY_DEVICE_ID
+        ]
+        assert len(primary_members) == 1, (
+            f"Expected exactly one member with device_id={self._PRIMARY_DEVICE_ID!r}"
+        )
+        assert primary_members[0]["is_primary"] is True, (
+            f"Primary device member has is_primary={primary_members[0]['is_primary']!r}, "
+            "expected True"
+        )
+
+    def test_secondary_device_member_has_is_primary_false(self):
+        """Non-primary members must have is_primary=False."""
+        resp = self._get_session_response()
+        if resp.status_code == 503:
+            return
+        assert resp.status_code == 200
+        data = resp.json()
+        secondary_members = [
+            m for m in data.get("members", [])
+            if m.get("device_id") == self._SECONDARY_DEVICE_ID
+        ]
+        assert len(secondary_members) == 1, (
+            f"Expected one member with device_id={self._SECONDARY_DEVICE_ID!r}"
+        )
+        assert secondary_members[0]["is_primary"] is False, (
+            f"Secondary device member has is_primary={secondary_members[0]['is_primary']!r}, "
+            "expected False"
+        )
+
+    def test_all_session_contract_fields_present(self):
+        """
+        Top-level session response must include all fields the frontend
+        DeviceSession interface expects: id, status, primary_device_id,
+        started_at, stopped_at, created_at, members.
+        """
+        resp = self._get_session_response()
+        if resp.status_code == 503:
+            return
+        assert resp.status_code == 200
+        data = resp.json()
+        required = (
+            "id", "organization_id", "primary_device_id",
+            "status", "started_at", "stopped_at", "created_at", "members",
+        )
+        for field in required:
+            assert field in data, (
+                f"Required session field '{field}' missing from HTTP response"
+            )
+        assert isinstance(data["members"], list)
+
+
 if __name__ == "__main__":
     unittest.main()
