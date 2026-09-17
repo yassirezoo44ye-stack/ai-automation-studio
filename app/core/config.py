@@ -75,6 +75,7 @@ PUBLIC_PREFIXES: tuple = (
     "/api/stripe/",
     "/api/health/",
     "/health",
+    "/api/discover",   # public creation feed — no auth needed (endpoint-level auth still guards /mine)
 )
 
 # ── Platform admins ───────────────────────────────────────────────────────────

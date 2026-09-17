@@ -165,7 +165,7 @@ async def public_discover_feed(
             rows = await conn.fetch(
                 "SELECT * FROM flow_creations "
                 "WHERE visibility='public' "
-                "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                "ORDER BY created_at DESC LIMIT $1 OFFSET $2",
                 limit, offset,
             )
     return {"items": [_row_to_dict(r) for r in rows], "total": len(rows)}

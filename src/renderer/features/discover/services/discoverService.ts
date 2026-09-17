@@ -37,7 +37,7 @@ export async function fetchDiscoverFeed(
   if (opts.limit)  params.set("limit",  String(opts.limit));
   if (opts.offset) params.set("offset", String(opts.offset));
   const qs = params.toString() ? `?${params}` : "";
-  const res = await fetch(`${BASE}/discover${qs}`);
+  const res = await fetch(`${BASE}/discover${qs}`, { headers: headers() });
   return handleResponse<CreationFeedResponse>(res);
 }
 
