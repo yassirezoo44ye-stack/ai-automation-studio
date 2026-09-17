@@ -11,6 +11,7 @@ import { AgentAvatar } from "../../../components/ui/AgentAvatar";
 import { GoldButton, GlassCard } from "../../../shared/ui/gold";
 import type { Agent } from "../../../types";
 import { AGENT_TEMPLATES } from "../../../constants";
+import { PublishToDiscoverModal } from "../../discover/components/PublishToDiscoverModal";
 
 interface AgentsTabProps {
   agents:        Agent[];
@@ -27,6 +28,7 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
   const [view, setView]           = useState<View>("list");
   const [editing, setEditing]     = useState<Partial<Agent> | null>(null);
   const [saving, setSaving]       = useState(false);
+  const [publishTarget, setPublishTarget] = useState<{ id: string; name: string; description?: string } | null>(null);
 
   async function saveAgent() {
     if (!editing?.name?.trim() || !editing?.system_prompt?.trim()) return;
@@ -162,6 +164,14 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
                       <button onClick={() => void deleteAgent(a.id, a.name)} className="btn-icon" title={t("agentsTab.card.delete")} style={{ width: 30, height: 30, color: "var(--red)" }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                       </button>
+                      <button
+                        onClick={() => setPublishTarget({ id: a.id, name: a.name, description: a.description ?? undefined })}
+                        className="btn-icon"
+                        title={t("publish.button", { ns: "discover", defaultValue: "Publish to Discover" })}
+                        style={{ width: 30, height: 30, color: "var(--accent)" }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                      </button>
                     </div>
                   </div>
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", gap: 16, alignItems: "center" }}>
@@ -215,6 +225,21 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
           ))}
         </div>
       </div>
+
+      {/* Publish to Discover modal — system_prompt is NOT passed intentionally */}
+      {publishTarget && (
+        <PublishToDiscoverModal
+          sourceType="AGENT"
+          sourceId={publishTarget.id}
+          defaultTitle={publishTarget.name}
+          defaultDescription={publishTarget.description}
+          onClose={() => setPublishTarget(null)}
+          onSuccess={() => {
+            setPublishTarget(null);
+            toast(t("publish.modal.success", { ns: "discover", defaultValue: "Added to Discover" }));
+          }}
+        />
+      )}
     </div>
   );
 }

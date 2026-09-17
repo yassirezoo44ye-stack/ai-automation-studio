@@ -48,5 +48,26 @@
     "deleted": "Creation deleted"
   },
   "loading": "Loading creations…",
-  "error": "Failed to load creations"
+  "error": "Failed to load creations",
+  "publish": {
+    "button": "Publish to Discover",
+    "modal": {
+      "title": "Add to Discover",
+      "subtitle": "Your creation will be saved as private. You can make it public from Discover.",
+      "close": "Close",
+      "titleLabel": "Title",
+      "descriptionLabel": "Description",
+      "tagsLabel": "Tags",
+      "tagsPlaceholder": "ai, productivity, automation",
+      "tagsHint": "Comma-separated",
+      "privateNotice": "Saved as private — publish from Discover when ready.",
+      "cancel": "Cancel",
+      "submit": "Add to Discover",
+      "submitting": "Adding…",
+      "error": "Failed to add to Discover",
+      "duplicateWarning": "This item is already in My Creations.",
+      "noProject": "No active project. Open a project in App Builder first.",
+      "success": "Added to Discover"
+    }
+  }
 }

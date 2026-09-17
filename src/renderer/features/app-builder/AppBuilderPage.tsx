@@ -15,6 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
+import { PublishToDiscoverModal } from "../discover/components/PublishToDiscoverModal";
 import { apiFetch, parseJSON, isBillingRequiredError } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
 import {
@@ -68,7 +69,7 @@ const INITIAL_PHASES: BuildPhase[] = [
    ══════════════════════════════════════════════════════════════════ */
 
 /** Left panel — app structure navigation */
-function AppSidebar({ section, setSection, projectName, onDownload, isDownloading, runtimeState }: {
+function AppSidebar({ section, setSection, projectName, onDownload, isDownloading, runtimeState, onPublishToDiscover, hasActiveProject }: {
   section: AppSection;
   setSection: (s: AppSection) => void;
   projectName: string;
@@ -76,6 +77,8 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
   isDownloading: boolean;
   /** P0-C: badge is shown only when the project is actually running or in preview. */
   runtimeState: RuntimeState;
+  onPublishToDiscover: () => void;
+  hasActiveProject: boolean;
 }) {
   const { t } = useTranslation("appBuilder");
   return (
@@ -132,7 +135,7 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
 
       {/* Export / download button — downloads workspace as ZIP.
           Labelled "تصدير" because no deployment backend exists yet. */}
-      <div style={{ padding: 12, borderTop: "1px solid var(--b1)" }}>
+      <div style={{ padding: 12, borderTop: "1px solid var(--b1)", display: "flex", flexDirection: "column", gap: 8 }}>
         <button
           data-testid="sidebar-export-btn"
           onClick={onDownload}
@@ -150,6 +153,24 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
           }}
         >
           {isDownloading ? "⏳ جارٍ التصدير…" : "⬇ تصدير"}
+        </button>
+        <button
+          data-testid="sidebar-publish-btn"
+          onClick={onPublishToDiscover}
+          disabled={!hasActiveProject}
+          title={!hasActiveProject ? t("publish.noProject", { defaultValue: "No active project" }) : undefined}
+          style={{
+            width: "100%", padding: "8px", borderRadius: 10,
+            border: "1px solid var(--accent)44",
+            background: hasActiveProject ? "var(--accent)10" : "transparent",
+            color: hasActiveProject ? "var(--accent)" : "var(--t5)",
+            fontSize: 12, fontWeight: 600,
+            cursor: hasActiveProject ? "pointer" : "not-allowed",
+            opacity: hasActiveProject ? 1 : 0.5,
+            transition: "all 0.15s",
+          }}
+        >
+          ↑ {t("publish.button", { ns: "discover", defaultValue: "Publish to Discover" })}
         </button>
       </div>
     </div>
@@ -500,6 +521,9 @@ export function AppBuilderPage() {
   // ── Export / download ────────────────────────────────────────────
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // ── Publish to Discover ─────────────────────────────────────────
+  const [showPublishModal, setShowPublishModal] = useState(false);
 
   // ── Entry screen prompt (new minimal entry UI) ───────────────────
   // Persisted to sessionStorage so the draft survives page navigation
@@ -1460,6 +1484,8 @@ export function AppBuilderPage() {
               onDownload={handleDownload}
               isDownloading={isDownloading}
               runtimeState={runtimeState}
+              onPublishToDiscover={() => setShowPublishModal(true)}
+              hasActiveProject={!!projectName}
             />
           </div>
 
@@ -1570,6 +1596,24 @@ export function AppBuilderPage() {
           </div>
         </div>
       )}
+
+      {/* Publish to Discover modal */}
+      {showPublishModal && (() => {
+        const activeProjectId = sessionStorage.getItem("flow_active_project");
+        if (!activeProjectId) return null;
+        return (
+          <PublishToDiscoverModal
+            sourceType="APP"
+            sourceId={activeProjectId}
+            defaultTitle={projectName || t("appSidebar.appNameFallback")}
+            onClose={() => setShowPublishModal(false)}
+            onSuccess={() => {
+              setShowPublishModal(false);
+              toast(t("publish.success", { ns: "discover", defaultValue: "Added to Discover" }));
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
