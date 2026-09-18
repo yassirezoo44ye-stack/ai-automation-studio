@@ -51,6 +51,11 @@ CREATE INDEX IF NOT EXISTS ix_flow_creations_public
 CREATE INDEX IF NOT EXISTS ix_flow_creations_source
     ON flow_creations(source_type, source_id)
     WHERE source_id IS NOT NULL;
+
+-- Duplicate prevention: one creation card per source per org
+CREATE UNIQUE INDEX IF NOT EXISTS uq_flow_creations_source
+    ON flow_creations(organization_id, source_type, source_id)
+    WHERE source_id IS NOT NULL;
 """
 
 SQL_DOWN = """

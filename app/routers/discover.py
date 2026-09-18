@@ -63,6 +63,9 @@ CREATE INDEX IF NOT EXISTS ix_flow_creations_public
 CREATE INDEX IF NOT EXISTS ix_flow_creations_source
     ON flow_creations(source_type, source_id)
     WHERE source_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_flow_creations_source
+    ON flow_creations(organization_id, source_type, source_id)
+    WHERE source_id IS NOT NULL;
 """
 
 
@@ -221,18 +224,24 @@ async def create_creation(request: Request, body: CreateCreationRequest):
 
     pool = get_pool()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO flow_creations
-                (organization_id, created_by_user_id, type, title, description,
-                 visibility, source_type, source_id, thumbnail_url, tags)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-            RETURNING *
-            """,
-            org_id, user_id, body.type, body.title, body.description,
-            body.visibility, body.source_type, source_id,
-            body.thumbnail_url, body.tags,
-        )
+        try:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO flow_creations
+                    (organization_id, created_by_user_id, type, title, description,
+                     visibility, source_type, source_id, thumbnail_url, tags)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                RETURNING *
+                """,
+                org_id, user_id, body.type, body.title, body.description,
+                body.visibility, body.source_type, source_id,
+                body.thumbnail_url, body.tags,
+            )
+        except asyncpg.UniqueViolationError:
+            raise HTTPException(
+                status_code=409,
+                detail="This source is already in your creations.",
+            )
     return _row_to_dict(row)
 
 
