@@ -5,19 +5,7 @@ import type {
   CreationFeedResponse,
   CreationType,
 } from "../types/creation.types";
-
-const BASE = "/api";
-
-function headers(orgId?: string): HeadersInit {
-  const h: Record<string, string> = { "Content-Type": "application/json" };
-  if (orgId) h["X-Organization-Id"] = orgId;
-  const token =
-    localStorage.getItem("sub_token") ||
-    sessionStorage.getItem("sub_token") ||
-    "";
-  if (token) h["Authorization"] = `Bearer ${token}`;
-  return h;
-}
+import { apiFetch } from "../../../shared/utils/api";
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -37,7 +25,7 @@ export async function fetchDiscoverFeed(
   if (opts.limit)  params.set("limit",  String(opts.limit));
   if (opts.offset) params.set("offset", String(opts.offset));
   const qs = params.toString() ? `?${params}` : "";
-  const res = await fetch(`${BASE}/discover${qs}`, { headers: headers() });
+  const res = await apiFetch(`/api/discover${qs}`);
   return handleResponse<CreationFeedResponse>(res);
 }
 
@@ -51,7 +39,9 @@ export async function fetchMyCreations(
   if (opts.limit)  params.set("limit",  String(opts.limit));
   if (opts.offset) params.set("offset", String(opts.offset));
   const qs = params.toString() ? `?${params}` : "";
-  const res = await fetch(`${BASE}/discover/mine${qs}`, { headers: headers(orgId) });
+  const res = await apiFetch(`/api/discover/mine${qs}`, {
+    headers: { "X-Organization-Id": orgId },
+  });
   return handleResponse<CreationFeedResponse>(res);
 }
 
@@ -60,9 +50,9 @@ export async function createCreation(
   orgId: string,
   payload: CreateCreationPayload
 ): Promise<FlowCreation> {
-  const res = await fetch(`${BASE}/creations`, {
+  const res = await apiFetch(`/api/creations`, {
     method: "POST",
-    headers: headers(orgId),
+    headers: { "X-Organization-Id": orgId },
     body: JSON.stringify(payload),
   });
   return handleResponse<FlowCreation>(res);
@@ -73,7 +63,9 @@ export async function getCreation(
   id: string,
   orgId?: string
 ): Promise<FlowCreation> {
-  const res = await fetch(`${BASE}/creations/${id}`, { headers: headers(orgId) });
+  const res = await apiFetch(`/api/creations/${id}`, {
+    ...(orgId ? { headers: { "X-Organization-Id": orgId } } : {}),
+  });
   return handleResponse<FlowCreation>(res);
 }
 
@@ -83,9 +75,9 @@ export async function updateCreation(
   orgId: string,
   payload: UpdateCreationPayload
 ): Promise<FlowCreation> {
-  const res = await fetch(`${BASE}/creations/${id}`, {
+  const res = await apiFetch(`/api/creations/${id}`, {
     method: "PATCH",
-    headers: headers(orgId),
+    headers: { "X-Organization-Id": orgId },
     body: JSON.stringify(payload),
   });
   return handleResponse<FlowCreation>(res);
@@ -93,36 +85,36 @@ export async function updateCreation(
 
 /** Delete */
 export async function deleteCreation(id: string, orgId: string): Promise<void> {
-  const res = await fetch(`${BASE}/creations/${id}`, {
+  const res = await apiFetch(`/api/creations/${id}`, {
     method: "DELETE",
-    headers: headers(orgId),
+    headers: { "X-Organization-Id": orgId },
   });
   return handleResponse<void>(res);
 }
 
 /** Publish to public feed */
 export async function publishCreation(id: string, orgId: string): Promise<FlowCreation> {
-  const res = await fetch(`${BASE}/creations/${id}/publish`, {
+  const res = await apiFetch(`/api/creations/${id}/publish`, {
     method: "POST",
-    headers: headers(orgId),
+    headers: { "X-Organization-Id": orgId },
   });
   return handleResponse<FlowCreation>(res);
 }
 
 /** Unpublish */
 export async function unpublishCreation(id: string, orgId: string): Promise<FlowCreation> {
-  const res = await fetch(`${BASE}/creations/${id}/unpublish`, {
+  const res = await apiFetch(`/api/creations/${id}/unpublish`, {
     method: "POST",
-    headers: headers(orgId),
+    headers: { "X-Organization-Id": orgId },
   });
   return handleResponse<FlowCreation>(res);
 }
 
 /** Clone into caller's org */
 export async function cloneCreation(id: string, orgId: string): Promise<FlowCreation> {
-  const res = await fetch(`${BASE}/creations/${id}/clone`, {
+  const res = await apiFetch(`/api/creations/${id}/clone`, {
     method: "POST",
-    headers: headers(orgId),
+    headers: { "X-Organization-Id": orgId },
   });
   return handleResponse<FlowCreation>(res);
 }
