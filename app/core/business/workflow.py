@@ -29,7 +29,7 @@ from app.core.workflow.engine import (
 )
 from app.core.business import agents
 from app.core.business.scoring import compute_score
-from app.core.db import get_pool, acquire_scoped
+from app.core.db import acquire_scoped
 
 log = logging.getLogger(__name__)
 
@@ -37,10 +37,9 @@ _engine = WorkflowEngine()
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
 
-async def _get_section(plan_id: str, key: str) -> Optional[str]:
+async def _get_section(plan_id: str, key: str, org_id: str) -> Optional[str]:
     """Fetch a completed section's content from DB."""
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         row = await conn.fetchrow(
             "SELECT content FROM bp_sections WHERE plan_id=$1 AND section_key=$2 AND status='COMPLETED'",
             plan_id, key,
@@ -48,9 +47,8 @@ async def _get_section(plan_id: str, key: str) -> Optional[str]:
     return row["content"] if row else None
 
 
-async def _get_facts(plan_id: str) -> list[dict]:
-    pool = get_pool()
-    async with pool.acquire() as conn:
+async def _get_facts(plan_id: str, org_id: str) -> list[dict]:
+    async with acquire_scoped(org_id) as conn:
         rows = await conn.fetch(
             "SELECT fact_key, value, status, source_type, confidence FROM bp_facts WHERE plan_id=$1",
             plan_id,
@@ -58,9 +56,8 @@ async def _get_facts(plan_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def _get_competitors(plan_id: str) -> list[dict]:
-    pool = get_pool()
-    async with pool.acquire() as conn:
+async def _get_competitors(plan_id: str, org_id: str) -> list[dict]:
+    async with acquire_scoped(org_id) as conn:
         rows = await conn.fetch(
             "SELECT name, website, description, strengths, weaknesses, pricing, market_position "
             "FROM bp_competitors WHERE plan_id=$1 LIMIT 6",
@@ -70,8 +67,7 @@ async def _get_competitors(plan_id: str) -> list[dict]:
 
 
 async def _mark_section_running(plan_id: str, section_key: str, org_id: str) -> None:
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await conn.execute(
             """
             INSERT INTO bp_sections (plan_id, organization_id, section_key, title, status)
@@ -98,8 +94,7 @@ async def step_intake(
     _context: dict | None = None, **_
 ) -> dict:
     await _mark_section_running(plan_id, "intake", org_id)
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         data = await agents.run_idea_intake(
             conn, plan_id, org_id, user_id, idea_raw, industry, stage,
         )
@@ -114,8 +109,7 @@ async def step_company_desc(
     intake_data = (_context or {}).get("intake.intake_data", {})
 
     await _mark_section_running(plan_id, "company_description", org_id)
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         text = await agents.run_company_description(
             conn, plan_id, org_id, user_id,
             idea_raw, industry,
@@ -134,8 +128,7 @@ async def step_market_intel(
     company_summary = ctx.get("company_desc.company_summary")
 
     await _mark_section_running(plan_id, "market_intelligence", org_id)
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         text = await agents.run_market_intelligence(
             conn, plan_id, org_id, user_id,
             idea_raw, industry,
@@ -155,8 +148,7 @@ async def step_competitor_intel(
     market_summary  = ctx.get("market_intel.market_summary")
 
     await _mark_section_running(plan_id, "competitor_intelligence", org_id)
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         text = await agents.run_competitor_intelligence(
             conn, plan_id, org_id, user_id,
             idea_raw, industry,
@@ -174,11 +166,10 @@ async def step_offer_pricing(
     ctx = _context or {}
     intake_data    = ctx.get("intake.intake_data", {})
     market_summary = ctx.get("market_intel.market_summary")
-    competitors    = await _get_competitors(plan_id)
+    competitors    = await _get_competitors(plan_id, org_id)
 
     await _mark_section_running(plan_id, "offer_pricing", org_id)
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         text = await agents.run_offer_pricing(
             conn, plan_id, org_id, user_id,
             idea_raw,
@@ -201,8 +192,7 @@ async def step_go_to_market(
     market_summary  = ctx.get("market_intel.market_summary")
 
     await _mark_section_running(plan_id, "go_to_market", org_id)
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await agents.run_go_to_market(
             conn, plan_id, org_id, user_id,
             company_summary,
@@ -223,8 +213,7 @@ async def step_ops_finance(
     offer_summary   = ctx.get("offer_pricing.offer_summary")
 
     await _mark_section_running(plan_id, "ops_finance", org_id)
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await agents.run_ops_finance(
             conn, plan_id, org_id, user_id,
             company_summary,
@@ -238,8 +227,7 @@ async def step_score(
     plan_id: str, org_id: str,
     _context: dict | None = None, **_
 ) -> dict:
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         score_data = await compute_score(conn, plan_id, org_id)
     return {"score": score_data["overall_score"]}
 
@@ -250,15 +238,15 @@ async def step_assembly(
 ) -> dict:
     await _mark_section_running(plan_id, "full_plan", org_id)
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         rows = await conn.fetch(
             "SELECT section_key, content FROM bp_sections WHERE plan_id=$1 AND status='COMPLETED'",
             plan_id,
         )
         sections = {r["section_key"]: r["content"] for r in rows
                     if r["section_key"] not in ("full_plan", "assumption_audit", "adversarial_review")}
-        facts = await _get_facts(plan_id)
+    facts = await _get_facts(plan_id, org_id)
+    async with acquire_scoped(org_id) as conn:
         plan_text = await agents.run_assembly(conn, plan_id, org_id, user_id, sections, facts)
     return {"plan_text": plan_text[:2000]}
 
@@ -268,11 +256,10 @@ async def step_assumption_audit(
     _context: dict | None = None, **_
 ) -> dict:
     await _mark_section_running(plan_id, "assumption_audit", org_id)
-    plan_text = (_context or {}).get("assembly.plan_text") or await _get_section(plan_id, "full_plan") or ""
-    facts = await _get_facts(plan_id)
+    plan_text = (_context or {}).get("assembly.plan_text") or await _get_section(plan_id, "full_plan", org_id) or ""
+    facts = await _get_facts(plan_id, org_id)
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await agents.run_assumption_auditor(conn, plan_id, org_id, user_id, plan_text, facts)
     return {}
 
@@ -283,11 +270,10 @@ async def step_adversarial(
 ) -> dict:
     ctx = _context or {}
     await _mark_section_running(plan_id, "adversarial_review", org_id)
-    plan_text = ctx.get("assembly.plan_text") or await _get_section(plan_id, "full_plan") or ""
+    plan_text = ctx.get("assembly.plan_text") or await _get_section(plan_id, "full_plan", org_id) or ""
     score     = ctx.get("score_v1.score", 0)
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await agents.run_adversarial_reviewer(conn, plan_id, org_id, user_id, plan_text, score)
     return {}
 
@@ -296,8 +282,7 @@ async def step_final_score(
     plan_id: str, org_id: str,
     _context: dict | None = None, **_
 ) -> dict:
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         score_data = await compute_score(conn, plan_id, org_id)
     return {"final_score": score_data["overall_score"]}
 
@@ -462,8 +447,7 @@ async def retry_sections(
             results[key] = f"error: {exc}"
 
     # Recompute score after retries
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await compute_score(conn, plan_id, org_id)
 
     return results

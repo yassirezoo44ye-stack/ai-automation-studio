@@ -629,19 +629,16 @@ class TestStepKwargsContract:
     async def test_step_intake_accepts_engine_kwargs(self):
         """step_intake must accept individual kwargs — no TypeError on ctx."""
         from contextlib import asynccontextmanager
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, patch
         from app.core.business.workflow import step_intake
 
         mock_conn = AsyncMock()
 
         @asynccontextmanager
-        async def mock_acquire():
+        async def mock_acquire_scoped(oid: str):
             yield mock_conn
 
-        mock_pool = MagicMock()
-        mock_pool.acquire = mock_acquire
-
-        with patch("app.core.business.workflow.get_pool", return_value=mock_pool), \
+        with patch("app.core.business.workflow.acquire_scoped", mock_acquire_scoped), \
              patch("app.core.business.workflow._mark_section_running", new_callable=AsyncMock), \
              patch("app.core.business.workflow.agents.run_idea_intake",
                    new_callable=AsyncMock, return_value={"target_customers": "SMBs"}):
@@ -721,23 +718,24 @@ class TestMarkPlanStatusRLS:
 
     @pytest.mark.asyncio
     async def test_does_not_use_bare_pool(self):
-        """get_pool must never be called from _mark_plan_status."""
+        """_mark_plan_status must use acquire_scoped(org_id), never bare pool.acquire()."""
         from contextlib import asynccontextmanager
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, patch
         from app.core.business.workflow import _mark_plan_status
 
-        mock_get_pool = MagicMock()
+        scoped_calls: list[str] = []
         mock_conn = AsyncMock()
 
         @asynccontextmanager
         async def mock_scoped(oid):
+            scoped_calls.append(oid)
             yield mock_conn
 
-        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
-             patch("app.core.business.workflow.get_pool", mock_get_pool):
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
             await _mark_plan_status("p-1", "COMPLETED", org_id="o-1")
 
-        mock_get_pool.assert_not_called()
+        assert scoped_calls == ["o-1"], "acquire_scoped must be called with org_id"
+        mock_conn.execute.assert_called_once()
 
 
 # ── start_business_plan FAILED detection ─────────────────────────────────────
