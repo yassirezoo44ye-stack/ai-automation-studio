@@ -617,3 +617,193 @@ class TestWorkflowExecuteAPI:
             )
 
         assert called_with == [], "no UPDATE should happen on successful workflow"
+
+
+# ── Step function kwargs contract ─────────────────────────────────────────────
+
+class TestStepKwargsContract:
+    """Engine passes base_ctx as individual kwargs + _context=run.context.
+    Steps must accept this calling convention, not ctx: dict."""
+
+    @pytest.mark.asyncio
+    async def test_step_intake_accepts_engine_kwargs(self):
+        """step_intake must accept individual kwargs — no TypeError on ctx."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.workflow import step_intake
+
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
+
+        mock_pool = MagicMock()
+        mock_pool.acquire = mock_acquire
+
+        with patch("app.core.business.workflow.get_pool", return_value=mock_pool), \
+             patch("app.core.business.workflow._mark_section_running", new_callable=AsyncMock), \
+             patch("app.core.business.workflow.agents.run_idea_intake",
+                   new_callable=AsyncMock, return_value={"target_customers": "SMBs"}):
+            result = await step_intake(
+                plan_id="p-1", org_id="o-1", user_id="u-1",
+                idea_raw="Build an AI scheduling tool",
+                industry="Tech", stage="IDEA",
+                _context={}, _run_id="r-1",
+            )
+
+        assert "intake_data" in result
+        assert result["intake_data"] == {"target_customers": "SMBs"}
+
+    def test_step_company_desc_reads_intake_from_context(self):
+        """step_company_desc must read intake_data from _context, not from a ctx dict."""
+        import inspect
+        from app.core.business.workflow import step_company_desc
+        src = inspect.getsource(step_company_desc)
+        assert "ctx: dict" not in src, "must not use old positional ctx:dict signature"
+        assert "_context" in src
+        assert "intake.intake_data" in src
+
+    def test_step_adversarial_reads_score_from_context(self):
+        """step_adversarial must read score from _context['score_v1.score'], not ctx['score']."""
+        import inspect
+        from app.core.business.workflow import step_adversarial
+        src = inspect.getsource(step_adversarial)
+        assert "score_v1.score" in src, "must use dotted engine context key"
+        assert "ctx.get(\"score\"" not in src, "must not use old ctx['score'] access"
+
+    def test_all_steps_have_no_ctx_dict_signature(self):
+        """All 13 step functions must not declare `ctx: dict` as first positional arg."""
+        import inspect
+        from app.core.business import workflow
+        steps = [
+            workflow.step_intake, workflow.step_company_desc, workflow.step_market_intel,
+            workflow.step_competitor_intel, workflow.step_offer_pricing, workflow.step_go_to_market,
+            workflow.step_ops_finance, workflow.step_score, workflow.step_assembly,
+            workflow.step_assumption_audit, workflow.step_adversarial, workflow.step_final_score,
+            workflow.step_mark_complete,
+        ]
+        for fn in steps:
+            params = list(inspect.signature(fn).parameters)
+            assert params[0] != "ctx", f"{fn.__name__} still uses positional ctx"
+            assert "plan_id" in params, f"{fn.__name__} missing plan_id kwarg"
+
+
+# ── _mark_plan_status RLS fix ─────────────────────────────────────────────────
+
+class TestMarkPlanStatusRLS:
+    """_mark_plan_status must use acquire_scoped(org_id), not bare pool.acquire()."""
+
+    @pytest.mark.asyncio
+    async def test_uses_acquire_scoped_not_bare_pool(self):
+        """FORCE RLS means bare pool.acquire() silently writes 0 rows.
+        _mark_plan_status must pass org_id to acquire_scoped so the GUC is set."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _mark_plan_status
+
+        called_with: list[str] = []
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_scoped(oid: str):
+            called_with.append(oid)
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_plan_status("plan-42", "GENERATING", org_id="org-99")
+
+        assert called_with == ["org-99"], "acquire_scoped must be called with org_id"
+        mock_conn.execute.assert_called_once()
+        sql, status, plan_id = mock_conn.execute.call_args[0]
+        assert "GENERATING" == status
+        assert "plan-42" == plan_id
+
+    @pytest.mark.asyncio
+    async def test_does_not_use_bare_pool(self):
+        """get_pool must never be called from _mark_plan_status."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.workflow import _mark_plan_status
+
+        mock_get_pool = MagicMock()
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow.get_pool", mock_get_pool):
+            await _mark_plan_status("p-1", "COMPLETED", org_id="o-1")
+
+        mock_get_pool.assert_not_called()
+
+
+# ── start_business_plan FAILED detection ─────────────────────────────────────
+
+class TestStartBusinessPlanFailedDetection:
+    """When the engine returns a FAILED run, start_business_plan must UPDATE bp_plans."""
+
+    @pytest.mark.asyncio
+    async def test_failed_run_updates_plan_status(self):
+        """Engine returns FAILED → start_business_plan marks plan as FAILED via scoped conn."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.core.business.workflow import start_business_plan
+        from app.core.workflow.engine import WorkflowStatus
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        failed_run = MagicMock()
+        failed_run.status = WorkflowStatus.FAILED
+        failed_run.error  = "step_intake TypeError"
+
+        called_with: list[str] = []
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            called_with.append(oid)
+            yield mock_conn
+
+        with patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock), \
+             patch("app.core.business.workflow.build_business_plan_workflow", return_value=MagicMock()), \
+             patch("app.core.business.workflow._engine") as mock_engine, \
+             patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            mock_engine.execute = AsyncMock(return_value=failed_run)
+            run = await start_business_plan(plan_id, org_id, "u-1", "SaaS idea", None, "IDEA")
+
+        assert run.status == WorkflowStatus.FAILED
+        assert called_with == [org_id], "acquire_scoped must be called with org_id on FAILED run"
+        mock_conn.execute.assert_called_once()
+        sql = mock_conn.execute.call_args[0][0]
+        assert "FAILED" in sql
+
+    @pytest.mark.asyncio
+    async def test_completed_run_does_not_write_failed(self):
+        """Engine returns COMPLETED → no extra UPDATE."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.core.business.workflow import start_business_plan
+        from app.core.workflow.engine import WorkflowStatus
+
+        completed_run = MagicMock()
+        completed_run.status = WorkflowStatus.COMPLETED
+        called_with: list[str] = []
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            called_with.append(oid)
+            yield AsyncMock()
+
+        with patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock), \
+             patch("app.core.business.workflow.build_business_plan_workflow", return_value=MagicMock()), \
+             patch("app.core.business.workflow._engine") as mock_engine, \
+             patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            mock_engine.execute = AsyncMock(return_value=completed_run)
+            await start_business_plan(str(uuid.uuid4()), str(uuid.uuid4()), "u", "idea", None, "IDEA")
+
+        assert called_with == [], "acquire_scoped must not be called for COMPLETED run"
