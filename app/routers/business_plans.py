@@ -186,8 +186,7 @@ async def create_plan(
     if not org_id:
         raise HTTPException(status_code=400, detail="User has no organization")
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         row = await conn.fetchrow(
             """
             INSERT INTO bp_plans

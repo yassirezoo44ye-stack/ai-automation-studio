@@ -318,3 +318,148 @@ class TestRouterHelpers:
         assert out["strengths"] == ["fast", "cheap"]
         assert out["weaknesses"] == ["no support"]
         assert out["verified"] is False
+
+
+# ── create_plan — RLS scoping tests ───────────────────────────────────────────
+
+class TestCreatePlanRLS:
+    """Verify create_plan uses acquire_scoped (not bare pool.acquire) for the INSERT."""
+
+    @pytest.mark.asyncio
+    async def test_create_plan_success_uses_scoped_conn(self):
+        """Happy path: acquire_scoped is called with org_id and INSERT succeeds."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.routers.business_plans import create_plan
+        from app.core.business.models import CreatePlanRequest
+
+        org_id  = str(uuid.uuid4())
+        user_id = uuid.uuid4()
+        plan_id = str(uuid.uuid4())
+        mock_row = {
+            "id": plan_id, "title": "",
+            "idea_raw": "I want to build an AI CRM platform for small businesses",
+            "industry": "Tech", "stage": "IDEA", "status": "DRAFT",
+            "readiness_score": None, "workflow_run_id": None,
+            "created_at": "2026-01-01", "updated_at": "2026-01-01",
+        }
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value=mock_row)
+
+        @asynccontextmanager
+        async def mock_acquire_scoped(oid):
+            assert oid == org_id
+            yield mock_conn
+
+        body = CreatePlanRequest(
+            idea_raw="I want to build an AI CRM platform for small businesses",
+            industry="Tech",
+        )
+        mock_bg = MagicMock()
+
+        with patch("app.routers.business_plans._resolve_user", new_callable=AsyncMock, return_value=user_id), \
+             patch("app.routers.business_plans._resolve_org", new_callable=AsyncMock, return_value=org_id), \
+             patch("app.routers.business_plans.acquire_scoped", mock_acquire_scoped):
+            result = await create_plan(body, MagicMock(), mock_bg)
+
+        assert result["id"] == plan_id
+        assert result["status"] == "DRAFT"
+        mock_conn.fetchrow.assert_called_once()
+        mock_bg.add_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_plan_no_org_returns_400(self):
+        """Authenticated user with no org membership gets 400, not 500."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from fastapi import HTTPException
+        from app.routers.business_plans import create_plan
+        from app.core.business.models import CreatePlanRequest
+
+        body = CreatePlanRequest(idea_raw="I want to build an AI assistant for scheduling tasks")
+        with pytest.raises(HTTPException) as exc_info:
+            with patch("app.routers.business_plans._resolve_user",
+                       new_callable=AsyncMock, return_value=uuid.uuid4()), \
+                 patch("app.routers.business_plans._resolve_org",
+                       new_callable=AsyncMock, return_value=None):
+                await create_plan(body, MagicMock(), MagicMock())
+
+        assert exc_info.value.status_code == 400
+        assert "organization" in exc_info.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_create_plan_unauthenticated_returns_401(self):
+        """Missing or invalid token: _resolve_user raises 401."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from fastapi import HTTPException
+        from app.routers.business_plans import create_plan
+        from app.core.business.models import CreatePlanRequest
+
+        body = CreatePlanRequest(idea_raw="I want to build an AI assistant for scheduling tasks")
+        with pytest.raises(HTTPException) as exc_info:
+            with patch("app.routers.business_plans._resolve_user",
+                       new_callable=AsyncMock,
+                       side_effect=HTTPException(status_code=401, detail="Unauthorized")):
+                await create_plan(body, MagicMock(), MagicMock())
+
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_create_plan_scoped_to_caller_org(self):
+        """acquire_scoped must be called with the caller's org_id — enforcing RLS tenant isolation."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.routers.business_plans import create_plan
+        from app.core.business.models import CreatePlanRequest
+
+        org_id  = str(uuid.uuid4())
+        user_id = uuid.uuid4()
+        called_with: list[str] = []
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value={
+            "id": str(uuid.uuid4()), "title": "", "idea_raw": "test",
+            "industry": None, "stage": "IDEA", "status": "DRAFT",
+            "readiness_score": None, "workflow_run_id": None,
+            "created_at": "2026-01-01", "updated_at": "2026-01-01",
+        })
+
+        @asynccontextmanager
+        async def mock_acquire_scoped(oid):
+            called_with.append(oid)
+            yield mock_conn
+
+        body = CreatePlanRequest(idea_raw="I want to build an AI assistant for scheduling tasks")
+        with patch("app.routers.business_plans._resolve_user", new_callable=AsyncMock, return_value=user_id), \
+             patch("app.routers.business_plans._resolve_org", new_callable=AsyncMock, return_value=org_id), \
+             patch("app.routers.business_plans.acquire_scoped", mock_acquire_scoped):
+            await create_plan(body, MagicMock(), MagicMock())
+
+        assert called_with == [org_id], "acquire_scoped must be called exactly once with caller's org_id"
+
+    @pytest.mark.asyncio
+    async def test_create_plan_db_error_propagates(self):
+        """DB errors must not be swallowed — they propagate so the caller gets a 500, not a fake 201."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.routers.business_plans import create_plan
+        from app.core.business.models import CreatePlanRequest
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(side_effect=RuntimeError("rls violation"))
+
+        @asynccontextmanager
+        async def mock_acquire_scoped(oid):
+            yield mock_conn
+
+        body = CreatePlanRequest(idea_raw="I want to build an AI assistant for scheduling tasks")
+        with pytest.raises(RuntimeError, match="rls violation"):
+            with patch("app.routers.business_plans._resolve_user",
+                       new_callable=AsyncMock, return_value=uuid.uuid4()), \
+                 patch("app.routers.business_plans._resolve_org",
+                       new_callable=AsyncMock, return_value=str(uuid.uuid4())), \
+                 patch("app.routers.business_plans.acquire_scoped", mock_acquire_scoped):
+                await create_plan(body, MagicMock(), MagicMock())
