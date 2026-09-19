@@ -57,8 +57,7 @@ async def _resolve_org(user_id: str) -> Optional[str]:
 
 async def _assert_plan_owner(plan_id: str, user_id: str, org_id: str) -> dict:
     """Raise 404 if plan doesn't exist or doesn't belong to this user/org."""
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         row = await conn.fetchrow(
             "SELECT * FROM bp_plans WHERE id=$1 AND organization_id=$2 AND user_id=$3",
             plan_id, org_id, user_id,
@@ -222,8 +221,7 @@ async def _run_workflow_bg(
         await start_business_plan(plan_id, org_id, user_id, idea_raw, industry, stage)
     except Exception as exc:
         log.exception("business_plan workflow failed for plan %s: %s", plan_id, exc)
-        pool = get_pool()
-        async with pool.acquire() as conn:
+        async with acquire_scoped(org_id) as conn:
             await conn.execute(
                 "UPDATE bp_plans SET status='FAILED', updated_at=NOW() WHERE id=$1",
                 plan_id,

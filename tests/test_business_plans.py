@@ -463,3 +463,157 @@ class TestCreatePlanRLS:
                        new_callable=AsyncMock, return_value=str(uuid.uuid4())), \
                  patch("app.routers.business_plans.acquire_scoped", mock_acquire_scoped):
                 await create_plan(body, MagicMock(), MagicMock())
+
+
+# ── _assert_plan_owner — RLS scoping tests ────────────────────────────────────
+
+class TestAssertPlanOwnerRLS:
+    """_assert_plan_owner must use acquire_scoped so FORCE RLS is satisfied."""
+
+    @pytest.mark.asyncio
+    async def test_uses_acquire_scoped_with_org_id(self):
+        """acquire_scoped is called with the caller's org_id, not bare pool."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from app.routers.business_plans import _assert_plan_owner
+
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        mock_row = {"id": plan_id, "organization_id": org_id, "user_id": user_id}
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value=mock_row)
+        called_with: list[str] = []
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            called_with.append(oid)
+            yield mock_conn
+
+        with patch("app.routers.business_plans.acquire_scoped", mock_scoped):
+            result = await _assert_plan_owner(plan_id, user_id, org_id)
+
+        assert result["id"] == plan_id
+        assert called_with == [org_id], "must call acquire_scoped exactly once with caller's org_id"
+
+    @pytest.mark.asyncio
+    async def test_wrong_org_returns_404(self):
+        """Row invisible to a different org's RLS → fetchrow returns None → 404."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from fastapi import HTTPException
+        from app.routers.business_plans import _assert_plan_owner
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value=None)  # RLS filtered it out
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with pytest.raises(HTTPException) as exc_info:
+            with patch("app.routers.business_plans.acquire_scoped", mock_scoped):
+                await _assert_plan_owner(
+                    str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4()),
+                )
+
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_plan_not_found_returns_404(self):
+        """Plan ID that doesn't exist → 404, not 500."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from fastapi import HTTPException
+        from app.routers.business_plans import _assert_plan_owner
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with pytest.raises(HTTPException) as exc_info:
+            with patch("app.routers.business_plans.acquire_scoped", mock_scoped):
+                await _assert_plan_owner(
+                    "nonexistent-id", str(uuid.uuid4()), str(uuid.uuid4()),
+                )
+
+        assert exc_info.value.status_code == 404
+        assert "not found" in exc_info.value.detail.lower()
+
+
+# ── Workflow engine API + background error handler ────────────────────────────
+
+class TestWorkflowExecuteAPI:
+    """Ensure start_business_plan uses engine.execute and error handler uses scoped conn."""
+
+    def test_start_business_plan_calls_execute_not_run(self):
+        """Source must call _engine.execute(), not the non-existent _engine.run()."""
+        import inspect
+        from app.core.business import workflow
+        src = inspect.getsource(workflow.start_business_plan)
+        assert "_engine.run(" not in src, "_engine.run() does not exist on WorkflowEngine"
+        assert "_engine.execute(" in src
+
+    @pytest.mark.asyncio
+    async def test_workflow_bg_failure_updates_status_via_scoped_conn(self):
+        """When the workflow fails, the error handler UPDATE uses acquire_scoped(org_id)."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from app.routers.business_plans import _run_workflow_bg
+
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        mock_conn = AsyncMock()
+        called_with: list[str] = []
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            called_with.append(oid)
+            yield mock_conn
+
+        with patch("app.routers.business_plans.start_business_plan",
+                   new_callable=AsyncMock, side_effect=RuntimeError("workflow exploded")), \
+             patch("app.routers.business_plans.acquire_scoped", mock_scoped):
+            await _run_workflow_bg(
+                plan_id=plan_id, org_id=org_id, user_id=user_id,
+                idea_raw="A test idea for a SaaS product", industry=None, stage="IDEA",
+            )
+
+        assert called_with == [org_id], "error UPDATE must use acquire_scoped with org_id"
+        mock_conn.execute.assert_called_once()
+        sql = mock_conn.execute.call_args[0][0]
+        assert "FAILED" in sql
+
+    @pytest.mark.asyncio
+    async def test_workflow_bg_success_does_not_call_scoped_for_update(self):
+        """Happy path: no error → error handler's acquire_scoped is never reached."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.routers.business_plans import _run_workflow_bg
+
+        called_with: list[str] = []
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            called_with.append(oid)
+            yield AsyncMock()
+
+        with patch("app.routers.business_plans.start_business_plan",
+                   new_callable=AsyncMock, return_value=MagicMock()), \
+             patch("app.routers.business_plans.acquire_scoped", mock_scoped):
+            await _run_workflow_bg(
+                plan_id=str(uuid.uuid4()), org_id=str(uuid.uuid4()),
+                user_id=str(uuid.uuid4()), idea_raw="Good idea",
+                industry="Tech", stage="MVP",
+            )
+
+        assert called_with == [], "no UPDATE should happen on successful workflow"

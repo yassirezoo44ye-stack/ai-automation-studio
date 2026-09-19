@@ -384,7 +384,7 @@ async def start_business_plan(
     workflow = build_business_plan_workflow(
         plan_id, org_id, user_id, idea_raw, industry, stage,
     )
-    run = await _engine.run(workflow)
+    run = await _engine.execute(workflow)
     return run
 
 
