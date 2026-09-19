@@ -34,7 +34,8 @@ import {
 } from "vitest";
 import type { BuildEvent } from "../services/builderService";
 import { AppBuilderPage } from "../AppBuilderPage";
-import { BillingRequiredError } from "../../../shared/utils/api";
+import { BillingRequiredError, apiFetch, parseJSON } from "../../../shared/utils/api";
+import type { BuildPlan } from "../components/BuildPlanPanel";
 
 // Raise the per-test timeout for the entire file — these tests are sensitive
 // to CPU contention in the full suite (lazy chunk + SSE mock resolution can
@@ -845,5 +846,212 @@ describe("Case M — Provider error messaging", () => {
 
     expect(capturedPrompts[0]).toBe("my original SaaS pitch");
     expect(capturedPrompts[1]).toBe("my original SaaS pitch");
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Plan Mode — Cases N–R
+   Tests the /api/build/plan happy path, approve, cancel, modify/regenerate,
+   and failure-fallback.  apiFetch and parseJSON are already mocked globally;
+   these cases set per-test return values via mockResolvedValueOnce.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const VALID_PLAN: BuildPlan = {
+  name: "Test App",
+  description: "A test application for Plan Mode",
+  tech_stack: { frontend: "React", backend: "FastAPI", database: "PostgreSQL" },
+  pages: ["Dashboard", "Settings"],
+  database_tables: ["users", "items"],
+  api_routes: ["/api/items", "/api/users"],
+  agents: [],
+  workflows: [],
+  integrations: [],
+  estimated_files: 8,
+  complexity: "simple",
+};
+
+/** Reset the module-level apiFetch/parseJSON mocks before each Plan Mode test
+ *  so leftover mockResolvedValueOnce entries from a previous test cannot bleed
+ *  through.  vi.restoreAllMocks() only resets spies, not vi.fn() module mocks. */
+function resetPlanMocks() {
+  (apiFetch as Mock).mockReset();
+  (parseJSON as Mock).mockReset();
+}
+
+/* ── Case N ─────────────────────────────────────────────────────────────── */
+
+describe("Case N — Plan Mode: plan success shows BuildPlanPanel", () => {
+  beforeEach(resetPlanMocks);
+
+  it("shows BuildPlanPanel when /api/build/plan returns a valid plan", async () => {
+    (apiFetch as Mock).mockResolvedValueOnce({ ok: true });
+    (parseJSON as Mock).mockResolvedValueOnce({ plan: VALID_PLAN });
+
+    render(<AppBuilderPage />);
+    submitPrompt("Build a CRM");
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Approve Plan/i })).toBeInTheDocument(),
+    { timeout: 8000 });
+
+    // Plan name visible in the panel (appears in header + plan tree — use getAllByText)
+    expect(screen.getAllByText("Test App").length).toBeGreaterThan(0);
+    // streamBuild must NOT have been called — build waits for approval
+    expect(streamBuildSpy).not.toHaveBeenCalled();
+  });
+});
+
+/* ── Case O ─────────────────────────────────────────────────────────────── */
+
+describe("Case O — Plan Mode: Approve starts build with approvedPlan", () => {
+  beforeEach(resetPlanMocks);
+
+  it("passes the approved BuildPlan as the 4th argument to streamBuild", async () => {
+    (apiFetch as Mock).mockResolvedValueOnce({ ok: true });
+    (parseJSON as Mock).mockResolvedValueOnce({ plan: VALID_PLAN });
+    streamBuildSpy.mockReturnValue(makeEventStream([]));
+
+    render(<AppBuilderPage />);
+    submitPrompt("Build a CRM");
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Approve Plan/i })).toBeInTheDocument(),
+    { timeout: 8000 });
+
+    // Build has NOT started yet
+    expect(streamBuildSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Approve Plan/i }));
+
+    await waitFor(() => expect(streamBuildSpy).toHaveBeenCalled(), { timeout: 8000 });
+
+    const [_projectId, prompt, _signal, approvedPlan] = streamBuildSpy.mock.calls[0] as [
+      string, string, AbortSignal, BuildPlan | undefined
+    ];
+    expect(prompt).toBe("Build a CRM");
+    expect(approvedPlan).toEqual(VALID_PLAN);
+  });
+});
+
+/* ── Case P ─────────────────────────────────────────────────────────────── */
+
+describe("Case P — Plan Mode: Cancel returns to entry without starting a build", () => {
+  beforeEach(resetPlanMocks);
+
+  it("dismisses the plan panel and keeps build unstarted", async () => {
+    (apiFetch as Mock).mockResolvedValueOnce({ ok: true });
+    (parseJSON as Mock).mockResolvedValueOnce({ plan: VALID_PLAN });
+
+    render(<AppBuilderPage />);
+    submitPrompt("Build a CRM");
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Approve Plan/i })).toBeInTheDocument(),
+    { timeout: 8000 });
+
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/i }));
+
+    // Panel gone
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Approve Plan/i })).not.toBeInTheDocument(),
+    );
+
+    // Build never started
+    expect(streamBuildSpy).not.toHaveBeenCalled();
+
+    // Entry textarea is visible again
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+  });
+});
+
+/* ── Case Q ─────────────────────────────────────────────────────────────── */
+
+describe("Case Q — Plan Mode: Modify/Regenerate re-calls /api/build/plan", () => {
+  beforeEach(resetPlanMocks);
+
+  it("calls /api/build/plan again with new prompt on modify, does not start build", async () => {
+    (apiFetch as Mock)
+      .mockResolvedValueOnce({ ok: true })   // first plan call
+      .mockResolvedValueOnce({ ok: true });   // second plan call (after regenerate)
+    (parseJSON as Mock)
+      .mockResolvedValueOnce({ plan: VALID_PLAN })
+      .mockResolvedValueOnce({ plan: { ...VALID_PLAN, name: "Better App" } });
+
+    render(<AppBuilderPage />);
+    submitPrompt("Build a CRM");
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Approve Plan/i })).toBeInTheDocument(),
+    { timeout: 8000 });
+
+    // Enter editing mode
+    fireEvent.click(screen.getByRole("button", { name: /Modify Plan/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Regenerate Plan/i })).toBeInTheDocument(),
+    );
+
+    // Modify the prompt in the BuildPlanPanel's edit textarea
+    const editArea = screen.getByRole("textbox");
+    fireEvent.change(editArea, { target: { value: "Build a better CRM" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Regenerate Plan/i }));
+
+    // Second /api/build/plan call must happen
+    await waitFor(() => {
+      const planCalls = (apiFetch as Mock).mock.calls.filter(
+        (args: unknown[]) => args[0] === "/api/build/plan"
+      );
+      expect(planCalls.length).toBe(2);
+    }, { timeout: 8000 });
+
+    // Verify second call used the modified prompt
+    const secondCallBody = JSON.parse(
+      ((apiFetch as Mock).mock.calls[1] as [string, { body: string }])[1].body
+    ) as { prompt: string };
+    expect(secondCallBody.prompt).toBe("Build a better CRM");
+
+    // Build must NOT have started through either plan cycle
+    expect(streamBuildSpy).not.toHaveBeenCalled();
+  });
+});
+
+/* ── Case R ─────────────────────────────────────────────────────────────── */
+
+describe("Case R — Plan Mode: plan failure falls back to direct build", () => {
+  beforeEach(resetPlanMocks);
+
+  it("falls back to direct build (no approvedPlan) on non-OK plan response", async () => {
+    (apiFetch as Mock).mockResolvedValueOnce({ ok: false, status: 429 });
+    streamBuildSpy.mockReturnValue(makeEventStream([]));
+
+    render(<AppBuilderPage />);
+    submitPrompt("Build a CRM");
+
+    // Plan panel must NOT appear; build starts directly
+    await waitFor(() => expect(streamBuildSpy).toHaveBeenCalled(), { timeout: 8000 });
+    expect(screen.queryByRole("button", { name: /Approve Plan/i })).not.toBeInTheDocument();
+
+    // approvedPlan (4th arg) is absent when falling back
+    const [, , , approvedPlan] = streamBuildSpy.mock.calls[0] as [
+      string, string, AbortSignal, BuildPlan | undefined
+    ];
+    expect(approvedPlan).toBeUndefined();
+  });
+
+  it("falls back to direct build (no approvedPlan) when plan call throws", async () => {
+    (apiFetch as Mock).mockRejectedValueOnce(new Error("Network error"));
+    streamBuildSpy.mockReturnValue(makeEventStream([]));
+
+    render(<AppBuilderPage />);
+    submitPrompt("Build a CRM");
+
+    await waitFor(() => expect(streamBuildSpy).toHaveBeenCalled(), { timeout: 8000 });
+    expect(screen.queryByRole("button", { name: /Approve Plan/i })).not.toBeInTheDocument();
+
+    const [, , , approvedPlan] = streamBuildSpy.mock.calls[0] as [
+      string, string, AbortSignal, BuildPlan | undefined
+    ];
+    expect(approvedPlan).toBeUndefined();
   });
 });

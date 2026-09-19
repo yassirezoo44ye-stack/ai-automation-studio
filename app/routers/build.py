@@ -604,11 +604,13 @@ async def build_plan(req: PlanRequest, request: Request):
 
     ai_rate_limit(request, max_calls=20, window=60)
 
-    # Quota pre-check: verify the caller's org has remaining token budget
-    # before spending money on a provider call.  Previously this was None,
-    # allowing over-quota orgs to generate plans for free (P1 finding from
-    # Phase 2.5 audit — commit fixes audit finding, 2026-08-23).
-    org_id = await check_org_quota(request)
+    # Dev account skips quota (mirrors build_stream behaviour) so plan
+    # generation is never blocked by a depleted org budget during development.
+    dev_mode = _is_dev_account(request)
+    if not dev_mode:
+        org_id = await check_org_quota(request)
+    else:
+        org_id = None
 
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
