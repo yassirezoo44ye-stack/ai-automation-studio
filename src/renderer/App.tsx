@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OrgProvider }   from "./contexts/OrgContext";
 import { AppProvider }   from "./contexts/AppContext";
@@ -21,6 +21,15 @@ type AuthView = "landing" | "login" | "register";
 function AppInner() {
   const { user, loading, bootstrapError } = useAuth();
   const [authView, setAuthView] = useState<AuthView>("landing");
+
+  // The app uses state-based navigation (no React Router). A shared /feed/:id
+  // URL would otherwise render a blank page. Redirect to root so the app loads
+  // normally; deep-link support requires a proper router (Phase 2).
+  useEffect(() => {
+    if (window.location.pathname.startsWith("/feed/")) {
+      window.history.replaceState(null, "", "/");
+    }
+  }, []);
 
   if (loading) {
     return <LoadingSpinner fullPage label="Starting Flow…" />;

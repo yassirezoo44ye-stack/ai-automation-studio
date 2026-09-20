@@ -13,7 +13,7 @@ interface FeedActionPanelProps {
   state: FeedItemState;
   onLike: () => void;
   onSave: () => void;
-  onShare: () => void;
+  onShare: () => Promise<boolean>;
   onComment: () => void;
   onBuild: () => void;
 }
@@ -26,6 +26,8 @@ function ActionBtn({
   active,
   onClick,
   activeColor = "var(--accent)",
+  disabled,
+  title,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -33,6 +35,8 @@ function ActionBtn({
   active?: boolean;
   onClick: () => void;
   activeColor?: string;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
@@ -41,6 +45,8 @@ function ActionBtn({
       aria-label={label}
       aria-pressed={active}
       style={{ color: active ? activeColor : undefined }}
+      disabled={disabled}
+      title={title}
     >
       <span className="feed-action-btn__icon">{icon}</span>
       {count !== undefined && (
@@ -126,10 +132,12 @@ export function FeedActionPanel({ item, state, onLike, onSave, onShare, onCommen
   const { t } = useTranslation("feed");
   const [shareFlash, setShareFlash] = useState(false);
 
-  function handleShare() {
-    onShare();
-    setShareFlash(true);
-    setTimeout(() => setShareFlash(false), 1200);
+  async function handleShare() {
+    const copied = await onShare();
+    if (copied) {
+      setShareFlash(true);
+      setTimeout(() => setShareFlash(false), 1200);
+    }
   }
 
   return (
@@ -151,6 +159,8 @@ export function FeedActionPanel({ item, state, onLike, onSave, onShare, onCommen
         label={t("actions.comment")}
         count={item.comments}
         onClick={onComment}
+        disabled
+        title="Coming Soon"
       />
 
       <ActionBtn

@@ -25,12 +25,29 @@ export function FeedCard({ item, state, isActive, onLike, onSave }: FeedCardProp
     setPage(item.targetPage);
   }, [item.id, item.sourceId, item.sourceType, item.sourceMeta, item.targetPage, setPage, setFeedIntent]);
 
-  const handleShare = useCallback(() => {
-    try {
-      navigator.clipboard.writeText(`https://flow.app/feed/${item.id}`);
-    } catch {
-      /* Clipboard API unavailable (e.g. in non-secure context) — silently ignore */
+  const handleShare = useCallback(async (): Promise<boolean> => {
+    const url = `${window.location.origin}/feed/${item.id}`;
+
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(url);
+        return true;
+      } catch {
+        /* insecure context or permission denied — fall through */
+      }
     }
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ url });
+        return true;
+      } catch {
+        return false; // user cancelled
+      }
+    }
+
+    window.prompt("Copy this link:", url);
+    return false;
   }, [item.id]);
 
   const handleComment = useCallback(() => {
