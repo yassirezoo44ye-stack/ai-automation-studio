@@ -138,13 +138,33 @@ export const businessService = {
     req<void>("DELETE", `/plans/${id}`),
 
   streamStatus: (id: string, onEvent: (data: unknown) => void): () => void => {
-    const token = localStorage.getItem("auth_token") ?? "";
-    // EventSource doesn't support custom headers — pass token as query param
-    const es = new EventSource(`${API}/plans/${id}/stream?token=${encodeURIComponent(token)}`);
-    es.onmessage = (e) => {
-      try { onEvent(JSON.parse(e.data)); } catch { /* skip malformed */ }
+    // EventSource cannot send custom headers, so we use a short-lived opaque ticket:
+    //   1. POST /plans/{id}/sse-ticket  (normal auth via Authorization header)
+    //   2. EventSource /api/business/stream/{id}?ticket=<opaque>
+    // JWT is never placed in a URL query string.
+    let es: EventSource | null = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API}/plans/${id}/sse-ticket`, {
+          method: "POST",
+          headers: authHeaders(),
+        });
+        if (!res.ok || cancelled) return;
+        const { ticket } = await res.json() as { ticket: string };
+        if (cancelled) return;
+        es = new EventSource(`/api/business/stream/${id}?ticket=${encodeURIComponent(ticket)}`);
+        es.onmessage = (e) => {
+          try { onEvent(JSON.parse(e.data)); } catch { /* skip malformed */ }
+        };
+        es.onerror = () => es?.close();
+      } catch { /* network error — caller's onerror not triggered; stream simply doesn't start */ }
+    })();
+
+    return () => {
+      cancelled = true;
+      es?.close();
     };
-    es.onerror = () => es.close();
-    return () => es.close();
   },
 };

@@ -283,11 +283,117 @@ async def get_plan(plan_id: str, request: Request) -> dict:
     }
 
 
+@router.post("/plans/{plan_id}/sse-ticket")
+async def create_sse_ticket(plan_id: str, request: Request) -> dict:
+    """
+    Issue a short-lived, single-use SSE ticket for stream_plan_status_v2.
+
+    Requires standard JWT/sub-token authentication (Authorization header).
+    Validates that the authenticated user owns plan_id before issuing.
+    The returned ticket must be passed as ?ticket=<value> to
+    GET /api/business/stream/{plan_id}.  The ticket expires in 30 s and
+    is consumed on first use — it cannot be replayed or used on any other
+    endpoint.  JWT is never put in a URL; this keeps access tokens out of
+    server access logs.
+    """
+    user_id = await _resolve_user(request)
+    org_id  = await _resolve_org(user_id)
+    if not org_id:
+        raise HTTPException(status_code=403, detail="No organization")
+    await _assert_plan_owner(plan_id, user_id, org_id)
+
+    from app.routers.ws_ticket import issue_ticket
+    try:
+        ticket = issue_ticket(user_id)
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="service busy — retry")
+    return {"ticket": ticket, "expires_in": 30}
+
+
+@router.get("/stream/{plan_id}")
+async def stream_plan_status_v2(plan_id: str, request: Request) -> StreamingResponse:
+    """
+    SSE stream of plan generation progress — ticket-authenticated.
+
+    The client must present a ticket from POST /plans/{plan_id}/sse-ticket
+    via ?ticket=<opaque>.  JWT is NOT accepted as a query parameter.
+
+    The ticket is single-use (consumed on connection) and expires in 30 s.
+    After consuming the ticket, ownership is re-verified so a ticket alone
+    cannot access a different user's plan.
+    """
+    import asyncio
+
+    ticket = request.query_params.get("ticket", "")
+    if not ticket:
+        raise HTTPException(status_code=401, detail="Missing ticket")
+
+    from app.routers.ws_ticket import consume_ticket
+    user_id = consume_ticket(ticket)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+
+    org_id = await _resolve_org(user_id)
+    if not org_id:
+        raise HTTPException(status_code=403, detail="No organization")
+
+    await _assert_plan_owner(plan_id, user_id, org_id)
+
+    async def _generator():
+        pool = get_pool()
+        seen_statuses: dict[str, str] = {}
+        terminal = {"COMPLETED", "FAILED", "PAUSED"}
+
+        for _ in range(120):  # max 2 min polling
+            async with pool.acquire() as conn:
+                plan_row = await conn.fetchrow(
+                    "SELECT status, readiness_score FROM bp_plans WHERE id=$1", plan_id,
+                )
+                sections  = await conn.fetch(
+                    "SELECT section_key, status, tokens_used, error_msg FROM bp_sections WHERE plan_id=$1",
+                    plan_id,
+                )
+
+            payload: dict[str, Any] = {}
+            for s in sections:
+                key = s["section_key"]
+                if seen_statuses.get(key) != s["status"]:
+                    seen_statuses[key] = s["status"]
+                    payload[key] = {
+                        "status":      s["status"],
+                        "tokens_used": s["tokens_used"],
+                        "error_msg":   s["error_msg"],
+                    }
+
+            if payload or plan_row["status"] in terminal:
+                data = json.dumps({
+                    "plan_status":     plan_row["status"],
+                    "readiness_score": plan_row["readiness_score"],
+                    "sections":        payload,
+                })
+                yield f"data: {data}\n\n"
+
+            if plan_row["status"] in terminal:
+                yield "data: {\"done\": true}\n\n"
+                break
+
+            await asyncio.sleep(1)
+
+    return StreamingResponse(
+        _generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/plans/{plan_id}/stream")
 async def stream_plan_status(plan_id: str, request: Request) -> StreamingResponse:
     """
-    SSE stream of plan generation progress.
-    Emits section status updates and the final score.
+    SSE stream — header-authenticated (for API clients / server-side use).
+
+    Browser EventSource cannot send custom headers; use the ticket flow:
+      1. POST /plans/{plan_id}/sse-ticket  (with Authorization header)
+      2. EventSource GET /stream/{plan_id}?ticket=<opaque>
     """
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
@@ -325,9 +431,9 @@ async def stream_plan_status(plan_id: str, request: Request) -> StreamingRespons
 
             if payload or plan_row["status"] in terminal:
                 data = json.dumps({
-                    "plan_status":    plan_row["status"],
+                    "plan_status":     plan_row["status"],
                     "readiness_score": plan_row["readiness_score"],
-                    "sections":       payload,
+                    "sections":        payload,
                 })
                 yield f"data: {data}\n\n"
 
