@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
@@ -249,8 +250,9 @@ async def list_plans(request: Request) -> list[dict]:
 
 
 @router.get("/plans/{plan_id}")
-async def get_plan(plan_id: str, request: Request) -> dict:
+async def get_plan(plan_id: UUID, request: Request) -> dict:
     """Full plan detail: metadata + sections + facts + competitors + score."""
+    plan_id = str(plan_id)
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
     if not org_id:
@@ -284,7 +286,7 @@ async def get_plan(plan_id: str, request: Request) -> dict:
 
 
 @router.post("/plans/{plan_id}/sse-ticket")
-async def create_sse_ticket(plan_id: str, request: Request) -> dict:
+async def create_sse_ticket(plan_id: UUID, request: Request) -> dict:
     """
     Issue a short-lived, single-use SSE ticket for stream_plan_status_v2.
 
@@ -296,6 +298,7 @@ async def create_sse_ticket(plan_id: str, request: Request) -> dict:
     endpoint.  JWT is never put in a URL; this keeps access tokens out of
     server access logs.
     """
+    plan_id = str(plan_id)
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
     if not org_id:
@@ -311,7 +314,7 @@ async def create_sse_ticket(plan_id: str, request: Request) -> dict:
 
 
 @router.get("/stream/{plan_id}")
-async def stream_plan_status_v2(plan_id: str, request: Request) -> StreamingResponse:
+async def stream_plan_status_v2(plan_id: UUID, request: Request) -> StreamingResponse:
     """
     SSE stream of plan generation progress — ticket-authenticated.
 
@@ -322,6 +325,7 @@ async def stream_plan_status_v2(plan_id: str, request: Request) -> StreamingResp
     After consuming the ticket, ownership is re-verified so a ticket alone
     cannot access a different user's plan.
     """
+    plan_id = str(plan_id)
     import asyncio
 
     ticket = request.query_params.get("ticket", "")
@@ -387,7 +391,7 @@ async def stream_plan_status_v2(plan_id: str, request: Request) -> StreamingResp
 
 
 @router.get("/plans/{plan_id}/stream")
-async def stream_plan_status(plan_id: str, request: Request) -> StreamingResponse:
+async def stream_plan_status(plan_id: UUID, request: Request) -> StreamingResponse:
     """
     SSE stream — header-authenticated (for API clients / server-side use).
 
@@ -395,6 +399,7 @@ async def stream_plan_status(plan_id: str, request: Request) -> StreamingRespons
       1. POST /plans/{plan_id}/sse-ticket  (with Authorization header)
       2. EventSource GET /stream/{plan_id}?ticket=<opaque>
     """
+    plan_id = str(plan_id)
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
     if not org_id:
@@ -452,12 +457,13 @@ async def stream_plan_status(plan_id: str, request: Request) -> StreamingRespons
 
 @router.post("/plans/{plan_id}/retry")
 async def retry_plan_sections(
-    plan_id: str,
+    plan_id: UUID,
     body: RetryRequest,
     request: Request,
     background: BackgroundTasks,
 ) -> dict:
     """Fix Loop: re-run only the specified failing sections."""
+    plan_id = str(plan_id)
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
     if not org_id:
@@ -477,8 +483,9 @@ async def retry_plan_sections(
 
 
 @router.post("/plans/{plan_id}/cancel")
-async def cancel_plan(plan_id: str, request: Request) -> dict:
+async def cancel_plan(plan_id: UUID, request: Request) -> dict:
     """Pause/cancel a running plan generation."""
+    plan_id = str(plan_id)
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
     if not org_id:
@@ -496,8 +503,9 @@ async def cancel_plan(plan_id: str, request: Request) -> dict:
 
 
 @router.post("/plans/{plan_id}/score")
-async def recompute_score(plan_id: str, request: Request) -> dict:
+async def recompute_score(plan_id: UUID, request: Request) -> dict:
     """Recompute the Business Readiness Score on demand."""
+    plan_id = str(plan_id)
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
     if not org_id:
@@ -512,11 +520,12 @@ async def recompute_score(plan_id: str, request: Request) -> dict:
 
 @router.post("/plans/{plan_id}/export")
 async def export_plan_endpoint(
-    plan_id: str,
+    plan_id: UUID,
     body: ExportRequest,
     request: Request,
 ) -> Response:
     """Export the business plan as Markdown (PDF/DOCX: coming soon)."""
+    plan_id = str(plan_id)
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
     if not org_id:
@@ -540,8 +549,9 @@ async def export_plan_endpoint(
 
 
 @router.delete("/plans/{plan_id}", status_code=204)
-async def delete_plan(plan_id: str, request: Request) -> None:
+async def delete_plan(plan_id: UUID, request: Request) -> None:
     """Delete a business plan and all related data (cascades via FK)."""
+    plan_id = str(plan_id)
     user_id = await _resolve_user(request)
     org_id  = await _resolve_org(user_id)
     if not org_id:

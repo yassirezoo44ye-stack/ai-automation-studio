@@ -26,6 +26,9 @@ from fastapi.testclient import TestClient
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+_PLAN_ID = "00000000-0000-0000-0000-000000000001"
+
+
 def _make_app():
     """Minimal FastAPI app with only the business router mounted."""
     from fastapi import FastAPI
@@ -99,7 +102,7 @@ class TestSseTicketEndpoint:
         with patch("app.routers.business_plans._resolve_user",
                    side_effect=__import__("fastapi").HTTPException(status_code=401, detail="Unauthorized")):
             with TestClient(app, raise_server_exceptions=False) as client:
-                r = client.post(f"{self.BASE}/plans/plan-1/sse-ticket")
+                r = client.post(f"{self.BASE}/plans/{_PLAN_ID}/sse-ticket")
         assert r.status_code == 401
 
     def test_valid_auth_wrong_plan_returns_404(self):
@@ -111,7 +114,7 @@ class TestSseTicketEndpoint:
                   side_effect=__import__("fastapi").HTTPException(status_code=404, detail="Plan not found")),
         ):
             with TestClient(app) as client:
-                r = client.post(f"{self.BASE}/plans/wrong-plan/sse-ticket")
+                r = client.post(f"{self.BASE}/plans/{_PLAN_ID}/sse-ticket")
         assert r.status_code == 404
 
     def test_valid_auth_correct_plan_returns_ticket(self):
@@ -122,7 +125,7 @@ class TestSseTicketEndpoint:
             patch("app.routers.business_plans._assert_plan_owner", return_value={}),
         ):
             with TestClient(app) as client:
-                r = client.post(f"{self.BASE}/plans/plan-1/sse-ticket")
+                r = client.post(f"{self.BASE}/plans/{_PLAN_ID}/sse-ticket")
         assert r.status_code == 200
         body = r.json()
         assert "ticket" in body
@@ -137,7 +140,7 @@ class TestSseTicketEndpoint:
                   side_effect=__import__("fastapi").HTTPException(status_code=401, detail="Unauthorized")),
         ):
             with TestClient(app, raise_server_exceptions=False) as client:
-                r = client.post(f"{self.BASE}/plans/plan-1/sse-ticket?token=fake-jwt")
+                r = client.post(f"{self.BASE}/plans/{_PLAN_ID}/sse-ticket?token=fake-jwt")
         assert r.status_code == 401
 
 
@@ -149,14 +152,14 @@ class TestSseStreamEndpoint:
     def test_missing_ticket_returns_401(self):
         app = _make_app()
         with TestClient(app, raise_server_exceptions=False) as client:
-            r = client.get(f"{self.BASE}/stream/plan-1")
+            r = client.get(f"{self.BASE}/stream/{_PLAN_ID}")
         assert r.status_code == 401
         assert "ticket" in r.json().get("detail", "").lower()
 
     def test_invalid_ticket_returns_401(self):
         app = _make_app()
         with TestClient(app, raise_server_exceptions=False) as client:
-            r = client.get(f"{self.BASE}/stream/plan-1?ticket=invalid-ticket-value")
+            r = client.get(f"{self.BASE}/stream/{_PLAN_ID}?ticket=invalid-ticket-value")
         assert r.status_code == 401
 
     def test_expired_ticket_returns_401(self):
@@ -165,7 +168,7 @@ class TestSseStreamEndpoint:
         _store[ticket]["exp"] = time.monotonic() - 1
         app = _make_app()
         with TestClient(app, raise_server_exceptions=False) as client:
-            r = client.get(f"{self.BASE}/stream/plan-1?ticket={ticket}")
+            r = client.get(f"{self.BASE}/stream/{_PLAN_ID}?ticket={ticket}")
         assert r.status_code == 401
 
     def test_reused_ticket_returns_401(self):
@@ -178,8 +181,8 @@ class TestSseStreamEndpoint:
                   side_effect=__import__("fastapi").HTTPException(status_code=404, detail="Plan not found")),
         ):
             with TestClient(app, raise_server_exceptions=False) as client:
-                client.get(f"{self.BASE}/stream/plan-1?ticket={ticket}")  # first use — ticket consumed
-                r2 = client.get(f"{self.BASE}/stream/plan-1?ticket={ticket}")  # second use — rejected
+                client.get(f"{self.BASE}/stream/{_PLAN_ID}?ticket={ticket}")  # first use — ticket consumed
+                r2 = client.get(f"{self.BASE}/stream/{_PLAN_ID}?ticket={ticket}")  # second use — rejected
         assert r2.status_code == 401
 
     def test_valid_ticket_unauthorized_plan_returns_404(self):
@@ -192,7 +195,7 @@ class TestSseStreamEndpoint:
                   side_effect=__import__("fastapi").HTTPException(status_code=404, detail="Plan not found")),
         ):
             with TestClient(app, raise_server_exceptions=False) as client:
-                r = client.get(f"{self.BASE}/stream/other-users-plan?ticket={ticket}")
+                r = client.get(f"{self.BASE}/stream/{_PLAN_ID}?ticket={ticket}")
         assert r.status_code == 404
 
     def test_valid_ticket_owned_plan_returns_200_stream(self):
@@ -207,7 +210,7 @@ class TestSseStreamEndpoint:
             patch("app.routers.business_plans.get_pool", return_value=pool),
         ):
             with TestClient(app) as client:
-                r = client.get(f"{self.BASE}/stream/plan-ok?ticket={ticket}")
+                r = client.get(f"{self.BASE}/stream/{_PLAN_ID}?ticket={ticket}")
         assert r.status_code == 200
         assert "text/event-stream" in r.headers.get("content-type", "")
 
@@ -215,7 +218,7 @@ class TestSseStreamEndpoint:
         """?token=<jwt> must not be accepted — only ?ticket= is valid."""
         app = _make_app()
         with TestClient(app, raise_server_exceptions=False) as client:
-            r = client.get(f"{self.BASE}/stream/plan-1?token=some-jwt-value")
+            r = client.get(f"{self.BASE}/stream/{_PLAN_ID}?token=some-jwt-value")
         assert r.status_code == 401
         assert "ticket" in r.json().get("detail", "").lower()
 
@@ -229,7 +232,7 @@ class TestSseStreamEndpoint:
                   side_effect=__import__("fastapi").HTTPException(status_code=404, detail="Plan not found")),
         ):
             with TestClient(app, raise_server_exceptions=False) as client:
-                r = client.get(f"{self.BASE}/stream/org-a-plan?ticket={ticket}")
+                r = client.get(f"{self.BASE}/stream/{_PLAN_ID}?ticket={ticket}")
         assert r.status_code == 404
 
 
@@ -252,7 +255,7 @@ class TestExistingEndpointsUnaffected:
             patch("app.routers.business_plans.get_pool", return_value=pool),
         ):
             with TestClient(app) as client:
-                r = client.get(f"{self.BASE}/plans/plan-1/stream",
+                r = client.get(f"{self.BASE}/plans/{_PLAN_ID}/stream",
                                headers={"Authorization": "Bearer valid-jwt"})
         assert r.status_code == 200
         assert "text/event-stream" in r.headers.get("content-type", "")

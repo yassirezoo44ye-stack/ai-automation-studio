@@ -805,3 +805,104 @@ class TestStartBusinessPlanFailedDetection:
             await start_business_plan(str(uuid.uuid4()), str(uuid.uuid4()), "u", "idea", None, "IDEA")
 
         assert called_with == [], "acquire_scoped must not be called for COMPLETED run"
+
+
+# ── UUID validation regression tests ─────────────────────────────────────────
+
+class TestPlanIdValidation:
+    """Malformed plan_id must be rejected at the routing layer (422), never touching the DB."""
+
+    BASE = "/api/business"
+
+    def _make_app(self):
+        from fastapi import FastAPI
+        from app.routers.business_plans import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def test_malformed_plan_id_get_plan_returns_422(self):
+        from fastapi.testclient import TestClient
+        with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+            r = client.get(f"{self.BASE}/plans/nonexistent-plan",
+                           headers={"Authorization": "Bearer fake"})
+        assert r.status_code == 422
+
+    def test_malformed_plan_id_sse_ticket_returns_422(self):
+        from fastapi.testclient import TestClient
+        with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+            r = client.post(f"{self.BASE}/plans/not-a-uuid/sse-ticket",
+                            headers={"Authorization": "Bearer fake"})
+        assert r.status_code == 422
+
+    def test_malformed_plan_id_stream_v2_returns_422(self):
+        from fastapi.testclient import TestClient
+        with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+            r = client.get(f"{self.BASE}/stream/not-a-uuid?ticket=abc")
+        assert r.status_code == 422
+
+    def test_malformed_plan_id_cancel_returns_422(self):
+        from fastapi.testclient import TestClient
+        with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+            r = client.post(f"{self.BASE}/plans/not-a-uuid/cancel",
+                            headers={"Authorization": "Bearer fake"})
+        assert r.status_code == 422
+
+    def test_malformed_plan_id_delete_returns_422(self):
+        from fastapi.testclient import TestClient
+        with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+            r = client.delete(f"{self.BASE}/plans/not-a-uuid",
+                              headers={"Authorization": "Bearer fake"})
+        assert r.status_code == 422
+
+    def test_malformed_plan_id_no_db_call(self):
+        """FastAPI rejects malformed UUID before handler code runs — no auth check needed."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from fastapi.testclient import TestClient
+
+        db_calls: list = []
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(
+            side_effect=lambda *a, **kw: db_calls.append(a) or None
+        )
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with (
+            patch("app.routers.business_plans._resolve_user", return_value="user-1"),
+            patch("app.routers.business_plans._resolve_org", return_value="org-1"),
+            patch("app.routers.business_plans.acquire_scoped", mock_scoped),
+        ):
+            with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+                r = client.get(f"{self.BASE}/plans/not-a-uuid",
+                               headers={"Authorization": "Bearer valid"})
+        assert r.status_code == 422
+        assert len(db_calls) == 0
+
+    def test_valid_uuid_nonexistent_plan_returns_404(self):
+        """Valid UUID format + mocked DB returning None → 404 (not 500)."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from fastapi.testclient import TestClient
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with (
+            patch("app.routers.business_plans._resolve_user", return_value="user-1"),
+            patch("app.routers.business_plans._resolve_org", return_value="org-1"),
+            patch("app.routers.business_plans.acquire_scoped", mock_scoped),
+        ):
+            with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+                r = client.get(
+                    f"{self.BASE}/plans/00000000-0000-0000-0000-000000000001",
+                    headers={"Authorization": "Bearer valid"},
+                )
+        assert r.status_code == 404
