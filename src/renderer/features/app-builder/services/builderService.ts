@@ -29,6 +29,29 @@ export type BuildEvent =
   | BuildEventError
   | BuildEventDevMode;
 
+/* ── FastAPI detail normaliser ─────────────────────────────────── */
+/**
+ * Normalise a FastAPI `detail` payload to a human-readable string.
+ *
+ * FastAPI validation errors send `detail` as an array of objects with a
+ * `msg` field. A plain string is used as-is. Anything else falls back to
+ * `fallback` so the caller never surfaces `[object Object]`.
+ */
+export function normalizeApiDetail(detail: unknown, fallback: string): string {
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((e) =>
+        typeof e === "object" && e !== null && "msg" in e
+          ? String((e as { msg: unknown }).msg)
+          : null,
+      )
+      .filter((m): m is string => m !== null && m.trim().length > 0);
+    return msgs.length > 0 ? msgs.join("; ") : fallback;
+  }
+  if (typeof detail === "string" && detail.trim().length > 0) return detail;
+  return fallback;
+}
+
 /* ── Project creation ───────────────────────────────────────────── */
 export async function createProject(
   name: string, description: string,
@@ -102,8 +125,8 @@ export async function* streamBuild(
 
     let detail = `HTTP ${res.status}`;
     try {
-      const j = JSON.parse(body);
-      detail = j.detail || j.message || detail;
+      const j = JSON.parse(body) as { detail?: unknown; message?: unknown };
+      detail = normalizeApiDetail(j.detail ?? j.message, detail);
     } catch { /* ignore */ }
     throw new APIError(detail, {
       url: "/api/build/stream",
