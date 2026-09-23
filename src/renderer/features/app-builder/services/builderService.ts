@@ -152,5 +152,9 @@ export function promptToProjectName(prompt: string): string {
     .split(/[.!?\n]/)[0]
     .slice(0, 45)
     .trim();
-  return clean.charAt(0).toUpperCase() + clean.slice(1) || "New App";
+  // ProjectCreate.name requires >= 2 chars after strip; guard single-char
+  // results (e.g. "1. Build…" → "1", "<?xml…" → "<") that the || "" fallback
+  // wouldn't catch because a one-character string is truthy.
+  const candidate = clean.charAt(0).toUpperCase() + clean.slice(1);
+  return candidate.length >= 2 ? candidate : "New App";
 }
