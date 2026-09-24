@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "./AuthContext";
-import { apiJSON, API, authH } from "../shared/utils/api";
+import { apiJSON, apiFetch, API, authH } from "../shared/utils/api";
 import {
   NotificationContext,
   type Notification, type NotificationCategory, type NotificationFilters,
@@ -19,13 +19,24 @@ const PAGE_SIZE = 30;
 const MAX_BACKOFF_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
-function wsUrl(token: string): string {
+function wsUrl(ticket: string): string {
   const base = API || window.location.origin;
   const url = new URL(base.startsWith("http") ? base : window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws/notifications";
-  url.search = `?token=${encodeURIComponent(token)}`;
+  url.search = `?ticket=${encodeURIComponent(ticket)}`;
   return url.toString();
+}
+
+async function fetchWsTicket(): Promise<string | null> {
+  try {
+    const res = await apiFetch("/api/ws/ticket", { method: "POST" });
+    if (!res.ok) return null;
+    const data = await res.json() as { ticket?: string };
+    return data.ticket ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
@@ -136,10 +147,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
-    function connect() {
+    async function connect() {
       if (cancelled) return;
       setConnectionStatus(prev => (prev === "live" ? prev : "connecting"));
-      const ws = new WebSocket(wsUrl(accessToken as string));
+
+      const ticket = await fetchWsTicket();
+
+      if (cancelled) return;
+
+      if (!ticket) {
+        // Ticket acquisition failed — backoff and retry; no JWT fallback.
+        setConnectionStatus("reconnecting");
+        const attempt = ++reconnectAttemptRef.current;
+        const delay = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
+        reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
+        return;
+      }
+
+      const ws = new WebSocket(wsUrl(ticket));
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -182,13 +207,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setConnectionStatus("reconnecting");
         const attempt = ++reconnectAttemptRef.current;
         const delay = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
-        reconnectTimerRef.current = setTimeout(connect, delay);
+        reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
       };
 
       ws.onerror = () => { ws.close(); };
     }
 
-    connect();
+    void connect();
     return () => {
       cancelled = true;
       if (heartbeatTimer) clearInterval(heartbeatTimer);
