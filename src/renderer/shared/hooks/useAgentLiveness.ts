@@ -15,14 +15,12 @@ import { apiFetch, API } from "../utils/api";
 
 const MAX_BACKOFF_MS = 30_000;
 
-function wsUrl(auth: string, isTicket: boolean): string {
+function wsUrl(ticket: string): string {
   const base = API || window.location.origin;
   const url = new URL(base.startsWith("http") ? base : window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws/system";
-  url.search = isTicket
-    ? `?ticket=${encodeURIComponent(auth)}`
-    : `?token=${encodeURIComponent(auth)}`;
+  url.search = `?ticket=${encodeURIComponent(ticket)}`;
   return url.toString();
 }
 
@@ -55,8 +53,14 @@ export function useAgentLiveness() {
     async function connect() {
       if (cancelled) return;
       const ticket = await fetchWsTicket();
-      const auth   = ticket ?? (accessToken as string);
-      const ws = new WebSocket(wsUrl(auth, ticket !== null));
+      if (cancelled) return;
+      if (!ticket) {
+        const attempt = ++reconnectAttemptRef.current;
+        const delay = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
+        reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
+        return;
+      }
+      const ws = new WebSocket(wsUrl(ticket));
       wsRef.current = ws;
 
       ws.onopen = () => { reconnectAttemptRef.current = 0; };

@@ -13,8 +13,8 @@
  *   const ticket = await fetchTicket();
  *   const ws = new WebSocket(`${baseUrl}?ticket=${ticket}`);
  *
- * If ticket fetch fails (network down, 401) the caller should fall back
- * to the legacy ?token= path or abort. The returned ticket is single-use
+ * If ticket fetch fails (network down, 401) the caller should abort.
+ * The returned ticket is single-use
  * and expires in 30 s — call fetchTicket() immediately before each new
  * WS connection attempt (including reconnects).
  */

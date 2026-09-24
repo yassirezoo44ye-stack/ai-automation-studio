@@ -29,19 +29,16 @@ export type ChatConnectionStatus = "connecting" | "live" | "reconnecting" | "off
 
 const MAX_BACKOFF_MS = 30_000;
 
-function wsUrl(roomKey: string, auth: string, isTicket: boolean): string {
+function wsUrl(roomKey: string, ticket: string): string {
   const base = API || window.location.origin;
   const url = new URL(base.startsWith("http") ? base : window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `/ws/chat/${roomKey}`;
-  // Prefer ticket (opaque, not logged) over token (JWT, logged by proxies).
-  url.search = isTicket
-    ? `?ticket=${encodeURIComponent(auth)}`
-    : `?token=${encodeURIComponent(auth)}`;
+  url.search = `?ticket=${encodeURIComponent(ticket)}`;
   return url.toString();
 }
 
-async function fetchWsTicket(token: string): Promise<string | null> {
+async function fetchWsTicket(): Promise<string | null> {
   try {
     const res = await apiFetch("/api/ws/ticket", { method: "POST" });
     if (!res.ok) return null;
@@ -50,8 +47,6 @@ async function fetchWsTicket(token: string): Promise<string | null> {
   } catch {
     return null;
   }
-  // token param kept for future scope-binding; currently unused in this fn.
-  void token;
 }
 
 export function useTeamChat(organizationId: string | null, teamId: string | null) {
@@ -100,10 +95,16 @@ export function useTeamChat(organizationId: string | null, teamId: string | null
     async function connect() {
       if (cancelled) return;
       setConnectionStatus(prev => (prev === "live" ? prev : "connecting"));
-      // Fetch a single-use ticket to avoid JWT in WS upgrade URL (P1 security).
-      const ticket = await fetchWsTicket(accessToken as string);
-      const auth   = ticket ?? (accessToken as string);
-      const ws = new WebSocket(wsUrl(roomKey, auth, ticket !== null));
+      const ticket = await fetchWsTicket();
+      if (cancelled) return;
+      if (!ticket) {
+        setConnectionStatus("reconnecting");
+        const attempt = ++reconnectAttemptRef.current;
+        const delay = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
+        reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
+        return;
+      }
+      const ws = new WebSocket(wsUrl(roomKey, ticket));
       wsRef.current = ws;
 
       ws.onopen = () => {
