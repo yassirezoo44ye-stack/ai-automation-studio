@@ -66,6 +66,20 @@ CREATE INDEX IF NOT EXISTS ix_flow_creations_source
 CREATE UNIQUE INDEX IF NOT EXISTS uq_flow_creations_source
     ON flow_creations(organization_id, source_type, source_id)
     WHERE source_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS flow_creation_interactions (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    creation_id     UUID        NOT NULL REFERENCES flow_creations(id) ON DELETE CASCADE,
+    user_id         UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    organization_id UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    type            VARCHAR(10) NOT NULL CHECK (type IN ('like', 'save')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (creation_id, user_id, type)
+);
+CREATE INDEX IF NOT EXISTS ix_fci_creation_type
+    ON flow_creation_interactions(creation_id, type);
+CREATE INDEX IF NOT EXISTS ix_fci_user_type
+    ON flow_creation_interactions(user_id, type);
 """
 
 
@@ -100,6 +114,14 @@ def _require_auth(request: Request) -> None:
     sub_token, bearer = extract_auth_credentials(request)
     if not ((sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer))):
         raise HTTPException(status_code=401, detail="Authentication required")
+
+
+def _require_user_id(request: Request) -> str:
+    """Extract user_id from JWT or raise 401."""
+    user_id = _get_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user_id
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
@@ -153,6 +175,7 @@ async def public_discover_feed(
     Public creation feed — no auth required.
     Returns only visibility='public' rows.
     Optionally filter by ?type=APP|AGENT|WORKFLOW|AUTOMATION|TEMPLATE|DEVICE_WORKFLOW
+    Includes user_liked/user_saved when a valid JWT is present.
     """
     limit = min(limit, 100)
     pool = get_pool()
@@ -171,7 +194,32 @@ async def public_discover_feed(
                 "ORDER BY created_at DESC LIMIT $1 OFFSET $2",
                 limit, offset,
             )
-    return {"items": [_row_to_dict(r) for r in rows], "total": len(rows)}
+        liked_ids: set[str] = set()
+        saved_ids: set[str] = set()
+        user_id = _get_user_id(request)
+        if user_id and rows:
+            try:
+                import uuid as _uuid
+                creation_ids = [r["id"] for r in rows]
+                interactions = await conn.fetch(
+                    "SELECT creation_id, type FROM flow_creation_interactions "
+                    "WHERE user_id = $1 AND creation_id = ANY($2::uuid[])",
+                    _uuid.UUID(user_id), creation_ids,
+                )
+                for i in interactions:
+                    if i["type"] == "like":
+                        liked_ids.add(str(i["creation_id"]))
+                    else:
+                        saved_ids.add(str(i["creation_id"]))
+            except Exception:
+                pass
+    items_out = []
+    for r in rows:
+        d = _row_to_dict(r)
+        d["user_liked"] = d["id"] in liked_ids
+        d["user_saved"] = d["id"] in saved_ids
+        items_out.append(d)
+    return {"items": items_out, "total": len(items_out)}
 
 
 # ── My org's creations ─────────────────────────────────────────────────────────
@@ -460,3 +508,63 @@ async def clone_creation(request: Request, creation_id: str):
             d.get("thumbnail_url"), d.get("tags") or [],
         )
     return _row_to_dict(new_row)
+
+
+# ── Interactions (like / save) ─────────────────────────────────────────────────
+
+_TOGGLE_SQL = """
+WITH toggled AS (
+    DELETE FROM flow_creation_interactions
+    WHERE creation_id = $1 AND user_id = $2 AND type = $4
+    RETURNING id
+),
+inserted AS (
+    INSERT INTO flow_creation_interactions (creation_id, user_id, organization_id, type)
+    SELECT $1, $2, $3, $4
+    WHERE NOT EXISTS (SELECT 1 FROM toggled)
+    ON CONFLICT (creation_id, user_id, type) DO NOTHING
+    RETURNING id
+)
+SELECT
+    EXISTS (SELECT 1 FROM inserted) AS active,
+    (SELECT COUNT(*) FROM flow_creation_interactions
+     WHERE creation_id = $1 AND type = $4) AS total_count
+"""
+
+
+async def _toggle_interaction(
+    creation_id: str, request: Request, interaction_type: str
+) -> dict:
+    _require_auth(request)
+    user_id = _require_user_id(request)
+    org_id = _get_org_id(request)
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT organization_id, visibility FROM flow_creations WHERE id=$1",
+            creation_id,
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="Creation not found")
+        if row["visibility"] != "public" and str(row["organization_id"]) != org_id:
+            raise HTTPException(status_code=404, detail="Creation not found")
+        result = await conn.fetchrow(
+            _TOGGLE_SQL,
+            uuid.UUID(creation_id), uuid.UUID(user_id), uuid.UUID(org_id),
+            interaction_type,
+        )
+    return result
+
+
+@router.post("/creations/{creation_id}/like")
+async def like_creation(creation_id: str, request: Request):
+    """Toggle like on a creation. Auth required. Returns {liked, count}."""
+    result = await _toggle_interaction(creation_id, request, "like")
+    return {"liked": result["active"], "count": int(result["total_count"])}
+
+
+@router.post("/creations/{creation_id}/save")
+async def save_creation(creation_id: str, request: Request):
+    """Toggle save on a creation. Auth required. Returns {saved, count}."""
+    result = await _toggle_interaction(creation_id, request, "save")
+    return {"saved": result["active"], "count": int(result["total_count"])}

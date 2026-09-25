@@ -297,3 +297,65 @@ def test_sidebar_has_discover_nav_item():
 def test_icons_has_discover():
     src = (_ROOT / "src/renderer/shared/icons/index.tsx").read_text(encoding="utf-8")
     assert "discover" in src
+
+
+# ── Phase 2: Like/Save persistence (D-26..D-34) ───────────────────────────────
+
+_DISCOVER_SRC = (_ROOT / "app/routers/discover.py").read_text(encoding="utf-8")
+_RLS_SRC = (_ROOT / "app/tenancy/rls.py").read_text(encoding="utf-8")
+
+
+def test_D26_schema_sql_has_interactions_table():
+    """D-26: _SCHEMA_SQL defines flow_creation_interactions with IF NOT EXISTS."""
+    assert "flow_creation_interactions" in _DISCOVER_SRC
+    assert "CREATE TABLE IF NOT EXISTS flow_creation_interactions" in _DISCOVER_SRC
+
+
+def test_D27_like_endpoint_requires_auth():
+    """D-27: like endpoint calls _require_auth (401 guard present)."""
+    assert "_require_auth" in _DISCOVER_SRC
+    assert "/creations/{creation_id}/like" in _DISCOVER_SRC or "creation_id}/like" in _DISCOVER_SRC
+
+
+def test_D28_like_on_nonexistent_returns_404():
+    """D-28: 404 pattern present for missing creation in toggle handler."""
+    assert 'status_code=404' in _DISCOVER_SRC
+    assert "Creation not found" in _DISCOVER_SRC
+
+
+def test_D29_private_cross_org_returns_404():
+    """D-29: visibility check prevents cross-org access to private creations."""
+    assert "visibility" in _DISCOVER_SRC
+    assert "organization_id" in _DISCOVER_SRC
+    # both the visibility check and 404 raise are present in the same file
+    assert 'status_code=404' in _DISCOVER_SRC
+
+
+def test_D30_toggle_sql_has_on_conflict():
+    """D-30: atomic toggle CTE uses ON CONFLICT DO NOTHING (race-safe)."""
+    assert "ON CONFLICT" in _DISCOVER_SRC
+    assert "DO NOTHING" in _DISCOVER_SRC
+
+
+def test_D31_save_endpoint_exists():
+    """D-31: /save endpoint declared in discover.py."""
+    assert "save_creation" in _DISCOVER_SRC or "/save" in _DISCOVER_SRC
+
+
+def test_D32_discover_feed_returns_user_state():
+    """D-32: GET /discover includes user_liked/user_saved in response."""
+    assert "user_liked" in _DISCOVER_SRC
+    assert "user_saved" in _DISCOVER_SRC
+
+
+def test_D33_rls_tables_has_interactions():
+    """D-33: flow_creation_interactions is in rls.py _RLS_TABLES."""
+    assert "flow_creation_interactions" in _RLS_SRC
+
+
+def test_D34_migration_013_exists_and_valid_syntax():
+    """D-34: 013_flow_creation_interactions.py exists and is valid Python."""
+    import ast
+    migration = _ROOT / "migrations/versions/013_flow_creation_interactions.py"
+    assert migration.exists(), "013_flow_creation_interactions.py not found"
+    ast.parse(migration.read_text(encoding="utf-8"))

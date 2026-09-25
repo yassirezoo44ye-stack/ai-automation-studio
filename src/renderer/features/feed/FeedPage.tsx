@@ -4,7 +4,7 @@ import { FeedTopBar } from "./components/FeedTopBar";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
 import { MOCK_FEED } from "./mock/feedData";
-import { loadFeedItems } from "./services/feedService";
+import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI } from "./services/feedService";
 import type { FeedTab, FeedItem, FeedItemState } from "./types/feed.types";
 import "./FeedPage.css";
 
@@ -49,24 +49,28 @@ export function FeedPage() {
 
   /* ── Interaction handlers ──────────────────────────────────── */
   const toggleLike = useCallback((id: string) => {
-    setStates(prev => {
-      const s = prev[id];
-      return {
-        ...prev,
-        [id]: { ...s, liked: !s.liked, likes: s.liked ? s.likes - 1 : s.likes + 1 },
-      };
-    });
-  }, []);
+    const prev = states[id];
+    // Optimistic update
+    setStates(s => ({
+      ...s,
+      [id]: { ...s[id], liked: !s[id].liked, likes: s[id].liked ? s[id].likes - 1 : s[id].likes + 1 },
+    }));
+    toggleLikeAPI(id)
+      .then(res => setStates(s => ({ ...s, [id]: { ...s[id], liked: res.liked, likes: res.count } })))
+      .catch(() => setStates(s => ({ ...s, [id]: prev })));
+  }, [states]);
 
   const toggleSave = useCallback((id: string) => {
-    setStates(prev => {
-      const s = prev[id];
-      return {
-        ...prev,
-        [id]: { ...s, saved: !s.saved, saves: s.saved ? s.saves - 1 : s.saves + 1 },
-      };
-    });
-  }, []);
+    const prev = states[id];
+    // Optimistic update
+    setStates(s => ({
+      ...s,
+      [id]: { ...s[id], saved: !s[id].saved, saves: s[id].saved ? s[id].saves - 1 : s[id].saves + 1 },
+    }));
+    toggleSaveAPI(id)
+      .then(res => setStates(s => ({ ...s, [id]: { ...s[id], saved: res.saved, saves: res.count } })))
+      .catch(() => setStates(s => ({ ...s, [id]: prev })));
+  }, [states]);
 
   /* ── Navigation indicator ──────────────────────────────────── */
   const total = items.length;

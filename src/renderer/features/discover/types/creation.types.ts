@@ -22,6 +22,8 @@ export interface FlowCreation {
   tags: string[];
   created_at: string;
   updated_at: string;
+  user_liked?: boolean;
+  user_saved?: boolean;
 }
 
 export interface CreateCreationPayload {

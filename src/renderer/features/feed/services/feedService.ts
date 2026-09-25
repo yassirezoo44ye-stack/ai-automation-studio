@@ -1,8 +1,21 @@
 import type { FlowCreation, CreationType } from "../../discover/types/creation.types";
 import { fetchDiscoverFeed } from "../../discover/services/discoverService";
+import { apiFetch } from "../../../shared/utils/api";
 import { MOCK_FEED } from "../mock/feedData";
 import type { FeedItem, FeedContentType, CTAType, FeedCreator, FeedMedia } from "../types/feed.types";
 import type { Page } from "../../../types";
+
+export async function toggleLike(creationId: string): Promise<{ liked: boolean; count: number }> {
+  const res = await apiFetch(`/api/creations/${creationId}/like`, { method: "POST" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function toggleSave(creationId: string): Promise<{ saved: boolean; count: number }> {
+  const res = await apiFetch(`/api/creations/${creationId}/save`, { method: "POST" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 /* ── Gradient palette per type ──────────────────────────────────── */
 const TYPE_GRADIENTS: Record<string, string> = {
@@ -60,6 +73,8 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
     comments:    0,
     shares:      0,
     saves:       0,
+    userLiked:   c.user_liked ?? false,
+    userSaved:   c.user_saved ?? false,
     ctaType:     CTA_FOR_TYPE[c.type] ?? "build-app",
     targetPage:  PAGE_FOR_TYPE[c.type] ?? "app-builder",
     sourceId:    c.source_id ?? undefined,
