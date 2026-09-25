@@ -40,6 +40,8 @@ EVENT_TYPES = frozenset({
     "device.registered", "device.connected", "device.disconnected", "device.revoked",
     "device_control.session_started", "device_control.session_stopped",
     "device_control.device_switched",
+    # Workflow human-approval lifecycle
+    "workflow.approval.pending", "workflow.approval.decided",
 })
 
 Handler = Callable[["Event"], Awaitable[None]]

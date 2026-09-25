@@ -1,6 +1,6 @@
 """
 Maps existing EventBus event types (app/core/events/bus.py's EVENT_TYPES)
-to notification content. New event types only need an entry here — no
+to notification content. New event types only need an entry here -- no
 change to the dispatcher itself (Step "extensibility" from the spec).
 """
 from __future__ import annotations
@@ -35,7 +35,26 @@ TEMPLATES: dict[str, NotificationTemplate] = {
     "workflow.failed": NotificationTemplate(
         "workflow", "error",
         lambda d: f"Workflow “{d.get('name', 'run')}” failed",
-        lambda d: d.get("error") or "The run failed — check the run log for details.",
+        lambda d: d.get("error") or "The run failed -- check the run log for details.",
+        _wf_action,
+    ),
+    "workflow.approval.pending": NotificationTemplate(
+        "workflow", "warning",
+        lambda d: f"Approval required: {d.get('step_name', 'step')}",
+        lambda d: (
+            f"Step “{d.get('step_name', d.get('step_id', 'step'))}”"
+            f" in run {d.get('run_id', '')[:8]} is waiting for your approval."
+        ),
+        _wf_action,
+    ),
+    "workflow.approval.decided": NotificationTemplate(
+        "workflow",
+        lambda d: "success" if d.get("decision") == "approved" else "info",
+        lambda d: f"Step {d.get('decision', 'decided')}: {d.get('step_name', d.get('step_id', 'step'))}",
+        lambda d: (
+            f"Step “{d.get('step_name', d.get('step_id', 'step'))}”"
+            f" in run {d.get('run_id', '')[:8]} was {d.get('decision', 'decided')}."
+        ),
         _wf_action,
     ),
     "agent.finished": NotificationTemplate(
@@ -55,7 +74,7 @@ TEMPLATES: dict[str, NotificationTemplate] = {
     "billing.payment_failed": NotificationTemplate(
         "billing", "error",
         lambda d: "Payment failed",
-        lambda d: "A payment on your account failed — update your payment method to avoid service interruption.",
+        lambda d: "A payment on your account failed -- update your payment method to avoid service interruption.",
         lambda d: {"label": "View billing", "href": "/billing"},
     ),
     "billing.invoice_paid": NotificationTemplate(

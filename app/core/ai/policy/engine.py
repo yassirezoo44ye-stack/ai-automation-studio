@@ -6,11 +6,15 @@ Rules checked: max cost per request, max runtime, allowed providers,
 """
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from ..events.bus    import EventBus
 from ..events.events import PolicyViolation
+
+log = logging.getLogger(__name__)
 
 
 class PolicyViolationError(Exception):
@@ -35,6 +39,7 @@ class PolicyConfig:
     max_runtime_seconds:      Optional[float]  = None
     allowed_providers:        Optional[list[str]] = None   # None = all allowed
     blocked_tools:            list[str]         = field(default_factory=list)
+    blocked_patterns:         list[str]         = field(default_factory=list)
     require_user_id:          bool              = False
     max_prompt_chars:         Optional[int]     = None     # prompt length limit
     content_safety:           bool              = False    # reserved for future content moderation integration
@@ -98,6 +103,22 @@ class PolicyEngine:
                     await self._violate(
                         "tools", "blocked_tool",
                         tool_name, "not in blocked list",
+                        request_id,
+                    )
+
+        # Content pattern blocklist (regex-based)
+        if cfg.blocked_patterns:
+            prompt = getattr(request, "prompt", "") or ""
+            for raw_pattern in cfg.blocked_patterns:
+                try:
+                    compiled = re.compile(raw_pattern, re.IGNORECASE)
+                except re.error:
+                    log.warning("policy: invalid regex in blocked_patterns, skipping: %r", raw_pattern)
+                    continue
+                if compiled.search(prompt):
+                    await self._violate(
+                        "content", "blocked_pattern",
+                        raw_pattern, "not in blocked_patterns",
                         request_id,
                     )
 

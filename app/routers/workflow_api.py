@@ -115,6 +115,17 @@ async def approve_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_
             f"Approval for {run_id!r}/{step_id!r} was saved but the run is no longer active",
         )
 
+    # Best-effort notification — failure must NOT surface to the caller.
+    try:
+        from app.core.events.bus import get_event_bus
+        asyncio.create_task(get_event_bus().publish(
+            "workflow.approval.decided",
+            {"run_id": run_id, "step_id": step_id, "decision": "approved"},
+            organization_id=ctx.org_id,
+        ))
+    except Exception:
+        log.debug("approve_step: notification skipped for %s", approval_id)
+
     return {"approved": True, "run_id": run_id, "step_id": step_id}
 
 
@@ -147,6 +158,17 @@ async def reject_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_c
             409,
             f"Rejection for {run_id!r}/{step_id!r} was saved but the run is no longer active",
         )
+
+    # Best-effort notification — failure must NOT surface to the caller.
+    try:
+        from app.core.events.bus import get_event_bus
+        asyncio.create_task(get_event_bus().publish(
+            "workflow.approval.decided",
+            {"run_id": run_id, "step_id": step_id, "decision": "rejected"},
+            organization_id=ctx.org_id,
+        ))
+    except Exception:
+        log.debug("reject_step: notification skipped for %s", approval_id)
 
     return {"rejected": True, "run_id": run_id, "step_id": step_id}
 

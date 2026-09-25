@@ -286,6 +286,22 @@ async def _execute_step(step: WorkflowStep, run: WorkflowRun) -> None:
             ev = _approval_registry.register(approval_id)
             step.status = StepStatus.WAITING
             log.info("wf[%s] step %s awaiting approval %s", run.run_id[:8], step.id, approval_id)
+            # Best-effort notification — failure must never block the approval gate.
+            try:
+                from app.core.events.bus import get_event_bus
+                asyncio.create_task(get_event_bus().publish(
+                    "workflow.approval.pending",
+                    {
+                        "run_id":      run.run_id,
+                        "step_id":     step.id,
+                        "step_name":   getattr(step, "name", step.id),
+                        "approval_id": approval_id,
+                        "organization_id": run.context.get("organization_id"),
+                    },
+                    organization_id=run.context.get("organization_id"),
+                ))
+            except Exception:
+                log.debug("wf[%s] approval pending notification skipped", run.run_id[:8])
             try:
                 await asyncio.wait_for(ev.wait(), timeout=step.timeout_s or 3600)
             except asyncio.TimeoutError:
