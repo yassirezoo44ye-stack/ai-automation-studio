@@ -24,6 +24,8 @@ export interface FlowCreation {
   updated_at: string;
   user_liked?: boolean;
   user_saved?: boolean;
+  likes_count?: number;
+  saves_count?: number;
 }
 
 export interface CreateCreationPayload {

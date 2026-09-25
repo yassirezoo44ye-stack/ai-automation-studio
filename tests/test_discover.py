@@ -359,3 +359,69 @@ def test_D34_migration_013_exists_and_valid_syntax():
     migration = _ROOT / "migrations/versions/013_flow_creation_interactions.py"
     assert migration.exists(), "013_flow_creation_interactions.py not found"
     ast.parse(migration.read_text(encoding="utf-8"))
+
+
+# ── Phase 3: likes_count/saves_count + count query (D-35..D-39) ──────────────
+
+_FEED_SVC_SRC = (_ROOT / "src/renderer/features/feed/services/feedService.ts").read_text(encoding="utf-8")
+_MOCK_FEED_SRC = (_ROOT / "src/renderer/features/feed/mock/feedData.ts").read_text(encoding="utf-8")
+
+
+def test_D35_discover_returns_likes_count_and_saves_count():
+    """D-35: public_discover_feed adds likes_count and saves_count to each item."""
+    assert "likes_count" in _DISCOVER_SRC, "discover.py must set likes_count on each item"
+    assert "saves_count" in _DISCOVER_SRC, "discover.py must set saves_count on each item"
+
+
+def test_D36_count_query_is_grouped_not_n_plus_one():
+    """D-36: count query uses GROUP BY (batched), not a per-item COUNT."""
+    assert "GROUP BY creation_id, type" in _DISCOVER_SRC, (
+        "counts must be fetched with GROUP BY creation_id, type — not N+1 per-item queries"
+    )
+    assert "COUNT(*) AS cnt" in _DISCOVER_SRC
+
+
+def test_D37_zero_count_fallback_in_discover():
+    """D-37: items with no interactions get counts defaulting to 0."""
+    assert 'c.get("like", 0)' in _DISCOVER_SRC
+    assert 'c.get("save", 0)' in _DISCOVER_SRC
+
+
+def test_D38_feed_mapper_uses_server_counts_not_hardcoded_zero():
+    """D-38: feedService.ts mapper reads likes_count/saves_count from API, not literal 0."""
+    assert "likes_count" in _FEED_SVC_SRC, (
+        "creationToFeedItem must use c.likes_count, not hardcoded 0"
+    )
+    assert "saves_count" in _FEED_SVC_SRC, (
+        "creationToFeedItem must use c.saves_count, not hardcoded 0"
+    )
+    # Ensure the old hardcoded zeros are gone from the likes/saves lines
+    import re
+    lines = _FEED_SVC_SRC.splitlines()
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("likes:") and "likes_count" not in stripped:
+            assert "0," not in stripped, (
+                f"likes field still hardcoded to 0: {line!r}"
+            )
+        if stripped.startswith("saves:") and "saves_count" not in stripped:
+            assert "0," not in stripped, (
+                f"saves field still hardcoded to 0: {line!r}"
+            )
+
+
+def test_D39_mock_feed_ids_are_valid_uuids():
+    """D-39: MOCK_FEED item IDs are valid UUIDs so like/save API calls succeed."""
+    import re
+    uuid_pattern = re.compile(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+        re.IGNORECASE,
+    )
+    id_matches = re.findall(r'id:\s*"([^"]+)"', _MOCK_FEED_SRC)
+    item_ids = [m for m in id_matches if not m.startswith("u") and not m.startswith("@")]
+    assert len(item_ids) >= 12, f"Expected at least 12 item IDs, found {len(item_ids)}"
+    for item_id in item_ids:
+        assert uuid_pattern.match(item_id), (
+            f"MOCK_FEED item id {item_id!r} is not a valid UUID v4 — "
+            "like/save calls on fallback mock items will return 422 from the API"
+        )

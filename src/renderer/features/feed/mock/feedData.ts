@@ -7,7 +7,7 @@ import type { FeedItem } from "../types/feed.types";
  */
 export const MOCK_FEED: FeedItem[] = [
   {
-    id: "f1",
+    id: "00000000-0000-4000-8000-000000000001",
     type: "AGENT",
     creator: { id: "u1", name: "Ahmed K.", handle: "@ahmedk.dev" },
     title: "AI Sales Agent",
@@ -25,7 +25,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "tpl-sales-agent-v2",
   },
   {
-    id: "f2",
+    id: "00000000-0000-4000-8000-000000000002",
     type: "AUTOMATION",
     creator: { id: "u2", name: "Sara M.", handle: "@saraflow" },
     title: "WhatsApp Lead Automation",
@@ -43,7 +43,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "auto-whatsapp-crm",
   },
   {
-    id: "f3",
+    id: "00000000-0000-4000-8000-000000000003",
     type: "APP",
     creator: { id: "u3", name: "Omar T.", handle: "@omartariq" },
     title: "SaaS Dashboard Builder",
@@ -61,7 +61,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "tpl-saas-dashboard",
   },
   {
-    id: "f4",
+    id: "00000000-0000-4000-8000-000000000004",
     type: "AGENT",
     creator: { id: "u4", name: "Lina A.", handle: "@linaauto" },
     title: "AI Customer Support",
@@ -79,7 +79,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "tpl-support-agent",
   },
   {
-    id: "f5",
+    id: "00000000-0000-4000-8000-000000000005",
     type: "APP",
     creator: { id: "u5", name: "Nora S.", handle: "@norabuilds" },
     title: "Website Generator",
@@ -97,7 +97,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "tpl-website-gen",
   },
   {
-    id: "f6",
+    id: "00000000-0000-4000-8000-000000000006",
     type: "AUTOMATION",
     creator: { id: "u6", name: "Faris H.", handle: "@farisdev" },
     title: "Invoice Automation",
@@ -115,7 +115,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "auto-invoice-flow",
   },
   {
-    id: "f7",
+    id: "00000000-0000-4000-8000-000000000007",
     type: "APP",
     creator: { id: "u7", name: "Dev X.", handle: "@devxflow" },
     title: "Python API Builder",
@@ -133,7 +133,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "tpl-python-api",
   },
   {
-    id: "f8",
+    id: "00000000-0000-4000-8000-000000000008",
     type: "AGENT",
     creator: { id: "u8", name: "Rania Z.", handle: "@raniaai" },
     title: "AI Research Agent",
@@ -151,7 +151,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "tpl-research-agent",
   },
   {
-    id: "f9",
+    id: "00000000-0000-4000-8000-000000000009",
     type: "AUTOMATION",
     creator: { id: "u9", name: "Khalid M.", handle: "@khalidauto" },
     title: "Social Media Automation",
@@ -169,7 +169,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "auto-social-publisher",
   },
   {
-    id: "f10",
+    id: "00000000-0000-4000-8000-000000000010",
     type: "WORKFLOW",
     creator: { id: "u10", name: "Hala B.", handle: "@halabuilds" },
     title: "CRM Workflow",
@@ -187,7 +187,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "wf-crm-pipeline",
   },
   {
-    id: "f11",
+    id: "00000000-0000-4000-8000-000000000011",
     type: "TEMPLATE",
     creator: { id: "u11", name: "Youssef A.", handle: "@youssefux" },
     title: "Landing Page Builder",
@@ -205,7 +205,7 @@ export const MOCK_FEED: FeedItem[] = [
     sourceId: "tpl-landing-v3",
   },
   {
-    id: "f12",
+    id: "00000000-0000-4000-8000-000000000012",
     type: "AGENT",
     creator: { id: "u12", name: "Mona R.", handle: "@monaanalytics" },
     title: "Business Analytics Agent",

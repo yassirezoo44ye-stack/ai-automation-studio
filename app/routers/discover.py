@@ -196,21 +196,35 @@ async def public_discover_feed(
             )
         liked_ids: set[str] = set()
         saved_ids: set[str] = set()
+        counts: dict[str, dict[str, int]] = {}
         user_id = _get_user_id(request)
-        if user_id and rows:
+        if rows:
             try:
                 import uuid as _uuid
                 creation_ids = [r["id"] for r in rows]
-                interactions = await conn.fetch(
-                    "SELECT creation_id, type FROM flow_creation_interactions "
-                    "WHERE user_id = $1 AND creation_id = ANY($2::uuid[])",
-                    _uuid.UUID(user_id), creation_ids,
+                count_rows = await conn.fetch(
+                    "SELECT creation_id, type, COUNT(*) AS cnt "
+                    "FROM flow_creation_interactions "
+                    "WHERE creation_id = ANY($1::uuid[]) "
+                    "GROUP BY creation_id, type",
+                    creation_ids,
                 )
-                for i in interactions:
-                    if i["type"] == "like":
-                        liked_ids.add(str(i["creation_id"]))
-                    else:
-                        saved_ids.add(str(i["creation_id"]))
+                for cr in count_rows:
+                    cid = str(cr["creation_id"])
+                    if cid not in counts:
+                        counts[cid] = {}
+                    counts[cid][cr["type"]] = int(cr["cnt"])
+                if user_id:
+                    interactions = await conn.fetch(
+                        "SELECT creation_id, type FROM flow_creation_interactions "
+                        "WHERE user_id = $1 AND creation_id = ANY($2::uuid[])",
+                        _uuid.UUID(user_id), creation_ids,
+                    )
+                    for i in interactions:
+                        if i["type"] == "like":
+                            liked_ids.add(str(i["creation_id"]))
+                        else:
+                            saved_ids.add(str(i["creation_id"]))
             except Exception:
                 pass
     items_out = []
@@ -218,6 +232,9 @@ async def public_discover_feed(
         d = _row_to_dict(r)
         d["user_liked"] = d["id"] in liked_ids
         d["user_saved"] = d["id"] in saved_ids
+        c = counts.get(d["id"], {})
+        d["likes_count"] = c.get("like", 0)
+        d["saves_count"] = c.get("save", 0)
         items_out.append(d)
     return {"items": items_out, "total": len(items_out)}
 

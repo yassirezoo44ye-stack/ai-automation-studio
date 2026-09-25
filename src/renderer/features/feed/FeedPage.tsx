@@ -49,28 +49,28 @@ export function FeedPage() {
 
   /* ── Interaction handlers ──────────────────────────────────── */
   const toggleLike = useCallback((id: string) => {
-    const prev = states[id];
-    // Optimistic update
-    setStates(s => ({
-      ...s,
-      [id]: { ...s[id], liked: !s[id].liked, likes: s[id].liked ? s[id].likes - 1 : s[id].likes + 1 },
-    }));
+    let prev: FeedItemState | undefined;
+    setStates(s => {
+      prev = s[id];
+      if (!prev) return s;
+      return { ...s, [id]: { ...prev, liked: !prev.liked, likes: prev.liked ? prev.likes - 1 : prev.likes + 1 } };
+    });
     toggleLikeAPI(id)
       .then(res => setStates(s => ({ ...s, [id]: { ...s[id], liked: res.liked, likes: res.count } })))
-      .catch(() => setStates(s => ({ ...s, [id]: prev })));
-  }, [states]);
+      .catch(() => setStates(s => prev ? { ...s, [id]: prev } : s));
+  }, []);
 
   const toggleSave = useCallback((id: string) => {
-    const prev = states[id];
-    // Optimistic update
-    setStates(s => ({
-      ...s,
-      [id]: { ...s[id], saved: !s[id].saved, saves: s[id].saved ? s[id].saves - 1 : s[id].saves + 1 },
-    }));
+    let prev: FeedItemState | undefined;
+    setStates(s => {
+      prev = s[id];
+      if (!prev) return s;
+      return { ...s, [id]: { ...prev, saved: !prev.saved, saves: prev.saved ? prev.saves - 1 : prev.saves + 1 } };
+    });
     toggleSaveAPI(id)
       .then(res => setStates(s => ({ ...s, [id]: { ...s[id], saved: res.saved, saves: res.count } })))
-      .catch(() => setStates(s => ({ ...s, [id]: prev })));
-  }, [states]);
+      .catch(() => setStates(s => prev ? { ...s, [id]: prev } : s));
+  }, []);
 
   /* ── Navigation indicator ──────────────────────────────────── */
   const total = items.length;
