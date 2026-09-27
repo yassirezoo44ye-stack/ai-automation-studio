@@ -181,3 +181,29 @@ async def usage_by_provider(request: Request, since: Optional[str] = None):
             for pid, usd in by_provider.items()
         ],
     }
+
+
+@router.get("/api/ai/usage/monthly")
+async def usage_by_month(request: Request, since: Optional[str] = None):
+    """Monthly cost rollup from ai_usage_log. Org-scoped when X-Organization-Id is present."""
+    from app.ai import cost_tracker
+    from app.core.db import get_pool
+    from app.tenancy.context import optional_org_id
+
+    org_id   = await optional_org_id(request)
+    since_dt = _parse_since(since)
+    rows     = await cost_tracker.by_month(pool=get_pool(), org_id=org_id, since=since_dt)
+
+    return {
+        "months": [
+            {
+                "month":         row["month"].isoformat() if row.get("month") else None,
+                "calls":         int(row.get("calls") or 0),
+                "input_tokens":  int(row.get("input_tokens") or 0),
+                "output_tokens": int(row.get("output_tokens") or 0),
+                "total_tokens":  int(row.get("total_tokens") or 0),
+                "total_usd":     round(float(row.get("cost_usd") or 0), 6),
+            }
+            for row in rows
+        ],
+    }

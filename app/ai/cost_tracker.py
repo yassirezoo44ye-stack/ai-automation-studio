@@ -135,3 +135,49 @@ async def by_provider(
     except Exception as exc:
         log.error("cost_tracker.by_provider failed: %s", exc)
         return []
+
+
+async def by_month(
+    *,
+    pool,
+    user_id: Optional[str] = None,
+    org_id: Optional[str] = None,
+    since: Optional[datetime] = None,
+) -> list[dict]:
+    """Monthly rollup ordered newest-first."""
+    try:
+        clauses = []
+        args: list = []
+        i = 1
+        if user_id:
+            clauses.append(f"user_id = ${i}")
+            args.append(uuid.UUID(user_id))
+            i += 1
+        if org_id:
+            clauses.append(f"organization_id = ${i}")
+            args.append(uuid.UUID(org_id))
+            i += 1
+        if since:
+            clauses.append(f"created_at >= ${i}")
+            args.append(since)
+            i += 1
+
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = f"""
+            SELECT
+                date_trunc('month', created_at) AS month,
+                COUNT(*)                        AS calls,
+                SUM(input_tokens)               AS input_tokens,
+                SUM(output_tokens)              AS output_tokens,
+                SUM(total_tokens)               AS total_tokens,
+                SUM(cost_usd)                   AS cost_usd
+            FROM ai_usage_log {where}
+            GROUP BY 1
+            ORDER BY 1 DESC
+        """
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(sql, *args)
+            return [dict(r) for r in rows]
+    except Exception as exc:
+        log.error("cost_tracker.by_month failed: %s", exc)
+        return []
