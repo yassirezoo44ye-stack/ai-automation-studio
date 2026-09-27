@@ -472,6 +472,42 @@ async def trigger_run(
     return {"run_id": run_id, "status": "pending"}
 
 
+@runs_router.get("/pending-approvals")
+async def list_pending_approvals(
+    ctx: OrgContext = Depends(require_permission("automation", "read")),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """List pending approval gates scoped to the caller's organization.
+
+    step_name falls back to step_id when the step record is not yet persisted.
+    Defined before /{run_id} so FastAPI matches the literal path first.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT aa.run_id, aa.step_id,
+                   COALESCE(ars.name, aa.step_id) AS step_name
+            FROM automation_approvals aa
+            LEFT JOIN automation_run_steps ars
+                ON  ars.run_id         = aa.run_id
+                AND ars.step_id        = aa.step_id
+                AND ars.organization_id = $1
+            WHERE aa.organization_id = $1
+              AND aa.status = 'pending'
+            ORDER BY aa.approval_id
+            LIMIT $2
+            """,
+            uuid.UUID(ctx.org_id), limit,
+        )
+    return {
+        "approvals": [
+            {"run_id": r["run_id"], "step_id": r["step_id"], "step_name": r["step_name"]}
+            for r in rows
+        ]
+    }
+
+
 @runs_router.get("/{run_id}")
 async def get_run(
     run_id: str,

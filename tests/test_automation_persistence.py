@@ -496,15 +496,20 @@ class TestWebhookHmac(unittest.TestCase):
 
 class TestSchedulerIdempotencyKey(unittest.TestCase):
     def test_key_format(self):
+        """F8: key format includes trigger_id — auto-sched:{def_id}:{trigger_id}:{tick}."""
         from app.core.workflow.automation_scheduler import _floor_minute
-        def_id = str(uuid.uuid4())
-        ts     = time.time()
-        tick   = _floor_minute(ts)
-        key    = f"auto-sched:{def_id}:{tick}"
+        def_id     = str(uuid.uuid4())
+        trigger_id = "sched-trigger-abc"
+        ts         = time.time()
+        tick       = _floor_minute(ts)
+        key        = f"auto-sched:{def_id}:{trigger_id}:{tick}"
         self.assertTrue(key.startswith("auto-sched:"))
         self.assertIn(def_id, key)
-        # tick should be divisible by 60
+        self.assertIn(trigger_id, key)
+        # tick suffix should be divisible by 60
         self.assertEqual(tick % 60, 0)
+        # Correct tail: ...:{trigger_id}:{tick}
+        self.assertTrue(key.endswith(f":{trigger_id}:{tick}"))
 
     def test_same_minute_same_key(self):
         from app.core.workflow.automation_scheduler import _floor_minute

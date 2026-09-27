@@ -62,6 +62,20 @@
       "parallel": { "name": "Parallel Fan-out", "desc": "Execute independent steps simultaneously for speed" },
       "approval": { "name": "Human-in-the-Loop", "desc": "Pause at checkpoints for manual review and approval" },
       "saga": { "name": "Saga (Compensating)", "desc": "Distributed transaction with automatic rollback" }
+    },
+    "pipelineTitle": "How Automations Work",
+    "pipelineDesc": "Events flow through your pipeline automatically",
+    "steps": {
+      "trigger": "Trigger",
+      "triggerSub": "Event / Schedule",
+      "agent": "AI Agent",
+      "agentSub": "Reasoning",
+      "condition": "Condition",
+      "conditionSub": "Branch Logic",
+      "action": "Action",
+      "actionSub": "Transform / Run",
+      "integration": "Integration",
+      "integrationSub": "External App"
     }
   },
   "approvals": {

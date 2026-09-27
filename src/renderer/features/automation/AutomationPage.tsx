@@ -107,7 +107,7 @@ export function AutomationPage() {
   const [saving, setSaving]   = useState(false);
 
   // ── Workflow state ──────────────────────────────────────────────────────────
-  type WfRun = { run_id: string; workflow_id: string; status: string; start_time: number; steps_total: number; steps_done: number; error?: string };
+  type WfRun = { run_id: string; name: string; status: string; error?: string | null };
   const [wfRuns, setWfRuns]         = useState<WfRun[]>([]);
   const [wfLoading, setWfLoading]   = useState(false);
   const [runningDemo, setRunningDemo] = useState<string | null>(null);
@@ -125,8 +125,8 @@ export function AutomationPage() {
   const loadWorkflows = useCallback(async () => {
     setWfLoading(true);
     try {
-      const r = await apiFetch("/api/workflows/active");
-      if (r.ok) { const d = await r.json(); setWfRuns(d.runs ?? []); }
+      const r = await apiFetch("/api/automation-runs?status=running&limit=20");
+      if (r.ok) { const d = await r.json(); setWfRuns(d.items ?? []); }
     } catch {}
     finally { setWfLoading(false); }
   }, []);
@@ -134,7 +134,10 @@ export function AutomationPage() {
   const runDemoWorkflow = async (kind: string) => {
     setRunningDemo(kind);
     try {
-      const r = await apiFetch("/api/workflows/demo", { method: "POST", body: JSON.stringify({ kind }) });
+      const r = await apiFetch("/api/automation-runs", {
+        method: "POST",
+        body: JSON.stringify({ name: kind, triggered_by: "manual" }),
+      });
       if (!r.ok) throw new Error();
       const d = await r.json();
       toast(t("toast.workflowStarted", { runId: d.run_id }), "ok");
@@ -354,16 +357,15 @@ export function AutomationPage() {
               ) : wfRuns.length === 0 ? (
                 <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>{t("workflows.empty")}</div>
               ) : wfRuns.map(run => {
-                const pct = run.steps_total > 0 ? Math.round((run.steps_done / run.steps_total) * 100) : 0;
                 const running = run.status === "running";
                 const statusColor: Record<string, string> = { running: "var(--accent-2)", completed: C.green, failed: C.red, pending: C.amber };
                 const color = statusColor[run.status] ?? "var(--t4)";
                 const statusLabel = t(`workflows.status.${run.status}`, { defaultValue: run.status });
                 return (
-                  <div key={run.run_id} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div key={run.run_id} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {run.workflow_id}
+                        {run.name}
                       </span>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "2px 8px", borderRadius: 99 }}>
                         {running && (
@@ -375,12 +377,6 @@ export function AutomationPage() {
                         )}
                         {statusLabel}
                       </span>
-                      <span style={{ fontSize: 11, color: "var(--t4)" }}>
-                        {t("workflows.stepsProgress", { done: run.steps_done, total: run.steps_total })}
-                      </span>
-                    </div>
-                    <div style={{ height: 4, background: "var(--bg-base)", borderRadius: 99, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 99, transition: "width .4s" }} />
                     </div>
                     {run.error && <div style={{ fontSize: 11, color: C.red }}>{run.error}</div>}
                   </div>
@@ -438,7 +434,7 @@ export function AutomationPage() {
 }
 
 function ApprovalsList() {
-  type Approval = { run_id: string; step_id: string; step_name: string; requested_at: number };
+  type Approval = { run_id: string; step_id: string; step_name: string };
   const { t } = useTranslation("automation");
   const toast = useToast();
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -446,7 +442,7 @@ function ApprovalsList() {
 
   const load = useCallback(async () => {
     try {
-      const r = await apiFetch("/api/workflows/approvals/pending");
+      const r = await apiFetch("/api/automation-runs/pending-approvals");
       if (r.ok) { const d = await r.json(); setApprovals(d.approvals ?? []); }
     } catch {}
   }, []);
@@ -456,7 +452,10 @@ function ApprovalsList() {
   const decide = async (run_id: string, step_id: string, action: "approve" | "reject") => {
     setBusy(`${run_id}:${step_id}`);
     try {
-      const r = await apiFetch(`/api/workflows/approvals/${run_id}/${step_id}/${action}`, { method: "POST" });
+      const endpoint = action === "approve"
+        ? `/api/automation-runs/${run_id}/steps/${step_id}/approve`
+        : `/api/automation-runs/${run_id}/steps/${step_id}/reject`;
+      const r = await apiFetch(endpoint, { method: "POST" });
       if (!r.ok) throw new Error();
       toast(action === "approve" ? t("approvals.toast.approved") : t("approvals.toast.rejected"), "ok");
       setApprovals(p => p.filter(a => !(a.run_id === run_id && a.step_id === step_id)));
