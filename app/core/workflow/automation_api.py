@@ -319,6 +319,58 @@ async def deactivate_definition(
     return _row_to_definition(dict(row))
 
 
+@router.post("/{definition_id}/run", status_code=202)
+async def run_definition(
+    definition_id: str,
+    ctx: OrgContext = Depends(require_permission("automation", "write")),
+):
+    """Convenience endpoint: trigger a manual run for this definition.
+
+    Equivalent to POST /api/automation-runs with definition_id set, but scoped
+    directly to the definition — no request body needed.
+    """
+    from app.core.jobs import get_job_queue
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await _get_definition(conn, definition_id, ctx.org_id)
+
+    definition_name: str = row.get("name", "manual-run") if isinstance(row, dict) else "manual-run"
+    run_id = str(uuid.uuid4())
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO automation_runs
+                (organization_id, definition_id, run_id, name, status,
+                 context, triggered_by, triggered_by_user)
+            VALUES ($1, $2, $3, $4, 'pending', '{}'::jsonb, 'manual', $5)
+            """,
+            uuid.UUID(ctx.org_id),
+            uuid.UUID(definition_id),
+            run_id,
+            definition_name,
+            uuid.UUID(ctx.user_id),
+        )
+
+    payload = {
+        "organization_id": ctx.org_id,
+        "run_id": run_id,
+        "definition_id": definition_id,
+        "context": {},
+        "triggered_by": "manual",
+        "triggered_by_user": ctx.user_id,
+    }
+    await get_job_queue().submit(
+        "automation.trigger.manual",
+        payload=payload,
+        org_id=ctx.org_id,
+        idempotency_key=run_id,
+    )
+
+    return {"run_id": run_id, "status": "pending"}
+
+
 # ---------------------------------------------------------------------------
 # Run schemas
 # ---------------------------------------------------------------------------
@@ -458,6 +510,88 @@ async def cancel_run(
         # Either already running/finished or wrong org — same 404 shape.
         raise HTTPException(409, "Run is not in a cancellable state")
     return {"run_id": run_id, "status": "cancelled"}
+
+
+@runs_router.post("/{run_id}/steps/{step_id}/approve")
+async def approve_step(
+    run_id: str,
+    step_id: str,
+    ctx: OrgContext = Depends(require_permission("automation", "write")),
+):
+    """Approve a waiting approval-gate step.
+
+    DB-first: persists the decision, then signals the engine's in-memory
+    ApprovalRegistry to unblock the waiting step.  If the run has already
+    finished or restarted (engine no longer holds it), the DB decision is
+    still recorded for audit purposes.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT status FROM automation_runs WHERE run_id = $1 AND organization_id = $2",
+            run_id, uuid.UUID(ctx.org_id),
+        )
+    if row is None:
+        raise _not_found()
+
+    approval_id = f"{run_id}:{step_id}"
+
+    # Persist first (record_approval_decision is DB-FIRST — raises on DB error).
+    from app.core.workflow import persistence as _persistence
+    try:
+        updated = await _persistence.record_approval_decision(
+            approval_id, "approved", decided_by=ctx.user_id,
+        )
+    except Exception as exc:
+        log.error("approve_step: persistence failed run_id=%s step_id=%s: %s", run_id, step_id, exc)
+        raise HTTPException(500, "Failed to persist approval decision")
+
+    if not updated:
+        raise HTTPException(409, "Approval is not in a decidable state (already decided or not found)")
+
+    # Signal the engine's in-memory ApprovalRegistry — best-effort.
+    # engine.approve() returns False if the run is no longer active (e.g. timed out
+    # or server restarted), which is acceptable since the DB decision is already saved.
+    from app.core.workflow.engine import get_workflow_engine
+    get_workflow_engine().approve(run_id, step_id, org_id=ctx.org_id)
+
+    return {"run_id": run_id, "step_id": step_id, "decision": "approved"}
+
+
+@runs_router.post("/{run_id}/steps/{step_id}/reject")
+async def reject_step(
+    run_id: str,
+    step_id: str,
+    ctx: OrgContext = Depends(require_permission("automation", "write")),
+):
+    """Reject a waiting approval-gate step.  Same contract as approve."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT status FROM automation_runs WHERE run_id = $1 AND organization_id = $2",
+            run_id, uuid.UUID(ctx.org_id),
+        )
+    if row is None:
+        raise _not_found()
+
+    approval_id = f"{run_id}:{step_id}"
+
+    from app.core.workflow import persistence as _persistence
+    try:
+        updated = await _persistence.record_approval_decision(
+            approval_id, "rejected", decided_by=ctx.user_id,
+        )
+    except Exception as exc:
+        log.error("reject_step: persistence failed run_id=%s step_id=%s: %s", run_id, step_id, exc)
+        raise HTTPException(500, "Failed to persist rejection decision")
+
+    if not updated:
+        raise HTTPException(409, "Approval is not in a decidable state (already decided or not found)")
+
+    from app.core.workflow.engine import get_workflow_engine
+    get_workflow_engine().reject(run_id, step_id, org_id=ctx.org_id)
+
+    return {"run_id": run_id, "step_id": step_id, "decision": "rejected"}
 
 
 # ---------------------------------------------------------------------------

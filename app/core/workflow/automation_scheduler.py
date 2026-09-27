@@ -21,6 +21,7 @@ Design rules:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -171,16 +172,79 @@ async def _execute_definition(
         context = {**context, "definition_id": definition_id, "org_id": org_id},
     )
 
+    # Pre-create DB approval records for every step that will require a gate.
+    # ON CONFLICT DO NOTHING makes this safe to call even if the step is later
+    # skipped due to a failed dependency.
+    from app.core.workflow import persistence as _persistence
+    for step_id, step in steps_dict.items():
+        if step.requires_approval:
+            await _persistence.create_approval_request(org_id, run_id, step_id)
+
     await engine.execute(run)
+
+    # Persist final run and per-step states so the API can surface them.
+    await _persistence.upsert_run(run, org_id)
+    await _persistence.upsert_steps_bulk(run_id, org_id, run.steps)
 
 
 def _make_step_fn(kind: str, spec: dict):
-    """Return a coroutine function for a step kind."""
+    """Return a coroutine function for the given step kind."""
+    if kind == "ai":
+        return _make_ai_step_fn(spec)
+    if kind == "approval":
+        return _make_approval_step_fn(spec)
+    # noop: used for testing and inert placeholder steps
     async def _noop(**kwargs):
         log.debug("automation step noop kind=%s id=%s", kind, spec.get("id"))
         return {"kind": kind, "status": "noop"}
-
     return _noop
+
+
+def _make_ai_step_fn(spec: dict):
+    """Build an async fn that runs an AI agent step via AgentRuntime.
+
+    Uses the explicit `tools` list from the step spec as the allowed_tools
+    allowlist — the runtime enforces it at execution time so hallucinated
+    tool names cannot execute.
+    """
+    args = spec.get("args", {})
+    tool_names: list[str] = [
+        str(t) for t in args.get("tools", []) if isinstance(t, str)
+    ]
+
+    async def _run_ai(**kwargs):
+        from app.core.ai.agents.runtime import AgentConfig, AgentRuntime
+
+        cfg = AgentConfig(
+            name          = spec.get("name", spec.get("id", "automation-step")),
+            system_prompt = args.get("system_prompt", ""),
+            provider_id   = args.get("provider_id"),
+            model         = args.get("model"),
+            max_tokens    = int(args.get("max_tokens", 1024)),
+            temperature   = float(args.get("temperature", 0.7)),
+            tools         = tool_names,
+        )
+        result = await AgentRuntime(cfg).run(args.get("prompt", ""))
+        return {
+            "success": result.success,
+            "content": result.content,
+            "rounds":  result.rounds,
+            "error":   result.error,
+        }
+
+    return _run_ai
+
+
+def _make_approval_step_fn(spec: dict):
+    """Approval steps rely on the engine's requires_approval gate.
+
+    The fn runs only AFTER the human approves — it is a noop because
+    the approval decision itself is the work.
+    """
+    async def _approval_noop(**kwargs):
+        log.debug("automation approval gate passed id=%s", spec.get("id"))
+        return {"kind": "approval", "status": "approved"}
+    return _approval_noop
 
 
 # Register the SAME handler for all three trigger kinds
@@ -258,7 +322,8 @@ async def _tick_schedule_triggers() -> None:
             if next_run_ts > now:
                 continue  # not due yet
 
-            idempotency_key = f"auto-sched:{def_id}:{tick_epoch}"
+            # Include trigger_id so multi-trigger definitions each get their own key (F8)
+            idempotency_key = f"auto-sched:{def_id}:{trigger_id}:{tick_epoch}"
             run_id = str(uuid.uuid4())
 
             try:
@@ -295,6 +360,28 @@ async def _tick_schedule_triggers() -> None:
                     "automation scheduler: enqueued def=%s trigger=%s run=%s",
                     def_id[:8], trigger_id, run_id,
                 )
+
+                # Advance next_run_at so this trigger does not re-fire every tick (F2).
+                # Uses schedule_interval_s from the trigger spec; defaults to 1 hour.
+                interval_s = int(trigger.get("schedule_interval_s", 3600))
+                updated_triggers = [
+                    {**t, "next_run_at": now + interval_s}
+                    if t.get("id") == trigger_id else t
+                    for t in triggers
+                ]
+                try:
+                    async with pool.acquire() as conn:
+                        await conn.execute(
+                            "UPDATE automation_definitions SET triggers = $1::jsonb WHERE id = $2",
+                            json.dumps(updated_triggers),
+                            uuid.UUID(def_id),
+                        )
+                except Exception:
+                    log.warning(
+                        "automation scheduler: failed to advance next_run_at def=%s",
+                        def_id[:8], exc_info=True,
+                    )
+
             except Exception:
                 log.warning(
                     "automation scheduler: failed to enqueue def=%s trigger=%s",
