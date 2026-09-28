@@ -102,8 +102,8 @@ def _get_user_id(request: Request) -> Optional[str]:
     try:
         _, bearer = extract_auth_credentials(request)
         if bearer:
-            from app.core.auth import _decode_token
-            payload = _decode_token(bearer)
+            from app.core.jwt_utils import decode_access_token
+            payload = decode_access_token(bearer)
             return payload.get("sub") or payload.get("user_id")
     except Exception:
         pass
