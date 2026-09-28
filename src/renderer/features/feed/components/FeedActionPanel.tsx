@@ -11,6 +11,7 @@ function fmtNum(n: number): string {
 interface FeedActionPanelProps {
   item: FeedItem;
   state: FeedItemState;
+  isMock?: boolean;
   onLike: () => void;
   onSave: () => void;
   onShare: () => Promise<boolean>;
@@ -128,7 +129,7 @@ function CreatorAvatar({ creator }: { creator: FeedItem["creator"] }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export function FeedActionPanel({ item, state, onLike, onSave, onShare, onComment, onBuild }: FeedActionPanelProps) {
+export function FeedActionPanel({ item, state, isMock = false, onLike, onSave, onShare, onComment, onBuild }: FeedActionPanelProps) {
   const { t } = useTranslation("feed");
   const [shareFlash, setShareFlash] = useState(false);
 
@@ -152,6 +153,8 @@ export function FeedActionPanel({ item, state, onLike, onSave, onShare, onCommen
         active={state.liked}
         activeColor="#ff2d55"
         onClick={onLike}
+        disabled={isMock}
+        title={isMock ? "Sample content" : undefined}
       />
 
       <ActionBtn
@@ -178,6 +181,8 @@ export function FeedActionPanel({ item, state, onLike, onSave, onShare, onCommen
         active={state.saved}
         activeColor="#fbbf24"
         onClick={onSave}
+        disabled={isMock}
+        title={isMock ? "Sample content" : undefined}
       />
 
       {/* Build CTA on rail */}

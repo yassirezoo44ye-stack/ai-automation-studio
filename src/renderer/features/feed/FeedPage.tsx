@@ -27,6 +27,7 @@ export function FeedPage() {
   const { t } = useTranslation("feed");
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
   const [items, setItems]     = useState<FeedItem[]>(MOCK_FEED);
+  const [isMock, setIsMock]   = useState(true);
   const [loading, setLoading] = useState(true);
   const [states, setStates]   = useState<Record<string, FeedItemState>>(() => initStates(MOCK_FEED));
 
@@ -34,10 +35,11 @@ export function FeedPage() {
   useEffect(() => {
     let cancelled = false;
     loadFeedItems()
-      .then(loaded => {
+      .then(({ items: loaded, isMock: mock }) => {
         if (cancelled) return;
         setItems(loaded);
         setStates(initStates(loaded));
+        setIsMock(mock);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -104,6 +106,7 @@ export function FeedPage() {
             item={item}
             state={states[item.id] ?? { liked: false, saved: false, likes: 0, saves: 0 }}
             isActive={idx === activeIndex}
+            isMock={isMock}
             onLike={() => toggleLike(item.id)}
             onSave={() => toggleSave(item.id)}
           />

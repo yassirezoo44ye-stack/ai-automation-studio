@@ -8,11 +8,12 @@ interface FeedCardProps {
   item: FeedItem;
   state: FeedItemState;
   isActive: boolean;
+  isMock?: boolean;
   onLike: () => void;
   onSave: () => void;
 }
 
-export function FeedCard({ item, state, isActive, onLike, onSave }: FeedCardProps) {
+export function FeedCard({ item, state, isActive, isMock = false, onLike, onSave }: FeedCardProps) {
   const { setPage, setFeedIntent } = useAppContext();
 
   const handleBuild = useCallback(() => {
@@ -82,6 +83,7 @@ export function FeedCard({ item, state, isActive, onLike, onSave }: FeedCardProp
       <FeedActionPanel
         item={item}
         state={state}
+        isMock={isMock}
         onLike={onLike}
         onSave={onSave}
         onShare={handleShare}

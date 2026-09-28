@@ -88,14 +88,14 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
 }
 
 /* ── Loader with MOCK_FEED fallback ─────────────────────────────── */
-export async function loadFeedItems(): Promise<FeedItem[]> {
+export async function loadFeedItems(): Promise<{ items: FeedItem[]; isMock: boolean }> {
   try {
     const { items } = await fetchDiscoverFeed({ limit: 30 });
     if (items.length > 0) {
-      return items.map(creationToFeedItem);
+      return { items: items.map(creationToFeedItem), isMock: false };
     }
   } catch {
     // Network unavailable or API error — fall through to mock
   }
-  return MOCK_FEED;
+  return { items: MOCK_FEED, isMock: true };
 }
