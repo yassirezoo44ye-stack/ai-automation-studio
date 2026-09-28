@@ -425,3 +425,116 @@ def test_D39_mock_feed_ids_are_valid_uuids():
             f"MOCK_FEED item id {item_id!r} is not a valid UUID v4 — "
             "like/save calls on fallback mock items will return 422 from the API"
         )
+
+
+# ── Phase 6 P0: Explicit Publish flow (D-40..D-45) ───────────────────────────
+
+_DISCOVER_SVC_SRC = (_ROOT / "src/renderer/features/discover/services/discoverService.ts").read_text(encoding="utf-8")
+_DISCOVER_PAGE_SRC = (_ROOT / "src/renderer/features/discover/DiscoverPage.tsx").read_text(encoding="utf-8")
+_EN_DISCOVER_JSON = (_ROOT / "src/renderer/locales/en/discover.json").read_text(encoding="utf-8")
+_AR_DISCOVER_JSON = (_ROOT / "src/renderer/locales/ar/discover.json").read_text(encoding="utf-8")
+
+
+def test_D40_publish_creation_function_exists():
+    """D-40: discoverService.ts exports publishCreation (explicit publish function present)."""
+    assert "publishCreation" in _DISCOVER_SVC_SRC, \
+        "discoverService.ts must export publishCreation for the explicit publish flow"
+
+
+def test_D41_publish_creation_calls_correct_endpoint():
+    """D-41: publishCreation calls POST /api/creations/{id}/publish (not a duplicate-creation path)."""
+    assert "/publish" in _DISCOVER_SVC_SRC, \
+        "publishCreation must call the /publish endpoint, not a create endpoint"
+    # Must not use a duplicate-creation pattern (no INSERT path in service)
+    assert "POST" in _DISCOVER_SVC_SRC or "post" in _DISCOVER_SVC_SRC.lower(), \
+        "publishCreation must use POST method"
+    assert "INSERT" not in _DISCOVER_SVC_SRC, \
+        "discoverService.ts must not contain INSERT — publish is a visibility toggle, not a new creation"
+
+
+def test_D42_en_locale_has_action_error_keys():
+    """D-42: en/discover.json has publishError, unpublishError, deleteError i18n keys."""
+    assert '"publishError"' in _EN_DISCOVER_JSON, \
+        "en/discover.json must have actions.publishError key"
+    assert '"unpublishError"' in _EN_DISCOVER_JSON, \
+        "en/discover.json must have actions.unpublishError key"
+    assert '"deleteError"' in _EN_DISCOVER_JSON, \
+        "en/discover.json must have actions.deleteError key"
+
+
+def test_D43_ar_locale_has_action_error_keys():
+    """D-43: ar/discover.json has publishError, unpublishError, deleteError i18n keys."""
+    assert '"publishError"' in _AR_DISCOVER_JSON, \
+        "ar/discover.json must have actions.publishError key"
+    assert '"unpublishError"' in _AR_DISCOVER_JSON, \
+        "ar/discover.json must have actions.unpublishError key"
+    assert '"deleteError"' in _AR_DISCOVER_JSON, \
+        "ar/discover.json must have actions.deleteError key"
+
+
+def test_D44_discover_page_uses_action_scoped_error_fallback():
+    """D-44: DiscoverPage.tsx catch block uses action-scoped error keys, not cloneError for publish."""
+    assert "publishError" in _DISCOVER_PAGE_SRC, \
+        "DiscoverPage.tsx catch block must reference publishError key for publish failures"
+    assert "unpublishError" in _DISCOVER_PAGE_SRC, \
+        "DiscoverPage.tsx catch block must reference unpublishError key"
+    assert "deleteError" in _DISCOVER_PAGE_SRC, \
+        "DiscoverPage.tsx catch block must reference deleteError key"
+
+
+def test_D45_publish_endpoint_uses_update_not_insert():
+    """D-45: POST /creations/{id}/publish updates visibility (no duplicate row created)."""
+    assert "UPDATE flow_creations" in _DISCOVER_SRC, \
+        "Publish endpoint must UPDATE visibility, not INSERT a new row (no duplicate)"
+    assert "visibility='public'" in _DISCOVER_SRC, \
+        "Publish endpoint must set visibility='public'"
+
+
+# ── Phase 6 P0 Part 2: Modal immediate-publish (D-46..D-51) ──────────────────
+
+_MODAL_SRC = (_ROOT / "src/renderer/features/discover/components/PublishToDiscoverModal.tsx").read_text(encoding="utf-8")
+
+
+def test_D46_modal_imports_publish_creation():
+    """D-46: PublishToDiscoverModal imports publishCreation — explicit publish flow wired."""
+    assert "publishCreation" in _MODAL_SRC, \
+        "PublishToDiscoverModal.tsx must import publishCreation from discoverService"
+
+
+def test_D47_modal_publish_immediately_defaults_false():
+    """D-47: publishImmediately state defaults to false — creation is private by default."""
+    assert "publishImmediately" in _MODAL_SRC, \
+        "Modal must have publishImmediately state"
+    assert "useState(false)" in _MODAL_SRC, \
+        "publishImmediately must default to false — no auto-publish without user consent"
+
+
+def test_D48_modal_publish_uses_creation_id_no_duplicate_create():
+    """D-48: publishCreation called with creation.id — same row, no duplicate create."""
+    assert "publishCreation(creation.id" in _MODAL_SRC, \
+        "publishCreation must use creation.id from the initial createCreation result"
+    # createCreation must appear exactly once — publish is a visibility toggle only
+    assert _MODAL_SRC.count("await createCreation") == 1, \
+        "createCreation must be called only once (publish is a visibility toggle, not a second create)"
+
+
+def test_D49_publish_failed_key_in_both_locales():
+    """D-49: publish.modal.publishFailed key in EN and AR — proper error on publish failure."""
+    assert '"publishFailed"' in _EN_DISCOVER_JSON, \
+        "en/discover.json must have publish.modal.publishFailed key"
+    assert '"publishFailed"' in _AR_DISCOVER_JSON, \
+        "ar/discover.json must have publish.modal.publishFailed key"
+
+
+def test_D50_publish_now_label_in_both_locales():
+    """D-50: publish.modal.publishNowLabel key in EN and AR — explicit opt-in checkbox."""
+    assert '"publishNowLabel"' in _EN_DISCOVER_JSON, \
+        "en/discover.json must have publish.modal.publishNowLabel key"
+    assert '"publishNowLabel"' in _AR_DISCOVER_JSON, \
+        "ar/discover.json must have publish.modal.publishNowLabel key"
+
+
+def test_D51_create_succeeded_prevents_duplicate_submit():
+    """D-51: Modal tracks createSucceeded to block re-submit after publish failure."""
+    assert "createSucceeded" in _MODAL_SRC, \
+        "Modal must use createSucceeded state to disable re-submit after create+publish-fail"

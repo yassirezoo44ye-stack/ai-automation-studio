@@ -403,7 +403,11 @@ export function DiscoverPage() {
         showToast(t("actions.deleted"));
       }
     } catch (e) {
-      showToast(e instanceof Error ? e.message : t("actions.cloneError"));
+      const fallbackKey = action === "publish" ? "actions.publishError"
+        : action === "unpublish" ? "actions.unpublishError"
+        : action === "delete" ? "actions.deleteError"
+        : "actions.cloneError";
+      showToast(e instanceof Error ? e.message : t(fallbackKey));
     }
   };
 

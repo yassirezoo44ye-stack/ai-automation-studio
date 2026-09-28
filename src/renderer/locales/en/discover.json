@@ -45,7 +45,10 @@
     "cloneUnsupported": "This type cannot be cloned",
     "published": "Published to Discover",
     "unpublished": "Moved to private",
-    "deleted": "Creation deleted"
+    "deleted": "Creation deleted",
+    "publishError": "Could not publish this creation",
+    "unpublishError": "Could not unpublish this creation",
+    "deleteError": "Could not delete this creation"
   },
   "loading": "Loading creations…",
   "error": "Failed to load creations",
@@ -61,10 +64,16 @@
       "tagsPlaceholder": "ai, productivity, automation",
       "tagsHint": "Comma-separated",
       "privateNotice": "Saved as private — publish from Discover when ready.",
+      "publicNotice": "Will be visible in the public feed right away",
+      "publishNowLabel": "Publish immediately",
+      "publishNowHint": "Make your creation visible in the public feed",
       "cancel": "Cancel",
       "submit": "Add to Discover",
+      "submitPublish": "Add & Publish",
       "submitting": "Adding…",
+      "publishing": "Publishing…",
       "error": "Failed to add to Discover",
+      "publishFailed": "Saved as private — could not publish. Open Discover › My Creations to publish later.",
       "duplicateWarning": "This item is already in My Creations.",
       "noProject": "No active project. Open a project in App Builder first.",
       "success": "Added to Discover"

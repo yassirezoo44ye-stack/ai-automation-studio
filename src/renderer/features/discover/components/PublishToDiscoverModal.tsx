@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "../../../contexts/OrgContext";
 import type { CreationType, FlowCreation } from "../types/creation.types";
-import { createCreation, fetchMyCreations } from "../services/discoverService";
+import { createCreation, fetchMyCreations, publishCreation } from "../services/discoverService";
 
 interface PublishToDiscoverModalProps {
   sourceType: Extract<CreationType, "APP" | "AGENT">;
@@ -27,10 +27,13 @@ export function PublishToDiscoverModal({
   const [title, setTitle]             = useState(defaultTitle);
   const [description, setDescription] = useState(defaultDescription);
   const [tagsInput, setTagsInput]     = useState("");
-  const [submitting, setSubmitting]   = useState(false);
-  const [checkingDup, setCheckingDup] = useState(false);
-  const [error, setError]             = useState<string | null>(null);
-  const [dupWarning, setDupWarning]   = useState<string | null>(null);
+  const [submitting, setSubmitting]           = useState(false);
+  const [checkingDup, setCheckingDup]         = useState(false);
+  const [error, setError]                     = useState<string | null>(null);
+  const [dupWarning, setDupWarning]           = useState<string | null>(null);
+  const [publishImmediately, setPublishImmediately] = useState(false);
+  const [publishingAfterCreate, setPublishingAfterCreate] = useState(false);
+  const [createSucceeded, setCreateSucceeded] = useState(false);
 
   // Frontend duplicate check — UX enhancement only, not a security gate.
   useEffect(() => {
@@ -51,7 +54,7 @@ export function PublishToDiscoverModal({
   }, [currentOrgId, sourceId, sourceType, t]);
 
   const handleSubmit = useCallback(async () => {
-    if (!title.trim() || !currentOrgId || submitting || dupWarning) return;
+    if (!title.trim() || !currentOrgId || submitting || !!dupWarning) return;
     setSubmitting(true);
     setError(null);
 
@@ -70,7 +73,22 @@ export function PublishToDiscoverModal({
         source_id: sourceId,
         tags,
       });
-      onSuccess(creation);
+
+      if (!publishImmediately) {
+        onSuccess(creation);
+        return;
+      }
+
+      setPublishingAfterCreate(true);
+      try {
+        const published = await publishCreation(creation.id, currentOrgId);
+        onSuccess(published);
+      } catch (pubErr) {
+        setCreateSucceeded(true);
+        setError(pubErr instanceof Error ? pubErr.message : t("publish.modal.publishFailed"));
+      } finally {
+        setPublishingAfterCreate(false);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("publish.modal.error"));
     } finally {
@@ -78,7 +96,8 @@ export function PublishToDiscoverModal({
     }
   }, [
     title, description, tagsInput, currentOrgId,
-    sourceType, sourceId, submitting, t, onSuccess,
+    sourceType, sourceId, submitting, dupWarning,
+    publishImmediately, t, onSuccess,
   ]);
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -237,16 +256,49 @@ export function PublishToDiscoverModal({
           </span>
         </div>
 
-        {/* Private notice */}
+        {/* Publish immediately checkbox */}
+        <label style={{
+          display: "flex", alignItems: "flex-start", gap: 10,
+          cursor: submitting ? "not-allowed" : "pointer",
+          userSelect: "none",
+        }}>
+          <input
+            type="checkbox"
+            checked={publishImmediately}
+            onChange={e => setPublishImmediately(e.target.checked)}
+            disabled={submitting}
+            style={{ marginTop: 2, accentColor: "var(--accent)", flexShrink: 0, cursor: "inherit" }}
+          />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t2)" }}>
+              {t("publish.modal.publishNowLabel")}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 2 }}>
+              {t("publish.modal.publishNowHint")}
+            </div>
+          </div>
+        </label>
+
+        {/* Visibility notice */}
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
           padding: "8px 12px", borderRadius: 8,
-          background: "var(--b1)", fontSize: 12, color: "var(--t4)",
+          background: publishImmediately ? "var(--accent)18" : "var(--b1)",
+          border: publishImmediately ? "1px solid var(--accent)33" : "none",
+          fontSize: 12,
+          color: publishImmediately ? "var(--accent)" : "var(--t4)",
         }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          {t("publish.modal.privateNotice")}
+          {publishImmediately ? (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          )}
+          {publishImmediately ? t("publish.modal.publicNotice") : t("publish.modal.privateNotice")}
         </div>
 
         {/* Error */}
@@ -277,21 +329,27 @@ export function PublishToDiscoverModal({
           </button>
           <button
             onClick={() => void handleSubmit()}
-            disabled={submitting || checkingDup || !title.trim() || !currentOrgId || !!dupWarning}
+            disabled={submitting || checkingDup || !title.trim() || !currentOrgId || !!dupWarning || createSucceeded}
             style={{
               padding: "9px 18px", borderRadius: 8,
               border: "none",
-              background: submitting || checkingDup || !title.trim() || !currentOrgId || !!dupWarning
+              background: submitting || checkingDup || !title.trim() || !currentOrgId || !!dupWarning || createSucceeded
                 ? "var(--b2)" : "var(--accent)",
-              color: submitting || checkingDup || !title.trim() || !currentOrgId || !!dupWarning
+              color: submitting || checkingDup || !title.trim() || !currentOrgId || !!dupWarning || createSucceeded
                 ? "var(--t4)" : "#fff",
               fontSize: 13, fontWeight: 600,
-              cursor: submitting || checkingDup || !title.trim() || !currentOrgId || !!dupWarning
+              cursor: submitting || checkingDup || !title.trim() || !currentOrgId || !!dupWarning || createSucceeded
                 ? "not-allowed" : "pointer",
               transition: "all 0.15s",
             }}
           >
-            {submitting ? t("publish.modal.submitting") : t("publish.modal.submit")}
+            {publishingAfterCreate
+              ? t("publish.modal.publishing")
+              : submitting
+              ? t("publish.modal.submitting")
+              : publishImmediately
+              ? t("publish.modal.submitPublish")
+              : t("publish.modal.submit")}
           </button>
         </div>
       </div>
