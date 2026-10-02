@@ -1,7 +1,6 @@
 import type { FlowCreation, CreationType } from "../../discover/types/creation.types";
 import { fetchDiscoverFeed } from "../../discover/services/discoverService";
 import { apiFetch } from "../../../shared/utils/api";
-import { MOCK_FEED } from "../mock/feedData";
 import type { FeedItem, FeedContentType, CTAType, FeedCreator, FeedMedia } from "../types/feed.types";
 import type { Page } from "../../../types";
 
@@ -87,15 +86,23 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
   };
 }
 
-/* ── Loader with MOCK_FEED fallback ─────────────────────────────── */
-export async function loadFeedItems(): Promise<{ items: FeedItem[]; isMock: boolean }> {
+/* ── Loader — real data only, never falls back to mock content ─────── */
+export interface FeedLoadResult {
+  items: FeedItem[];
+  isMock: false;
+  /** null on success (including an empty feed); a message when the API failed */
+  error: string | null;
+}
+
+export async function loadFeedItems(): Promise<FeedLoadResult> {
   try {
     const { items } = await fetchDiscoverFeed({ limit: 30 });
-    if (items.length > 0) {
-      return { items: items.map(creationToFeedItem), isMock: false };
-    }
-  } catch {
-    // Network unavailable or API error — fall through to mock
+    return { items: items.map(creationToFeedItem), isMock: false, error: null };
+  } catch (err) {
+    return {
+      items: [],
+      isMock: false,
+      error: err instanceof Error && err.message ? err.message : "Failed to load feed",
+    };
   }
-  return { items: MOCK_FEED, isMock: true };
 }

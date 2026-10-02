@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import { FeedTopBar } from "./components/FeedTopBar";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
-import { MOCK_FEED } from "./mock/feedData";
 import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI } from "./services/feedService";
+import { useAppContext } from "../../contexts/app";
 import type { FeedTab, FeedItem, FeedItemState } from "./types/feed.types";
 import "./FeedPage.css";
 
@@ -25,26 +25,36 @@ function initStates(items: FeedItem[]): Record<string, FeedItemState> {
 
 export function FeedPage() {
   const { t } = useTranslation("feed");
+  const { setPage } = useAppContext();
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
-  const [items, setItems]     = useState<FeedItem[]>(MOCK_FEED);
-  const [isMock, setIsMock]   = useState(true);
+  const [items, setItems]     = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [states, setStates]   = useState<Record<string, FeedItemState>>(() => initStates(MOCK_FEED));
+  const [error, setError]     = useState<string | null>(null);
+  const [states, setStates]   = useState<Record<string, FeedItemState>>({});
+  // Bumped by the retry button to re-run the load effect
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
-  // Load real data on mount; fall back to MOCK_FEED on error/empty (handled inside loadFeedItems)
+  // Real data only: no mock content is shown while loading, when the feed
+  // is empty, or when the API fails.
   useEffect(() => {
     let cancelled = false;
     loadFeedItems()
-      .then(({ items: loaded, isMock: mock }) => {
+      .then(({ items: loaded, error: loadError }) => {
         if (cancelled) return;
         setItems(loaded);
         setStates(initStates(loaded));
-        setIsMock(mock);
+        setError(loadError);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
+  }, [loadAttempt]);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    setLoadAttempt(n => n + 1);
   }, []);
 
   const { activeIndex, containerRef } = useFeedNavigation({ total: items.length });
@@ -78,6 +88,34 @@ export function FeedPage() {
   const total = items.length;
   const progressPct = total > 1 ? (activeIndex / (total - 1)) * 100 : 0;
 
+  /* ── Loading / error / empty states (no mock fallback) ─────── */
+  let status: React.ReactNode = null;
+  if (loading) {
+    status = (
+      <div className="feed-status" role="status" aria-live="polite">
+        <p className="feed-status__title">{t("status.loading")}</p>
+      </div>
+    );
+  } else if (error) {
+    status = (
+      <div className="feed-status" role="alert">
+        <p className="feed-status__title">{t("status.errorTitle")}</p>
+        <p className="feed-status__body">{t("status.errorBody")}</p>
+        <button className="feed-status__btn" onClick={retry}>{t("status.retry")}</button>
+      </div>
+    );
+  } else if (total === 0) {
+    status = (
+      <div className="feed-status" role="status">
+        <p className="feed-status__title">{t("status.emptyTitle")}</p>
+        <p className="feed-status__body">{t("status.emptyBody")}</p>
+        <button className="feed-status__btn" onClick={() => setPage("app-builder")}>
+          {t("status.emptyCta")}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="feed-page" role="main" aria-label={t("page.ariaLabel")}>
       {/* Top bar overlays the first card */}
@@ -88,25 +126,21 @@ export function FeedPage() {
         <div className="feed-progress__bar" style={{ width: `${progressPct}%` }} />
       </div>
 
-      {/* Loading overlay — shows MOCK_FEED cards underneath while real data loads */}
-      {loading && (
-        <div className="feed-loading" aria-live="polite" aria-label="Loading feed…" />
-      )}
+      {status}
 
-      {/* Scrollable card stack */}
+      {/* Scrollable card stack — always mounted so navigation listeners attach */}
       <div
         ref={containerRef}
         className="feed-scroll"
         aria-label={t("page.feedLabel")}
         tabIndex={0}
       >
-        {items.map((item, idx) => (
+        {!loading && items.map((item, idx) => (
           <FeedCard
             key={item.id}
             item={item}
             state={states[item.id] ?? { liked: false, saved: false, likes: 0, saves: 0 }}
             isActive={idx === activeIndex}
-            isMock={isMock}
             onLike={() => toggleLike(item.id)}
             onSave={() => toggleSave(item.id)}
           />
@@ -115,7 +149,7 @@ export function FeedPage() {
 
       {/* Dot indicator */}
       <div className="feed-dots" aria-hidden>
-        {items.map((item, idx) => (
+        {!loading && items.map((item, idx) => (
           <span
             key={item.id}
             className={`feed-dot${idx === activeIndex ? " feed-dot--active" : ""}`}
