@@ -122,7 +122,11 @@ describe("creationToFeedItem", () => {
   });
 
   it("defaults userLiked/userSaved/likes/saves to safe values when absent", () => {
-    const { user_liked, user_saved, likes_count, saves_count, ...rest } = BASE_CREATION;
+    const {
+      user_liked: _userLiked, user_saved: _userSaved,
+      likes_count: _likesCount, saves_count: _savesCount,
+      ...rest
+    } = BASE_CREATION;
     const item = creationToFeedItem(rest as FlowCreation);
     expect(item.userLiked).toBe(false);
     expect(item.userSaved).toBe(false);

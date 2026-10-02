@@ -28,7 +28,6 @@ export function PublishToDiscoverModal({
   const [description, setDescription] = useState(defaultDescription);
   const [tagsInput, setTagsInput]     = useState("");
   const [submitting, setSubmitting]           = useState(false);
-  const [checkingDup, setCheckingDup]         = useState(false);
   const [error, setError]                     = useState<string | null>(null);
   const [dupWarning, setDupWarning]           = useState<string | null>(null);
   const [publishImmediately, setPublishImmediately] = useState(false);
@@ -36,10 +35,15 @@ export function PublishToDiscoverModal({
   const [createSucceeded, setCreateSucceeded] = useState(false);
 
   // Frontend duplicate check — UX enhancement only, not a security gate.
+  // "Checking" is derived (no synchronous setState inside the effect): it is
+  // true until the check for the current org/source has finished.
+  const dupCheckKey = currentOrgId && sourceId ? `${currentOrgId}:${sourceType}:${sourceId}` : null;
+  const [checkedDupKey, setCheckedDupKey] = useState<string | null>(null);
+  const checkingDup = dupCheckKey !== null && checkedDupKey !== dupCheckKey;
+
   useEffect(() => {
-    if (!currentOrgId || !sourceId) return;
+    if (!dupCheckKey || !currentOrgId) return;
     let cancelled = false;
-    setCheckingDup(true);
     fetchMyCreations(currentOrgId, { limit: 100 })
       .then(resp => {
         if (cancelled) return;
@@ -49,9 +53,19 @@ export function PublishToDiscoverModal({
         if (dup) setDupWarning(t("publish.modal.duplicateWarning"));
       })
       .catch(() => { /* ignore — duplicate check is best-effort */ })
-      .finally(() => { if (!cancelled) setCheckingDup(false); });
+      .finally(() => { if (!cancelled) setCheckedDupKey(dupCheckKey); });
     return () => { cancelled = true; };
-  }, [currentOrgId, sourceId, sourceType, t]);
+  }, [dupCheckKey, currentOrgId, sourceId, sourceType, t]);
+
+  // Escape closes the modal. A document listener instead of onKeyDown on the
+  // non-interactive dialog container (jsx-a11y/no-noninteractive-element-interactions).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const handleSubmit = useCallback(async () => {
     if (!title.trim() || !currentOrgId || submitting || !!dupWarning) return;
@@ -100,10 +114,6 @@ export function PublishToDiscoverModal({
     publishImmediately, t, onSuccess,
   ]);
 
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
-  };
-
   return (
     <div
       role="dialog"
@@ -114,15 +124,13 @@ export function PublishToDiscoverModal({
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: "16px",
       }}
-      onKeyDown={onKey}
     >
-      {/* Backdrop */}
+      {/* Backdrop — mouse-only affordance; keyboard users have Escape and the
+          close button, so it is hidden from assistive tech. */}
       <div
         style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }}
         onClick={onClose}
-        role="button"
-        tabIndex={-1}
-        aria-label={t("publish.modal.close")}
+        aria-hidden="true"
       />
 
       {/* Panel */}
@@ -269,11 +277,11 @@ export function PublishToDiscoverModal({
             disabled={submitting}
             style={{ marginTop: 2, accentColor: "var(--accent)", flexShrink: 0, cursor: "inherit" }}
           />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t2)" }}>
-              {t("publish.modal.publishNowLabel")}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 2 }}>
+          {/* Label text one level under <label> so its accessible name is
+              detected (jsx-a11y/label-has-associated-control). */}
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t2)" }}>
+            {t("publish.modal.publishNowLabel")}
+            <div style={{ fontSize: 11, fontWeight: 400, color: "var(--t5)", marginTop: 2 }}>
               {t("publish.modal.publishNowHint")}
             </div>
           </div>

@@ -98,7 +98,6 @@ export function FeedPage() {
         ref={containerRef}
         className="feed-scroll"
         aria-label={t("page.feedLabel")}
-        tabIndex={0}
       >
         {items.map((item, idx) => (
           <FeedCard

@@ -9,6 +9,7 @@ import { CommandPalette } from "./CommandPalette";
 import { CopilotButton } from "../../shared/ui/copilot";
 import { NotificationBell } from "../../shared/ui/notifications";
 import type { Page } from "../../types";
+import { _isStaleChunkError } from "./staleChunk";
 
 // When a deploy replaces a lazy chunk the old in-memory bundle references the
 // old hash, which 404s.  Catch only genuine stale-chunk TypeErrors (identified
@@ -16,22 +17,6 @@ import type { Page } from "../../types";
 // the correct chunk.  sessionStorage guards against an infinite reload loop if
 // the chunk is genuinely missing rather than just stale.
 const _CHUNK_RELOAD_KEY = "__flow_chunk_reload__";
-
-// Substrings emitted by each browser when a dynamic import 404s after a deploy.
-// Deliberately NOT matching every TypeError — only these browser-native messages
-// confirm the error is a failed network fetch, not a runtime error inside the
-// imported module (e.g. "Cannot read properties of undefined").
-const _STALE_CHUNK_MSGS = [
-  "Failed to fetch dynamically imported module", // Chrome / Edge
-  "Importing a module script failed",            // Safari
-  "error loading dynamically imported module",   // Firefox
-];
-
-export function _isStaleChunkError(err: unknown): boolean {
-  if (!(err instanceof TypeError)) return false;
-  const msg = (err as TypeError).message;
-  return _STALE_CHUNK_MSGS.some(p => msg.includes(p));
-}
 
 function chunkFallback(err: unknown): never {
   if (_isStaleChunkError(err)) {
