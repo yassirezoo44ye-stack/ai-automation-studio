@@ -44,7 +44,9 @@ beforeEach(() => {
 /* ── loadFeedItems ──────────────────────────────────────────────── */
 
 describe("loadFeedItems", () => {
-  it("returns isMock:false when Discover returns real items", async () => {
+  const MOCK_IDS = new Set(MOCK_FEED.map(i => i.id));
+
+  it("returns isMock:false and no error when Discover returns real items", async () => {
     mockFetchDiscover.mockResolvedValueOnce({
       items: [BASE_CREATION],
       total: 1,
@@ -53,26 +55,40 @@ describe("loadFeedItems", () => {
     const result = await loadFeedItems();
 
     expect(result.isMock).toBe(false);
+    expect(result.error).toBeNull();
     expect(result.items).toHaveLength(1);
     expect(result.items[0].id).toBe(BASE_CREATION.id);
   });
 
-  it("returns isMock:true and MOCK_FEED when Discover returns empty", async () => {
+  it("returns an empty list (not MOCK_FEED) when Discover returns empty", async () => {
     mockFetchDiscover.mockResolvedValueOnce({ items: [], total: 0 });
 
     const result = await loadFeedItems();
 
-    expect(result.isMock).toBe(true);
-    expect(result.items).toBe(MOCK_FEED);
+    expect(result.items).toEqual([]);
+    expect(result.items).not.toBe(MOCK_FEED);
+    expect(result.isMock).toBe(false);
+    expect(result.error).toBeNull();
   });
 
-  it("returns isMock:true and MOCK_FEED when Discover throws", async () => {
+  it("returns an empty list (not MOCK_FEED) with an error when Discover throws", async () => {
     mockFetchDiscover.mockRejectedValueOnce(new Error("network error"));
 
     const result = await loadFeedItems();
 
-    expect(result.isMock).toBe(true);
-    expect(result.items).toBe(MOCK_FEED);
+    expect(result.items).toEqual([]);
+    expect(result.items.some(i => MOCK_IDS.has(i.id))).toBe(false);
+    expect(result.isMock).toBe(false);
+    expect(result.error).toBe("network error");
+  });
+
+  it("uses a generic error message when Discover rejects with a non-Error", async () => {
+    mockFetchDiscover.mockRejectedValueOnce("boom");
+
+    const result = await loadFeedItems();
+
+    expect(result.items).toEqual([]);
+    expect(result.error).toBe("Failed to load feed");
   });
 
   it("maps real data correctly via creationToFeedItem", async () => {
@@ -176,10 +192,10 @@ describe("toggleSave", () => {
 });
 
 /*
- * Limitation: FeedPage interaction tests (verify Like/Save API not called when
- * isMock=true, called when isMock=false) require React component rendering via
- * @testing-library/react. This setup does not exist in the current test suite
- * (all existing tests are pure utility/service unit tests). Skipping to avoid
- * inventing new infrastructure. The guard is enforced at the UI level via the
- * disabled prop on the Like/Save buttons in FeedActionPanel.
+ * Limitation: FeedPage rendering tests (loading / empty / error+retry states)
+ * require React component rendering via @testing-library/react. This setup
+ * does not exist in the current test suite (all existing tests are pure
+ * utility/service unit tests), so it is not added here. The data contract
+ * those states depend on (items + error from loadFeedItems, never MOCK_FEED)
+ * is covered above.
  */

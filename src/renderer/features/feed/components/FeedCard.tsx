@@ -27,7 +27,10 @@ export function FeedCard({ item, state, isActive, isMock = false, onLike, onSave
   }, [item.id, item.sourceId, item.sourceType, item.sourceMeta, item.targetPage, setPage, setFeedIntent]);
 
   const handleShare = useCallback(async (): Promise<boolean> => {
-    const url = `${window.location.origin}/feed/${item.id}`;
+    // Share the app root: it is the only verified route. Navigation is
+    // state-based (no router) and App.tsx redirects /feed/* to "/" dropping
+    // the id, so a /feed/:id link would never open this item.
+    const url = `${window.location.origin}/`;
 
     if (navigator.clipboard?.writeText) {
       try {
@@ -49,7 +52,7 @@ export function FeedCard({ item, state, isActive, isMock = false, onLike, onSave
 
     window.prompt("Copy this link:", url);
     return false;
-  }, [item.id]);
+  }, []);
 
   const handleComment = useCallback(() => {
     /* Phase 2: open comments drawer */

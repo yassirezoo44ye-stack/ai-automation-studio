@@ -3,6 +3,15 @@
     "ariaLabel": "Flow Feed",
     "feedLabel": "Content feed"
   },
+  "status": {
+    "loading": "Loading feed…",
+    "emptyTitle": "Nothing here yet",
+    "emptyBody": "Build an app, run it, and publish the result to Discover — it will show up here.",
+    "emptyCta": "Start building",
+    "errorTitle": "Couldn't load the feed",
+    "errorBody": "Check your connection and try again.",
+    "retry": "Retry"
+  },
   "topBar": {
     "ariaLabel": "Feed navigation",
     "forYou": "For You",

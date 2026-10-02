@@ -96,6 +96,45 @@
   transition: width 0.35s ease;
 }
 
+/* ── Loading / empty / error state ───────────────────────────── */
+.feed-status {
+  position: absolute;
+  inset: 0;
+  /* Below .feed-topbar (20) so its tabs stay clickable; above card overlays (10) */
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+.feed-status__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.feed-status__body {
+  margin: 0;
+  max-width: 340px;
+  font-size: 14px;
+  color: rgba(255,255,255,0.7);
+}
+
+.feed-status__btn {
+  margin-top: 4px;
+  padding: 9px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent, #6E32E0);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
 /* ── Scroll container ────────────────────────────────────────── */
 .feed-scroll {
   flex: 1;
