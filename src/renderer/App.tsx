@@ -7,6 +7,7 @@ import { NotificationProvider } from "./contexts/NotificationContext";
 import { CopilotProvider } from "./contexts/CopilotContext";
 import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
+import { LandingPage }   from "./features/home/LandingPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
 import "./design-system.css";
 
@@ -44,7 +45,7 @@ function AppInner() {
   }
 
   if (!user) {
-    return <AuthPage />;
+    return <LandingPage />;
   }
 
   return (

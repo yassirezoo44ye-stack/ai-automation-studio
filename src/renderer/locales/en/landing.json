@@ -1,0 +1,202 @@
+{
+  "nav": {
+    "product":      "Product",
+    "agents":       "Agents",
+    "workflows":    "Workflows",
+    "pricing":      "Pricing",
+    "signIn":       "Sign In",
+    "getStarted":   "Get Started Free"
+  },
+  "hero": {
+    "badge":        "AI Automation Platform",
+    "headline1":    "Write your idea.",
+    "headline2":    "We build it for you.",
+    "sub":          "Flow turns natural language into fully functional workflows, AI agents, and business apps — in seconds.",
+    "cta1":         "Get Started Free",
+    "cta2":         "Watch Demo",
+    "liveLabel":    "Flow · Live Run",
+    "steps": [
+      "Analyze sales data",
+      "Analysis Agent",
+      "Generate report",
+      "Send to team",
+      "Revenue alert"
+    ],
+    "running":      "RUNNING"
+  },
+  "terminal": {
+    "label":        "LIVE RUN",
+    "tasks": [
+      "Collecting sales data",
+      "Analyzing trends",
+      "Generating report",
+      "Sending report",
+      "Checking revenue"
+    ]
+  },
+  "difference": {
+    "badge":        "The Difference",
+    "headline":     "Don't just use AI. Make it work.",
+    "sub":          "Paste a prompt and watch Flow understand, plan, execute, verify, and deliver.",
+    "prompt":       "Analyze this week's sales, generate a report and send to the team...",
+    "stages": ["Understand", "Plan", "Execute", "Verify", "Deliver"]
+  },
+  "agents": {
+    "badge":        "AI Workforce",
+    "headline":     "Your team never sleeps.",
+    "sub":          "Specialized agents collaborate, route tasks, and deliver results around the clock.",
+    "nodes": [
+      "Research Agent",
+      "Content Agent",
+      "Review Agent",
+      "Publishing Agent",
+      "Analytics Agent"
+    ],
+    "statuses": ["Active", "Processing", "Reviewing", "Publishing", "Analyzing"]
+  },
+  "workflow": {
+    "badge":        "Workflow Builder",
+    "headline":     "Visual automation, zero code.",
+    "sub":          "Build complex multi-step workflows with a drag-and-drop canvas. AI agents handle every step.",
+    "nodes": ["Trigger", "Research", "AI Agent", "Condition", "Approve", "Retry", "Publish"]
+  },
+  "agentos": {
+    "badge":        "AgentOS",
+    "headline":     "AI operating system for your business.",
+    "sub":          "A unified control plane for all your AI agents, jobs, and workflows.",
+    "metrics": [
+      { "label": "Active Agents",  "value": "06" },
+      { "label": "Running Jobs",   "value": "12" },
+      { "label": "Completed",      "value": "148" },
+      { "label": "Success Rate",   "value": "98.7%" }
+    ],
+    "activity": [
+      { "name": "Content Agent",  "status": "Processing" },
+      { "name": "Research Agent", "status": "Completed"  },
+      { "name": "Sales Agent",    "status": "Analyzing"  },
+      { "name": "Report Agent",   "status": "Delivered"  }
+    ]
+  },
+  "gateway": {
+    "badge":        "AI Gateway",
+    "headline":     "Right model. Right moment.",
+    "sub":          "Flow intelligently routes every request to the best AI model for speed, quality, and cost.",
+    "request":      "AI Request",
+    "gateway":      "Flow Gateway",
+    "labels":       ["Quality", "Speed", "Cost"]
+  },
+  "memory": {
+    "badge":        "Persistent Memory",
+    "headline":     "Flow learns your business.",
+    "sub":          "Every run improves the next. Context persists across agents, workflows, and sessions.",
+    "flow": ["Workflow", "Memory", "Context", "Better Next Run"]
+  },
+  "integrations": {
+    "badge":        "Integrations",
+    "headline":     "Connect everything.",
+    "sub":          "Flow works with your existing stack — databases, CRMs, communication tools, and more.",
+    "center":       "FLOW",
+    "nodes":        ["CRM", "Email", "Database", "Storage", "Analytics", "Web", "API"]
+  },
+  "howItWorks": {
+    "badge":        "How It Works",
+    "headline":     "Idea to automation in 5 steps.",
+    "steps": [
+      { "n": "01", "title": "Idea",    "desc": "Describe your automation in plain language — Arabic or English." },
+      { "n": "02", "title": "Build",   "desc": "Flow generates the full app: UI, database, backend, and agents." },
+      { "n": "03", "title": "Run",     "desc": "Trigger your workflow manually, on a schedule, or via webhook." },
+      { "n": "04", "title": "Monitor", "desc": "Watch every step in real time. Intervene when needed." },
+      { "n": "05", "title": "Improve", "desc": "Flow learns from every run and suggests optimizations." }
+    ]
+  },
+  "useCases": {
+    "badge":        "Use Cases",
+    "headline":     "Built for every team.",
+    "items": [
+      {
+        "id": "content",
+        "title": "Content Pipeline",
+        "nodes": ["Research", "Create", "Review", "Approve", "Publish", "Analyze"]
+      },
+      {
+        "id": "sales",
+        "title": "Sales Intelligence",
+        "nodes": ["Collect", "Analyze", "Detect", "Report", "Notify"]
+      },
+      {
+        "id": "support",
+        "title": "Customer Support",
+        "nodes": ["Request", "Classify", "Context", "AI Agent", "Escalate", "Reply"]
+      }
+    ]
+  },
+  "benefits": {
+    "badge":        "The Impact",
+    "headline":     "Reclaim your time.",
+    "sub":          "Flow eliminates repetitive work so your team focuses on what matters.",
+    "before":       "Manual Work",
+    "after":        "Automated Work",
+    "items": [
+      { "label": "Time saved per week", "value": "23h" },
+      { "label": "Error reduction",     "value": "91%" },
+      { "label": "Team capacity",       "value": "+3x" }
+    ]
+  },
+  "security": {
+    "badge":        "Enterprise Security",
+    "headline":     "Built for trust.",
+    "sub":          "Every layer is designed with isolation, auditability, and control.",
+    "layers": [
+      "Organization",
+      "Workspace Isolation",
+      "Role Permissions",
+      "API Protection",
+      "Audit & Observability"
+    ]
+  },
+  "pricing": {
+    "badge":        "Pricing",
+    "headline":     "Start free. Scale when ready.",
+    "plans": [
+      {
+        "id":       "free",
+        "name":     "Free",
+        "price":    "$0",
+        "period":   "/month",
+        "desc":     "Perfect for individuals and small projects.",
+        "cta":      "Get Started",
+        "features": ["5 workflows", "1 AI agent", "100 runs/mo", "Community support"]
+      },
+      {
+        "id":       "pro",
+        "name":     "Professional",
+        "price":    "$49",
+        "period":   "/month",
+        "desc":     "For growing teams and serious automation.",
+        "cta":      "Start Free Trial",
+        "badge":    "Most Popular",
+        "features": ["Unlimited workflows", "10 AI agents", "10,000 runs/mo", "Priority support", "Custom integrations"]
+      },
+      {
+        "id":       "biz",
+        "name":     "Business",
+        "price":    "$149",
+        "period":   "/month",
+        "desc":     "For enterprises with advanced requirements.",
+        "cta":      "Contact Sales",
+        "features": ["Unlimited everything", "Custom agents", "Dedicated support", "SLA guarantee", "On-premise option"]
+      }
+    ]
+  },
+  "finalCta": {
+    "headline":     "Your workflow should work even when you don't.",
+    "sub":          "Join thousands of teams automating their most important processes with Flow.",
+    "cta1":         "Start Building Free",
+    "cta2":         "Book a Demo",
+    "flow": ["IDEA", "FLOW", "AUTOMATION", "RESULT"]
+  },
+  "footer": {
+    "tagline": "AI automation for modern teams.",
+    "copy":    "© 2026 Flow. All rights reserved."
+  }
+}
