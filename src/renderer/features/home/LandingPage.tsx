@@ -458,6 +458,7 @@ function AgentsSection({ t, onCta }: { t: (k: string) => string; onCta: () => vo
   const [hovered, setHovered] = useState<number | null>(null);
   const colors = [C.blue, C.pink, C.purple, C.cyan, C.green];
 
+  // adjacency for the ring layout: 0=top center, 1=left, 2=center, 3=right, 4=bottom
   const positions = [
     { top: "8%",  left: "50%",  transform: "translate(-50%,0)"    },
     { top: "35%", left: "8%",   transform: "translate(0,-50%)"    },
@@ -492,22 +493,25 @@ function AgentsSection({ t, onCta }: { t: (k: string) => string; onCta: () => vo
           </button>
         </div>
 
+        {/* Network visualization */}
         <div style={{ position: "relative", height: 280 }}>
+          {/* Connection lines */}
           <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} viewBox="0 0 400 280">
-            <line x1="200" y1="30" x2="200" y2="110" stroke={hovered === 0 || hovered === 2 ? C.blue : C.border} strokeWidth="1.5" strokeDasharray="4 4">
+            {/* 0→2 */}<line x1="200" y1="30" x2="200" y2="110" stroke={hovered === 0 || hovered === 2 ? C.blue : C.border} strokeWidth="1.5" strokeDasharray="4 4">
               <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1s" repeatCount="indefinite"/>
             </line>
-            <line x1="40" y1="108" x2="200" y2="108" stroke={hovered === 1 || hovered === 2 ? C.pink : C.border} strokeWidth="1.5" strokeDasharray="4 4">
+            {/* 1→2 */}<line x1="40" y1="108" x2="200" y2="108" stroke={hovered === 1 || hovered === 2 ? C.pink : C.border} strokeWidth="1.5" strokeDasharray="4 4">
               <animate attributeName="stroke-dashoffset" from="8" to="0" dur="0.8s" repeatCount="indefinite"/>
             </line>
-            <line x1="200" y1="108" x2="360" y2="108" stroke={hovered === 2 || hovered === 3 ? C.purple : C.border} strokeWidth="1.5" strokeDasharray="4 4">
+            {/* 2→3 */}<line x1="200" y1="108" x2="360" y2="108" stroke={hovered === 2 || hovered === 3 ? C.purple : C.border} strokeWidth="1.5" strokeDasharray="4 4">
               <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.2s" repeatCount="indefinite"/>
             </line>
-            <line x1="200" y1="110" x2="200" y2="210" stroke={hovered === 2 || hovered === 4 ? C.cyan : C.border} strokeWidth="1.5" strokeDasharray="4 4">
+            {/* 2→4 */}<line x1="200" y1="110" x2="200" y2="210" stroke={hovered === 2 || hovered === 4 ? C.cyan : C.border} strokeWidth="1.5" strokeDasharray="4 4">
               <animate attributeName="stroke-dashoffset" from="8" to="0" dur="0.9s" repeatCount="indefinite"/>
             </line>
           </svg>
 
+          {/* Nodes */}
           {(Array.isArray(nodes) ? nodes : []).map((name, i) => (
             <div
               key={i}
@@ -578,12 +582,14 @@ function WorkflowSection({ t }: { t: (k: string) => string }) {
         <Headline text={t("workflow.headline")} sub={t("workflow.sub")} center />
       </div>
 
+      {/* Mini workflow canvas */}
       <div style={{
         background: C.surface, border: `1px solid ${C.border}`,
         borderRadius: 16, padding: "32px 24px",
         display: "flex", alignItems: "center", justifyContent: "center",
         flexWrap: "wrap", gap: 0, overflow: "hidden", position: "relative",
       }}>
+        {/* Grid background */}
         <div style={{
           position: "absolute", inset: 0,
           backgroundImage: `radial-gradient(${C.border} 1px, transparent 1px)`,
@@ -600,6 +606,7 @@ function WorkflowSection({ t }: { t: (k: string) => string }) {
             const isDone   = i < signal;
             return (
               <div key={i} style={{ display: "flex", alignItems: "center" }}>
+                {/* Node */}
                 <div style={{
                   display: "flex", flexDirection: "column", alignItems: "center",
                   gap: 6, padding: "10px 14px",
@@ -617,6 +624,7 @@ function WorkflowSection({ t }: { t: (k: string) => string }) {
                   </span>
                 </div>
 
+                {/* Arrow */}
                 {i < WORKFLOW.length - 1 && (
                   <div style={{
                     width: 20, height: 1,
@@ -667,6 +675,7 @@ function AgentOSSection({ t }: { t: (k: string) => string }) {
         borderRadius: 16, padding: "28px 24px",
         maxWidth: 720, margin: "0 auto",
       }}>
+        {/* Metrics row */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
           {(Array.isArray(metrics) ? metrics : []).map((m, i) => (
             <div key={i} style={{
@@ -684,6 +693,7 @@ function AgentOSSection({ t }: { t: (k: string) => string }) {
           ))}
         </div>
 
+        {/* Activity list */}
         <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
           {(Array.isArray(activity) ? activity : []).map((a, i) => {
             const isRunning = i === 0 || i === 2;
@@ -737,7 +747,9 @@ function GatewaySection({ t }: { t: (k: string) => string }) {
       transition: "opacity 0.6s ease, transform 0.6s ease",
     }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "center" }}>
+        {/* Visualization */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          {/* Request bubble */}
           <div style={{
             padding: "10px 20px", borderRadius: 99,
             background: C.elevated, border: `1px solid ${C.border}`,
@@ -746,6 +758,7 @@ function GatewaySection({ t }: { t: (k: string) => string }) {
             {t("gateway.request")}
           </div>
 
+          {/* Arrow down */}
           <div style={{ width: 1, height: 24, background: C.pink, position: "relative" }}>
             <div style={{
               position: "absolute", bottom: 0, left: "50%", transform: "translate(-50%,50%)",
@@ -754,6 +767,7 @@ function GatewaySection({ t }: { t: (k: string) => string }) {
             }} />
           </div>
 
+          {/* Gateway box */}
           <div style={{
             padding: "12px 28px", borderRadius: 12,
             background: `linear-gradient(135deg, ${C.pinkDim}, ${C.purpleDim})`,
@@ -764,7 +778,9 @@ function GatewaySection({ t }: { t: (k: string) => string }) {
             {t("gateway.gateway")}
           </div>
 
+          {/* Fan out arrows + models */}
           <div style={{ display: "flex", gap: 32, alignItems: "flex-start", position: "relative" }}>
+            {/* Lines */}
             <svg style={{ position: "absolute", top: -24, left: "50%", transform: "translateX(-50%)", pointerEvents: "none" }}
               width="280" height="28">
               <line x1="140" y1="0" x2="40"  y2="28" stroke={active === 0 ? C.blue   : C.border} strokeWidth="1.5" strokeDasharray="3 3">
@@ -838,6 +854,7 @@ function MemorySection({ t }: { t: (k: string) => string }) {
           <Headline text={t("memory.headline")} sub={t("memory.sub")} />
         </div>
 
+        {/* Memory visualization */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
           {(Array.isArray(flow) ? flow : []).map((stage, i) => (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
@@ -851,6 +868,7 @@ function MemorySection({ t }: { t: (k: string) => string }) {
                 position: "relative", overflow: "hidden",
               }}>
                 {stage}
+                {/* Floating context chips inside memory box */}
                 {i === 1 && (
                   <div style={{
                     display: "flex", gap: 4, justifyContent: "center", marginTop: 8, flexWrap: "wrap",
@@ -904,6 +922,7 @@ function IntegrationsSection({ t }: { t: (k: string) => string }) {
 
       <div style={{ display: "flex", justifyContent: "center" }}>
         <div style={{ position: "relative", width: 320, height: 320 }}>
+          {/* Center */}
           <div style={{
             position: "absolute", top: "50%", left: "50%",
             transform: "translate(-50%,-50%)",
@@ -917,12 +936,14 @@ function IntegrationsSection({ t }: { t: (k: string) => string }) {
             {t("integrations.center")}
           </div>
 
+          {/* Nodes */}
           {(Array.isArray(integNodes) ? integNodes : []).map((name, i) => {
             const rad = (nodeAngles[i] - 90) * (Math.PI / 180);
             const x   = 160 + R * Math.cos(rad);
             const y   = 160 + R * Math.sin(rad);
             return (
               <div key={i}>
+                {/* Pulse line */}
                 <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
                   <line
                     x1="160" y1="160"
@@ -934,11 +955,13 @@ function IntegrationsSection({ t }: { t: (k: string) => string }) {
                   >
                     <animate attributeName="stroke-dashoffset" from="6" to="0" dur={`${0.8 + i * 0.15}s`} repeatCount="indefinite"/>
                   </line>
+                  {/* Traveling dot */}
                   <circle r="3" fill={nodeColors[i]} opacity="0.7">
                     <animateMotion dur={`${1.2 + i * 0.2}s`} repeatCount="indefinite" path={`M 160 160 L ${x} ${y}`}/>
                   </circle>
                 </svg>
 
+                {/* Node pill */}
                 <div style={{
                   position: "absolute",
                   left: x, top: y,
@@ -1132,10 +1155,12 @@ function BenefitsSection({ t }: { t: (k: string) => string }) {
         <Headline text={t("benefits.headline")} sub={t("benefits.sub")} center />
       </div>
 
+      {/* Before → Flow → After */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         gap: 16, flexWrap: "wrap", marginBottom: 48, maxWidth: 700, margin: "0 auto 48px",
       }}>
+        {/* Before */}
         <div style={{ flex: 1, minWidth: 160, textAlign: "center" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.t4, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
             {t("benefits.before")}
@@ -1146,6 +1171,7 @@ function BenefitsSection({ t }: { t: (k: string) => string }) {
           <div style={{ height: 8, borderRadius: 4, background: `linear-gradient(90deg, ${C.t5}, ${C.t4})`, width: "80%" }} />
         </div>
 
+        {/* Arrow */}
         <div style={{
           display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
           flexShrink: 0,
@@ -1159,6 +1185,7 @@ function BenefitsSection({ t }: { t: (k: string) => string }) {
           <span style={{ fontSize: 20, color: C.pink }}>↓</span>
         </div>
 
+        {/* After */}
         <div style={{ flex: 1, minWidth: 160, textAlign: "center" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
             {t("benefits.after")}
@@ -1176,6 +1203,7 @@ function BenefitsSection({ t }: { t: (k: string) => string }) {
         </div>
       </div>
 
+      {/* Metric chips */}
       <div style={{ display: "flex", justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
         {(Array.isArray(items) ? items : []).map((item, i) => (
           <div key={i} style={{
@@ -1213,6 +1241,7 @@ function SecuritySection({ t }: { t: (k: string) => string }) {
           <Headline text={t("security.headline")} sub={t("security.sub")} />
         </div>
 
+        {/* Layer stack */}
         <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: 360 }}>
           {(Array.isArray(layers) ? layers : []).map((layer, i) => (
             <div key={i} style={{
@@ -1220,6 +1249,8 @@ function SecuritySection({ t }: { t: (k: string) => string }) {
               padding: "12px 16px", borderRadius: 10,
               background: C.elevated,
               border: `1px solid ${layerColors[i]}30`,
+              borderBottom: i < (Array.isArray(layers) ? layers.length - 1 : 0)
+                ? `1px solid ${layerColors[i]}30` : `1px solid ${layerColors[i]}30`,
               paddingInlineStart: `${16 + i * 10}px`,
               animation: vis ? `ldSlideIn 0.4s ease ${i * 0.08}s both` : "none",
             }}>
@@ -1344,6 +1375,7 @@ function FinalCTASection({ t, onCta }: { t: (k: string) => string; onCta: () => 
       transition: "opacity 0.8s ease, transform 0.8s ease",
       position: "relative",
     }}>
+      {/* Glow */}
       <div style={{
         position: "absolute", top: "50%", left: "50%",
         transform: "translate(-50%,-50%)",
@@ -1352,6 +1384,7 @@ function FinalCTASection({ t, onCta }: { t: (k: string) => string; onCta: () => 
         pointerEvents: "none",
       }} />
 
+      {/* Flow chain */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 32, flexWrap: "wrap" }}>
         {(Array.isArray(flow) ? flow : []).map((step, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1458,6 +1491,7 @@ function AuthModal({ open, onClose }: { open: boolean; onClose: () => void }) {
             onClick={e => e.stopPropagation()}
             style={{ width: "100%", maxWidth: 440, borderRadius: 20, overflow: "hidden" }}
           >
+            {/* Close button */}
             <div style={{ position: "relative" }}>
               <button
                 onClick={onClose}
@@ -1559,6 +1593,7 @@ export function LandingPage() {
           }}>AI</span>
         </div>
 
+        {/* Nav links */}
         <div className="ld-nav-links" style={{ display: "flex", alignItems: "center", gap: 24 }}>
           {["product", "agents", "workflows", "pricing"].map(k => (
             <a key={k} href={`#${k}`} style={{
@@ -1573,7 +1608,9 @@ export function LandingPage() {
           ))}
         </div>
 
+        {/* Right actions */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Lang toggle */}
           <button
             onClick={toggleLang}
             style={{
@@ -1635,6 +1672,7 @@ export function LandingPage() {
             className="ld-hero-grid"
             style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "center" }}
           >
+            {/* Left: copy */}
             <motion.div
               initial={{ opacity: 0, x: lang === "ar" ? 40 : -40 }}
               animate={{ opacity: 1, x: 0 }}
@@ -1706,6 +1744,7 @@ export function LandingPage() {
               </div>
             </motion.div>
 
+            {/* Right: Live Workflow Panel + Terminal */}
             <motion.div
               className="ld-hide-mobile"
               initial={{ opacity: 0, x: lang === "ar" ? -40 : 40 }}
@@ -1719,35 +1758,61 @@ export function LandingPage() {
           </div>
         </section>
 
+        {/* Divider glow */}
         <div style={{
           height: 1, background: `linear-gradient(90deg, transparent, ${C.pink}40, ${C.purple}40, transparent)`,
           maxWidth: 800, margin: "0 auto",
         }} />
 
+        {/* ── §4 The Difference ────────────────────────────────────────────── */}
         <DifferenceSection t={t} />
+
+        {/* ── §5 AI Agents ─────────────────────────────────────────────────── */}
         <AgentsSection t={t} onCta={openAuth} />
 
+        {/* Divider */}
         <div style={{
           height: 1, background: `linear-gradient(90deg, transparent, ${C.blue}30, transparent)`,
           maxWidth: 600, margin: "0 auto",
         }} />
 
+        {/* ── §6 Workflow Builder ───────────────────────────────────────────── */}
         <WorkflowSection t={t} />
+
+        {/* ── §7 AgentOS ────────────────────────────────────────────────────── */}
         <AgentOSSection t={t} />
+
+        {/* ── §8 AI Gateway ─────────────────────────────────────────────────── */}
         <GatewaySection t={t} />
+
+        {/* ── §9 Memory ─────────────────────────────────────────────────────── */}
         <MemorySection t={t} />
+
+        {/* ── §10 Integrations ──────────────────────────────────────────────── */}
         <IntegrationsSection t={t} />
 
+        {/* Divider */}
         <div style={{
           height: 1, background: `linear-gradient(90deg, transparent, ${C.purple}30, transparent)`,
           maxWidth: 600, margin: "0 auto",
         }} />
 
+        {/* ── §11 How It Works ─────────────────────────────────────────────── */}
         <HowItWorksSection t={t} />
+
+        {/* ── §12 Use Cases ────────────────────────────────────────────────── */}
         <UseCasesSection t={t} />
+
+        {/* ── §13 Benefits ─────────────────────────────────────────────────── */}
         <BenefitsSection t={t} />
+
+        {/* ── §14 Security ─────────────────────────────────────────────────── */}
         <SecuritySection t={t} />
+
+        {/* ── §15 Pricing ──────────────────────────────────────────────────── */}
         <PricingSection t={t} onCta={openAuth} />
+
+        {/* ── §16 Final CTA ────────────────────────────────────────────────── */}
         <FinalCTASection t={t} onCta={openAuth} />
 
         {/* ── §17 Footer ───────────────────────────────────────────────────── */}
