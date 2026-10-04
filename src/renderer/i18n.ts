@@ -53,6 +53,8 @@ import discoverEn from "./locales/en/discover.json";
 import discoverAr from "./locales/ar/discover.json";
 import feedEn from "./locales/en/feed.json";
 import feedAr from "./locales/ar/feed.json";
+import leadsEn from "./locales/en/leads.json";
+import leadsAr from "./locales/ar/leads.json";
 
 void i18next.use(initReactI18next).init({
   resources: {
@@ -65,6 +67,7 @@ void i18next.use(initReactI18next).init({
       trainingStudio: trainingStudioEn, landing: landingEn, devices: devicesEn,
       discover: discoverEn,
       feed: feedEn,
+      leads: leadsEn,
     },
     ar: {
       common: commonAr, home: homeAr, settings: settingsAr, auth: authAr, social: socialAr,
@@ -75,6 +78,7 @@ void i18next.use(initReactI18next).init({
       trainingStudio: trainingStudioAr, landing: landingAr, devices: devicesAr,
       discover: discoverAr,
       feed: feedAr,
+      leads: leadsAr,
     },
   },
   lng: "en",
@@ -84,7 +88,7 @@ void i18next.use(initReactI18next).init({
     "common", "home", "settings", "auth", "social", "organizations", "sandbox", "plugins",
     "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos", "dev",
     "appBuilder", "runs", "integrations", "trainingStudio", "landing", "devices",
-    "discover", "feed",
+    "discover", "feed", "leads",
   ],
   interpolation: { escapeValue: false },
   returnEmptyString: false,

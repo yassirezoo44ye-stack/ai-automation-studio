@@ -72,6 +72,8 @@ from app.routers import devices          as devices_router
 from app.routers import ws_device        as ws_device_router
 # Flow Next — Discover (Phase 1)
 from app.routers import discover         as discover_router
+# Lead Engine
+from app.routers import leads            as leads_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -262,6 +264,25 @@ async def lifespan(app: FastAPI):
     from app.routers.discover import init_flow_creations_schema
     async with pool.acquire() as conn:
         await init_flow_creations_schema(conn)
+
+    # ── Lead Engine ─────────────────────────────────────────────────────────
+    from app.core.leads.schema import init_leads_schema
+    from app.core.leads.service import init_lead_service
+    async with pool.acquire() as conn:
+        await init_leads_schema(conn)
+    init_lead_service(pool)
+    async with pool.acquire() as conn:
+        for role, action in [
+            ("manager",   "read"),  ("manager",   "write"),
+            ("developer", "read"),  ("developer", "write"),
+            ("operator",  "read"),
+            ("viewer",    "read"),
+        ]:
+            await conn.execute(
+                "INSERT INTO role_permissions (role, resource, action) VALUES ($1,$2,$3) "
+                "ON CONFLICT DO NOTHING",
+                role, "leads", action,
+            )
 
     # ── Multi-Device Control AgentOS tools ────────────────────────────────────
     # Importing this module registers all five device_control_* tools into the
@@ -702,6 +723,8 @@ def create_app() -> FastAPI:
     app.include_router(ws_device_router.router)
     # Flow Next — Discover (Phase 1)
     app.include_router(discover_router.router)
+    # Lead Engine
+    app.include_router(leads_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

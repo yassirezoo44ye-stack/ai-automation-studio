@@ -1,0 +1,51 @@
+{
+  "page": {
+    "title": "Leads",
+    "subtitle": "Agency Lead Engine"
+  },
+  "table": {
+    "name": "Name",
+    "source": "Source",
+    "status": "Status",
+    "aiScore": "AI Score",
+    "aiNotes": "AI Notes",
+    "createdAt": "Created"
+  },
+  "status": {
+    "new": "New",
+    "qualified": "Qualified",
+    "contacted": "Contacted",
+    "won": "Won",
+    "lost": "Lost"
+  },
+  "actions": {
+    "addLead": "Add Lead",
+    "requalify": "Re-qualify",
+    "updateStatus": "Update Status"
+  },
+  "form": {
+    "name": "Full Name",
+    "email": "Email",
+    "phone": "Phone",
+    "source": "Source",
+    "namePlaceholder": "e.g. Ahmed Al-Rashid",
+    "emailPlaceholder": "ahmed@agency.com",
+    "phonePlaceholder": "+971 50 123 4567",
+    "sourcePlaceholder": "e.g. Website, Referral, LinkedIn"
+  },
+  "states": {
+    "loading": "Loading leads…",
+    "empty": "No leads yet",
+    "emptyHint": "Add your first lead to get started",
+    "error": "Could not load leads"
+  },
+  "followUp": {
+    "enqueued": "Follow-up automation triggered",
+    "no_definition": "No follow-up automation configured — set one up in Automation",
+    "failed": "Follow-up could not be triggered"
+  },
+  "score": {
+    "label": "{{score}}/10",
+    "na": "N/A"
+  }
+}
