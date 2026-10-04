@@ -44,6 +44,22 @@
     "no_definition": "No follow-up automation configured — set one up in Automation",
     "failed": "Follow-up could not be triggered"
   },
+  "followUpSetup": {
+    "title": "Lead Follow-up Email",
+    "subtitle": "Automatically email new leads after they are qualified by AI.",
+    "configure": "Configure",
+    "edit": "Edit",
+    "active": "Active",
+    "setup": "Not configured",
+    "subjectLabel": "Email Subject",
+    "bodyLabel": "Email Body",
+    "activate": "Activate Follow-up",
+    "saved": "Follow-up activated",
+    "cancel": "Cancel",
+    "permissionDenied": "Only organization owners can configure automation. Ask your owner to set this up.",
+    "defaultSubject": "Thanks for reaching out!",
+    "defaultBody": "Hi, we received your inquiry and will be in touch within 24 hours."
+  },
   "score": {
     "label": "{{score}}/10",
     "na": "N/A"

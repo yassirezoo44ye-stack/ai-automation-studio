@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { apiFetch, parseJSON } from "../../shared/utils/api";
+import { apiFetch, parseJSON, APIError } from "../../shared/utils/api";
 import { useOrg } from "../../contexts/OrgContext";
 import { useToast } from "../../contexts/toast";
 import { S, C } from "../../styles/theme";
@@ -19,6 +19,223 @@ interface Lead {
   created_at: string;
   updated_at: string;
 }
+
+// ─── Lead Follow-up Automation Card ─────────────────────────────────────────
+
+interface AutomationDefinition {
+  id: string;
+  name: string;
+  definition: Record<string, unknown>;
+  is_active: boolean;
+}
+
+interface AutomationListResponse {
+  items: AutomationDefinition[];
+  total: number;
+}
+
+function makeFollowupPayload(subject: string, bodyText: string) {
+  return {
+    name: "lead-followup",
+    description: "Automatic email follow-up for new leads",
+    definition: {
+      // String literal required — leads.py queries: definition->>'lead_followup' = 'true'
+      lead_followup: "true",
+      steps: [{ kind: "email", subject, body: bodyText }],
+    },
+    triggers: [] as unknown[],
+    is_active: true,
+  };
+}
+
+export function LeadFollowupCard({ orgId }: { orgId: string | null }) {
+  const { t } = useTranslation("leads");
+  const toast = useToast();
+  const [def, setDef] = useState<AutomationDefinition | null | undefined>(undefined);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [permDenied, setPermDenied] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+
+  useEffect(() => {
+    setDef(undefined);
+    if (!orgId) { setDef(null); return; }
+    apiFetch("/api/automations?active_only=false&limit=50")
+      .then(r => parseJSON<AutomationListResponse>(r, "/api/automations"))
+      .then(data => {
+        const found = data.items.find(d => d.definition?.lead_followup === "true");
+        if (found) {
+          setDef(found);
+          const step = (found.definition.steps as Array<{ subject?: string; body?: string }> | undefined)?.[0];
+          setSubject(step?.subject ?? t("followUpSetup.defaultSubject"));
+          setEmailBody(step?.body ?? t("followUpSetup.defaultBody"));
+        } else {
+          setDef(null);
+          setSubject(t("followUpSetup.defaultSubject"));
+          setEmailBody(t("followUpSetup.defaultBody"));
+        }
+      })
+      .catch(() => setDef(null));
+  }, [orgId, t]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setPermDenied(false);
+    const payload = makeFollowupPayload(subject.trim(), emailBody.trim());
+    try {
+      let saved: AutomationDefinition;
+      if (def) {
+        // Existing definition — update in place, never create a duplicate
+        const res = await apiFetch(`/api/automations/${def.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        saved = await parseJSON<AutomationDefinition>(res, `/api/automations/${def.id}`);
+      } else {
+        const res = await apiFetch("/api/automations", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        if (res.status === 409) {
+          // Race: another session created the definition between our GET and this POST.
+          // Fetch it and update in place.
+          const listRes = await apiFetch("/api/automations?active_only=false&limit=50");
+          const listData = await parseJSON<AutomationListResponse>(listRes, "/api/automations");
+          const existing = listData.items.find(d => d.definition?.lead_followup === "true");
+          if (!existing) throw new Error("Conflict but no existing definition found");
+          const putRes = await apiFetch(`/api/automations/${existing.id}`, {
+            method: "PUT",
+            body: JSON.stringify(payload),
+          });
+          saved = await parseJSON<AutomationDefinition>(putRes, `/api/automations/${existing.id}`);
+        } else {
+          saved = await parseJSON<AutomationDefinition>(res, "/api/automations");
+        }
+      }
+      setDef(saved);
+      setOpen(false);
+      toast(t("followUpSetup.saved"), "ok");
+    } catch (err) {
+      if (err instanceof APIError && err.details.status === 403) {
+        setPermDenied(true);
+      } else {
+        toast(t("states.error"), "err");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Suppress flash during initial load
+  if (def === undefined) return null;
+
+  const isActive = def !== null && def.is_active;
+
+  return (
+    <GlassCard
+      style={{
+        padding: "14px 18px",
+        marginBottom: 16,
+        borderLeft: `3px solid ${isActive ? C.green : C.amber}`,
+      }}
+    >
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 700, fontSize: 13, color: "var(--t1)" }}>
+            {t("followUpSetup.title")}
+          </span>
+          {isActive ? (
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.green, background: C.green + "22", padding: "2px 8px", borderRadius: 10 }}>
+              ✓ {t("followUpSetup.active")}
+            </span>
+          ) : (
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.amber, background: C.amber + "22", padding: "2px 8px", borderRadius: 10 }}>
+              {t("followUpSetup.setup")}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => { setOpen(v => !v); setPermDenied(false); }}
+          style={{ background: "none", border: "none", color: "var(--t3)", cursor: "pointer", fontSize: 12 }}
+        >
+          {open ? "▲" : (isActive ? t("followUpSetup.edit") : t("followUpSetup.configure"))}
+        </button>
+      </div>
+
+      {/* Subtitle when not yet configured */}
+      {!open && !isActive && (
+        <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--t4)" }}>
+          {t("followUpSetup.subtitle")}
+        </p>
+      )}
+
+      {/* Permission denied — shown inline, not as toast */}
+      {permDenied && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 8, fontSize: 12, color: C.amber,
+            background: C.amber + "11", padding: "8px 12px", borderRadius: 6,
+          }}
+        >
+          {t("followUpSetup.permissionDenied")}
+        </div>
+      )}
+
+      {/* Configuration form */}
+      {open && (
+        <form onSubmit={handleSave} style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {t("followUpSetup.subjectLabel")}
+          </label>
+          <input
+            value={subject}
+            onChange={e => setSubject(e.target.value)}
+            required
+            placeholder={t("followUpSetup.defaultSubject")}
+            style={{
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "var(--t1)", outline: "none",
+            }}
+          />
+          <label style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {t("followUpSetup.bodyLabel")}
+          </label>
+          <textarea
+            value={emailBody}
+            onChange={e => setEmailBody(e.target.value)}
+            required
+            rows={3}
+            placeholder={t("followUpSetup.defaultBody")}
+            style={{
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "var(--t1)", outline: "none",
+              resize: "vertical", fontFamily: "inherit",
+            }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <GoldButton type="submit" disabled={saving || !subject.trim() || !emailBody.trim()}>
+              {saving ? "…" : t("followUpSetup.activate")}
+            </GoldButton>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setPermDenied(false); }}
+              style={{ background: "none", border: "none", color: "var(--t3)", cursor: "pointer", fontSize: 13 }}
+            >
+              {t("followUpSetup.cancel")}
+            </button>
+          </div>
+        </form>
+      )}
+    </GlassCard>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<Lead["status"], string> = {
   new:       C.gray,
@@ -248,6 +465,8 @@ export function LeadsPage() {
       </div>
 
       <AddLeadForm onAdd={handleAdd} />
+
+      <LeadFollowupCard orgId={currentOrgId} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {STATUSES.map(s => (

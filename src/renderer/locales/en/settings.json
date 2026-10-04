@@ -5,6 +5,7 @@
     "label": "Settings",
     "system": "System",
     "ai": "AI & Models",
+    "apiKeys": "API Keys",
     "appearance": "Appearance",
     "about": "About"
   },
@@ -66,6 +67,30 @@
     "sidebarExpanded": "Expanded",
     "sidebarCollapsed": "Collapsed",
     "language": "Language"
+  },
+  "apiKeys": {
+    "createTitle": "Create Org API Key",
+    "listTitle": "Existing Keys",
+    "nameLabel": "Key Name",
+    "namePlaceholder": "e.g. Lead Capture Form",
+    "scopeHint": "Keys are created with read + write scopes for lead capture via /api/leads/capture.",
+    "createButton": "Create Key",
+    "creating": "Creating…",
+    "createdTitle": "Key created — copy it now",
+    "createdWarning": "This key will not be shown again. Store it securely.",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "dismiss": "I've saved the key",
+    "revoke": "Revoke",
+    "loading": "Loading keys…",
+    "empty": "No API keys yet.",
+    "expires": "Expires",
+    "noOrg": "Select an organization to manage API keys.",
+    "errorLoad": "Could not load API keys.",
+    "errorCreate": "Could not create API key.",
+    "errorRevoke": "Could not revoke key.",
+    "errorForbidden": "Only organization owners can manage API keys.",
+    "errorUnauthorized": "Session expired — please sign in again."
   },
   "about": {
     "tagline": "AI Automation Studio · v3.0.0",

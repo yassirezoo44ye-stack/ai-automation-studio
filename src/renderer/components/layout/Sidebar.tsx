@@ -49,6 +49,8 @@ const NAV_GROUPS: {
     showLabel: false,
     showSep: true,
     items: [
+      { id: "teams",    navKey: "teams",    icon: "teams"    },
+      { id: "billing",  navKey: "billing",  icon: "billing"  },
       { id: "settings", navKey: "settings", icon: "settings" },
     ],
   },
