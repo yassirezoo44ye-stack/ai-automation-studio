@@ -188,11 +188,14 @@ class LeadService:
     async def dispatch_qualified_notification(
         self, *, lead: dict[str, Any], org_id: str,
     ) -> None:
+        score_str = str(lead.get("ai_score")) if lead.get("ai_score") else "N/A"
+        lead_name = lead.get("name", "Unknown")
+
+        # ── In-app notifications (always attempted, always silenced on error) ──
         try:
             from app.core.notifications.service import get_notification_service
             svc = get_notification_service()
             member_ids = await svc.org_member_ids(organization_id=org_id)
-            score_str = str(lead.get("ai_score")) if lead.get("ai_score") else "N/A"
             for user_id in member_ids:
                 await svc.create(
                     user_id=user_id,
@@ -200,13 +203,47 @@ class LeadService:
                     type_="lead.qualified",
                     category="workflow",
                     severity="success",
-                    title=f"Lead qualified: {lead.get('name', 'Unknown')}",
+                    title=f"Lead qualified: {lead_name}",
                     message=f"Score {score_str}/10 — {lead.get('ai_notes') or 'Ready for follow-up.'}",
                     source="lead_engine",
                     action={"label": "View leads", "href": "/leads"},
                 )
         except Exception as exc:
-            log.warning("lead notification dispatch failed lead_id=%s: %s", lead.get("id"), exc)
+            log.warning("lead in-app notification failed lead_id=%s: %s", lead.get("id"), exc)
+
+        # ── Team email alert (only when SMTP_HOST is configured) ──────────────
+        import os
+        if not os.getenv("SMTP_HOST"):
+            log.debug("lead team email skipped — SMTP_HOST not configured lead_id=%s", lead.get("id"))
+            return
+        try:
+            from app.core.email import send_email
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT u.email FROM users u
+                    JOIN organization_members om ON om.user_id = u.id
+                    WHERE om.organization_id = $1 AND om.deleted_at IS NULL
+                      AND u.email IS NOT NULL
+                    """,
+                    uuid.UUID(org_id),
+                )
+            subject = f"New qualified lead: {lead_name} (Score {score_str}/10)"
+            html = (
+                f"<p><strong>{lead_name}</strong> has been qualified by the AI engine.</p>"
+                f"<p><strong>Score:</strong> {score_str}/10</p>"
+                f"<p><strong>Notes:</strong> {lead.get('ai_notes') or '—'}</p>"
+                f"<p><a href='/leads'>View in Lead Engine →</a></p>"
+            )
+            for row in rows:
+                member_email = row["email"]
+                try:
+                    await send_email(member_email, subject, html)
+                    log.info("lead team email sent to=%s lead_id=%s", member_email, lead.get("id"))
+                except Exception as exc:
+                    log.warning("lead team email failed to=%s lead_id=%s: %s", member_email, lead.get("id"), exc)
+        except Exception as exc:
+            log.warning("lead team email dispatch error lead_id=%s: %s", lead.get("id"), exc)
 
 
 def _parse_qualification(content: str) -> dict[str, Any]:

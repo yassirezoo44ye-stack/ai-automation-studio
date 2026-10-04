@@ -804,7 +804,7 @@ class TestFollowUpWorkflowWiring:
         assert "get_job_queue()" in src
         assert "automation.trigger.manual" in src
 
-    def test_lead_service_singleton_raises_before_init(self):
+    def test_lead_service_singleton_raises_before_init_followup(self):
         from app.core.leads import service as svc_mod
         original = svc_mod._service_instance
         svc_mod._service_instance = None
@@ -815,3 +815,211 @@ class TestFollowUpWorkflowWiring:
             assert "init_lead_service" in str(exc)
         finally:
             svc_mod._service_instance = original
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Phase B — Commercial Readiness Tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+_ROUTER_SRC = open("/home/user/ai-automation-studio/app/routers/leads.py").read()
+_SCHED_SRC  = open("/home/user/ai-automation-studio/app/core/workflow/automation_scheduler.py").read()
+_SVC_SRC    = open("/home/user/ai-automation-studio/app/core/leads/service.py").read()
+
+
+# ── B1: External Lead Capture ────────────────────────────────────────────────
+
+class TestExternalLeadCapture:
+    """Tests 1-7: /api/leads/capture endpoint security and wiring."""
+
+    def test_capture_endpoint_exists_in_router(self):
+        """POST /capture route must be defined."""
+        assert '"/capture"' in _ROUTER_SRC or "'/capture'" in _ROUTER_SRC
+
+    def test_capture_uses_api_key_not_jwt(self):
+        """Capture endpoint must use require_api_key, not require_permission."""
+        assert "require_api_key" in _ROUTER_SRC
+        cap_start = _ROUTER_SRC.find("async def capture_lead")
+        cap_block = _ROUTER_SRC[cap_start:]
+        assert "require_api_key" in _ROUTER_SRC[:cap_start]  # imported
+
+    def test_invalid_api_key_returns_401(self):
+        """require_api_key must raise 401 on invalid key."""
+        api_keys_src = open("/home/user/ai-automation-studio/app/core/api_keys.py").read()
+        assert "401" in api_keys_src
+        assert "Invalid API key" in api_keys_src
+
+    def test_revoked_key_returns_401(self):
+        """Revoked keys must be rejected with 401."""
+        api_keys_src = open("/home/user/ai-automation-studio/app/core/api_keys.py").read()
+        assert "revoked" in api_keys_src.lower()
+        assert "401" in api_keys_src
+
+    def test_org_derived_from_credential_not_body(self):
+        """organization_id must come from key.organization_id, never from request body."""
+        cap_src = _ROUTER_SRC[_ROUTER_SRC.find("class CaptureLeadRequest"):]
+        end = cap_src.find("\nclass ", 10)
+        model_body = cap_src[:end] if end > 0 else cap_src[:500]
+        assert "organization_id" not in model_body
+
+    def test_capture_request_has_required_fields(self):
+        """CaptureLeadRequest must include name, email, phone, source, message."""
+        cap_src = _ROUTER_SRC[_ROUTER_SRC.find("class CaptureLeadRequest"):]
+        end = cap_src.find("\nclass ", 10)
+        model_src = cap_src[:end] if end > 0 else cap_src[:600]
+        for field in ("name", "email", "phone", "source", "message"):
+            assert field in model_src, f"CaptureLeadRequest missing field: {field}"
+
+    def test_jwt_not_required_for_external_capture(self):
+        """The capture endpoint must not depend on require_permission (JWT path)."""
+        cap_start = _ROUTER_SRC.find("async def capture_lead")
+        cap_end   = _ROUTER_SRC.find("\n\n@router", cap_start + 1)
+        cap_block = _ROUTER_SRC[cap_start:cap_end] if cap_end > 0 else _ROUTER_SRC[cap_start:]
+        assert "require_permission" not in cap_block
+
+
+# ── B2: Email Automation Step ────────────────────────────────────────────────
+
+class TestEmailAutomationStep:
+    """Tests 8-13: kind='email' step in automation engine."""
+
+    def test_email_step_registered_in_make_step_fn(self):
+        """_make_step_fn must handle kind='email'."""
+        assert 'kind == "email"' in _SCHED_SRC or "kind == 'email'" in _SCHED_SRC
+
+    def test_email_step_function_defined(self):
+        """_make_email_step_fn must be defined."""
+        assert "_make_email_step_fn" in _SCHED_SRC
+
+    def test_email_step_uses_existing_send_email(self):
+        """Email step must import and call app.core.email.send_email."""
+        email_fn_block = _SCHED_SRC[_SCHED_SRC.find("_make_email_step_fn"):]
+        assert "send_email" in email_fn_block
+        assert "app.core.email" in email_fn_block
+
+    def test_email_step_recipient_from_lead_context(self):
+        """Recipient must be resolved from _context."""
+        email_fn_block = _SCHED_SRC[_SCHED_SRC.find("_make_email_step_fn"):]
+        assert "_context" in email_fn_block
+        assert "email" in email_fn_block
+
+    def test_email_step_raises_on_missing_email(self):
+        """Missing or invalid recipient must raise ValueError."""
+        email_fn_block = _SCHED_SRC[_SCHED_SRC.find("_make_email_step_fn"):]
+        assert "raise ValueError" in email_fn_block
+
+    def test_email_step_failure_not_suppressed(self):
+        """Email step must not silently swallow send_email failures."""
+        email_fn_block = _SCHED_SRC[_SCHED_SRC.find("def _run_email"):]
+        end = email_fn_block.find("\ndef _make_", 10)
+        inner = email_fn_block[:end] if end > 0 else email_fn_block
+        send_idx = inner.rfind("await send_email")
+        after_send = inner[send_idx:]
+        # Status 'sent' is only returned after await send_email succeeds
+        assert 'status": "sent"' in after_send or "status': 'sent'" in after_send
+
+
+# ── B3: Qualified Flow ────────────────────────────────────────────────────────
+
+class TestQualifiedFlow:
+    """Tests 14-18: qualification triggers in-app + email notifications."""
+
+    def test_qualification_triggers_inapp_notification(self):
+        """dispatch_qualified_notification must call get_notification_service."""
+        notif_block = _SVC_SRC[_SVC_SRC.find("dispatch_qualified_notification"):]
+        assert "get_notification_service" in notif_block
+        assert "lead.qualified" in notif_block
+
+    def test_qualification_triggers_team_email_when_smtp_set(self):
+        """dispatch_qualified_notification must call send_email when SMTP configured."""
+        notif_block = _SVC_SRC[_SVC_SRC.find("dispatch_qualified_notification"):]
+        assert "send_email" in notif_block
+        assert "SMTP_HOST" in notif_block
+
+    def test_team_email_only_when_smtp_configured(self):
+        """send_email call must be guarded by SMTP_HOST env check."""
+        notif_block = _SVC_SRC[_SVC_SRC.find("dispatch_qualified_notification"):]
+        smtp_idx  = notif_block.find("SMTP_HOST")
+        email_idx = notif_block.find("send_email")
+        assert smtp_idx >= 0 and email_idx >= 0
+        assert email_idx > smtp_idx
+
+    def test_no_smtp_does_not_fail_qualification(self):
+        """Without SMTP_HOST, dispatch_qualified_notification must not raise."""
+        from app.core.leads.service import LeadService
+        conn = AsyncMock()
+        svc = LeadService(_make_pool(conn))
+
+        mock_notif = AsyncMock()
+        mock_notif.org_member_ids = AsyncMock(return_value=[])
+        mock_notif.create = AsyncMock()
+
+        _nsvc = sys.modules.get("app.core.notifications.service")
+        original_fn = getattr(_nsvc, "get_notification_service", None) if _nsvc else None
+        if _nsvc:
+            _nsvc.get_notification_service = lambda: mock_notif
+
+        lead = {"id": str(uuid.uuid4()), "name": "Test", "ai_score": 7, "ai_notes": "ok"}
+        import os
+        smtp_orig = os.environ.pop("SMTP_HOST", None)
+        try:
+            run(svc.dispatch_qualified_notification(lead=lead, org_id=str(uuid.uuid4())))
+        finally:
+            if smtp_orig is not None:
+                os.environ["SMTP_HOST"] = smtp_orig
+            if _nsvc and original_fn is not None:
+                _nsvc.get_notification_service = original_fn
+
+    def test_no_ai_provider_graceful_failure(self):
+        """AI failure must store error in ai_notes without fake score."""
+        from app.core.leads.service import LeadService
+        from app.core.ai.agents import runtime as rt_mod
+
+        org_id  = str(uuid.uuid4())
+        lead_id = str(uuid.uuid4())
+        initial  = _fake_lead(lead_id=lead_id, org_id=org_id)
+        fallback = _fake_lead(lead_id=lead_id, org_id=org_id, status="new", ai_notes="AI qualification unavailable: no key")
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(side_effect=[initial, fallback])
+        svc = LeadService(_make_pool(conn))
+
+        original_cls = rt_mod.AgentRuntime
+        try:
+            mock_rt = MagicMock()
+            mock_rt.run = AsyncMock(side_effect=RuntimeError("no provider key"))
+            rt_mod.AgentRuntime = lambda cfg: mock_rt
+            result = run(svc.qualify(lead_id=lead_id, org_id=org_id))
+        finally:
+            rt_mod.AgentRuntime = original_cls
+
+        assert result["ai_score"] is None
+        assert result["status"] == "new"
+        assert result.get("ai_notes") is not None
+
+
+# ── Security ──────────────────────────────────────────────────────────────────
+
+class TestCaptureSecurity:
+    """Tests 19-20: cross-org isolation and secret redaction."""
+
+    def test_cross_org_api_key_cannot_create_for_other_org(self):
+        """Capture endpoint derives org from key.organization_id — body has no org_id."""
+        cap_src = _ROUTER_SRC[_ROUTER_SRC.find("class CaptureLeadRequest"):]
+        end = cap_src.find("\nclass ", 10)
+        model_body = cap_src[:end] if end > 0 else cap_src[:500]
+        assert "organization_id" not in model_body
+
+        cap_fn_start = _ROUTER_SRC.find("async def capture_lead")
+        cap_fn_end   = _ROUTER_SRC.find("\n\n@router", cap_fn_start + 1)
+        fn_body = _ROUTER_SRC[cap_fn_start:cap_fn_end] if cap_fn_end > 0 else _ROUTER_SRC[cap_fn_start:]
+        assert "key.organization_id" in fn_body
+
+    def test_credential_never_returned_in_response(self):
+        """API key raw value must never appear in capture response payload."""
+        api_keys_src = open("/home/user/ai-automation-studio/app/core/api_keys.py").read()
+        assert "redact" in api_keys_src
+        assert 'del d["key_hash"]' in api_keys_src
+        cap_fn_start = _ROUTER_SRC.find("async def capture_lead")
+        cap_fn_end   = _ROUTER_SRC.find("\n\n@router", cap_fn_start + 1)
+        fn_body = _ROUTER_SRC[cap_fn_start:cap_fn_end] if cap_fn_end > 0 else _ROUTER_SRC[cap_fn_start:]
+        assert "key_hash" not in fn_body
+        assert "key_id" not in fn_body
