@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON, APIError, API } from "../../utils/api";
 import { useAppContext } from "../../contexts/app";
@@ -64,7 +64,7 @@ interface CreatedKey {
 function ApiKeysTab({ orgId }: { orgId: string | null }) {
   const { t } = useTranslation("settings");
   const [keys, setKeys] = useState<OrgApiKey[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
@@ -72,14 +72,13 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
   const [copied, setCopied] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
 
-  async function loadKeys() {
+  const loadKeys = useCallback(async () => {
     if (!orgId) return;
-    setLoading(true);
-    setError(null);
     try {
       const res = await apiFetch(`/api/orgs/${orgId}/api-keys`);
       const data = await parseJSON<{ keys: OrgApiKey[] }>(res, `/api/orgs/${orgId}/api-keys`);
       setKeys(data.keys);
+      setError(null);
     } catch (err) {
       if (err instanceof APIError && err.details.status === 403) {
         setError(t("apiKeys.errorForbidden"));
@@ -91,9 +90,25 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [orgId, t]);
 
-  useEffect(() => { void loadKeys(); }, [orgId]);
+  useEffect(() => {
+    if (!orgId) return;
+    let active = true;
+    apiFetch(`/api/orgs/${orgId}/api-keys`)
+      .then(res => parseJSON<{ keys: OrgApiKey[] }>(res, `/api/orgs/${orgId}/api-keys`))
+      .then(data => {
+        if (active) { setKeys(data.keys); setError(null); setLoading(false); }
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        if (err instanceof APIError && err.details.status === 403) setError(t("apiKeys.errorForbidden"));
+        else if (err instanceof APIError && err.details.status === 401) setError(t("apiKeys.errorUnauthorized"));
+        else setError(t("apiKeys.errorLoad"));
+        setLoading(false);
+      });
+    return () => { active = false; setLoading(true); setError(null); };
+  }, [orgId, t]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
