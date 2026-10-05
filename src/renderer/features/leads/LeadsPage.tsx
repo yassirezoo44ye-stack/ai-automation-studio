@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON, APIError } from "../../shared/utils/api";
 import { useOrg } from "../../contexts/OrgContext";
 import { useToast } from "../../contexts/toast";
-import { S, C } from "../../styles/theme";
+import { C } from "../../styles/theme";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import { relTime } from "../../utils/time";
 
@@ -59,8 +59,7 @@ export function LeadFollowupCard({ orgId }: { orgId: string | null }) {
   const [emailBody, setEmailBody] = useState("");
 
   useEffect(() => {
-    setDef(undefined);
-    if (!orgId) { setDef(null); return; }
+    if (!orgId) return;
     apiFetch("/api/automations?active_only=false&limit=50")
       .then(r => parseJSON<AutomationListResponse>(r, "/api/automations"))
       .then(data => {
@@ -128,8 +127,8 @@ export function LeadFollowupCard({ orgId }: { orgId: string | null }) {
     }
   }
 
-  // Suppress flash during initial load
-  if (def === undefined) return null;
+  // Suppress flash during initial load; hide entirely when no org is selected
+  if (!orgId || def === undefined) return null;
 
   const isActive = def !== null && def.is_active;
 
@@ -252,25 +251,6 @@ function ScoreBadge({ score }: { score: number | null }) {
   return (
     <span style={{ fontWeight: 700, fontSize: 13, color }}>
       {t("score.label", { score })}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: Lead["status"] }) {
-  const { t } = useTranslation("leads");
-  return (
-    <span style={{
-      display: "inline-block",
-      padding: "2px 8px",
-      borderRadius: 10,
-      fontSize: 11,
-      fontWeight: 600,
-      background: STATUS_COLOR[status] + "22",
-      color: STATUS_COLOR[status],
-      textTransform: "uppercase",
-      letterSpacing: "0.04em",
-    }}>
-      {t(`status.${status}`)}
     </span>
   );
 }
@@ -427,25 +407,22 @@ export function LeadsPage() {
   const [error, setError] = useState(false);
   const [statusFilter, setStatusFilter] = useState<Lead["status"] | "">("");
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     if (!currentOrgId) return;
-    setLoading(true);
-    setError(false);
-    try {
-      const url = statusFilter
-        ? `/api/leads?status=${statusFilter}&limit=100`
-        : "/api/leads?limit=100";
-      const res = await apiFetch(url);
-      const data = await parseJSON<{ leads: Lead[] }>(res, url);
-      setLeads(data.leads);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
+    const url = statusFilter
+      ? `/api/leads?status=${statusFilter}&limit=100`
+      : "/api/leads?limit=100";
+    let active = true;
+    apiFetch(url)
+      .then(res => parseJSON<{ leads: Lead[] }>(res, url))
+      .then(data => {
+        if (active) { setLeads(data.leads); setError(false); setLoading(false); }
+      })
+      .catch(() => {
+        if (active) { setError(true); setLoading(false); }
+      });
+    return () => { active = false; setLoading(true); setError(false); };
   }, [currentOrgId, statusFilter]);
-
-  useEffect(() => { load(); }, [load]);
 
   function handleAdd(lead: Lead) {
     setLeads(prev => [lead, ...prev]);
@@ -466,7 +443,7 @@ export function LeadsPage() {
 
       <AddLeadForm onAdd={handleAdd} />
 
-      <LeadFollowupCard orgId={currentOrgId} />
+      <LeadFollowupCard key={currentOrgId ?? "none"} orgId={currentOrgId} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {STATUSES.map(s => (

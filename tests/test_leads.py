@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from pathlib import Path
 import types
 import uuid
 from typing import Any
@@ -821,9 +822,10 @@ class TestFollowUpWorkflowWiring:
 # Phase B — Commercial Readiness Tests
 # ══════════════════════════════════════════════════════════════════════════════
 
-_ROUTER_SRC = open("/home/user/ai-automation-studio/app/routers/leads.py").read()
-_SCHED_SRC  = open("/home/user/ai-automation-studio/app/core/workflow/automation_scheduler.py").read()
-_SVC_SRC    = open("/home/user/ai-automation-studio/app/core/leads/service.py").read()
+_REPO       = Path(__file__).parent.parent
+_ROUTER_SRC = (_REPO / "app/routers/leads.py").read_text()
+_SCHED_SRC  = (_REPO / "app/core/workflow/automation_scheduler.py").read_text()
+_SVC_SRC    = (_REPO / "app/core/leads/service.py").read_text()
 
 
 # ── B1: External Lead Capture ────────────────────────────────────────────────
