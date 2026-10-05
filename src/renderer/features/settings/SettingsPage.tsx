@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { apiFetch, parseJSON, API } from "../../utils/api";
+import { apiFetch, parseJSON, APIError, API } from "../../utils/api";
 import { useAppContext } from "../../contexts/app";
 import { useLangContext } from "../../contexts/lang";
+import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
 import { GlassCard } from "../../shared/ui/gold";
 import AxonLogo from "../../AxonLogo";
@@ -15,7 +16,7 @@ const codeStyle: React.CSSProperties = {
   fontFamily: "var(--font-mono)",
 };
 
-type SettingsTab = "system" | "ai" | "appearance" | "about";
+type SettingsTab = "system" | "ai" | "appearance" | "about" | "apiKeys";
 
 interface RuntimeInfo { available?: boolean; version?: string | null }
 
@@ -45,6 +46,237 @@ function savePrefs(p: UserPrefs) {
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
 }
 
+interface OrgApiKey {
+  key_id: string;
+  name: string;
+  scopes: string[];
+  organization_id: string;
+  expires_at: string | null;
+}
+
+interface CreatedKey {
+  api_key: string;
+  key_id: string;
+  name: string;
+  scopes: string[];
+}
+
+function ApiKeysTab({ orgId }: { orgId: string | null }) {
+  const { t } = useTranslation("settings");
+  const [keys, setKeys] = useState<OrgApiKey[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [createdKey, setCreatedKey] = useState<CreatedKey | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
+
+  const loadKeys = useCallback(async () => {
+    if (!orgId) return;
+    try {
+      const res = await apiFetch(`/api/orgs/${orgId}/api-keys`);
+      const data = await parseJSON<{ keys: OrgApiKey[] }>(res, `/api/orgs/${orgId}/api-keys`);
+      setKeys(data.keys);
+      setError(null);
+    } catch (err) {
+      if (err instanceof APIError && err.details.status === 403) {
+        setError(t("apiKeys.errorForbidden"));
+      } else if (err instanceof APIError && err.details.status === 401) {
+        setError(t("apiKeys.errorUnauthorized"));
+      } else {
+        setError(t("apiKeys.errorLoad"));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [orgId, t]);
+
+  useEffect(() => {
+    if (!orgId) return;
+    let active = true;
+    apiFetch(`/api/orgs/${orgId}/api-keys`)
+      .then(res => parseJSON<{ keys: OrgApiKey[] }>(res, `/api/orgs/${orgId}/api-keys`))
+      .then(data => {
+        if (active) { setKeys(data.keys); setError(null); setLoading(false); }
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        if (err instanceof APIError && err.details.status === 403) setError(t("apiKeys.errorForbidden"));
+        else if (err instanceof APIError && err.details.status === 401) setError(t("apiKeys.errorUnauthorized"));
+        else setError(t("apiKeys.errorLoad"));
+        setLoading(false);
+      });
+    return () => { active = false; setLoading(true); setError(null); };
+  }, [orgId, t]);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!orgId || !newKeyName.trim()) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/orgs/${orgId}/api-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newKeyName.trim(), scopes: ["read", "write"] }),
+      });
+      if (res.status === 403) {
+        setError(t("apiKeys.errorForbidden"));
+        return;
+      }
+      if (res.status === 401) {
+        setError(t("apiKeys.errorUnauthorized"));
+        return;
+      }
+      const data = await parseJSON<CreatedKey & { warning?: string }>(res, `/api/orgs/${orgId}/api-keys`);
+      setCreatedKey(data);
+      setNewKeyName("");
+      void loadKeys();
+    } catch (err) {
+      if (err instanceof APIError && err.details.status === 403) {
+        setError(t("apiKeys.errorForbidden"));
+      } else if (err instanceof APIError && err.details.status === 401) {
+        setError(t("apiKeys.errorUnauthorized"));
+      } else {
+        setError(t("apiKeys.errorCreate"));
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleRevoke(keyId: string) {
+    if (!orgId) return;
+    setRevoking(keyId);
+    try {
+      await apiFetch(`/api/orgs/${orgId}/api-keys/${keyId}`, { method: "DELETE" });
+      setKeys(prev => prev.filter(k => k.key_id !== keyId));
+    } catch {
+      setError(t("apiKeys.errorRevoke"));
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  function handleCopy() {
+    if (!createdKey) return;
+    navigator.clipboard.writeText(createdKey.api_key).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }
+
+  function handleDismissCreated() {
+    setCreatedKey(null);
+    setCopied(false);
+  }
+
+  if (!orgId) {
+    return (
+      <GlassCard lift={false}>
+        <div style={{ fontSize: 13, color: "var(--t4)" }}>{t("apiKeys.noOrg")}</div>
+      </GlassCard>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
+      {error && (
+        <div role="alert" style={{ padding: "10px 14px", borderRadius: 10, background: "var(--red-dim, rgba(239,68,68,.1))", border: "1px solid var(--red)", fontSize: 13, color: "var(--red)" }}>
+          {error}
+        </div>
+      )}
+
+      {createdKey && (
+        <div role="status" style={{ padding: "14px", borderRadius: 10, background: "var(--green-dim, rgba(34,197,94,.1))", border: "1px solid var(--green)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--green)", marginBottom: 8 }}>{t("apiKeys.createdTitle")}</div>
+          <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 8 }}>{t("apiKeys.createdWarning")}</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <code style={{ flex: 1, fontSize: 12, background: "var(--bg-input)", padding: "8px 10px", borderRadius: 7, fontFamily: "var(--font-mono)", wordBreak: "break-all", color: "var(--t2)", border: "1px solid var(--b1)" }}>
+              {createdKey.api_key}
+            </code>
+            <button
+              onClick={handleCopy}
+              style={{ flexShrink: 0, padding: "8px 14px", borderRadius: 8, border: "1px solid var(--b2)", background: "var(--bg-input)", cursor: "pointer", fontSize: 12, color: copied ? "var(--green)" : "var(--t2)", fontWeight: 500 }}
+            >
+              {copied ? t("apiKeys.copied") : t("apiKeys.copy")}
+            </button>
+          </div>
+          <button
+            onClick={handleDismissCreated}
+            style={{ marginTop: 10, fontSize: 12, color: "var(--t4)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+          >
+            {t("apiKeys.dismiss")}
+          </button>
+        </div>
+      )}
+
+      <div>
+        <div className="section-label" style={{ marginBottom: 12 }}>{t("apiKeys.createTitle")}</div>
+        <GlassCard lift={false}>
+          <form onSubmit={e => void handleCreate(e)} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <label className="g-label" htmlFor="new-api-key-name">{t("apiKeys.nameLabel")}</label>
+              <input
+                id="new-api-key-name"
+                className="g-input"
+                type="text"
+                value={newKeyName}
+                onChange={e => setNewKeyName(e.target.value)}
+                placeholder={t("apiKeys.namePlaceholder")}
+                maxLength={120}
+                required
+              />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--t4)" }}>{t("apiKeys.scopeHint")}</div>
+            <button
+              type="submit"
+              disabled={creating || !newKeyName.trim()}
+              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: creating ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() ? 0.6 : 1 }}
+            >
+              {creating ? t("apiKeys.creating") : t("apiKeys.createButton")}
+            </button>
+          </form>
+        </GlassCard>
+      </div>
+
+      <div>
+        <div className="section-label" style={{ marginBottom: 12 }}>{t("apiKeys.listTitle")}</div>
+        <GlassCard lift={false}>
+          {loading ? (
+            <div style={{ fontSize: 13, color: "var(--t4)" }}>{t("apiKeys.loading")}</div>
+          ) : keys.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--t4)" }}>{t("apiKeys.empty")}</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {keys.map(key => (
+                <div key={key.key_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--b1)" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--t2)" }}>{key.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 2 }}>
+                      {key.scopes.join(", ")}
+                      {key.expires_at && ` · ${t("apiKeys.expires")} ${new Date(key.expires_at).toLocaleDateString()}`}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => void handleRevoke(key.key_id)}
+                    disabled={revoking === key.key_id}
+                    aria-label={t("apiKeys.revoke")}
+                    style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid var(--red)", background: "none", color: "var(--red)", fontSize: 12, cursor: revoking === key.key_id ? "not-allowed" : "pointer", opacity: revoking === key.key_id ? 0.5 : 1 }}
+                  >
+                    {revoking === key.key_id ? "…" : t("apiKeys.revoke")}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </GlassCard>
+      </div>
+    </div>
+  );
+}
+
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "3px 0" }}>
@@ -58,6 +290,7 @@ export function SettingsPage() {
   const { t } = useTranslation("settings");
   const { theme, setTheme, setSidebarCollapsed } = useAppContext();
   const { lang, setLang } = useLangContext();
+  const { currentOrgId } = useOrg();
   const [tab, setTab]         = useState<SettingsTab>("system");
   const [health, setHealth]   = useState<Record<string, string> | null>(null);
   const [stats, setStats]     = useState<Record<string, number> | null>(null);
@@ -83,6 +316,7 @@ export function SettingsPage() {
   const SETTINGS_NAV: { id: SettingsTab; label: string; icon: React.JSX.Element }[] = [
     { id: "system",     label: t("nav.system"),     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> },
     { id: "ai",         label: t("nav.ai"),         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
+    { id: "apiKeys",    label: t("nav.apiKeys"),    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> },
     { id: "appearance", label: t("nav.appearance"), icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg> },
     { id: "about",      label: t("nav.about"),      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> },
   ];
@@ -352,6 +586,10 @@ export function SettingsPage() {
                 </GlassCard>
               </div>
             </div>
+          )}
+
+          {tab === "apiKeys" && (
+            <ApiKeysTab orgId={currentOrgId} />
           )}
 
           {tab === "about" && (

@@ -1,0 +1,67 @@
+{
+  "page": {
+    "title": "العملاء المحتملون",
+    "subtitle": "محرك Leads للوكالات"
+  },
+  "table": {
+    "name": "الاسم",
+    "source": "المصدر",
+    "status": "الحالة",
+    "aiScore": "تقييم AI",
+    "aiNotes": "ملاحظات AI",
+    "createdAt": "تاريخ الإضافة"
+  },
+  "status": {
+    "new": "جديد",
+    "qualified": "مؤهَّل",
+    "contacted": "تم التواصل",
+    "won": "عميل",
+    "lost": "خُسر"
+  },
+  "actions": {
+    "addLead": "إضافة Lead",
+    "requalify": "إعادة التأهيل",
+    "updateStatus": "تحديث الحالة"
+  },
+  "form": {
+    "name": "الاسم الكامل",
+    "email": "البريد الإلكتروني",
+    "phone": "رقم الهاتف",
+    "source": "المصدر",
+    "namePlaceholder": "مثال: أحمد الراشد",
+    "emailPlaceholder": "ahmed@agency.com",
+    "phonePlaceholder": "0501234567+",
+    "sourcePlaceholder": "مثال: موقع إلكتروني، إحالة، لينكدإن"
+  },
+  "states": {
+    "loading": "جارٍ تحميل العملاء المحتملين…",
+    "empty": "لا يوجد عملاء محتملون بعد",
+    "emptyHint": "أضف أول Lead للبدء",
+    "error": "تعذّر تحميل العملاء المحتملين"
+  },
+  "followUp": {
+    "enqueued": "تم تشغيل أتمتة المتابعة",
+    "no_definition": "لم يُهيَّأ أتمتة متابعة — أعدّها من قسم الأتمتة",
+    "failed": "تعذّر تشغيل المتابعة"
+  },
+  "followUpSetup": {
+    "title": "بريد متابعة العملاء",
+    "subtitle": "أرسل بريداً تلقائياً للعملاء الجدد بعد تأهيلهم بالذكاء الاصطناعي.",
+    "configure": "إعداد",
+    "edit": "تعديل",
+    "active": "مفعّل",
+    "setup": "غير مُعَدّ",
+    "subjectLabel": "موضوع البريد",
+    "bodyLabel": "نص البريد",
+    "activate": "تفعيل المتابعة",
+    "saved": "تم تفعيل المتابعة",
+    "cancel": "إلغاء",
+    "permissionDenied": "إعداد الأتمتة متاح لمالك المنظمة فقط. اطلب من المالك الإعداد.",
+    "defaultSubject": "شكراً لتواصلك!",
+    "defaultBody": "مرحباً، وصلنا استفسارك وسنتواصل معك خلال 24 ساعة."
+  },
+  "score": {
+    "label": "{{score}}/10",
+    "na": "غير متاح"
+  }
+}

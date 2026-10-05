@@ -11,7 +11,6 @@ import {
 } from "../features/feed/services/feedService";
 import { fetchDiscoverFeed } from "../features/discover/services/discoverService";
 import { apiFetch } from "../shared/utils/api";
-import { MOCK_FEED } from "../features/feed/mock/feedData";
 import type { FlowCreation } from "../features/discover/types/creation.types";
 
 const mockFetchDiscover = vi.mocked(fetchDiscoverFeed);
@@ -57,22 +56,37 @@ describe("loadFeedItems", () => {
     expect(result.items[0].id).toBe(BASE_CREATION.id);
   });
 
-  it("returns isMock:true and MOCK_FEED when Discover returns empty", async () => {
+  it("returns isMock:false, error:false and empty items when Discover returns empty", async () => {
     mockFetchDiscover.mockResolvedValueOnce({ items: [], total: 0 });
 
     const result = await loadFeedItems();
 
-    expect(result.isMock).toBe(true);
-    expect(result.items).toBe(MOCK_FEED);
+    expect(result.isMock).toBe(false);
+    expect(result.error).toBe(false);
+    expect(result.items).toHaveLength(0);
   });
 
-  it("returns isMock:true and MOCK_FEED when Discover throws", async () => {
+  it("returns error:true, isMock:false and empty items when Discover throws", async () => {
     mockFetchDiscover.mockRejectedValueOnce(new Error("network error"));
 
     const result = await loadFeedItems();
 
-    expect(result.isMock).toBe(true);
-    expect(result.items).toBe(MOCK_FEED);
+    expect(result.error).toBe(true);
+    expect(result.isMock).toBe(false);
+    expect(result.items).toHaveLength(0);
+  });
+
+  it("empty response and API error produce distinct states", async () => {
+    mockFetchDiscover.mockResolvedValueOnce({ items: [], total: 0 });
+    const emptyResult = await loadFeedItems();
+
+    mockFetchDiscover.mockRejectedValueOnce(new Error("500"));
+    const errorResult = await loadFeedItems();
+
+    expect(emptyResult.error).toBe(false);
+    expect(errorResult.error).toBe(true);
+    expect(emptyResult.items).toHaveLength(0);
+    expect(errorResult.items).toHaveLength(0);
   });
 
   it("maps real data correctly via creationToFeedItem", async () => {
@@ -122,7 +136,7 @@ describe("creationToFeedItem", () => {
   });
 
   it("defaults userLiked/userSaved/likes/saves to safe values when absent", () => {
-    const { user_liked, user_saved, likes_count, saves_count, ...rest } = BASE_CREATION;
+    const { user_liked: _ul, user_saved: _us, likes_count: _lc, saves_count: _sc, ...rest } = BASE_CREATION;
     const item = creationToFeedItem(rest as FlowCreation);
     expect(item.userLiked).toBe(false);
     expect(item.userSaved).toBe(false);

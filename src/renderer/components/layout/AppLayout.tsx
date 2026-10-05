@@ -69,6 +69,7 @@ const DevicesPage         = lazy(() => import("../../features/devices").then(m =
 const BusinessLabPage     = lazy(() => import("../../features/business-lab").then(m => ({ default: m.BusinessLabPage })).catch(chunkFallback));
 const DiscoverPage        = lazy(() => import("../../features/discover").then(m => ({ default: m.DiscoverPage })).catch(chunkFallback));
 const FeedPage            = lazy(() => import("../../features/feed").then(m => ({ default: m.FeedPage })).catch(chunkFallback));
+const LeadsPage           = lazy(() => import("../../features/leads").then(m => ({ default: m.LeadsPage })).catch(chunkFallback));
 
 /** Map page keys → sidebar nav translation keys */
 const PAGE_NAV_KEY: Record<string, string> = {
@@ -96,6 +97,7 @@ const PAGE_NAV_KEY: Record<string, string> = {
   "business-lab":   "businessLab",
   "discover":       "discover",
   "feed":           "feed",
+  "leads":          "leads",
 };
 
 function SunIcon() {
@@ -219,6 +221,7 @@ function WorkspaceContent() {
           {page === "business-lab"  && <BusinessLabPage />}
           {page === "discover"      && <DiscoverPage />}
           {page === "feed"          && <FeedPage />}
+          {page === "leads"         && <LeadsPage />}
         </Suspense>
       </ErrorBoundary>
     </PageTransition>

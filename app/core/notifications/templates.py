@@ -125,4 +125,10 @@ TEMPLATES: dict[str, NotificationTemplate] = {
         lambda d: d.get("error") or "A background job failed.",
         None,
     ),
+    "lead.qualified": NotificationTemplate(
+        "workflow", "success",
+        lambda d: f"Lead qualified: {d.get('name', 'Unknown')}",
+        lambda d: f"Score {d.get('ai_score', 'N/A')}/10 — {d.get('ai_notes') or 'Ready for follow-up.'}",
+        lambda d: {"label": "View leads", "href": "/leads"},
+    ),
 }

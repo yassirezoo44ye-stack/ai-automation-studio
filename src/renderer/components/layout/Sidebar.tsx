@@ -35,6 +35,7 @@ const NAV_GROUPS: {
       // Simplified sidebar — keep only the two tools users need day-to-day.
       // home / ai / automation / social are still reachable via setPage()
       // but hidden here so the nav feels approachable to new users.
+      { id: "leads",         navKey: "leads",        icon: "leads"         },
       { id: "feed",          navKey: "feed",         icon: "feed"          },
       { id: "app-builder", navKey: "appBuilder", icon: "app-builder" },
       { id: "design",      navKey: "design",     icon: "design"      },
@@ -48,6 +49,8 @@ const NAV_GROUPS: {
     showLabel: false,
     showSep: true,
     items: [
+      { id: "teams",    navKey: "teams",    icon: "teams"    },
+      { id: "billing",  navKey: "billing",  icon: "billing"  },
       { id: "settings", navKey: "settings", icon: "settings" },
     ],
   },

@@ -36,5 +36,12 @@
     "runWorkflow": "Run This Workflow",
     "useTemplate": "Use Template",
     "openDesign": "Open in Studio"
+  },
+  "empty": {
+    "title": "No public creations yet",
+    "subtitle": "Be the first to publish something on Flow"
+  },
+  "error": {
+    "title": "Could not load the feed"
   }
 }
