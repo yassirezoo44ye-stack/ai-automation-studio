@@ -74,6 +74,8 @@ from app.routers import ws_device        as ws_device_router
 from app.routers import discover         as discover_router
 # Lead Engine
 from app.routers import leads            as leads_router
+# SaaS Factory
+from app.routers import saas_factory     as saas_factory_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -283,6 +285,11 @@ async def lifespan(app: FastAPI):
                 "ON CONFLICT DO NOTHING",
                 role, "leads", action,
             )
+
+    # ── SaaS Factory — pipeline + DB schema ─────────────────────────────────
+    from app.saas_factory import init_saas_factory_schema
+    async with pool.acquire() as conn:
+        await init_saas_factory_schema(conn)
 
     # ── Multi-Device Control AgentOS tools ────────────────────────────────────
     # Importing this module registers all five device_control_* tools into the
@@ -725,6 +732,7 @@ def create_app() -> FastAPI:
     app.include_router(discover_router.router)
     # Lead Engine
     app.include_router(leads_router.router)
+    app.include_router(saas_factory_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)

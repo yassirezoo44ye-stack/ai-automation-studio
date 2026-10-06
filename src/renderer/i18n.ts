@@ -55,6 +55,8 @@ import feedEn from "./locales/en/feed.json";
 import feedAr from "./locales/ar/feed.json";
 import leadsEn from "./locales/en/leads.json";
 import leadsAr from "./locales/ar/leads.json";
+import saasFactoryEn from "./locales/en/saas-factory.json";
+import saasFactoryAr from "./locales/ar/saas-factory.json";
 
 void i18next.use(initReactI18next).init({
   resources: {
@@ -68,6 +70,7 @@ void i18next.use(initReactI18next).init({
       discover: discoverEn,
       feed: feedEn,
       leads: leadsEn,
+      "saas-factory": saasFactoryEn,
     },
     ar: {
       common: commonAr, home: homeAr, settings: settingsAr, auth: authAr, social: socialAr,
@@ -79,6 +82,7 @@ void i18next.use(initReactI18next).init({
       discover: discoverAr,
       feed: feedAr,
       leads: leadsAr,
+      "saas-factory": saasFactoryAr,
     },
   },
   lng: "en",
@@ -88,7 +92,7 @@ void i18next.use(initReactI18next).init({
     "common", "home", "settings", "auth", "social", "organizations", "sandbox", "plugins",
     "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos", "dev",
     "appBuilder", "runs", "integrations", "trainingStudio", "landing", "devices",
-    "discover", "feed", "leads",
+    "discover", "feed", "leads", "saas-factory",
   ],
   interpolation: { escapeValue: false },
   returnEmptyString: false,

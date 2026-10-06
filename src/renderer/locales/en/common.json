@@ -1,9 +1,10 @@
 {
   "sidebar": {
     "groups": {
+      "main": "Main",
       "workspace": "Workspace",
-      "build": "Build",
-      "operate": "Operate",
+      "build": "Create",
+      "operate": "Run",
       "platform": "Platform",
       "organization": "Organization",
       "automation": "Automation",
@@ -34,7 +35,8 @@
       "businessLab": "Business Lab",
       "discover": "Discover",
       "feed": "Flow Feed",
-      "leads": "Leads"
+      "leads": "Leads",
+      "saasFactory": "SaaS Factory"
     },
     "mainNav": "Main navigation",
     "collapse": "Collapse sidebar",
