@@ -30,12 +30,12 @@
     "tags": "الوسوم"
   },
   "cta": {
-    "buildApp": "ابنِ هذا التطبيق",
-    "useAutomation": "استخدم هذا التلقائي",
-    "buildAgent": "ابنِ هذا الوكيل",
-    "runWorkflow": "نفّذ هذا السير",
-    "useTemplate": "استخدم القالب",
-    "openDesign": "افتح في الاستوديو"
+    "buildApp": "ابنِ هذا",
+    "useAutomation": "استخدمه",
+    "buildAgent": "ابنِ هذا",
+    "runWorkflow": "نفّذه",
+    "useTemplate": "استخدمه",
+    "openDesign": "افتحه"
   },
   "empty": {
     "title": "لا توجد إبداعات عامة بعد",

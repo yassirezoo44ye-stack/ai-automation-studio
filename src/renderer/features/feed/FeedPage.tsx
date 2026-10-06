@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { FeedTopBar } from "./components/FeedTopBar";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
-import { MOCK_FEED } from "./mock/feedData";
 import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI } from "./services/feedService";
 import type { FeedTab, FeedItem, FeedItemState } from "./types/feed.types";
 import "./FeedPage.css";
@@ -26,11 +25,11 @@ function initStates(items: FeedItem[]): Record<string, FeedItemState> {
 export function FeedPage() {
   const { t } = useTranslation("feed");
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
-  const [items, setItems]       = useState<FeedItem[]>(MOCK_FEED);
-  const [isMock, setIsMock]     = useState(true);
+  const [items, setItems]       = useState<FeedItem[]>([]);
+  const [isMock, setIsMock]     = useState(false);
   const [loading, setLoading]   = useState(true);
   const [feedError, setFeedError] = useState(false);
-  const [states, setStates]     = useState<Record<string, FeedItemState>>(() => initStates(MOCK_FEED));
+  const [states, setStates]     = useState<Record<string, FeedItemState>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +88,7 @@ export function FeedPage() {
         <div className="feed-progress__bar" style={{ width: `${progressPct}%` }} />
       </div>
 
-      {/* Loading overlay — shows MOCK_FEED cards underneath while real data loads */}
+      {/* Loading skeleton — items are empty during load so no mock cards show underneath */}
       {loading && (
         <div className="feed-loading" aria-live="polite" aria-label="Loading feed…" />
       )}

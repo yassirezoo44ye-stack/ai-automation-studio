@@ -51,8 +51,11 @@ export function FeedBottomOverlay({ item, onBuild }: FeedBottomOverlayProps) {
       {/* Title */}
       <h2 className="feed-bottom-overlay__title">{item.title}</h2>
 
-      {/* Description */}
-      <p className="feed-bottom-overlay__desc">{item.description}</p>
+      {/* Micro-learning value proposition */}
+      <div className="feed-bottom-overlay__value-prop">
+        <span className="feed-bottom-overlay__value-prop-icon" aria-hidden>✦</span>
+        <p className="feed-bottom-overlay__desc">{item.description}</p>
+      </div>
 
       {/* Tags */}
       <div className="feed-bottom-overlay__tags" aria-label={t("card.tags")}>
