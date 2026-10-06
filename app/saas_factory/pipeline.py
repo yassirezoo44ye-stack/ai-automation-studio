@@ -454,8 +454,8 @@ class SaasFactoryPipeline:
                 uuid.UUID(user_id),
                 product_name,
                 idea.get("core_problem", ""),
-                app_id,
-                json.dumps(list(idea.get("key_features", []))[:5]),
+                uuid.UUID(app_id) if app_id else None,
+                list(idea.get("key_features", []))[:5],
             )
             await conn.execute(
                 "UPDATE saas_factory_projects SET flow_creation_id=$1, updated_at=now() "

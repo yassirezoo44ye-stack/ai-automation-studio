@@ -42,6 +42,8 @@ EVENT_TYPES = frozenset({
     "device_control.device_switched",
     # Workflow human-approval lifecycle
     "workflow.approval.pending", "workflow.approval.decided",
+    # SaaS Factory
+    "saas_factory.live",
 })
 
 Handler = Callable[["Event"], Awaitable[None]]

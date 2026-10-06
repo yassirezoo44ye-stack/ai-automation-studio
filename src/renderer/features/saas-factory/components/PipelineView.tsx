@@ -10,12 +10,12 @@ const PHASE_ORDER: FactoryPhase[] = [
 function phaseStatus(
   phase: FactoryPhase,
   currentPhase: FactoryPhase,
+  checkpoint: Record<string, unknown>,
 ): "pending" | "active" | "done" | "failed" {
   if (currentPhase === "FAILED") {
-    const currentIdx = PHASE_ORDER.indexOf(phase);
-    const failedIdx  = PHASE_ORDER.indexOf(currentPhase);
-    if (currentIdx < failedIdx) return "done";
-    if (currentIdx === failedIdx) return "failed";
+    if (phase in checkpoint) return "done";
+    const failedPhase = PHASE_ORDER.find(p => !(p in checkpoint));
+    if (phase === failedPhase) return "failed";
     return "pending";
   }
   const phaseIdx   = PHASE_ORDER.indexOf(phase);
@@ -35,7 +35,7 @@ export function PipelineView({ project, onResume, onDelete }: Props) {
   const { t } = useTranslation("saas-factory");
 
   const phases = PHASE_ORDER.map(phase => {
-    const status = phaseStatus(phase, project.phase);
+    const status = phaseStatus(phase, project.phase, project.checkpoint);
     const output = project.checkpoint[phase] as Record<string, unknown> | undefined;
     return { phase, status, output };
   });
