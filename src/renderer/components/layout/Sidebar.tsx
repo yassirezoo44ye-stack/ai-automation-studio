@@ -11,15 +11,17 @@ type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
 
 /**
- * Navigation groups — simplified to two sections for everyday users.
+ * Navigation groups — 4 semantic sections matching the AI Business Workspace design.
  *
- * MAIN     — the six tools a user actually needs day-to-day
- * ACCOUNT  — settings at the bottom
+ * MAIN     — daily-use entry points (home, ai chat, feed)
+ * BUILD    — creation tools (app builder, saas factory, design studio)
+ * OPERATE  — business execution (leads, devices, business lab, discover)
+ * SYSTEM   — account management (teams, billing, settings)
  *
- * Developer / admin pages (agentos, training, runs, observability, sandbox,
- * ai-routing, integrations, plugins, marketplace, organizations, teams, billing)
- * are still reachable via AppContext.setPage() but are intentionally hidden
- * from the sidebar to keep the UI approachable.
+ * Other pages (agentos, automation, runs, observability, sandbox, ai-routing,
+ * integrations, plugins, marketplace, organizations) are still reachable via
+ * AppContext.setPage() and the command palette, but kept out of the sidebar
+ * to preserve an approachable navigation structure.
  */
 const NAV_GROUPS: {
   groupKey: string;
@@ -28,26 +30,39 @@ const NAV_GROUPS: {
   items: NavItem[];
 }[] = [
   {
-    groupKey: "workspace",
+    groupKey: "main",
     showLabel: false,
     showSep: false,
     items: [
-      // Simplified sidebar — keep only the two tools users need day-to-day.
-      // home / ai / automation / social are still reachable via setPage()
-      // but hidden here so the nav feels approachable to new users.
-      { id: "saas-factory",  navKey: "saasFactory",  icon: "saas-factory"  },
-      { id: "leads",         navKey: "leads",        icon: "leads"         },
-      { id: "feed",          navKey: "feed",         icon: "feed"          },
-      { id: "app-builder", navKey: "appBuilder", icon: "app-builder" },
-      { id: "design",      navKey: "design",     icon: "design"      },
-      { id: "discover",    navKey: "discover",   icon: "discover"    },
-      { id: "devices",       navKey: "devices",      icon: "devices"       },
-      { id: "business-lab",  navKey: "businessLab",  icon: "business-lab"  },
+      { id: "home",  navKey: "home",  icon: "home"  },
+      { id: "ai",    navKey: "ai",    icon: "ai"    },
+      { id: "feed",  navKey: "feed",  icon: "feed"  },
     ],
   },
   {
-    groupKey: "account",
-    showLabel: false,
+    groupKey: "build",
+    showLabel: true,
+    showSep: true,
+    items: [
+      { id: "app-builder",  navKey: "appBuilder",  icon: "app-builder"  },
+      { id: "saas-factory", navKey: "saasFactory", icon: "saas-factory" },
+      { id: "design",       navKey: "design",      icon: "design"       },
+    ],
+  },
+  {
+    groupKey: "operate",
+    showLabel: true,
+    showSep: true,
+    items: [
+      { id: "leads",        navKey: "leads",       icon: "leads"         },
+      { id: "devices",      navKey: "devices",     icon: "devices"       },
+      { id: "business-lab", navKey: "businessLab", icon: "business-lab"  },
+      { id: "discover",     navKey: "discover",    icon: "discover"      },
+    ],
+  },
+  {
+    groupKey: "system",
+    showLabel: true,
     showSep: true,
     items: [
       { id: "teams",    navKey: "teams",    icon: "teams"    },

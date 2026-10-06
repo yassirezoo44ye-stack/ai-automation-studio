@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
+import { useAuth } from "../../contexts/AuthContext";
+import { useOrg } from "../../contexts/OrgContext";
 import { PageTransition } from "../../shared/ui/gold";
 import { ErrorBoundary } from "../../shared/ui/ErrorBoundary";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
@@ -127,24 +129,42 @@ function SearchIcon() {
   );
 }
 
-/** Global top bar — breadcrumb + search shortcut + theme + notifications */
+/** Global top bar — breadcrumb + search shortcut + theme + notifications + user */
 function PageTopBar({ onOpenCmd }: { onOpenCmd: () => void }) {
   const { t } = useTranslation("common");
   const { page, theme, toggleTheme } = useAppContext();
 
+  const { user }       = useAuth();
+  const { currentOrg } = useOrg();
+
   const navKey = PAGE_NAV_KEY[page];
   const pageTitle = navKey ? t(`sidebar.nav.${navKey}`) : page;
+
+  const initials = user?.email
+    ? user.email.substring(0, 2).toUpperCase()
+    : "FL";
 
   return (
     <div className="flow-topbar">
       <div className="flow-topbar__left">
-        {/* Brand separator */}
+        {/* Brand */}
         <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: "0.04em", flexShrink: 0 }}>
           FLOW
         </span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--b2)", flexShrink: 0 }}>
           <polyline points="9 18 15 12 9 6"/>
         </svg>
+        {/* Org name when available */}
+        {currentOrg && (
+          <>
+            <span style={{ fontSize: 12, color: "var(--t3)", flexShrink: 0, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {currentOrg.name}
+            </span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--b2)", flexShrink: 0 }}>
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </>
+        )}
         <span className="flow-topbar__crumb">{pageTitle}</span>
       </div>
       <div className="flow-topbar__right">
@@ -167,6 +187,23 @@ function PageTopBar({ onOpenCmd }: { onOpenCmd: () => void }) {
 
         {/* Notification bell */}
         <NotificationBell collapsed={false} />
+
+        {/* User avatar chip */}
+        {user && (
+          <div
+            title={user.email}
+            aria-label={user.email}
+            style={{
+              width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+              background: "linear-gradient(135deg, var(--accent), var(--teal))",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 10, fontWeight: 700, color: "#fff",
+              cursor: "default", userSelect: "none",
+            }}
+          >
+            {initials}
+          </div>
+        )}
       </div>
     </div>
   );

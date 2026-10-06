@@ -1,6 +1,6 @@
 {
   "sidebar": {
-    "groups": { "workspace": "مساحة العمل", "build": "البناء", "operate": "التشغيل", "platform": "المنصة", "organization": "المؤسسة", "automation": "الأتمتة", "system": "النظام" },
+    "groups": { "main": "الرئيسية", "workspace": "مساحة العمل", "build": "أنشئ", "operate": "شغّل", "platform": "المنصة", "organization": "المؤسسة", "automation": "الأتمتة", "system": "النظام" },
     "nav": {
       "home": "الرئيسية", "ai": "مساعدي الذكي", "dev": "التطوير", "design": "التصميم",
       "automation": "الأتمتة", "agentos": "الوكلاء", "marketplace": "القوالب", "plugins": "الحزم", "sandbox": "السجلات",

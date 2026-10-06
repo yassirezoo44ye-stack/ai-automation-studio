@@ -1,9 +1,10 @@
 {
   "sidebar": {
     "groups": {
+      "main": "Main",
       "workspace": "Workspace",
-      "build": "Build",
-      "operate": "Operate",
+      "build": "Create",
+      "operate": "Run",
       "platform": "Platform",
       "organization": "Organization",
       "automation": "Automation",
