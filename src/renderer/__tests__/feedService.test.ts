@@ -189,6 +189,73 @@ describe("toggleSave", () => {
   });
 });
 
+/* ── CTA + routing mapping ──────────────────────────────────────── */
+
+describe("creationToFeedItem — CTA and routing", () => {
+  it("maps APP type to build-app ctaType and app-builder targetPage", () => {
+    const item = creationToFeedItem(BASE_CREATION);
+    expect(item.ctaType).toBe("build-app");
+    expect(item.targetPage).toBe("app-builder");
+  });
+
+  it("maps AGENT type to build-agent ctaType and agentos targetPage", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, type: "AGENT" });
+    expect(item.ctaType).toBe("build-agent");
+    expect(item.targetPage).toBe("agentos");
+  });
+
+  it("maps AUTOMATION type to use-automation ctaType and automation targetPage", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, type: "AUTOMATION" });
+    expect(item.ctaType).toBe("use-automation");
+    expect(item.targetPage).toBe("automation");
+  });
+
+  it("maps WORKFLOW type to run-workflow ctaType and automation targetPage", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, type: "WORKFLOW" });
+    expect(item.ctaType).toBe("run-workflow");
+    expect(item.targetPage).toBe("automation");
+  });
+
+  it("maps TEMPLATE type to use-template ctaType", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, type: "TEMPLATE" });
+    expect(item.ctaType).toBe("use-template");
+  });
+});
+
+/* ── FeedIntent field preservation ─────────────────────────────── */
+
+describe("creationToFeedItem — FeedIntent fields", () => {
+  it("sets sourceType to 'creation'", () => {
+    const item = creationToFeedItem(BASE_CREATION);
+    expect(item.sourceType).toBe("creation");
+  });
+
+  it("carries source_id as sourceId", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, source_id: "tpl-sales-v2" });
+    expect(item.sourceId).toBe("tpl-sales-v2");
+  });
+
+  it("sourceMeta contains creationId and title", () => {
+    const item = creationToFeedItem(BASE_CREATION);
+    expect(item.sourceMeta).toMatchObject({
+      creationId: BASE_CREATION.id,
+      title: BASE_CREATION.title,
+    });
+  });
+
+  it("sourceMeta.prompt falls back to title when description is absent", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, description: null as unknown as string });
+    expect(item.sourceMeta?.prompt).toBe(BASE_CREATION.title);
+  });
+
+  it("loadFeedItems produces items with isMock:false (never returns mock data)", async () => {
+    mockFetchDiscover.mockResolvedValueOnce({ items: [BASE_CREATION], total: 1 });
+    const { items, isMock } = await loadFeedItems();
+    expect(isMock).toBe(false);
+    expect(items[0].sourceType).toBe("creation");
+  });
+});
+
 /*
  * Limitation: FeedPage interaction tests (verify Like/Save API not called when
  * isMock=true, called when isMock=false) require React component rendering via
