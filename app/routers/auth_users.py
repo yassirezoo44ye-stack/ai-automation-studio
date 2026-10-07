@@ -919,6 +919,27 @@ async def _upsert_oauth_user(conn, email: str, name: str, avatar_url: str, provi
     return await conn.fetchrow("SELECT * FROM users WHERE id=$1", new_id)
 
 
+async def _oauth_session_or_mfa_challenge(conn, user, ip: str, ua: str) -> dict:
+    """Check whether the OAuth user has MFA enabled.
+    If yes, create a short-lived challenge and return
+    {mfa_required: True, challenge_token: ...} — the same shape that the
+    password-login path returns — so the frontend shows the TOTP screen
+    and then calls POST /api/auth/login/mfa to finish the session.
+    If no MFA, fall straight through to a complete session."""
+    mfa = await conn.fetchrow(
+        "SELECT enabled FROM mfa_secrets WHERE user_id=$1", user["id"]
+    )
+    if mfa and mfa["enabled"]:
+        challenge_token = secrets.token_urlsafe(32)
+        await conn.execute(
+            "INSERT INTO mfa_challenges (token, user_id, expires_at) "
+            "VALUES ($1,$2,NOW() + INTERVAL '5 minutes')",
+            challenge_token, user["id"],
+        )
+        return {"mfa_required": True, "challenge_token": challenge_token}
+    return await _make_oauth_session(conn, user, ip, ua)
+
+
 async def _make_oauth_session(conn, user, ip: str, ua: str) -> dict:
     """Build an OAuth login session AND persist its refresh token to
     user_sessions — the same table/shape _create_session() uses for
@@ -1012,7 +1033,7 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
 
     async with get_pool().acquire() as conn:
         user = await _upsert_oauth_user(conn, email, info.get("name", ""), info.get("picture", ""), "google")
-        session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
+        session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     # Redirect to frontend with a one-time exchange code (picked up by
     # AuthPage, redeemed via POST /api/auth/oauth-exchange) — not the
@@ -1095,7 +1116,7 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
 
     async with get_pool().acquire() as conn:
         user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft")
-        session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
+        session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     exchange_code = await _stash_oauth_session_for_exchange(session)
     resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
@@ -1189,7 +1210,7 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
     async with get_pool().acquire() as conn:
         avatar = gh_user.get("avatar_url", "")
         user = await _upsert_oauth_user(conn, email, gh_user.get("name") or gh_user.get("login", ""), avatar, "github")
-        session = await _make_oauth_session(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
+        session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     exchange_code = await _stash_oauth_session_for_exchange(session)
     resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")

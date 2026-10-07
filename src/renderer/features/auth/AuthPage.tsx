@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth, MfaRequiredError } from "../../contexts/AuthContext";
+import type { MfaChallenge } from "../../contexts/AuthContext";
 import AxonLogo from "../../AxonLogo";
 import { parseJSON } from "../../utils/api";
 import { useForm } from "../../shared/forms/useForm";
@@ -9,10 +10,10 @@ import { all, required, email as emailValidator, minLength, matchesField, passwo
 import { EmailField, PasswordField, TextField, Checkbox, SubmitButton, ErrorBanner, SuccessBanner } from "../../shared/ui/forms";
 import { GoldButton } from "../../shared/ui/gold";
 
-type Tab = "login" | "register" | "forgot" | "reset";
+type Tab = "login" | "register" | "forgot" | "reset" | "mfa";
 
 interface AuthPageProps {
-  initialTab?: "login" | "register";
+  initialTab?: "login" | "register" | "mfa";
   onBack?: () => void;
 }
 
@@ -127,10 +128,11 @@ interface LoginValues { email: string; password: string; remember: boolean }
 interface RegisterValues { name: string; email: string; password: string; confirmPassword: string }
 interface ForgotValues { email: string }
 interface ResetValues { password: string; confirmPassword: string }
+interface MfaValues { code: string }
 
 export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   const { t } = useTranslation("auth");
-  const { login, register } = useAuth();
+  const { login, register, completeMfa, pendingMfaChallenge, clearMfaChallenge } = useAuth();
 
   // Derive initial tab and token from the URL at first render using the lazy
   // useState initializer (runs once synchronously, no extra render cycle).
@@ -150,6 +152,14 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
       : null,
   );
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  // Local MFA challenge state for password-login MFA flow.
+  // OAuth-initiated MFA is read from context's pendingMfaChallenge.
+  const [localMfaChallenge, setLocalMfaChallenge] = useState<MfaChallenge | null>(null);
+
+  // When context sets pendingMfaChallenge (from OAuth callback), switch to MFA tab.
+  useEffect(() => {
+    if (pendingMfaChallenge) setTab("mfa");
+  }, [pendingMfaChallenge]);
 
   // Clean the sensitive token from the URL bar once on mount.
   // No state changes here — tab and resetToken were already set above.
@@ -171,7 +181,18 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
       email: all(required(t("validation.emailRequired")), emailValidator()),
       password: required(t("validation.passwordRequired")),
     },
-    onValid: values => loginSubmit.run(() => login(values.email, values.password, values.remember)),
+    onValid: values => loginSubmit.run(async () => {
+      try {
+        await login(values.email, values.password, values.remember);
+      } catch (err) {
+        if (err instanceof MfaRequiredError) {
+          setLocalMfaChallenge({ token: err.challengeToken, remember: err.remember });
+          setTab("mfa");
+          return;
+        }
+        throw err;
+      }
+    }),
   });
 
   // ── Register ───────────────────────────────────────────────────────────────
@@ -240,10 +261,23 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     });
   }
 
+  // ── MFA ────────────────────────────────────────────────────────────────────
+  const mfaSubmit = useAsyncSubmit<void>();
+  const mfaForm = useForm<MfaValues>({
+    initialValues: { code: "" },
+    validators: { code: required("") },
+    onValid: values => {
+      const challenge = pendingMfaChallenge ?? localMfaChallenge;
+      if (!challenge) return;
+      mfaSubmit.run(() => completeMfa(values.code.trim(), challenge.token, challenge.remember));
+    },
+  });
+
   function switchTab(next: Tab) {
     setTab(next);
-    loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset(); resetSubmit.reset();
+    loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset(); resetSubmit.reset(); mfaSubmit.reset();
     if (next !== "register") setRegisteredEmail(null);
+    if (next !== "mfa") { setLocalMfaChallenge(null); clearMfaChallenge(); }
   }
 
   return (
@@ -275,7 +309,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         <h1 style={S.title}>{t("title")}</h1>
         <p style={S.sub}>{t("subtitle")}</p>
 
-        {tab !== "forgot" && tab !== "reset" && (
+        {tab !== "forgot" && tab !== "reset" && tab !== "mfa" && (
           <div style={S.tabs} role="tablist">
             <button role="tab" aria-selected={tab === "login"} style={S.tab(tab === "login")} onClick={() => switchTab("login")}>
               {t("tabs.signIn")}
@@ -380,6 +414,67 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
               {t("forgot.backToSignIn")}
             </GoldButton>
           </div>
+        )}
+
+        {/* ── MFA challenge ── */}
+        {tab === "mfa" && (
+          <form onSubmit={mfaForm.handleSubmit} noValidate>
+            <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
+              {t("mfa.subtitle")}
+            </p>
+            {mfaSubmit.error && (
+              <ErrorBanner
+                message={mfaSubmit.error}
+                suggestedFix={mfaSubmit.suggestedFix}
+                onRetry={mfaForm.isValid ? mfaSubmit.retry : undefined}
+              />
+            )}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--t2)", marginBottom: 6 }}>
+                {t("mfa.codeLabel")}
+              </label>
+              {(() => {
+                const { value, onChange, onBlur } = mfaForm.register("code");
+                return (
+                  <input
+                    name="code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder={t("mfa.codePlaceholder")}
+                    maxLength={8}
+                    autoFocus
+                    aria-label={t("mfa.codeLabel")}
+                    aria-invalid={!!(mfaForm.touched.code && mfaForm.errors.code)}
+                    value={value as string}
+                    onChange={e => {
+                      // Allow only digits
+                      const digits = e.target.value.replace(/\D/g, "");
+                      onChange({ target: { value: digits } } as React.ChangeEvent<HTMLInputElement>);
+                    }}
+                    onBlur={onBlur}
+                    style={{
+                      width: "100%", padding: "10px 14px", borderRadius: 10,
+                      border: `1px solid ${mfaForm.touched.code && mfaForm.errors.code ? "var(--error)" : "var(--b1)"}`,
+                      background: "var(--bg-input)", color: "var(--t1)", fontSize: 20,
+                      fontWeight: 700, letterSpacing: "0.3em", textAlign: "center",
+                      outline: "none", boxSizing: "border-box",
+                      fontFamily: "var(--font-mono, monospace)",
+                    }}
+                  />
+                );
+              })()}
+            </div>
+            <p style={{ fontSize: 12, color: "var(--t4)", margin: "0 0 16px", textAlign: "center" }}>
+              {t("mfa.backupCodeHint")}
+            </p>
+            <SubmitButton loading={mfaSubmit.isSubmitting} loadingText={t("mfa.submitting")}>
+              {t("mfa.submit")}
+            </SubmitButton>
+            <button type="button" style={S.btnSecondary} onClick={() => switchTab("login")}>
+              {t("mfa.cancel")}
+            </button>
+          </form>
         )}
       </div>
     </div>

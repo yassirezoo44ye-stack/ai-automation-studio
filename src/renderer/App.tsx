@@ -12,6 +12,7 @@ import { LandingPage }   from "./features/landing/LandingPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
 import "./design-system.css";
 
+
 // Keep Render free tier awake
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
@@ -19,17 +20,12 @@ setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 type AuthView = "landing" | "login" | "register";
 
 function AppInner() {
-  const { user, loading, bootstrapError } = useAuth();
+  const { user, loading, bootstrapError, pendingMfaChallenge } = useAuth();
   const [authView, setAuthView] = useState<AuthView>("landing");
 
-  // The app uses state-based navigation (no React Router). A shared /feed/:id
-  // URL would otherwise render a blank page. Redirect to root so the app loads
-  // normally; deep-link support requires a proper router (Phase 2).
-  useEffect(() => {
-    if (window.location.pathname.startsWith("/feed/")) {
-      window.history.replaceState(null, "", "/");
-    }
-  }, []);
+  // Deep-link routing is handled by AppContext (URL ↔ page sync).
+  // The OAuth callback and reset-password paths are handled by AuthContext
+  // and AuthPage respectively — no URL manipulation needed here.
 
   if (loading) {
     return <LoadingSpinner fullPage label="Starting Flow…" />;
@@ -72,6 +68,11 @@ function AppInner() {
         </OrgProvider>
       </ToastProvider>
     );
+  }
+
+  // OAuth callback returned mfa_required — show the MFA challenge screen directly.
+  if (pendingMfaChallenge) {
+    return <AuthPage initialTab="mfa" onBack={undefined} />;
   }
 
   // Not authenticated — show landing page or auth form

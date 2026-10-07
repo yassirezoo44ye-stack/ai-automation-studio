@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import logging
+import os as _os
 import shutil
 import time
 import zipfile
@@ -42,7 +43,7 @@ log = logging.getLogger(__name__)
 #     reached when the authenticated identity exactly matches _DEV_ACCOUNT.
 #
 # Keep this in sync with tests/test_dev_mode.py's _DEV_ACCOUNT constant.
-_DEV_ACCOUNT: str = "yassirezoo44.ye@gmail.com"
+_DEV_ACCOUNT: str = _os.getenv("DEV_ACCOUNT_EMAIL", "")
 
 
 def _is_dev_account(request: Request) -> bool:

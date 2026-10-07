@@ -2,6 +2,47 @@ import { useState, useEffect, useCallback, useTransition } from "react";
 import type { Page } from "../types";
 import { AppContext, type Theme, type FeedIntent } from "./app";
 
+const PATH_TO_PAGE: Record<string, Page> = {
+  "/":              "app-builder",
+  "/home":          "home",
+  "/ai":            "ai",
+  "/dev":           "dev",
+  "/design":        "design",
+  "/automation":    "automation",
+  "/social":        "social",
+  "/settings":      "settings",
+  "/agentos":       "agentos",
+  "/marketplace":   "marketplace",
+  "/organizations": "organizations",
+  "/teams":         "teams",
+  "/billing":       "billing",
+  "/plugins":       "plugins",
+  "/sandbox":       "sandbox",
+  "/ai-routing":    "ai-routing",
+  "/observability": "observability",
+  "/app-builder":   "app-builder",
+  "/runs":          "runs",
+  "/integrations":  "integrations",
+  "/training":      "training",
+  "/business-lab":  "business-lab",
+  "/devices":       "devices",
+  "/discover":      "discover",
+  "/feed":          "feed",
+  "/leads":         "leads",
+  "/saas-factory":  "saas-factory",
+};
+
+const PAGE_TO_PATH: Partial<Record<Page, string>> = Object.fromEntries(
+  Object.entries(PATH_TO_PAGE).map(([path, page]) => [page, path]),
+) as Partial<Record<Page, string>>;
+
+function pageFromCurrentPath(): Page {
+  const path = window.location.pathname;
+  // Strip /feed/:id suffix — feed page handles its own ID state
+  const base = path.startsWith("/feed/") ? "/feed" : path;
+  return PATH_TO_PAGE[base] ?? "app-builder";
+}
+
 function getStoredTheme(): Theme {
   try {
     const stored = localStorage.getItem("axon-theme");
@@ -22,7 +63,7 @@ function applyTheme(t: Theme) {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [page, setPageState] = useState<Page>("app-builder");
+  const [page, setPageState] = useState<Page>(() => pageFromCurrentPath());
   // Page switches run as a transition so a lazy chunk that hasn't loaded yet
   // never interrupts an in-flight commit: React keeps the current page fully
   // rendered and interactive until the new one is ready, then swaps both the
@@ -46,6 +87,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Sync theme attribute whenever it changes
   useEffect(() => { applyTheme(theme); }, [theme]);
+
+  // Keep the URL bar in sync with page state so refreshing / sharing a link
+  // opens the same page (deep-link fix). replaceState — no history entry per
+  // page click; the app's sidebar is the navigation, not the browser back button.
+  useEffect(() => {
+    const path = PAGE_TO_PATH[page] ?? "/";
+    if (window.location.pathname !== path) {
+      window.history.replaceState(null, "", path);
+    }
+  }, [page]);
 
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);
   const toggleTheme = useCallback(() => setThemeState(prev => prev === "dark" ? "light" : "dark"), []);

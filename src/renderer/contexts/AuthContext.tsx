@@ -25,13 +25,43 @@ export interface AuthUser {
   created_at: string | null;
 }
 
+export interface MfaChallenge {
+  token: string;
+  remember: boolean;
+}
+
+/** Thrown by login() when the backend requires MFA before completing the session. */
+export class MfaRequiredError extends Error {
+  readonly challengeToken: string;
+  readonly remember: boolean;
+  constructor(challengeToken: string, remember: boolean) {
+    super("mfa_required");
+    this.name = "MfaRequiredError";
+    this.challengeToken = challengeToken;
+    this.remember = remember;
+  }
+}
+
 interface AuthContextType {
   user: AuthUser | null;
   accessToken: string | null;
   loading: boolean;
   /** Set when bootstrap refresh fails due to a backend/network error (not when simply logged out). */
   bootstrapError: string | null;
+  /**
+   * Set when an OAuth callback exchange returned mfa_required instead of a full session.
+   * AuthPage should detect this and show the MFA challenge screen.
+   */
+  pendingMfaChallenge: MfaChallenge | null;
+  /** Clear the pending MFA challenge (e.g. user cancelled). */
+  clearMfaChallenge: () => void;
+  /**
+   * Throws MfaRequiredError if the backend requires MFA before completing the session.
+   * Caller should catch it and show the MFA challenge screen.
+   */
   login: (email: string, password: string, remember?: boolean) => Promise<void>;
+  /** Complete an in-progress MFA challenge after login() threw MfaRequiredError. */
+  completeMfa: (code: string, challengeToken: string, remember: boolean) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string; avatar_url?: string }) => Promise<void>;
@@ -77,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [pendingMfaChallenge, setPendingMfaChallenge] = useState<MfaChallenge | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref lets scheduleRefresh call doRefresh without creating a circular dep
   const doRefreshRef = useRef<() => Promise<{ token: string | null; networkError?: string }>>(async () => ({ token: null }));
@@ -221,15 +252,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               method: "POST",
               body: JSON.stringify({ code }),
             });
-            const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token?: string }>(
-              res, "/api/auth/oauth-exchange",
-            );
-            localStorage.setItem(REFRESH_KEY, data.refresh_token);
-            if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
-            setGlobalToken(data.access_token);
-            setAccessToken(data.access_token);
-            await fetchMe(data.access_token);
-            scheduleRefresh();
+            const data = await parseJSON<{
+              access_token?: string;
+              refresh_token?: string;
+              sub_token?: string;
+              mfa_required?: boolean;
+              challenge_token?: string;
+            }>(res, "/api/auth/oauth-exchange");
+            if (data.mfa_required && data.challenge_token) {
+              // OAuth user has MFA enabled — show challenge screen before completing session.
+              // remember=true for OAuth (long-lived session matches OAuth expectations).
+              setPendingMfaChallenge({ token: data.challenge_token, remember: true });
+            } else if (data.access_token && data.refresh_token) {
+              localStorage.setItem(REFRESH_KEY, data.refresh_token);
+              if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
+              setGlobalToken(data.access_token);
+              setAccessToken(data.access_token);
+              await fetchMe(data.access_token);
+              scheduleRefresh();
+            }
           } catch (err) {
             console.warn("[auth] OAuth exchange failed", err);
           }
@@ -272,7 +313,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw new Error(detail);
     }
-    const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token: string; user: AuthUser }>(res, "/api/auth/login");
+    // Backend returns HTTP 200 in both cases: completed session OR mfa_required.
+    // Check for mfa_required before trying to read session tokens.
+    const data = await parseJSON<{
+      access_token?: string;
+      refresh_token?: string;
+      sub_token?: string;
+      user?: AuthUser;
+      mfa_required?: boolean;
+      challenge_token?: string;
+    }>(res, "/api/auth/login");
+    if (data.mfa_required && data.challenge_token) {
+      throw new MfaRequiredError(data.challenge_token, remember);
+    }
+    if (!data.access_token || !data.refresh_token || !data.user) {
+      throw new Error("Unexpected response from server. Please try again.");
+    }
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
     if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
     setGlobalToken(data.access_token);
@@ -346,8 +402,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchMe(accessToken);
   }, [accessToken, fetchMe]);
 
+  const clearMfaChallenge = useCallback(() => {
+    setPendingMfaChallenge(null);
+  }, []);
+
+  const completeMfa = useCallback(async (code: string, challengeToken: string, remember: boolean) => {
+    const res = await apiFetch("/api/auth/login/mfa", {
+      method: "POST",
+      body: JSON.stringify({ challenge_token: challengeToken, code, remember }),
+    });
+    if (!res.ok) {
+      let detail = "Verification failed";
+      try {
+        const body = await res.json() as { detail?: string };
+        if (body?.detail) detail = body.detail;
+      } catch {
+        // non-JSON body — keep the fallback
+      }
+      throw new Error(detail);
+    }
+    const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token?: string; user: AuthUser }>(
+      res, "/api/auth/login/mfa",
+    );
+    localStorage.setItem(REFRESH_KEY, data.refresh_token);
+    if (data.sub_token) localStorage.setItem("sub_token", data.sub_token);
+    setGlobalToken(data.access_token);
+    setAccessToken(data.access_token);
+    setUser(data.user);
+    setPendingMfaChallenge(null);
+    scheduleRefresh();
+  }, [scheduleRefresh]);
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, loading, bootstrapError, login, register, logout, updateProfile, refreshUser }}>
+    <AuthContext.Provider value={{
+      user, accessToken, loading, bootstrapError,
+      pendingMfaChallenge, clearMfaChallenge,
+      login, completeMfa, register, logout, updateProfile, refreshUser,
+    }}>
       {children}
     </AuthContext.Provider>
   );
