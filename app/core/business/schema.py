@@ -7,7 +7,11 @@ Call ensure_business_plans_schema(conn) once from app startup.
 """
 from __future__ import annotations
 
+import logging
+
 import asyncpg
+
+log = logging.getLogger(__name__)
 
 _DDL = """
 -- ── Main plan record ──────────────────────────────────────────────────────────
@@ -158,3 +162,59 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 async def ensure_business_plans_schema(conn: asyncpg.Connection) -> None:
     """Idempotent: safe to call on every startup."""
     await conn.execute(_DDL)
+
+
+async def mark_interrupted_business_plans() -> None:
+    """
+    Mark any business plan or section left in a transient state as FAILED
+    after a server restart/crash.
+
+    The workflow engine is purely in-memory: after a process restart its
+    state is gone. Plans persisted as GENERATING and sections as RUNNING
+    can never make forward progress — marking them FAILED lets the UI
+    surface the error and lets users click Retry rather than waiting forever.
+
+    Idempotent: only touches non-terminal states (GENERATING/RUNNING).
+    Concurrency-safe: plain UPDATE WHERE; second concurrent call finds 0 rows.
+    Org-safe: updates across all orgs (system-level recovery, not tenant-scoped).
+    Uses plain pool.acquire() — the app DB user has BYPASSRLS so unscoped
+    connections see all rows (same pattern as mark_interrupted_runs() for
+    automation_runs in app/core/workflow/automation_schema.py).
+    """
+    from app.core.db import get_pool
+
+    pool = get_pool()
+    if pool is None:
+        log.warning("business plan recovery: pool not ready, skipping")
+        return
+
+    try:
+        async with pool.acquire() as conn:
+            plan_result = await conn.execute(
+                """
+                UPDATE bp_plans
+                SET status     = 'FAILED',
+                    updated_at = NOW()
+                WHERE status = 'GENERATING'
+                """
+            )
+            section_result = await conn.execute(
+                """
+                UPDATE bp_sections
+                SET status     = 'FAILED',
+                    error_msg  = 'Server restarted before this section completed',
+                    updated_at = NOW()
+                WHERE status = 'RUNNING'
+                """
+            )
+        plan_count    = int(plan_result.split()[-1])    if plan_result    else 0
+        section_count = int(section_result.split()[-1]) if section_result else 0
+        if plan_count or section_count:
+            log.warning(
+                "business plan recovery: marked %d plan(s) and %d section(s) as FAILED",
+                plan_count, section_count,
+            )
+        else:
+            log.debug("business plan recovery: no orphaned plans or sections found")
+    except Exception:
+        log.exception("business plan recovery: failed — non-fatal, continuing startup")

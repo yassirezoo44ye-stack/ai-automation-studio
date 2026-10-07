@@ -248,9 +248,12 @@ async def lifespan(app: FastAPI):
     await mark_interrupted_runs()
 
     # ── Business Lab — Plan & Validation Engine ─────────────────────────────────
-    from app.core.business.schema import ensure_business_plans_schema
+    from app.core.business.schema import (
+        ensure_business_plans_schema, mark_interrupted_business_plans,
+    )
     async with pool.acquire() as conn:
         await ensure_business_plans_schema(conn)
+    await mark_interrupted_business_plans()
 
     # ── Training Studio — references organizations/projects/users ────────────
     from app.training import init_training_schema
