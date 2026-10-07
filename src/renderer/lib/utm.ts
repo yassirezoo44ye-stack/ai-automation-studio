@@ -10,6 +10,14 @@ const EVENTS_KEY = "flow_events";
 const SID_KEY    = "flow_sid";
 const MAX_EVENTS = 200;
 
+// Resolve backend base URL at module load time (build-time env var, stripped of trailing slash).
+// Empty string → relative URL → works in dev (Vite proxy) and in tests (jsdom, no VITE_API_URL).
+const _BACKEND = (
+  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL
+    ? (import.meta.env.VITE_API_URL as string).replace(/\/+$/, "")
+    : ""
+);
+
 export interface UtmParams {
   utm_source?:   string;
   utm_medium?:   string;
@@ -107,7 +115,7 @@ function _sendToBackend(name: string): void {
     utm_content:  utm.utm_content,
   };
   try {
-    fetch("/api/track", {
+    fetch(`${_BACKEND}/api/track`, {
       method:    "POST",
       headers:   { "Content-Type": "application/json" },
       body:      JSON.stringify(payload),
