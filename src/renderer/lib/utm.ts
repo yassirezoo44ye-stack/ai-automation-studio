@@ -1,11 +1,13 @@
 /**
  * Minimal UTM capture + event log.
- * No external analytics platform. Uses sessionStorage only.
+ * sessionStorage: captures UTM params and events for the current tab session.
+ * Backend: non-blocking fire-and-forget POST /api/track for durable attribution.
  * PII: UTM params only — no user identity collected here.
  */
 
 const UTM_KEY    = "flow_utm";
 const EVENTS_KEY = "flow_events";
+const SID_KEY    = "flow_sid";
 const MAX_EVENTS = 200;
 
 export interface UtmParams {
@@ -45,10 +47,33 @@ export function getUtm(): UtmParams {
 }
 
 /**
- * Append a named event (with UTM context) to the session event log.
- * Events: "landing_visit" | "cta_click" | "signup_intent"
+ * Return the anonymous session ID for this browser session.
+ * Created on first call, persisted in sessionStorage.
+ * Not tied to user identity — safe to include in anonymous events.
+ */
+export function getSessionId(): string {
+  try {
+    let sid = sessionStorage.getItem(SID_KEY);
+    if (!sid) {
+      sid = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionStorage.setItem(SID_KEY, sid);
+    }
+    return sid;
+  } catch {
+    return "anonymous";
+  }
+}
+
+/**
+ * Append a named event (with UTM context) to the session event log,
+ * then fire a non-blocking POST to /api/track for durable attribution.
+ * Events: "landing_visit" | "cta_click" | "signup"
+ * Tracking failure never blocks the caller.
  */
 export function trackEvent(name: string, data?: Record<string, unknown>): void {
+  // 1. sessionStorage log (existing behaviour — best-effort)
   try {
     const raw    = sessionStorage.getItem(EVENTS_KEY);
     const events = raw ? (JSON.parse(raw) as TrackedEvent[]) : [];
@@ -56,6 +81,9 @@ export function trackEvent(name: string, data?: Record<string, unknown>): void {
     if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS);
     sessionStorage.setItem(EVENTS_KEY, JSON.stringify(events));
   } catch { /* private mode or quota */ }
+
+  // 2. Backend attribution (fire-and-forget — never throws, never awaited)
+  _sendToBackend(name);
 }
 
 /** Read all tracked events (for inspection / forwarding to an analytics sink). */
@@ -64,4 +92,26 @@ export function getEvents(): TrackedEvent[] {
     const raw = sessionStorage.getItem(EVENTS_KEY);
     return raw ? (JSON.parse(raw) as TrackedEvent[]) : [];
   } catch { return []; }
+}
+
+// ── Internal ──────────────────────────────────────────────────────────────────
+
+function _sendToBackend(name: string): void {
+  const utm = getUtm();
+  const payload = {
+    event:        name,
+    session_id:   getSessionId(),
+    utm_source:   utm.utm_source,
+    utm_medium:   utm.utm_medium,
+    utm_campaign: utm.utm_campaign,
+    utm_content:  utm.utm_content,
+  };
+  try {
+    fetch("/api/track", {
+      method:    "POST",
+      headers:   { "Content-Type": "application/json" },
+      body:      JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => { /* attribution failure is silent */ });
+  } catch { /* fetch unavailable (SSR/tests) — ignore */ }
 }

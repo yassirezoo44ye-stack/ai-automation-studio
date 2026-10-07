@@ -76,6 +76,8 @@ from app.routers import discover         as discover_router
 from app.routers import leads            as leads_router
 # SaaS Factory
 from app.routers import saas_factory     as saas_factory_router
+# Attribution
+from app.routers import attribution      as attribution_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -290,6 +292,11 @@ async def lifespan(app: FastAPI):
     from app.saas_factory import init_saas_factory_schema
     async with pool.acquire() as conn:
         await init_saas_factory_schema(conn)
+
+    # ── Attribution — anonymous funnel measurement ────────────────────────────
+    from app.attribution_schema import init_attribution_schema
+    async with pool.acquire() as conn:
+        await init_attribution_schema(conn)
 
     # ── Multi-Device Control AgentOS tools ────────────────────────────────────
     # Importing this module registers all five device_control_* tools into the
@@ -733,6 +740,7 @@ def create_app() -> FastAPI:
     # Lead Engine
     app.include_router(leads_router.router)
     app.include_router(saas_factory_router.router)
+    app.include_router(attribution_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
