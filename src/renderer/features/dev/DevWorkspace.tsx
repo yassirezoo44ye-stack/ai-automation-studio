@@ -7,6 +7,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -30,15 +31,22 @@ function isHtml(fs: { path: string }[]) {
 export function DevWorkspace() {
   const { t } = useTranslation("dev");
   const toast = useToast();
+  const { activeProjectId: urlProjectId } = useAppContext();
   const [tab, setTab] = useState<DevTab>("generate");
 
   // ── Project ───────────────────────────────────────────────────────────────
   const [projects, setProjects]   = useState<Project[]>([]);
-  // Prefer the last project used by AppBuilderPage (stored on project create).
-  // Fall back to "demo" so the workspace still mounts when no project exists yet.
+  // URL-based identity takes precedence; fall back to sessionStorage (written
+  // by AppBuilderPage on project create) and finally to "demo".
   const [projectId, setProjectId] = useState(
-    () => sessionStorage.getItem("flow_active_project") ?? "demo",
+    () => urlProjectId ?? sessionStorage.getItem("flow_active_project") ?? "demo",
   );
+
+  // Keep projectId in sync when URL-based identity changes (e.g. deep-link
+  // navigation to DevWorkspace with a different projectId in the URL).
+  useEffect(() => {
+    if (urlProjectId) setProjectId(urlProjectId);
+  }, [urlProjectId]);
 
   // ── Build ─────────────────────────────────────────────────────────────────
   const [buildPrompt, setBuildPrompt]  = useState("");
