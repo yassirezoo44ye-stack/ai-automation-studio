@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppContext } from "../../contexts/app";
 import { agentOsApi } from "./api";
 import { apiFetch } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
@@ -222,6 +223,8 @@ const STEP_ICONS: Record<string, string> = {
 
 function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const { t } = useTranslation("agentos");
+  // URL-based identity (set when user navigates to /project/:id/:workspace)
+  const { activeProjectId: urlProjectId } = useAppContext();
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [mode, setMode]             = useState<"run" | "deliberate" | "plan">("run");
@@ -231,16 +234,16 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const { steps } = useAgentRunSteps(activeRunId);
   const stepsEndRef = useRef<HTMLDivElement>(null);
 
-  // Active project — resolved from sessionStorage (set by AppBuilderPage on
-  // project create). Passed to every /api/agentos/run call so that agents
-  // like run_agent.py that require a verified project context receive it.
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+  // Active project — URL identity takes precedence; fall back to sessionStorage
+  // (written by AppBuilderPage on project create) for legacy paths.
+  const [ssProjectId, setSsProjectId] = useState<string | null>(
     () => sessionStorage.getItem("flow_active_project"),
   );
+  const activeProjectId = urlProjectId ?? ssProjectId;
 
-  // Keep the displayed project ID in sync if another tab updates it
+  // Keep the sessionStorage mirror in sync if another tab updates it
   useEffect(() => {
-    const sync = () => setActiveProjectId(sessionStorage.getItem("flow_active_project"));
+    const sync = () => setSsProjectId(sessionStorage.getItem("flow_active_project"));
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, []);
@@ -256,7 +259,8 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
     setDelib(null);
     // Always pass the currently active project so that the `run` agent
     // (and any other project-scoped agent) has the project context it needs.
-    const projectId = sessionStorage.getItem("flow_active_project") ?? undefined;
+    // URL-based identity takes precedence; fall back to sessionStorage for legacy paths.
+    const projectId = activeProjectId ?? sessionStorage.getItem("flow_active_project") ?? undefined;
     try {
       if (mode === "deliberate") {
         const runId = crypto.randomUUID();
@@ -661,6 +665,7 @@ type Tab = "terminal" | "agents" | "memory" | "evolution" | "performance" | "job
 
 export function AgentOSPage() {
   const { t } = useTranslation("agentos");
+  const { activeProjectId } = useAppContext();
   const toast = useToast();
   const [tab, setTab]               = useState<Tab>("terminal");
   const [results, setResults]       = useState<AgentResult[]>([]);

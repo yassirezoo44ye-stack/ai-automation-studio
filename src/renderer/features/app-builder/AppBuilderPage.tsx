@@ -496,7 +496,7 @@ function BillingErrorOverlay({
    ══════════════════════════════════════════════════════════════════ */
 export function AppBuilderPage() {
   const { t } = useTranslation("appBuilder");
-  const { setPage } = useAppContext();
+  const { setPage, activeProjectId } = useAppContext();
   const toast = useToast();
 
   const [section, setSection] = useState<AppSection>("overview");
@@ -560,15 +560,19 @@ export function AppBuilderPage() {
   const isBuildingRef = useRef(false);
   /** AbortController for cancelling an in-progress stream. */
   const abortRef = useRef<AbortController | null>(null);
+  // Ref-based mirror of activeProjectId so callbacks with [] deps can read
+  // the latest value without stale-closure issues and without re-creating.
+  const activeProjectIdRef = useRef(activeProjectId);
+  useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
 
   // Load active project info on mount
   useEffect(() => {
-    const pid = sessionStorage.getItem("flow_active_project");
+    const pid = activeProjectId ?? sessionStorage.getItem("flow_active_project");
     if (!pid) return;
     getProject(pid)
       .then(p => { if (p.name) setProjectName(p.name); })
       .catch(() => {}); // project may have been deleted; silently ignore
-  }, []);
+  }, [activeProjectId]);
 
   // Consume feedIntent on mount — pre-fill entryPrompt if the intent carries a prompt
   const { feedIntent, setFeedIntent } = useAppContext();
@@ -670,7 +674,8 @@ export function AppBuilderPage() {
       // stored its id in flow_active_project), we build on that project rather
       // than silently creating a duplicate.
       let projectId: string;
-      const storedPid = sessionStorage.getItem("flow_active_project");
+      // URL-based identity takes precedence; fall back to sessionStorage for legacy paths.
+      const storedPid = activeProjectIdRef.current ?? sessionStorage.getItem("flow_active_project");
       if (storedPid) {
         try {
           const existing = await getProject(storedPid);
@@ -867,7 +872,7 @@ export function AppBuilderPage() {
    * State transitions: idle/stopped/failed → starting → running | failed.
    */
   const handleRun = useCallback(async () => {
-    const projectId = sessionStorage.getItem("flow_active_project");
+    const projectId = activeProjectIdRef.current ?? sessionStorage.getItem("flow_active_project");
     if (!projectId || isRunningRef.current) return;
 
     isRunningRef.current = true;
@@ -970,7 +975,7 @@ export function AppBuilderPage() {
 
   /** Stop the running project. Calls DELETE /api/projects/{id}/process. */
   const handleStop = useCallback(async () => {
-    const projectId = sessionStorage.getItem("flow_active_project");
+    const projectId = activeProjectIdRef.current ?? sessionStorage.getItem("flow_active_project");
     runtimeAbortRef.current?.abort();
     runtimeAbortRef.current = null;   // explicit clear — handleRun allocates a fresh controller
     setRuntimeState("stopping");
@@ -1006,7 +1011,7 @@ export function AppBuilderPage() {
   // workspace.  Guards against duplicate requests with isDownloading flag.
   // Named "export" in the UI (not "publish") because no deployment occurs.
   const handleDownload = useCallback(async () => {
-    const projectId = sessionStorage.getItem("flow_active_project");
+    const projectId = activeProjectIdRef.current ?? sessionStorage.getItem("flow_active_project");
     if (!projectId || isDownloading) return;
     setIsDownloading(true);
     setDownloadError(null);
@@ -1538,7 +1543,7 @@ export function AppBuilderPage() {
           isBuilding={isBuilding}
           fileCount={buildFileCount}
           language={buildLanguage}
-          projectId={sessionStorage.getItem("flow_active_project")}
+          projectId={activeProjectId ?? sessionStorage.getItem("flow_active_project")}
           plan={currentPlan}
           height={bottomHeight}
           onResize={h => setBottomHeight(Math.max(120, Math.min(480, h)))}
@@ -1599,7 +1604,7 @@ export function AppBuilderPage() {
 
       {/* Publish to Discover modal */}
       {showPublishModal && (() => {
-        const activeProjectId = sessionStorage.getItem("flow_active_project");
+        const activeProjectId = activeProjectIdRef.current ?? sessionStorage.getItem("flow_active_project");
         if (!activeProjectId) return null;
         return (
           <PublishToDiscoverModal

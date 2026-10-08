@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useTransition } from "react";
 import type { Page } from "../types";
-import { AppContext, type Theme, type FeedIntent } from "./app";
+import { AppContext, type Theme, type FeedIntent, type ProjectWorkspace } from "./app";
 
 const PATH_TO_PAGE: Record<string, Page> = {
   "/":              "app-builder",
@@ -37,11 +37,43 @@ const PAGE_TO_PATH: Partial<Record<Page, string>> = Object.fromEntries(
   Object.entries(PATH_TO_PAGE).map(([path, page]) => [page, path]),
 ) as Partial<Record<Page, string>>;
 
-function pageFromCurrentPath(): Page {
+/** /project/:id/:workspace → Page */
+const WORKSPACE_TO_PAGE: Record<ProjectWorkspace, Page> = {
+  build:        "app-builder",
+  design:       "design",
+  automation:   "automation",
+  runs:         "runs",
+  integrations: "integrations",
+};
+
+/** Page → workspace segment (only for project-scoped pages) */
+const PAGE_TO_WORKSPACE: Partial<Record<Page, ProjectWorkspace>> = {
+  "app-builder": "build",
+  design:        "design",
+  automation:    "automation",
+  runs:          "runs",
+  integrations:  "integrations",
+};
+
+type ParsedRoute = { page: Page; projectId: string | null };
+
+function parseCurrentPath(): ParsedRoute {
   const path = window.location.pathname;
+  // /project/:projectId/:workspace
+  const m = path.match(/^\/project\/([^/]+)\/([^/]+)/);
+  if (m) {
+    const projectId = m[1];
+    const workspaceSegment = m[2] as ProjectWorkspace;
+    const page = WORKSPACE_TO_PAGE[workspaceSegment];
+    if (page) {
+      // Keep projectId as-is — backend validates ownership; never silently remap to Demo.
+      return { page, projectId };
+    }
+    // Unknown workspace segment — fall through to flat-path resolution with no projectId.
+  }
   // Strip /feed/:id suffix — feed page handles its own ID state
   const base = path.startsWith("/feed/") ? "/feed" : path;
-  return PATH_TO_PAGE[base] ?? "app-builder";
+  return { page: PATH_TO_PAGE[base] ?? "app-builder", projectId: null };
 }
 
 function getStoredTheme(): Theme {
@@ -64,7 +96,10 @@ function applyTheme(t: Theme) {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [page, setPageState] = useState<Page>(() => pageFromCurrentPath());
+  const [initialRoute] = useState<ParsedRoute>(parseCurrentPath);
+  const [page, setPageState] = useState<Page>(initialRoute.page);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(initialRoute.projectId);
+
   // Page switches run as a transition so a lazy chunk that hasn't loaded yet
   // never interrupts an in-flight commit: React keeps the current page fully
   // rendered and interactive until the new one is ready, then swaps both the
@@ -77,6 +112,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setPage = useCallback((p: Page) => {
     startPageTransition(() => setPageState(p));
   }, []);
+
+  /** Navigate to /project/:projectId/:workspace — URL is the source of truth. */
+  const setActiveProject = useCallback((projectId: string, workspace: ProjectWorkspace = "build") => {
+    const newPage = WORKSPACE_TO_PAGE[workspace];
+    setActiveProjectId(projectId);
+    startPageTransition(() => setPageState(newPage));
+  }, []);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [feedIntent, setFeedIntentState] = useState<FeedIntent | null>(null);
   const setFeedIntent = useCallback((intent: FeedIntent | null) => setFeedIntentState(intent), []);
@@ -89,21 +132,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Sync theme attribute whenever it changes
   useEffect(() => { applyTheme(theme); }, [theme]);
 
-  // Keep the URL bar in sync with page state so refreshing / sharing a link
-  // opens the same page (deep-link fix). replaceState — no history entry per
-  // page click; the app's sidebar is the navigation, not the browser back button.
+  // Keep the URL bar in sync with page + activeProjectId.
+  // /project/:id/:workspace when on a project-scoped page with an active project;
+  // flat path otherwise. replaceState — no history entry per page click.
   useEffect(() => {
-    const path = PAGE_TO_PATH[page] ?? "/";
+    const workspace = PAGE_TO_WORKSPACE[page];
+    const path = workspace && activeProjectId
+      ? `/project/${activeProjectId}/${workspace}`
+      : PAGE_TO_PATH[page] ?? "/";
     if (window.location.pathname !== path) {
       window.history.replaceState(null, "", path);
     }
-  }, [page]);
+  }, [page, activeProjectId]);
 
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);
   const toggleTheme = useCallback(() => setThemeState(prev => prev === "dark" ? "light" : "dark"), []);
 
   return (
-    <AppContext.Provider value={{ page, setPage, isPageTransitioning, sidebarCollapsed, setSidebarCollapsed, theme, setTheme, toggleTheme, feedIntent, setFeedIntent }}>
+    <AppContext.Provider value={{ page, setPage, isPageTransitioning, sidebarCollapsed, setSidebarCollapsed, theme, setTheme, toggleTheme, feedIntent, setFeedIntent, activeProjectId, setActiveProject }}>
       {children}
     </AppContext.Provider>
   );

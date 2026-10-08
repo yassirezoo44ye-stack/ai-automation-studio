@@ -352,7 +352,7 @@ function QuickAction({ icon, label, desc, color, onClick }: {
 // HomePage
 // ══════════════════════════════════════════════════════════════════════════
 export function HomePage() {
-  const { setPage } = useAppContext();
+  const { setPage, setActiveProject } = useAppContext();
   const { lang } = useLangContext();
   const toast = useToast();
   const { t } = useTranslation("home");
@@ -782,7 +782,7 @@ export function HomePage() {
                   {projects.slice(0, 6).map(p => (
                     <Card
                       key={p.id}
-                      onClick={() => { sessionStorage.setItem("flow_active_project", p.id); setPage("app-builder"); }}
+                      onClick={() => { setActiveProject(p.id, "build"); }}
                       style={{ display: "flex", flexDirection: "column", gap: 8 }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
