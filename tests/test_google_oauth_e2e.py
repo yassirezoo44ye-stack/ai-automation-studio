@@ -149,6 +149,10 @@ class _FakeOAuthConn:
                 "email_verified": user["email_verified"], "avatar_url": user["avatar_url"],
                 "created_at": user["created_at"],
             }
+        if "FROM mfa_secrets WHERE user_id=$1" in s:
+            # Test users have no MFA configured; returning None lets
+            # _oauth_session_or_mfa_challenge() proceed straight to session creation.
+            return None
         raise AssertionError(f"_FakeOAuthConn.fetchrow: unrecognized query: {s[:100]!r}")
 
     async def execute(self, sql, *args):
@@ -705,13 +709,10 @@ class TestGoogleUserinfo:
             )
         assert resp.status_code == 400
 
-    def test_verified_email_field_is_not_checked_FINDING(self, client):
-        """FINDING (reported, not fixed — see final report and the prior
-        diagnostic audit's Security section, MEDIUM): google_oauth_callback()
-        reads only info.get("email") and never inspects
-        info.get("verified_email"). This test proves an unverified email
-        is currently accepted and used to create/link an account exactly
-        like a verified one."""
+    def test_unverified_email_is_rejected(self, client):
+        """Security guard: verified_email=False must be rejected with 400.
+        Google returns this flag when the user has not confirmed their email;
+        accepting it would allow an attacker to claim an arbitrary address."""
         state, cookie = _valid_start(client)
         mock_google = _MockGoogleClient(userinfo={
             "email": "unverified@example.com", "name": "Unverified",
@@ -726,7 +727,26 @@ class TestGoogleUserinfo:
                 cookies={"oauth_state": cookie},
                 follow_redirects=False,
             )
-        assert resp.status_code == 307  # accepted despite verified_email: False
+        assert resp.status_code == 400
+        assert len(conn.users) == 0  # no account created for an unverified email
+
+    def test_verified_email_true_is_accepted(self, client):
+        """verified_email=True must succeed (creates account, returns 307)."""
+        state, cookie = _valid_start(client)
+        mock_google = _MockGoogleClient(userinfo={
+            "email": "verified@example.com", "name": "Verified",
+            "picture": "", "verified_email": True,
+        })
+        conn = _FakeOAuthConn()
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             _patch_google(mock_google), _mock_pool(conn):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "code", "state": state},
+                cookies={"oauth_state": cookie},
+                follow_redirects=False,
+            )
+        assert resp.status_code == 307
         assert len(conn.users) == 1
 
 
@@ -781,11 +801,13 @@ class TestGoogleOAuthNewUser:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestGoogleOAuthExistingUser:
+    """Re-login for an existing OAuth-only account (password_hash IS NULL)."""
+
     def test_does_not_create_a_duplicate_user(self, client):
         existing_id = uuid.uuid4()
         existing = {
             "id": existing_id, "email": "returning-user@example.com", "name": "Old Name",
-            "avatar_url": None, "email_verified": False, "password_hash": "$2b$somehash",
+            "avatar_url": None, "email_verified": True, "password_hash": None,
             "created_at": datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=100),
         }
         conn = _FakeOAuthConn(seed_users=[existing])
@@ -809,11 +831,11 @@ class TestGoogleOAuthExistingUser:
         assert len(conn.users) == 1         # still exactly the one seeded user
         assert str(existing_id) in conn.users
 
-    def test_existing_user_becomes_email_verified_via_oauth(self, client):
+    def test_existing_oauth_user_name_and_avatar_are_updated(self, client):
         existing_id = uuid.uuid4()
         existing = {
             "id": existing_id, "email": "returning2@example.com", "name": "Old Name",
-            "avatar_url": None, "email_verified": False, "password_hash": "$2b$hash",
+            "avatar_url": None, "email_verified": True, "password_hash": None,
             "created_at": datetime.datetime.now(datetime.timezone.utc),
         }
         conn = _FakeOAuthConn(seed_users=[existing])
@@ -831,6 +853,48 @@ class TestGoogleOAuthExistingUser:
             )
         assert conn.users[str(existing_id)]["email_verified"] is True
         assert conn.users[str(existing_id)]["name"] == "New Name"
+
+
+class TestGoogleOAuthExistingPasswordAccount:
+    """Existing account with a password must never be silently taken over via OAuth."""
+
+    def _do_password_account_login(self, client, email="pw-user@example.com"):
+        existing_id = uuid.uuid4()
+        existing = {
+            "id": existing_id, "email": email, "name": "Password User",
+            "avatar_url": None, "email_verified": True, "password_hash": "$2b$12$somehash",
+            "created_at": datetime.datetime.now(datetime.timezone.utc),
+        }
+        conn = _FakeOAuthConn(seed_users=[existing])
+        state, cookie = _valid_start(client)
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             _patch_google(_MockGoogleClient(userinfo={
+                 "email": email, "name": "Google Name",
+                 "picture": "", "verified_email": True,
+             })), _mock_pool(conn):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "code", "state": state},
+                cookies={"oauth_state": cookie},
+                follow_redirects=False,
+            )
+        return resp, conn, existing_id
+
+    def test_oauth_login_for_password_account_returns_409(self, client):
+        resp, _, _ = self._do_password_account_login(client)
+        assert resp.status_code == 409
+
+    def test_password_account_is_not_modified_on_409(self, client):
+        _, conn, existing_id = self._do_password_account_login(client)
+        user = conn.users[str(existing_id)]
+        # password_hash must be intact — never cleared or overwritten
+        assert user["password_hash"] == "$2b$12$somehash"
+
+    def test_409_detail_mentions_password_and_settings(self, client):
+        resp, _, _ = self._do_password_account_login(client)
+        detail = resp.json()["detail"].lower()
+        assert "password" in detail
+        assert "settings" in detail
 
     def test_each_login_creates_a_fresh_session_and_exchange_code(self, client):
         existing_id = uuid.uuid4()

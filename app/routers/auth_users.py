@@ -900,10 +900,33 @@ async def oauth_exchange(body: OAuthExchangeRequest):
     return bundle
 
 
-async def _upsert_oauth_user(conn, email: str, name: str, avatar_url: str, provider: str):
-    """Create or update a user from OAuth; return the user row."""
+async def _upsert_oauth_user(
+    conn, email: str, name: str, avatar_url: str, provider: str,
+    *, provider_email_verified: bool = True,
+):
+    """Create or update a user from OAuth; return the user row.
+
+    Security invariants enforced here:
+    - provider_email_verified=False → 400 (provider didn't verify the email)
+    - existing account with password_hash IS NOT NULL → 409 (account conflict;
+      user must sign in with password and link from Account Settings)
+    - existing OAuth-only account (password_hash IS NULL) → safe re-login
+    """
+    if not provider_email_verified:
+        raise HTTPException(
+            400,
+            f"{provider.capitalize()} did not verify this email address. "
+            "Sign in with your Flow password and link this provider from Account Settings.",
+        )
     existing = await conn.fetchrow("SELECT * FROM users WHERE email=$1", email)
     if existing:
+        if existing["password_hash"] is not None:
+            raise HTTPException(
+                409,
+                f"An account with this email already exists and uses a password. "
+                f"Sign in with your password and link "
+                f"{provider.capitalize()} from Account Settings.",
+            )
         await conn.execute(
             "UPDATE users SET name=COALESCE($2, name), avatar_url=COALESCE($3, avatar_url), "
             "email_verified=true WHERE id=$1",
@@ -1030,6 +1053,12 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
     email = info.get("email")
     if not email:
         raise HTTPException(400, "Google did not return an email address")
+    if not info.get("verified_email"):
+        raise HTTPException(
+            400,
+            "Google has not verified this email address. "
+            "Sign in with your Flow password and link Google from Account Settings.",
+        )
 
     async with get_pool().acquire() as conn:
         user = await _upsert_oauth_user(conn, email, info.get("name", ""), info.get("picture", ""), "google")
@@ -1199,13 +1228,21 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
     except _httpx.RequestError as exc:
         raise _oauth_provider_unreachable("GitHub", exc) from exc
 
-    # Pick primary verified email
-    email = gh_user.get("email")
-    if not email and emails:
-        primary = next((e["email"] for e in emails if e.get("primary") and e.get("verified")), None)
-        email = primary or emails[0].get("email")
+    # Use ONLY the primary verified email from /user/emails.
+    # Falling back to the public profile email (gh_user["email"]) or any
+    # unverified address was the security gap: GitHub lets users set a
+    # public profile email without verifying it, so accepting it could
+    # allow an attacker to claim an arbitrary email address.
+    email = next(
+        (e["email"] for e in emails if e.get("primary") and e.get("verified")),
+        None,
+    )
     if not email:
-        raise HTTPException(400, "GitHub account has no public email. Add a public email to your GitHub profile.")
+        raise HTTPException(
+            400,
+            "GitHub account has no verified primary email address. "
+            "Add and verify a primary email in your GitHub account settings, then try again.",
+        )
 
     async with get_pool().acquire() as conn:
         avatar = gh_user.get("avatar_url", "")
