@@ -31,6 +31,7 @@ export interface MfaChallenge {
 }
 
 /** Thrown by login() when the backend requires MFA before completing the session. */
+// eslint-disable-next-line react-refresh/only-export-components
 export class MfaRequiredError extends Error {
   readonly challengeToken: string;
   readonly remember: boolean;

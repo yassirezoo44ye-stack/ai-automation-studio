@@ -156,10 +156,10 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   // OAuth-initiated MFA is read from context's pendingMfaChallenge.
   const [localMfaChallenge, setLocalMfaChallenge] = useState<MfaChallenge | null>(null);
 
-  // When context sets pendingMfaChallenge (from OAuth callback), switch to MFA tab.
-  useEffect(() => {
-    if (pendingMfaChallenge) setTab("mfa");
-  }, [pendingMfaChallenge]);
+  // Derive the active tab: either the active challenge (password-login or OAuth)
+  // overrides the base tab to "mfa", or we show whatever the user last selected.
+  // This avoids a setState-in-effect cycle and keeps the tab purely reactive.
+  const effectiveTab: Tab = (pendingMfaChallenge || localMfaChallenge) ? "mfa" : tab;
 
   // Clean the sensitive token from the URL bar once on mount.
   // No state changes here — tab and resetToken were already set above.
@@ -186,8 +186,8 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         await login(values.email, values.password, values.remember);
       } catch (err) {
         if (err instanceof MfaRequiredError) {
+          // Setting localMfaChallenge is enough — effectiveTab derives "mfa" from it.
           setLocalMfaChallenge({ token: err.challengeToken, remember: err.remember });
-          setTab("mfa");
           return;
         }
         throw err;
@@ -309,19 +309,19 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         <h1 style={S.title}>{t("title")}</h1>
         <p style={S.sub}>{t("subtitle")}</p>
 
-        {tab !== "forgot" && tab !== "reset" && tab !== "mfa" && (
+        {effectiveTab !== "forgot" && effectiveTab !== "reset" && effectiveTab !== "mfa" && (
           <div style={S.tabs} role="tablist">
-            <button role="tab" aria-selected={tab === "login"} style={S.tab(tab === "login")} onClick={() => switchTab("login")}>
+            <button role="tab" aria-selected={effectiveTab === "login"} style={S.tab(effectiveTab === "login")} onClick={() => switchTab("login")}>
               {t("tabs.signIn")}
             </button>
-            <button role="tab" aria-selected={tab === "register"} style={S.tab(tab === "register")} onClick={() => switchTab("register")}>
+            <button role="tab" aria-selected={effectiveTab === "register"} style={S.tab(effectiveTab === "register")} onClick={() => switchTab("register")}>
               {t("tabs.createAccount")}
             </button>
           </div>
         )}
 
         {/* ── Login ── */}
-        {tab === "login" && (
+        {effectiveTab === "login" && (
           <>
             <OAuthRow onSelect={handleOAuth} />
             {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
@@ -341,7 +341,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         )}
 
         {/* ── Register ── */}
-        {tab === "register" && !registeredEmail && (
+        {effectiveTab === "register" && !registeredEmail && (
           <>
             <OAuthRow onSelect={handleOAuth} />
             {registerSubmit.error && <ErrorBanner message={registerSubmit.error} suggestedFix={registerSubmit.suggestedFix} onRetry={registerForm.isValid ? registerSubmit.retry : undefined} />}
@@ -357,7 +357,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         )}
 
         {/* ── Post-registration: resend verification ── */}
-        {tab === "register" && registeredEmail && (
+        {effectiveTab === "register" && registeredEmail && (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
             <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>{t("verify.checkInbox")}</p>
@@ -376,7 +376,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         )}
 
         {/* ── Forgot password ── */}
-        {tab === "forgot" && (
+        {effectiveTab === "forgot" && (
           <form onSubmit={forgotForm.handleSubmit} noValidate>
             <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
               {t("forgot.intro")}
@@ -392,7 +392,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         )}
 
         {/* ── Reset password (token arrived via /reset-password?token=) ── */}
-        {tab === "reset" && !resetSubmit.success && (
+        {effectiveTab === "reset" && !resetSubmit.success && (
           <form onSubmit={resetForm.handleSubmit} noValidate>
             <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
               {t("reset.intro")}
@@ -405,7 +405,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
           </form>
         )}
 
-        {tab === "reset" && resetSubmit.success && (
+        {effectiveTab === "reset" && resetSubmit.success && (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
             <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>{t("reset.successTitle")}</p>
@@ -417,7 +417,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         )}
 
         {/* ── MFA challenge ── */}
-        {tab === "mfa" && (
+        {effectiveTab === "mfa" && (
           <form onSubmit={mfaForm.handleSubmit} noValidate>
             <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
               {t("mfa.subtitle")}
