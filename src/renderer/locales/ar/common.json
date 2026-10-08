@@ -1,8 +1,8 @@
 {
   "sidebar": {
-    "groups": { "main": "الرئيسية", "workspace": "مساحة العمل", "build": "أنشئ", "operate": "شغّل", "platform": "المنصة", "organization": "المؤسسة", "automation": "الأتمتة", "system": "النظام" },
+    "groups": { "main": "الرئيسية", "workspace": "مساحة العمل", "build": "أنشئ", "operate": "شغّل", "discover": "اكتشف", "platform": "المنصة", "organization": "المؤسسة", "automation": "الأتمتة", "system": "النظام" },
     "nav": {
-      "home": "الرئيسية", "ai": "مساعدي الذكي", "dev": "التطوير", "design": "التصميم",
+      "home": "الرئيسية", "ai": "مساعدي الذكي", "newProject": "مشروع جديد", "dev": "التطوير", "design": "التصميم",
       "automation": "الأتمتة", "agentos": "الوكلاء", "marketplace": "القوالب", "plugins": "الحزم", "sandbox": "السجلات",
       "aiRouting": "البوابة الذكية", "observability": "المراقبة",
       "organizations": "المؤسسات", "teams": "الفرق", "billing": "الفوترة", "social": "التسويق", "settings": "الإعدادات",
@@ -59,13 +59,25 @@
       "app-builder": { "label": "منشئ التطبيقات", "sub": "بناء تطبيقات بالذكاء الاصطناعي" },
       "runs": { "label": "التشغيلات", "sub": "مراقبة التنفيذات" },
       "integrations": { "label": "التكاملات", "sub": "ربط أدواتك" },
-      "training": { "label": "استوديو التدريب", "sub": "إنشاء دورات تدريبية بالذكاء الاصطناعي" }
+      "training": { "label": "استوديو التدريب", "sub": "إنشاء دورات تدريبية بالذكاء الاصطناعي" },
+      "new-project": { "label": "مشروع جديد", "sub": "ابدأ مشروعًا جديدًا" }
     },
     "actions": {
       "newChat": { "label": "محادثة جديدة", "sub": "بدء محادثة" },
       "newBuild": { "label": "بناء جديد", "sub": "فتح أداة بناء الكود" },
       "newAgent": { "label": "وكيل جديد", "sub": "إنشاء وكيل ذكاء اصطناعي" },
       "newProject": { "label": "مشروع جديد", "sub": "إنشاء مشروع" }
+    }
+  },
+  "newProject": {
+    "pageTitle": "مشروع جديد",
+    "subtitle": "ماذا تريد أن تبني اليوم؟",
+    "types": {
+      "business":    { "title": "مختبر الأعمال",      "desc": "تحليل الأسواق والخطط والاستراتيجيات" },
+      "application": { "title": "تطبيق",              "desc": "أبنِ تطبيقات ويب وموبايل بالذكاء الاصطناعي" },
+      "saas":        { "title": "منتج SaaS",           "desc": "أطلق مع الفوترة والمصادقة والفرق" },
+      "design":      { "title": "استوديو التصميم",     "desc": "نماذج مرئية وتصميم واجهة المستخدم" },
+      "automation":  { "title": "أتمتة",               "desc": "سير العمل والتدفقات التلقائية" }
     }
   },
   "actions": {

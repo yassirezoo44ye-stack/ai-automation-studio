@@ -147,8 +147,9 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
     },
 
     // Navigate
-    { id: "home",         label: "Command Center",  sub: "KPIs · agents · workflows · activity",  icon: Icons.home(),          group: "navigate", action: () => go("home") },
-    { id: "app-builder",  label: "App Builder",      sub: "AI Software Factory",                   icon: Icons["app-builder"](), group: "navigate", action: () => go("app-builder") },
+    { id: "home",         label: "Command Center",  sub: "KPIs · agents · workflows · activity",  icon: Icons.home(),            group: "navigate", action: () => go("home") },
+    { id: "new-project",  label: "New Project",      sub: "Start a new build",                     icon: Icons["new-project"](),  group: "navigate", action: () => go("new-project") },
+    { id: "app-builder",  label: "App Builder",      sub: "AI Software Factory",                   icon: Icons["app-builder"](),  group: "navigate", action: () => go("app-builder") },
     { id: "design",       label: "Design Studio",    sub: "Visual canvas & UI editor",             icon: Icons.design(),         group: "navigate", action: () => go("design") },
     { id: "agentos",      label: "Agents",           sub: "Deploy and manage AI agents",           icon: Icons.agentos(),        group: "navigate", action: () => go("agentos") },
     { id: "automation",   label: "Workflows",        sub: "Triggers · conditions · automation",    icon: Icons.automation(),     group: "navigate", action: () => go("automation") },

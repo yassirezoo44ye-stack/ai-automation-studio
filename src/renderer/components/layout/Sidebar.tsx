@@ -11,17 +11,17 @@ type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
 
 /**
- * Navigation groups — 4 semantic sections matching the AI Business Workspace design.
+ * Navigation groups — 5 semantic sections matching the AI Business Workspace design.
  *
- * MAIN     — daily-use entry points (home, ai chat, feed)
- * BUILD    — creation tools (app builder, saas factory, design studio)
- * OPERATE  — business execution (leads, devices, business lab, discover)
+ * MAIN     — daily-use entry points (home, ai assistant, feed)
+ * BUILD    — project creation hub (new-project → routes to existing engines)
+ * OPERATE  — business execution (leads, automation, devices)
+ * DISCOVER — content & discovery (discover)
  * SYSTEM   — account management (teams, billing, settings)
  *
- * Other pages (agentos, automation, runs, observability, sandbox, ai-routing,
- * integrations, plugins, marketplace, organizations) are still reachable via
- * AppContext.setPage() and the command palette, but kept out of the sidebar
- * to preserve an approachable navigation structure.
+ * Hidden pages (app-builder, saas-factory, design, business-lab, agentos, runs,
+ * observability, sandbox, ai-routing, integrations, plugins, marketplace,
+ * organizations) remain reachable via their direct URL or the command palette.
  */
 const NAV_GROUPS: {
   groupKey: string;
@@ -34,9 +34,9 @@ const NAV_GROUPS: {
     showLabel: false,
     showSep: false,
     items: [
-      { id: "home",  navKey: "home",  icon: "home"  },
-      { id: "ai",    navKey: "ai",    icon: "ai"    },
-      { id: "feed",  navKey: "feed",  icon: "feed"  },
+      { id: "home", navKey: "home", icon: "home" },
+      { id: "ai",   navKey: "ai",   icon: "ai"   },
+      { id: "feed", navKey: "feed", icon: "feed"  },
     ],
   },
   {
@@ -44,9 +44,7 @@ const NAV_GROUPS: {
     showLabel: true,
     showSep: true,
     items: [
-      { id: "app-builder",  navKey: "appBuilder",  icon: "app-builder"  },
-      { id: "saas-factory", navKey: "saasFactory", icon: "saas-factory" },
-      { id: "design",       navKey: "design",      icon: "design"       },
+      { id: "new-project", navKey: "newProject", icon: "new-project" },
     ],
   },
   {
@@ -54,10 +52,17 @@ const NAV_GROUPS: {
     showLabel: true,
     showSep: true,
     items: [
-      { id: "leads",        navKey: "leads",       icon: "leads"         },
-      { id: "devices",      navKey: "devices",     icon: "devices"       },
-      { id: "business-lab", navKey: "businessLab", icon: "business-lab"  },
-      { id: "discover",     navKey: "discover",    icon: "discover"      },
+      { id: "leads",      navKey: "leads",      icon: "leads"      },
+      { id: "automation", navKey: "automation",  icon: "automation"  },
+      { id: "devices",    navKey: "devices",    icon: "devices"    },
+    ],
+  },
+  {
+    groupKey: "discover",
+    showLabel: true,
+    showSep: true,
+    items: [
+      { id: "discover", navKey: "discover", icon: "discover" },
     ],
   },
   {

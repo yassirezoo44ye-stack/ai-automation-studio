@@ -30,6 +30,7 @@ const PATH_TO_PAGE: Record<string, Page> = {
   "/feed":          "feed",
   "/leads":         "leads",
   "/saas-factory":  "saas-factory",
+  "/new-project":   "new-project",
 };
 
 const PAGE_TO_PATH: Partial<Record<Page, string>> = Object.fromEntries(

@@ -73,6 +73,7 @@ const DiscoverPage        = lazy(() => import("../../features/discover").then(m 
 const FeedPage            = lazy(() => import("../../features/feed").then(m => ({ default: m.FeedPage })).catch(chunkFallback));
 const LeadsPage           = lazy(() => import("../../features/leads").then(m => ({ default: m.LeadsPage })).catch(chunkFallback));
 const SaasFactoryPage     = lazy(() => import("../../features/saas-factory").then(m => ({ default: m.SaasFactoryPage })).catch(chunkFallback));
+const NewProjectPage      = lazy(() => import("../../features/new-project/NewProjectPage").then(m => ({ default: m.NewProjectPage })).catch(chunkFallback));
 
 /** Map page keys → sidebar nav translation keys */
 const PAGE_NAV_KEY: Record<string, string> = {
@@ -102,6 +103,7 @@ const PAGE_NAV_KEY: Record<string, string> = {
   "feed":           "feed",
   "leads":          "leads",
   "saas-factory":   "saasFactory",
+  "new-project":    "newProject",
 };
 
 function SunIcon() {
@@ -262,6 +264,7 @@ function WorkspaceContent() {
           {page === "feed"          && <FeedPage />}
           {page === "leads"         && <LeadsPage />}
           {page === "saas-factory"  && <SaasFactoryPage />}
+          {page === "new-project"   && <NewProjectPage />}
         </Suspense>
       </ErrorBoundary>
     </PageTransition>
