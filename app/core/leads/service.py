@@ -194,10 +194,13 @@ class LeadService:
         # ── In-app notifications (always attempted, always silenced on error) ──
         try:
             from app.core.notifications.service import get_notification_service
+            from app.routers.ws import manager as ws_manager
             svc = get_notification_service()
             member_ids = await svc.org_member_ids(organization_id=org_id)
             for user_id in member_ids:
-                await svc.create(
+                if await svc.is_muted(user_id=user_id, category="workflow"):
+                    continue
+                notification = await svc.create(
                     user_id=user_id,
                     organization_id=org_id,
                     type_="lead.qualified",
@@ -208,6 +211,7 @@ class LeadService:
                     source="lead_engine",
                     action={"label": "View leads", "href": "/leads"},
                 )
+                await ws_manager.broadcast(f"notifications:{user_id}", notification)
         except Exception as exc:
             log.warning("lead in-app notification failed lead_id=%s: %s", lead.get("id"), exc)
 

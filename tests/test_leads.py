@@ -193,6 +193,16 @@ def _register_stubs() -> None:
     if not hasattr(sys.modules[_nsvc], "get_notification_service"):
         sys.modules[_nsvc].get_notification_service = lambda: MagicMock()
 
+    # Stub app.routers.ws (broadcast called by dispatch_qualified_notification)
+    for n in ("app.routers", "app.routers.ws"):
+        if n not in sys.modules:
+            sys.modules[n] = types.ModuleType(n)
+    _ws = sys.modules["app.routers.ws"]
+    if not hasattr(_ws, "manager"):
+        _ws_mgr = MagicMock()
+        _ws_mgr.broadcast = AsyncMock()
+        _ws.manager = _ws_mgr
+
     # Stub tenancy (fastapi-dependent but we only test at service level here)
     _tn = "app.tenancy"
     _tc = "app.tenancy.context"
@@ -692,6 +702,7 @@ class TestLeadQualifiedNotification:
 
         mock_notif = AsyncMock()
         mock_notif.org_member_ids = AsyncMock(return_value=[user_a, user_b])
+        mock_notif.is_muted = AsyncMock(return_value=False)
         mock_notif.create = AsyncMock()
 
         lead = {"id": str(uuid.uuid4()), "name": "Test Lead", "ai_score": 8, "ai_notes": "Strong fit"}
@@ -716,6 +727,7 @@ class TestLeadQualifiedNotification:
 
         mock_notif = AsyncMock()
         mock_notif.org_member_ids = AsyncMock(return_value=[user_id])
+        mock_notif.is_muted = AsyncMock(return_value=False)
         mock_notif.create = AsyncMock()
 
         lead = {"id": str(uuid.uuid4()), "name": "Yassi Agency", "ai_score": 9, "ai_notes": "Top tier"}
