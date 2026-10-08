@@ -98,8 +98,8 @@ function renderApp() {
 
 describe("navigation", () => {
   beforeEach(() => {
-    // Reset URL so pageFromCurrentPath() starts each test at app-builder ("/").
-    window.history.replaceState(null, "", "/");
+    // Reset URL so parseCurrentPath() starts each test at home ("/home").
+    window.history.replaceState(null, "", "/home");
   });
 
   afterEach(() => {
@@ -113,8 +113,8 @@ describe("navigation", () => {
    */
   it("clicking each sidebar item renders that page and marks it active — never disagreeing", async () => {
     renderApp();
-    // Default page is app-builder (path "/" → app-builder in PATH_TO_PAGE).
-    await screen.findByText("APP_BUILDER_PAGE_CONTENT", {}, { timeout: 8000 });
+    // Default page is home (path "/home" → home in PATH_TO_PAGE).
+    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
 
     // [title in sidebar, expected main content] pairs — new consolidated nav
     const cases: [string, string][] = [
@@ -136,7 +136,7 @@ describe("navigation", () => {
 
   it("survives rapid sequential navigation without ending up on the wrong page", async () => {
     renderApp();
-    await screen.findByText("APP_BUILDER_PAGE_CONTENT", {}, { timeout: 8000 });
+    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
 
     // Fire clicks back-to-back with no awaits in between — the scenario
     // that used to desync Sidebar from <main>.
@@ -154,7 +154,7 @@ describe("navigation", () => {
   it("resets ErrorBoundary when navigating away from a page that crashed", async () => {
     newProjectShouldThrow = true;
     renderApp();
-    await screen.findByText("APP_BUILDER_PAGE_CONTENT", {}, { timeout: 8000 });
+    await screen.findByText("HOME_PAGE_CONTENT", {}, { timeout: 8000 });
 
     fireEvent.click(screen.getByTitle("New Project"));
     await waitFor(() => expect(screen.getByText(/Error in new-project/i)).toBeInTheDocument(), { timeout: 8000 });

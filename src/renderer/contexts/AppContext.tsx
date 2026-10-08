@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition, useRef } from "react";
 import type { Page } from "../types";
 import { AppContext, type Theme, type FeedIntent, type ProjectWorkspace } from "./app";
 
 const PATH_TO_PAGE: Record<string, Page> = {
-  "/":              "app-builder",
+  "/":              "home",
   "/home":          "home",
   "/ai":            "ai",
   "/dev":           "dev",
@@ -132,18 +132,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Sync theme attribute whenever it changes
   useEffect(() => { applyTheme(theme); }, [theme]);
 
+  // true once the initial URL → state hydration has been confirmed.
+  // Distinguishes initial hydration (replaceState, no new entry) from
+  // subsequent UI-driven navigations (pushState, enables Back/Forward).
+  const isHydrated = useRef(false);
+
   // Keep the URL bar in sync with page + activeProjectId.
-  // /project/:id/:workspace when on a project-scoped page with an active project;
-  // flat path otherwise. replaceState — no history entry per page click.
+  // - Initial hydration / popstate: replaceState (URL already correct or correcting silently).
+  // - UI navigation after hydration: pushState (enables browser Back / Forward).
   useEffect(() => {
     const workspace = PAGE_TO_WORKSPACE[page];
     const path = workspace && activeProjectId
       ? `/project/${activeProjectId}/${workspace}`
       : PAGE_TO_PATH[page] ?? "/";
-    if (window.location.pathname !== path) {
+    if (window.location.pathname === path) {
+      // Already at the right URL: initial load landed here, or popstate synced us.
+      isHydrated.current = true;
+      return;
+    }
+    if (!isHydrated.current) {
+      // First render: silently correct the URL without a history entry.
+      isHydrated.current = true;
       window.history.replaceState(null, "", path);
+    } else {
+      // User navigated via UI — create a history entry for Back/Forward.
+      window.history.pushState(null, "", path);
     }
   }, [page, activeProjectId]);
+
+  // Sync React state with browser Back / Forward.
+  useEffect(() => {
+    const handlePopState = () => {
+      const { page: newPage, projectId } = parseCurrentPath();
+      setActiveProjectId(projectId);
+      startPageTransition(() => setPageState(newPage));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []); // stable: setActiveProjectId, setPageState, startPageTransition
 
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);
   const toggleTheme = useCallback(() => setThemeState(prev => prev === "dark" ? "light" : "dark"), []);

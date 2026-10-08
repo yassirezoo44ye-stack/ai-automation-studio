@@ -275,8 +275,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch (err) {
             console.warn("[auth] OAuth exchange failed", err);
           }
-          // Clean URL without reloading, whether the exchange succeeded or not
-          window.history.replaceState({}, "", "/");
+          // Clean OAuth callback params and land on home, whether exchange succeeded or not.
+          window.history.replaceState({}, "", "/home");
           setLoading(false);
           return;
         }
