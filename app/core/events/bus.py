@@ -44,6 +44,8 @@ EVENT_TYPES = frozenset({
     "workflow.approval.pending", "workflow.approval.decided",
     # SaaS Factory
     "saas_factory.live",
+    # Lead Engine
+    "lead.qualified",
 })
 
 Handler = Callable[["Event"], Awaitable[None]]
