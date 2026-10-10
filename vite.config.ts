@@ -17,7 +17,7 @@ const warnMissingApiUrl = {
         "\n⚠️  WARNING: VITE_API_URL is not set in Vercel environment variables.\n" +
         "   All API calls will fail because they go to the Vercel URL, not the backend.\n" +
         "   Fix: Vercel dashboard → Settings → Environment Variables →\n" +
-        "        VITE_API_URL = https://ai-automation-studio.onrender.com\n" +
+        "        VITE_API_URL = https://ai-automation-studio-viio.onrender.com\n" +
         "   Also set EXTRA_CORS_ORIGINS on Render to this Vercel domain.\n",
       );
     }
