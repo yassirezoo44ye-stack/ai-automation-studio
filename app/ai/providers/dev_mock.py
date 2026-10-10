@@ -1257,6 +1257,16 @@ def _select_template(prompt: str) -> str:
             if key == "landing":
                 return _build_landing(prompt)
             return _STATIC_TEMPLATES[key]
+    # ── 3. Short / ambiguous prompts ────────────────────────────────────────────
+    # Prompts under 10 chars with no recognisable word content (pure noise /
+    # accidental input like "Hgg") must not produce a misleading landing page
+    # that implies a real product was described.  Use a neutral analytics demo
+    # instead so the user sees meaningful output without false personalisation.
+    stripped = prompt.strip()
+    if len(stripped) < 10 and not re.search(r"[a-zA-Z؀-ۿ]{3,}", stripped):
+        log.info("DevMockProvider: short/ambiguous prompt (%r) — using analytics template", stripped)
+        return _STATIC_TEMPLATES["analytics"]
+
     log.info("DevMockProvider: no keyword match — building landing from prompt")
     return _build_landing(prompt)   # best generic default for any product description
 

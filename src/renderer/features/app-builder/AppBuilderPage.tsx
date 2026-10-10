@@ -749,7 +749,7 @@ export function AppBuilderPage() {
             setPhases([...currentPhases]);
             setBuildFileCount(event.files.length);
             setBuildLanguage(event.language ?? "");
-            toast("Your app is ready!", "ok");
+            toast("Build complete — click Run to preview", "ok");
             setBuildDone(true);
             // Transition runtime state: build done → ready to run
             setRuntimeState("ready_to_run");
@@ -918,6 +918,7 @@ export function AppBuilderPage() {
             setPreviewUrl(url);
             setPreviewType("blob");
             setRuntimeState("preview");
+            toast("App preview ready", "ok");
             isRunningRef.current = false;
             runtimeAbortRef.current = null;
             return;
