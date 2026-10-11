@@ -40,6 +40,37 @@ def client():
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _isolate_shared_singletons():
+    """Reset the Redis adapter singleton before and after every test so
+    oauth_state cache entries from one test never bleed into another."""
+    import app.core.cache.redis_adapter as redis_adapter_mod
+    redis_adapter_mod._instance = None
+    yield
+    redis_adapter_mod._instance = None
+
+
+def _run_sync(coro):
+    import asyncio
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _stash_state(state: str) -> None:
+    """Pre-stash an OAuth state in the server-side cache so callback tests
+    can call the callback directly without going through the start endpoint."""
+    from app.core.cache.redis_adapter import get_redis
+
+    async def _do():
+        redis = await get_redis()
+        await redis.set(f"oauth_state:{state}", "1", ttl=600)
+
+    _run_sync(_do())
+
+
 def _mock_pool(conn_mock):
     """Context manager that patches get_pool() to return a fake pool."""
     pool = MagicMock()
@@ -330,10 +361,10 @@ class TestOAuthCallbackProviderUnreachable:
 
     @staticmethod
     def _get_callback(client, path: str, state: str = "state-value"):
+        _stash_state(state)
         return client.get(
             path,
             params={"code": "auth-code", "state": state},
-            cookies={"oauth_state": state},
         )
 
     def test_google_callback_502_on_connect_error(self, client):
@@ -364,15 +395,15 @@ class TestOAuthCallbackProviderUnreachable:
         assert "GitHub" in resp.json()["detail"]
 
     def test_google_callback_still_400s_on_bad_state(self, client):
-        """Provider-unreachable handling must not swallow the existing
-        CSRF-state check — a mismatched state must still 400, not 502."""
+        """CSRF-state check fires before provider network call — an unknown
+        state must still 400, not 502, even when the provider is unreachable."""
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              patch("app.routers.auth_users._httpx.AsyncClient",
                    return_value=_UnreachableProviderClient()):
             resp = client.get(
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": "attacker-supplied"},
-                cookies={"oauth_state": "state-value"},
+                # "attacker-supplied" was never stashed → cache miss → 400
             )
 
         assert resp.status_code == 400
@@ -407,7 +438,8 @@ class _TokenErrorClient:
 class TestOAuthTokenExchangeFailureLogging:
     @staticmethod
     def _get_callback(client, path: str, state: str = "state-value"):
-        return client.get(path, params={"code": "auth-code", "state": state}, cookies={"oauth_state": state})
+        _stash_state(state)
+        return client.get(path, params={"code": "auth-code", "state": state})
 
     def test_microsoft_callback_logs_actual_error_keeps_generic_response(self, client, caplog):
         with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \

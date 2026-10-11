@@ -833,32 +833,52 @@ def _oauth_provider_unreachable(provider: str, exc: Exception) -> HTTPException:
     return HTTPException(502, f"{provider} is unreachable right now — please try signing in again.")
 
 
-_OAUTH_STATE_COOKIE   = "oauth_state"
-_OAUTH_STATE_MAX_AGE  = 600  # 10 min — long enough for a real login, short enough to bound replay
+_OAUTH_STATE_TTL = 600  # 10 min — long enough for a real login, short enough to bound replay
 
 
 def _new_oauth_state() -> str:
     return secrets.token_urlsafe(32)
 
 
-def _set_oauth_state_cookie(response: RedirectResponse, state: str) -> None:
-    """Stash the state value the *_start endpoint just generated in a
-    short-lived, httponly cookie so the callback can verify the redirect
-    that comes back is the same browser that initiated it — the standard
-    OAuth CSRF defense (RFC 6749 §10.12). Without this, an attacker can
-    complete their own OAuth flow, then trick a victim into opening the
-    resulting callback URL/code, logging the victim's browser into the
-    attacker's account (login/session-fixation CSRF)."""
-    response.set_cookie(
-        _OAUTH_STATE_COOKIE, state, max_age=_OAUTH_STATE_MAX_AGE,
-        httponly=True, samesite="lax", secure=_APP_URL_BASE.startswith("https://"),
-    )
+async def _stash_oauth_state(state: str) -> None:
+    """Store the CSRF state token server-side.
+
+    Using a cookie was the original approach, but the Set-Cookie header is
+    stripped by the Vercel proxy when it follows the backend's 307 redirect
+    server-side, so the browser never receives it. Server-side storage avoids
+    that path entirely — the state is stored before the redirect is issued and
+    verified when the callback arrives, with no cookie required.
+
+    The key is single-use: _verify_and_consume_oauth_state atomically reads
+    and removes it so a replayed callback cannot succeed.
+    """
+    from app.core.cache.redis_adapter import get_redis
+    try:
+        redis = await get_redis()
+        await redis.set(f"oauth_state:{state}", "1", ttl=_OAUTH_STATE_TTL)
+    except Exception as exc:
+        log.error("oauth state stash failed: %s", exc)
+        raise HTTPException(503, "OAuth sign-in temporarily unavailable — please retry.")
 
 
-def _verify_oauth_state(request: Request, state: Optional[str]) -> None:
-    cookie_state = request.cookies.get(_OAUTH_STATE_COOKIE)
-    if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
-        log.warning("oauth callback: state mismatch (possible CSRF) ip=%s", _client_ip(request))
+async def _verify_and_consume_oauth_state(state: Optional[str], *, ip: str) -> None:
+    """Verify the CSRF state and consume it atomically (single-use).
+
+    Raises HTTP 400 on missing/unknown/expired state (CSRF guard).
+    Raises HTTP 503 if the cache is unavailable (fail-safe).
+    """
+    if not state:
+        log.warning("oauth callback: missing state ip=%s", ip)
+        raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
+    from app.core.cache.redis_adapter import get_redis
+    try:
+        redis = await get_redis()
+        stored = await redis.get_and_delete(f"oauth_state:{state}")
+    except Exception as exc:
+        log.error("oauth state verify failed: %s", exc)
+        raise HTTPException(503, "OAuth sign-in temporarily unavailable — please retry.")
+    if stored is None:
+        log.warning("oauth callback: state unknown/expired/replayed ip=%s", ip)
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
 
 
@@ -985,6 +1005,7 @@ async def google_oauth_start():
     if not _GOOGLE_CLIENT_ID:
         _oauth_not_configured("Google")
     state = _new_oauth_state()
+    await _stash_oauth_state(state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/google/callback"
     params = (
         f"client_id={_GOOGLE_CLIENT_ID}"
@@ -994,16 +1015,14 @@ async def google_oauth_start():
         f"&access_type=offline"
         f"&state={state}"
     )
-    resp = RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
-    _set_oauth_state_cookie(resp, state)
-    return resp
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
 
 
 @router.get("/google/callback")
 async def google_oauth_callback(code: str, request: Request, state: Optional[str] = None):
     if not _GOOGLE_CLIENT_ID:
         _oauth_not_configured("Google")
-    _verify_oauth_state(request, state)
+    await _verify_and_consume_oauth_state(state, ip=_client_ip(request))
     redirect_uri = f"{_APP_URL_BASE}/api/auth/google/callback"
     try:
         async with _httpx.AsyncClient() as client:
@@ -1068,9 +1087,7 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
     # AuthPage, redeemed via POST /api/auth/oauth-exchange) — not the
     # tokens themselves, see _stash_oauth_session_for_exchange.
     exchange_code = await _stash_oauth_session_for_exchange(session)
-    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
-    resp.delete_cookie(_OAUTH_STATE_COOKIE)
-    return resp
+    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
 
 
 @router.get("/microsoft")
@@ -1078,6 +1095,7 @@ async def microsoft_oauth_start():
     if not _MICROSOFT_CLIENT_ID:
         _oauth_not_configured("Microsoft")
     state = _new_oauth_state()
+    await _stash_oauth_state(state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/microsoft/callback"
     params = (
         f"client_id={_MICROSOFT_CLIENT_ID}"
@@ -1087,16 +1105,14 @@ async def microsoft_oauth_start():
         f"&scope=openid%20email%20profile"
         f"&state={state}"
     )
-    resp = RedirectResponse(f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?{params}")
-    _set_oauth_state_cookie(resp, state)
-    return resp
+    return RedirectResponse(f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?{params}")
 
 
 @router.get("/microsoft/callback")
 async def microsoft_oauth_callback(code: str, request: Request, state: Optional[str] = None):
     if not _MICROSOFT_CLIENT_ID:
         _oauth_not_configured("Microsoft")
-    _verify_oauth_state(request, state)
+    await _verify_and_consume_oauth_state(state, ip=_client_ip(request))
     redirect_uri = f"{_APP_URL_BASE}/api/auth/microsoft/callback"
     try:
         async with _httpx.AsyncClient() as client:
@@ -1148,9 +1164,7 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
         session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     exchange_code = await _stash_oauth_session_for_exchange(session)
-    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
-    resp.delete_cookie(_OAUTH_STATE_COOKIE)
-    return resp
+    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
 
 
 @router.get("/github")
@@ -1158,6 +1172,7 @@ async def github_oauth_start():
     if not _GITHUB_CLIENT_ID:
         _oauth_not_configured("GitHub")
     state = _new_oauth_state()
+    await _stash_oauth_state(state)
     redirect_uri = f"{_APP_URL_BASE}/api/auth/github/callback"
     params = (
         f"client_id={_GITHUB_CLIENT_ID}"
@@ -1165,16 +1180,14 @@ async def github_oauth_start():
         f"&scope=user:email"
         f"&state={state}"
     )
-    resp = RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
-    _set_oauth_state_cookie(resp, state)
-    return resp
+    return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
 
 
 @router.get("/github/callback")
 async def github_oauth_callback(code: str, request: Request, state: Optional[str] = None):
     if not _GITHUB_CLIENT_ID:
         _oauth_not_configured("GitHub")
-    _verify_oauth_state(request, state)
+    await _verify_and_consume_oauth_state(state, ip=_client_ip(request))
     redirect_uri = f"{_APP_URL_BASE}/api/auth/github/callback"
     try:
         async with _httpx.AsyncClient() as client:
@@ -1250,6 +1263,4 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
         session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     exchange_code = await _stash_oauth_session_for_exchange(session)
-    resp = RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
-    resp.delete_cookie(_OAUTH_STATE_COOKIE)
-    return resp
+    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
