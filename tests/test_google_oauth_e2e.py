@@ -265,15 +265,19 @@ def _run_sync(coro):
 
 
 def _valid_start(client, path="/api/auth/google/callback"):
-    """Runs GET /api/auth/google to obtain a real CSRF state token.
+    """Runs GET /api/auth/google to obtain a real CSRF state token + bind nonce.
 
-    The state is stored server-side (LocalCacheBackend) by the start endpoint;
-    returning only the state value is sufficient for tests — no cookie needed.
+    The state and its matching bind_nonce are stored server-side. The bind_nonce
+    is also set as an oauth_bind cookie on the response; TestClient's cookie jar
+    stores it and sends it automatically on subsequent requests through `client`.
+    Returns (state, bind_cookie) so tests that need the raw values can use them.
     """
     with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-client-id"):
         start_resp = client.get("/api/auth/google", follow_redirects=False)
     location = start_resp.headers["location"]
-    return location.split("state=")[1].split("&")[0]
+    state = location.split("state=")[1].split("&")[0]
+    bind_cookie = start_resp.cookies.get("oauth_bind")
+    return state, bind_cookie
 
 
 def _do_oauth_login(
@@ -290,7 +294,8 @@ def _do_oauth_login(
     /oauth-exchange call after it — callers that need tokens make that
     call themselves so the exchange step's own request/response stays
     visible in each test, not hidden inside this helper."""
-    state = _valid_start(client)
+    state, _bind = _valid_start(client)
+    # TestClient cookie jar already holds oauth_bind from _valid_start response.
     with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
          _patch_google(_MockGoogleClient(userinfo={
              "email": email, "name": name, "picture": picture,
@@ -337,8 +342,7 @@ class TestGoogleOAuthStart:
         assert s1 != s2
 
     def test_state_is_stored_in_cache_after_start(self, client):
-        """State must be persisted server-side so the callback can verify it
-        without any cookie — the fix for Vercel's proxy stripping Set-Cookie."""
+        """State must be persisted server-side (keyed to its bind_nonce, not "1")."""
         from app.core.cache.redis_adapter import get_redis
 
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
@@ -350,15 +354,20 @@ class TestGoogleOAuthStart:
             return await redis.get(f"oauth_state:{state}")
 
         stored = _run_sync(_check())
-        assert stored == "1"
+        # Stored value is now the bind_nonce (43-char urlsafe string), not "1"
+        assert stored is not None
+        assert len(stored) > 20
 
-    def test_no_oauth_state_cookie_is_set(self, client):
-        """No Set-Cookie header for oauth_state — the production bug was caused
-        by Vercel's proxy stripping that cookie; the fix must not rely on it."""
+    def test_bind_cookie_is_set(self, client):
+        """oauth_bind cookie must be set on the start redirect — it is the
+        browser-binding nonce that ties the callback to the browser that
+        initiated the flow (RFC 6749 §10.12 Login CSRF protection)."""
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
             resp = client.get("/api/auth/google", follow_redirects=False)
         raw_set_cookie = resp.headers.get_list("set-cookie")
-        assert not any("oauth_state" in h for h in raw_set_cookie)
+        assert any("oauth_bind" in h for h in raw_set_cookie)
+        # Must never set the old oauth_state cookie (that was the broken approach)
+        assert not any("oauth_state=" in h for h in raw_set_cookie)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -448,7 +457,7 @@ class TestGoogleOAuthCallbackStateProtection:
         assert mock_google.post_calls == []
 
     def test_matching_state_passes_and_reaches_token_exchange(self, client, _fake_conn=None):
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient()
         conn = _FakeOAuthConn()
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-client-id"), \
@@ -466,7 +475,7 @@ class TestGoogleOAuthCallbackStateProtection:
         must be rejected (400) even when the mocked token exchange would
         otherwise succeed. This is the fix for the FINDING that was reported
         under the old cookie-based implementation."""
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         conn = _FakeOAuthConn()
 
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-client-id"), \
@@ -493,7 +502,7 @@ class TestGoogleOAuthCallbackStateProtection:
 
 class TestGoogleTokenExchangeRequest:
     def test_token_exchange_sends_the_required_fields(self, client):
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient()
         conn = _FakeOAuthConn()
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "the-client-id"), \
@@ -516,7 +525,7 @@ class TestGoogleTokenExchangeRequest:
         assert data["grant_type"] == "authorization_code"
 
     def test_token_exchange_non_200_yields_400_not_a_crash(self, client):
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(token_status=400)
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(mock_google):
@@ -537,7 +546,7 @@ class TestGoogleTokenExchangeRequest:
         error_description are now logged via log.warning; the client-
         facing response is deliberately unchanged (still the generic
         message) — this is not a new HTTP contract."""
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(
             token_status=400,
             token_error_body={
@@ -566,7 +575,7 @@ class TestGoogleTokenExchangeRequest:
         GOOGLE_CLIENT_SECRET and the caller-supplied authorization `code`
         must never appear in the log line, and — as before this fix —
         never in the client-facing response either."""
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(
             token_status=400,
             token_error_body={
@@ -594,7 +603,7 @@ class TestGoogleTokenExchangeRequest:
         valid JSON (e.g. an HTML error page from an edge/proxy), log only
         the status code and a generic message — never the raw body, not
         even truncated."""
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(
             token_status=502, token_raw_body=b"<html><body>Bad Gateway</body></html>",
         )
@@ -619,7 +628,7 @@ class TestGoogleTokenExchangeRequest:
 
 class TestGoogleUserinfo:
     def test_userinfo_fetched_with_bearer_access_token(self, client):
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(access_token="specific-access-token-123")
         conn = _FakeOAuthConn()
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
@@ -635,7 +644,7 @@ class TestGoogleUserinfo:
         assert call["headers"]["Authorization"] == "Bearer specific-access-token-123"
 
     def test_userinfo_fields_flow_into_user_creation(self, client):
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(userinfo={
             "email": "oauth-test@example.com", "name": "OAuth Test",
             "picture": "https://example.com/avatar.png", "verified_email": True,
@@ -655,7 +664,7 @@ class TestGoogleUserinfo:
         assert created["avatar_url"] == "https://example.com/avatar.png"
 
     def test_missing_email_in_userinfo_is_rejected(self, client):
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(userinfo={"name": "No Email User"})
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(mock_google):
@@ -667,7 +676,7 @@ class TestGoogleUserinfo:
         assert "email" in resp.json()["detail"].lower()
 
     def test_userinfo_non_200_yields_400(self, client):
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(userinfo_status=403)
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(mock_google):
@@ -681,7 +690,7 @@ class TestGoogleUserinfo:
         """Security guard: verified_email=False must be rejected with 400.
         Google returns this flag when the user has not confirmed their email;
         accepting it would allow an attacker to claim an arbitrary address."""
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(userinfo={
             "email": "unverified@example.com", "name": "Unverified",
             "picture": "", "verified_email": False,
@@ -699,7 +708,7 @@ class TestGoogleUserinfo:
 
     def test_verified_email_true_is_accepted(self, client):
         """verified_email=True must succeed (creates account, returns 307)."""
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(userinfo={
             "email": "verified@example.com", "name": "Verified",
             "picture": "", "verified_email": True,
@@ -778,7 +787,7 @@ class TestGoogleOAuthExistingUser:
         }
         conn = _FakeOAuthConn(seed_users=[existing])
 
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         mock_google = _MockGoogleClient(userinfo={
             "email": "returning-user@example.com", "name": "New Name From Google",
             "picture": "https://example.com/new-avatar.png", "verified_email": True,
@@ -804,7 +813,7 @@ class TestGoogleOAuthExistingUser:
             "created_at": datetime.datetime.now(datetime.timezone.utc),
         }
         conn = _FakeOAuthConn(seed_users=[existing])
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(_MockGoogleClient(userinfo={
                  "email": "returning2@example.com", "name": "New Name",
@@ -830,7 +839,7 @@ class TestGoogleOAuthExistingPasswordAccount:
             "created_at": datetime.datetime.now(datetime.timezone.utc),
         }
         conn = _FakeOAuthConn(seed_users=[existing])
-        state = _valid_start(client)
+        state, _bind = _valid_start(client)
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(_MockGoogleClient(userinfo={
                  "email": email, "name": "Google Name",
@@ -869,7 +878,7 @@ class TestGoogleOAuthExistingPasswordAccount:
         conn = _FakeOAuthConn(seed_users=[existing])
         codes = []
         for _ in range(2):
-            state = _valid_start(client)
+            state, _bind = _valid_start(client)
             with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
                  _patch_google(_MockGoogleClient(userinfo={
                      "email": "returning3@example.com", "name": "X", "picture": "",
@@ -1043,3 +1052,96 @@ class TestRefreshAfterOAuth:
                 "/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]},
             )
         assert reuse_resp.status_code == 401
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 10. Login CSRF browser-binding — FINDING-1 fix
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestGoogleOAuthLoginCSRFBinding:
+    """Verify that the oauth_bind cookie prevents Login CSRF for Google.
+    (Microsoft and GitHub equivalents are in test_api_auth.py.)"""
+
+    def test_login_csrf_attack_blocked_no_cookie(self, client):
+        """Attacker starts their own OAuth flow (stashed directly, no HTTP
+        call through client so the client cookie jar stays empty), then
+        tricks the victim browser into hitting the callback — no oauth_bind
+        cookie present → 400 before any token exchange."""
+        from app.core.cache.redis_adapter import get_redis
+        import asyncio
+
+        state = "csrf-attack-state"
+        bind_nonce = "attacker-bind-nonce"
+
+        async def _stash():
+            redis = await get_redis()
+            await redis.set(f"oauth_state:{state}", bind_nonce, ttl=600)
+
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_stash())
+        finally:
+            loop.close()
+
+        mock_google = _MockGoogleClient()
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             _patch_google(mock_google):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                # deliberately NO cookies — victim has no oauth_bind
+            )
+
+        assert resp.status_code == 400
+        assert mock_google.post_calls == []  # token exchange never reached
+
+    def test_bind_nonce_mismatch_rejected(self, client):
+        """State is valid in cache but cookie value doesn't match stored nonce."""
+        from app.core.cache.redis_adapter import get_redis
+        import asyncio
+
+        state = "mismatch-state"
+
+        async def _stash():
+            redis = await get_redis()
+            await redis.set(f"oauth_state:{state}", "real-nonce", ttl=600)
+
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_stash())
+        finally:
+            loop.close()
+
+        mock_google = _MockGoogleClient()
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             _patch_google(mock_google):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                cookies={"oauth_bind": "wrong-nonce"},
+            )
+
+        assert resp.status_code == 400
+        assert mock_google.post_calls == []
+
+    def test_start_503s_on_cache_failure(self, client):
+        """Cache failure on start must 503, not 500."""
+        from unittest.mock import AsyncMock as _AM
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.core.cache.redis_adapter.get_redis",
+                   _AM(side_effect=RuntimeError("redis down"))):
+            resp = client.get("/api/auth/google", follow_redirects=False)
+        assert resp.status_code == 503
+
+    def test_callback_503s_on_cache_failure(self, client):
+        """Cache failure on callback must 503, not 500."""
+        from unittest.mock import AsyncMock as _AM
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.core.cache.redis_adapter.get_redis",
+                   _AM(side_effect=RuntimeError("redis down"))):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": "any-state"},
+                cookies={"oauth_bind": "any-nonce"},
+            )
+        assert resp.status_code == 503

@@ -150,12 +150,13 @@ class TestOAuthStateCsrfProtection(unittest.TestCase):
         app.include_router(auth_users.router)
         return TestClient(app, raise_server_exceptions=False)
 
-    def test_start_endpoint_includes_state_and_sets_cookie(self):
+    def test_start_endpoint_includes_state_and_sets_bind_cookie(self):
         client = self._client()
         resp = client.get("/api/auth/google", follow_redirects=False)
         self.assertIn(resp.status_code, (302, 307))
         self.assertIn("state=", resp.headers["location"])
-        self.assertIn("oauth_state", resp.cookies)
+        # Browser-binding nonce cookie (FINDING-1 fix — RFC 6749 §10.12)
+        self.assertIn("oauth_bind", resp.cookies)
 
     def test_callback_without_state_rejected(self):
         client = self._client()
@@ -164,7 +165,7 @@ class TestOAuthStateCsrfProtection(unittest.TestCase):
 
     def test_callback_with_mismatched_state_rejected(self):
         client = self._client()
-        client.cookies.set("oauth_state", "cookie-value")
+        # oauth_bind is ignored here because state is unknown in cache → 400
         resp = client.get(
             "/api/auth/google/callback?code=irrelevant&state=attacker-supplied",
             follow_redirects=False,
@@ -172,15 +173,32 @@ class TestOAuthStateCsrfProtection(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_callback_with_no_cookie_at_all_rejected(self):
-        # An attacker replaying their own captured callback URL (with a
-        # real-looking state value) against a victim who never started the
-        # flow has no oauth_state cookie to match against.
+        # An attacker replaying their own captured callback URL (with a valid
+        # state value from their own flow) against a victim who never started
+        # the flow has no oauth_bind cookie to match against.
+        import asyncio
+        import app.core.cache.redis_adapter as _rad
+        _rad._instance = None
+
+        async def _stash():
+            from app.core.cache.redis_adapter import get_redis
+            redis = await get_redis()
+            await redis.set("oauth_state:some-state-value", "real-nonce", ttl=600)
+
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_stash())
+        finally:
+            loop.close()
+
         client = self._client()
         resp = client.get(
             "/api/auth/google/callback?code=irrelevant&state=some-state-value",
             follow_redirects=False,
+            # no oauth_bind cookie → bind check fails → 400
         )
         self.assertEqual(resp.status_code, 400)
+        _rad._instance = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

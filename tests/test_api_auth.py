@@ -59,14 +59,14 @@ def _run_sync(coro):
         loop.close()
 
 
-def _stash_state(state: str) -> None:
-    """Pre-stash an OAuth state in the server-side cache so callback tests
-    can call the callback directly without going through the start endpoint."""
+def _stash_state(state: str, bind_nonce: str = "test-bind-nonce") -> None:
+    """Pre-stash an OAuth state + bind nonce so callback tests can call the
+    callback directly without going through the start endpoint."""
     from app.core.cache.redis_adapter import get_redis
 
     async def _do():
         redis = await get_redis()
-        await redis.set(f"oauth_state:{state}", "1", ttl=600)
+        await redis.set(f"oauth_state:{state}", bind_nonce, ttl=600)
 
     _run_sync(_do())
 
@@ -360,11 +360,12 @@ class TestOAuthCallbackProviderUnreachable:
     clean 502, not an unhandled 500."""
 
     @staticmethod
-    def _get_callback(client, path: str, state: str = "state-value"):
-        _stash_state(state)
+    def _get_callback(client, path: str, state: str = "state-value", bind_nonce: str = "test-bind-nonce"):
+        _stash_state(state, bind_nonce)
         return client.get(
             path,
             params={"code": "auth-code", "state": state},
+            cookies={"oauth_bind": bind_nonce},
         )
 
     def test_google_callback_502_on_connect_error(self, client):
@@ -437,9 +438,10 @@ class _TokenErrorClient:
 
 class TestOAuthTokenExchangeFailureLogging:
     @staticmethod
-    def _get_callback(client, path: str, state: str = "state-value"):
-        _stash_state(state)
-        return client.get(path, params={"code": "auth-code", "state": state})
+    def _get_callback(client, path: str, state: str = "state-value", bind_nonce: str = "test-bind-nonce"):
+        _stash_state(state, bind_nonce)
+        return client.get(path, params={"code": "auth-code", "state": state},
+                          cookies={"oauth_bind": bind_nonce})
 
     def test_microsoft_callback_logs_actual_error_keeps_generic_response(self, client, caplog):
         with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
@@ -494,3 +496,133 @@ class TestOAuthTokenExchangeFailureLogging:
         logged = "\n".join(r.getMessage() for r in caplog.records)
         assert "super-secret-value-xyz" not in logged
         assert "auth-code" not in logged
+
+
+# ── Login CSRF browser-binding (FINDING-1 fix) ────────────────────────────────
+
+
+class TestOAuthLoginCSRFBrowserBinding:
+    """Verify that the bind-nonce cookie prevents Login CSRF attacks
+    (RFC 6749 §10.12) for all three providers."""
+
+    PROVIDERS = [
+        ("/api/auth/google/callback", "app.routers.auth_users._GOOGLE_CLIENT_ID"),
+        ("/api/auth/microsoft/callback", "app.routers.auth_users._MICROSOFT_CLIENT_ID"),
+        ("/api/auth/github/callback", "app.routers.auth_users._GITHUB_CLIENT_ID"),
+    ]
+
+    def test_login_csrf_attack_blocked_no_cookie(self, client):
+        """Attacker stashes their own state in a fresh cache entry (simulating
+        starting a flow in their own browser), then tricks the victim's browser
+        into hitting the callback URL — but the victim's browser has NO
+        oauth_bind cookie, so the callback must 400 before any token exchange."""
+        state = "attacker-state-value"
+        # Stash directly — do NOT use _valid_start through client so the client
+        # cookie jar stays empty (no oauth_bind cookie planted).
+        _stash_state(state, bind_nonce="attacker-bind-nonce")
+
+        for path, cid_patch in self.PROVIDERS:
+            # Reset cache so each provider has a fresh state entry
+            _stash_state(state, bind_nonce="attacker-bind-nonce")
+            with patch(cid_patch, "fake-id"):
+                resp = client.get(
+                    path,
+                    params={"code": "auth-code", "state": state},
+                    # deliberately NO cookies — victim has no oauth_bind
+                )
+            assert resp.status_code == 400, f"{path}: expected 400 got {resp.status_code}"
+
+    def test_bind_nonce_mismatch_rejected(self, client):
+        """State is valid in cache but attacker supplies wrong cookie value."""
+        state = "csrf-state"
+        _stash_state(state, bind_nonce="real-nonce")
+
+        for path, cid_patch in self.PROVIDERS:
+            _stash_state(state, bind_nonce="real-nonce")
+            with patch(cid_patch, "fake-id"):
+                resp = client.get(
+                    path,
+                    params={"code": "auth-code", "state": state},
+                    cookies={"oauth_bind": "wrong-nonce"},  # mismatch
+                )
+            assert resp.status_code == 400, f"{path}: expected 400 got {resp.status_code}"
+
+    def test_legitimate_flow_passes_bind_check(self, client):
+        """Correct state + matching cookie must pass the bind check
+        (provider network call is what causes the next error, not CSRF guard)."""
+        state = "legit-state"
+        nonce = "legit-nonce"
+
+        for path, cid_patch in self.PROVIDERS:
+            _stash_state(state, nonce)
+            with patch(cid_patch, "fake-id"), \
+                 patch("app.routers.auth_users._httpx.AsyncClient",
+                       return_value=_UnreachableProviderClient()):
+                resp = client.get(
+                    path,
+                    params={"code": "auth-code", "state": state},
+                    cookies={"oauth_bind": nonce},
+                )
+            # CSRF guard passed → hits provider → 502 (not 400)
+            assert resp.status_code == 502, f"{path}: expected 502 got {resp.status_code}"
+
+
+# ── Cache failure → 503 (fail-safe) ──────────────────────────────────────────
+
+
+class TestOAuthCacheFailureSafety:
+    """Cache unavailability must produce 503 at both the start and callback
+    endpoints — never fail-open and never leak an unhandled 500."""
+
+    def _raise_on_get_redis(self):
+        from unittest.mock import AsyncMock as _AM
+        m = _AM(side_effect=RuntimeError("redis down"))
+        return patch("app.core.cache.redis_adapter.get_redis", m)
+
+    def test_google_start_503s_on_cache_failure(self, client):
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             self._raise_on_get_redis():
+            resp = client.get("/api/auth/google", follow_redirects=False)
+        assert resp.status_code == 503
+
+    def test_microsoft_start_503s_on_cache_failure(self, client):
+        with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
+             self._raise_on_get_redis():
+            resp = client.get("/api/auth/microsoft", follow_redirects=False)
+        assert resp.status_code == 503
+
+    def test_github_start_503s_on_cache_failure(self, client):
+        with patch("app.routers.auth_users._GITHUB_CLIENT_ID", "fake-id"), \
+             self._raise_on_get_redis():
+            resp = client.get("/api/auth/github", follow_redirects=False)
+        assert resp.status_code == 503
+
+    def test_google_callback_503s_on_cache_failure(self, client):
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             self._raise_on_get_redis():
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": "any-state"},
+                cookies={"oauth_bind": "any-nonce"},
+            )
+        assert resp.status_code == 503
+
+    def test_microsoft_callback_503s_on_cache_failure(self, client):
+        with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
+             self._raise_on_get_redis():
+            resp = client.get(
+                "/api/auth/microsoft/callback",
+                params={"code": "auth-code", "state": "any-state"},
+                cookies={"oauth_bind": "any-nonce"},
+            )
+        assert resp.status_code == 503
+
+    def test_github_callback_503s_on_cache_failure(self, client):
+        with patch("app.routers.auth_users._GITHUB_CLIENT_ID", "fake-id"), \
+             self._raise_on_get_redis():
+            resp = client.get(
+                "/api/auth/github/callback",
+                params={"code": "auth-code", "state": "any-state"},
+                cookies={"oauth_bind": "any-nonce"},
+            )
+        assert resp.status_code == 503
