@@ -47,6 +47,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Optional
 
+import asyncpg
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, HttpUrl, field_validator
@@ -59,6 +60,98 @@ from app.tenancy.context import OrgContext, org_context, require_permission
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/social", tags=["social-publisher"])
+
+# ── Schema init ───────────────────────────────────────────────────────────────
+
+_SCHEMA_SQL = """
+-- ── Platform account connections ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS social_platform_accounts (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id     UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id             UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    platform            VARCHAR(30) NOT NULL
+                        CHECK (platform IN ('tiktok', 'instagram', 'youtube')),
+    platform_user_id    TEXT        NOT NULL,
+    platform_username   TEXT,
+    platform_name       TEXT,
+    access_token_enc    TEXT        NOT NULL,
+    refresh_token_enc   TEXT,
+    token_expires_at    TIMESTAMPTZ,
+    scopes              TEXT[]      NOT NULL DEFAULT '{}',
+    metadata            JSONB       NOT NULL DEFAULT '{}',
+    is_active           BOOLEAN     NOT NULL DEFAULT true,
+    connected_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (organization_id, user_id, platform, platform_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_spa_org_platform
+    ON social_platform_accounts(organization_id, platform, is_active);
+CREATE INDEX IF NOT EXISTS idx_spa_user
+    ON social_platform_accounts(user_id);
+
+-- ── Canonical post record ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS social_posts (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id     UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    created_by_user_id  UUID        REFERENCES users(id) ON DELETE SET NULL,
+    title               TEXT,
+    caption             TEXT        NOT NULL DEFAULT '',
+    video_url           TEXT        NOT NULL,
+    thumbnail_url       TEXT,
+    duration_seconds    INTEGER,
+    target_platforms    TEXT[]      NOT NULL DEFAULT '{}',
+    scheduled_at        TIMESTAMPTZ,
+    status              VARCHAR(20) NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft','scheduled','publishing',
+                                          'published','partial','failed')),
+    hashtags            TEXT[]      NOT NULL DEFAULT '{}',
+    metadata            JSONB       NOT NULL DEFAULT '{}',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sp_org_status
+    ON social_posts(organization_id, status);
+CREATE INDEX IF NOT EXISTS idx_sp_org_scheduled
+    ON social_posts(organization_id, scheduled_at)
+    WHERE scheduled_at IS NOT NULL AND status = 'scheduled';
+CREATE INDEX IF NOT EXISTS idx_sp_created
+    ON social_posts(created_at DESC);
+
+-- ── Per-platform publish job ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS social_publish_jobs (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id     UUID        NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    post_id             UUID        NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+    platform            VARCHAR(30) NOT NULL
+                        CHECK (platform IN ('tiktok', 'instagram', 'youtube')),
+    account_id          UUID        REFERENCES social_platform_accounts(id) ON DELETE SET NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'queued'
+                        CHECK (status IN ('queued','processing','completed','failed','cancelled')),
+    platform_post_id    TEXT,
+    platform_url        TEXT,
+    error_code          TEXT,
+    error_message       TEXT,
+    retry_count         SMALLINT    NOT NULL DEFAULT 0,
+    queued_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at          TIMESTAMPTZ,
+    completed_at        TIMESTAMPTZ,
+    result              JSONB,
+    UNIQUE (post_id, platform)
+);
+CREATE INDEX IF NOT EXISTS idx_spj_org_status
+    ON social_publish_jobs(organization_id, status);
+CREATE INDEX IF NOT EXISTS idx_spj_post
+    ON social_publish_jobs(post_id);
+CREATE INDEX IF NOT EXISTS idx_spj_queued
+    ON social_publish_jobs(queued_at)
+    WHERE status = 'queued';
+"""
+
+
+async def init_social_publisher_schema(conn: asyncpg.Connection) -> None:
+    """Idempotent — called from app/factory.py lifespan."""
+    await conn.execute(_SCHEMA_SQL)
+
 
 # ── Cookie names ──────────────────────────────────────────────────────────────
 _SOCIAL_OAUTH_BIND_COOKIE = "social_oauth_bind"

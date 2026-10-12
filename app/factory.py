@@ -272,6 +272,11 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await init_flow_creations_schema(conn)
 
+    # ── Social Publisher — Phase 1 schema (migration 014) ────────────────────
+    from app.routers.social_publisher import init_social_publisher_schema
+    async with pool.acquire() as conn:
+        await init_social_publisher_schema(conn)
+
     # ── Lead Engine ─────────────────────────────────────────────────────────
     from app.core.leads.schema import init_leads_schema
     from app.core.leads.service import init_lead_service
