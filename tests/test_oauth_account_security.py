@@ -93,7 +93,7 @@ def _valid_github_start(client) -> tuple[str, str]:
         resp = client.get("/api/auth/github", follow_redirects=False)
     assert resp.status_code in (302, 307)
     state = resp.headers["location"].split("state=")[1].split("&")[0]
-    cookie = resp.cookies.get("oauth_state", "")
+    cookie = resp.cookies.get("oauth_bind", "")
     return state, cookie
 
 
@@ -106,7 +106,7 @@ def _do_github_login(client, conn, emails: list[dict], gh_user=None):
         return client.get(
             "/api/auth/github/callback",
             params={"code": "gh-code", "state": state},
-            cookies={"oauth_state": cookie},
+            cookies={"oauth_bind": cookie},
             follow_redirects=False,
         )
 
@@ -138,7 +138,7 @@ def _valid_microsoft_start(client) -> tuple[str, str]:
         resp = client.get("/api/auth/microsoft", follow_redirects=False)
     assert resp.status_code in (302, 307)
     state = resp.headers["location"].split("state=")[1].split("&")[0]
-    cookie = resp.cookies.get("oauth_state", "")
+    cookie = resp.cookies.get("oauth_bind", "")
     return state, cookie
 
 
@@ -151,7 +151,7 @@ def _do_microsoft_login(client, conn, ms_user=None):
         return client.get(
             "/api/auth/microsoft/callback",
             params={"code": "ms-code", "state": state},
-            cookies={"oauth_state": cookie},
+            cookies={"oauth_bind": cookie},
             follow_redirects=False,
         )
 

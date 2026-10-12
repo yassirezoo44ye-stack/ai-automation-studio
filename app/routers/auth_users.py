@@ -812,6 +812,10 @@ _GITHUB_CLIENT_SECRET    = _os.getenv("GITHUB_CLIENT_SECRET", "")
 _MICROSOFT_CLIENT_ID     = _os.getenv("MICROSOFT_CLIENT_ID", "")
 _MICROSOFT_CLIENT_SECRET = _os.getenv("MICROSOFT_CLIENT_SECRET", "")
 _APP_URL_BASE            = _os.getenv("APP_URL", "http://localhost:8000")
+# Where post-OAuth redirects land in the browser. In a split Vercel+Render
+# deployment APP_URL is the backend base and FRONTEND_URL is the Vercel origin.
+# For single-host setups both default to the same value.
+_FRONTEND_BASE           = _os.getenv("FRONTEND_URL", _APP_URL_BASE)
 
 
 def _oauth_not_configured(provider: str):
@@ -1109,7 +1113,7 @@ async def google_oauth_callback(code: str, request: Request, state: Optional[str
     # AuthPage, redeemed via POST /api/auth/oauth-exchange) — not the
     # tokens themselves, see _stash_oauth_session_for_exchange.
     exchange_code = await _stash_oauth_session_for_exchange(session)
-    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
+    return RedirectResponse(f"{_FRONTEND_BASE}/oauth-callback?code={exchange_code}")
 
 
 @router.get("/microsoft")
@@ -1189,7 +1193,7 @@ async def microsoft_oauth_callback(code: str, request: Request, state: Optional[
         session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     exchange_code = await _stash_oauth_session_for_exchange(session)
-    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
+    return RedirectResponse(f"{_FRONTEND_BASE}/oauth-callback?code={exchange_code}")
 
 
 @router.get("/github")
@@ -1291,4 +1295,4 @@ async def github_oauth_callback(code: str, request: Request, state: Optional[str
         session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     exchange_code = await _stash_oauth_session_for_exchange(session)
-    return RedirectResponse(f"{_APP_URL_BASE}/oauth-callback?code={exchange_code}")
+    return RedirectResponse(f"{_FRONTEND_BASE}/oauth-callback?code={exchange_code}")

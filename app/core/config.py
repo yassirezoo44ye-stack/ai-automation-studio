@@ -42,6 +42,9 @@ _stripe.api_key          = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_ID: str       = os.getenv("STRIPE_PRICE_ID", "")  # legacy flat $/mo trial gate
 APP_URL: str               = os.getenv("APP_URL", "http://localhost:8000")
+# Where the browser-facing frontend lives (e.g. a Vercel deployment).
+# Falls back to APP_URL for single-host setups and local dev.
+FRONTEND_URL: str          = os.getenv("FRONTEND_URL", APP_URL)
 # Comma-separated additional CORS origins (e.g. a Vercel-hosted frontend)
 # beyond the single primary APP_URL — the backend itself is served from a
 # different host than the browser origin in a split frontend/backend setup.

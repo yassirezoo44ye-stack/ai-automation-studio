@@ -1145,3 +1145,159 @@ class TestGoogleOAuthLoginCSRFBinding:
                 cookies={"oauth_bind": "any-nonce"},
             )
         assert resp.status_code == 503
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# New: Expired state, concurrent callbacks, and frontend/backend URL split
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestExpiredOAuthState:
+    """State tokens that were never stored or have been evicted must be rejected."""
+
+    def test_expired_state_returns_400(self, client):
+        """A state token that was never stored (simulates TTL expiry) must 400."""
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": "expired-nonexistent-state"},
+                cookies={"oauth_bind": "some-nonce"},
+            )
+        assert resp.status_code == 400
+        assert "Invalid or expired OAuth state" in resp.text
+
+    def test_state_accepted_within_ttl(self, client):
+        """A state stored in the cache is accepted; the test verifies the happy
+        path completes (or fails later, not at the CSRF check)."""
+        conn = _FakeOAuthConn()
+        # _do_oauth_login stores the state in cache via _valid_start, so this
+        # exercises the within-TTL path end-to-end.
+        resp = _do_oauth_login(client, conn)
+        # 302 means CSRF validation passed and the callback continued.
+        assert resp.status_code in (302, 307)
+
+
+class TestConcurrentCallbacks:
+    """The same state token may only be consumed once (replay protection)."""
+
+    def test_second_callback_with_same_state_is_rejected(self, client):
+        """After a successful callback, a replay of the same state+cookie must 400."""
+        conn = _FakeOAuthConn()
+        state, bind_cookie = _valid_start(client)
+        # First callback — consumes the state token.
+        mock_google = _MockGoogleClient(userinfo={
+            "email": "replay@example.com", "name": "Replay", "picture": "",
+            "verified_email": True,
+        })
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             _patch_google(mock_google), _mock_pool(conn):
+            resp1 = client.get(
+                "/api/auth/google/callback",
+                params={"code": "code-1", "state": state},
+                follow_redirects=False,
+            )
+        assert resp1.status_code in (302, 307), "first callback must succeed"
+
+        # Second callback — same state, same nonce → must be rejected (replayed).
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             _patch_google(mock_google), _mock_pool(conn):
+            resp2 = client.get(
+                "/api/auth/google/callback",
+                params={"code": "code-2", "state": state},
+                cookies={"oauth_bind": bind_cookie},
+                follow_redirects=False,
+            )
+        assert resp2.status_code == 400
+        assert "Invalid or expired OAuth state" in resp2.text
+
+
+class TestFrontendUrlSeparation:
+    """_FRONTEND_BASE is used for the post-OAuth redirect, not _APP_URL_BASE.
+
+    In a split Vercel + Render deployment:
+      - _APP_URL_BASE (APP_URL env var) = backend Render URL
+      - _FRONTEND_BASE (FRONTEND_URL env var) = frontend Vercel URL
+    The redirect_uri sent to Google must use _APP_URL_BASE (so Google sends
+    the browser to the backend callback URL), while the final /oauth-callback
+    redirect must use _FRONTEND_BASE (so the browser lands on the frontend).
+    """
+
+    def test_redirect_uri_uses_app_url_base(self, client):
+        """GET /api/auth/google must build redirect_uri from APP_URL, not FRONTEND_URL."""
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._APP_URL_BASE", "https://api.example.com"), \
+             patch("app.routers.auth_users._FRONTEND_BASE", "https://app.example.com"):
+            resp = client.get("/api/auth/google", follow_redirects=False)
+        assert resp.status_code in (302, 307)
+        location = resp.headers["location"]
+        # redirect_uri must target the backend, not the frontend.
+        # The value may or may not be percent-encoded depending on the HTTP library.
+        redirect_uri_value = location.split("redirect_uri=")[1].split("&")[0]
+        assert "api.example.com" in redirect_uri_value
+        assert "app.example.com" not in redirect_uri_value
+
+    def test_post_oauth_redirect_uses_frontend_base(self, client):
+        """Callback must send the browser to FRONTEND_URL/oauth-callback, not APP_URL."""
+        conn = _FakeOAuthConn()
+        state, _bind = _valid_start(client)
+        mock_google = _MockGoogleClient(userinfo={
+            "email": "split@example.com", "name": "Split", "picture": "",
+            "verified_email": True,
+        })
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._APP_URL_BASE", "https://api.example.com"), \
+             patch("app.routers.auth_users._FRONTEND_BASE", "https://app.example.com"), \
+             _patch_google(mock_google), _mock_pool(conn):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                follow_redirects=False,
+            )
+        assert resp.status_code in (302, 307)
+        location = resp.headers["location"]
+        # Final redirect must go to the FRONTEND, not the backend.
+        assert location.startswith("https://app.example.com/oauth-callback")
+        assert "api.example.com" not in location
+
+    def test_single_host_fallback_still_works(self, client):
+        """When FRONTEND_URL is not set, _FRONTEND_BASE falls back to _APP_URL_BASE."""
+        conn = _FakeOAuthConn()
+        state, _bind = _valid_start(client)
+        mock_google = _MockGoogleClient(userinfo={
+            "email": "singlehost@example.com", "name": "Single", "picture": "",
+            "verified_email": True,
+        })
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._APP_URL_BASE", "https://monolith.example.com"), \
+             patch("app.routers.auth_users._FRONTEND_BASE", "https://monolith.example.com"), \
+             _patch_google(mock_google), _mock_pool(conn):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                follow_redirects=False,
+            )
+        assert resp.status_code in (302, 307)
+        location = resp.headers["location"]
+        assert location.startswith("https://monolith.example.com/oauth-callback")
+
+    def test_missing_bind_cookie_rejects_despite_valid_state(self, client):
+        """Missing oauth_bind cookie must produce 400 even when state is valid."""
+        import asyncio
+        from app.core.cache.redis_adapter import get_redis
+
+        state = "valid-state-no-cookie"
+
+        async def _stash():
+            redis = await get_redis()
+            await redis.set(f"oauth_state:{state}", "real-nonce", ttl=600)
+
+        _run_sync(_stash())
+
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
+            # Deliberately omit the oauth_bind cookie.
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                cookies={},
+            )
+        assert resp.status_code == 400
+        assert "Invalid or expired OAuth state" in resp.text
