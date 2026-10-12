@@ -15,15 +15,15 @@ from typing import Optional
 
 from app.integrations.social.base import SocialPublisherProvider
 from app.integrations.social.mock import MockSocialPublisherProvider
+from app.integrations.social.tiktok import TikTokProvider
 
 # ── Built-in provider catalogue ───────────────────────────────────────────────
 # Replace mock entries with real providers as each platform is implemented.
 _PROVIDERS: dict[str, SocialPublisherProvider] = {
     "mock":      MockSocialPublisherProvider("mock",      "Mock Platform"),
-    # Real providers added in subsequent steps:
-    # "tiktok":    TikTokProvider(),      # Step 2
-    # "instagram": InstagramProvider(),   # Step 3
-    # "youtube":   YouTubeProvider(),     # Step 4
+    "tiktok":    TikTokProvider(),           # Step 2 — requires TIKTOK_CLIENT_KEY/SECRET
+    # "instagram": InstagramProvider(),      # Step 3
+    # "youtube":   YouTubeProvider(),        # Step 4
 }
 
 
