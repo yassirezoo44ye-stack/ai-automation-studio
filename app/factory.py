@@ -76,6 +76,8 @@ from app.routers import discover         as discover_router
 from app.routers import leads            as leads_router
 # SaaS Factory
 from app.routers import saas_factory     as saas_factory_router
+# Social Publisher — Phase 1
+from app.routers import social_publisher as social_publisher_router
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
@@ -736,6 +738,8 @@ def create_app() -> FastAPI:
     # Lead Engine
     app.include_router(leads_router.router)
     app.include_router(saas_factory_router.router)
+    # Social Publisher — Phase 1
+    app.include_router(social_publisher_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
