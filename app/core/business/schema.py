@@ -11,6 +11,8 @@ import logging
 
 import asyncpg
 
+from app.core.db import get_pool
+
 log = logging.getLogger(__name__)
 
 _DDL = """
@@ -181,8 +183,6 @@ async def mark_interrupted_business_plans() -> None:
     connections see all rows (same pattern as mark_interrupted_runs() for
     automation_runs in app/core/workflow/automation_schema.py).
     """
-    from app.core.db import get_pool
-
     pool = get_pool()
     if pool is None:
         log.warning("business plan recovery: pool not ready, skipping")

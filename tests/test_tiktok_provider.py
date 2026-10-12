@@ -44,7 +44,7 @@ from app.integrations.social.tiktok import (
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def _make_provider(client_key: str = "test_key", client_secret: str = "test_secret") -> TikTokProvider:

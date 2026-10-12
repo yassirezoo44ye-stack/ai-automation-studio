@@ -32,7 +32,7 @@ from app.integrations.social.registry import SocialPublisherRegistry
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ── MockSocialPublisherProvider ────────────────────────────────────────────────

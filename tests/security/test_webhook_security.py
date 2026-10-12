@@ -45,11 +45,15 @@ def _mock_pool(conn: AsyncMock) -> MagicMock:
 class TestSsrfGuard(unittest.TestCase):
     def test_public_https_url_allowed(self):
         from app.core.ssrf_guard import assert_public_url
-        assert_public_url("https://example.com/webhook")  # must not raise
+        # Mock DNS — sandbox has no outbound DNS. 93.184.216.34 = example.com public IP.
+        with patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 0))]):
+            assert_public_url("https://example.com/webhook")  # must not raise
 
     def test_public_http_url_allowed(self):
         from app.core.ssrf_guard import assert_public_url
-        assert_public_url("http://example.com/webhook")  # must not raise
+        # Mock DNS — sandbox has no outbound DNS. 93.184.216.34 = example.com public IP.
+        with patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 0))]):
+            assert_public_url("http://example.com/webhook")  # must not raise
 
     def test_loopback_literal_ip_blocked(self):
         from app.core.ssrf_guard import UnsafeUrlError, assert_public_url
@@ -100,14 +104,13 @@ class TestAlertRuleWebhookSsrfRejection(unittest.TestCase):
             )
 
     def test_public_webhook_url_accepted_at_creation(self):
-        # example.com is IANA's reserved, always-resolvable test domain —
-        # a made-up subdomain would fail DNS resolution in this test
-        # environment and produce a false failure, not a real one.
         from app.routers.diagnostics_api import AlertRuleCreate
-        rule = AlertRuleCreate(
-            name="ok", rule_type="gauge_above", target="x", threshold=1.0,
-            notify_webhook_url="https://example.com/incoming",
-        )
+        # Mock DNS — sandbox has no outbound DNS. 93.184.216.34 = example.com public IP.
+        with patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 0))]):
+            rule = AlertRuleCreate(
+                name="ok", rule_type="gauge_above", target="x", threshold=1.0,
+                notify_webhook_url="https://example.com/incoming",
+            )
         self.assertEqual(rule.notify_webhook_url, "https://example.com/incoming")
 
     def test_no_webhook_url_is_fine(self):

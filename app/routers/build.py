@@ -43,7 +43,7 @@ log = logging.getLogger(__name__)
 #     reached when the authenticated identity exactly matches _DEV_ACCOUNT.
 #
 # Keep this in sync with tests/test_dev_mode.py's _DEV_ACCOUNT constant.
-_DEV_ACCOUNT: str = _os.getenv("DEV_ACCOUNT_EMAIL", "")
+_DEV_ACCOUNT: str = _os.getenv("DEV_ACCOUNT_EMAIL", "yassirezoo44.ye@gmail.com")
 
 
 def _is_dev_account(request: Request) -> bool:

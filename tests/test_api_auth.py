@@ -588,7 +588,7 @@ class TestOAuthLoginCSRFBrowserBinding:
             )
         assert resp.status_code == 400
 
-        remaining = _asyncio.get_event_loop().run_until_complete(_cache_get(f"oauth_state:{state}"))
+        remaining = _asyncio.run(_cache_get(f"oauth_state:{state}"))
         assert remaining is not None, "state was consumed despite missing cookie — DoS vector present"
 
         # Legitimate call (correct cookie) must still pass the CSRF guard.
@@ -627,7 +627,7 @@ class TestOAuthLoginCSRFBrowserBinding:
             )
         assert resp.status_code == 400
 
-        remaining = _asyncio.get_event_loop().run_until_complete(_cache_get(f"oauth_state:{state}"))
+        remaining = _asyncio.run(_cache_get(f"oauth_state:{state}"))
         assert remaining is not None, "state consumed by wrong-cookie request — DoS vector present"
 
         # Legitimate browser (correct cookie) still completes the CSRF check.

@@ -476,7 +476,7 @@ class TestPermissionEnforcement:
 class TestCreateLeadRequestValidation:
     def _load_models(self):
         """Import CreateLeadRequest and UpdateStatusRequest directly, bypassing __init__.py."""
-        import importlib.util, importlib
+        import importlib.util
         # Ensure the leads router module is importable standalone
         # by stubbing routers/__init__.py side-effects
         with patch.dict(sys.modules, {"app.routers": types.ModuleType("app.routers")}):
@@ -488,7 +488,21 @@ class TestCreateLeadRequestValidation:
             # inject stubs so the module-level imports succeed
             sys.modules.setdefault("app.core.leads", types.ModuleType("app.core.leads"))
             sys.modules["app.core.leads"].get_lead_service = lambda: MagicMock()
+            # Register the module in sys.modules BEFORE exec so that pydantic v2
+            # can resolve forward references (from __future__ import annotations
+            # makes all annotations strings; pydantic resolves them by looking up
+            # sys.modules[model.__module__] at instantiation time).
+            sys.modules["_leads_router"] = mod
             spec.loader.exec_module(mod)
+            # Call model_rebuild() to finish resolving the annotations now that the
+            # module is in sys.modules with Optional etc. already imported.
+            for attr in dir(mod):
+                obj = getattr(mod, attr, None)
+                if obj is not None and hasattr(obj, "model_rebuild"):
+                    try:
+                        obj.model_rebuild()
+                    except Exception:
+                        pass
         return mod
 
     def test_empty_name_rejected(self):
