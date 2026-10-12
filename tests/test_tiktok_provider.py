@@ -157,6 +157,15 @@ class TestErrorClassification:
         with pytest.raises(TikTokTokenExpiredError):
             self.p._raise_for_tiktok_error({"code": "ACCESS_TOKEN_INVALID", "message": ""})
 
+    def test_user_banned_raises_permanent_api_error(self):
+        """A banned user must raise TikTokAPIError (permanent) — not TikTokRetryableError."""
+        with pytest.raises(TikTokAPIError) as exc_info:
+            self.p._raise_for_tiktok_error({
+                "code": "spam_risk_user_banned_from_posting",
+                "message": "User is banned",
+            })
+        assert exc_info.value.error_code == "spam_risk_user_banned_from_posting"
+
 
 # ── OAuth: get_auth_url ────────────────────────────────────────────────────────
 

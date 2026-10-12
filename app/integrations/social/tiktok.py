@@ -95,7 +95,7 @@ _RETRYABLE_CODES = frozenset({
     "server_error",
     "internal_error",
     "spam_risk_too_many_pending_share",
-    "spam_risk_user_banned_from_posting",   # may clear after cooldown
+    # spam_risk_user_banned_from_posting is permanent → TikTokAPIError, not retryable
 })
 
 # Error code for rate limiting

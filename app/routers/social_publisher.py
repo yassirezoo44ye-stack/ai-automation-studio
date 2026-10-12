@@ -193,13 +193,7 @@ class ScheduleRequest(BaseModel):
 async def list_platforms(ctx: OrgContext = Depends(org_context)):
     """List all supported social platforms and their availability."""
     registry = get_social_registry()
-    return {
-        "platforms": [
-            {"platform_id": "tiktok",    "display_name": "TikTok",             "available": False},
-            {"platform_id": "instagram", "display_name": "Instagram Reels",    "available": False},
-            {"platform_id": "youtube",   "display_name": "YouTube Shorts",     "available": False},
-        ]
-    }
+    return {"platforms": registry.list_platforms()}
 
 
 # ── Account management ─────────────────────────────────────────────────────────
@@ -568,17 +562,20 @@ async def update_post(
                 set_parts.append(f"{col}=${i}")
                 params.append(updates[col])
 
+        n = len(params) + 1
         row = await conn.fetchrow(
             f"""
             UPDATE social_posts SET {', '.join(set_parts)}, updated_at=NOW()
-             WHERE id=$1
+             WHERE id=$1 AND organization_id=${n}::uuid
             RETURNING id, organization_id, created_by_user_id, title, caption,
                       video_url, thumbnail_url, duration_seconds,
                       target_platforms, scheduled_at, status, hashtags, metadata,
                       created_at, updated_at
             """,
-            *params,
+            *params, ctx.org_id,
         )
+        if not row:
+            raise _not_found("Post")
     return _post_out(dict(row))
 
 
