@@ -566,6 +566,129 @@ class TestOAuthLoginCSRFBrowserBinding:
             # CSRF guard passed → hits provider → 502 (not 400)
             assert resp.status_code == 502, f"{path}: expected 502 got {resp.status_code}"
 
+    def test_no_cookie_does_not_consume_state(self, client):
+        """A request with no oauth_bind cookie must be rejected BEFORE the cache
+        get_and_delete_if_matches so the state remains available for the legitimate callback."""
+        import asyncio as _asyncio
+        from app.core.cache.redis_adapter import get_redis as _get_redis
+
+        async def _cache_get(key: str):
+            r = await _get_redis()
+            return await r.get(key)
+
+        state = "no-consume-test-state"
+        nonce = "no-consume-nonce"
+        _stash_state(state, nonce)
+
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                # deliberately NO oauth_bind cookie
+            )
+        assert resp.status_code == 400
+
+        remaining = _asyncio.get_event_loop().run_until_complete(_cache_get(f"oauth_state:{state}"))
+        assert remaining is not None, "state was consumed despite missing cookie — DoS vector present"
+
+        # Legitimate call (correct cookie) must still pass the CSRF guard.
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_UnreachableProviderClient()):
+            resp2 = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                cookies={"oauth_bind": nonce},
+            )
+        assert resp2.status_code == 502, "legitimate flow blocked after no-cookie rejection"
+
+    def test_wrong_cookie_does_not_consume_state(self, client):
+        """A request with a wrong (but present) oauth_bind cookie must be rejected
+        WITHOUT consuming the state — so the legitimate browser can still complete
+        its callback.  This prevents a DoS by an attacker who knows the state URL
+        and guesses/invents a random cookie value."""
+        import asyncio as _asyncio
+        from app.core.cache.redis_adapter import get_redis as _get_redis
+
+        async def _cache_get(key: str):
+            r = await _get_redis()
+            return await r.get(key)
+
+        state = "wrong-cookie-no-consume"
+        real_nonce = "real-browser-nonce"
+        _stash_state(state, real_nonce)
+
+        # Attacker calls with wrong cookie — must 400 and leave state intact.
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
+            resp = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                cookies={"oauth_bind": "attacker-wrong-nonce"},
+            )
+        assert resp.status_code == 400
+
+        remaining = _asyncio.get_event_loop().run_until_complete(_cache_get(f"oauth_state:{state}"))
+        assert remaining is not None, "state consumed by wrong-cookie request — DoS vector present"
+
+        # Legitimate browser (correct cookie) still completes the CSRF check.
+        with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+             patch("app.routers.auth_users._httpx.AsyncClient",
+                   return_value=_UnreachableProviderClient()):
+            resp2 = client.get(
+                "/api/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                cookies={"oauth_bind": real_nonce},
+            )
+        assert resp2.status_code == 502, "legitimate flow blocked after wrong-cookie rejection"
+
+    def test_concurrent_callbacks_only_first_succeeds(self, client):
+        """Two simultaneous callbacks with the same valid state+cookie: exactly one
+        must succeed (reach the provider), the other must get 400 (replay guard)."""
+        import asyncio as _asyncio
+        from httpx import AsyncClient as _AClient
+        from app.core.cache.redis_adapter import get_redis as _get_redis
+
+        state = "concurrent-state"
+        nonce = "concurrent-nonce"
+
+        _concurrent_app = _make_app()
+
+        async def _run():
+            # Stash state inside the coroutine to avoid nested event-loop calls.
+            r = await _get_redis()
+            await r.set(f"oauth_state:{state}", nonce, ttl=600)
+
+            # Two separate clients so their cookie jars don't share state.
+            import httpx as _httpx_mod
+            _transport = _httpx_mod.ASGITransport(app=_concurrent_app)
+            async with _AClient(transport=_transport, base_url="http://test") as c1, \
+                       _AClient(transport=_transport, base_url="http://test") as c2:
+                c1.cookies.set("oauth_bind", nonce)
+                c2.cookies.set("oauth_bind", nonce)
+                with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
+                     patch("app.routers.auth_users._httpx.AsyncClient",
+                           return_value=_UnreachableProviderClient()):
+                    r1, r2 = await _asyncio.gather(
+                        c1.get("/api/auth/google/callback",
+                               params={"code": "auth-code", "state": state}),
+                        c2.get("/api/auth/google/callback",
+                               params={"code": "auth-code", "state": state}),
+                    )
+            return [r1.status_code, r2.status_code]
+
+        # Use a fresh loop — same pattern as _run_sync — to avoid nesting.
+        loop = _asyncio.new_event_loop()
+        try:
+            statuses = loop.run_until_complete(_run())
+        finally:
+            loop.close()
+
+        # Exactly one reaches the provider (502) and the other is rejected (400).
+        assert sorted(statuses) == [400, 502], (
+            f"Expected [400, 502] but got {sorted(statuses)} — "
+            "either replay protection failed or both were blocked"
+        )
+
 
 # ── Cache failure → 503 (fail-safe) ──────────────────────────────────────────
 

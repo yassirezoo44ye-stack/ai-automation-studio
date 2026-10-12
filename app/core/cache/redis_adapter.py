@@ -75,6 +75,17 @@ class CacheBackend(ABC):
     @abstractmethod
     async def get_and_delete(self, key: str) -> Optional[str]: ...
 
+    @abstractmethod
+    async def get_and_delete_if_matches(self, key: str, expected: str) -> Optional[bool]:
+        """Atomically delete *key* only when its value equals *expected*.
+
+        Returns:
+            True   — value matched; key deleted (consumed).
+            False  — value did not match; key left intact.
+            None   — key absent or expired; nothing changed.
+        """
+        ...
+
     @property
     @abstractmethod
     def backend_name(self) -> str: ...
@@ -131,6 +142,21 @@ class LocalCacheBackend(CacheBackend):
         if not entry.is_alive():
             return None
         return entry.value
+
+    async def get_and_delete_if_matches(self, key: str, expected: str) -> Optional[bool]:
+        import hmac as _hmac
+        # No await inside — the entire read+compare+conditional-delete executes in
+        # a single asyncio turn, so no other coroutine can interleave.
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        if not entry.is_alive():
+            del self._store[key]
+            return None
+        if not _hmac.compare_digest(entry.value, expected):
+            return False  # mismatch — entry left intact for the legitimate browser
+        del self._store[key]
+        return True
 
     async def incr(self, key: str) -> int:
         self._counters[key] = self._counters.get(key, 0) + 1
@@ -219,6 +245,23 @@ class RedisCacheBackend(CacheBackend):
         # GETDEL is atomic (Redis 6.2+); returns None if key absent
         val = await self._r.getdel(key)
         return val.decode() if isinstance(val, bytes) else val
+
+    # Lua script: GET + compare + conditional DEL in one atomic Redis operation.
+    # Returns: 0 = key absent, 1 = matched+deleted, -1 = mismatch (key intact).
+    _LUA_GET_DEL_IF_MATCHES = """
+local v = redis.call('GET', KEYS[1])
+if v == false then return 0 end
+if v == ARGV[1] then redis.call('DEL', KEYS[1]) return 1 end
+return -1
+"""
+
+    async def get_and_delete_if_matches(self, key: str, expected: str) -> Optional[bool]:
+        result = await self._r.eval(self._LUA_GET_DEL_IF_MATCHES, 1, key, expected)
+        if result == 0:
+            return None   # key absent or expired
+        if result == 1:
+            return True   # matched and deleted
+        return False      # mismatch — key left intact
 
     async def incr(self, key: str) -> int:
         return await self._r.incr(key)
@@ -332,6 +375,13 @@ class RedisAdapter:
     async def get_and_delete(self, key: str) -> Optional[str]:
         """Atomically read and remove a key. Returns None if absent or expired."""
         return await self._b.get_and_delete(self._k(key))
+
+    async def get_and_delete_if_matches(self, key: str, expected: str) -> Optional[bool]:
+        """Atomically delete key only when its stored value equals expected.
+
+        Returns True (matched+deleted), False (mismatch, key intact), None (absent).
+        """
+        return await self._b.get_and_delete_if_matches(self._k(key), expected)
 
     async def incr(self, key: str, ttl: Optional[int] = None) -> int:
         n = await self._b.incr(self._k(key))

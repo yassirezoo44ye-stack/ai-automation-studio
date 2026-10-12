@@ -880,17 +880,23 @@ async def _verify_and_consume_oauth_state(
         log.warning("oauth callback: missing state ip=%s", ip)
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
     bind_cookie = request.cookies.get(_OAUTH_BIND_COOKIE)
+    # Fast-reject before any I/O: a request with no cookie cannot possibly match.
+    if not bind_cookie:
+        log.warning("oauth callback: missing bind cookie ip=%s", ip)
+        raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
     from app.core.cache.redis_adapter import get_redis
     try:
         redis = await get_redis()
-        stored_nonce = await redis.get_and_delete(f"oauth_state:{state}")
+        # Atomic: state is consumed ONLY when bind_cookie matches the stored nonce.
+        # A wrong cookie leaves the state intact for the legitimate browser.
+        result = await redis.get_and_delete_if_matches(f"oauth_state:{state}", bind_cookie)
     except Exception as exc:
         log.error("oauth state verify failed: %s", exc)
         raise HTTPException(503, "OAuth sign-in temporarily unavailable — please retry.")
-    if stored_nonce is None:
+    if result is None:
         log.warning("oauth callback: state unknown/expired/replayed ip=%s", ip)
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
-    if not bind_cookie or not secrets.compare_digest(stored_nonce, bind_cookie):
+    if result is False:
         log.warning("oauth callback: bind nonce mismatch (possible CSRF) ip=%s", ip)
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
 
