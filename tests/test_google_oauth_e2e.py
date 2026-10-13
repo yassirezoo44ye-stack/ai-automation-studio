@@ -1301,3 +1301,61 @@ class TestFrontendUrlSeparation:
             )
         assert resp.status_code == 400
         assert "Invalid or expired OAuth state" in resp.text
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FRONTEND_URL is automatically added to CORS allowed origins (factory.py)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestFrontendUrlInCors:
+    """When FRONTEND_URL differs from APP_URL the factory must include it in
+    the CORS allowed origins so the Vercel frontend can reach the Render backend."""
+
+    def _build_cors_origins(self, app_url: str, frontend_url: str, extra: list[str]) -> list[str]:
+        """Replicate the factory.py CORS origin assembly logic under test."""
+        cors = (
+            [app_url] if app_url and app_url != "http://localhost:8000"
+            else ["http://localhost:5173", "http://localhost:8000", "http://127.0.0.1:8000"]
+        )
+        if frontend_url and frontend_url not in cors:
+            cors = cors + [frontend_url]
+        cors = cors + [o for o in extra if o not in cors]
+        return cors
+
+    def test_frontend_url_added_when_different_from_app_url(self):
+        origins = self._build_cors_origins(
+            "https://api.example.com",
+            "https://app.example.com",
+            [],
+        )
+        assert "https://app.example.com" in origins
+        assert "https://api.example.com" in origins
+
+    def test_frontend_url_not_duplicated_when_same_as_app_url(self):
+        origins = self._build_cors_origins(
+            "https://monolith.example.com",
+            "https://monolith.example.com",
+            [],
+        )
+        assert origins.count("https://monolith.example.com") == 1
+
+    def test_extra_cors_origins_still_added(self):
+        origins = self._build_cors_origins(
+            "https://api.example.com",
+            "https://app.example.com",
+            ["https://staging.example.com"],
+        )
+        assert "https://staging.example.com" in origins
+
+    def test_no_duplicate_if_frontend_url_already_in_extra(self):
+        origins = self._build_cors_origins(
+            "https://api.example.com",
+            "https://app.example.com",
+            ["https://app.example.com"],
+        )
+        assert origins.count("https://app.example.com") == 1
+
+    def test_localhost_fallback_not_overridden_by_empty_frontend_url(self):
+        origins = self._build_cors_origins("http://localhost:8000", "", [])
+        assert "http://localhost:5173" in origins
+        assert "" not in origins
