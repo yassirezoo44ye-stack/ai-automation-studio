@@ -705,15 +705,29 @@ async def sync_files(project_id: str, body: FileSyncRequest, request: Request):
     return {"synced": written}
 
 
+_UPLOAD_MAX_FILE_BYTES  = 50 * 1024 * 1024   # 50 MB per file
+_UPLOAD_MAX_TOTAL_BYTES = 200 * 1024 * 1024  # 200 MB per request
+
+
 @router.post("/api/projects/{project_id}/upload")
 async def upload_files(project_id: str, files: list[UploadFile], request: Request):
     await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     saved = []
+    total_bytes = 0
     for uf in files:
         safe_name = Path(uf.filename).name
+        if not safe_name:
+            raise HTTPException(400, "Filename must not be empty")
         dest = safe_path(ws, safe_name)
         content = await uf.read()
+        if len(content) > _UPLOAD_MAX_FILE_BYTES:
+            raise HTTPException(
+                413, f"File '{safe_name}' exceeds the 50 MB per-file limit"
+            )
+        total_bytes += len(content)
+        if total_bytes > _UPLOAD_MAX_TOTAL_BYTES:
+            raise HTTPException(413, "Upload batch exceeds the 200 MB total limit")
         dest.write_bytes(content)
         saved.append({"path": safe_name, "size": len(content)})
     return {"saved": saved, "count": len(saved)}
