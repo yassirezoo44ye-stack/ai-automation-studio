@@ -4,6 +4,9 @@ All Gemini-specific API calls are isolated to this file.
 """
 from __future__ import annotations
 
+import base64
+import logging
+import re
 from typing import AsyncGenerator, Any
 
 from app.ai.models import (
@@ -11,6 +14,8 @@ from app.ai.models import (
     ToolCall, UsageStats, Message,
 )
 from app.ai.providers.base import BaseProvider
+
+log = logging.getLogger(__name__)
 
 _PRICING: dict[str, tuple[float, float]] = {
     "gemini-2.5-pro":      (1.25 / 1e6, 10.0 / 1e6),
@@ -22,16 +27,60 @@ _PRICING: dict[str, tuple[float, float]] = {
 _DEFAULT_MODEL = "gemini-2.5-flash"
 
 
+_DATA_URI_RE = re.compile(r"^data:([^;]+);base64,(.+)$", re.DOTALL)
+
+
+def _image_part(url: str) -> dict[str, Any]:
+    """Convert an image_url string to the Gemini API part dict.
+
+    Supports:
+      - data: URIs  → inline_data (base64)
+      - https://    → file_data with httpUri (Gemini 2.x supports arbitrary HTTPS)
+      - gs://       → file_data with fileUri (Google Cloud Storage)
+    """
+    m = _DATA_URI_RE.match(url)
+    if m:
+        mime_type, b64_data = m.group(1), m.group(2)
+        # Validate base64 silently; pass the raw string if decoding fails
+        try:
+            base64.b64decode(b64_data, validate=True)
+        except Exception:
+            log.warning("gemini: malformed base64 data URI, skipping image part")
+            return {}
+        return {"inline_data": {"mime_type": mime_type, "data": b64_data}}
+
+    if url.startswith("gs://"):
+        return {"file_data": {"file_uri": url}}
+
+    if url.startswith("https://") or url.startswith("http://"):
+        # Gemini 2.x file_data accepts arbitrary HTTPS image URLs via httpUri.
+        return {"file_data": {"file_uri": url}}
+
+    log.warning("gemini: unsupported image URL scheme, skipping image part: %.80s", url)
+    return {}
+
+
 def _to_gemini_contents(messages: list[Message]) -> list[dict[str, Any]]:
     contents = []
     for m in messages:
         if m.role == "system":
             continue
         role = "model" if m.role == "assistant" else "user"
-        text = m.content if isinstance(m.content, str) else " ".join(
-            p.text for p in m.content if p.type == "text"
-        )
-        contents.append({"role": role, "parts": [{"text": text}]})
+        if isinstance(m.content, str):
+            parts: list[dict[str, Any]] = [{"text": m.content}]
+        else:
+            parts = []
+            for p in m.content:
+                if p.type == "text":
+                    parts.append({"text": p.text})
+                elif p.type == "image_url":
+                    img = _image_part(p.url)
+                    if img:
+                        parts.append(img)
+                # tool_use / tool_result parts are not sent to Gemini in this path
+            if not parts:
+                parts = [{"text": ""}]
+        contents.append({"role": role, "parts": parts})
     return contents
 
 
