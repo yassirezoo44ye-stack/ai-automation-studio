@@ -1,8 +1,11 @@
 """
 Production middleware stack:
-  - RequestIdMiddleware  — stamps every request/response with X-Request-Id
-  - AccessLogMiddleware  — structured JSON access log (method, path, status, ms)
+  - RequestIdMiddleware         — stamps every request/response with X-Request-Id
+  - AccessLogMiddleware         — structured JSON access log (method, path, status, ms)
+  - UploadBodySizeLimitMiddleware — enforces 200 MB cap on POST .../upload at the
+                                    ASGI receive level (before the endpoint reads data)
 """
+import re
 import random
 import time
 import uuid
@@ -34,6 +37,92 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Request-Id"] = rid
         return response
+
+
+_UPLOAD_PATH_RE = re.compile(r"^/api/projects/[^/]+/upload$")
+_UPLOAD_BODY_LIMIT = 200 * 1024 * 1024  # 200 MB — must match build.py constant
+
+
+class UploadBodySizeLimitMiddleware:
+    """
+    Pure-ASGI middleware that enforces a hard 200 MB cap on upload requests
+    before the endpoint reads any data into memory.
+
+    Two enforcement layers:
+      1. Content-Length header present → 413 before reading a single byte.
+      2. Chunked / no Content-Length → wrap the ASGI receive() so cumulative
+         bytes are counted; sends 413 and returns a disconnect to the app the
+         moment the running total exceeds the limit.
+
+    Only active on POST /api/projects/{id}/upload.  All other paths, methods,
+    and WebSocket scopes are passed through untouched.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("method") != "POST":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        if not _UPLOAD_PATH_RE.match(path):
+            await self.app(scope, receive, send)
+            return
+
+        # --- Fast path: Content-Length declared ---
+        raw_headers = dict(scope.get("headers", []))
+        cl_bytes = raw_headers.get(b"content-length", b"")
+        if cl_bytes:
+            try:
+                if int(cl_bytes) > _UPLOAD_BODY_LIMIT:
+                    await _send_413(send)
+                    return
+            except ValueError:
+                pass  # malformed Content-Length — let the endpoint handle it
+
+        # --- Slow path: count bytes as they stream in ---
+        state = {"seen": 0, "rejected": False}
+
+        async def limited_receive():
+            if state["rejected"]:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] == "http.request":
+                state["seen"] += len(message.get("body", b""))
+                if state["seen"] > _UPLOAD_BODY_LIMIT:
+                    state["rejected"] = True
+                    await _send_413(send)         # send 413 directly (before app touches send)
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def guarded_send(message):
+            # Silently drop the app's response if we already sent 413.
+            if state["rejected"]:
+                return
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, guarded_send)
+        except Exception:
+            # When we sent 413 and returned disconnect, Starlette raises
+            # ClientDisconnect inside the endpoint.  Swallow it only in
+            # that case — any other exception still propagates.
+            if not state["rejected"]:
+                raise
+
+
+async def _send_413(send):
+    body = b'{"detail":"Upload request body exceeds the 200 MB limit"}'
+    await send({
+        "type": "http.response.start",
+        "status": 413,
+        "headers": [
+            [b"content-type", b"application/json"],
+            [b"content-length", str(len(body)).encode()],
+        ],
+    })
+    await send({"type": "http.response.body", "body": body})
 
 
 class AccessLogMiddleware(BaseHTTPMiddleware):

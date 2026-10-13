@@ -24,7 +24,7 @@ from app.core.config import (
 )
 from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
-from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
+from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware, UploadBodySizeLimitMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
 from app.core.rate_limit import _real_ip, check_rate_limit
 from app.billing import QuotaExceeded
@@ -662,6 +662,9 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Sub-Token", "X-Request-Id", "X-Organization-Id", "X-API-Key"],
     )
+    # Outermost middleware: enforces upload body limit at the ASGI receive level
+    # so chunked bodies without Content-Length are rejected before full buffering.
+    app.add_middleware(UploadBodySizeLimitMiddleware)
 
     # ── Static frontend (non-catch-all assets first) ────────────────────────
     DIST = Path(__file__).parent.parent / "dist"
