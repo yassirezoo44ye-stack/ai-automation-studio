@@ -389,35 +389,29 @@ async def oauth_callback(
         raise HTTPException(400, "Invalid OAuth state — please retry sign-in.")
 
     from app.core.cache.redis_adapter import get_redis
+    import hmac as _hmac
     try:
         redis = await get_redis()
-        raw = await redis.get(f"social_oauth:{state}")
+        # Atomically read-and-delete so a duplicate callback (double-click,
+        # duplicate tab) can never consume the same state twice.
+        state_data = await redis.get_json_and_delete(f"social_oauth:{state}")
     except Exception as exc:
         log.error("social oauth state fetch failed: %s", exc)
         raise HTTPException(503, "OAuth temporarily unavailable — please retry.")
 
-    if not raw:
+    if not state_data:
         log.warning("social oauth: unknown/expired state platform=%s ip=%s", platform, ip)
         raise HTTPException(400, "Invalid or expired OAuth state — please retry.")
 
-    try:
-        state_data = json.loads(raw)
-    except Exception:
+    if not isinstance(state_data, dict):
         raise HTTPException(400, "Corrupt OAuth state.")
 
-    import hmac as _hmac
     if not _hmac.compare_digest(state_data.get("bind_nonce", ""), bind_cookie):
         log.warning("social oauth: nonce mismatch platform=%s ip=%s", platform, ip)
         raise HTTPException(400, "Invalid OAuth state — please retry sign-in.")
 
     if state_data.get("platform") != platform:
         raise HTTPException(400, "Platform mismatch in OAuth state.")
-
-    # Consume state (non-atomic here is acceptable: callback URL is one-use)
-    try:
-        await redis.delete(f"social_oauth:{state}")
-    except Exception:
-        pass
 
     # Clear bind cookie
     response.delete_cookie(_SOCIAL_OAUTH_BIND_COOKIE, path="/api/social/accounts")
