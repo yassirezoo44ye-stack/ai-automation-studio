@@ -438,6 +438,22 @@ class RedisAdapter:
         except Exception:
             return val
 
+    async def get_json_and_delete(self, key: str) -> Optional[Any]:
+        """Atomically read and delete *key*, returning its JSON-decoded value.
+
+        Uses the underlying get_and_delete (GETDEL on real Redis, dict.pop on
+        LocalCacheBackend) so two concurrent callers can never both receive the
+        same value — the first one wins, the second gets None.
+        """
+        import json
+        val = await self.get_and_delete(key)
+        if val is None:
+            return None
+        try:
+            return json.loads(val)
+        except Exception:
+            return val
+
     async def set_json(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         import json
         await self.set(key, json.dumps(value), ttl=ttl)

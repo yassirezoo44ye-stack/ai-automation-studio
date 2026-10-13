@@ -936,10 +936,12 @@ async def oauth_exchange(body: OAuthExchangeRequest):
     from app.core.cache.redis_adapter import get_redis
     redis  = await get_redis()
     key    = f"oauth_exchange:{body.code}"
-    bundle = await redis.get_json(key)
+    # get_json_and_delete is atomic (GETDEL on real Redis, dict.pop on local
+    # cache) so two concurrent requests with the same code cannot both receive
+    # the bundle — the first wins, the second gets None.
+    bundle = await redis.get_json_and_delete(key)
     if bundle is None:
         raise HTTPException(400, "Invalid or expired OAuth exchange code")
-    await redis.delete(key)
     return bundle
 
 
