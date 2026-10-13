@@ -104,12 +104,20 @@ class UploadBodySizeLimitMiddleware:
 
         try:
             await self.app(scope, limited_receive, guarded_send)
-        except Exception:
-            # When we sent 413 and returned disconnect, Starlette raises
-            # ClientDisconnect inside the endpoint.  Swallow it only in
-            # that case — any other exception still propagates.
+        except Exception as exc:
             if not state["rejected"]:
                 raise
+            # We sent 413 and returned http.disconnect; the app raises
+            # ClientDisconnect when it tries to read more body.  Swallow
+            # that expected disconnect.  Any other exception is unexpected
+            # (e.g. a DB error after partial body read); log it but don't
+            # re-raise — we already committed a 413 response to the client.
+            from starlette.requests import ClientDisconnect  # local import avoids circular
+            if not isinstance(exc, ClientDisconnect):
+                _log.warning(
+                    "upload_limit: unexpected exception after 413 rejection",
+                    extra={"exc_type": type(exc).__name__, "exc": str(exc)},
+                )
 
 
 async def _send_413(send):
