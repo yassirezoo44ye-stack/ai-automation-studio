@@ -41,7 +41,9 @@ function makeFollowupPayload(subject: string, bodyText: string) {
     definition: {
       // String literal required — leads.py queries: definition->>'lead_followup' = 'true'
       lead_followup: "true",
-      steps: [{ kind: "email", subject, body: bodyText }],
+      // Engine (_execute_definition) requires each step to have an 'id' field.
+      // _make_email_step_fn reads subject/body from spec["args"], not top-level.
+      steps: [{ id: "send-followup-email", kind: "email", args: { subject, body: bodyText } }],
     },
     triggers: [] as unknown[],
     is_active: true,
@@ -66,9 +68,9 @@ export function LeadFollowupCard({ orgId }: { orgId: string | null }) {
         const found = data.items.find(d => d.definition?.lead_followup === "true");
         if (found) {
           setDef(found);
-          const step = (found.definition.steps as Array<{ subject?: string; body?: string }> | undefined)?.[0];
-          setSubject(step?.subject ?? t("followUpSetup.defaultSubject"));
-          setEmailBody(step?.body ?? t("followUpSetup.defaultBody"));
+          const step = (found.definition.steps as Array<{ args?: { subject?: string; body?: string } }> | undefined)?.[0];
+          setSubject(step?.args?.subject ?? t("followUpSetup.defaultSubject"));
+          setEmailBody(step?.args?.body ?? t("followUpSetup.defaultBody"));
         } else {
           setDef(null);
           setSubject(t("followUpSetup.defaultSubject"));
