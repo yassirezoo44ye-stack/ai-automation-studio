@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth, MfaRequiredError } from "../../contexts/AuthContext";
 import type { MfaChallenge } from "../../contexts/AuthContext";
+import { trackEvent } from "../../lib/utm";
 import AxonLogo from "../../AxonLogo";
 import { parseJSON } from "../../utils/api";
 import { useForm } from "../../shared/forms/useForm";
@@ -218,6 +219,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     onValid: values => {
       registerSubmit.run(async () => {
         const res = await register(values.name, values.email, values.password);
+        trackEvent("signup"); // attribution only — no PII sent
         setRegisteredEmail(values.email);
         return res;
       });
