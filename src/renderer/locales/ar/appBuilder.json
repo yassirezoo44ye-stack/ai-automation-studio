@@ -124,6 +124,12 @@
   "error": {
     "buildFailed": "فشل البناء. حاول مرة أخرى.",
     "specFailed": "تعذّر توليد مواصفات التطبيق.",
-    "modifyFailed": "فشل التعديل. حاول مرة أخرى."
+    "modifyFailed": "فشل التعديل. حاول مرة أخرى.",
+    "exportFailed": "فشل التصدير — حاول مرة أخرى."
+  },
+  "export": {
+    "button": "⬇ تصدير",
+    "buttonBusy": "⏳ جارٍ التصدير…",
+    "buttonBusyShort": "⏳…"
   }
 }

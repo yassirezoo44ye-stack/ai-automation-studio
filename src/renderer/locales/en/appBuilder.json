@@ -124,6 +124,12 @@
   "error": {
     "buildFailed": "Build failed. Please try again.",
     "specFailed": "Could not generate app specification.",
-    "modifyFailed": "Modification failed. Please try again."
+    "modifyFailed": "Modification failed. Please try again.",
+    "exportFailed": "Export failed — please try again."
+  },
+  "export": {
+    "button": "⬇ Export",
+    "buttonBusy": "⏳ Exporting…",
+    "buttonBusyShort": "⏳…"
   }
 }

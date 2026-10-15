@@ -133,8 +133,7 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
         ))}
       </nav>
 
-      {/* Export / download button — downloads workspace as ZIP.
-          Labelled "تصدير" because no deployment backend exists yet. */}
+      {/* Export / download button — downloads workspace as ZIP. */}
       <div style={{ padding: 12, borderTop: "1px solid var(--b1)", display: "flex", flexDirection: "column", gap: 8 }}>
         <button
           data-testid="sidebar-export-btn"
@@ -152,7 +151,7 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
             transition: "all 0.15s",
           }}
         >
-          {isDownloading ? "⏳ جارٍ التصدير…" : "⬇ تصدير"}
+          {isDownloading ? t("export.buttonBusy") : t("export.button")}
         </button>
         <button
           data-testid="sidebar-publish-btn"
@@ -1037,7 +1036,7 @@ export function AppBuilderPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : "فشل التصدير — حاول مرة أخرى.");
+      setDownloadError(err instanceof Error ? err.message : t("error.exportFailed"));
     } finally {
       setIsDownloading(false);
     }
@@ -1462,7 +1461,7 @@ export function AppBuilderPage() {
             transition: "all 0.15s",
           }}
         >
-          {isDownloading ? "⏳…" : "⬇ تصدير"}
+          {isDownloading ? t("export.buttonBusyShort") : t("export.button")}
         </button>
         {downloadError && (
           <div style={{
@@ -1597,7 +1596,7 @@ export function AppBuilderPage() {
                 transition: "all 0.15s",
               }}
             >
-              {isDownloading ? "⏳ جارٍ التصدير…" : "⬇ تصدير"}
+              {isDownloading ? t("export.buttonBusy") : t("export.button")}
             </button>
           </div>
         </div>
