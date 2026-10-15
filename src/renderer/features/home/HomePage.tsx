@@ -18,6 +18,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
+import { useOrg } from "../../contexts/OrgContext";
 import { useLangContext } from "../../contexts/lang";
 import type { Lang } from "../../contexts/lang";
 import { useToast } from "../../contexts/toast";
@@ -357,6 +358,9 @@ export function HomePage() {
   const toast = useToast();
   const { t } = useTranslation("home");
 
+  const { loading: orgLoading, currentOrgId } = useOrg();
+  const orgReady = !orgLoading && !!currentOrgId;
+
   const [prompt, setPrompt]       = useState("");
   const [promptIdx, setPromptIdx] = useState(0);
   const [creating, setCreating]   = useState(false);
@@ -386,13 +390,15 @@ export function HomePage() {
 
   const workflowsQ = useAsyncData<WorkflowsResponse>(
     () => apiFetch("/api/workflows/active").then(r => parseJSON<WorkflowsResponse>(r, "/api/workflows/active")),
-    [],
+    [currentOrgId],
+    { enabled: orgReady },
   );
   const workflowRuns = workflowsQ.data?.runs ?? [];
 
   const approvalsQ = useAsyncData<ApprovalsResponse>(
     () => apiFetch("/api/workflows/approvals/pending").then(r => parseJSON<ApprovalsResponse>(r, "/api/workflows/approvals/pending")),
-    [],
+    [currentOrgId],
+    { enabled: orgReady },
   );
   const pendingApprovals = approvalsQ.data?.pending ?? [];
 

@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 interface Props {
   onSubmit: (idea: string) => void;
   loading: boolean;
+  /** False while OrgContext is still loading or no org is selected — blocks submission */
+  orgReady?: boolean;
 }
 
 const EXAMPLES = [
@@ -12,12 +14,13 @@ const EXAMPLES = [
   "A legal document review platform for small law firms with AI contract analysis",
 ];
 
-export function IdeaInput({ onSubmit, loading }: Props) {
+export function IdeaInput({ onSubmit, loading, orgReady = true }: Props) {
   const { t } = useTranslation("saas-factory");
   const [idea, setIdea] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!orgReady) return;
     const trimmed = idea.trim();
     if (trimmed.length >= 10) onSubmit(trimmed);
   }
@@ -42,10 +45,15 @@ export function IdeaInput({ onSubmit, loading }: Props) {
         />
         <div className="sf-idea-input__footer">
           <span className="sf-idea-input__counter">{idea.length}/3000</span>
+          {!orgReady && !loading && (
+            <span className="sf-idea-input__org-pending" role="status">
+              {t("input.orgLoading", "Loading organization…")}
+            </span>
+          )}
           <button
             type="submit"
             className="sf-btn sf-btn--primary"
-            disabled={loading || idea.trim().length < 10}
+            disabled={loading || !orgReady || idea.trim().length < 10}
           >
             {loading ? t("input.building") : t("input.cta")}
           </button>
