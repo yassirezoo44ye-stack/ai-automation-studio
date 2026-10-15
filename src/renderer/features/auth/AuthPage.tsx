@@ -20,19 +20,11 @@ interface AuthPageProps {
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 const S = {
-  wrap: {
-    display: "flex", alignItems: "center", justifyContent: "center",
-    minHeight: "100vh",
-    background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(110,50,224,0.12) 0%, var(--bg-base) 70%)",
-    fontFamily: "var(--font-sans)",
-    padding: "24px",
-  } as React.CSSProperties,
   card: {
     background: "var(--bg-elevated)", border: "1px solid var(--b1)",
     borderRadius: 20, padding: "40px 36px", width: "100%", maxWidth: 420,
     boxShadow: "var(--shadow-xl)",
   } as React.CSSProperties,
-  logo:  { display: "flex", justifyContent: "center", marginBottom: 12 } as React.CSSProperties,
   title: { margin: "0 0 2px", fontSize: 22, fontWeight: 700, color: "var(--t1)", textAlign: "center" } as React.CSSProperties,
   sub:   { margin: "0 0 24px", fontSize: 13, color: "var(--t3)", textAlign: "center" } as React.CSSProperties,
   tabs:  { display: "flex", gap: 4, marginBottom: 24, background: "var(--bg-hover)", borderRadius: 10, padding: 4 } as React.CSSProperties,
@@ -119,6 +111,24 @@ function OAuthRow({ onSelect }: { onSelect: (provider: "google" | "github" | "mi
         <span style={S.divLine} /><span>{t("oauth.or")}</span><span style={S.divLine} />
       </div>
     </>
+  );
+}
+
+function BenefitItem({ text }: { text: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+      <div style={{
+        width: 22, height: 22, borderRadius: 6,
+        background: "rgba(11,122,112,0.15)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexShrink: 0, marginTop: 1,
+      }}>
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+          <path d="M2 6l3 3 5-5" stroke="var(--teal)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+      <span style={{ fontSize: 14, color: "var(--t2)", lineHeight: 1.5 }}>{text}</span>
+    </div>
   );
 }
 
@@ -280,203 +290,285 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     if (next !== "mfa") { setLocalMfaChallenge(null); clearMfaChallenge(); }
   }
 
+  const cardTitle =
+    effectiveTab === "login" ? t("login.welcomeBack") :
+    effectiveTab === "mfa"   ? t("mfa.title") :
+    t("title");
+
+  const cardSub =
+    effectiveTab === "login" ? t("login.welcomeSub") :
+    t("subtitle");
+
   return (
-    <div style={S.wrap}>
-      <div style={S.card}>
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: "none", border: "none", cursor: "pointer",
-              color: "var(--t4)", fontSize: 12, fontWeight: 600,
-              padding: "0 0 16px",
-              fontFamily: "var(--font-sans)",
-              transition: "color 0.15s",
-            }}
-            aria-label="Back to home"
-            onMouseEnter={e => (e.currentTarget.style.color = "var(--t2)")}
-            onMouseLeave={e => (e.currentTarget.style.color = "var(--t4)")}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 5l-7 7 7 7"/>
-            </svg>
-            Back to Flow
-          </button>
-        )}
-        <div style={S.logo}><AxonLogo size={56} /></div>
-        <h1 style={S.title}>{t("title")}</h1>
-        <p style={S.sub}>{t("subtitle")}</p>
+    <>
+      <style>{`
+        .auth-split {
+          display: flex;
+          min-height: 100vh;
+          font-family: var(--font-sans);
+        }
+        .auth-left {
+          flex: 0 0 42%;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          padding: 56px 52px;
+          background: var(--bg-base);
+          background-image:
+            radial-gradient(ellipse 140% 80% at 15% 65%, rgba(110,50,224,0.14) 0%, transparent 65%),
+            radial-gradient(ellipse 70% 55% at 85% 10%, rgba(11,122,112,0.10) 0%, transparent 55%);
+          border-inline-end: 1px solid var(--b1);
+          overflow: hidden;
+        }
+        .auth-right {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 32px;
+          overflow-y: auto;
+          background: var(--bg-base);
+          background-image: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(110,50,224,0.06) 0%, transparent 70%);
+        }
+        .auth-card-logo {
+          display: none;
+          justify-content: center;
+          margin-bottom: 16px;
+        }
+        @media (max-width: 768px) {
+          .auth-split { flex-direction: column; }
+          .auth-left  { display: none; }
+          .auth-right { padding: 16px; min-height: 100vh; align-items: flex-start; padding-top: 40px; }
+          .auth-card-logo { display: flex; }
+        }
+      `}</style>
 
-        {effectiveTab !== "forgot" && effectiveTab !== "reset" && effectiveTab !== "mfa" && (
-          <div style={S.tabs} role="tablist">
-            <button role="tab" aria-selected={effectiveTab === "login"} style={S.tab(effectiveTab === "login")} onClick={() => switchTab("login")}>
-              {t("tabs.signIn")}
-            </button>
-            <button role="tab" aria-selected={effectiveTab === "register"} style={S.tab(effectiveTab === "register")} onClick={() => switchTab("register")}>
-              {t("tabs.createAccount")}
-            </button>
+      <div className="auth-split">
+        {/* ── Left hero panel ── */}
+        <div className="auth-left" aria-hidden="true">
+          <div style={{ marginBottom: 40 }}>
+            <AxonLogo size={44} />
           </div>
-        )}
+          <h2 style={{
+            fontSize: 30, fontWeight: 800, lineHeight: 1.25, letterSpacing: "-0.02em",
+            margin: "0 0 14px",
+            background: "linear-gradient(135deg, var(--t1) 30%, var(--accent) 100%)",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+          }}>
+            {t("hero.title")}
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--t3)", lineHeight: 1.65, margin: "0 0 36px", maxWidth: 300 }}>
+            {t("hero.description")}
+          </p>
+          <div>
+            <BenefitItem text={t("hero.benefit1")} />
+            <BenefitItem text={t("hero.benefit2")} />
+            <BenefitItem text={t("hero.benefit3")} />
+          </div>
+        </div>
 
-        {/* ── Login ── */}
-        {effectiveTab === "login" && (
-          <>
-            <OAuthRow onSelect={handleOAuth} />
-            {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
-            <form onSubmit={loginForm.handleSubmit} noValidate>
-              <EmailField {...loginForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
-              <PasswordField {...loginForm.register("password")} label={t("login.password")} required autoComplete="current-password" />
-              <div style={S.row}>
-                <Checkbox {...loginForm.registerCheckbox("remember")} label={t("login.rememberMe")} />
-                <button type="button" style={S.link}
-                  onClick={() => { forgotForm.setValue("email", loginForm.values.email); switchTab("forgot"); }}>
-                  {t("login.forgotPassword")}
+        {/* ── Right panel (auth card) ── */}
+        <div className="auth-right">
+          <div style={S.card}>
+            {/* Logo — hidden on desktop (shown in left panel), visible on mobile */}
+            <div className="auth-card-logo">
+              <AxonLogo size={48} />
+            </div>
+
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "var(--t4)", fontSize: 12, fontWeight: 600,
+                  padding: "0 0 16px",
+                  fontFamily: "var(--font-sans)",
+                  transition: "color 0.15s",
+                }}
+                aria-label="Back to home"
+                onMouseEnter={e => (e.currentTarget.style.color = "var(--t2)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "var(--t4)")}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 12H5M12 5l-7 7 7 7"/>
+                </svg>
+                Back to Flow
+              </button>
+            )}
+
+            <h1 style={S.title}>{cardTitle}</h1>
+            <p style={S.sub}>{cardSub}</p>
+
+            {effectiveTab !== "forgot" && effectiveTab !== "reset" && effectiveTab !== "mfa" && (
+              <div style={S.tabs} role="tablist">
+                <button role="tab" aria-selected={effectiveTab === "login"} style={S.tab(effectiveTab === "login")} onClick={() => switchTab("login")}>
+                  {t("tabs.signIn")}
+                </button>
+                <button role="tab" aria-selected={effectiveTab === "register"} style={S.tab(effectiveTab === "register")} onClick={() => switchTab("register")}>
+                  {t("tabs.createAccount")}
                 </button>
               </div>
-              <SubmitButton loading={loginSubmit.isSubmitting} loadingText={t("login.submitting")}>{t("login.submit")}</SubmitButton>
-            </form>
-          </>
-        )}
-
-        {/* ── Register ── */}
-        {effectiveTab === "register" && !registeredEmail && (
-          <>
-            <OAuthRow onSelect={handleOAuth} />
-            {registerSubmit.error && <ErrorBanner message={registerSubmit.error} suggestedFix={registerSubmit.suggestedFix} onRetry={registerForm.isValid ? registerSubmit.retry : undefined} />}
-            <form onSubmit={registerForm.handleSubmit} noValidate>
-              <TextField {...registerForm.register("name")} label={t("register.name")} required autoFocus autoComplete="name" />
-              <EmailField {...registerForm.register("email")} label={t("register.email")} required autoComplete="email" />
-              <PasswordField {...registerForm.register("password")} label={t("register.password")} required autoComplete="new-password"
-                hint={!registerForm.errors.password ? t("register.passwordHint") : undefined} />
-              <PasswordField {...registerForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
-              <SubmitButton loading={registerSubmit.isSubmitting} loadingText={t("register.submitting")}>{t("register.submit")}</SubmitButton>
-            </form>
-          </>
-        )}
-
-        {/* ── Post-registration: resend verification ── */}
-        {effectiveTab === "register" && registeredEmail && (
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
-            <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>{t("verify.checkInbox")}</p>
-            <p style={{ color: "var(--t3)", fontSize: 13, marginBottom: 20 }}>
-              {t("verify.sentTo", { email: registeredEmail })}
-            </p>
-            {resendSubmit.error && <ErrorBanner message={resendSubmit.error} suggestedFix={resendSubmit.suggestedFix} onRetry={resendSubmit.retry} />}
-            {resendSubmit.success && <SuccessBanner message={t("verify.emailSent")} />}
-            <GoldButton disabled={resendSubmit.isSubmitting} onClick={() => switchTab("login")} style={{ width: "100%" }}>
-              {t("verify.goToSignIn")}
-            </GoldButton>
-            <button type="button" style={S.btnText} disabled={resendSubmit.isSubmitting} onClick={handleResend}>
-              {resendSubmit.isSubmitting ? t("verify.sending") : t("verify.resend")}
-            </button>
-          </div>
-        )}
-
-        {/* ── Forgot password ── */}
-        {effectiveTab === "forgot" && (
-          <form onSubmit={forgotForm.handleSubmit} noValidate>
-            <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
-              {t("forgot.intro")}
-            </p>
-            {forgotSubmit.error && <ErrorBanner message={forgotSubmit.error} suggestedFix={forgotSubmit.suggestedFix} onRetry={forgotForm.isValid ? forgotSubmit.retry : undefined} />}
-            {forgotSubmit.success && <SuccessBanner message={t("forgot.success")} />}
-            <EmailField {...forgotForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
-            <SubmitButton loading={forgotSubmit.isSubmitting} loadingText={t("forgot.submitting")}>{t("forgot.submit")}</SubmitButton>
-            <button type="button" style={S.btnSecondary} onClick={() => switchTab("login")}>
-              {t("forgot.backToSignIn")}
-            </button>
-          </form>
-        )}
-
-        {/* ── Reset password (token arrived via /reset-password?token=) ── */}
-        {effectiveTab === "reset" && !resetSubmit.success && (
-          <form onSubmit={resetForm.handleSubmit} noValidate>
-            <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
-              {t("reset.intro")}
-            </p>
-            {resetSubmit.error && <ErrorBanner message={resetSubmit.error} suggestedFix={resetSubmit.suggestedFix} onRetry={resetForm.isValid ? resetSubmit.retry : undefined} />}
-            <PasswordField {...resetForm.register("password")} label={t("register.password")} required autoFocus autoComplete="new-password"
-              hint={!resetForm.errors.password ? t("register.passwordHint") : undefined} />
-            <PasswordField {...resetForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
-            <SubmitButton loading={resetSubmit.isSubmitting} loadingText={t("reset.submitting")}>{t("reset.submit")}</SubmitButton>
-          </form>
-        )}
-
-        {effectiveTab === "reset" && resetSubmit.success && (
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-            <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>{t("reset.successTitle")}</p>
-            <p style={{ color: "var(--t3)", fontSize: 13, marginBottom: 20 }}>{t("reset.successBody")}</p>
-            <GoldButton onClick={() => switchTab("login")} style={{ width: "100%" }}>
-              {t("forgot.backToSignIn")}
-            </GoldButton>
-          </div>
-        )}
-
-        {/* ── MFA challenge ── */}
-        {effectiveTab === "mfa" && (
-          <form onSubmit={mfaForm.handleSubmit} noValidate>
-            <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
-              {t("mfa.subtitle")}
-            </p>
-            {mfaSubmit.error && (
-              <ErrorBanner
-                message={mfaSubmit.error}
-                suggestedFix={mfaSubmit.suggestedFix}
-                onRetry={mfaForm.isValid ? mfaSubmit.retry : undefined}
-              />
             )}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--t2)", marginBottom: 6 }}>
-                {t("mfa.codeLabel")}
-              </label>
-              {(() => {
-                const { value, onChange, onBlur } = mfaForm.register("code");
-                return (
-                  <input
-                    name="code"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    placeholder={t("mfa.codePlaceholder")}
-                    maxLength={8}
-                    autoFocus
-                    aria-label={t("mfa.codeLabel")}
-                    aria-invalid={!!(mfaForm.touched.code && mfaForm.errors.code)}
-                    value={value as string}
-                    onChange={e => {
-                      // Allow only digits
-                      const digits = e.target.value.replace(/\D/g, "");
-                      onChange({ target: { value: digits } } as React.ChangeEvent<HTMLInputElement>);
-                    }}
-                    onBlur={onBlur}
-                    style={{
-                      width: "100%", padding: "10px 14px", borderRadius: 10,
-                      border: `1px solid ${mfaForm.touched.code && mfaForm.errors.code ? "var(--error)" : "var(--b1)"}`,
-                      background: "var(--bg-input)", color: "var(--t1)", fontSize: 20,
-                      fontWeight: 700, letterSpacing: "0.3em", textAlign: "center",
-                      outline: "none", boxSizing: "border-box",
-                      fontFamily: "var(--font-mono, monospace)",
-                    }}
+
+            {/* ── Login ── */}
+            {effectiveTab === "login" && (
+              <>
+                <OAuthRow onSelect={handleOAuth} />
+                {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
+                <form onSubmit={loginForm.handleSubmit} noValidate>
+                  <EmailField {...loginForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
+                  <PasswordField {...loginForm.register("password")} label={t("login.password")} required autoComplete="current-password" />
+                  <div style={S.row}>
+                    <Checkbox {...loginForm.registerCheckbox("remember")} label={t("login.rememberMe")} />
+                    <button type="button" style={S.link}
+                      onClick={() => { forgotForm.setValue("email", loginForm.values.email); switchTab("forgot"); }}>
+                      {t("login.forgotPassword")}
+                    </button>
+                  </div>
+                  <SubmitButton loading={loginSubmit.isSubmitting} loadingText={t("login.submitting")}>{t("login.submit")}</SubmitButton>
+                </form>
+              </>
+            )}
+
+            {/* ── Register ── */}
+            {effectiveTab === "register" && !registeredEmail && (
+              <>
+                <OAuthRow onSelect={handleOAuth} />
+                {registerSubmit.error && <ErrorBanner message={registerSubmit.error} suggestedFix={registerSubmit.suggestedFix} onRetry={registerForm.isValid ? registerSubmit.retry : undefined} />}
+                <form onSubmit={registerForm.handleSubmit} noValidate>
+                  <TextField {...registerForm.register("name")} label={t("register.name")} required autoFocus autoComplete="name" />
+                  <EmailField {...registerForm.register("email")} label={t("register.email")} required autoComplete="email" />
+                  <PasswordField {...registerForm.register("password")} label={t("register.password")} required autoComplete="new-password"
+                    hint={!registerForm.errors.password ? t("register.passwordHint") : undefined} />
+                  <PasswordField {...registerForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
+                  <SubmitButton loading={registerSubmit.isSubmitting} loadingText={t("register.submitting")}>{t("register.submit")}</SubmitButton>
+                </form>
+              </>
+            )}
+
+            {/* ── Post-registration: resend verification ── */}
+            {effectiveTab === "register" && registeredEmail && (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
+                <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>{t("verify.checkInbox")}</p>
+                <p style={{ color: "var(--t3)", fontSize: 13, marginBottom: 20 }}>
+                  {t("verify.sentTo", { email: registeredEmail })}
+                </p>
+                {resendSubmit.error && <ErrorBanner message={resendSubmit.error} suggestedFix={resendSubmit.suggestedFix} onRetry={resendSubmit.retry} />}
+                {resendSubmit.success && <SuccessBanner message={t("verify.emailSent")} />}
+                <GoldButton disabled={resendSubmit.isSubmitting} onClick={() => switchTab("login")} style={{ width: "100%" }}>
+                  {t("verify.goToSignIn")}
+                </GoldButton>
+                <button type="button" style={S.btnText} disabled={resendSubmit.isSubmitting} onClick={handleResend}>
+                  {resendSubmit.isSubmitting ? t("verify.sending") : t("verify.resend")}
+                </button>
+              </div>
+            )}
+
+            {/* ── Forgot password ── */}
+            {effectiveTab === "forgot" && (
+              <form onSubmit={forgotForm.handleSubmit} noValidate>
+                <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
+                  {t("forgot.intro")}
+                </p>
+                {forgotSubmit.error && <ErrorBanner message={forgotSubmit.error} suggestedFix={forgotSubmit.suggestedFix} onRetry={forgotForm.isValid ? forgotSubmit.retry : undefined} />}
+                {forgotSubmit.success && <SuccessBanner message={t("forgot.success")} />}
+                <EmailField {...forgotForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
+                <SubmitButton loading={forgotSubmit.isSubmitting} loadingText={t("forgot.submitting")}>{t("forgot.submit")}</SubmitButton>
+                <button type="button" style={S.btnSecondary} onClick={() => switchTab("login")}>
+                  {t("forgot.backToSignIn")}
+                </button>
+              </form>
+            )}
+
+            {/* ── Reset password (token arrived via /reset-password?token=) ── */}
+            {effectiveTab === "reset" && !resetSubmit.success && (
+              <form onSubmit={resetForm.handleSubmit} noValidate>
+                <p style={{ color: "var(--t2)", fontSize: 13, margin: "0 0 16px" }}>
+                  {t("reset.intro")}
+                </p>
+                {resetSubmit.error && <ErrorBanner message={resetSubmit.error} suggestedFix={resetSubmit.suggestedFix} onRetry={resetForm.isValid ? resetSubmit.retry : undefined} />}
+                <PasswordField {...resetForm.register("password")} label={t("register.password")} required autoFocus autoComplete="new-password"
+                  hint={!resetForm.errors.password ? t("register.passwordHint") : undefined} />
+                <PasswordField {...resetForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
+                <SubmitButton loading={resetSubmit.isSubmitting} loadingText={t("reset.submitting")}>{t("reset.submit")}</SubmitButton>
+              </form>
+            )}
+
+            {effectiveTab === "reset" && resetSubmit.success && (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                <p style={{ color: "var(--t1)", fontWeight: 600, marginBottom: 6 }}>{t("reset.successTitle")}</p>
+                <p style={{ color: "var(--t3)", fontSize: 13, marginBottom: 20 }}>{t("reset.successBody")}</p>
+                <GoldButton onClick={() => switchTab("login")} style={{ width: "100%" }}>
+                  {t("forgot.backToSignIn")}
+                </GoldButton>
+              </div>
+            )}
+
+            {/* ── MFA challenge ── */}
+            {effectiveTab === "mfa" && (
+              <form onSubmit={mfaForm.handleSubmit} noValidate>
+                {mfaSubmit.error && (
+                  <ErrorBanner
+                    message={mfaSubmit.error}
+                    suggestedFix={mfaSubmit.suggestedFix}
+                    onRetry={mfaForm.isValid ? mfaSubmit.retry : undefined}
                   />
-                );
-              })()}
-            </div>
-            <p style={{ fontSize: 12, color: "var(--t4)", margin: "0 0 16px", textAlign: "center" }}>
-              {t("mfa.backupCodeHint")}
-            </p>
-            <SubmitButton loading={mfaSubmit.isSubmitting} loadingText={t("mfa.submitting")}>
-              {t("mfa.submit")}
-            </SubmitButton>
-            <button type="button" style={S.btnSecondary} onClick={() => switchTab("login")}>
-              {t("mfa.cancel")}
-            </button>
-          </form>
-        )}
+                )}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--t2)", marginBottom: 6 }}>
+                    {t("mfa.codeLabel")}
+                  </label>
+                  {(() => {
+                    const { value, onChange, onBlur } = mfaForm.register("code");
+                    return (
+                      <input
+                        name="code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder={t("mfa.codePlaceholder")}
+                        maxLength={8}
+                        autoFocus
+                        aria-label={t("mfa.codeLabel")}
+                        aria-invalid={!!(mfaForm.touched.code && mfaForm.errors.code)}
+                        value={value as string}
+                        onChange={e => {
+                          // Allow only digits
+                          const digits = e.target.value.replace(/\D/g, "");
+                          onChange({ target: { value: digits } } as React.ChangeEvent<HTMLInputElement>);
+                        }}
+                        onBlur={onBlur}
+                        style={{
+                          width: "100%", padding: "10px 14px", borderRadius: 10,
+                          border: `1px solid ${mfaForm.touched.code && mfaForm.errors.code ? "var(--error)" : "var(--b1)"}`,
+                          background: "var(--bg-input)", color: "var(--t1)", fontSize: 20,
+                          fontWeight: 700, letterSpacing: "0.3em", textAlign: "center",
+                          outline: "none", boxSizing: "border-box",
+                          fontFamily: "var(--font-mono, monospace)",
+                        }}
+                      />
+                    );
+                  })()}
+                </div>
+                <p style={{ fontSize: 12, color: "var(--t4)", margin: "0 0 16px", textAlign: "center" }}>
+                  {t("mfa.backupCodeHint")}
+                </p>
+                <SubmitButton loading={mfaSubmit.isSubmitting} loadingText={t("mfa.submitting")}>
+                  {t("mfa.submit")}
+                </SubmitButton>
+                <button type="button" style={S.btnSecondary} onClick={() => switchTab("login")}>
+                  {t("mfa.cancel")}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

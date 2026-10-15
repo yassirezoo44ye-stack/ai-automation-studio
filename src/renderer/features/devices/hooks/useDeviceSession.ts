@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useOrg } from "../../../contexts/OrgContext";
 import { sessionsService } from "../services/devicesService";
 import type { DeviceSession, CreateSessionPayload, LayoutEntry } from "../types/devices.types";
 
@@ -15,6 +16,9 @@ interface UseDeviceSessionResult {
 }
 
 export function useDeviceSession(): UseDeviceSessionResult {
+  const { loading: orgLoading, currentOrgId } = useOrg();
+  const orgReady = !orgLoading && !!currentOrgId;
+
   const [sessions, setSessions] = useState<DeviceSession[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
@@ -32,8 +36,13 @@ export function useDeviceSession(): UseDeviceSessionResult {
     }
   }, []);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void fetch(); }, [fetch]);
+  useEffect(() => {
+    if (!orgReady) {
+      setLoading(false);
+      return;
+    }
+    void fetch();
+  }, [fetch, orgReady]);
 
   const activeSession = sessions.find(s => s.status === "active") ?? null;
 

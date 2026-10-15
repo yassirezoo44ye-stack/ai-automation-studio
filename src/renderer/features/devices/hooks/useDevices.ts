@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useOrg } from "../../../contexts/OrgContext";
 import { devicesService } from "../services/devicesService";
 import type { Device } from "../types/devices.types";
 
@@ -12,6 +13,9 @@ interface UseDevicesResult {
 }
 
 export function useDevices(): UseDevicesResult {
+  const { loading: orgLoading, currentOrgId } = useOrg();
+  const orgReady = !orgLoading && !!currentOrgId;
+
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
@@ -29,8 +33,13 @@ export function useDevices(): UseDevicesResult {
     }
   }, []);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void fetch(); }, [fetch]);
+  useEffect(() => {
+    if (!orgReady) {
+      setLoading(false);
+      return;
+    }
+    void fetch();
+  }, [fetch, orgReady]);
 
   const revokeDevice = useCallback(async (deviceId: string) => {
     await devicesService.revokeDevice(deviceId);

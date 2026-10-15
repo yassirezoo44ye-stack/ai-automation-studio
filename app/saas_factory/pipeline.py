@@ -62,10 +62,20 @@ def _extract_json(text: str) -> dict[str, Any]:
     """Parse the first JSON block (fenced or bare) from an LLM response."""
     m = _JSON_FENCE.search(text)
     raw = m.group(1).strip() if m else text.strip()
+    # If still not bare JSON, try to find the outermost {...} block
+    if not raw.startswith("{"):
+        first = raw.find("{")
+        last = raw.rfind("}")
+        if first != -1 and last > first:
+            raw = raw[first : last + 1]
     try:
         result = json.loads(raw)
         return result if isinstance(result, dict) else {"value": result}
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        log.warning(
+            "_extract_json: could not parse JSON (len=%d): %s; falling back to raw",
+            len(text), exc,
+        )
         return {"raw": text.strip()}
 
 

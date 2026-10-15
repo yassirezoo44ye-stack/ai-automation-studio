@@ -10,6 +10,8 @@
     "about": "حول"
   },
   "system": {
+    "refresh": "تحديث",
+    "checking": "جارٍ الفحص…",
     "backend": "الخادم",
     "backendOnline": "الخادم متصل",
     "backendOffline": "الخادم غير متصل — شغّل",
@@ -49,6 +51,9 @@
     }
   },
   "ai": {
+    "modelRecommended": "موصى به",
+    "modelMostCapable": "الأكثر قدرة",
+    "modelFastest": "الأسرع",
     "anthropicApi": "واجهة Anthropic API",
     "apiKeyHint": "اضبط {{key}} في ملف {{envFile}} وأعد تشغيل الخادم. المفاتيح لا تُخزَّن أبدًا في المتصفح.",
     "manageBilling": "إدارة الفوترة عبر console.anthropic.com",
@@ -90,7 +95,18 @@
     "errorCreate": "تعذّر إنشاء مفتاح API.",
     "errorRevoke": "تعذّر إلغاء المفتاح.",
     "errorForbidden": "إدارة مفاتيح API متاحة لمالك المنظمة فقط.",
-    "errorUnauthorized": "انتهت الجلسة — سجّل الدخول مرة أخرى."
+    "errorUnauthorized": "انتهت الجلسة — سجّل الدخول مرة أخرى.",
+    "scopes": "الصلاحيات",
+    "scope_read": "قراءة (GET)",
+    "scope_write": "كتابة (POST/PUT/PATCH)",
+    "scope_agents": "الوكلاء",
+    "scope_marketplace": "السوق",
+    "scopeNoneWarning": "اختر صلاحية واحدة على الأقل.",
+    "revokeConfirmPrompt": "هل أنت متأكد؟",
+    "revokeConfirmYes": "تأكيد",
+    "revokeConfirmNo": "إلغاء",
+    "copyFallback": "فشل النسخ — حدد المفتاح أعلاه واضغط Ctrl+C.",
+    "keyId": "معرّف المفتاح"
   },
   "about": {
     "tagline": "استوديو الأتمتة الذكي · الإصدار 3.0.0",
