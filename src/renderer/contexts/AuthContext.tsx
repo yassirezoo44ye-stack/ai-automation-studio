@@ -270,7 +270,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // non-JSON body — keep the fallback
       }
-      throw new Error(detail);
+      // Keep the status so the form can tell "email not verified" (403)
+      // apart from bad credentials and offer to resend the link.
+      throw Object.assign(new Error(detail), { status: res.status });
     }
     const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token: string; user: AuthUser }>(res, "/api/auth/login");
     localStorage.setItem(REFRESH_KEY, data.refresh_token);

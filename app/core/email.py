@@ -8,6 +8,15 @@ _FROM = os.getenv("SMTP_FROM", "noreply@axon.app")
 _APP_URL = os.getenv("APP_URL", "http://localhost:3000").rstrip("/")
 
 
+def email_delivery_enabled() -> bool:
+    """True when real email delivery (SMTP) is configured.
+
+    Without it, verification links only reach the server log, so requiring a
+    verified email to sign in would lock every new password account out.
+    """
+    return bool(os.getenv("SMTP_HOST"))
+
+
 async def send_email(to: str, subject: str, html: str) -> None:
     smtp_host = os.getenv("SMTP_HOST")
     if not smtp_host:

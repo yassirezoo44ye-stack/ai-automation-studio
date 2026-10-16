@@ -31,7 +31,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, field_validator
 
 from app.core.db import get_pool, write_audit
-from app.core.email import send_password_reset_email, send_verification_email
+from app.core.email import email_delivery_enabled, send_password_reset_email, send_verification_email
 from app.core.observability.tracer import get_tracer
 from app.core.rate_limit import make_rate_limit_dep
 from app.core.jwt_utils import (
@@ -287,6 +287,12 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
             span.set_tag("user_id", str(user["id"]))
+
+            # Password accounts must confirm their email first — but only when
+            # email can actually be delivered, otherwise nobody could verify.
+            if not user["email_verified"] and email_delivery_enabled():
+                span.set_tag("error", "email_not_verified")
+                raise HTTPException(403, "Please verify your email before signing in.")
 
             mfa = await conn.fetchrow(
                 "SELECT enabled FROM mfa_secrets WHERE user_id=$1", user["id"]

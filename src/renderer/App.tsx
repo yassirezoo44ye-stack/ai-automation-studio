@@ -20,7 +20,11 @@ type AuthView = "landing" | "login" | "register";
 
 function AppInner() {
   const { user, loading, bootstrapError } = useAuth();
-  const [authView, setAuthView] = useState<AuthView>("landing");
+  // Links from emails (/verify-email, /reset-password) must open the auth
+  // form directly — the landing page knows nothing about their tokens.
+  const [authView, setAuthView] = useState<AuthView>(() =>
+    ["/verify-email", "/reset-password"].includes(window.location.pathname) ? "login" : "landing",
+  );
 
   // The app uses state-based navigation (no React Router). A shared /feed/:id
   // URL would otherwise render a blank page. Redirect to root so the app loads
