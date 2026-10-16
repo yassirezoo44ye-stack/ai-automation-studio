@@ -236,13 +236,13 @@ class TestLoginHappyPath:
         conn.fetchrow = AsyncMock(return_value=user_row)
         conn.execute = AsyncMock(return_value=None)
 
-        with _mock_pool(conn), \\
-             patch("app.routers.auth_users.verify_password", return_value=True):
-            res = client.post(
-                "/api/auth/login",
-                json={"email": "unverified@example.com", "password": "ValidPass1"},
-                headers={"X-Forwarded-For": "89.1.2.3"},
-            )
+        with _mock_pool(conn):
+            with patch("app.routers.auth_users.verify_password", return_value=True):
+                res = client.post(
+                    "/api/auth/login",
+                    json={"email": "unverified@example.com", "password": "ValidPass1"},
+                    headers={"X-Forwarded-For": "89.1.2.3"},
+                )
 
         assert res.status_code == 403
         assert "Email address not verified" in res.json()["detail"]
