@@ -29,6 +29,7 @@ const _STALE_CHUNK_MSGS = [
   "error loading dynamically imported module",   // Firefox
 ];
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function _isStaleChunkError(err: unknown): boolean {
   if (!(err instanceof TypeError)) return false;
   const msg = (err as TypeError).message;

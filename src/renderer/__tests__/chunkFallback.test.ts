@@ -56,7 +56,7 @@ describe("_isStaleChunkError", () => {
 
 describe("chunkFallback reload-loop protection (via sessionStorage)", () => {
   let reloadMock: ReturnType<typeof vi.fn>;
-  let storageMock: Storage;
+  let _storageMock: Storage;
   const KEY = "__flow_chunk_reload__";
 
   beforeEach(() => {

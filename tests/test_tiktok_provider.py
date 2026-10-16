@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -229,8 +229,6 @@ class TestExchangeCode:
     def test_exchange_code_success(self):
         token_resp    = _httpx_response(200, self._token_response())
         userinfo_resp = _httpx_response(200, self._user_info_response())
-
-        call_count = 0
 
         async def mock_post(*args, **kwargs):
             return token_resp

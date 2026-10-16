@@ -101,6 +101,7 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
   }, [orgId, t]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!orgId) { setLoading(false); return; }
     void loadKeys();
   }, [loadKeys, orgId]);
@@ -380,6 +381,7 @@ export function SettingsPage() {
     ]).finally(() => setRefreshing(false));
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadSystemInfo(); }, [loadSystemInfo]);
 
   function updatePref<K extends keyof UserPrefs>(key: K, val: UserPrefs[K]) {

@@ -22,6 +22,7 @@ export function DeviceRegistrationModal({ onClose }: Props) {
 
   useEffect(() => {
     if (!token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSecsLeft(null);
       return;
     }

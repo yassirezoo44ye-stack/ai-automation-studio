@@ -10,7 +10,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -96,7 +95,6 @@ class TestMockProvider:
 class TestRegistry:
 
     def setup_method(self):
-        mock = MockSocialPublisherProvider("mock", "Mock")
         self.reg = SocialPublisherRegistry()
         # Inject mock directly (registry._providers is the module-level dict)
         self._orig = {}

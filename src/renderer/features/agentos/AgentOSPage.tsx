@@ -287,7 +287,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
     }
     setLoading(false);
     setInput("");
-  }, [input, mode, loading, onResult]);
+  }, [input, mode, loading, onResult, activeProjectId]);
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
@@ -665,7 +665,7 @@ type Tab = "terminal" | "agents" | "memory" | "evolution" | "performance" | "job
 
 export function AgentOSPage() {
   const { t } = useTranslation("agentos");
-  const { activeProjectId } = useAppContext();
+  const { activeProjectId: _activeProjectId } = useAppContext();
   const toast = useToast();
   const [tab, setTab]               = useState<Tab>("terminal");
   const [results, setResults]       = useState<AgentResult[]>([]);

@@ -38,6 +38,7 @@ export function useDeviceSession(): UseDeviceSessionResult {
 
   useEffect(() => {
     if (!orgReady) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
       return;
     }

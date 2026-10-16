@@ -50,12 +50,12 @@ from typing import Any, Optional
 import asyncpg
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, HttpUrl, field_validator
+from pydantic import BaseModel, field_validator
 
 from app.core.auth import derive_fernet_key
 from app.core.db import get_pool
 from app.integrations.social.registry import get_social_registry
-from app.tenancy.context import OrgContext, org_context, require_permission
+from app.tenancy.context import OrgContext, org_context
 
 log = logging.getLogger(__name__)
 

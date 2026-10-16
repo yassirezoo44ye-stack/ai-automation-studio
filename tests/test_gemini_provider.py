@@ -12,7 +12,6 @@ import os
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
 
-import pytest
 from app.ai.models import Message, TextPart, ImagePart
 from app.ai.providers.gemini import _to_gemini_contents, _image_part
 

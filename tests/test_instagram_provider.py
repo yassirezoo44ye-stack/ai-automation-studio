@@ -889,7 +889,6 @@ class TestIdempotencyContract:
     def test_media_id_replaces_publish_id_on_complete(self):
         """COMPLETED status must return bare ig_media_id (no '|')."""
         publish_id = "ig_user_7|cont_XYZ"
-        request = httpx.Request("GET", f"{_GRAPH_BASE}/cont_XYZ")
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)

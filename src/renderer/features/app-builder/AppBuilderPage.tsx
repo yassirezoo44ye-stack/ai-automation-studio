@@ -971,7 +971,7 @@ export function AppBuilderPage() {
       isRunningRef.current = false;
       runtimeAbortRef.current = null;
     }
-  }, []);
+  }, [toast]);
 
   /** Stop the running project. Calls DELETE /api/projects/{id}/process. */
   const handleStop = useCallback(async () => {
@@ -1040,7 +1040,7 @@ export function AppBuilderPage() {
     } finally {
       setIsDownloading(false);
     }
-  }, [isDownloading]);
+  }, [isDownloading, t]);
 
   // ── View routing ─────────────────────────────────────────────────
   // Entry: idle, no active build, plan not in flight — includes error states
@@ -1603,6 +1603,7 @@ export function AppBuilderPage() {
       )}
 
       {/* Publish to Discover modal */}
+      {/* eslint-disable-next-line react-hooks/refs */}
       {showPublishModal && (() => {
         const activeProjectId = activeProjectIdRef.current ?? sessionStorage.getItem("flow_active_project");
         if (!activeProjectId) return null;

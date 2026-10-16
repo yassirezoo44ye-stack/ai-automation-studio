@@ -235,9 +235,8 @@ def test_init_schema_has_asyncpg_annotation():
 # ── S-17  SQL_DOWN drops in dependency order ──────────────────────────────────
 
 def test_sql_down_dependency_order():
-    src = _read("app/routers/social_publisher.py")
     # jobs must be dropped before posts, posts before accounts
-    # (find _SCHEMA_SQL block — SQL_DOWN is in migration file, not router)
+    # SQL_DOWN is in the migration file, not the router
     migration_src = _read("migrations/versions/014_social_publisher.py")
     jobs_pos     = migration_src.index("social_publish_jobs",
                                         migration_src.index("SQL_DOWN"))

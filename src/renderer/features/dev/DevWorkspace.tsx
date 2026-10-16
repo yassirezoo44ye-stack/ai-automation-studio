@@ -45,6 +45,7 @@ export function DevWorkspace() {
   // Keep projectId in sync when URL-based identity changes (e.g. deep-link
   // navigation to DevWorkspace with a different projectId in the URL).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (urlProjectId) setProjectId(urlProjectId);
   }, [urlProjectId]);
 
