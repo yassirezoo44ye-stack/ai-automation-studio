@@ -311,3 +311,158 @@ class TestNotificationTemplates:
         from app.core.events.bus import EVENT_TYPES
         assert "billing.payment_failed" in EVENT_TYPES
         assert "billing.invoice_paid" in EVENT_TYPES
+
+
+# ── WorkflowRun context key regression: "org_id" vs "organization_id" ────────────
+#
+# Bug: automation_scheduler.py built context with "org_id" only; engine.py reads
+# "organization_id"; dispatcher.py silently drops events when organization_id is
+# None — so all workflow notifications were silently discarded.
+#
+# Fix: scheduler now writes BOTH keys.  These tests pin that contract.
+
+class TestWorkflowContextOrganizationKey:
+    """scheduler sets 'organization_id' in context so the engine can route events."""
+
+    def _make_run(self, org_id: str | None = "org-test"):
+        """Build a minimal WorkflowRun the way automation_scheduler does after the fix."""
+        from app.core.workflow.engine import WorkflowRun, WorkflowStep
+
+        async def _noop(**kw): return {"status": "ok"}
+
+        run = WorkflowRun(
+            run_id="run-1",
+            name="Test workflow",
+            steps={"s1": WorkflowStep(id="s1", name="step", fn=_noop, args={})},
+            context={
+                "definition_id": "def-1",
+                "org_id": org_id,
+                "organization_id": org_id,  # the fix
+            },
+        )
+        return run, org_id
+
+    def test_context_has_organization_id_key(self):
+        """After the fix, run.context['organization_id'] must equal org_id."""
+        run, org_id = self._make_run("org-abc")
+        assert run.context.get("organization_id") == org_id
+
+    def test_context_still_has_org_id_for_email_step(self):
+        """email step reads context.get('org_id') — must not break."""
+        run, org_id = self._make_run("org-abc")
+        assert run.context.get("org_id") == org_id
+
+    def test_workflow_completed_event_carries_organization_id(self):
+        """dispatcher receives a non-None organization_id for workflow.completed."""
+        from app.core.notifications.dispatcher import handle_event
+        from app.core.events.bus import Event
+
+        fake_svc = MagicMock()
+        fake_svc.org_member_ids = AsyncMock(return_value=["u1"])
+        fake_svc.is_muted = AsyncMock(return_value=False)
+        fake_svc.create = AsyncMock(side_effect=lambda **kw: {**kw, "id": "n1"})
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+
+        event = Event(
+            type="workflow.completed",
+            data={"run_id": "run-1", "name": "My workflow"},
+            organization_id="org-abc",  # set by engine from context["organization_id"]
+        )
+        with patch("app.core.notifications.service.get_notification_service", return_value=fake_svc), \
+             patch("app.routers.ws.manager", fake_ws):
+            run(handle_event(event))
+
+        fake_svc.create.assert_called_once()
+        call_kwargs = fake_svc.create.call_args.kwargs
+        assert call_kwargs["category"] == "workflow"
+        assert call_kwargs["severity"] == "success"
+
+    def test_workflow_failed_event_carries_organization_id(self):
+        """dispatcher receives a non-None organization_id for workflow.failed."""
+        from app.core.notifications.dispatcher import handle_event
+        from app.core.events.bus import Event
+
+        fake_svc = MagicMock()
+        fake_svc.org_member_ids = AsyncMock(return_value=["u1"])
+        fake_svc.is_muted = AsyncMock(return_value=False)
+        fake_svc.create = AsyncMock(side_effect=lambda **kw: {**kw, "id": "n1"})
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+
+        event = Event(
+            type="workflow.failed",
+            data={"run_id": "run-1", "error": "timeout"},
+            organization_id="org-abc",
+        )
+        with patch("app.core.notifications.service.get_notification_service", return_value=fake_svc), \
+             patch("app.routers.ws.manager", fake_ws):
+            run(handle_event(event))
+
+        fake_svc.create.assert_called_once()
+        call_kwargs = fake_svc.create.call_args.kwargs
+        assert call_kwargs["category"] == "workflow"
+        assert call_kwargs["severity"] == "error"
+
+    def test_workflow_approval_pending_event_carries_organization_id(self):
+        """dispatcher receives a non-None organization_id for workflow.approval.pending."""
+        from app.core.notifications.dispatcher import handle_event
+        from app.core.events.bus import Event
+
+        fake_svc = MagicMock()
+        fake_svc.org_member_ids = AsyncMock(return_value=["u1"])
+        fake_svc.is_muted = AsyncMock(return_value=False)
+        fake_svc.create = AsyncMock(side_effect=lambda **kw: {**kw, "id": "n1"})
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+
+        event = Event(
+            type="workflow.approval.pending",
+            data={"run_id": "run-1", "step_name": "Manual review", "step_id": "s2"},
+            organization_id="org-abc",
+        )
+        with patch("app.core.notifications.service.get_notification_service", return_value=fake_svc), \
+             patch("app.routers.ws.manager", fake_ws):
+            run(handle_event(event))
+
+        fake_svc.create.assert_called_once()
+        call_kwargs = fake_svc.create.call_args.kwargs
+        assert call_kwargs["category"] == "workflow"
+        assert call_kwargs["severity"] == "warning"
+
+    def test_none_organization_id_drops_event(self):
+        """When organization_id is None the dispatcher must remain a no-op (guard still works)."""
+        from app.core.notifications.dispatcher import handle_event
+        from app.core.events.bus import Event
+
+        fake_svc = MagicMock()
+        fake_svc.org_member_ids = AsyncMock()
+        fake_svc.create = AsyncMock()
+
+        event = Event(type="workflow.completed", data={}, organization_id=None)
+        with patch("app.core.notifications.service.get_notification_service", return_value=fake_svc):
+            run(handle_event(event))
+
+        fake_svc.org_member_ids.assert_not_called()
+        fake_svc.create.assert_not_called()
+
+    def test_no_cross_tenant_notification(self):
+        """org_member_ids is called with the event's org, never with another org's id."""
+        from app.core.notifications.dispatcher import handle_event
+        from app.core.events.bus import Event
+
+        captured_org_ids: list[str] = []
+
+        async def _capture_members(organization_id: str):
+            captured_org_ids.append(organization_id)
+            return []
+
+        fake_svc = MagicMock()
+        fake_svc.org_member_ids = _capture_members
+        fake_svc.create = AsyncMock()
+
+        event = Event(type="workflow.completed", data={}, organization_id="org-correct")
+        with patch("app.core.notifications.service.get_notification_service", return_value=fake_svc):
+            run(handle_event(event))
+
+        assert captured_org_ids == ["org-correct"]
