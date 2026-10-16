@@ -20,11 +20,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
 from app.core.config import (
-    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, PUBLIC_PREFIXES, WORKSPACES,
+    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
 )
 from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
-from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
+from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware, UploadBodySizeLimitMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
 from app.core.rate_limit import _real_ip, check_rate_limit
 from app.billing import QuotaExceeded
@@ -76,6 +76,8 @@ from app.routers import discover         as discover_router
 from app.routers import leads            as leads_router
 # SaaS Factory
 from app.routers import saas_factory     as saas_factory_router
+# Social Publisher — Phase 1
+from app.routers import social_publisher as social_publisher_router
 # Attribution
 from app.routers import attribution      as attribution_router
 
@@ -250,9 +252,12 @@ async def lifespan(app: FastAPI):
     await mark_interrupted_runs()
 
     # ── Business Lab — Plan & Validation Engine ─────────────────────────────────
-    from app.core.business.schema import ensure_business_plans_schema
+    from app.core.business.schema import (
+        ensure_business_plans_schema, mark_interrupted_business_plans,
+    )
     async with pool.acquire() as conn:
         await ensure_business_plans_schema(conn)
+    await mark_interrupted_business_plans()
 
     # ── Training Studio — references organizations/projects/users ────────────
     from app.training import init_training_schema
@@ -268,6 +273,11 @@ async def lifespan(app: FastAPI):
     from app.routers.discover import init_flow_creations_schema
     async with pool.acquire() as conn:
         await init_flow_creations_schema(conn)
+
+    # ── Social Publisher — Phase 1 schema (migration 014) ────────────────────
+    from app.routers.social_publisher import init_social_publisher_schema
+    async with pool.acquire() as conn:
+        await init_social_publisher_schema(conn)
 
     # ── Lead Engine ─────────────────────────────────────────────────────────
     from app.core.leads.schema import init_leads_schema
@@ -461,11 +471,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://js.stripe.com; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: https:; "
             "connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
             "frame-src https://checkout.stripe.com https://js.stripe.com blob:; "
-            "font-src 'self' data:;"
+            "font-src 'self' data: https://fonts.gstatic.com;"
         )
         return response
 
@@ -644,6 +654,10 @@ def create_app() -> FastAPI:
         [APP_URL] if APP_URL and APP_URL != "http://localhost:8000"
         else ["http://localhost:5173", "http://localhost:8000", "http://127.0.0.1:8000"]
     )
+    # In a Vercel+Render split deployment FRONTEND_URL is the Vercel origin and
+    # must be allowed so browser preflight requests don't get blocked by CORS.
+    if FRONTEND_URL and FRONTEND_URL not in _cors_origins:
+        _cors_origins = _cors_origins + [FRONTEND_URL]
     _cors_origins = _cors_origins + [o for o in EXTRA_CORS_ORIGINS if o not in _cors_origins]
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)
@@ -655,6 +669,9 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Sub-Token", "X-Request-Id", "X-Organization-Id", "X-API-Key"],
     )
+    # Outermost middleware: enforces upload body limit at the ASGI receive level
+    # so chunked bodies without Content-Length are rejected before full buffering.
+    app.add_middleware(UploadBodySizeLimitMiddleware)
 
     # ── Static frontend (non-catch-all assets first) ────────────────────────
     DIST = Path(__file__).parent.parent / "dist"
@@ -740,6 +757,8 @@ def create_app() -> FastAPI:
     # Lead Engine
     app.include_router(leads_router.router)
     app.include_router(saas_factory_router.router)
+    # Social Publisher — Phase 1
+    app.include_router(social_publisher_router.router)
     app.include_router(attribution_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):

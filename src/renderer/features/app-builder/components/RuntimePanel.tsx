@@ -176,17 +176,24 @@ function RunningView({
   previewType,
   onStop,
   onRestart,
+  label = "Running",
 }: {
   previewUrl: string;
   previewType: "proxy" | "blob";
   onStop: () => void;
   onRestart: () => void;
+  /** Status label shown in the toolbar. "Running" = real server; "Preview" = static blob. */
+  label?: string;
 }) {
   // proxy URL is relative (/api/projects/.../proxy/) → same-origin iframe is safe
   // blob URL is object URL → also safe in iframe
   const iframeSrc = previewType === "proxy"
     ? `${window.location.origin}${previewUrl}`
     : previewUrl;
+
+  const isPreview = label !== "Running";
+  const dotColor  = isPreview ? "var(--teal, #0ea5e9)" : "var(--green)";
+  const lblColor  = isPreview ? "var(--teal, #0ea5e9)" : "var(--green)";
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -198,10 +205,10 @@ function RunningView({
       }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 6,
-          fontSize: 11, color: "var(--green)", fontWeight: 600,
+          fontSize: 11, color: lblColor, fontWeight: 600,
         }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)" }} />
-          Running
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor }} />
+          {label}
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
           <div style={{
@@ -378,6 +385,7 @@ export function RuntimePanel({
           previewType={previewType}
           onStop={onStop}
           onRestart={onRestart}
+          label="Preview"
         />
       )}
       {runtimeState === "stopping" && <StoppingView />}

@@ -13,11 +13,30 @@ from __future__ import annotations
 
 import asyncio
 import os
+import socket
 import sys
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
+
+# The sandbox environment has no outbound DNS. Patch socket.getaddrinfo so that
+# example.com (used in most tests) resolves to its real public IP without any
+# network call. The SSRF guard checks that the resolved IP is public — 93.184.216.34
+# (example.com's well-known IANA IP) satisfies that check.
+_EXAMPLE_COM_GETADDRINFO = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+
+@pytest.fixture(autouse=True)
+def _mock_example_com_dns(monkeypatch):
+    _real = socket.getaddrinfo
+    def _patched(host, port, *args, **kwargs):
+        if host == "example.com":
+            return _EXAMPLE_COM_GETADDRINFO
+        return _real(host, port, *args, **kwargs)
+    monkeypatch.setattr(socket, "getaddrinfo", _patched)
 
 
 def run(coro):

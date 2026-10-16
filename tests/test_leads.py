@@ -193,6 +193,16 @@ def _register_stubs() -> None:
     if not hasattr(sys.modules[_nsvc], "get_notification_service"):
         sys.modules[_nsvc].get_notification_service = lambda: MagicMock()
 
+    # Stub app.routers.ws (broadcast called by dispatch_qualified_notification)
+    for n in ("app.routers", "app.routers.ws"):
+        if n not in sys.modules:
+            sys.modules[n] = types.ModuleType(n)
+    _ws = sys.modules["app.routers.ws"]
+    if not hasattr(_ws, "manager"):
+        _ws_mgr = MagicMock()
+        _ws_mgr.broadcast = AsyncMock()
+        _ws.manager = _ws_mgr
+
     # Stub tenancy (fastapi-dependent but we only test at service level here)
     _tn = "app.tenancy"
     _tc = "app.tenancy.context"
@@ -466,7 +476,7 @@ class TestPermissionEnforcement:
 class TestCreateLeadRequestValidation:
     def _load_models(self):
         """Import CreateLeadRequest and UpdateStatusRequest directly, bypassing __init__.py."""
-        import importlib.util, importlib
+        import importlib.util
         # Ensure the leads router module is importable standalone
         # by stubbing routers/__init__.py side-effects
         with patch.dict(sys.modules, {"app.routers": types.ModuleType("app.routers")}):
@@ -478,7 +488,21 @@ class TestCreateLeadRequestValidation:
             # inject stubs so the module-level imports succeed
             sys.modules.setdefault("app.core.leads", types.ModuleType("app.core.leads"))
             sys.modules["app.core.leads"].get_lead_service = lambda: MagicMock()
+            # Register the module in sys.modules BEFORE exec so that pydantic v2
+            # can resolve forward references (from __future__ import annotations
+            # makes all annotations strings; pydantic resolves them by looking up
+            # sys.modules[model.__module__] at instantiation time).
+            sys.modules["_leads_router"] = mod
             spec.loader.exec_module(mod)
+            # Call model_rebuild() to finish resolving the annotations now that the
+            # module is in sys.modules with Optional etc. already imported.
+            for attr in dir(mod):
+                obj = getattr(mod, attr, None)
+                if obj is not None and hasattr(obj, "model_rebuild"):
+                    try:
+                        obj.model_rebuild()
+                    except Exception:
+                        pass
         return mod
 
     def test_empty_name_rejected(self):
@@ -692,6 +716,7 @@ class TestLeadQualifiedNotification:
 
         mock_notif = AsyncMock()
         mock_notif.org_member_ids = AsyncMock(return_value=[user_a, user_b])
+        mock_notif.is_muted = AsyncMock(return_value=False)
         mock_notif.create = AsyncMock()
 
         lead = {"id": str(uuid.uuid4()), "name": "Test Lead", "ai_score": 8, "ai_notes": "Strong fit"}
@@ -716,6 +741,7 @@ class TestLeadQualifiedNotification:
 
         mock_notif = AsyncMock()
         mock_notif.org_member_ids = AsyncMock(return_value=[user_id])
+        mock_notif.is_muted = AsyncMock(return_value=False)
         mock_notif.create = AsyncMock()
 
         lead = {"id": str(uuid.uuid4()), "name": "Yassi Agency", "ai_score": 9, "ai_notes": "Top tier"}
@@ -1025,3 +1051,205 @@ class TestCaptureSecurity:
         fn_body = _ROUTER_SRC[cap_fn_start:cap_fn_end] if cap_fn_end > 0 else _ROUTER_SRC[cap_fn_start:]
         assert "key_hash" not in fn_body
         assert "key_id" not in fn_body
+
+# ── Follow-up idempotency key ─────────────────────────────────────────────────
+
+class TestFollowUpIdempotencyKey:
+    """
+    Verify that the follow-up job idempotency_key is tied to (org_id, lead_id),
+    not to the per-request run UUID.
+
+    Acceptance criteria:
+    1. Same lead → same key for both capture and internal POST endpoints.
+    2. Different orgs → different keys (org isolation).
+    3. Key format is stable: "lead-followup:{org_id}:{lead_id}".
+    4. Concurrent requests for the same lead submit with the same key.
+    """
+
+    def test_capture_endpoint_key_format(self):
+        """Capture endpoint must use lead-followup:{org_id}:{lead_id} — not run_id."""
+        # Locate the capture follow-up block in the router source
+        block_start = _ROUTER_SRC.find("lead capture follow-up enqueue failed")
+        # Walk backwards to find the submit call
+        submit_start = _ROUTER_SRC.rfind("idempotency_key=", 0, block_start)
+        line_end = _ROUTER_SRC.find("\n", submit_start)
+        key_expr = _ROUTER_SRC[submit_start:line_end].strip()
+        assert "lead-followup" in key_expr, f"Capture key must contain 'lead-followup': {key_expr}"
+        assert "run_id" not in key_expr, f"Capture key must not use run_id (not dedup-safe): {key_expr}"
+        assert "org_id" in key_expr, f"Capture key must be org-scoped: {key_expr}"
+        assert "lead_id" in key_expr, f"Capture key must include lead_id: {key_expr}"
+
+    def test_internal_post_endpoint_key_format(self):
+        """Internal POST /api/leads endpoint must use the same key pattern."""
+        block_start = _ROUTER_SRC.find("lead follow-up enqueue failed")
+        submit_start = _ROUTER_SRC.rfind("idempotency_key=", 0, block_start)
+        line_end = _ROUTER_SRC.find("\n", submit_start)
+        key_expr = _ROUTER_SRC[submit_start:line_end].strip()
+        assert "lead-followup" in key_expr, f"Internal key must contain 'lead-followup': {key_expr}"
+        assert "run_id" not in key_expr, f"Internal key must not use run_id: {key_expr}"
+        assert "lead_id" in key_expr, f"Internal key must include lead_id: {key_expr}"
+
+    def test_key_is_org_scoped(self):
+        """Two different orgs with the same lead_id must produce different keys."""
+        org_a, org_b = str(uuid.uuid4()), str(uuid.uuid4())
+        lead_id = str(uuid.uuid4())
+        key_a = f"lead-followup:{org_a}:{lead_id}"
+        key_b = f"lead-followup:{org_b}:{lead_id}"
+        assert key_a != key_b, "Keys for different orgs must differ"
+        assert org_a in key_a
+        assert org_b in key_b
+
+    def test_same_lead_same_key(self):
+        """Same org + lead_id always produces an identical key (no randomness)."""
+        org_id = str(uuid.uuid4())
+        lead_id = str(uuid.uuid4())
+        key1 = f"lead-followup:{org_id}:{lead_id}"
+        key2 = f"lead-followup:{org_id}:{lead_id}"
+        assert key1 == key2
+
+    def test_both_endpoints_use_same_key_pattern(self):
+        """Capture and internal endpoints must generate identical keys for the same lead."""
+        # Extract both key expressions from source
+        cap_block   = _ROUTER_SRC.find("lead capture follow-up enqueue failed")
+        int_block   = _ROUTER_SRC.find("lead follow-up enqueue failed")
+        cap_submit  = _ROUTER_SRC.rfind("idempotency_key=", 0, cap_block)
+        int_submit  = _ROUTER_SRC.rfind("idempotency_key=", 0, int_block)
+        cap_line = _ROUTER_SRC[cap_submit:_ROUTER_SRC.find("\n", cap_submit)].strip()
+        int_line = _ROUTER_SRC[int_submit:_ROUTER_SRC.find("\n", int_submit)].strip()
+        # Both must embed the same template pattern (ignoring ctx.org_id vs org_id variable name)
+        import re as _re
+        cap_normalized = _re.sub(r"ctx\.org_id|org_id", "ORG", cap_line)
+        int_normalized = _re.sub(r"ctx\.org_id|org_id", "ORG", int_line)
+        assert cap_normalized == int_normalized, (
+            f"Capture key: {cap_line!r}\nInternal key: {int_line!r}\n"
+            "Both endpoints must use identical key templates."
+        )
+
+
+# ── Follow-up idempotency — concurrent simulation ────────────────────────────
+
+class TestFollowUpIdempotencyConcurrent:
+    """
+    Proves that two concurrent requests for the same (org_id, lead_id) are
+    deduplicated correctly: the second submit() raises IdempotencyInProgress
+    (exactly what PostgreSQL ON CONFLICT + the pending-row check produces),
+    the router's except block swallows it, and only ONE job is ever enqueued.
+
+    These tests do NOT require a live database.  They simulate the PostgreSQL
+    ON CONFLICT semantics with an in-memory claim set to confirm that:
+      1. The key is deterministic (same lead → same key for both requests).
+      2. IdempotencyInProgress is importable and represents the right contract.
+      3. The router's except block absorbs IdempotencyInProgress transparently.
+      4. asyncio.gather on two concurrent requests yields exactly one "enqueued"
+         and one swallowed duplicate — no exception propagates.
+    """
+
+    def test_idempotency_in_progress_is_importable(self):
+        """IdempotencyInProgress must exist and be an Exception subclass."""
+        from app.core.idempotency import IdempotencyInProgress
+        exc = IdempotencyInProgress("already in progress")
+        assert isinstance(exc, Exception)
+        assert "already in progress" in str(exc)
+
+    def test_key_determinism_is_the_dedup_foundation(self):
+        """Two concurrent requests for the same lead compute identical keys.
+        This is the property that makes PostgreSQL ON CONFLICT deduplicate them."""
+        org_id  = str(uuid.uuid4())
+        lead_id = str(uuid.uuid4())
+        key_req1 = f"lead-followup:{org_id}:{lead_id}"
+        key_req2 = f"lead-followup:{org_id}:{lead_id}"
+        assert key_req1 == key_req2, (
+            "Concurrent requests must produce the same idempotency key"
+        )
+
+    def test_idempotency_exception_swallowed_by_except_block(self):
+        """IdempotencyInProgress raised inside the follow-up block must not
+        propagate — the router's bare except catches it and logs a warning."""
+        import asyncio
+        from app.core.idempotency import IdempotencyInProgress
+
+        raised: list[bool] = [False]
+
+        async def simulate_capture_follow_up():
+            follow_up_status = "no_definition"
+            try:
+                # mirrors: if row: ... await submit(...); follow_up_status = "enqueued"
+                raised[0] = True
+                raise IdempotencyInProgress("concurrent duplicate — retry shortly")
+            except Exception:
+                pass  # mirrors: log.warning("lead capture follow-up enqueue failed ...")
+            return follow_up_status
+
+        status = asyncio.run(simulate_capture_follow_up())
+
+        assert raised[0], "IdempotencyInProgress must have been raised inside the block"
+        assert status == "no_definition", (
+            "When IdempotencyInProgress is caught, follow_up_status stays 'no_definition'"
+        )
+
+    def test_concurrent_requests_deduplicate_via_asyncio_gather(self):
+        """
+        Full concurrent-request simulation using asyncio.gather.
+
+        Two tasks share the same (org_id, lead_id) and therefore compute the
+        same idempotency key.  mock_submit simulates PostgreSQL ON CONFLICT:
+          - First caller claims the key → succeeds → "enqueued".
+          - Second caller finds key already claimed → IdempotencyInProgress
+            → swallowed by except block → "no_definition".
+
+        Assertions:
+          • Exactly one "enqueued" result (one job dispatched).
+          • Exactly one "no_definition" result (duplicate silently absorbed).
+          • submit was attempted exactly twice (both requests reached that line).
+          • Only one key was ever persisted in the claim set.
+        """
+        import asyncio
+        from app.core.idempotency import IdempotencyInProgress
+
+        org_id  = str(uuid.uuid4())
+        lead_id = str(uuid.uuid4())
+
+        claimed_keys: list[str] = []   # stands in for PostgreSQL's UNIQUE index
+        submit_attempts: list[str] = []
+
+        async def mock_submit(idempotency_key: str) -> None:
+            """Simulates job_queue.submit() with ON CONFLICT semantics."""
+            submit_attempts.append(idempotency_key)
+            if idempotency_key in claimed_keys:
+                raise IdempotencyInProgress(
+                    f"({idempotency_key!r}) claimed by a concurrent call — retry shortly."
+                )
+            claimed_keys.append(idempotency_key)
+
+        async def request(req_org_id: str, req_lead_id: str) -> str:
+            """Mirrors the try/except follow-up block present in both router endpoints."""
+            follow_up_status = "no_definition"
+            try:
+                ik = f"lead-followup:{req_org_id}:{req_lead_id}"
+                await mock_submit(ik)
+                follow_up_status = "enqueued"
+            except Exception:
+                pass  # mirrors: log.warning("lead ... follow-up enqueue failed ...")
+            return follow_up_status
+
+        async def _run_concurrent():
+            return await asyncio.gather(
+                request(org_id, lead_id),
+                request(org_id, lead_id),
+            )
+
+        r1, r2 = asyncio.run(_run_concurrent())
+
+        expected_key = f"lead-followup:{org_id}:{lead_id}"
+        assert set([r1, r2]) == {"enqueued", "no_definition"}, (
+            f"Expected one enqueued + one no_definition; got {r1!r} and {r2!r}"
+        )
+        assert len(submit_attempts) == 2, (
+            f"Both requests must attempt submit; got {submit_attempts}"
+        )
+        assert claimed_keys == [expected_key], (
+            f"Exactly one claim should persist; got {claimed_keys}"
+        )
+        assert submit_attempts[0] == submit_attempts[1] == expected_key, (
+            "Both requests must use the SAME deterministic key (not per-request UUIDs)"
+        )

@@ -169,7 +169,7 @@ async def _execute_definition(
         run_id  = run_id,
         name    = defn.get("name", run_id),
         steps   = steps_dict,
-        context = {**context, "definition_id": definition_id, "org_id": org_id},
+        context = {**context, "definition_id": definition_id, "org_id": org_id, "organization_id": org_id},
     )
 
     # Pre-create DB approval records for every step that will require a gate.

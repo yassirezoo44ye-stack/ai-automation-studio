@@ -86,6 +86,33 @@ async def _mark_plan_status(plan_id: str, status: str, *, org_id: str) -> None:
         )
 
 
+async def _mark_section_failed(
+    plan_id: str, section_key: str, org_id: str, error_msg: str
+) -> None:
+    """Persist section failure. Swallows all errors — must not mask the original exception.
+    Guards against overwriting a COMPLETED section (race-safe)."""
+    try:
+        async with acquire_scoped(org_id) as conn:
+            await conn.execute(
+                """
+                INSERT INTO bp_sections
+                    (plan_id, organization_id, section_key, title, status, error_msg)
+                VALUES ($1,$2,$3,$3,'FAILED',$4)
+                ON CONFLICT (plan_id, section_key) DO UPDATE
+                    SET status    = 'FAILED',
+                        error_msg = EXCLUDED.error_msg,
+                        updated_at = NOW()
+                    WHERE bp_sections.status != 'COMPLETED'
+                """,
+                plan_id, org_id, section_key, error_msg[:500],
+            )
+    except Exception:
+        log.warning(
+            "_mark_section_failed: DB write failed plan=%s section=%s",
+            plan_id, section_key, exc_info=True,
+        )
+
+
 # ── Step functions (each is idempotent) ──────────────────────────────────────
 
 async def step_intake(
@@ -93,12 +120,16 @@ async def step_intake(
     industry=None, stage: str = "IDEA",
     _context: dict | None = None, **_
 ) -> dict:
-    await _mark_section_running(plan_id, "intake", org_id)
-    async with acquire_scoped(org_id) as conn:
-        data = await agents.run_idea_intake(
-            conn, plan_id, org_id, user_id, idea_raw, industry, stage,
-        )
-    return {"intake_data": data}
+    try:
+        await _mark_section_running(plan_id, "intake", org_id)
+        async with acquire_scoped(org_id) as conn:
+            data = await agents.run_idea_intake(
+                conn, plan_id, org_id, user_id, idea_raw, industry, stage,
+            )
+        return {"intake_data": data}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "intake", org_id, str(exc))
+        raise
 
 
 async def step_company_desc(
@@ -107,15 +138,18 @@ async def step_company_desc(
     _context: dict | None = None, **_
 ) -> dict:
     intake_data = (_context or {}).get("intake.intake_data", {})
-
-    await _mark_section_running(plan_id, "company_description", org_id)
-    async with acquire_scoped(org_id) as conn:
-        text = await agents.run_company_description(
-            conn, plan_id, org_id, user_id,
-            idea_raw, industry,
-            intake_data,
-        )
-    return {"company_summary": text[:1000]}
+    try:
+        await _mark_section_running(plan_id, "company_description", org_id)
+        async with acquire_scoped(org_id) as conn:
+            text = await agents.run_company_description(
+                conn, plan_id, org_id, user_id,
+                idea_raw, industry,
+                intake_data,
+            )
+        return {"company_summary": text[:1000]}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "company_description", org_id, str(exc))
+        raise
 
 
 async def step_market_intel(
@@ -126,16 +160,19 @@ async def step_market_intel(
     ctx = _context or {}
     intake_data     = ctx.get("intake.intake_data", {})
     company_summary = ctx.get("company_desc.company_summary")
-
-    await _mark_section_running(plan_id, "market_intelligence", org_id)
-    async with acquire_scoped(org_id) as conn:
-        text = await agents.run_market_intelligence(
-            conn, plan_id, org_id, user_id,
-            idea_raw, industry,
-            company_summary,
-            intake_data.get("target_customers"),
-        )
-    return {"market_summary": text[:1000]}
+    try:
+        await _mark_section_running(plan_id, "market_intelligence", org_id)
+        async with acquire_scoped(org_id) as conn:
+            text = await agents.run_market_intelligence(
+                conn, plan_id, org_id, user_id,
+                idea_raw, industry,
+                company_summary,
+                intake_data.get("target_customers"),
+            )
+        return {"market_summary": text[:1000]}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "market_intelligence", org_id, str(exc))
+        raise
 
 
 async def step_competitor_intel(
@@ -146,16 +183,19 @@ async def step_competitor_intel(
     ctx = _context or {}
     company_summary = ctx.get("company_desc.company_summary")
     market_summary  = ctx.get("market_intel.market_summary")
-
-    await _mark_section_running(plan_id, "competitor_intelligence", org_id)
-    async with acquire_scoped(org_id) as conn:
-        text = await agents.run_competitor_intelligence(
-            conn, plan_id, org_id, user_id,
-            idea_raw, industry,
-            company_summary,
-            market_summary,
-        )
-    return {"competitor_summary": text[:500]}
+    try:
+        await _mark_section_running(plan_id, "competitor_intelligence", org_id)
+        async with acquire_scoped(org_id) as conn:
+            text = await agents.run_competitor_intelligence(
+                conn, plan_id, org_id, user_id,
+                idea_raw, industry,
+                company_summary,
+                market_summary,
+            )
+        return {"competitor_summary": text[:500]}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "competitor_intelligence", org_id, str(exc))
+        raise
 
 
 async def step_offer_pricing(
@@ -166,18 +206,21 @@ async def step_offer_pricing(
     ctx = _context or {}
     intake_data    = ctx.get("intake.intake_data", {})
     market_summary = ctx.get("market_intel.market_summary")
-    competitors    = await _get_competitors(plan_id, org_id)
-
-    await _mark_section_running(plan_id, "offer_pricing", org_id)
-    async with acquire_scoped(org_id) as conn:
-        text = await agents.run_offer_pricing(
-            conn, plan_id, org_id, user_id,
-            idea_raw,
-            intake_data.get("target_customers"),
-            market_summary,
-            competitors,
-        )
-    return {"offer_summary": text[:500]}
+    try:
+        competitors    = await _get_competitors(plan_id, org_id)
+        await _mark_section_running(plan_id, "offer_pricing", org_id)
+        async with acquire_scoped(org_id) as conn:
+            text = await agents.run_offer_pricing(
+                conn, plan_id, org_id, user_id,
+                idea_raw,
+                intake_data.get("target_customers"),
+                market_summary,
+                competitors,
+            )
+        return {"offer_summary": text[:500]}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "offer_pricing", org_id, str(exc))
+        raise
 
 
 async def step_go_to_market(
@@ -190,17 +233,20 @@ async def step_go_to_market(
     company_summary = ctx.get("company_desc.company_summary")
     offer_summary   = ctx.get("offer_pricing.offer_summary")
     market_summary  = ctx.get("market_intel.market_summary")
-
-    await _mark_section_running(plan_id, "go_to_market", org_id)
-    async with acquire_scoped(org_id) as conn:
-        await agents.run_go_to_market(
-            conn, plan_id, org_id, user_id,
-            company_summary,
-            offer_summary,
-            intake_data.get("target_customers"),
-            market_summary,
-        )
-    return {}
+    try:
+        await _mark_section_running(plan_id, "go_to_market", org_id)
+        async with acquire_scoped(org_id) as conn:
+            await agents.run_go_to_market(
+                conn, plan_id, org_id, user_id,
+                company_summary,
+                offer_summary,
+                intake_data.get("target_customers"),
+                market_summary,
+            )
+        return {}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "go_to_market", org_id, str(exc))
+        raise
 
 
 async def step_ops_finance(
@@ -211,16 +257,19 @@ async def step_ops_finance(
     ctx = _context or {}
     company_summary = ctx.get("company_desc.company_summary")
     offer_summary   = ctx.get("offer_pricing.offer_summary")
-
-    await _mark_section_running(plan_id, "ops_finance", org_id)
-    async with acquire_scoped(org_id) as conn:
-        await agents.run_ops_finance(
-            conn, plan_id, org_id, user_id,
-            company_summary,
-            offer_summary,
-            stage,
-        )
-    return {}
+    try:
+        await _mark_section_running(plan_id, "ops_finance", org_id)
+        async with acquire_scoped(org_id) as conn:
+            await agents.run_ops_finance(
+                conn, plan_id, org_id, user_id,
+                company_summary,
+                offer_summary,
+                stage,
+            )
+        return {}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "ops_finance", org_id, str(exc))
+        raise
 
 
 async def step_score(
@@ -236,32 +285,38 @@ async def step_assembly(
     plan_id: str, org_id: str, user_id: str,
     _context: dict | None = None, **_
 ) -> dict:
-    await _mark_section_running(plan_id, "full_plan", org_id)
-
-    async with acquire_scoped(org_id) as conn:
-        rows = await conn.fetch(
-            "SELECT section_key, content FROM bp_sections WHERE plan_id=$1 AND status='COMPLETED'",
-            plan_id,
-        )
-        sections = {r["section_key"]: r["content"] for r in rows
-                    if r["section_key"] not in ("full_plan", "assumption_audit", "adversarial_review")}
-    facts = await _get_facts(plan_id, org_id)
-    async with acquire_scoped(org_id) as conn:
-        plan_text = await agents.run_assembly(conn, plan_id, org_id, user_id, sections, facts)
-    return {"plan_text": plan_text[:2000]}
+    try:
+        await _mark_section_running(plan_id, "full_plan", org_id)
+        async with acquire_scoped(org_id) as conn:
+            rows = await conn.fetch(
+                "SELECT section_key, content FROM bp_sections WHERE plan_id=$1 AND status='COMPLETED'",
+                plan_id,
+            )
+            sections = {r["section_key"]: r["content"] for r in rows
+                        if r["section_key"] not in ("full_plan", "assumption_audit", "adversarial_review")}
+        facts = await _get_facts(plan_id, org_id)
+        async with acquire_scoped(org_id) as conn:
+            plan_text = await agents.run_assembly(conn, plan_id, org_id, user_id, sections, facts)
+        return {"plan_text": plan_text[:2000]}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "full_plan", org_id, str(exc))
+        raise
 
 
 async def step_assumption_audit(
     plan_id: str, org_id: str, user_id: str,
     _context: dict | None = None, **_
 ) -> dict:
-    await _mark_section_running(plan_id, "assumption_audit", org_id)
-    plan_text = (_context or {}).get("assembly.plan_text") or await _get_section(plan_id, "full_plan", org_id) or ""
-    facts = await _get_facts(plan_id, org_id)
-
-    async with acquire_scoped(org_id) as conn:
-        await agents.run_assumption_auditor(conn, plan_id, org_id, user_id, plan_text, facts)
-    return {}
+    try:
+        await _mark_section_running(plan_id, "assumption_audit", org_id)
+        plan_text = (_context or {}).get("assembly.plan_text") or await _get_section(plan_id, "full_plan", org_id) or ""
+        facts = await _get_facts(plan_id, org_id)
+        async with acquire_scoped(org_id) as conn:
+            await agents.run_assumption_auditor(conn, plan_id, org_id, user_id, plan_text, facts)
+        return {}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "assumption_audit", org_id, str(exc))
+        raise
 
 
 async def step_adversarial(
@@ -269,13 +324,16 @@ async def step_adversarial(
     _context: dict | None = None, **_
 ) -> dict:
     ctx = _context or {}
-    await _mark_section_running(plan_id, "adversarial_review", org_id)
-    plan_text = ctx.get("assembly.plan_text") or await _get_section(plan_id, "full_plan", org_id) or ""
-    score     = ctx.get("score_v1.score", 0)
-
-    async with acquire_scoped(org_id) as conn:
-        await agents.run_adversarial_reviewer(conn, plan_id, org_id, user_id, plan_text, score)
-    return {}
+    try:
+        await _mark_section_running(plan_id, "adversarial_review", org_id)
+        plan_text = ctx.get("assembly.plan_text") or await _get_section(plan_id, "full_plan", org_id) or ""
+        score     = ctx.get("score_v1.score", 0)
+        async with acquire_scoped(org_id) as conn:
+            await agents.run_adversarial_reviewer(conn, plan_id, org_id, user_id, plan_text, score)
+        return {}
+    except Exception as exc:
+        await _mark_section_failed(plan_id, "adversarial_review", org_id, str(exc))
+        raise
 
 
 async def step_final_score(

@@ -35,6 +35,7 @@ const PAGE_LABELS: Record<Page, string> = {
   feed: "Flow Feed",
   leads: "Leads",
   "saas-factory": "SaaS Factory",
+  "new-project": "New Project",
 };
 
 export function CopilotProvider({ children }: { children: ReactNode }) {

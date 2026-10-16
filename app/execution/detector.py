@@ -211,6 +211,8 @@ def _detect(ws: Path) -> ProjectInfo:
         )
 
     # ── Node.js — route to node driver; it will check registry availability ───
+    # Note: bare JS files with an accompanying index.html are caught by the HTML
+    # static path below; only pure JS/TS projects without HTML land here.
 
     if "package.json" in fset:
         pkg_type = _node_type(files, fset)
@@ -235,6 +237,21 @@ def _detect(ws: Path) -> ProjectInfo:
             notes=["Node.js script — handled by Node driver if runtime available."],
         )
 
+    # Any remaining .js file (e.g. standalone scripts without a named entry)
+    any_js = sorted(
+        f for f in fset
+        if f.endswith(".js")
+        and not any(s in f for s in ("test", "spec", ".min.", "config", "jest", "babel", "eslint", "prettier"))
+        and not f.startswith("node_modules/")
+    )
+    if any_js and "index.html" not in fset:
+        return ProjectInfo(
+            project_type="node", run_strategy="node",
+            entry_point=any_js[0], confidence="low",
+            detected_by=[any_js[0]],
+            notes=["JavaScript file found — attempting Node driver. Add package.json for full support."],
+        )
+
     # ── HTML static ────────────────────────────────────────────────────────
 
     html_files = sorted(f for f in fset if f.endswith(".html"))
@@ -248,13 +265,16 @@ def _detect(ws: Path) -> ProjectInfo:
 
     # ── Unknown ────────────────────────────────────────────────────────────
 
+    found_exts = sorted({f.rsplit(".", 1)[-1] for f in fset if "." in f})[:8]
+    ext_hint = (f"Found file types: {', '.join(found_exts)}. " if found_exts else "Workspace appears empty. ")
     return ProjectInfo(
         project_type="unknown", run_strategy="unsupported",
         entry_point=None, confidence="low",
         detected_by=list(fset)[:10],
         unsupported_reason=(
-            "Could not determine project type. "
-            "Add main.py, index.html, or package.json."
+            ext_hint
+            + "Could not determine a runnable entry point. "
+            + "Add main.py / app.py (Python), index.html (static), or package.json (Node.js)."
         ),
     )
 

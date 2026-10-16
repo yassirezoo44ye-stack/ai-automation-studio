@@ -333,5 +333,204 @@ class TestSchedulerIdempotencyKeyF8(unittest.TestCase):
         asyncio.run(_t())
 
 
+# =============================================================================
+# 4. Email step — args nesting and recipient resolution
+# =============================================================================
+
+class TestEmailStepFn(unittest.TestCase):
+    """
+    Verify _make_email_step_fn reads subject/body from spec["args"], not
+    from the top level of spec.  This matches the contract the engine enforces
+    and the payload that LeadFollowupCard.makeFollowupPayload() now produces.
+    """
+
+    def _make_send_mock(self):
+        """Return a coroutine mock for app.core.email.send_email."""
+        m = AsyncMock()
+        return m
+
+    def test_email_step_reads_subject_and_body_from_args(self):
+        """Subject and body must come from spec["args"], not top-level."""
+        from app.core.workflow.automation_scheduler import _make_email_step_fn
+        spec = {
+            "id": "send-followup-email",
+            "kind": "email",
+            "args": {"subject": "Hello from test", "body": "<p>Test body</p>", "to": "lead@example.com"},
+        }
+        send_mock = self._make_send_mock()
+
+        async def _t():
+            fn = _make_email_step_fn(spec)
+            with patch("app.core.email.send_email", send_mock):
+                result = await fn(_context={})
+            send_mock.assert_called_once()
+            _, called_subject, called_body = send_mock.call_args.args
+            self.assertEqual(called_subject, "Hello from test")
+            self.assertIn("Test body", called_body)
+            self.assertEqual(result["status"], "sent")
+            self.assertEqual(result["recipient"], "lead@example.com")
+
+        asyncio.run(_t())
+
+    def test_email_step_top_level_subject_is_ignored(self):
+        """Top-level subject/body (old broken payload shape) are NOT used; args is the contract."""
+        from app.core.workflow.automation_scheduler import _make_email_step_fn
+        # Simulate the OLD broken payload structure: subject/body at top level, no args key.
+        # Provide `args.to` so the recipient check passes — only the subject branch is under test.
+        spec = {
+            "id": "send-followup-email",
+            "kind": "email",
+            "subject": "Top-level subject (old format — must be ignored)",
+            "body": "Top-level body",
+            "args": {"to": "lead@example.com"},  # to is correct; subject/body intentionally absent
+        }
+        send_mock = self._make_send_mock()
+
+        async def _t():
+            fn = _make_email_step_fn(spec)
+            with patch("app.core.email.send_email", send_mock):
+                await fn(_context={})
+            _, called_subject, _ = send_mock.call_args.args
+            # Default subject used because args.subject is absent — top-level spec.subject is never read
+            self.assertEqual(called_subject, "Follow-up from our team",
+                             "Top-level spec.subject must NOT be used; only args.subject counts")
+
+        asyncio.run(_t())
+
+    def test_email_step_falls_back_to_lead_context_email(self):
+        """When args.to is absent, email is taken from _context['lead']['email']."""
+        from app.core.workflow.automation_scheduler import _make_email_step_fn
+        spec = {
+            "id": "send-followup-email",
+            "kind": "email",
+            "args": {"subject": "Hi", "body": "Body"},
+        }
+        send_mock = self._make_send_mock()
+
+        async def _t():
+            fn = _make_email_step_fn(spec)
+            ctx = {"lead": {"email": "contextlead@example.com", "name": "Alice"}}
+            with patch("app.core.email.send_email", send_mock):
+                result = await fn(_context=ctx)
+            send_mock.assert_called_once()
+            called_to = send_mock.call_args.args[0]
+            self.assertEqual(called_to, "contextlead@example.com")
+            self.assertEqual(result["recipient"], "contextlead@example.com")
+
+        asyncio.run(_t())
+
+    def test_email_step_raises_without_any_recipient(self):
+        """No args.to, no lead context, no lead_id → ValueError (not silent skip)."""
+        from app.core.workflow.automation_scheduler import _make_email_step_fn
+        spec = {"id": "send-followup-email", "kind": "email", "args": {"subject": "Hi"}}
+
+        async def _t():
+            fn = _make_email_step_fn(spec)
+            with self.assertRaises(ValueError, msg="Must raise, not silently skip"):
+                await fn(_context={})
+
+        asyncio.run(_t())
+
+
+# =============================================================================
+# 5. _execute_definition — step id requirement
+# =============================================================================
+
+class TestExecuteDefinitionStepIdRequirement(unittest.TestCase):
+    """
+    _execute_definition must skip steps that have no 'id' field.
+    This mirrors the engine contract and validates that the old broken
+    LeadFollowupCard payload (steps without 'id') produces zero executed steps.
+    """
+
+    def _make_pool_with_definition(self, steps: list) -> tuple:
+        """Build a fake pool returning a definition row with the given steps."""
+        defn = {"steps": steps}
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value={"definition": defn})
+
+        class _CM:
+            def __init__(self, c): self._c = c
+            async def __aenter__(self): return self._c
+            async def __aexit__(self, *_): pass
+
+        class _Pool:
+            def __init__(self, c): self._c = c
+            def acquire(self): return _CM(self._c)
+
+        return _Pool(conn), conn
+
+    def test_steps_without_id_are_silently_skipped(self):
+        """Definitions with steps missing 'id' produce a run with zero steps executed."""
+        # Old (broken) LeadFollowupCard payload
+        broken_steps = [{"kind": "email", "subject": "X", "body": "Y"}]
+        pool, _ = self._make_pool_with_definition(broken_steps)
+
+        executed_step_ids: list[str] = []
+
+        async def _t():
+            from app.core.workflow.automation_scheduler import _execute_definition
+            from app.core.workflow.engine import get_workflow_engine
+
+            engine = get_workflow_engine()
+            original_execute = engine.execute
+
+            async def _capture(run):
+                executed_step_ids.extend(run.steps.keys())
+                # Don't actually run steps; just capture which were registered
+            engine.execute = _capture
+
+            try:
+                with patch("app.core.db.get_pool", return_value=pool):
+                    with patch("app.core.workflow.persistence.upsert_run", new_callable=AsyncMock):
+                        with patch("app.core.workflow.persistence.upsert_steps_bulk", new_callable=AsyncMock):
+                            await _execute_definition(
+                                str(uuid.uuid4()), str(uuid.uuid4()),
+                                str(uuid.uuid4()), {}
+                            )
+            finally:
+                engine.execute = original_execute
+
+        asyncio.run(_t())
+        self.assertEqual(executed_step_ids, [],
+                         "Steps without 'id' must not be registered in the run")
+
+    def test_steps_with_id_are_registered(self):
+        """Definitions with steps that have 'id' produce registered steps in the run."""
+        correct_steps = [
+            {"id": "send-followup-email", "kind": "email",
+             "args": {"subject": "Hi", "body": "Body", "to": "x@x.com"}}
+        ]
+        pool, _ = self._make_pool_with_definition(correct_steps)
+
+        executed_step_ids: list[str] = []
+
+        async def _t():
+            from app.core.workflow.automation_scheduler import _execute_definition
+            from app.core.workflow.engine import get_workflow_engine
+
+            engine = get_workflow_engine()
+            original_execute = engine.execute
+
+            async def _capture(run):
+                executed_step_ids.extend(run.steps.keys())
+            engine.execute = _capture
+
+            try:
+                with patch("app.core.db.get_pool", return_value=pool):
+                    with patch("app.core.workflow.persistence.upsert_run", new_callable=AsyncMock):
+                        with patch("app.core.workflow.persistence.upsert_steps_bulk", new_callable=AsyncMock):
+                            await _execute_definition(
+                                str(uuid.uuid4()), str(uuid.uuid4()),
+                                str(uuid.uuid4()), {}
+                            )
+            finally:
+                engine.execute = original_execute
+
+        asyncio.run(_t())
+        self.assertIn("send-followup-email", executed_step_ids,
+                      "Step with 'id' must be registered in the run")
+
+
 if __name__ == "__main__":
     unittest.main()

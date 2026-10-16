@@ -134,7 +134,9 @@ async def capture_lead(
                 "automation.trigger.manual",
                 payload={"definition_id": str(row["id"]), "context": {"lead_id": lead_id}},
                 org_id=org_id,
-                idempotency_key=run_id,
+                # Tie dedup to the lead, not the run UUID, so concurrent duplicate
+                # capture requests (same lead_id + org) produce only one follow-up job.
+                idempotency_key=f"lead-followup:{org_id}:{lead_id}",
             )
             follow_up_status = "enqueued"
     except Exception as exc:
@@ -222,7 +224,8 @@ async def create_lead(
                 "automation.trigger.manual",
                 payload={"definition_id": str(row["id"]), "context": {"lead_id": lead_id}},
                 org_id=ctx.org_id,
-                idempotency_key=run_id,
+                # Tie dedup to the lead, not the run UUID — same as the capture endpoint.
+                idempotency_key=f"lead-followup:{ctx.org_id}:{lead_id}",
             )
             follow_up_status = "enqueued"
     except Exception as exc:

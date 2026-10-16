@@ -3,6 +3,9 @@
 import { createContext, useContext } from "react";
 import type { Page } from "../types";
 
+/** Workspace segments that live under /project/:projectId/:workspace */
+export type ProjectWorkspace = "build" | "design" | "automation" | "runs" | "integrations";
+
 export type Theme = "dark" | "light" | "high-contrast";
 
 /**
@@ -33,6 +36,17 @@ export interface AppContextType {
   /** Intent from the Feed — set before navigation, consumed once by the target page. */
   feedIntent: FeedIntent | null;
   setFeedIntent: (intent: FeedIntent | null) => void;
+  /**
+   * The projectId parsed from the current URL (/project/:id/:workspace).
+   * Derived/transient — always mirrors the URL, never an independent source of truth.
+   * null when on a legacy flat path (e.g. /app-builder).
+   */
+  activeProjectId: string | null;
+  /**
+   * Navigate to /project/:projectId/:workspace and update activeProjectId.
+   * workspace defaults to "build".
+   */
+  setActiveProject: (projectId: string, workspace?: ProjectWorkspace) => void;
 }
 
 export const AppContext = createContext<AppContextType>({
@@ -46,6 +60,8 @@ export const AppContext = createContext<AppContextType>({
   toggleTheme: () => {},
   feedIntent: null,
   setFeedIntent: () => {},
+  activeProjectId: null,
+  setActiveProject: () => {},
 });
 
 export function useAppContext() { return useContext(AppContext); }
