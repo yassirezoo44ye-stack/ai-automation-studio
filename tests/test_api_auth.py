@@ -267,6 +267,39 @@ class TestLoginHappyPath:
         assert res.status_code == 401
 
 
+
+class TestUnverifiedRefresh:
+    def test_unverified_account_cannot_refresh_existing_session(self, client):
+        fake_session = {
+            "id": uuid.UUID("cccccccc-0000-0000-0000-000000000003"),
+            "user_id": uuid.UUID("bbbbbbbb-0000-0000-0000-000000000002"),
+            "email": "unverified@example.com",
+            "email_verified": False,
+            "expires_at": __import__("datetime").datetime.now(
+                __import__("datetime").timezone.utc
+            ) + __import__("datetime").timedelta(hours=1),
+        }
+        session_row = MagicMock()
+        session_row.__getitem__ = MagicMock(side_effect=fake_session.__getitem__)
+
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=session_row)
+        conn.execute = AsyncMock(return_value=None)
+        conn.transaction.return_value.__aenter__ = AsyncMock(return_value=None)
+        conn.transaction.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with _mock_pool(conn):
+            res = client.post(
+                "/api/auth/refresh",
+                json={"refresh_token": "old-unverified-refresh-token"},
+            )
+
+        assert res.status_code == 403
+        assert "Email address not verified" in res.json()["detail"]
+        conn.execute.assert_awaited_once()
+        assert "DELETE FROM user_sessions" in conn.execute.await_args.args[0]
+
+
 # ── M-13 regression: rate limiter must use rightmost XFF IP (not spoofable) ───
 
 class TestRateLimitXFFSpoofing:
