@@ -3,15 +3,6 @@
     "ariaLabel": "فلو فيد",
     "feedLabel": "خلاصة المحتوى"
   },
-  "status": {
-    "loading": "جارٍ تحميل الخلاصة…",
-    "emptyTitle": "لا يوجد محتوى بعد",
-    "emptyBody": "ابنِ تطبيقًا، شغّله، ثم انشر النتيجة في اكتشف لتظهر هنا.",
-    "emptyCta": "ابدأ البناء",
-    "errorTitle": "تعذّر تحميل الخلاصة",
-    "errorBody": "تحقّق من اتصالك ثم أعد المحاولة.",
-    "retry": "إعادة المحاولة"
-  },
   "topBar": {
     "ariaLabel": "تنقل الخلاصة",
     "forYou": "لك",
@@ -39,11 +30,20 @@
     "tags": "الوسوم"
   },
   "cta": {
-    "buildApp": "ابنِ هذا التطبيق",
-    "useAutomation": "استخدم هذا التلقائي",
-    "buildAgent": "ابنِ هذا الوكيل",
-    "runWorkflow": "نفّذ هذا السير",
-    "useTemplate": "استخدم القالب",
-    "openDesign": "افتح في الاستوديو"
+    "buildApp": "ابنِ هذا",
+    "useAutomation": "استخدمه",
+    "buildAgent": "ابنِ هذا",
+    "runWorkflow": "نفّذه",
+    "useTemplate": "استخدمه",
+    "openDesign": "افتحه"
+  },
+  "empty": {
+    "title": "لا توجد إبداعات عامة بعد",
+    "subtitle": "كن أول من ينشر شيئاً على Flow",
+    "cta": "ابدأ البناء"
+  },
+  "error": {
+    "title": "تعذّر تحميل الخلاصة",
+    "retry": "إعادة المحاولة"
   }
 }

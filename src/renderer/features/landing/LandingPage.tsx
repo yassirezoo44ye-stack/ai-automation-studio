@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { motion, useReducedMotion } from "framer-motion";
 import AxonLogo from "../../AxonLogo";
 import { useLangContext } from "../../contexts/lang";
+import { captureUtm, trackEvent } from "../../lib/utm";
 import "./landing.css";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -857,6 +858,21 @@ function Footer() {
 // ── Main LandingPage ──────────────────────────────────────────────────────────
 
 export function LandingPage({ onSignIn, onSignUp }: Props) {
+  useEffect(() => {
+    captureUtm();
+    trackEvent("landing_visit");
+  }, []);
+
+  const trackedSignUp = () => {
+    trackEvent("cta_click", { action: "signup" });
+    onSignUp();
+  };
+
+  const trackedSignIn = () => {
+    trackEvent("cta_click", { action: "signin" });
+    onSignIn();
+  };
+
   return (
     <div
       id="lp-scroll-root"
@@ -885,18 +901,18 @@ export function LandingPage({ onSignIn, onSignUp }: Props) {
         Skip to main content
       </a>
 
-      <Nav onSignIn={onSignIn} onSignUp={onSignUp} />
+      <Nav onSignIn={trackedSignIn} onSignUp={trackedSignUp} />
 
       <main id="main-content">
-        <HeroSection onSignUp={onSignUp} />
+        <HeroSection onSignUp={trackedSignUp} />
         <CoreValueSection />
         <FeaturesSection />
         <HowItWorksSection />
         <UseCasesSection />
         <BenefitsSection />
         <TrustSection />
-        <PricingSection onSignUp={onSignUp} />
-        <FinalCtaSection onSignIn={onSignIn} onSignUp={onSignUp} />
+        <PricingSection onSignUp={trackedSignUp} />
+        <FinalCtaSection onSignIn={trackedSignIn} onSignUp={trackedSignUp} />
       </main>
 
       <Footer />

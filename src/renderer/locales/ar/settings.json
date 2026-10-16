@@ -5,6 +5,7 @@
     "label": "الإعدادات",
     "system": "النظام",
     "ai": "الذكاء الاصطناعي والنماذج",
+    "apiKeys": "مفاتيح API",
     "appearance": "المظهر",
     "about": "حول"
   },
@@ -66,6 +67,30 @@
     "sidebarExpanded": "موسّع",
     "sidebarCollapsed": "مطوي",
     "language": "اللغة"
+  },
+  "apiKeys": {
+    "createTitle": "إنشاء مفتاح API للمنظمة",
+    "listTitle": "المفاتيح الحالية",
+    "nameLabel": "اسم المفتاح",
+    "namePlaceholder": "مثال: نموذج استقبال العملاء",
+    "scopeHint": "تُنشأ المفاتيح بصلاحيتَي قراءة وكتابة لاستقبال العملاء عبر /api/leads/capture.",
+    "createButton": "إنشاء مفتاح",
+    "creating": "جارٍ الإنشاء…",
+    "createdTitle": "تم إنشاء المفتاح — انسخه الآن",
+    "createdWarning": "لن يُعرض هذا المفتاح مرة أخرى. احفظه في مكان آمن.",
+    "copy": "نسخ",
+    "copied": "تم النسخ!",
+    "dismiss": "حفظتُ المفتاح",
+    "revoke": "إلغاء",
+    "loading": "جارٍ تحميل المفاتيح…",
+    "empty": "لا توجد مفاتيح API بعد.",
+    "expires": "تنتهي",
+    "noOrg": "اختر منظمة لإدارة مفاتيح API.",
+    "errorLoad": "تعذّر تحميل مفاتيح API.",
+    "errorCreate": "تعذّر إنشاء مفتاح API.",
+    "errorRevoke": "تعذّر إلغاء المفتاح.",
+    "errorForbidden": "إدارة مفاتيح API متاحة لمالك المنظمة فقط.",
+    "errorUnauthorized": "انتهت الجلسة — سجّل الدخول مرة أخرى."
   },
   "about": {
     "tagline": "استوديو الأتمتة الذكي · الإصدار 3.0.0",

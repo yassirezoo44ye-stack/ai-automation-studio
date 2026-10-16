@@ -27,23 +27,23 @@ export function FeedPage() {
   const { t } = useTranslation("feed");
   const { setPage } = useAppContext();
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
-  const [items, setItems]     = useState<FeedItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
-  const [states, setStates]   = useState<Record<string, FeedItemState>>({});
+  const [items, setItems]       = useState<FeedItem[]>([]);
+  const [isMock, setIsMock]     = useState(false);
+  const [loading, setLoading]   = useState(true);
+  const [feedError, setFeedError] = useState(false);
+  const [states, setStates]     = useState<Record<string, FeedItemState>>({});
   // Bumped by the retry button to re-run the load effect
   const [loadAttempt, setLoadAttempt] = useState(0);
 
-  // Real data only: no mock content is shown while loading, when the feed
-  // is empty, or when the API fails.
   useEffect(() => {
     let cancelled = false;
     loadFeedItems()
-      .then(({ items: loaded, error: loadError }) => {
+      .then(({ items: loaded, isMock: mock, error: err }) => {
         if (cancelled) return;
         setItems(loaded);
         setStates(initStates(loaded));
-        setError(loadError);
+        setIsMock(mock);
+        setFeedError(err);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -53,7 +53,7 @@ export function FeedPage() {
 
   const retry = useCallback(() => {
     setLoading(true);
-    setError(null);
+    setFeedError(false);
     setLoadAttempt(n => n + 1);
   }, []);
 
@@ -88,34 +88,6 @@ export function FeedPage() {
   const total = items.length;
   const progressPct = total > 1 ? (activeIndex / (total - 1)) * 100 : 0;
 
-  /* ── Loading / error / empty states (no mock fallback) ─────── */
-  let status: React.ReactNode = null;
-  if (loading) {
-    status = (
-      <div className="feed-status" role="status" aria-live="polite">
-        <p className="feed-status__title">{t("status.loading")}</p>
-      </div>
-    );
-  } else if (error) {
-    status = (
-      <div className="feed-status" role="alert">
-        <p className="feed-status__title">{t("status.errorTitle")}</p>
-        <p className="feed-status__body">{t("status.errorBody")}</p>
-        <button className="feed-status__btn" onClick={retry}>{t("status.retry")}</button>
-      </div>
-    );
-  } else if (total === 0) {
-    status = (
-      <div className="feed-status" role="status">
-        <p className="feed-status__title">{t("status.emptyTitle")}</p>
-        <p className="feed-status__body">{t("status.emptyBody")}</p>
-        <button className="feed-status__btn" onClick={() => setPage("app-builder")}>
-          {t("status.emptyCta")}
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="feed-page" role="main" aria-label={t("page.ariaLabel")}>
       {/* Top bar overlays the first card */}
@@ -126,36 +98,62 @@ export function FeedPage() {
         <div className="feed-progress__bar" style={{ width: `${progressPct}%` }} />
       </div>
 
-      {status}
+      {/* Loading skeleton — items are empty during load so no mock cards show underneath */}
+      {loading && (
+        <div className="feed-loading" aria-live="polite" aria-label="Loading feed…" />
+      )}
 
-      {/* Scrollable card stack — always mounted so navigation listeners attach */}
-      <div
-        ref={containerRef}
-        className="feed-scroll"
-        aria-label={t("page.feedLabel")}
-        tabIndex={0}
-      >
-        {!loading && items.map((item, idx) => (
-          <FeedCard
-            key={item.id}
-            item={item}
-            state={states[item.id] ?? { liked: false, saved: false, likes: 0, saves: 0 }}
-            isActive={idx === activeIndex}
-            onLike={() => toggleLike(item.id)}
-            onSave={() => toggleSave(item.id)}
-          />
-        ))}
-      </div>
+      {/* Error state */}
+      {!loading && feedError && (
+        <div className="feed-state feed-state--error" role="alert">
+          <p className="feed-state__title">{t("error.title")}</p>
+          <button className="feed-state__btn" onClick={retry}>{t("error.retry")}</button>
+        </div>
+      )}
+
+      {/* Empty real feed */}
+      {!loading && !feedError && items.length === 0 && (
+        <div className="feed-state feed-state--empty" role="status">
+          <p className="feed-state__title">{t("empty.title")}</p>
+          <p className="feed-state__subtitle">{t("empty.subtitle")}</p>
+          <button className="feed-state__btn" onClick={() => setPage("app-builder")}>
+            {t("empty.cta")}
+          </button>
+        </div>
+      )}
+
+      {/* Scrollable card stack — only when there are items */}
+      {items.length > 0 && (
+        <div
+          ref={containerRef}
+          className="feed-scroll"
+          aria-label={t("page.feedLabel")}
+        >
+          {items.map((item, idx) => (
+            <FeedCard
+              key={item.id}
+              item={item}
+              state={states[item.id] ?? { liked: false, saved: false, likes: 0, saves: 0 }}
+              isActive={idx === activeIndex}
+              isMock={isMock}
+              onLike={() => toggleLike(item.id)}
+              onSave={() => toggleSave(item.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Dot indicator */}
-      <div className="feed-dots" aria-hidden>
-        {!loading && items.map((item, idx) => (
-          <span
-            key={item.id}
-            className={`feed-dot${idx === activeIndex ? " feed-dot--active" : ""}`}
-          />
-        ))}
-      </div>
+      {items.length > 0 && (
+        <div className="feed-dots" aria-hidden>
+          {items.map((item, idx) => (
+            <span
+              key={item.id}
+              className={`feed-dot${idx === activeIndex ? " feed-dot--active" : ""}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

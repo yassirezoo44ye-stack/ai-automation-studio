@@ -86,23 +86,12 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
   };
 }
 
-/* ── Loader — real data only, never falls back to mock content ─────── */
-export interface FeedLoadResult {
-  items: FeedItem[];
-  isMock: false;
-  /** null on success (including an empty feed); a message when the API failed */
-  error: string | null;
-}
-
-export async function loadFeedItems(): Promise<FeedLoadResult> {
+/* ── Loader ──────────────────────────────────────────────────── */
+export async function loadFeedItems(): Promise<{ items: FeedItem[]; isMock: boolean; error: boolean }> {
   try {
     const { items } = await fetchDiscoverFeed({ limit: 30 });
-    return { items: items.map(creationToFeedItem), isMock: false, error: null };
-  } catch (err) {
-    return {
-      items: [],
-      isMock: false,
-      error: err instanceof Error && err.message ? err.message : "Failed to load feed",
-    };
+    return { items: items.map(creationToFeedItem), isMock: false, error: false };
+  } catch {
+    return { items: [], isMock: false, error: true };
   }
 }

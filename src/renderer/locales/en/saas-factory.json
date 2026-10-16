@@ -1,0 +1,58 @@
+{
+  "page": {
+    "ariaLabel": "SaaS Factory",
+    "heading": "SaaS Factory",
+    "sub": "Describe your idea — Flow builds the entire SaaS for you."
+  },
+  "input": {
+    "title": "What SaaS do you want to build?",
+    "subtitle": "One idea is all it takes. Flow handles architecture, code, auth, billing, and deployment.",
+    "placeholder": "Describe your SaaS idea in plain language…",
+    "ariaLabel": "Describe your SaaS idea",
+    "cta": "Build My SaaS ⚡",
+    "building": "Building…",
+    "examplesLabel": "Need inspiration?"
+  },
+  "pipeline": {
+    "idea": "Idea",
+    "live": "Live",
+    "failedAt": "Pipeline stopped",
+    "resume": "Resume Pipeline",
+    "delete": "Delete Project",
+    "appId": "App ID"
+  },
+  "phases": {
+    "IDEA": {
+      "label": "Idea Analysis",
+      "description": "Understanding the problem, target users, and key features."
+    },
+    "BLUEPRINT": {
+      "label": "Blueprint",
+      "description": "Architecture, database schema, API design, and UI screens."
+    },
+    "BUILDING": {
+      "label": "Building",
+      "description": "App Builder generates the full data model, canvas, agents, and workflows."
+    },
+    "TESTING": {
+      "label": "Testing",
+      "description": "Automated test plan generated and validated against the app spec."
+    },
+    "VERIFYING": {
+      "label": "Security Verification",
+      "description": "Multi-tenant isolation, auth, RBAC, and input validation review."
+    },
+    "DEPLOYING": {
+      "label": "Deploying",
+      "description": "Publishing the app to your Flow workspace."
+    },
+    "LIVE": {
+      "label": "Live",
+      "description": "Your SaaS is live and ready to use."
+    }
+  },
+  "history": {
+    "label": "Previous projects",
+    "title": "Previous projects"
+  }
+}

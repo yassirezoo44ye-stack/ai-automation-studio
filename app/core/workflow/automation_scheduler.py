@@ -193,6 +193,8 @@ def _make_step_fn(kind: str, spec: dict):
         return _make_ai_step_fn(spec)
     if kind == "approval":
         return _make_approval_step_fn(spec)
+    if kind == "email":
+        return _make_email_step_fn(spec)
     # noop: used for testing and inert placeholder steps
     async def _noop(**kwargs):
         log.debug("automation step noop kind=%s id=%s", kind, spec.get("id"))
@@ -245,6 +247,76 @@ def _make_approval_step_fn(spec: dict):
         log.debug("automation approval gate passed id=%s", spec.get("id"))
         return {"kind": "approval", "status": "approved"}
     return _approval_noop
+
+
+def _make_email_step_fn(spec: dict):
+    """
+    Build an async step fn that sends one email via app.core.email.send_email.
+
+    Recipient resolution order:
+      1. spec.args.to  — explicit address in the workflow definition
+      2. _context["lead"]["email"] — lead email from run context
+      3. DB lookup via lead_id in _context if no inline lead dict present
+
+    Security:
+      - Recipient must be a valid email address (contains @) — explicit failure
+        if not, not a silent noop.
+      - Failure is never reported as success; the step raises so the engine
+        records it as a failed step.
+      - DB lookup is always org-scoped via org_id from context.
+    """
+    args = spec.get("args", {})
+
+    async def _run_email(**kwargs):
+        from app.core.email import send_email
+
+        context: dict = kwargs.get("_context", {})
+
+        # Resolve recipient
+        recipient: str | None = args.get("to")
+        if not recipient:
+            lead: dict = context.get("lead", {})
+            recipient = lead.get("email")
+
+        # If still no recipient, attempt DB lookup by lead_id in context
+        if not recipient:
+            lead_id = context.get("lead_id")
+            org_id  = context.get("org_id")
+            if lead_id and org_id:
+                try:
+                    from app.core.db import get_pool
+                    import uuid as _uuid
+                    pool = get_pool()
+                    async with pool.acquire() as conn:
+                        row = await conn.fetchrow(
+                            "SELECT email FROM leads WHERE id=$1 AND organization_id=$2",
+                            _uuid.UUID(lead_id), _uuid.UUID(org_id),
+                        )
+                    if row:
+                        recipient = row["email"]
+                except Exception as exc:
+                    log.warning("email step: lead lookup failed step_id=%s: %s", spec.get("id"), exc)
+
+        if not recipient or not isinstance(recipient, str) or "@" not in recipient:
+            raise ValueError(
+                f"email step '{spec.get('id', '?')}': no valid recipient email — "
+                f"configure args.to or ensure lead has an email address"
+            )
+
+        subject = str(args.get("subject", "Follow-up from our team"))
+        body_html = str(args.get("body", ""))
+        if not body_html:
+            lead_name = context.get("lead", {}).get("name", "")
+            body_html = (
+                f"<p>Hi{' ' + lead_name if lead_name else ' there'},</p>"
+                f"<p>Thank you for your interest. A member of our team will be in touch shortly.</p>"
+            )
+
+        await send_email(recipient, subject, body_html)
+        log.info("automation email step sent step_id=%s recipient=%s", spec.get("id"), recipient)
+        return {"kind": "email", "status": "sent", "recipient": recipient}
+
+    return _run_email
 
 
 # Register the SAME handler for all three trigger kinds

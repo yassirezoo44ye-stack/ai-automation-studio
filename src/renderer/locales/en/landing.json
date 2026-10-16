@@ -4,34 +4,34 @@
     "howItWorks": "How It Works",
     "pricing": "Pricing",
     "signIn": "Sign In",
-    "startFree": "Start Building Free"
+    "startFree": "Start Free"
   },
   "hero": {
-    "eyebrow": "AI Workforce Platform",
-    "headline1": "Your AI Workforce.",
-    "headline2": "Running on Autopilot.",
-    "sub": "Turn your ideas and repetitive tasks into AI-powered workflows that work for you. Build agents, automate processes, and monitor everything from one intelligent platform.",
-    "ctaPrimary": "Start Building Free",
+    "eyebrow": "For small agencies — automate repetitive work",
+    "headline1": "Automate your agency.",
+    "headline2": "Let Flow handle the repetitive work.",
+    "sub": "Turn research, reporting, lead follow-up, content operations and repetitive processes into workflows that run automatically—with full visibility.",
+    "ctaPrimary": "Start Free",
     "ctaSecondary": "See How It Works",
     "pipeline": {
-      "step1": "Idea",
+      "step1": "Task",
       "step2": "Agent",
       "step3": "Workflow",
-      "step4": "Automation",
-      "step5": "Result"
+      "step4": "Runs Automatically",
+      "step5": "Done"
     }
   },
   "coreValue": {
     "eyebrow": "The Difference",
-    "headline": "Don't just use AI. Put it to work.",
-    "body": "Asking AI a question is one thing. Using Flow to execute an entire process — automatically, reliably, at scale — is something else entirely.",
-    "exampleLabel": "Example request:",
-    "exampleRequest": "Analyze this week's sales, create a report, send it to my team, and alert me if revenue drops.",
-    "steps": ["Collect Data", "Analyze", "Generate Report", "Send", "Alert"]
+    "headline": "Stop doing it manually. Let it run.",
+    "body": "Every agency has the same 5–10 processes that eat time every week. Flow turns them into workflows that run automatically — so your team works on what only humans can do.",
+    "exampleLabel": "Example:",
+    "exampleRequest": "Collect this week's client data, generate a PDF report, email it to the client, and flag any performance drop.",
+    "steps": ["Collect Data", "Analyze", "Generate Report", "Send to Client", "Flag Issues"]
   },
   "features": {
     "eyebrow": "Platform",
-    "headline": "Everything your AI workforce needs.",
+    "headline": "Everything your agency needs to automate.",
     "sub": "Six purpose-built capabilities that work together as one.",
     "agents": {
       "title": "AI Agents",
@@ -45,7 +45,7 @@
     },
     "agentos": {
       "title": "AgentOS",
-      "body": "The command center for your AI workforce. Monitor runs, jobs, and results. Catch errors before they become problems.",
+      "body": "The command center for your automation. Monitor runs, jobs, and results. Catch errors before they become problems.",
       "detail": "Agents · Jobs · Runs · Results · Errors"
     },
     "gateway": {
@@ -70,49 +70,49 @@
     "steps": [
       {
         "number": "01",
-        "title": "Tell Flow What You Want",
-        "body": "Describe the outcome in natural language. No technical knowledge required."
+        "title": "Describe the process",
+        "body": "Tell Flow what you want automated. No technical knowledge required."
       },
       {
         "number": "02",
-        "title": "Build Your Workflow",
+        "title": "Build the workflow",
         "body": "Connect agents, tools, conditions, and approvals. Flow turns your description into an executable workflow."
       },
       {
         "number": "03",
-        "title": "Run",
-        "body": "Execute manually on demand, or trigger automatically on a schedule or event."
+        "title": "Run it",
+        "body": "Execute on demand, or trigger automatically on a schedule or event."
       },
       {
         "number": "04",
         "title": "Monitor",
-        "body": "Track every job, run, and agent result in real time. Full visibility, zero surprises."
+        "body": "Track every run and result in real time. Full visibility, zero surprises."
       },
       {
         "number": "05",
         "title": "Improve",
-        "body": "Analyze results, refine your workflow, and deploy improvements. Your AI workforce gets smarter over time."
+        "body": "Analyze results, refine your workflow, and deploy improvements. Every run gets smarter."
       }
     ]
   },
   "useCases": {
-    "eyebrow": "Use Cases",
-    "headline": "What teams build with Flow.",
+    "eyebrow": "Agency Use Cases",
+    "headline": "What agencies automate with Flow.",
     "cases": [
       {
-        "title": "Content Engine",
+        "title": "Client Reporting",
+        "emoji": "📄",
+        "steps": ["Collect client data", "Analyze performance", "Generate PDF report", "Send to client", "Archive & alert"]
+      },
+      {
+        "title": "Lead Follow-up",
+        "emoji": "🎯",
+        "steps": ["New lead arrives", "Score & qualify", "Draft personalized email", "Schedule follow-up", "Track response"]
+      },
+      {
+        "title": "Content Production",
         "emoji": "✍️",
-        "steps": ["Research", "Generate", "Review", "Approve", "Publish", "Analyze"]
-      },
-      {
-        "title": "Sales Intelligence",
-        "emoji": "📊",
-        "steps": ["Collect Data", "Analyze", "Detect Changes", "Generate Report", "Notify"]
-      },
-      {
-        "title": "Customer Support",
-        "emoji": "💬",
-        "steps": ["Request", "Classify", "Retrieve Context", "AI Agent", "Escalate", "Respond"]
+        "steps": ["Receive brief", "Research", "Draft content", "Review & approve", "Publish & report"]
       }
     ]
   },
@@ -122,23 +122,23 @@
     "items": [
       {
         "emoji": "⚡",
-        "title": "Save Time",
-        "body": "Automate repetitive work. Reclaim hours every week."
+        "title": "Reclaim Your Week",
+        "body": "Automate the repetitive work your team does manually every week."
       },
       {
         "emoji": "🧠",
-        "title": "Work Smarter",
-        "body": "Let AI execute tasks while people focus on decisions that matter."
+        "title": "Focus on High-Value Work",
+        "body": "Let AI handle execution so your team focuses on strategy and clients."
       },
       {
         "emoji": "📈",
-        "title": "Scale",
-        "body": "Turn manual processes into repeatable, reliable systems."
+        "title": "Deliver More, Hire Less",
+        "body": "Turn manual processes into reliable systems that scale without headcount."
       },
       {
         "emoji": "🛡️",
-        "title": "Stay in Control",
-        "body": "Monitor, approve, and override. Full visibility at every step."
+        "title": "Full Visibility",
+        "body": "Monitor, approve, and override at every step. You stay in control."
       }
     ]
   },
@@ -168,28 +168,28 @@
       "pro": {
         "name": "Pro",
         "price": "$19",
-        "description": "For teams moving fast with AI.",
+        "description": "For agencies moving fast with AI.",
         "cta": "Start Pro",
         "features": ["3 workspaces", "Unlimited agents", "1,000 runs / month", "AI Gateway", "Monitoring & observability", "Team access", "Priority support"]
       },
       "business": {
         "name": "Business",
         "price": "Custom",
-        "description": "For organizations at scale.",
+        "description": "For agencies at scale.",
         "cta": "Talk to Sales",
         "features": ["Unlimited workspaces", "Unlimited agents & runs", "Dedicated support", "SSO & advanced permissions", "SLA guarantee", "Custom integrations", "Onboarding assistance"]
       }
     }
   },
   "finalCta": {
-    "headline1": "Your workflows should work",
-    "headline2": "while you don't.",
-    "sub": "Turn your next idea into an AI-powered workflow with Flow.",
-    "ctaPrimary": "Start Building Free",
-    "ctaSecondary": "Explore Flow"
+    "headline1": "Your agency's repetitive work",
+    "headline2": "runs itself.",
+    "sub": "Pick one repetitive process. Automate it with Flow. See it run.",
+    "ctaPrimary": "Start Free",
+    "ctaSecondary": "Sign In"
   },
   "footer": {
-    "tagline": "Your AI Workforce Platform.",
+    "tagline": "Automate your agency.",
     "copyright": "© {{year}} Flow. All rights reserved."
   }
 }
