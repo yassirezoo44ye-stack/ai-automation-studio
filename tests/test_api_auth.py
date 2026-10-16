@@ -219,6 +219,36 @@ class TestLoginHappyPath:
         assert body["refresh_token"] == "refresh.token"
         assert body["token_type"] == "bearer"
 
+    def test_unverified_email_cannot_login(self, client):
+        fake_user = {
+            "id": uuid.UUID("bbbbbbbb-0000-0000-0000-000000000002"),
+            "email": "unverified@example.com",
+            "name": "Unverified",
+            "password_hash": "$bcrypt_hash",
+            "email_verified": False,
+            "avatar_url": None,
+            "created_at": None,
+        }
+        user_row = MagicMock()
+        user_row.__getitem__ = MagicMock(side_effect=fake_user.__getitem__)
+
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=user_row)
+        conn.execute = AsyncMock(return_value=None)
+
+        with _mock_pool(conn), \\
+             patch("app.routers.auth_users.verify_password", return_value=True):
+            res = client.post(
+                "/api/auth/login",
+                json={"email": "unverified@example.com", "password": "ValidPass1"},
+                headers={"X-Forwarded-For": "89.1.2.3"},
+            )
+
+        assert res.status_code == 403
+        assert "Email address not verified" in res.json()["detail"]
+        # The user must not receive a session or any tokens.
+        conn.execute.assert_not_awaited()
+
     def test_wrong_password_returns_401(self, client):
         fake_user = MagicMock()
         fake_user.__getitem__ = MagicMock(side_effect={"password_hash": "$hash"}.__getitem__)
