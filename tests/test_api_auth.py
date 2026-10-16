@@ -7,6 +7,7 @@ rate-limit headers, and input validation.
 """
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import uuid
@@ -275,9 +276,8 @@ class TestUnverifiedRefresh:
             "user_id": uuid.UUID("bbbbbbbb-0000-0000-0000-000000000002"),
             "email": "unverified@example.com",
             "email_verified": False,
-            "expires_at": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ) + __import__("datetime").timedelta(hours=1),
+            "expires_at": datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(hours=1),
         }
         session_row = MagicMock()
         session_row.__getitem__ = MagicMock(side_effect=fake_session.__getitem__)
