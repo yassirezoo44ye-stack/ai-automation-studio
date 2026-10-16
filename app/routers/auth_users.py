@@ -286,6 +286,14 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
             if not verify_password(body.password, user["password_hash"]):
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
+            # Do not issue sessions or MFA challenges until ownership of the
+            # email address has been verified.
+            if not user["email_verified"]:
+                span.set_tag("error", "email_not_verified")
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "Email address not verified. Please check your inbox for the verification link.",
+                )
             span.set_tag("user_id", str(user["id"]))
 
             mfa = await conn.fetchrow(
