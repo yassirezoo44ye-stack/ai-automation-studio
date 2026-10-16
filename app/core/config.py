@@ -75,6 +75,7 @@ PUBLIC_PREFIXES: tuple = (
     "/api/stripe/",
     "/api/health/",
     "/health",
+    "/api/track",             # anonymous attribution — no auth, rate-limited inside the handler
     "/api/discover",          # public creation feed — no auth needed (endpoint-level auth still guards /mine)
     "/api/business/stream/",  # SSE plan stream — ticket-validated inside the handler (EventSource can't send headers)
 )

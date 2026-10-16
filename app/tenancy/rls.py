@@ -62,6 +62,8 @@ _RLS_TABLES: tuple[tuple[str, str], ...] = (
     # Flow Next — Discover (Phase 1)
     ("flow_creations", "organization_id"),
     ("flow_creation_interactions", "organization_id"),
+    # SaaS Factory
+    ("saas_factory_projects", "org_id"),
 )
 
 

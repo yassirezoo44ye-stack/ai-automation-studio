@@ -1,7 +1,6 @@
 import type { FlowCreation, CreationType } from "../../discover/types/creation.types";
 import { fetchDiscoverFeed } from "../../discover/services/discoverService";
 import { apiFetch } from "../../../shared/utils/api";
-import { MOCK_FEED } from "../mock/feedData";
 import type { FeedItem, FeedContentType, CTAType, FeedCreator, FeedMedia } from "../types/feed.types";
 import type { Page } from "../../../types";
 
@@ -87,15 +86,12 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
   };
 }
 
-/* ── Loader with MOCK_FEED fallback ─────────────────────────────── */
-export async function loadFeedItems(): Promise<{ items: FeedItem[]; isMock: boolean }> {
+/* ── Loader ──────────────────────────────────────────────────── */
+export async function loadFeedItems(): Promise<{ items: FeedItem[]; isMock: boolean; error: boolean }> {
   try {
     const { items } = await fetchDiscoverFeed({ limit: 30 });
-    if (items.length > 0) {
-      return { items: items.map(creationToFeedItem), isMock: false };
-    }
+    return { items: items.map(creationToFeedItem), isMock: false, error: false };
   } catch {
-    // Network unavailable or API error — fall through to mock
+    return { items: [], isMock: false, error: true };
   }
-  return { items: MOCK_FEED, isMock: true };
 }

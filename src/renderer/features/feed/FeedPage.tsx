@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { FeedTopBar } from "./components/FeedTopBar";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
-import { MOCK_FEED } from "./mock/feedData";
 import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI } from "./services/feedService";
 import type { FeedTab, FeedItem, FeedItemState } from "./types/feed.types";
 import "./FeedPage.css";
@@ -26,20 +25,21 @@ function initStates(items: FeedItem[]): Record<string, FeedItemState> {
 export function FeedPage() {
   const { t } = useTranslation("feed");
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
-  const [items, setItems]     = useState<FeedItem[]>(MOCK_FEED);
-  const [isMock, setIsMock]   = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [states, setStates]   = useState<Record<string, FeedItemState>>(() => initStates(MOCK_FEED));
+  const [items, setItems]       = useState<FeedItem[]>([]);
+  const [isMock, setIsMock]     = useState(false);
+  const [loading, setLoading]   = useState(true);
+  const [feedError, setFeedError] = useState(false);
+  const [states, setStates]     = useState<Record<string, FeedItemState>>({});
 
-  // Load real data on mount; fall back to MOCK_FEED on error/empty (handled inside loadFeedItems)
   useEffect(() => {
     let cancelled = false;
     loadFeedItems()
-      .then(({ items: loaded, isMock: mock }) => {
+      .then(({ items: loaded, isMock: mock, error: err }) => {
         if (cancelled) return;
         setItems(loaded);
         setStates(initStates(loaded));
         setIsMock(mock);
+        setFeedError(err);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -88,39 +88,58 @@ export function FeedPage() {
         <div className="feed-progress__bar" style={{ width: `${progressPct}%` }} />
       </div>
 
-      {/* Loading overlay — shows MOCK_FEED cards underneath while real data loads */}
+      {/* Loading skeleton — items are empty during load so no mock cards show underneath */}
       {loading && (
         <div className="feed-loading" aria-live="polite" aria-label="Loading feed…" />
       )}
 
-      {/* Scrollable card stack */}
-      <div
-        ref={containerRef}
-        className="feed-scroll"
-        aria-label={t("page.feedLabel")}
-      >
-        {items.map((item, idx) => (
-          <FeedCard
-            key={item.id}
-            item={item}
-            state={states[item.id] ?? { liked: false, saved: false, likes: 0, saves: 0 }}
-            isActive={idx === activeIndex}
-            isMock={isMock}
-            onLike={() => toggleLike(item.id)}
-            onSave={() => toggleSave(item.id)}
-          />
-        ))}
-      </div>
+      {/* Error state */}
+      {!loading && feedError && (
+        <div className="feed-state feed-state--error" role="alert">
+          <p className="feed-state__title">{t("error.title")}</p>
+        </div>
+      )}
+
+      {/* Empty real feed */}
+      {!loading && !feedError && items.length === 0 && (
+        <div className="feed-state feed-state--empty" role="status">
+          <p className="feed-state__title">{t("empty.title")}</p>
+          <p className="feed-state__subtitle">{t("empty.subtitle")}</p>
+        </div>
+      )}
+
+      {/* Scrollable card stack — only when there are items */}
+      {items.length > 0 && (
+        <div
+          ref={containerRef}
+          className="feed-scroll"
+          aria-label={t("page.feedLabel")}
+        >
+          {items.map((item, idx) => (
+            <FeedCard
+              key={item.id}
+              item={item}
+              state={states[item.id] ?? { liked: false, saved: false, likes: 0, saves: 0 }}
+              isActive={idx === activeIndex}
+              isMock={isMock}
+              onLike={() => toggleLike(item.id)}
+              onSave={() => toggleSave(item.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Dot indicator */}
-      <div className="feed-dots" aria-hidden>
-        {items.map((item, idx) => (
-          <span
-            key={item.id}
-            className={`feed-dot${idx === activeIndex ? " feed-dot--active" : ""}`}
-          />
-        ))}
-      </div>
+      {items.length > 0 && (
+        <div className="feed-dots" aria-hidden>
+          {items.map((item, idx) => (
+            <span
+              key={item.id}
+              className={`feed-dot${idx === activeIndex ? " feed-dot--active" : ""}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -11,7 +11,6 @@ import {
 } from "../features/feed/services/feedService";
 import { fetchDiscoverFeed } from "../features/discover/services/discoverService";
 import { apiFetch } from "../shared/utils/api";
-import { MOCK_FEED } from "../features/feed/mock/feedData";
 import type { FlowCreation } from "../features/discover/types/creation.types";
 
 const mockFetchDiscover = vi.mocked(fetchDiscoverFeed);
@@ -57,22 +56,37 @@ describe("loadFeedItems", () => {
     expect(result.items[0].id).toBe(BASE_CREATION.id);
   });
 
-  it("returns isMock:true and MOCK_FEED when Discover returns empty", async () => {
+  it("returns isMock:false, error:false and empty items when Discover returns empty", async () => {
     mockFetchDiscover.mockResolvedValueOnce({ items: [], total: 0 });
 
     const result = await loadFeedItems();
 
-    expect(result.isMock).toBe(true);
-    expect(result.items).toBe(MOCK_FEED);
+    expect(result.isMock).toBe(false);
+    expect(result.error).toBe(false);
+    expect(result.items).toHaveLength(0);
   });
 
-  it("returns isMock:true and MOCK_FEED when Discover throws", async () => {
+  it("returns error:true, isMock:false and empty items when Discover throws", async () => {
     mockFetchDiscover.mockRejectedValueOnce(new Error("network error"));
 
     const result = await loadFeedItems();
 
-    expect(result.isMock).toBe(true);
-    expect(result.items).toBe(MOCK_FEED);
+    expect(result.error).toBe(true);
+    expect(result.isMock).toBe(false);
+    expect(result.items).toHaveLength(0);
+  });
+
+  it("empty response and API error produce distinct states", async () => {
+    mockFetchDiscover.mockResolvedValueOnce({ items: [], total: 0 });
+    const emptyResult = await loadFeedItems();
+
+    mockFetchDiscover.mockRejectedValueOnce(new Error("500"));
+    const errorResult = await loadFeedItems();
+
+    expect(emptyResult.error).toBe(false);
+    expect(errorResult.error).toBe(true);
+    expect(emptyResult.items).toHaveLength(0);
+    expect(errorResult.items).toHaveLength(0);
   });
 
   it("maps real data correctly via creationToFeedItem", async () => {
@@ -122,11 +136,7 @@ describe("creationToFeedItem", () => {
   });
 
   it("defaults userLiked/userSaved/likes/saves to safe values when absent", () => {
-    const {
-      user_liked: _userLiked, user_saved: _userSaved,
-      likes_count: _likesCount, saves_count: _savesCount,
-      ...rest
-    } = BASE_CREATION;
+    const { user_liked: _ul, user_saved: _us, likes_count: _lc, saves_count: _sc, ...rest } = BASE_CREATION;
     const item = creationToFeedItem(rest as FlowCreation);
     expect(item.userLiked).toBe(false);
     expect(item.userSaved).toBe(false);
@@ -176,6 +186,73 @@ describe("toggleSave", () => {
 
     const result = await toggleSave("abc");
     expect(result).toEqual({ saved: true, count: 3 });
+  });
+});
+
+/* ── CTA + routing mapping ──────────────────────────────────────── */
+
+describe("creationToFeedItem — CTA and routing", () => {
+  it("maps APP type to build-app ctaType and app-builder targetPage", () => {
+    const item = creationToFeedItem(BASE_CREATION);
+    expect(item.ctaType).toBe("build-app");
+    expect(item.targetPage).toBe("app-builder");
+  });
+
+  it("maps AGENT type to build-agent ctaType and agentos targetPage", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, type: "AGENT" });
+    expect(item.ctaType).toBe("build-agent");
+    expect(item.targetPage).toBe("agentos");
+  });
+
+  it("maps AUTOMATION type to use-automation ctaType and automation targetPage", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, type: "AUTOMATION" });
+    expect(item.ctaType).toBe("use-automation");
+    expect(item.targetPage).toBe("automation");
+  });
+
+  it("maps WORKFLOW type to run-workflow ctaType and automation targetPage", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, type: "WORKFLOW" });
+    expect(item.ctaType).toBe("run-workflow");
+    expect(item.targetPage).toBe("automation");
+  });
+
+  it("maps TEMPLATE type to use-template ctaType", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, type: "TEMPLATE" });
+    expect(item.ctaType).toBe("use-template");
+  });
+});
+
+/* ── FeedIntent field preservation ─────────────────────────────── */
+
+describe("creationToFeedItem — FeedIntent fields", () => {
+  it("sets sourceType to 'creation'", () => {
+    const item = creationToFeedItem(BASE_CREATION);
+    expect(item.sourceType).toBe("creation");
+  });
+
+  it("carries source_id as sourceId", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, source_id: "tpl-sales-v2" });
+    expect(item.sourceId).toBe("tpl-sales-v2");
+  });
+
+  it("sourceMeta contains creationId and title", () => {
+    const item = creationToFeedItem(BASE_CREATION);
+    expect(item.sourceMeta).toMatchObject({
+      creationId: BASE_CREATION.id,
+      title: BASE_CREATION.title,
+    });
+  });
+
+  it("sourceMeta.prompt falls back to title when description is absent", () => {
+    const item = creationToFeedItem({ ...BASE_CREATION, description: null as unknown as string });
+    expect(item.sourceMeta?.prompt).toBe(BASE_CREATION.title);
+  });
+
+  it("loadFeedItems produces items with isMock:false (never returns mock data)", async () => {
+    mockFetchDiscover.mockResolvedValueOnce({ items: [BASE_CREATION], total: 1 });
+    const { items, isMock } = await loadFeedItems();
+    expect(isMock).toBe(false);
+    expect(items[0].sourceType).toBe("creation");
   });
 });
 

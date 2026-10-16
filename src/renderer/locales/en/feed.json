@@ -30,11 +30,18 @@
     "tags": "Tags"
   },
   "cta": {
-    "buildApp": "Build This App",
-    "useAutomation": "Use This Automation",
-    "buildAgent": "Build This Agent",
-    "runWorkflow": "Run This Workflow",
-    "useTemplate": "Use Template",
-    "openDesign": "Open in Studio"
+    "buildApp": "Build This",
+    "useAutomation": "Use This",
+    "buildAgent": "Build This",
+    "runWorkflow": "Run This",
+    "useTemplate": "Use This",
+    "openDesign": "Open It"
+  },
+  "empty": {
+    "title": "No public creations yet",
+    "subtitle": "Be the first to publish something on Flow"
+  },
+  "error": {
+    "title": "Could not load the feed"
   }
 }
