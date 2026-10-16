@@ -31,6 +31,7 @@ GET    /api/orgs/{org_id}/presence                online/offline status of every
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -121,10 +122,31 @@ async def create_org(body: CreateOrgRequest, request: Request, user: dict = Depe
     return _org_out(org)
 
 
+# Serialises the first-visit workspace creation per user so two concurrent
+# list calls can't each create one.
+_personal_ws_locks: dict[str, asyncio.Lock] = {}
+
+
 @router.get("")
-async def list_my_orgs(user: dict = Depends(get_current_user)):
+async def list_my_orgs(request: Request, user: dict = Depends(get_current_user)):
     svc = get_tenancy_service()
     orgs = await svc.list_organizations_for_user(user["id"])
+    if not orgs:
+        # Most of the app (Teams, Billing, Devices, SaaS Factory…) is scoped
+        # to an organization, so a brand-new account with none hits dead ends
+        # everywhere. Give every user a personal workspace on first visit.
+        lock = _personal_ws_locks.setdefault(user["id"], asyncio.Lock())
+        async with lock:
+            orgs = await svc.list_organizations_for_user(user["id"])
+            if not orgs:
+                try:
+                    await svc.create_organization(
+                        name="Personal workspace", kind="personal",
+                        creator_id=user["id"], ip_address=_client_ip(request),
+                    )
+                except TenancyError as e:
+                    _raise(e)
+                orgs = await svc.list_organizations_for_user(user["id"])
     return {"organizations": [_org_out(o) for o in orgs]}
 
 
