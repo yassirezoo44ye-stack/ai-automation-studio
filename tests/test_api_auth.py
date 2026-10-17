@@ -281,6 +281,39 @@ class TestLoginEmailVerification:
         assert res.status_code == 200
 
 
+# ── Existing refresh sessions cannot bypass email verification ───────────────
+
+class TestUnverifiedRefresh:
+    def test_unverified_account_cannot_refresh_existing_session(self, client):
+        session_data = {
+            "id": uuid.UUID("cccccccc-0000-0000-0000-000000000003"),
+            "user_id": uuid.UUID("dddddddd-0000-0000-0000-000000000004"),
+            "expires_at": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+            "email": "unverified@example.com",
+            "name": "Unverified",
+            "email_verified": False,
+            "avatar_url": None,
+            "created_at": None,
+        }
+        session = MagicMock()
+        session.__getitem__ = MagicMock(side_effect=session_data.__getitem__)
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=session)
+        conn.execute = AsyncMock(return_value=None)
+        conn.transaction.return_value.__aenter__ = AsyncMock(return_value=None)
+        conn.transaction.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with _mock_pool(conn), patch("app.routers.auth_users.email_delivery_enabled", return_value=True):
+            res = client.post("/api/auth/refresh", json={"refresh_token": "old-refresh-token"})
+
+        assert res.status_code == 403
+        assert "not verified" in res.json()["detail"].lower()
+        assert any(
+            "DELETE FROM user_sessions" in call.args[0]
+            for call in conn.execute.await_args_list
+        )
+
+
 # ── M-13 regression: rate limiter must use rightmost XFF IP (not spoofable) ───
 
 class TestRateLimitXFFSpoofing:
