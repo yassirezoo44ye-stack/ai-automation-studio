@@ -39,6 +39,8 @@ export function PublishToDiscoverModal({
   useEffect(() => {
     if (!currentOrgId || !sourceId) return;
     let cancelled = false;
+    // Show the spinner while the async check runs; it settles in .finally().
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCheckingDup(true);
     fetchMyCreations(currentOrgId, { limit: 100 })
       .then(resp => {
@@ -105,6 +107,9 @@ export function PublishToDiscoverModal({
   };
 
   return (
+    // Escape is handled on the dialog container (keyboard events bubble from
+    // its inputs); the dialog role itself is non-interactive, hence the disable.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       role="dialog"
       aria-modal="true"
@@ -117,10 +122,10 @@ export function PublishToDiscoverModal({
       onKeyDown={onKey}
     >
       {/* Backdrop */}
-      <div
-        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }}
+      <button
+        type="button"
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", border: "none", padding: 0, cursor: "default" }}
         onClick={onClose}
-        role="button"
         tabIndex={-1}
         aria-label={t("publish.modal.close")}
       />
@@ -257,7 +262,7 @@ export function PublishToDiscoverModal({
         </div>
 
         {/* Publish immediately checkbox */}
-        <label style={{
+        <label aria-label={t("publish.modal.publishNowLabel")} style={{
           display: "flex", alignItems: "flex-start", gap: 10,
           cursor: submitting ? "not-allowed" : "pointer",
           userSelect: "none",

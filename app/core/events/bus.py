@@ -30,6 +30,8 @@ EVENT_TYPES = frozenset({
     "marketplace.installed", "marketplace.published",
     "marketplace.install_failed", "marketplace.uninstalled", "marketplace.publisher_verified",
     "deployment.completed",
+    # Lead engine (has a notification template in app/core/notifications/templates.py)
+    "lead.qualified",
     "memory.created",
     "organization.created", "organization.member_added",
     "job.completed", "job.failed",

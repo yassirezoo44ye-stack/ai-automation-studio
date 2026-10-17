@@ -7,7 +7,7 @@
  *  - Infinite reload loop — must not reload twice even if the error persists.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { _isStaleChunkError } from "../components/layout/AppLayout";
+import { _isStaleChunkError } from "../components/layout/staleChunk";
 
 // ── _isStaleChunkError ───────────────────────────────────────────────────────
 
@@ -56,7 +56,6 @@ describe("_isStaleChunkError", () => {
 
 describe("chunkFallback reload-loop protection (via sessionStorage)", () => {
   let reloadMock: ReturnType<typeof vi.fn>;
-  let storageMock: Storage;
   const KEY = "__flow_chunk_reload__";
 
   beforeEach(() => {
