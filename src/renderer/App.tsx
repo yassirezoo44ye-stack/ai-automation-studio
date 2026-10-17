@@ -61,8 +61,12 @@ function AppInner() {
     );
   }
 
-  // Authenticated — render the full app
-  if (user) {
+  // Email action links must be handled before the authenticated-app branch.
+  // Otherwise an existing session skips AuthPage and leaves the token unused.
+  const isEmailActionLink = ["/verify-email", "/reset-password"].includes(window.location.pathname);
+
+  // Authenticated — render the full app, except when following an email action link.
+  if (user && !isEmailActionLink) {
     return (
       <ToastProvider>
         <OrgProvider>
