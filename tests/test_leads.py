@@ -20,6 +20,9 @@ import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# Repo root, so source-inspection tests work on any checkout path.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
 
@@ -430,18 +433,18 @@ class TestPermissionEnforcement:
         import importlib.util
         spec = importlib.util.spec_from_file_location(
             "leads_router_src",
-            "/home/user/ai-automation-studio/app/routers/leads.py",
+            _REPO_ROOT + "/app/routers/leads.py",
         )
-        src = open("/home/user/ai-automation-studio/app/routers/leads.py").read()
+        src = open(_REPO_ROOT + "/app/routers/leads.py").read()
         assert 'require_permission("leads", "read")' in src
 
     def test_router_source_uses_require_permission_for_write(self):
-        src = open("/home/user/ai-automation-studio/app/routers/leads.py").read()
+        src = open(_REPO_ROOT + "/app/routers/leads.py").read()
         assert 'require_permission("leads", "write")' in src
 
     def test_every_endpoint_has_ctx_dependency(self):
         """Every route function must receive ctx: OrgContext via Depends."""
-        src = open("/home/user/ai-automation-studio/app/routers/leads.py").read()
+        src = open(_REPO_ROOT + "/app/routers/leads.py").read()
         # All 5 endpoints must include Depends(require_permission(...))
         assert src.count("Depends(require_permission(") >= 5
 
@@ -465,21 +468,14 @@ class TestPermissionEnforcement:
 
 class TestCreateLeadRequestValidation:
     def _load_models(self):
-        """Import CreateLeadRequest and UpdateStatusRequest directly, bypassing __init__.py."""
-        import importlib.util, importlib
-        # Ensure the leads router module is importable standalone
-        # by stubbing routers/__init__.py side-effects
-        with patch.dict(sys.modules, {"app.routers": types.ModuleType("app.routers")}):
-            spec = importlib.util.spec_from_file_location(
-                "_leads_router",
-                "/home/user/ai-automation-studio/app/routers/leads.py",
-            )
-            mod = importlib.util.module_from_spec(spec)
-            # inject stubs so the module-level imports succeed
-            sys.modules.setdefault("app.core.leads", types.ModuleType("app.core.leads"))
-            sys.modules["app.core.leads"].get_lead_service = lambda: MagicMock()
-            spec.loader.exec_module(mod)
-        return mod
+        """The leads router module, which holds CreateLeadRequest and UpdateStatusRequest.
+
+        Imported normally (conftest loads the real app first) — loading it from
+        a bare file spec left it out of sys.modules, so pydantic could not
+        resolve its postponed `Optional[...]` annotations.
+        """
+        from app.routers import leads
+        return leads
 
     def test_empty_name_rejected(self):
         mod = self._load_models()
@@ -785,7 +781,7 @@ class TestParseQualification:
 
 class TestFollowUpWorkflowWiring:
     def _src(self) -> str:
-        return open("/home/user/ai-automation-studio/app/routers/leads.py").read()
+        return open(_REPO_ROOT + "/app/routers/leads.py").read()
 
     def test_follow_up_status_no_definition_is_default(self):
         """follow_up_status must default to 'no_definition'."""
@@ -846,13 +842,13 @@ class TestExternalLeadCapture:
 
     def test_invalid_api_key_returns_401(self):
         """require_api_key must raise 401 on invalid key."""
-        api_keys_src = open("/home/user/ai-automation-studio/app/core/api_keys.py").read()
+        api_keys_src = open(_REPO_ROOT + "/app/core/api_keys.py").read()
         assert "401" in api_keys_src
         assert "Invalid API key" in api_keys_src
 
     def test_revoked_key_returns_401(self):
         """Revoked keys must be rejected with 401."""
-        api_keys_src = open("/home/user/ai-automation-studio/app/core/api_keys.py").read()
+        api_keys_src = open(_REPO_ROOT + "/app/core/api_keys.py").read()
         assert "revoked" in api_keys_src.lower()
         assert "401" in api_keys_src
 
@@ -1017,7 +1013,7 @@ class TestCaptureSecurity:
 
     def test_credential_never_returned_in_response(self):
         """API key raw value must never appear in capture response payload."""
-        api_keys_src = open("/home/user/ai-automation-studio/app/core/api_keys.py").read()
+        api_keys_src = open(_REPO_ROOT + "/app/core/api_keys.py").read()
         assert "redact" in api_keys_src
         assert 'del d["key_hash"]' in api_keys_src
         cap_fn_start = _ROUTER_SRC.find("async def capture_lead")

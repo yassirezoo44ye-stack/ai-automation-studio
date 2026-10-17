@@ -237,6 +237,83 @@ class TestLoginHappyPath:
         assert res.status_code == 401
 
 
+# ── Unverified email blocks password sign-in when email delivery works ───────
+
+class TestLoginEmailVerification:
+    @staticmethod
+    def _login(client, ip, *, smtp_host):
+        fake_user = {
+            "id": uuid.UUID("aaaaaaaa-0000-0000-0000-000000000002"),
+            "email": "new@example.com", "name": "New", "password_hash": "$hash",
+            "email_verified": False, "avatar_url": None, "created_at": None,
+        }
+        user_row = MagicMock()
+        user_row.__getitem__ = MagicMock(side_effect=fake_user.__getitem__)
+        user_row.get = MagicMock(side_effect=fake_user.get)
+
+        async def _fetchrow(query, *args):
+            return None if "mfa_secrets" in query else user_row
+
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(side_effect=_fetchrow)
+        conn.execute = AsyncMock(return_value=None)
+        env = {"SMTP_HOST": smtp_host} if smtp_host else {}
+        with _mock_pool(conn), \
+             patch.dict(os.environ, env), \
+             patch("app.routers.auth_users.verify_password", return_value=True), \
+             patch("app.routers.auth_users.make_access_token", return_value="access.tok.en"), \
+             patch("app.routers.auth_users.write_audit", new_callable=AsyncMock):
+            if not smtp_host:
+                os.environ.pop("SMTP_HOST", None)
+            return client.post(
+                "/api/auth/login",
+                json={"email": "new@example.com", "password": "ValidPass1"},
+                headers={"X-Forwarded-For": ip},
+            )
+
+    def test_unverified_user_blocked_when_smtp_configured(self, client):
+        res = self._login(client, "91.1.2.3", smtp_host="smtp.example.com")
+        assert res.status_code == 403
+        assert "verify your email" in res.json()["detail"]
+
+    def test_unverified_user_allowed_without_email_delivery(self, client):
+        res = self._login(client, "92.1.2.3", smtp_host=None)
+        assert res.status_code == 200
+
+
+# ── Existing refresh sessions cannot bypass email verification ───────────────
+
+class TestUnverifiedRefresh:
+    def test_unverified_account_cannot_refresh_existing_session(self, client):
+        session_data = {
+            "id": uuid.UUID("cccccccc-0000-0000-0000-000000000003"),
+            "user_id": uuid.UUID("dddddddd-0000-0000-0000-000000000004"),
+            "expires_at": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+            "email": "unverified@example.com",
+            "name": "Unverified",
+            "email_verified": False,
+            "avatar_url": None,
+            "created_at": None,
+        }
+        session = MagicMock()
+        session.__getitem__ = MagicMock(side_effect=session_data.__getitem__)
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=session)
+        conn.execute = AsyncMock(return_value=None)
+        conn.transaction.return_value.__aenter__ = AsyncMock(return_value=None)
+        conn.transaction.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with _mock_pool(conn), patch("app.routers.auth_users.email_delivery_enabled", return_value=True):
+            res = client.post("/api/auth/refresh", json={"refresh_token": "old-refresh-token"})
+
+        assert res.status_code == 403
+        assert "not verified" in res.json()["detail"].lower()
+        assert any(
+            "DELETE FROM user_sessions" in call.args[0]
+            for call in conn.execute.await_args_list
+        )
+
+
 # ── M-13 regression: rate limiter must use rightmost XFF IP (not spoofable) ───
 
 class TestRateLimitXFFSpoofing:

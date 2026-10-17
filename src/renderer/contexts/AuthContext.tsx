@@ -122,8 +122,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           method: "POST",
           body: JSON.stringify({ refresh_token: stored }),
         });
-        if (res.status === 401) {
-          // Token is legitimately expired/revoked — clear session, not an error.
+        if (res.status === 401 || res.status === 403) {
+          // 401 means expired/revoked; 403 from refresh means the account is
+          // unverified and its server-side session was revoked. Clear local
+          // credentials for either terminal auth response instead of retrying.
           // AUDIT FIX: this is the most common way a session actually ends
           // (natural refresh-token expiry, not an explicit Logout click) —
           // previously only REFRESH_KEY/JWT state was cleared here, leaving
@@ -270,7 +272,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // non-JSON body — keep the fallback
       }
-      throw new Error(detail);
+      // Keep the status so the form can tell "email not verified" (403)
+      // apart from bad credentials and offer to resend the link.
+      throw Object.assign(new Error(detail), { status: res.status });
     }
     const data = await parseJSON<{ access_token: string; refresh_token: string; sub_token: string; user: AuthUser }>(res, "/api/auth/login");
     localStorage.setItem(REFRESH_KEY, data.refresh_token);
