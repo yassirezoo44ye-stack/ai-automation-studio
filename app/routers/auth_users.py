@@ -388,16 +388,11 @@ async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
                 raise HTTPException(401, "Invalid refresh token")
 
             expired = session["expires_at"] < datetime.datetime.now(datetime.timezone.utc)
-            if expired:
-                # CLEANUP FIX: raising HTTPException *inside* this
-                # transaction would roll back this DELETE along with it —
-                # asyncpg rolls back on any exception propagating out of
-                # `async with conn.transaction():`, so the expired row
-                # would silently survive forever instead of actually being
-                # cleaned up, even though the client still correctly saw
-                # "Session expired". Commit the delete by letting the
-                # transaction block exit normally here, then raise *after*
-                # it below, once we're no longer inside the transaction.
+            # Match the login gate: when SMTP delivery is configured, an
+            # unverified account must not keep a previously issued session alive.
+            unverified = not bool(session["email_verified"]) and email_delivery_enabled()
+            if expired or unverified:
+                # Commit revocation before raising outside the transaction.
                 await conn.execute("DELETE FROM user_sessions WHERE id=$1", session["id"])
             else:
                 # Rotate refresh token
@@ -408,6 +403,11 @@ async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
                     session["id"],
                 )
 
+        if unverified:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Email address not verified. Please check your inbox for the verification link.",
+            )
         if expired:
             raise HTTPException(401, "Session expired")
 
