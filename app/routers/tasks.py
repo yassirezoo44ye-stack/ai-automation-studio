@@ -102,6 +102,7 @@ async def list_tasks(
     priority: Optional[str] = None,
     category: Optional[str] = None,
     project_id: Optional[str] = None,
+    conversation_id: Optional[str] = None,
     search: Optional[str] = None,
     sort: str = "due_date",
 ):
@@ -126,6 +127,8 @@ async def list_tasks(
         add("category = ${n}", category)
     if project_id:
         add("project_id = ${n}", _parse_uuid(project_id, "project_id"))
+    if conversation_id:
+        add("conversation_id = ${n}", _parse_uuid(conversation_id, "conversation_id"))
     if search:
         add("(title ILIKE ${n} OR notes ILIKE ${n})", f"%{search}%")
 

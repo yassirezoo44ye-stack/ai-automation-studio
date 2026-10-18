@@ -185,7 +185,7 @@ async def run_stream(req: RunRequest, request: Request):
                     )
                     await conn.execute(
                         "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
-                        uid, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
+                        uid, json.dumps({"run_id": str(run_id), "prompt_preview": _user_text[:80]}),
                     )
             except Exception:
                 pass
