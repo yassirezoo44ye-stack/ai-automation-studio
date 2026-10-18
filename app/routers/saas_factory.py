@@ -37,6 +37,10 @@ class SubmitIdeaRequest(BaseModel):
     idea: str = Field(min_length=10, max_length=3000)
 
 
+class SecurityRejectRequest(BaseModel):
+    reason: str = Field(default="", max_length=1000)
+
+
 class ProjectSummary(BaseModel):
     id: str
     idea_text: str
@@ -111,6 +115,32 @@ async def list_projects(
     return {"projects": [_row_to_summary(dict(r)) for r in rows]}
 
 
+@router.get("/projects/pending-review")
+async def list_pending_review(
+    ctx: OrgContext = Depends(require_permission("saas_factory", "read")),
+) -> dict:
+    """List all PENDING_REVIEW projects awaiting security sign-off, scoped to caller's org."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, idea_text, updated_at "
+            "FROM saas_factory_projects "
+            "WHERE org_id=$1 AND phase='PENDING_REVIEW' "
+            "ORDER BY updated_at ASC",
+            uuid.UUID(ctx.org_id),
+        )
+    return {
+        "pending_security_reviews": [
+            {
+                "project_id": str(r["id"]),
+                "idea_text": r["idea_text"][:120],
+                "waiting_since": r["updated_at"].isoformat(),
+            }
+            for r in rows
+        ]
+    }
+
+
 @router.get("/projects/{project_id}")
 async def get_project(
     project_id: str,
@@ -143,6 +173,44 @@ async def resume_project(
             project_id=project_id,
             org_id=ctx.org_id,
             user_id=ctx.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return result
+
+
+@router.post("/projects/{project_id}/approve-security", status_code=202)
+async def approve_security(
+    project_id: str,
+    ctx: OrgContext = Depends(require_permission("saas_factory", "update")),
+) -> dict:
+    """Approve the security review for a PENDING_REVIEW project and resume from DEPLOYING."""
+    pipeline = get_pipeline()
+    try:
+        result = await pipeline.approve(
+            project_id=project_id,
+            org_id=ctx.org_id,
+            reviewer_user_id=ctx.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return result
+
+
+@router.post("/projects/{project_id}/reject-security", status_code=202)
+async def reject_security(
+    project_id: str,
+    body: SecurityRejectRequest,
+    ctx: OrgContext = Depends(require_permission("saas_factory", "update")),
+) -> dict:
+    """Reject the security review — marks the project FAILED and blocks deployment."""
+    pipeline = get_pipeline()
+    try:
+        result = await pipeline.reject(
+            project_id=project_id,
+            org_id=ctx.org_id,
+            reviewer_user_id=ctx.user_id,
+            reason=body.reason,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))

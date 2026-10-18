@@ -13,6 +13,7 @@ export function SaasFactoryPage() {
   const {
     project, projects, loading, error,
     submit, resume, remove, loadProjects, openProject,
+    approveReview, rejectReview,
   } = useSaasFactory();
 
   useEffect(() => {
@@ -44,6 +45,8 @@ export function SaasFactoryPage() {
             project={project}
             onResume={() => resume(project.id)}
             onDelete={() => remove(project.id)}
+            onApprove={() => approveReview(project.id)}
+            onReject={(reason) => rejectReview(project.id, reason)}
           />
         )}
       </div>

@@ -22,6 +22,7 @@ import json
 import logging
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import asyncpg
@@ -125,11 +126,15 @@ class SaasFactoryPipeline:
             raise ValueError(f"Cannot resume project in phase {row['phase']}")
 
         checkpoint = json.loads(row["checkpoint"] or "{}")
-        # Find the last completed phase so we restart from the next one
+        # Find the last completed phase so we restart from the next one.
+        # BUILDING is only counted as done when its build_status is "completed".
         last_done = None
         for phase in PHASES:
-            if phase in checkpoint:
-                last_done = phase
+            if phase not in checkpoint:
+                break
+            if phase == "BUILDING" and checkpoint["BUILDING"].get("build_status") != "completed":
+                break  # incomplete build — re-run BUILDING on resume
+            last_done = phase
         resume_phase = _NEXT_PHASE.get(last_done or "IDEA", "IDEA") if last_done else "IDEA"
 
         async with self._pool.acquire() as conn:
@@ -183,8 +188,18 @@ class SaasFactoryPipeline:
             try:
                 handler = phase_handlers[phase]
                 result = await handler(project_id, org_id, user_id, idea_text, cp)
+                # Pop internal pause signal before persisting — not part of phase data.
+                pause_signal = result.pop("_pipeline_pause", False)
                 cp[phase] = result
                 await self._save_checkpoint(project_id, org_id, cp)
+                if pause_signal:
+                    # Security warn: checkpoint saved; stop here and await human review.
+                    await self._set_phase(project_id, org_id, "PENDING_REVIEW")
+                    log.info(
+                        "saas_factory %s halted at %s — PENDING_REVIEW (security warn)",
+                        project_id, phase,
+                    )
+                    return
                 log.info("saas_factory %s phase %s done", project_id, phase)
             except Exception as exc:
                 log.exception("saas_factory %s phase %s failed", project_id, phase)
@@ -350,8 +365,14 @@ class SaasFactoryPipeline:
         app_name = build.get("app_name", "the app")
         build_status = build.get("build_status", "unknown")
 
-        if build_status == "failed":
-            return {"status": "skipped", "reason": "build_failed", "checks": []}
+        if build_status != "completed":
+            _reason_map = {
+                "failed": "build_failed",
+                "timeout": "build_timeout",
+                "partial": "build_partial",
+            }
+            reason = _reason_map.get(build_status, f"build_status_{build_status}")
+            return {"status": "skipped", "reason": reason, "checks": []}
 
         # Fetch the built app's spec for test coverage analysis
         spec_summary: dict[str, Any] = {}
@@ -430,13 +451,146 @@ class SaasFactoryPipeline:
         result = _extract_json(resp.content)
         result["build_id"] = build.get("app_id")
 
-        overall = result.get("overall", "pass")
+        overall = result.get("overall")
+        _VALID_OVERALL = {"pass", "warn", "fail"}
+        if overall not in _VALID_OVERALL:
+            # None, unknown strings, or empty value — do not treat as pass.
+            raise RuntimeError(
+                "Security verification returned an invalid or unparseable response; "
+                f"cannot confirm security posture (overall={overall!r})"
+            )
         if overall == "fail":
             raise RuntimeError(
                 "Security verification failed: "
                 + str(result.get("findings", []))
             )
+        if overall == "warn":
+            # Pause pipeline — human security review required before deployment.
+            result["_pipeline_pause"] = True
         return result
+
+    # ── Human review gate ─────────────────────────────────────────────────────
+
+    async def approve(
+        self,
+        project_id: str,
+        org_id: str,
+        reviewer_user_id: str,
+    ) -> dict[str, Any]:
+        """Approve a PENDING_REVIEW project and resume from DEPLOYING.
+
+        Guards:
+        - Project must exist and belong to org_id (IDOR prevention).
+        - Phase must be PENDING_REVIEW.
+        - Saved VERIFYING checkpoint must contain overall='warn'.
+        - Transition is atomic: WHERE phase='PENDING_REVIEW' prevents double-approval.
+        - If task launch fails after DB commit, phase reverts to PENDING_REVIEW.
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT idea_text, phase, checkpoint FROM saas_factory_projects "
+                "WHERE id=$1 AND org_id=$2",
+                uuid.UUID(project_id), uuid.UUID(org_id),
+            )
+        if not row:
+            raise ValueError("Project not found")
+        if row["phase"] != "PENDING_REVIEW":
+            raise ValueError(
+                f"Project is not awaiting security review (phase={row['phase']!r})"
+            )
+
+        cp = json.loads(row["checkpoint"] or "{}")
+        verifying = cp.get("VERIFYING", {})
+        if verifying.get("overall") != "warn":
+            raise ValueError(
+                "Cannot approve: saved VERIFYING result is not 'warn' "
+                f"(overall={verifying.get('overall')!r})"
+            )
+
+        cp["_review"] = {
+            "decision": "approved",
+            "reviewer_user_id": reviewer_user_id,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        async with self._pool.acquire() as conn:
+            updated = await conn.execute(
+                "UPDATE saas_factory_projects "
+                "SET phase='DEPLOYING', checkpoint=$1, error_message=NULL, updated_at=now() "
+                "WHERE id=$2 AND org_id=$3 AND phase='PENDING_REVIEW'",
+                json.dumps(cp), uuid.UUID(project_id), uuid.UUID(org_id),
+            )
+        if updated == "UPDATE 0":
+            raise ValueError(
+                "Security review decision already recorded (concurrent approval or rejection)"
+            )
+
+        coro = self._run_pipeline(
+            project_id, org_id, reviewer_user_id, row["idea_text"],
+            checkpoint=cp, start_phase="DEPLOYING",
+        )
+        try:
+            asyncio.create_task(coro, name=f"saas_factory:{project_id}:approved")
+        except Exception as exc:
+            # create_task failed after DB commit — close the orphaned coroutine to
+            # prevent a "never awaited" warning, then revert phase so the operator
+            # can re-approve without losing the audit entry.
+            coro.close()
+            log.exception("saas_factory %s create_task failed after approval", project_id)
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE saas_factory_projects "
+                    "SET phase='PENDING_REVIEW', updated_at=now() "
+                    "WHERE id=$1 AND org_id=$2",
+                    uuid.UUID(project_id), uuid.UUID(org_id),
+                )
+            raise RuntimeError(f"Deployment task could not be launched: {exc}") from exc
+
+        return {"project_id": project_id, "resumed_from": "DEPLOYING"}
+
+    async def reject(
+        self,
+        project_id: str,
+        org_id: str,
+        reviewer_user_id: str,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        """Reject a PENDING_REVIEW project — blocks deployment, records decision."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT phase, checkpoint FROM saas_factory_projects "
+                "WHERE id=$1 AND org_id=$2",
+                uuid.UUID(project_id), uuid.UUID(org_id),
+            )
+        if not row:
+            raise ValueError("Project not found")
+        if row["phase"] != "PENDING_REVIEW":
+            raise ValueError(
+                f"Project is not awaiting security review (phase={row['phase']!r})"
+            )
+
+        cp = json.loads(row["checkpoint"] or "{}")
+        cp["_review"] = {
+            "decision": "rejected",
+            "reviewer_user_id": reviewer_user_id,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+        }
+
+        async with self._pool.acquire() as conn:
+            updated = await conn.execute(
+                "UPDATE saas_factory_projects "
+                "SET phase='FAILED', checkpoint=$1, "
+                "error_message='Security review rejected', updated_at=now() "
+                "WHERE id=$2 AND org_id=$3 AND phase='PENDING_REVIEW'",
+                json.dumps(cp), uuid.UUID(project_id), uuid.UUID(org_id),
+            )
+        if updated == "UPDATE 0":
+            raise ValueError(
+                "Security review decision already recorded (concurrent approval or rejection)"
+            )
+
+        return {"project_id": project_id, "status": "rejected"}
 
     # ── Phase 6 — DEPLOYING ────────────────────────────────────────────────────
 

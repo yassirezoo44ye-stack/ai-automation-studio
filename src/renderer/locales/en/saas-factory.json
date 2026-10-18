@@ -51,6 +51,22 @@
       "description": "Your SaaS is live and ready to use."
     }
   },
+  "review": {
+    "title": "Security Review Required",
+    "subtitle": "VERIFYING completed with warnings. Review the findings before approving deployment.",
+    "waitingSince": "Waiting since",
+    "findings": "Findings",
+    "rlsCovered": "RLS multi-tenant isolation confirmed",
+    "rlsNotCovered": "RLS coverage not confirmed",
+    "approve": "Approve",
+    "approving": "Approving…",
+    "reject": "Reject",
+    "rejecting": "Rejecting…",
+    "rejectReason": "Reason for rejection (optional)",
+    "rejectReasonPlaceholder": "Describe the security concern…",
+    "confirmReject": "Confirm Reject",
+    "cancel": "Cancel"
+  },
   "history": {
     "label": "Previous projects",
     "title": "Previous projects"

@@ -56,6 +56,8 @@ type AgentsResponse = { count: number; agents: AgentEntry[] };
 type WorkflowRun = { id: string; name: string; status: string; started_at?: string };
 type WorkflowsResponse = { runs: WorkflowRun[] };
 type ApprovalsResponse = { pending: string[] };
+type SecurityReviewItem = { project_id: string; idea_text: string; waiting_since: string };
+type SecurityReviewsResponse = { pending_security_reviews: SecurityReviewItem[] };
 
 // ── Integration nodes ─────────────────────────────────────────────────────
 
@@ -402,6 +404,17 @@ export function HomePage() {
   );
   const pendingApprovals = approvalsQ.data?.pending ?? [];
 
+  const securityReviewsQ = useAsyncData<SecurityReviewsResponse>(
+    () => apiFetch("/api/saas-factory/projects/pending-review").then(r => parseJSON<SecurityReviewsResponse>(r, "/api/saas-factory/projects/pending-review")),
+    [currentOrgId],
+    { enabled: orgReady },
+  );
+  const securityReviews = securityReviewsQ.data?.pending_security_reviews ?? [];
+  const secReviewErr = securityReviewsQ.status === "error";
+  const pendingApprovalsTotal = secReviewErr
+    ? (pendingApprovals.length > 0 ? `${pendingApprovals.length}+?` : "?")
+    : pendingApprovals.length + securityReviews.length;
+
   const projectsQ = useAsyncData<Project[]>(
     () => apiFetch("/api/projects").then(r => parseJSON<Project[]>(r, "/api/projects")),
     [],
@@ -450,7 +463,7 @@ export function HomePage() {
     { label: "Success Rate",      value: stats ? `${stats.success_rate}%` : "—", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="20 6 9 17 4 12"/></svg>,                                                                    accent: false, sub: undefined,       onClick: undefined },
     { label: "AI Agents",         value: agents.length || (agentsQ.status === "loading" ? "…" : 0), icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/></svg>, accent: false, sub: `${runningAgents} running`, onClick: () => setPage("agentos") },
     { label: "Workflows",         value: workflowRuns.length || 0,     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,      accent: false, sub: "active",       onClick: () => setPage("automation") },
-    { label: "Pending Approvals", value: pendingApprovals.length || 0, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,                                                          accent: pendingApprovals.length > 0, sub: undefined, onClick: () => setPage("automation") },
+    { label: "Pending Approvals", value: pendingApprovalsTotal, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,                                                          accent: pendingApprovals.length > 0 || securityReviews.length > 0 || secReviewErr, sub: undefined, onClick: () => setPage(pendingApprovals.length > 0 ? "automation" : "saas-factory") },
     { label: "Failed Runs",       value: stats?.failed_runs ?? "—",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>,    accent: (stats?.failed_runs ?? 0) > 0, sub: undefined, onClick: () => setPage("runs") },
     { label: "Conversations",     value: stats?.conversations ?? "—",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,                                       accent: false, sub: undefined,       onClick: () => setPage("ai") },
   ];
@@ -476,6 +489,17 @@ export function HomePage() {
       detail: "Human approval required to continue execution",
       action: "Review",
       onAction: () => setPage("automation"),
+    });
+  }
+  if (securityReviews.length > 0) {
+    const oldest = securityReviews[0];
+    const waitingSince = new Date(oldest.waiting_since).toLocaleDateString();
+    attentionItems.push({
+      severity: "warning",
+      title: `${securityReviews.length} SaaS project${securityReviews.length > 1 ? "s" : ""} awaiting security review`,
+      detail: `Oldest: "${oldest.idea_text}" — waiting since ${waitingSince}`,
+      action: "Review",
+      onAction: () => setPage("saas-factory"),
     });
   }
 

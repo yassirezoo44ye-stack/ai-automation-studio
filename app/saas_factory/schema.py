@@ -20,7 +20,7 @@ async def init_saas_factory_schema(conn: asyncpg.Connection) -> None:
                                     REFERENCES organizations(id) ON DELETE CASCADE,
             created_by_user_id  UUID NOT NULL,
             idea_text           TEXT NOT NULL,
-            -- IDEA|BLUEPRINT|BUILDING|TESTING|VERIFYING|DEPLOYING|LIVE|FAILED|CANCELLED
+            -- IDEA|BLUEPRINT|BUILDING|TESTING|VERIFYING|PENDING_REVIEW|DEPLOYING|LIVE|FAILED|CANCELLED
             phase               TEXT NOT NULL DEFAULT 'IDEA',
             -- per-phase outputs, keyed by phase name
             checkpoint          JSONB NOT NULL DEFAULT '{}',
