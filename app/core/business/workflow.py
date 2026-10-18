@@ -7,8 +7,8 @@ Uses the existing WorkflowEngine (app/core/workflow/engine.py).
 Stage order:
   1.  intake           (series)
   2.  company_desc     (series, depends: intake)
-  3.  market_intel     (parallel with 4)
-  4.  competitor_intel (parallel with 3, depends: intake)
+  3.  market_intel     (parallel with 4, depends: intake + company_desc)
+  4.  competitor_intel (parallel with 3, depends: intake + company_desc)
   5.  offer_pricing    (depends: 3, 4)
   6.  go_to_market     (depends: 2, 5)
   7.  ops_finance      (depends: 2, 5)
@@ -182,7 +182,6 @@ async def step_competitor_intel(
 ) -> dict:
     ctx = _context or {}
     company_summary = ctx.get("company_desc.company_summary")
-    market_summary  = ctx.get("market_intel.market_summary")
     try:
         await _mark_section_running(plan_id, "competitor_intelligence", org_id)
         async with acquire_scoped(org_id) as conn:
@@ -190,7 +189,7 @@ async def step_competitor_intel(
                 conn, plan_id, org_id, user_id,
                 idea_raw, industry,
                 company_summary,
-                market_summary,
+                None,  # market_summary: market_intel runs parallel; not available at this stage
             )
         return {"competitor_summary": text[:500]}
     except Exception as exc:
@@ -345,10 +344,49 @@ async def step_final_score(
     return {"final_score": score_data["overall_score"]}
 
 
+_MANDATORY_SECTIONS = frozenset({
+    "intake",
+    "company_description",
+    "market_intelligence",
+    "competitor_intelligence",
+    "offer_pricing",
+    "go_to_market",
+    "ops_finance",
+    "full_plan",
+    "assumption_audit",
+    "adversarial_review",
+})
+
+
 async def step_mark_complete(
     plan_id: str, org_id: str,
     _context: dict | None = None, **_
 ) -> dict:
+    # Guard: every mandatory section must be COMPLETED.
+    # Checking for COMPLETED (not just non-FAILED) catches sections that are
+    # PENDING, RUNNING, FAILED, or simply missing from the DB.
+    async with acquire_scoped(org_id) as conn:
+        completed_rows = await conn.fetch(
+            """
+            SELECT section_key
+            FROM bp_sections
+            WHERE plan_id = $1
+              AND section_key = ANY($2::text[])
+              AND status = 'COMPLETED'
+            """,
+            plan_id, list(_MANDATORY_SECTIONS),
+        )
+    completed_keys = {r["section_key"] for r in completed_rows}
+    incomplete = _MANDATORY_SECTIONS - completed_keys
+    if incomplete:
+        log.error(
+            "step_mark_complete: plan %s has %d incomplete mandatory section(s): %s",
+            plan_id, len(incomplete), sorted(incomplete),
+        )
+        raise RuntimeError(
+            f"Plan cannot be completed: {len(incomplete)} mandatory section(s) not completed: "
+            f"{', '.join(sorted(incomplete))}"
+        )
     await _mark_plan_status(plan_id, "COMPLETED", org_id=org_id)
     return {}
 
@@ -386,12 +424,13 @@ def build_business_plan_workflow(
         .step("company_desc",     "Company Description",
               step_company_desc,     args=base_ctx, depends_on=["intake"],
               retry=_retry,          timeout_s=90.0)
-        # market_intel and competitor_intel run in parallel after intake
+        # market_intel and competitor_intel depend on company_desc (not parallel with it),
+        # but run in parallel with each other
         .step("market_intel",     "Market Intelligence",
-              step_market_intel,     args=base_ctx, depends_on=["intake"],
+              step_market_intel,     args=base_ctx, depends_on=["intake", "company_desc"],
               retry=_retry,          timeout_s=120.0)
         .step("competitor_intel", "Competitor Intelligence",
-              step_competitor_intel, args=base_ctx, depends_on=["intake"],
+              step_competitor_intel, args=base_ctx, depends_on=["intake", "company_desc"],
               retry=_retry,          timeout_s=120.0)
         # offer and GTM depend on both parallel branches
         .step("offer_pricing",    "Offer & Pricing",

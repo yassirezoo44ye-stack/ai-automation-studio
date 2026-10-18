@@ -263,9 +263,10 @@ class TestWorkflowBuilder:
         # Adversarial depends on assumption_audit AND score_v1
         assert "assumption_audit" in wf.steps["adversarial_rev"].depends_on
         assert "score_v1" in wf.steps["adversarial_rev"].depends_on
-        # Market and competitor run in parallel (both depend only on intake)
-        assert wf.steps["market_intel"].depends_on == ["intake"]
-        assert wf.steps["competitor_intel"].depends_on == ["intake"]
+        # Market and competitor both depend on company_desc (so they get company_summary),
+        # and run in parallel with each other after company_desc completes.
+        assert wf.steps["market_intel"].depends_on == ["intake", "company_desc"]
+        assert wf.steps["competitor_intel"].depends_on == ["intake", "company_desc"]
 
     def test_workflow_final_step_depends_on_score(self):
         from app.core.business.workflow import build_business_plan_workflow
@@ -1189,3 +1190,211 @@ class TestStartupRecovery:
 
         with patch("app.core.business.schema.get_pool", return_value=None):
             await mark_interrupted_business_plans()  # must not raise
+
+
+# ── step_mark_complete guard ───────────────────────────────────────────────────
+
+class TestMarkCompleteGuard:
+    """step_mark_complete refuses to mark COMPLETED unless ALL mandatory sections are COMPLETED.
+
+    The guard queries for COMPLETED rows (not just non-FAILED), so it catches
+    FAILED, PENDING, RUNNING, and entirely-missing sections alike.
+    """
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_fails_if_mandatory_section_failed(self):
+        """A section that is FAILED (not in COMPLETED set) triggers the guard."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        # All mandatory sections COMPLETED except market_intelligence
+        present = _MANDATORY_SECTIONS - {"market_intelligence"}
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[{"section_key": k} for k in present])
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock) as mock_status:
+            with pytest.raises(RuntimeError, match="mandatory section"):
+                await step_mark_complete(plan_id="plan-1", org_id="org-1")
+            mock_status.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_fails_if_mandatory_section_pending(self):
+        """A section stuck in PENDING (absent from COMPLETED set) also triggers the guard."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        # Only half the mandatory sections returned as COMPLETED
+        partial = list(_MANDATORY_SECTIONS)[:5]
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[{"section_key": k} for k in partial])
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock) as mock_status:
+            with pytest.raises(RuntimeError, match="mandatory section"):
+                await step_mark_complete(plan_id="plan-1", org_id="org-1")
+            mock_status.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_succeeds_with_all_sections_completed(self):
+        """Calls _mark_plan_status('COMPLETED') only when ALL mandatory sections are COMPLETED."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(
+            return_value=[{"section_key": k} for k in _MANDATORY_SECTIONS]
+        )
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock) as mock_status:
+            result = await step_mark_complete(plan_id="plan-1", org_id="org-1")
+            mock_status.assert_awaited_once_with("plan-1", "COMPLETED", org_id="org-1")
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_error_names_all_incomplete_sections(self):
+        """RuntimeError message names every incomplete section, not just the first."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        # offer_pricing and go_to_market are missing from COMPLETED
+        present = _MANDATORY_SECTIONS - {"offer_pricing", "go_to_market"}
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[{"section_key": k} for k in present])
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock):
+            with pytest.raises(RuntimeError) as exc_info:
+                await step_mark_complete(plan_id="plan-1", org_id="org-1")
+            msg = str(exc_info.value)
+            assert "offer_pricing" in msg
+            assert "go_to_market" in msg
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_queries_completed_status_for_mandatory_sections(self):
+        """Guard fetches COMPLETED rows for exactly _MANDATORY_SECTIONS."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(
+            return_value=[{"section_key": k} for k in _MANDATORY_SECTIONS]
+        )
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock):
+            await step_mark_complete(plan_id="plan-x", org_id="org-x")
+
+        sql, plan_id_arg, sections_arg = mock_conn.fetch.call_args[0]
+        assert plan_id_arg == "plan-x"
+        assert set(sections_arg) == _MANDATORY_SECTIONS
+        assert "COMPLETED" in sql  # query filters on COMPLETED, not FAILED
+
+
+# ── Context fix: company_desc dependency ──────────────────────────────────────
+
+class TestContextFixDeps:
+    """After the dependency fix, market_intel and competitor_intel receive company_summary."""
+
+    def test_market_intel_depends_on_company_desc(self):
+        from app.core.business.workflow import build_business_plan_workflow
+        wf = build_business_plan_workflow(
+            plan_id="p", org_id="o", user_id="u",
+            idea_raw="Fintech payment solution", industry="Finance", stage="IDEA",
+        )
+        assert "company_desc" in wf.steps["market_intel"].depends_on
+
+    def test_competitor_intel_depends_on_company_desc(self):
+        from app.core.business.workflow import build_business_plan_workflow
+        wf = build_business_plan_workflow(
+            plan_id="p", org_id="o", user_id="u",
+            idea_raw="Fintech payment solution", industry="Finance", stage="IDEA",
+        )
+        assert "company_desc" in wf.steps["competitor_intel"].depends_on
+
+    def test_market_and_competitor_still_parallel_with_each_other(self):
+        """market_intel and competitor_intel do NOT depend on each other (still parallel)."""
+        from app.core.business.workflow import build_business_plan_workflow
+        wf = build_business_plan_workflow(
+            plan_id="p", org_id="o", user_id="u",
+            idea_raw="Logistics SaaS", industry="Logistics", stage="MVP",
+        )
+        assert "competitor_intel" not in wf.steps["market_intel"].depends_on
+        assert "market_intel" not in wf.steps["competitor_intel"].depends_on
+
+    @pytest.mark.asyncio
+    async def test_market_intel_passes_company_summary_from_context(self):
+        """step_market_intel reads company_desc.company_summary and forwards it to the agent."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_market_intel
+
+        mock_conn = AsyncMock()
+        company_summary = "A B2B SaaS payroll tool targeting SMBs."
+        ctx = {"company_desc.company_summary": company_summary}
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_section_running", new_callable=AsyncMock), \
+             patch("app.core.business.agents.run_market_intelligence",
+                   new=AsyncMock(return_value="market text")) as mock_agent:
+            await step_market_intel(
+                plan_id="p", org_id="o", user_id="u",
+                idea_raw="payroll SaaS", _context=ctx,
+            )
+
+        mock_agent.assert_awaited_once()
+        positional = mock_agent.call_args[0]
+        # signature: conn, plan_id, org_id, user_id, idea_raw, industry, company_summary, target_customers
+        assert positional[6] == company_summary
+
+    @pytest.mark.asyncio
+    async def test_competitor_intel_passes_company_summary_from_context(self):
+        """step_competitor_intel reads company_desc.company_summary and forwards it to the agent."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_competitor_intel
+
+        mock_conn = AsyncMock()
+        company_summary = "A B2B SaaS payroll tool targeting SMBs."
+        ctx = {"company_desc.company_summary": company_summary}
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_section_running", new_callable=AsyncMock), \
+             patch("app.core.business.agents.run_competitor_intelligence",
+                   new=AsyncMock(return_value="competitor text")) as mock_agent:
+            await step_competitor_intel(
+                plan_id="p", org_id="o", user_id="u",
+                idea_raw="payroll SaaS", _context=ctx,
+            )
+
+        mock_agent.assert_awaited_once()
+        positional = mock_agent.call_args[0]
+        # signature: conn, plan_id, org_id, user_id, idea_raw, industry, company_summary, market_summary
+        assert positional[6] == company_summary
