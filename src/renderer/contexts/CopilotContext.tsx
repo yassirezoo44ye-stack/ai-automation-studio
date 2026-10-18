@@ -79,8 +79,9 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
           method: "POST",
           headers: authH(),
           body: JSON.stringify({
-            project_id: "demo",
+            project_id: "copilot",
             prompt: promptWithContext,
+            display_text: trimmed,
             conversation_id: conversationIdRef.current,
           }),
           signal: ctrl.signal,
