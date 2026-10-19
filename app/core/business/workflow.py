@@ -21,6 +21,7 @@ Stage order:
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -72,7 +73,9 @@ async def _mark_section_running(plan_id: str, section_key: str, org_id: str) -> 
             """
             INSERT INTO bp_sections (plan_id, organization_id, section_key, title, status)
             VALUES ($1,$2,$3,$3,'RUNNING')
-            ON CONFLICT (plan_id, section_key) DO UPDATE SET status='RUNNING', updated_at=NOW()
+            ON CONFLICT (plan_id, section_key) DO UPDATE
+                SET status = 'RUNNING', updated_at = NOW()
+                WHERE bp_sections.status != 'COMPLETED'
             """,
             plan_id, org_id, section_key,
         )
@@ -494,6 +497,36 @@ async def start_business_plan(
     return run
 
 
+async def _rebuild_context_for_retry(plan_id: str, org_id: str) -> dict:
+    """Reconstruct prior-step outputs from DB so retry runs receive useful context.
+
+    Pulls USER-sourced facts for intake.intake_data and the COMPLETED
+    company_description content for company_desc.company_summary.  Only
+    COMPLETED sections contribute — a FAILED section produces no context entry,
+    which is the same as starting the retry with a blank context for that key.
+    """
+    ctx: dict = {}
+
+    facts = await _get_facts(plan_id, org_id)
+    intake_keys = {"problem_statement", "solution", "target_customers",
+                   "value_proposition", "revenue_model"}
+    intake_data = {}
+    for f in facts:
+        if f["source_type"] == "USER" and f["fact_key"] in intake_keys:
+            try:
+                intake_data[f["fact_key"]] = json.loads(f["value"])
+            except (json.JSONDecodeError, TypeError):
+                intake_data[f["fact_key"]] = f["value"]
+    if intake_data:
+        ctx["intake.intake_data"] = intake_data
+
+    company_content = await _get_section(plan_id, "company_description", org_id)
+    if company_content:
+        ctx["company_desc.company_summary"] = company_content[:1000]
+
+    return ctx
+
+
 async def retry_sections(
     plan_id: str,
     org_id: str,
@@ -529,6 +562,7 @@ async def retry_sections(
         "idea_raw": idea_raw,
         "industry": industry,
         "stage":    stage,
+        "_context": await _rebuild_context_for_retry(plan_id, org_id),
     }
 
     for key in section_keys:

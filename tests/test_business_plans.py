@@ -1398,3 +1398,202 @@ class TestContextFixDeps:
         positional = mock_agent.call_args[0]
         # signature: conn, plan_id, org_id, user_id, idea_raw, industry, company_summary, market_summary
         assert positional[6] == company_summary
+
+
+# ── P0-A: _mark_section_running COMPLETED guard ───────────────────────────────
+
+class TestMarkSectionRunningGuard:
+    """_mark_section_running must not overwrite sections whose status is COMPLETED."""
+
+    @pytest.mark.asyncio
+    async def test_sql_has_completed_guard(self):
+        """ON CONFLICT clause must carry WHERE bp_sections.status != 'COMPLETED'."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _mark_section_running
+
+        executed_sqls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture(sql, *args):
+            executed_sqls.append(sql)
+
+        mock_conn.execute = capture
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_section_running("plan-1", "intake", "org-1")
+
+        assert executed_sqls, "Expected at least one execute call"
+        guard_present = any("!= 'COMPLETED'" in sql for sql in executed_sqls)
+        assert guard_present, (
+            "Expected WHERE bp_sections.status != 'COMPLETED' guard in UPSERT SQL. "
+            f"Got SQL: {executed_sqls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_running_upsert_writes_running_status(self):
+        """Normal case: UPSERT sets status to RUNNING."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _mark_section_running
+
+        executed_sqls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture(sql, *args):
+            executed_sqls.append(sql)
+
+        mock_conn.execute = capture
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_section_running("plan-2", "company_description", "org-2")
+
+        assert any("RUNNING" in sql for sql in executed_sqls), (
+            "Expected RUNNING status in SQL"
+        )
+
+
+# ── P0-B: retry_sections context rebuild ──────────────────────────────────────
+
+class TestRetryContextRebuild:
+    """retry_sections must pass rebuilt prior-step context to each step function."""
+
+    @pytest.mark.asyncio
+    async def test_context_includes_intake_data_from_facts(self):
+        """_rebuild_context_for_retry populates intake.intake_data from USER facts."""
+        import json as _json
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _rebuild_context_for_retry
+
+        fact_rows = [
+            {"fact_key": "problem_statement", "value": _json.dumps("slow payroll"),
+             "source_type": "USER", "status": "UNVERIFIED", "confidence": 0.8},
+            {"fact_key": "solution",           "value": _json.dumps("cloud payroll"),
+             "source_type": "USER", "status": "UNVERIFIED", "confidence": 0.8},
+            {"fact_key": "target_customers",   "value": _json.dumps("SMBs"),
+             "source_type": "USER", "status": "UNVERIFIED", "confidence": 0.8},
+        ]
+        with patch("app.core.business.workflow._get_facts",
+                   new=AsyncMock(return_value=fact_rows)), \
+             patch("app.core.business.workflow._get_section",
+                   new=AsyncMock(return_value=None)):
+            ctx = await _rebuild_context_for_retry("plan-1", "org-1")
+
+        assert "intake.intake_data" in ctx
+        assert ctx["intake.intake_data"]["problem_statement"] == "slow payroll"
+        assert ctx["intake.intake_data"]["solution"] == "cloud payroll"
+        assert ctx["intake.intake_data"]["target_customers"] == "SMBs"
+
+    @pytest.mark.asyncio
+    async def test_context_includes_company_summary_from_completed_section(self):
+        """_rebuild_context_for_retry populates company_desc.company_summary from COMPLETED section."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _rebuild_context_for_retry
+
+        long_text = "X" * 2000
+        with patch("app.core.business.workflow._get_facts",
+                   new=AsyncMock(return_value=[])), \
+             patch("app.core.business.workflow._get_section",
+                   new=AsyncMock(return_value=long_text)):
+            ctx = await _rebuild_context_for_retry("plan-2", "org-2")
+
+        assert "company_desc.company_summary" in ctx
+        assert len(ctx["company_desc.company_summary"]) == 1000  # truncated to 1000
+
+    @pytest.mark.asyncio
+    async def test_failed_company_section_absent_from_context(self):
+        """When company_description is FAILED (not COMPLETED), _get_section returns None → no key."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _rebuild_context_for_retry
+
+        with patch("app.core.business.workflow._get_facts",
+                   new=AsyncMock(return_value=[])), \
+             patch("app.core.business.workflow._get_section",
+                   new=AsyncMock(return_value=None)):
+            ctx = await _rebuild_context_for_retry("plan-3", "org-3")
+
+        assert "company_desc.company_summary" not in ctx
+
+    @pytest.mark.asyncio
+    async def test_retry_passes_rebuilt_context_to_step(self):
+        """retry_sections passes _context dict (from _rebuild_context_for_retry) to each step fn."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections
+
+        received_contexts: list = []
+
+        async def fake_step(**kwargs):
+            received_contexts.append(kwargs.get("_context"))
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        mock_conn.fetchval = AsyncMock(return_value=0)
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        rebuilt = {"intake.intake_data": {"solution": "cloud tool"}}
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow._rebuild_context_for_retry",
+                   new=AsyncMock(return_value=rebuilt)), \
+             patch("app.core.business.workflow.step_intake", fake_step), \
+             patch("app.core.business.scoring.compute_score",
+                   new=AsyncMock(return_value={})):
+            await retry_sections(
+                plan_id="plan-4", org_id="org-4", user_id="user-4",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        assert received_contexts == [rebuilt], (
+            f"Expected rebuilt context forwarded, got: {received_contexts}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_with_no_prior_data_passes_empty_context(self):
+        """When DB has no facts and no completed sections, _context is an empty dict."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections
+
+        received_contexts: list = []
+
+        async def fake_step(**kwargs):
+            received_contexts.append(kwargs.get("_context"))
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        mock_conn.fetchval = AsyncMock(return_value=0)
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow._rebuild_context_for_retry",
+                   new=AsyncMock(return_value={})), \
+             patch("app.core.business.workflow.step_intake", fake_step), \
+             patch("app.core.business.scoring.compute_score",
+                   new=AsyncMock(return_value={})):
+            await retry_sections(
+                plan_id="plan-5", org_id="org-5", user_id="user-5",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        assert received_contexts == [{}], (
+            "Expected empty dict context, got: {received_contexts}"
+        )
