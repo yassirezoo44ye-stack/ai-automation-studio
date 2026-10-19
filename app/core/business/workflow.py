@@ -581,4 +581,18 @@ async def retry_sections(
     async with acquire_scoped(org_id) as conn:
         await compute_score(conn, plan_id, org_id)
 
+    # Update plan lifecycle: COMPLETED if all mandatory sections succeeded, FAILED otherwise
+    async with acquire_scoped(org_id) as conn:
+        completed_rows = await conn.fetch(
+            """
+            SELECT section_key FROM bp_sections
+            WHERE plan_id = $1
+              AND section_key = ANY($2::text[])
+              AND status = 'COMPLETED'
+            """,
+            plan_id, list(_MANDATORY_SECTIONS),
+        )
+    all_complete = _MANDATORY_SECTIONS <= {r["section_key"] for r in completed_rows}
+    await _mark_plan_status(plan_id, "COMPLETED" if all_complete else "FAILED", org_id=org_id)
+
     return results

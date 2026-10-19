@@ -229,6 +229,23 @@ async def _run_workflow_bg(
             )
 
 
+async def _run_retry_bg(
+    plan_id: str, org_id: str, user_id: str,
+    idea_raw: str, industry: Optional[str], stage: str,
+    section_keys: list[str],
+) -> None:
+    """Background task: wrap retry_sections; fall back to FAILED on unexpected error."""
+    try:
+        await retry_sections(plan_id, org_id, user_id, idea_raw, industry, stage, section_keys)
+    except Exception as exc:
+        log.exception("retry_sections failed for plan %s: %s", plan_id, exc)
+        async with acquire_scoped(org_id) as conn:
+            await conn.execute(
+                "UPDATE bp_plans SET status='FAILED', updated_at=NOW() WHERE id=$1",
+                plan_id,
+            )
+
+
 @router.get("/plans")
 async def list_plans(request: Request) -> list[dict]:
     """List all plans for the authenticated user."""
@@ -471,8 +488,16 @@ async def retry_plan_sections(
 
     plan = await _assert_plan_owner(plan_id, user_id, org_id)
 
+    # Transition to GENERATING before the background task starts so the
+    # frontend can open an SSE stream immediately after this response.
+    async with acquire_scoped(org_id) as conn:
+        await conn.execute(
+            "UPDATE bp_plans SET status='GENERATING', updated_at=NOW() WHERE id=$1",
+            plan_id,
+        )
+
     background.add_task(
-        retry_sections,
+        _run_retry_bg,
         plan_id=plan_id, org_id=org_id, user_id=user_id,
         idea_raw=plan.get("idea_raw", ""),
         industry=plan.get("industry"),

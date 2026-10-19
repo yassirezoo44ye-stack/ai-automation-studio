@@ -1597,3 +1597,186 @@ class TestRetryContextRebuild:
         assert received_contexts == [{}], (
             "Expected empty dict context, got: {received_contexts}"
         )
+
+
+# ── Lifecycle fix: retry_sections updates plan status ────────────────────────
+
+class TestRetryLifecycleUpdate:
+    """After retrying sections, retry_sections must write COMPLETED or FAILED
+    to bp_plans depending on whether all _MANDATORY_SECTIONS are COMPLETED."""
+
+    @pytest.mark.asyncio
+    async def test_retry_marks_plan_completed_when_all_mandatory_sections_pass(self):
+        """All mandatory sections COMPLETED → _mark_plan_status('COMPLETED')."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections, _MANDATORY_SECTIONS
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(
+            return_value=[{"section_key": k} for k in _MANDATORY_SECTIONS]
+        )
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        async def fake_step(**kwargs):
+            pass
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow.step_intake", fake_step), \
+             patch("app.core.business.workflow._rebuild_context_for_retry",
+                   new=AsyncMock(return_value={})), \
+             patch("app.core.business.workflow.compute_score",
+                   new=AsyncMock(return_value={"overall_score": 80, "breakdown": {}})), \
+             patch("app.core.business.workflow._mark_plan_status",
+                   new_callable=AsyncMock) as mock_status:
+            await retry_sections(
+                plan_id="plan-lc", org_id="org-lc", user_id="u",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        mock_status.assert_awaited_once_with("plan-lc", "COMPLETED", org_id="org-lc")
+
+    @pytest.mark.asyncio
+    async def test_retry_marks_plan_failed_when_mandatory_sections_incomplete(self):
+        """Some mandatory sections still FAILED → _mark_plan_status('FAILED')."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections, _MANDATORY_SECTIONS
+
+        # Only half completed
+        partial = list(_MANDATORY_SECTIONS)[:5]
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(
+            return_value=[{"section_key": k} for k in partial]
+        )
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        async def fake_step(**kwargs):
+            pass
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow.step_intake", fake_step), \
+             patch("app.core.business.workflow._rebuild_context_for_retry",
+                   new=AsyncMock(return_value={})), \
+             patch("app.core.business.workflow.compute_score",
+                   new=AsyncMock(return_value={"overall_score": 30, "breakdown": {}})), \
+             patch("app.core.business.workflow._mark_plan_status",
+                   new_callable=AsyncMock) as mock_status:
+            await retry_sections(
+                plan_id="plan-fail", org_id="org-fail", user_id="u",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        mock_status.assert_awaited_once_with("plan-fail", "FAILED", org_id="org-fail")
+
+
+# ── Lifecycle fix: retry endpoint sets GENERATING before background task ──────
+
+class TestRetryEndpointGeneratingTransition:
+    """retry_plan_sections must UPDATE plan status to GENERATING synchronously
+    (before returning 200) so the frontend SSE stream can start immediately."""
+
+    def _make_app(self):
+        from fastapi import FastAPI
+        from app.routers.business_plans import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    @pytest.mark.asyncio
+    async def test_retry_endpoint_sets_generating_before_responding(self):
+        """POST /plans/{id}/retry must write GENERATING to DB before returning."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from fastapi.testclient import TestClient
+
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append(sql)
+
+        mock_conn.execute = capture_execute
+        mock_conn.fetchrow = AsyncMock(return_value={
+            "id": plan_id, "organization_id": "org-1", "user_id": "user-1",
+            "idea_raw": "test idea", "industry": None, "stage": "IDEA",
+            "status": "FAILED", "readiness_score": None,
+            "workflow_run_id": None, "title": "",
+            "created_at": "2024-01-01", "updated_at": "2024-01-01",
+        })
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.routers.business_plans._resolve_user", return_value="user-1"), \
+             patch("app.routers.business_plans._resolve_org", return_value="org-1"), \
+             patch("app.routers.business_plans.acquire_scoped", mock_scoped), \
+             patch("app.routers.business_plans._run_retry_bg", new_callable=AsyncMock):
+            with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+                r = client.post(
+                    f"/api/business/plans/{plan_id}/retry",
+                    json={"section_keys": ["intake"]},
+                    headers={"Authorization": "Bearer fake"},
+                )
+
+        assert r.status_code == 200
+        generating_writes = [s for s in execute_calls if "GENERATING" in s]
+        assert generating_writes, (
+            f"Expected UPDATE ... GENERATING before returning 200. Got: {execute_calls}"
+        )
+
+
+# ── Lifecycle fix: _run_retry_bg error handler ────────────────────────────────
+
+class TestRunRetryBgErrorHandler:
+    """_run_retry_bg must catch unexpected exceptions from retry_sections and
+    write FAILED to bp_plans so the plan is not stuck in GENERATING."""
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_marks_plan_failed(self):
+        """retry_sections raises → _run_retry_bg writes FAILED via acquire_scoped."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from app.routers.business_plans import _run_retry_bg
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append(sql)
+
+        mock_conn.execute = capture_execute
+        scoped_calls: list[str] = []
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            scoped_calls.append(oid)
+            yield mock_conn
+
+        with patch("app.routers.business_plans.retry_sections",
+                   new_callable=AsyncMock,
+                   side_effect=RuntimeError("unexpected DB crash")), \
+             patch("app.routers.business_plans.acquire_scoped", mock_scoped):
+            await _run_retry_bg(
+                plan_id=plan_id, org_id=org_id, user_id="u",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        assert scoped_calls == [org_id], "acquire_scoped must be called with org_id"
+        failed_writes = [s for s in execute_calls if "FAILED" in s]
+        assert failed_writes, "Expected FAILED to be written on unexpected error"
