@@ -84,7 +84,7 @@ async def _mark_section_running(plan_id: str, section_key: str, org_id: str) -> 
 async def _mark_plan_status(plan_id: str, status: str, *, org_id: str) -> None:
     async with acquire_scoped(org_id) as conn:
         await conn.execute(
-            "UPDATE bp_plans SET status=$1, updated_at=NOW() WHERE id=$2",
+            "UPDATE bp_plans SET status=$1, updated_at=NOW() WHERE id=$2 AND status != 'PAUSED'",
             status, plan_id,
         )
 

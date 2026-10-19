@@ -1780,3 +1780,104 @@ class TestRunRetryBgErrorHandler:
         assert scoped_calls == [org_id], "acquire_scoped must be called with org_id"
         failed_writes = [s for s in execute_calls if "FAILED" in s]
         assert failed_writes, "Expected FAILED to be written on unexpected error"
+
+
+class TestMarkPlanStatusPausedGuard:
+    """_mark_plan_status must not overwrite PAUSED with COMPLETED or FAILED.
+
+    The SQL guard (AND status != 'PAUSED') makes the UPDATE a no-op when the
+    plan has been cancelled, so cancellation cannot be lost by a concurrent
+    retry finishing after the user pressed cancel.
+    """
+
+    @pytest.mark.asyncio
+    async def test_paused_plan_not_overwritten_with_completed(self):
+        """retry_sections finishing with all sections OK must not change PAUSED → COMPLETED."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.core.business.workflow import _mark_plan_status
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[tuple] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append((sql, args))
+
+        mock_conn.execute = capture_execute
+
+        @asynccontextmanager
+        async def mock_scoped(_oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_plan_status(plan_id, "COMPLETED", org_id=org_id)
+
+        assert len(execute_calls) == 1
+        sql, args = execute_calls[0]
+        assert "status != 'PAUSED'" in sql, (
+            "SQL must guard against overwriting PAUSED; found: " + sql
+        )
+        assert args[0] == "COMPLETED"
+        assert args[1] == plan_id
+
+    @pytest.mark.asyncio
+    async def test_paused_plan_not_overwritten_with_failed(self):
+        """retry_sections finishing with failures must not change PAUSED → FAILED."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from app.core.business.workflow import _mark_plan_status
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[tuple] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append((sql, args))
+
+        mock_conn.execute = capture_execute
+
+        @asynccontextmanager
+        async def mock_scoped(_oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_plan_status(plan_id, "FAILED", org_id=org_id)
+
+        sql, args = execute_calls[0]
+        assert "status != 'PAUSED'" in sql
+        assert args[0] == "FAILED"
+
+    @pytest.mark.asyncio
+    async def test_non_paused_plan_status_is_updated(self):
+        """Normal (non-PAUSED) plans still receive the status update."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from app.core.business.workflow import _mark_plan_status
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[tuple] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append((sql, args))
+
+        mock_conn.execute = capture_execute
+
+        @asynccontextmanager
+        async def mock_scoped(_oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_plan_status(plan_id, "COMPLETED", org_id=org_id)
+
+        assert len(execute_calls) == 1
+        sql, args = execute_calls[0]
+        assert args[0] == "COMPLETED"
+        assert args[1] == plan_id
