@@ -6,13 +6,8 @@ specific invariant the fix enforces.
 """
 from __future__ import annotations
 
-import ast
 import os
-import sys
-import types
-import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
