@@ -62,6 +62,7 @@ from app.routers import integrations     as integrations_router
 from app.routers import app_builder      as app_builder_router
 from app.routers import ws_ticket        as ws_ticket_router
 from app.routers import training         as training_router
+from app.routers import library          as library_router
 # Business Lab — Plan & Validation Engine
 from app.routers import business_plans   as business_plans_router
 # Automation — Phase 5 Gate 3
@@ -263,6 +264,11 @@ async def lifespan(app: FastAPI):
     from app.training import init_training_schema
     async with pool.acquire() as conn:
         await init_training_schema(conn)
+
+    # ── Flow Library — references organizations/users ─────────────────────────
+    from app.library import init_library_schema
+    async with pool.acquire() as conn:
+        await init_library_schema(conn)
 
     # ── Multi-Device Control schema ──────────────────────────────────────────
     from app.services.device_control_schema import init_device_control_schema
@@ -742,6 +748,7 @@ def create_app() -> FastAPI:
     app.include_router(app_builder_router.router)
     app.include_router(ws_ticket_router.router)
     app.include_router(training_router.router)
+    app.include_router(library_router.router)
     # Business Lab — Plan & Validation Engine
     app.include_router(business_plans_router.router)
     # Automation — Phase 5 Gate 3
