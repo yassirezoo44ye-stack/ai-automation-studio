@@ -65,38 +65,34 @@ class TestPhaseTestingBuildGate:
             "BUILDING": {"app_id": APP_ID, "app_name": "TestApp", "build_status": build_status},
         }
 
-    def test_skips_when_build_failed(self):
+    def test_raises_when_build_failed(self):
         conn = AsyncMock()
         pipeline = _make_pipeline(_mock_pool(conn))
         cp = self._cp_with_build("failed")
-        result = run(pipeline._phase_testing(PROJECT, ORG, USER, "idea", cp))
-        assert result["status"] == "skipped"
-        assert result["reason"] == "build_failed"
+        with pytest.raises(RuntimeError, match="build_failed"):
+            run(pipeline._phase_testing(PROJECT, ORG, USER, "idea", cp))
 
-    def test_skips_when_build_timeout(self):
-        """Regression: previously 'timeout' was not caught and testing proceeded."""
+    def test_raises_when_build_timeout(self):
+        """Regression: timeout must abort TESTING (raise), not silently skip."""
         conn = AsyncMock()
         pipeline = _make_pipeline(_mock_pool(conn))
         cp = self._cp_with_build("timeout")
-        result = run(pipeline._phase_testing(PROJECT, ORG, USER, "idea", cp))
-        assert result["status"] == "skipped"
-        assert result["reason"] == "build_timeout"
+        with pytest.raises(RuntimeError, match="build_timeout"):
+            run(pipeline._phase_testing(PROJECT, ORG, USER, "idea", cp))
 
-    def test_skips_when_build_partial(self):
+    def test_raises_when_build_partial(self):
         conn = AsyncMock()
         pipeline = _make_pipeline(_mock_pool(conn))
         cp = self._cp_with_build("partial")
-        result = run(pipeline._phase_testing(PROJECT, ORG, USER, "idea", cp))
-        assert result["status"] == "skipped"
-        assert result["reason"] == "build_partial"
+        with pytest.raises(RuntimeError, match="build_partial"):
+            run(pipeline._phase_testing(PROJECT, ORG, USER, "idea", cp))
 
-    def test_skips_when_build_unknown(self):
+    def test_raises_when_build_unknown(self):
         conn = AsyncMock()
         pipeline = _make_pipeline(_mock_pool(conn))
         cp = self._cp_with_build("whatever_unknown")
-        result = run(pipeline._phase_testing(PROJECT, ORG, USER, "idea", cp))
-        assert result["status"] == "skipped"
-        assert "whatever_unknown" in result["reason"]
+        with pytest.raises(RuntimeError, match="whatever_unknown"):
+            run(pipeline._phase_testing(PROJECT, ORG, USER, "idea", cp))
 
     def test_proceeds_only_when_build_completed(self):
         """Only 'completed' must allow testing to proceed (calls LLM)."""
@@ -608,3 +604,119 @@ class TestSecurityPolicyIntegrity:
     def test_none_overall_blocks_immediately(self):
         with pytest.raises(RuntimeError, match="invalid or unparseable"):
             self._run_verifying('{"findings": [], "rls_covered": true}')
+
+
+# ── P2: build failure stops pipeline (does not reach VERIFYING/DEPLOYING/LIVE) ─
+
+class TestBuildFailureStopsPipeline:
+    """P2 — a non-completed build must mark the project FAILED and not
+    allow the pipeline to proceed past TESTING to VERIFYING, DEPLOYING or LIVE."""
+
+    def _run_pipeline_with_build(self, build_status: str) -> list[str]:
+        """Run _run_pipeline from TESTING with a given build_status.
+        Returns the list of phase strings passed to _set_phase."""
+        conn = AsyncMock()
+        conn.execute = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=None)
+        pool = _mock_pool(conn)
+        pipeline = _make_pipeline(pool)
+
+        phases_set: list[str] = []
+
+        async def fake_set_phase(project_id, org_id, phase):
+            phases_set.append(phase)
+
+        async def fake_save_checkpoint(project_id, org_id, cp):
+            pass
+
+        async def fake_fail(project_id, org_id, message):
+            phases_set.append("FAILED")
+
+        pipeline._set_phase = fake_set_phase
+        pipeline._save_checkpoint = fake_save_checkpoint
+        pipeline._fail = fake_fail
+
+        checkpoint = {
+            "IDEA":      {"product_name": "App", "key_features": []},
+            "BLUEPRINT": {"user_stories": []},
+            "BUILDING":  {"app_id": APP_ID, "app_name": "App",
+                          "build_status": build_status},
+        }
+
+        run(pipeline._run_pipeline(
+            PROJECT, ORG, USER, "idea",
+            checkpoint=checkpoint,
+            start_phase="TESTING",
+        ))
+        return phases_set
+
+    def test_failed_build_marks_project_failed(self):
+        phases = self._run_pipeline_with_build("failed")
+        assert "FAILED" in phases
+        assert "VERIFYING" not in phases
+        assert "DEPLOYING" not in phases
+        assert "LIVE" not in phases
+
+    def test_timeout_build_marks_project_failed(self):
+        phases = self._run_pipeline_with_build("timeout")
+        assert "FAILED" in phases
+        assert "VERIFYING" not in phases
+        assert "DEPLOYING" not in phases
+
+    def test_partial_build_marks_project_failed(self):
+        phases = self._run_pipeline_with_build("partial")
+        assert "FAILED" in phases
+        assert "VERIFYING" not in phases
+
+
+# ── P3: _poll_app_build returns timeout after exceeding the time limit ──────────
+
+class TestPollAppBuildTimeout:
+    """P3 — _poll_app_build must return 'timeout' when no terminal status
+    is reached within the configured limit, and must not loop forever."""
+
+    def test_returns_timeout_when_limit_exceeded(self):
+        import asyncio
+
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=None)
+        pool = _mock_pool(conn)
+        pipeline = _make_pipeline(pool)
+
+        sleep_calls: list[float] = []
+
+        async def fake_sleep(n):
+            sleep_calls.append(n)
+
+        async def run_poll():
+            with patch("asyncio.sleep", fake_sleep):
+                return await pipeline._poll_app_build(
+                    APP_ID, ORG, timeout=15
+                )
+
+        result = asyncio.new_event_loop().run_until_complete(run_poll())
+        assert result == "timeout"
+        total_slept = sum(sleep_calls)
+        assert total_slept >= 15, f"Expected ≥15s slept, got {total_slept}"
+
+    def test_returns_completed_before_timeout(self):
+        import asyncio
+
+        completed_row = MagicMock()
+        completed_row.__getitem__ = lambda self, k: "completed"
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=completed_row)
+        pool = _mock_pool(conn)
+        pipeline = _make_pipeline(pool)
+
+        async def fake_sleep(n):
+            pass
+
+        async def run_poll():
+            with patch("asyncio.sleep", fake_sleep):
+                return await pipeline._poll_app_build(
+                    APP_ID, ORG, timeout=600
+                )
+
+        result = asyncio.new_event_loop().run_until_complete(run_poll())
+        assert result == "completed"

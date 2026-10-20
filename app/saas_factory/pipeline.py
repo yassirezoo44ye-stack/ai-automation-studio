@@ -372,7 +372,7 @@ class SaasFactoryPipeline:
                 "partial": "build_partial",
             }
             reason = _reason_map.get(build_status, f"build_status_{build_status}")
-            return {"status": "skipped", "reason": reason, "checks": []}
+            raise RuntimeError(f"TESTING aborted: {reason}")
 
         # Fetch the built app's spec for test coverage analysis
         spec_summary: dict[str, Any] = {}
