@@ -123,7 +123,11 @@ def _looks_truncated(text: str) -> bool:
     s = text.rstrip()
     if not s:
         return True
-    return s[-1] not in ("}", "]") or s.count("{") > s.count("}")
+    return (
+        s[-1] not in ("}", "]")
+        or s.count("{") > s.count("}")
+        or s.count("[") > s.count("]")
+    )
 
 
 def _validate_entity_name(name: str, context: str) -> str:
@@ -479,6 +483,9 @@ Rules:
   NEVER set enabled:true unless the user's request clearly involves
   multi-device / multi-monitor / KVM control. For all other apps, set
   multi_device_config to null.
+- JSON string encoding: inside any string value, represent a double-quote
+  as \\" and any line break as \\n. Never embed an unescaped double-quote
+  or a raw newline/carriage-return inside a quoted JSON string value.
 """
 
 # Trigger keywords that map to specific engine capabilities

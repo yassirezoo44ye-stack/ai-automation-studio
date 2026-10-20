@@ -155,3 +155,85 @@ def test_saas_factory_testing_phase_marks_ai_review_type():
         "TESTING/VERIFYING phase result must mark review_type='ai_static_analysis' "
         "so UI can distinguish AI review from real test execution"
     )
+
+
+# ── SaaS Factory: _SPEC_SYSTEM JSON encoding rule ────────────────────────────
+
+def test_spec_system_instructs_json_string_encoding():
+    """_SPEC_SYSTEM must instruct the model to escape quotes and newlines in string values."""
+    src = _src("app/services/app_builder.py")
+    spec_idx = src.find('_SPEC_SYSTEM = """')
+    assert spec_idx != -1, "_SPEC_SYSTEM not found"
+    spec_end = src.find('"""', spec_idx + len('_SPEC_SYSTEM = """'))
+    spec_body = src[spec_idx:spec_end]
+    assert "JSON string encoding" in spec_body or (
+        "double-quote" in spec_body and "line break" in spec_body
+    ), (
+        "_SPEC_SYSTEM must include a rule about escaping double-quotes and newlines "
+        "inside JSON string values to prevent 'Expecting comma delimiter' parse errors"
+    )
+
+
+# ── SaaS Factory: _looks_truncated array-bracket check ───────────────────────
+
+def test_looks_truncated_checks_array_bracket_balance():
+    """_looks_truncated must detect unbalanced '[' brackets, not only '{'."""
+    src = _src("app/services/app_builder.py")
+    fn_idx = src.find("def _looks_truncated")
+    assert fn_idx != -1
+    fn_body = src[fn_idx: fn_idx + 400]
+    assert 'count("[")' in fn_body or "count('[')" in fn_body, (
+        "_looks_truncated must check s.count('[') > s.count(']') "
+        "to catch responses truncated inside an array"
+    )
+
+
+# ── OAuth: _verify_and_consume_oauth_state distinct log messages ──────────────
+
+def test_oauth_verify_logs_missing_state_separately():
+    """Absent state param must produce a distinct log from cookie absence."""
+    src = _src("app/routers/auth_users.py")
+    # The function must log specifically when state is absent
+    assert "missing state" in src, (
+        "_verify_and_consume_oauth_state must log 'missing state' separately "
+        "from cookie-absent and nonce-mismatch failures"
+    )
+
+
+def test_oauth_verify_logs_missing_cookie_separately():
+    """Absent bind cookie must produce a distinct log from state absence."""
+    src = _src("app/routers/auth_users.py")
+    assert "missing bind cookie" in src, (
+        "_verify_and_consume_oauth_state must log 'missing bind cookie' separately"
+    )
+
+
+def test_oauth_verify_logs_nonce_mismatch_separately():
+    """Bind nonce mismatch must produce a distinct log from state-absent."""
+    src = _src("app/routers/auth_users.py")
+    assert "bind nonce mismatch" in src, (
+        "_verify_and_consume_oauth_state must log 'bind nonce mismatch' separately "
+        "so concurrent-flow failures are distinguishable from expired-state failures"
+    )
+
+
+def test_oauth_verify_logs_state_expired_separately():
+    """Expired/unknown state must produce a distinct log."""
+    src = _src("app/routers/auth_users.py")
+    assert "state unknown/expired" in src or "state unknown" in src, (
+        "_verify_and_consume_oauth_state must log when state is absent from Redis "
+        "(expired or never stored) to distinguish from nonce mismatch"
+    )
+
+
+# ── OAuth: bind cookie path consistency ──────────────────────────────────────
+
+def test_bind_cookie_set_with_path_api_auth():
+    """_set_bind_cookie must set path='/api/auth' for path-scoped delivery."""
+    src = _src("app/routers/auth_users.py")
+    set_fn_idx = src.find("def _set_bind_cookie")
+    assert set_fn_idx != -1, "_set_bind_cookie not found"
+    fn_body = src[set_fn_idx: set_fn_idx + 700]
+    assert 'path="/api/auth"' in fn_body or "path='/api/auth'" in fn_body, (
+        "_set_bind_cookie must explicitly set path='/api/auth'"
+    )
