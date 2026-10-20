@@ -34,6 +34,7 @@ async def send_email(to: str, subject: str, html: str) -> None:
         )
     except Exception:
         log.exception("Failed to send email to %s", to)
+        raise
 
 
 async def send_verification_email(to: str, token: str) -> None:

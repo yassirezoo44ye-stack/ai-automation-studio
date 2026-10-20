@@ -46,11 +46,11 @@ async def _resolve_user(request: Request) -> str:
 
 
 async def _resolve_org(user_id: str) -> Optional[str]:
-    """Return the user's primary org_id (first org they belong to)."""
+    """Return the user's primary org_id (oldest membership, for determinism)."""
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT organization_id FROM organization_members WHERE user_id=$1 LIMIT 1",
+            "SELECT organization_id FROM organization_members WHERE user_id=$1 ORDER BY joined_at LIMIT 1",
             user_id,
         )
     return str(row["organization_id"]) if row else None

@@ -163,7 +163,7 @@ class LeadService:
                 parsed = _parse_qualification(result.content)
                 ai_score = parsed.get("score")
                 ai_notes = parsed.get("notes")
-                new_status = "qualified"
+                new_status = "qualified" if isinstance(ai_score, int) else "new"
             else:
                 ai_notes = f"AI qualification failed: {result.error or 'no content'}"
         except Exception as exc:

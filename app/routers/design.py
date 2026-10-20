@@ -134,13 +134,14 @@ async def save_canvas(req: DesignSaveRequest, request: Request):
                 """UPDATE design_canvases
                    SET name=($1), canvas_json=($2)::jsonb, thumbnail=($3),
                        width=($4), height=($5), updated_at=now()
-                   WHERE id=($6)::uuid
+                   WHERE id=($6)::uuid AND project_id=($7)::uuid
                    RETURNING id""",
                 req.name, json.dumps(req.canvas_json), req.thumbnail,
-                req.width, req.height, req.design_id,
+                req.width, req.height, req.design_id, str(pid),
             )
             if row:
                 return {"id": str(row["id"]), "project_id": str(pid)}
+            raise HTTPException(404, "Design not found")
         # insert new
         row = await conn.fetchrow(
             """INSERT INTO design_canvases (project_id, name, canvas_json, thumbnail, width, height)

@@ -339,7 +339,7 @@ class SaasFactoryPipeline:
         }
 
     async def _poll_app_build(self, app_id: str, org_id: str, timeout: int = 600) -> str:
-        terminal = {"completed", "failed", "partial"}
+        terminal = {"ready", "completed", "failed", "partial"}
         elapsed = 0
         interval = 5
         while elapsed < timeout:
@@ -365,7 +365,7 @@ class SaasFactoryPipeline:
         app_name = build.get("app_name", "the app")
         build_status = build.get("build_status", "unknown")
 
-        if build_status != "completed":
+        if build_status not in {"completed", "ready"}:
             _reason_map = {
                 "failed": "build_failed",
                 "timeout": "build_timeout",
@@ -413,6 +413,8 @@ class SaasFactoryPipeline:
         resp = await self._gw.complete(req, org_id=org_id, user_id=user_id)
         result = _extract_json(resp.content)
         result["app_id"] = app_id
+        result["review_type"] = "ai_static_analysis"
+        result["executed"] = False
         return result
 
     # ── Phase 5 — VERIFYING ────────────────────────────────────────────────────
@@ -450,6 +452,8 @@ class SaasFactoryPipeline:
         resp = await self._gw.complete(req, org_id=org_id, user_id=user_id)
         result = _extract_json(resp.content)
         result["build_id"] = build.get("app_id")
+        result["review_type"] = "ai_static_analysis"
+        result["executed"] = False
 
         overall = result.get("overall")
         _VALID_OVERALL = {"pass", "warn", "fail"}
