@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -387,7 +387,6 @@ class TestApproveMethod:
         saved_cps: list[dict] = []
 
         conn = self._make_conn()
-        orig_execute = conn.execute.side_effect
 
         async def capture(*args, **kwargs):
             sql = str(args[0]) if args else ""

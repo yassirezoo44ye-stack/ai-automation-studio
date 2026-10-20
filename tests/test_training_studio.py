@@ -15,7 +15,6 @@ from __future__ import annotations
 import types
 import unittest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ── A. Model layer ──────────────────────────────────────────────────────────
@@ -37,9 +36,9 @@ class TestModels(unittest.TestCase):
 
     def test_lesson_create_valid(self):
         from app.training.models import LessonCreate
-        l = LessonCreate(title="Lesson 1")
-        self.assertEqual(l.title, "Lesson 1")
-        self.assertEqual(l.position, 0)  # default is 0 (caller sets desired position)
+        lesson = LessonCreate(title="Lesson 1")
+        self.assertEqual(lesson.title, "Lesson 1")
+        self.assertEqual(lesson.position, 0)  # default is 0 (caller sets desired position)
 
     def test_course_generate_request_bounds(self):
         from app.training.models import CourseGenerateRequest
@@ -75,7 +74,6 @@ class TestVideoProviderABC(unittest.TestCase):
 
     def test_abstract_methods_required(self):
         from app.integrations.video.base import VideoProvider
-        import abc
         abstracts = {m for m in dir(VideoProvider) if getattr(getattr(VideoProvider, m, None), "__isabstractmethod__", False)}
         self.assertIn("provider_id",    abstracts)
         self.assertIn("display_name",   abstracts)
