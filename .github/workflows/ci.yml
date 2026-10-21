@@ -215,10 +215,24 @@ jobs:
           # Without it, Render builds whatever the branch tip is at hook
           # time — which may be a LATER, unvalidated push that landed while
           # this run's tests were executing.
+          #
+          # 409 Conflict means Render already has a deploy in progress for
+          # this commit — the service's checksPass autoDeploy trigger fired
+          # before this webhook arrived. Treat 409 as success: the deploy
+          # is happening, we just didn't need to trigger it twice.
           if echo "$RENDER_DEPLOY_HOOK_URL" | grep -q '?'; then
-            curl -fsS -X POST "${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}"
+            DEPLOY_URL="${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}"
           else
-            curl -fsS -X POST "${RENDER_DEPLOY_HOOK_URL}?ref=${GITHUB_SHA}"
+            DEPLOY_URL="${RENDER_DEPLOY_HOOK_URL}?ref=${GITHUB_SHA}"
+          fi
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$DEPLOY_URL")
+          if [ "$HTTP_STATUS" = "409" ]; then
+            echo "Render returned 409 — deploy already in progress (checksPass trigger fired first). Treating as success."
+          elif [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "201" ]; then
+            echo "::error::Render deploy hook returned HTTP $HTTP_STATUS"
+            exit 1
+          else
+            echo "Render deploy triggered (HTTP $HTTP_STATUS)."
           fi
 
   # ── Post-deploy smoke test ───────────────────────────────────────────────────
