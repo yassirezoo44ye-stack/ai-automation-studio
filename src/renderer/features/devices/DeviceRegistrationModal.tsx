@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { devicesService } from "./services/devicesService";
 import type { EnrollmentToken } from "./types/devices.types";
@@ -7,7 +7,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2;
 
 export function DeviceRegistrationModal({ onClose }: Props) {
   const { t } = useTranslation("devices");
@@ -15,8 +15,32 @@ export function DeviceRegistrationModal({ onClose }: Props) {
   const [token,    setToken]    = useState<EnrollmentToken | null>(null);
   const [error,    setError]    = useState<string | null>(null);
   const [copied,   setCopied]   = useState(false);
+  const [secsLeft, setSecsLeft] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentStep: Step = token ? 2 : 1;
+
+  useEffect(() => {
+    if (!token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSecsLeft(null);
+      return;
+    }
+    const expiry = new Date(token.expires_at).getTime();
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((expiry - Date.now()) / 1000));
+      setSecsLeft(remaining);
+      if (remaining === 0 && timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [token]);
 
   const generate = async () => {
     setLoading(true);
@@ -41,6 +65,8 @@ export function DeviceRegistrationModal({ onClose }: Props) {
   const reset = () => {
     setToken(null);
     setCopied(false);
+    setSecsLeft(null);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   };
 
   return (
@@ -83,7 +109,7 @@ export function DeviceRegistrationModal({ onClose }: Props) {
         </div>
 
         {/* Step indicator */}
-        <StepIndicator current={currentStep} total={3} />
+        <StepIndicator current={currentStep} total={2} />
 
         {/* Step 1: Instructions */}
         {!token && (
@@ -130,7 +156,7 @@ export function DeviceRegistrationModal({ onClose }: Props) {
                 <code style={{
                   flex: 1, fontSize: 12, color: "var(--teal, #2ecc71)",
                   wordBreak: "break-all", fontFamily: "monospace",
-                  background: "var(--card)", padding: "8px 10px",
+                  background: "var(--bg-elevated)", padding: "8px 10px",
                   borderRadius: 7, lineHeight: 1.5,
                 }}>
                   {token.enrollment_token}
@@ -150,23 +176,53 @@ export function DeviceRegistrationModal({ onClose }: Props) {
                   {copied ? "✓" : t("modal.copy")}
                 </button>
               </div>
-              <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 8 }}>
-                {t("modal.expiresAt", { date: new Date(token.expires_at).toLocaleString() })}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, flexWrap: "wrap", gap: 4 }}>
+                <span style={{ fontSize: 11, color: "var(--t5)" }}>
+                  {t("modal.expiresAt", { date: new Date(token.expires_at).toLocaleString() })}
+                </span>
+                {secsLeft !== null && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, fontFamily: "monospace",
+                    color: secsLeft === 0 ? "#e74c3c" : secsLeft < 60 ? "#f39c12" : "var(--t3)",
+                    background: secsLeft === 0 ? "rgba(231,76,60,0.12)" : secsLeft < 60 ? "rgba(243,156,18,0.1)" : "var(--bg-input)",
+                    padding: "2px 8px", borderRadius: 5,
+                  }}>
+                    {secsLeft === 0
+                      ? "⛔ Expired"
+                      : `⏱ ${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, "0")}`}
+                  </span>
+                )}
               </div>
             </div>
 
+            {/* Expired banner */}
+            {secsLeft === 0 && (
+              <div style={{
+                marginBottom: 14, padding: "10px 12px",
+                background: "rgba(231,76,60,0.12)",
+                border: "1px solid rgba(231,76,60,0.35)",
+                borderRadius: 9, fontSize: 13, color: "#e74c3c",
+                display: "flex", gap: 8, alignItems: "center", fontWeight: 600,
+              }}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>⛔</span>
+                <span>Token expired — generate a new one to continue enrollment.</span>
+              </div>
+            )}
+
             {/* Security warning */}
-            <div style={{
-              marginBottom: 14,
-              padding: "10px 12px",
-              background: "rgba(231,76,60,0.08)",
-              border: "1px solid rgba(231,76,60,0.2)",
-              borderRadius: 9, fontSize: 12, color: "#e74c3c",
-              display: "flex", gap: 8, alignItems: "flex-start",
-            }}>
-              <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
-              <span>{t("modal.securityWarning")}</span>
-            </div>
+            {secsLeft !== 0 && (
+              <div style={{
+                marginBottom: 14,
+                padding: "10px 12px",
+                background: "rgba(231,76,60,0.08)",
+                border: "1px solid rgba(231,76,60,0.2)",
+                borderRadius: 9, fontSize: 12, color: "#e74c3c",
+                display: "flex", gap: 8, alignItems: "flex-start",
+              }}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
+                <span>{t("modal.securityWarning")}</span>
+              </div>
+            )}
 
             {/* Agent command */}
             <div style={{
@@ -210,7 +266,7 @@ export function DeviceRegistrationModal({ onClose }: Props) {
           )}
           {token && (
             <button type="button" onClick={reset} style={secondaryBtnStyle}>
-              {t("modal.generateAnother")}
+              {secsLeft === 0 ? t("modal.generate") : t("modal.generateAnother")}
             </button>
           )}
         </div>
@@ -269,7 +325,7 @@ const overlayStyle: React.CSSProperties = {
 };
 
 const panelStyle: React.CSSProperties = {
-  background: "var(--card, #161622)",
+  background: "var(--bg-elevated)",
   border: "1px solid var(--b1)",
   borderRadius: 18,
   padding: "26px 28px",

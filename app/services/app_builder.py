@@ -87,6 +87,48 @@ _FORBIDDEN_KEYWORDS: frozenset[str] = frozenset({
     "exec", "execute", "system", "pg_", "information_schema",
 })
 
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", re.IGNORECASE)
+
+
+def _try_extract_json(text: str) -> str:
+    """
+    Best-effort extraction of a JSON object from an LLM response.
+    Tries in order:
+      1. Bare JSON (starts with '{')
+      2. Fenced ```json … ``` or ``` … ``` block containing a JSON object
+      3. Line-by-line fence stripping (handles open/unclosed fences)
+      4. First '{' … last '}' substring
+    """
+    stripped = text.strip()
+    if stripped.startswith("{"):
+        return stripped
+    m = _JSON_FENCE_RE.search(stripped)
+    if m:
+        return m.group(1).strip()
+    if stripped.startswith("```"):
+        candidate = "\n".join(
+            ln for ln in stripped.splitlines() if not ln.startswith("```")
+        ).strip()
+        if candidate.startswith("{"):
+            return candidate
+    first = stripped.find("{")
+    last = stripped.rfind("}")
+    if first != -1 and last > first:
+        return stripped[first : last + 1]
+    return stripped
+
+
+def _looks_truncated(text: str) -> bool:
+    """Heuristic: response was cut off before the JSON object was closed."""
+    s = text.rstrip()
+    if not s:
+        return True
+    return (
+        s[-1] not in ("}", "]")
+        or s.count("{") > s.count("}")
+        or s.count("[") > s.count("]")
+    )
+
 
 def _validate_entity_name(name: str, context: str) -> str:
     """Whitelist-validate a SQL identifier from AI output."""
@@ -441,6 +483,9 @@ Rules:
   NEVER set enabled:true unless the user's request clearly involves
   multi-device / multi-monitor / KVM control. For all other apps, set
   multi_device_config to null.
+- JSON string encoding: inside any string value, represent a double-quote
+  as \\" and any line break as \\n. Never embed an unescaped double-quote
+  or a raw newline/carriage-return inside a quoted JSON string value.
 """
 
 # Trigger keywords that map to specific engine capabilities
@@ -498,18 +543,54 @@ class AppBuilderService:
             request, user_id=user_id, org_id=org_id
         )
 
-        raw_json = response.content.strip()
-        # Strip markdown fences if the model wrapped the JSON
-        if raw_json.startswith("```"):
-            lines = raw_json.splitlines()
-            raw_json = "\n".join(
-                ln for ln in lines if not ln.startswith("```")
-            ).strip()
+        raw_json = _try_extract_json(response.content.strip())
 
         try:
             data = json.loads(raw_json)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"AI returned invalid JSON: {exc}") from exc
+            log.warning(
+                "generate_spec: first parse failed for org %s: %s (response length=%d)",
+                org_id, exc, len(response.content),
+            )
+            if _looks_truncated(raw_json):
+                raise ValueError(
+                    "The AI response was cut off before completing the app spec. "
+                    "Try a simpler description or fewer features."
+                ) from exc
+            # Single retry: ask the model to fix the JSON
+            try:
+                fix_request = CompletionRequest(
+                    model="claude-sonnet-5",
+                    messages=[
+                        Message(role="user", content=user_content),
+                        Message(role="assistant", content=response.content),
+                        Message(
+                            role="user",
+                            content=(
+                                "The JSON you returned could not be parsed. "
+                                "Please output ONLY the corrected JSON object with no other text."
+                            ),
+                        ),
+                    ],
+                    system=_SPEC_SYSTEM,
+                    max_tokens=4096,
+                    temperature=0.1,
+                    cache_ttl=None,
+                )
+                fix_response = await self._gw.complete(
+                    fix_request, user_id=user_id, org_id=org_id
+                )
+                raw_json = _try_extract_json(fix_response.content.strip())
+                data = json.loads(raw_json)
+                log.info("generate_spec: JSON fixed on retry for org %s", org_id)
+            except json.JSONDecodeError as retry_exc:
+                log.error(
+                    "generate_spec: retry also failed for org %s: %s", org_id, retry_exc
+                )
+                raise ValueError(
+                    "Could not generate a valid app spec after retrying. "
+                    "Try rephrasing your description."
+                ) from retry_exc
 
         return self._parse_and_validate_spec(data)
 
@@ -1137,17 +1218,52 @@ class AppBuilderService:
             temperature=0.3,
         )
         response = await self._gw.complete(request, user_id=user_id, org_id=org_id)
-        raw_json = response.content.strip()
-        if raw_json.startswith("```"):
-            lines = raw_json.splitlines()
-            raw_json = "\n".join(
-                ln for ln in lines if not ln.startswith("```")
-            ).strip()
+        raw_json = _try_extract_json(response.content.strip())
 
         try:
             new_data = json.loads(raw_json)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"AI returned invalid JSON: {exc}") from exc
+            log.warning(
+                "modify_app: first parse failed for app %s org %s: %s",
+                app_id, org_id, exc,
+            )
+            if _looks_truncated(raw_json):
+                raise ValueError(
+                    "The AI response was cut off before completing the modification. "
+                    "Try a more focused modification request."
+                ) from exc
+            try:
+                fix_request = CompletionRequest(
+                    model="claude-sonnet-5",
+                    messages=[
+                        Message(role="user", content=modify_prompt),
+                        Message(role="assistant", content=response.content),
+                        Message(
+                            role="user",
+                            content=(
+                                "The JSON you returned could not be parsed. "
+                                "Please output ONLY the corrected JSON object with no other text."
+                            ),
+                        ),
+                    ],
+                    system=_SPEC_SYSTEM,
+                    max_tokens=4096,
+                    temperature=0.1,
+                )
+                fix_response = await self._gw.complete(
+                    fix_request, user_id=user_id, org_id=org_id
+                )
+                raw_json = _try_extract_json(fix_response.content.strip())
+                new_data = json.loads(raw_json)
+                log.info("modify_app: JSON fixed on retry for app %s", app_id)
+            except json.JSONDecodeError as retry_exc:
+                log.error(
+                    "modify_app: retry also failed for app %s: %s", app_id, retry_exc
+                )
+                raise ValueError(
+                    "Could not generate a valid modification after retrying. "
+                    "Try rephrasing your request."
+                ) from retry_exc
 
         new_spec = self._parse_and_validate_spec(new_data)
         new_spec_dict = self._spec_to_dict(new_spec)

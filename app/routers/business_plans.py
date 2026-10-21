@@ -46,11 +46,11 @@ async def _resolve_user(request: Request) -> str:
 
 
 async def _resolve_org(user_id: str) -> Optional[str]:
-    """Return the user's primary org_id (first org they belong to)."""
+    """Return the user's primary org_id (oldest membership, for determinism)."""
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT organization_id FROM organization_members WHERE user_id=$1 LIMIT 1",
+            "SELECT organization_id FROM organization_members WHERE user_id=$1 ORDER BY joined_at LIMIT 1",
             user_id,
         )
     return str(row["organization_id"]) if row else None
@@ -222,6 +222,23 @@ async def _run_workflow_bg(
         await start_business_plan(plan_id, org_id, user_id, idea_raw, industry, stage)
     except Exception as exc:
         log.exception("business_plan workflow failed for plan %s: %s", plan_id, exc)
+        async with acquire_scoped(org_id) as conn:
+            await conn.execute(
+                "UPDATE bp_plans SET status='FAILED', updated_at=NOW() WHERE id=$1",
+                plan_id,
+            )
+
+
+async def _run_retry_bg(
+    plan_id: str, org_id: str, user_id: str,
+    idea_raw: str, industry: Optional[str], stage: str,
+    section_keys: list[str],
+) -> None:
+    """Background task: wrap retry_sections; fall back to FAILED on unexpected error."""
+    try:
+        await retry_sections(plan_id, org_id, user_id, idea_raw, industry, stage, section_keys)
+    except Exception as exc:
+        log.exception("retry_sections failed for plan %s: %s", plan_id, exc)
         async with acquire_scoped(org_id) as conn:
             await conn.execute(
                 "UPDATE bp_plans SET status='FAILED', updated_at=NOW() WHERE id=$1",
@@ -471,8 +488,16 @@ async def retry_plan_sections(
 
     plan = await _assert_plan_owner(plan_id, user_id, org_id)
 
+    # Transition to GENERATING before the background task starts so the
+    # frontend can open an SSE stream immediately after this response.
+    async with acquire_scoped(org_id) as conn:
+        await conn.execute(
+            "UPDATE bp_plans SET status='GENERATING', updated_at=NOW() WHERE id=$1",
+            plan_id,
+        )
+
     background.add_task(
-        retry_sections,
+        _run_retry_bg,
         plan_id=plan_id, org_id=org_id, user_id=user_id,
         idea_raw=plan.get("idea_raw", ""),
         industry=plan.get("industry"),
@@ -493,8 +518,7 @@ async def cancel_plan(plan_id: UUID, request: Request) -> dict:
 
     await _assert_plan_owner(plan_id, user_id, org_id)
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await conn.execute(
             "UPDATE bp_plans SET status='PAUSED', updated_at=NOW() WHERE id=$1",
             plan_id,

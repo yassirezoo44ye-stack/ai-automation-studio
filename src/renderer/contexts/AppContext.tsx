@@ -1,6 +1,80 @@
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition, useRef } from "react";
 import type { Page } from "../types";
-import { AppContext, type Theme, type FeedIntent } from "./app";
+import { AppContext, type Theme, type FeedIntent, type ProjectWorkspace } from "./app";
+
+const PATH_TO_PAGE: Record<string, Page> = {
+  "/":              "home",
+  "/home":          "home",
+  "/ai":            "ai",
+  "/dev":           "dev",
+  "/design":        "design",
+  "/automation":    "automation",
+  "/social":        "social",
+  "/settings":      "settings",
+  "/agentos":       "agentos",
+  "/marketplace":   "marketplace",
+  "/organizations": "organizations",
+  "/teams":         "teams",
+  "/billing":       "billing",
+  "/plugins":       "plugins",
+  "/sandbox":       "sandbox",
+  "/ai-routing":    "ai-routing",
+  "/observability": "observability",
+  "/app-builder":   "app-builder",
+  "/runs":          "runs",
+  "/integrations":  "integrations",
+  "/training":      "training",
+  "/business-lab":  "business-lab",
+  "/devices":       "devices",
+  "/discover":      "discover",
+  "/feed":          "feed",
+  "/leads":         "leads",
+  "/saas-factory":  "saas-factory",
+  "/new-project":   "new-project",
+};
+
+const PAGE_TO_PATH: Partial<Record<Page, string>> = Object.fromEntries(
+  Object.entries(PATH_TO_PAGE).map(([path, page]) => [page, path]),
+) as Partial<Record<Page, string>>;
+
+/** /project/:id/:workspace → Page */
+const WORKSPACE_TO_PAGE: Record<ProjectWorkspace, Page> = {
+  build:        "app-builder",
+  design:       "design",
+  automation:   "automation",
+  runs:         "runs",
+  integrations: "integrations",
+};
+
+/** Page → workspace segment (only for project-scoped pages) */
+const PAGE_TO_WORKSPACE: Partial<Record<Page, ProjectWorkspace>> = {
+  "app-builder": "build",
+  design:        "design",
+  automation:    "automation",
+  runs:          "runs",
+  integrations:  "integrations",
+};
+
+type ParsedRoute = { page: Page; projectId: string | null };
+
+function parseCurrentPath(): ParsedRoute {
+  const path = window.location.pathname;
+  // /project/:projectId/:workspace
+  const m = path.match(/^\/project\/([^/]+)\/([^/]+)/);
+  if (m) {
+    const projectId = m[1];
+    const workspaceSegment = m[2] as ProjectWorkspace;
+    const page = WORKSPACE_TO_PAGE[workspaceSegment];
+    if (page) {
+      // Keep projectId as-is — backend validates ownership; never silently remap to Demo.
+      return { page, projectId };
+    }
+    // Unknown workspace segment — fall through to flat-path resolution with no projectId.
+  }
+  // Strip /feed/:id suffix — feed page handles its own ID state
+  const base = path.startsWith("/feed/") ? "/feed" : path;
+  return { page: PATH_TO_PAGE[base] ?? "app-builder", projectId: null };
+}
 
 function getStoredTheme(): Theme {
   try {
@@ -22,7 +96,10 @@ function applyTheme(t: Theme) {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [page, setPageState] = useState<Page>("app-builder");
+  const [initialRoute] = useState<ParsedRoute>(parseCurrentPath);
+  const [page, setPageState] = useState<Page>(initialRoute.page);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(initialRoute.projectId);
+
   // Page switches run as a transition so a lazy chunk that hasn't loaded yet
   // never interrupts an in-flight commit: React keeps the current page fully
   // rendered and interactive until the new one is ready, then swaps both the
@@ -35,6 +112,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setPage = useCallback((p: Page) => {
     startPageTransition(() => setPageState(p));
   }, []);
+
+  /** Navigate to /project/:projectId/:workspace — URL is the source of truth. */
+  const setActiveProject = useCallback((projectId: string, workspace: ProjectWorkspace = "build") => {
+    const newPage = WORKSPACE_TO_PAGE[workspace];
+    setActiveProjectId(projectId);
+    startPageTransition(() => setPageState(newPage));
+  }, []);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [feedIntent, setFeedIntentState] = useState<FeedIntent | null>(null);
   const setFeedIntent = useCallback((intent: FeedIntent | null) => setFeedIntentState(intent), []);
@@ -47,11 +132,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Sync theme attribute whenever it changes
   useEffect(() => { applyTheme(theme); }, [theme]);
 
+  // true once the initial URL → state hydration has been confirmed.
+  // Distinguishes initial hydration (replaceState, no new entry) from
+  // subsequent UI-driven navigations (pushState, enables Back/Forward).
+  const isHydrated = useRef(false);
+
+  // Keep the URL bar in sync with page + activeProjectId.
+  // - Initial hydration / popstate: replaceState (URL already correct or correcting silently).
+  // - UI navigation after hydration: pushState (enables browser Back / Forward).
+  useEffect(() => {
+    const workspace = PAGE_TO_WORKSPACE[page];
+    const path = workspace && activeProjectId
+      ? `/project/${activeProjectId}/${workspace}`
+      : PAGE_TO_PATH[page] ?? "/";
+    if (window.location.pathname === path) {
+      // Already at the right URL: initial load landed here, or popstate synced us.
+      isHydrated.current = true;
+      return;
+    }
+    if (!isHydrated.current) {
+      // First render: silently correct the URL without a history entry.
+      isHydrated.current = true;
+      window.history.replaceState(null, "", path);
+    } else {
+      // User navigated via UI — create a history entry for Back/Forward.
+      window.history.pushState(null, "", path);
+    }
+  }, [page, activeProjectId]);
+
+  // Sync React state with browser Back / Forward.
+  useEffect(() => {
+    const handlePopState = () => {
+      const { page: newPage, projectId } = parseCurrentPath();
+      setActiveProjectId(projectId);
+      startPageTransition(() => setPageState(newPage));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []); // stable: setActiveProjectId, setPageState, startPageTransition
+
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);
   const toggleTheme = useCallback(() => setThemeState(prev => prev === "dark" ? "light" : "dark"), []);
 
   return (
-    <AppContext.Provider value={{ page, setPage, isPageTransitioning, sidebarCollapsed, setSidebarCollapsed, theme, setTheme, toggleTheme, feedIntent, setFeedIntent }}>
+    <AppContext.Provider value={{ page, setPage, isPageTransitioning, sidebarCollapsed, setSidebarCollapsed, theme, setTheme, toggleTheme, feedIntent, setFeedIntent, activeProjectId, setActiveProject }}>
       {children}
     </AppContext.Provider>
   );

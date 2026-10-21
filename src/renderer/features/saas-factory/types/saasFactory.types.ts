@@ -4,10 +4,24 @@ export type FactoryPhase =
   | "BUILDING"
   | "TESTING"
   | "VERIFYING"
+  | "PENDING_REVIEW"
   | "DEPLOYING"
   | "LIVE"
   | "FAILED"
   | "CANCELLED";
+
+export interface SecurityFinding {
+  severity: "info" | "warn" | "critical";
+  area: string;
+  note: string;
+}
+
+export interface SecurityReviewCheckpoint {
+  findings: SecurityFinding[];
+  overall: "pass" | "warn" | "fail";
+  rls_covered: boolean;
+  build_id?: string | null;
+}
 
 export interface PhaseCheckpoint {
   [phaseName: string]: Record<string, unknown>;

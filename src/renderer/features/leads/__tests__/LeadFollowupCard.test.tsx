@@ -42,7 +42,7 @@ function makeDefinition(overrides: Partial<{ id: string; definition: Record<stri
     name: "lead-followup",
     definition: {
       lead_followup: "true",
-      steps: [{ kind: "email", subject: "Thanks for reaching out!", body: "We will be in touch." }],
+      steps: [{ id: "send-followup-email", kind: "email", args: { subject: "Thanks for reaching out!", body: "We will be in touch." } }],
     },
     is_active: true,
     ...overrides,
@@ -206,7 +206,7 @@ describe("LeadFollowupCard — existing definition", () => {
       makeDefinition({
         definition: {
           lead_followup: "true",
-          steps: [{ kind: "email", subject: "Custom subject", body: "Custom body" }],
+          steps: [{ id: "send-followup-email", kind: "email", args: { subject: "Custom subject", body: "Custom body" } }],
         },
       }),
     );

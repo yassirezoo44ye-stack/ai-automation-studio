@@ -261,5 +261,58 @@ class TestBuildPromptWithPlan(unittest.TestCase):
         self.assertEqual(parsed["pages"], ["A", "B"])
 
 
+# ── Short / ambiguous prompt handling (E3) ───────────────────────────────────
+
+class TestShortPromptFallback(unittest.TestCase):
+
+    def test_very_short_noise_prompt_not_landing(self):
+        """A 3-char noise prompt like 'Hgg' must NOT produce _build_landing output."""
+        from app.ai.providers.dev_mock import _select_template
+        result = _select_template("Hgg")
+        # _build_landing embeds a personalised product name from the prompt;
+        # the analytics template does not reference the prompt text at all.
+        # Confirm we got the analytics template (has "<<<FILE:" entries but
+        # does NOT try to infer a product name from "Hgg").
+        self.assertIn("<<<FILE:", result)
+        # _build_landing injects the prompt as a product title — should NOT appear
+        self.assertNotIn("Hgg", result)
+
+    def test_very_short_noise_uses_analytics_template(self):
+        """Short noise prompts must yield the analytics template (>= 1 file)."""
+        from app.ai.providers.dev_mock import _select_template
+        result = _select_template("xy")
+        files = _file_names(result)
+        self.assertGreater(len(files), 0, "analytics template must have at least one file")
+
+    def test_short_meaningful_arabic_still_falls_to_keyword(self):
+        """A short prompt with ≥3 recognisable Arabic chars must NOT be treated as noise."""
+        from app.ai.providers.dev_mock import _select_template
+        # "مدونة" (blog) is short but has ≥3 Arabic chars — should keyword-match
+        result = _select_template("مدونة")
+        files = _file_names(result)
+        # Must still produce output (keyword or landing, not rejected)
+        self.assertGreater(len(files), 0)
+
+    def test_short_meaningful_english_still_falls_to_landing(self):
+        """A prompt with ≥3 English chars must NOT be treated as noise."""
+        from app.ai.providers.dev_mock import _select_template
+        # "app" has 3 English chars — not a noise prompt
+        result = _select_template("app")
+        self.assertIn("<<<FILE:", result)
+
+    def test_empty_prompt_uses_analytics_template(self):
+        """An empty/whitespace prompt must not crash and must use analytics."""
+        from app.ai.providers.dev_mock import _select_template
+        result = _select_template("   ")
+        self.assertIn("<<<FILE:", result)
+
+    def test_long_prompt_unaffected_by_short_prompt_guard(self):
+        """Prompts >= 10 chars are not affected by the short-prompt guard."""
+        from app.ai.providers.dev_mock import _select_template
+        # Generic long prompt with no keyword match → _build_landing
+        result = _select_template("build something for me today")
+        self.assertIn("<<<FILE:", result)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,13 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      # Where the browser-facing frontend lives. In a Vercel + Render split
+      # deployment set this to your Vercel URL (e.g. https://app.example.vercel.app)
+      # so that: (a) post-OAuth redirects land on the frontend, and (b) the
+      # frontend origin is automatically added to CORS allowed origins.
+      # Leave unset for single-host deployments — falls back to APP_URL.
+      - key: FRONTEND_URL
+        sync: false
       # Google Sign-In (app/routers/auth_users.py's /api/auth/google +
       # /api/auth/google/callback) — both required together; the code reads
       # them as os.getenv(..., "") and returns a clean 503 ("... OAuth is
@@ -71,6 +78,10 @@ services:
       - key: SMTP_PASS
         sync: false
       - key: SMTP_FROM
+        sync: false
+      # Owner / dev account email (used by build.py to associate the dev workspace).
+      # Leave unset in production deployments where no dev account is needed.
+      - key: DEV_ACCOUNT_EMAIL
         sync: false
       - key: DATABASE_URL
         fromDatabase:

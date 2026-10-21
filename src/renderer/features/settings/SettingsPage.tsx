@@ -8,8 +8,6 @@ import { S } from "../../styles/theme";
 import { GlassCard } from "../../shared/ui/gold";
 import AxonLogo from "../../AxonLogo";
 
-// Local inline-code pill — S.code used a stale pre-rebrand gold-bg/purple-text
-// combo; this uses live accent tokens so it stays correct across themes.
 const codeStyle: React.CSSProperties = {
   background: "var(--accent-dim)", padding: "2px 8px",
   borderRadius: 6, fontSize: 12, color: "var(--accent-2)",
@@ -20,13 +18,12 @@ type SettingsTab = "system" | "ai" | "appearance" | "about" | "apiKeys";
 
 interface RuntimeInfo { available?: boolean; version?: string | null }
 
-// ── User preferences persisted to localStorage ────────────────────────────────
 const PREFS_KEY = "axon-prefs";
 
 interface UserPrefs {
-  chatModel:    string;
-  buildModel:   string;
-  sidebarMode:  "expanded" | "collapsed";
+  chatModel:   string;
+  buildModel:  string;
+  sidebarMode: "expanded" | "collapsed";
 }
 
 const DEFAULT_PREFS: UserPrefs = {
@@ -61,24 +58,35 @@ interface CreatedKey {
   scopes: string[];
 }
 
+// Scopes supported by /api/orgs/{org_id}/api-keys (admin excluded — requires ADMIN_EMAILS on backend)
+const SCOPE_DEFS = [
+  { id: "read",        labelKey: "apiKeys.scope_read" },
+  { id: "write",       labelKey: "apiKeys.scope_write" },
+  { id: "agents",      labelKey: "apiKeys.scope_agents" },
+  { id: "marketplace", labelKey: "apiKeys.scope_marketplace" },
+] as const;
+
 function ApiKeysTab({ orgId }: { orgId: string | null }) {
   const { t } = useTranslation("settings");
-  const [keys, setKeys] = useState<OrgApiKey[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [newKeyName, setNewKeyName] = useState("");
-  const [createdKey, setCreatedKey] = useState<CreatedKey | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [revoking, setRevoking] = useState<string | null>(null);
+  const [keys,           setKeys]          = useState<OrgApiKey[]>([]);
+  const [loading,        setLoading]       = useState(true);
+  const [error,          setError]         = useState<string | null>(null);
+  const [creating,       setCreating]      = useState(false);
+  const [newKeyName,     setNewKeyName]    = useState("");
+  const [selectedScopes, setSelectedScopes] = useState<string[]>(["read", "write"]);
+  const [createdKey,     setCreatedKey]    = useState<CreatedKey | null>(null);
+  const [copied,         setCopied]        = useState(false);
+  const [copyFailed,     setCopyFailed]    = useState(false);
+  const [revoking,       setRevoking]      = useState<string | null>(null);
+  const [confirmRevoke,  setConfirmRevoke] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
     if (!orgId) return;
+    setError(null);
     try {
       const res = await apiFetch(`/api/orgs/${orgId}/api-keys`);
       const data = await parseJSON<{ keys: OrgApiKey[] }>(res, `/api/orgs/${orgId}/api-keys`);
       setKeys(data.keys);
-      setError(null);
     } catch (err) {
       if (err instanceof APIError && err.details.status === 403) {
         setError(t("apiKeys.errorForbidden"));
@@ -93,54 +101,33 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
   }, [orgId, t]);
 
   useEffect(() => {
-    if (!orgId) return;
-    let active = true;
-    apiFetch(`/api/orgs/${orgId}/api-keys`)
-      .then(res => parseJSON<{ keys: OrgApiKey[] }>(res, `/api/orgs/${orgId}/api-keys`))
-      .then(data => {
-        if (active) { setKeys(data.keys); setError(null); setLoading(false); }
-      })
-      .catch((err: unknown) => {
-        if (!active) return;
-        if (err instanceof APIError && err.details.status === 403) setError(t("apiKeys.errorForbidden"));
-        else if (err instanceof APIError && err.details.status === 401) setError(t("apiKeys.errorUnauthorized"));
-        else setError(t("apiKeys.errorLoad"));
-        setLoading(false);
-      });
-    return () => { active = false; setLoading(true); setError(null); };
-  }, [orgId, t]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!orgId) { setLoading(false); return; }
+    void loadKeys();
+  }, [loadKeys, orgId]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!orgId || !newKeyName.trim()) return;
+    if (!orgId || !newKeyName.trim() || selectedScopes.length === 0) return;
     setCreating(true);
     setError(null);
     try {
       const res = await apiFetch(`/api/orgs/${orgId}/api-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName.trim(), scopes: ["read", "write"] }),
+        body: JSON.stringify({ name: newKeyName.trim(), scopes: selectedScopes }),
       });
-      if (res.status === 403) {
-        setError(t("apiKeys.errorForbidden"));
-        return;
-      }
-      if (res.status === 401) {
-        setError(t("apiKeys.errorUnauthorized"));
-        return;
-      }
-      const data = await parseJSON<CreatedKey & { warning?: string }>(res, `/api/orgs/${orgId}/api-keys`);
+      if (res.status === 403) { setError(t("apiKeys.errorForbidden")); return; }
+      if (res.status === 401) { setError(t("apiKeys.errorUnauthorized")); return; }
+      const data = await parseJSON<CreatedKey>(res, `/api/orgs/${orgId}/api-keys`);
       setCreatedKey(data);
       setNewKeyName("");
+      setSelectedScopes(["read", "write"]);
       void loadKeys();
     } catch (err) {
-      if (err instanceof APIError && err.details.status === 403) {
-        setError(t("apiKeys.errorForbidden"));
-      } else if (err instanceof APIError && err.details.status === 401) {
-        setError(t("apiKeys.errorUnauthorized"));
-      } else {
-        setError(t("apiKeys.errorCreate"));
-      }
+      if (err instanceof APIError && err.details.status === 403) setError(t("apiKeys.errorForbidden"));
+      else if (err instanceof APIError && err.details.status === 401) setError(t("apiKeys.errorUnauthorized"));
+      else setError(t("apiKeys.errorCreate"));
     } finally {
       setCreating(false);
     }
@@ -149,6 +136,7 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
   async function handleRevoke(keyId: string) {
     if (!orgId) return;
     setRevoking(keyId);
+    setConfirmRevoke(null);
     try {
       await apiFetch(`/api/orgs/${orgId}/api-keys/${keyId}`, { method: "DELETE" });
       setKeys(prev => prev.filter(k => k.key_id !== keyId));
@@ -161,15 +149,39 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
 
   function handleCopy() {
     if (!createdKey) return;
+    setCopyFailed(false);
     navigator.clipboard.writeText(createdKey.api_key).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
+    }).catch(() => {
+      // Clipboard API unavailable — try legacy execCommand
+      try {
+        const el = document.createElement("textarea");
+        el.value = createdKey.api_key;
+        el.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        setCopyFailed(true);
+      }
+    });
   }
 
   function handleDismissCreated() {
     setCreatedKey(null);
     setCopied(false);
+    setCopyFailed(false);
+  }
+
+  function toggleScope(scope: string) {
+    setSelectedScopes(prev =>
+      prev.includes(scope) ? prev.filter(s => s !== scope) : [...prev, scope],
+    );
   }
 
   if (!orgId) {
@@ -183,13 +195,14 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
       {error && (
-        <div role="alert" style={{ padding: "10px 14px", borderRadius: 10, background: "var(--red-dim, rgba(239,68,68,.1))", border: "1px solid var(--red)", fontSize: 13, color: "var(--red)" }}>
+        <div role="alert" style={{ padding: "10px 14px", borderRadius: 10, background: "var(--red-dim)", border: "1px solid var(--red)", fontSize: 13, color: "var(--red)" }}>
           {error}
         </div>
       )}
 
+      {/* Created key — shown once only; dismissed on handleDismissCreated */}
       {createdKey && (
-        <div role="status" style={{ padding: "14px", borderRadius: 10, background: "var(--green-dim, rgba(34,197,94,.1))", border: "1px solid var(--green)" }}>
+        <div role="status" style={{ padding: "14px", borderRadius: 10, background: "var(--green-dim)", border: "1px solid var(--green)" }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--green)", marginBottom: 8 }}>{t("apiKeys.createdTitle")}</div>
           <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 8 }}>{t("apiKeys.createdWarning")}</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -203,6 +216,12 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
               {copied ? t("apiKeys.copied") : t("apiKeys.copy")}
             </button>
           </div>
+          {copyFailed && (
+            <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 6 }}>{t("apiKeys.copyFallback")}</div>
+          )}
+          <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 6 }}>
+            {t("apiKeys.keyId")}: <code style={{ ...codeStyle, fontSize: 11 }}>…{createdKey.key_id.slice(-8)}</code>
+          </div>
           <button
             onClick={handleDismissCreated}
             style={{ marginTop: 10, fontSize: 12, color: "var(--t4)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
@@ -212,10 +231,11 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
         </div>
       )}
 
+      {/* Create form */}
       <div>
         <div className="section-label" style={{ marginBottom: 12 }}>{t("apiKeys.createTitle")}</div>
         <GlassCard lift={false}>
-          <form onSubmit={e => void handleCreate(e)} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <form onSubmit={e => void handleCreate(e)} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <label className="g-label" htmlFor="new-api-key-name">{t("apiKeys.nameLabel")}</label>
               <input
@@ -229,11 +249,32 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
                 required
               />
             </div>
-            <div style={{ fontSize: 11, color: "var(--t4)" }}>{t("apiKeys.scopeHint")}</div>
+            <div>
+              <div className="g-label" style={{ display: "block", marginBottom: 8 }}>{t("apiKeys.scopes")}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {SCOPE_DEFS.map(s => (
+                  <label
+                    key={s.id}
+                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none", color: selectedScopes.includes(s.id) ? "var(--t1)" : "var(--t4)" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedScopes.includes(s.id)}
+                      onChange={() => toggleScope(s.id)}
+                      style={{ accentColor: "var(--accent)", width: 14, height: 14, cursor: "pointer" }}
+                    />
+                    {t(s.labelKey)}
+                  </label>
+                ))}
+              </div>
+              {selectedScopes.length === 0 && (
+                <div style={{ fontSize: 11, color: "var(--red)", marginTop: 5 }}>{t("apiKeys.scopeNoneWarning")}</div>
+              )}
+            </div>
             <button
               type="submit"
-              disabled={creating || !newKeyName.trim()}
-              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: creating ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() ? 0.6 : 1 }}
+              disabled={creating || !newKeyName.trim() || selectedScopes.length === 0}
+              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: creating || !newKeyName.trim() || selectedScopes.length === 0 ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() || selectedScopes.length === 0 ? 0.6 : 1 }}
             >
               {creating ? t("apiKeys.creating") : t("apiKeys.createButton")}
             </button>
@@ -241,6 +282,7 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
         </GlassCard>
       </div>
 
+      {/* Existing keys list */}
       <div>
         <div className="section-label" style={{ marginBottom: 12 }}>{t("apiKeys.listTitle")}</div>
         <GlassCard lift={false}>
@@ -252,21 +294,42 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {keys.map(key => (
                 <div key={key.key_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--b1)" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--t2)" }}>{key.name}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {key.name}
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 2 }}>
                       {key.scopes.join(", ")}
                       {key.expires_at && ` · ${t("apiKeys.expires")} ${new Date(key.expires_at).toLocaleDateString()}`}
+                      {` · ${t("apiKeys.keyId")} …${key.key_id.slice(-8)}`}
                     </div>
                   </div>
-                  <button
-                    onClick={() => void handleRevoke(key.key_id)}
-                    disabled={revoking === key.key_id}
-                    aria-label={t("apiKeys.revoke")}
-                    style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid var(--red)", background: "none", color: "var(--red)", fontSize: 12, cursor: revoking === key.key_id ? "not-allowed" : "pointer", opacity: revoking === key.key_id ? 0.5 : 1 }}
-                  >
-                    {revoking === key.key_id ? "…" : t("apiKeys.revoke")}
-                  </button>
+                  {confirmRevoke === key.key_id ? (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                      <span style={{ fontSize: 11, color: "var(--t4)", whiteSpace: "nowrap" }}>{t("apiKeys.revokeConfirmPrompt")}</span>
+                      <button
+                        onClick={() => void handleRevoke(key.key_id)}
+                        disabled={revoking === key.key_id}
+                        style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid var(--red)", background: "var(--red-dim)", color: "var(--red)", fontSize: 12, cursor: revoking === key.key_id ? "not-allowed" : "pointer", fontWeight: 600, opacity: revoking === key.key_id ? 0.5 : 1 }}
+                      >
+                        {revoking === key.key_id ? "…" : t("apiKeys.revokeConfirmYes")}
+                      </button>
+                      <button
+                        onClick={() => setConfirmRevoke(null)}
+                        style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid var(--b1)", background: "none", color: "var(--t3)", fontSize: 12, cursor: "pointer" }}
+                      >
+                        {t("apiKeys.revokeConfirmNo")}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmRevoke(key.key_id)}
+                      aria-label={t("apiKeys.revoke")}
+                      style={{ flexShrink: 0, padding: "5px 12px", borderRadius: 7, border: "1px solid var(--red)", background: "none", color: "var(--red)", fontSize: 12, cursor: "pointer" }}
+                    >
+                      {t("apiKeys.revoke")}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -291,18 +354,35 @@ export function SettingsPage() {
   const { theme, setTheme, setSidebarCollapsed } = useAppContext();
   const { lang, setLang } = useLangContext();
   const { currentOrgId } = useOrg();
-  const [tab, setTab]         = useState<SettingsTab>("system");
-  const [health, setHealth]   = useState<Record<string, string> | null>(null);
-  const [stats, setStats]     = useState<Record<string, number> | null>(null);
+  const [tab, setTab]           = useState<SettingsTab>("system");
+  const [health, setHealth]     = useState<Record<string, string> | null>(null);
+  const [healthErr, setHealthErr] = useState(false);
+  const [stats, setStats]       = useState<Record<string, number> | null>(null);
   const [runtimes, setRuntimes] = useState<Record<string, RuntimeInfo> | null>(null);
-  const [prefs, setPrefs]     = useState<UserPrefs>(loadPrefs);
-  const [saved, setSaved]     = useState(false);
+  const [prefs, setPrefs]       = useState<UserPrefs>(loadPrefs);
+  const [saved, setSaved]       = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetch(`${API}/health`).then(r => parseJSON<Record<string, string>>(r, "/health")).then(setHealth).catch(() => {});
-    apiFetch(`/api/stats`).then(r => parseJSON<Record<string, number>>(r, "/api/stats")).then(setStats).catch(() => {});
-    apiFetch(`/api/runtimes`).then(r => parseJSON<{ runtimes?: Record<string, RuntimeInfo> }>(r, "/api/runtimes")).then(d => setRuntimes(d.runtimes ?? {})).catch(() => {});
+  const loadSystemInfo = useCallback(() => {
+    setRefreshing(true);
+    Promise.all([
+      fetch(`${API}/health`)
+        .then(r => parseJSON<Record<string, string>>(r, "/health"))
+        .then(d => { setHealth(d); setHealthErr(false); })
+        .catch(() => { setHealth(null); setHealthErr(true); }),
+      apiFetch(`/api/stats`)
+        .then(r => parseJSON<Record<string, number>>(r, "/api/stats"))
+        .then(setStats)
+        .catch(() => {}),
+      apiFetch(`/api/runtimes`)
+        .then(r => parseJSON<{ runtimes?: Record<string, RuntimeInfo> }>(r, "/api/runtimes"))
+        .then(d => setRuntimes(d.runtimes ?? {}))
+        .catch(() => {}),
+    ]).finally(() => setRefreshing(false));
   }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadSystemInfo(); }, [loadSystemInfo]);
 
   function updatePref<K extends keyof UserPrefs>(key: K, val: UserPrefs[K]) {
     const next = { ...prefs, [key]: val };
@@ -321,16 +401,16 @@ export function SettingsPage() {
     { id: "about",      label: t("nav.about"),      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> },
   ];
 
-  const CHAT_MODELS = [
-    ["claude-sonnet-4-6",        "Claude Sonnet 4.6 (Recommended)"],
-    ["claude-opus-4-8",          "Claude Opus 4.8 (Most Capable)"],
-    ["claude-haiku-4-5-20251001","Claude Haiku 4.5 (Fastest)"],
-  ] as const;
+  const CHAT_MODELS: [string, string][] = [
+    ["claude-sonnet-4-6",         `Claude Sonnet 4.6 · ${t("ai.modelRecommended")}`],
+    ["claude-opus-4-8",           `Claude Opus 4.8 · ${t("ai.modelMostCapable")}`],
+    ["claude-haiku-4-5-20251001", `Claude Haiku 4.5 · ${t("ai.modelFastest")}`],
+  ];
 
-  const BUILD_MODELS = [
+  const BUILD_MODELS: [string, string][] = [
     ["claude-sonnet-4-6", "Claude Sonnet 4.6"],
     ["claude-opus-4-8",   "Claude Opus 4.8"],
-  ] as const;
+  ];
 
   const THEME_OPTIONS = [
     { id: "dark"          as const, label: t("appearance.themeDark"),         bg: "#15121F" },
@@ -359,20 +439,42 @@ export function SettingsPage() {
         <div style={{ width: 200, flexShrink: 0, padding: "20px 12px", borderInlineEnd: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 2 }}>
           <div className="section-label" style={{ marginBottom: 10, paddingInlineStart: 10 }}>{t("nav.label")}</div>
           {SETTINGS_NAV.map(n => (
-            <div key={n.id} className={`settings-nav-item${tab === n.id ? " active" : ""}`} onClick={() => setTab(n.id)} role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && setTab(n.id)}>
+            <div
+              key={n.id}
+              className={`settings-nav-item${tab === n.id ? " active" : ""}`}
+              onClick={() => setTab(n.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === "Enter" && setTab(n.id)}
+            >
               {n.icon}
               {n.label}
             </div>
           ))}
         </div>
 
-        {/* Content */}
+        {/* Content area */}
         <div style={{ flex: 1, overflowY: "auto", padding: 28 }}>
 
+          {/* ── System ──────────────────────────────────────────────────── */}
           {tab === "system" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
               <div>
-                <div className="section-label" style={{ marginBottom: 12 }}>{t("system.backend")}</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div className="section-label">{t("system.backend")}</div>
+                  <button
+                    onClick={loadSystemInfo}
+                    disabled={refreshing}
+                    style={{ fontSize: 12, color: "var(--accent-2)", background: "none", border: "none", cursor: refreshing ? "not-allowed" : "pointer", opacity: refreshing ? 0.5 : 1, padding: "2px 6px", display: "flex", alignItems: "center", gap: 4 }}
+                    aria-label={t("system.refresh")}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: refreshing ? "rotate(360deg)" : "none", transition: refreshing ? "transform 0.6s linear" : "none" }}>
+                      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                    </svg>
+                    {t("system.refresh")}
+                  </button>
+                </div>
                 <GlassCard lift={false}>
                   {health ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -387,8 +489,12 @@ export function SettingsPage() {
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--red)", flexShrink: 0 }} />
-                      <span style={{ fontSize: 13, color: "var(--red)" }}>{t("system.backendOffline")} <code style={codeStyle}>python main.py</code></span>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: healthErr ? "var(--red)" : "var(--t5)", flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: healthErr ? "var(--red)" : "var(--t4)" }}>
+                        {healthErr ? (
+                          <>{t("system.backendOffline")} <code style={codeStyle}>python main.py</code></>
+                        ) : t("system.checking")}
+                      </span>
                     </div>
                   )}
                 </GlassCard>
@@ -467,6 +573,7 @@ export function SettingsPage() {
             </div>
           )}
 
+          {/* ── AI & Models ─────────────────────────────────────────────── */}
           {tab === "ai" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
               <div>
@@ -522,6 +629,7 @@ export function SettingsPage() {
             </div>
           )}
 
+          {/* ── Appearance ──────────────────────────────────────────────── */}
           {tab === "appearance" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
               <div>
@@ -540,7 +648,6 @@ export function SettingsPage() {
                             textAlign: "center" as const, background: "transparent",
                           }}
                         >
-                          {/* Swatch previews the theme's own raw colors, not the live tokens — this button lets you pick a theme you're not currently in. */}
                           <div style={{ width: "100%", height: 50, borderRadius: 8, background: opt.bg, marginBottom: 8, border: `1px solid ${"swatchBorder" in opt ? opt.swatchBorder : "rgba(128,128,128,0.15)"}` }} />
                           <div style={{ fontSize: 12, fontWeight: 500, color: theme === opt.id ? "var(--accent)" : "var(--t3)" }}>{opt.label}</div>
                         </button>
@@ -588,10 +695,12 @@ export function SettingsPage() {
             </div>
           )}
 
+          {/* ── API Keys ────────────────────────────────────────────────── */}
           {tab === "apiKeys" && (
             <ApiKeysTab orgId={currentOrgId} />
           )}
 
+          {/* ── About ───────────────────────────────────────────────────── */}
           {tab === "about" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
               <GlassCard lift={false} style={{ display: "flex", gap: 20, alignItems: "center" }}>

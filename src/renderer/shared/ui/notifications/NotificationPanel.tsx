@@ -13,7 +13,8 @@ import type { Page } from "../../types";
 const VALID_PAGES = new Set<Page>([
   "home", "ai", "dev", "design", "automation", "social", "settings", "agentos",
   "marketplace", "organizations", "teams", "billing", "plugins", "sandbox",
-  "ai-routing", "observability",
+  "ai-routing", "observability", "app-builder", "runs", "integrations", "training",
+  "business-lab", "devices", "discover", "feed", "leads", "saas-factory", "new-project",
 ]);
 
 const CATEGORY_LABEL: Record<string, string> = {

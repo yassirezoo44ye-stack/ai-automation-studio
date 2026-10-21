@@ -5,6 +5,7 @@
       "workspace": "Workspace",
       "build": "Create",
       "operate": "Run",
+      "discover": "Discover",
       "platform": "Platform",
       "organization": "Organization",
       "automation": "Automation",
@@ -12,7 +13,8 @@
     },
     "nav": {
       "home": "Home",
-      "ai": "My AI",
+      "ai": "My AI Assistant",
+      "newProject": "New Project",
       "dev": "Dev",
       "design": "Design",
       "automation": "Automate",
@@ -80,13 +82,25 @@
       "app-builder": { "label": "App Builder", "sub": "Build apps with AI" },
       "runs": { "label": "Runs", "sub": "Monitor executions" },
       "integrations": { "label": "Integrations", "sub": "Connect your tools" },
-      "training": { "label": "Training Studio", "sub": "Create AI-powered training courses" }
+      "training": { "label": "Training Studio", "sub": "Create AI-powered training courses" },
+      "new-project": { "label": "New Project", "sub": "Start a new build" }
     },
     "actions": {
       "newChat": { "label": "New Chat", "sub": "Start a conversation" },
       "newBuild": { "label": "New Build", "sub": "Open code builder" },
       "newAgent": { "label": "New Agent", "sub": "Create an AI agent" },
       "newProject": { "label": "New Project", "sub": "Create a project" }
+    }
+  },
+  "newProject": {
+    "pageTitle": "New Project",
+    "subtitle": "What would you like to build today?",
+    "types": {
+      "business":    { "title": "Business Lab",    "desc": "Market analysis, plans & strategies" },
+      "application": { "title": "Application",     "desc": "Build web & mobile apps with AI" },
+      "saas":        { "title": "SaaS Product",    "desc": "Launch with billing, auth & teams" },
+      "design":      { "title": "Design Studio",   "desc": "Visual prototypes & UI design" },
+      "automation":  { "title": "Automation",      "desc": "Workflows & trigger-action flows" }
     }
   },
   "actions": {

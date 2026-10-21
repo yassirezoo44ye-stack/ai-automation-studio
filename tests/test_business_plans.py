@@ -263,9 +263,10 @@ class TestWorkflowBuilder:
         # Adversarial depends on assumption_audit AND score_v1
         assert "assumption_audit" in wf.steps["adversarial_rev"].depends_on
         assert "score_v1" in wf.steps["adversarial_rev"].depends_on
-        # Market and competitor run in parallel (both depend only on intake)
-        assert wf.steps["market_intel"].depends_on == ["intake"]
-        assert wf.steps["competitor_intel"].depends_on == ["intake"]
+        # Market and competitor both depend on company_desc (so they get company_summary),
+        # and run in parallel with each other after company_desc completes.
+        assert wf.steps["market_intel"].depends_on == ["intake", "company_desc"]
+        assert wf.steps["competitor_intel"].depends_on == ["intake", "company_desc"]
 
     def test_workflow_final_step_depends_on_score(self):
         from app.core.business.workflow import build_business_plan_workflow
@@ -906,3 +907,1314 @@ class TestPlanIdValidation:
                     headers={"Authorization": "Bearer valid"},
                 )
         assert r.status_code == 404
+
+
+# ── BLOCKER 1: failed section persistence + retry discovery ──────────────────
+
+class TestSectionFailurePersistence:
+    """
+    Tests for BLOCKER 1: step functions must persist bp_sections.status='FAILED'
+    and error_msg when an agent call raises, so the UI retry button can discover
+    failing sections (it checks for status='FAILED').
+    """
+
+    @pytest.mark.asyncio
+    async def test_failed_section_writes_failed_status(self):
+        """When the agent raises, _mark_section_failed must write status=FAILED to DB."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch, call
+        from app.core.business.workflow import step_intake
+
+        plan_id = "plan-fail-1"
+        org_id  = "org-fail-1"
+        execute_calls: list[tuple] = []
+
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append((sql.strip(), args))
+
+        mock_conn.execute = capture_execute
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        agent_mock = AsyncMock(side_effect=RuntimeError("LLM rate limit"))
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.agents.run_idea_intake", agent_mock):
+            with pytest.raises(RuntimeError, match="LLM rate limit"):
+                await step_intake(
+                    plan_id=plan_id, org_id=org_id, user_id="user-1",
+                    idea_raw="test idea",
+                )
+
+        # At least one execute call should set status='FAILED'
+        failed_calls = [
+            sql for sql, args in execute_calls
+            if "'FAILED'" in sql or "FAILED" in sql
+        ]
+        assert failed_calls, (
+            "Expected at least one DB call writing status=FAILED, "
+            f"got: {execute_calls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_failed_section_persists_error_msg(self):
+        """The error_msg column must be populated with a non-empty string."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_market_intel
+
+        captured_args: list = []
+
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            captured_args.append((sql, args))
+
+        mock_conn.execute = capture_execute
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        agent_mock = AsyncMock(side_effect=ValueError("context length exceeded"))
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.agents.run_market_intelligence", agent_mock):
+            with pytest.raises(ValueError):
+                await step_market_intel(
+                    plan_id="plan-1", org_id="org-1", user_id="user-1",
+                    idea_raw="test",
+                )
+
+        # Find the FAILED insert/update call and check error_msg arg is non-empty
+        failed_call_args = [
+            args for sql, args in captured_args
+            if "FAILED" in sql and args
+        ]
+        assert failed_call_args, "Expected a DB call with FAILED status and args"
+        # The error message argument must be a non-empty string
+        all_args = [a for call_args in failed_call_args for a in call_args]
+        string_args = [a for a in all_args if isinstance(a, str) and a]
+        assert any("context length exceeded" in a or len(a) > 0 for a in string_args), \
+            f"Expected error_msg in args, got: {all_args}"
+
+    @pytest.mark.asyncio
+    async def test_original_exception_re_raised(self):
+        """step function must re-raise the original exception after persisting FAILED."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_company_desc
+
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        sentinel = RuntimeError("sentinel-error-unique-42")
+        agent_mock = AsyncMock(side_effect=sentinel)
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.agents.run_company_description", agent_mock):
+            with pytest.raises(RuntimeError, match="sentinel-error-unique-42"):
+                await step_company_desc(
+                    plan_id="p", org_id="o", user_id="u", idea_raw="test idea here",
+                )
+
+    @pytest.mark.asyncio
+    async def test_completed_section_not_overwritten_by_failed(self):
+        """_mark_section_failed must not overwrite a COMPLETED section (WHERE guard)."""
+        from app.core.business.workflow import _mark_section_failed
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+
+        executed_sqls: list[str] = []
+
+        mock_conn = AsyncMock()
+
+        async def capture(sql, *args):
+            executed_sqls.append(sql)
+
+        mock_conn.execute = capture
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_section_failed("plan-1", "intake", "org-1", "some error")
+
+        # The SQL must contain the guard preventing COMPLETED overwrite
+        assert executed_sqls, "Expected at least one execute call"
+        guard_present = any(
+            "!= 'COMPLETED'" in sql or "!= 'COMPLETED'" in sql
+            for sql in executed_sqls
+        )
+        assert guard_present, (
+            "Expected WHERE ... != 'COMPLETED' guard in UPSERT SQL to protect completed sections. "
+            f"Got SQL: {executed_sqls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_section_writes_failed_on_second_failure(self):
+        """retry_sections: a re-run that also fails must write FAILED again (not leave RUNNING)."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections
+
+        execute_calls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture(sql, *args):
+            execute_calls.append(sql)
+
+        mock_conn.execute = capture
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchval = AsyncMock(return_value=0)
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        agent_mock = AsyncMock(side_effect=RuntimeError("still failing"))
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.agents.run_idea_intake", agent_mock), \
+             patch("app.core.business.scoring.compute_score",
+                   new_callable=AsyncMock,
+                   return_value={"overall_score": 0, "breakdown": {}, "evidence_count": 0}):
+            results = await retry_sections(
+                plan_id="plan-r", org_id="org-r", user_id="user-r",
+                idea_raw="test idea to retry",
+                industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        assert "intake" in results
+        assert "error" in results["intake"]
+        failed_writes = [s for s in execute_calls if "FAILED" in s]
+        assert failed_writes, "Expected FAILED to be written to DB on retry failure"
+
+
+# ── BLOCKER 2: startup recovery ───────────────────────────────────────────────
+
+class TestStartupRecovery:
+    """
+    Tests for BLOCKER 2: mark_interrupted_business_plans() must turn
+    GENERATING plans and RUNNING sections into FAILED on startup.
+    """
+
+    @pytest.mark.asyncio
+    async def test_generating_plan_marked_failed(self):
+        """GENERATING plans → FAILED on startup."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.schema import mark_interrupted_business_plans
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(return_value="UPDATE 1")
+
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=mock_conn)
+        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.__aexit__ = AsyncMock(return_value=False)
+
+        class FakeAcquire:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        mock_pool.acquire = MagicMock(return_value=FakeAcquire())
+
+        with patch("app.core.business.schema.get_pool", return_value=mock_pool):
+            await mark_interrupted_business_plans()
+
+        calls = [str(c) for c in mock_conn.execute.call_args_list]
+        plan_update = any("bp_plans" in c and "FAILED" in c for c in calls)
+        assert plan_update, f"Expected UPDATE bp_plans SET status=FAILED, got: {calls}"
+
+    @pytest.mark.asyncio
+    async def test_running_sections_marked_failed(self):
+        """RUNNING sections → FAILED on startup."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.schema import mark_interrupted_business_plans
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(return_value="UPDATE 2")
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=FakeAcquire())
+
+        with patch("app.core.business.schema.get_pool", return_value=mock_pool):
+            await mark_interrupted_business_plans()
+
+        calls = [str(c) for c in mock_conn.execute.call_args_list]
+        section_update = any("bp_sections" in c and "FAILED" in c for c in calls)
+        assert section_update, f"Expected UPDATE bp_sections SET status=FAILED, got: {calls}"
+
+    @pytest.mark.asyncio
+    async def test_recovery_idempotent_on_empty_db(self):
+        """When no plans/sections are GENERATING/RUNNING, recovery runs without error."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.schema import mark_interrupted_business_plans
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(return_value="UPDATE 0")
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=FakeAcquire())
+
+        with patch("app.core.business.schema.get_pool", return_value=mock_pool):
+            await mark_interrupted_business_plans()  # must not raise
+
+        assert mock_conn.execute.call_count == 2  # one for plans, one for sections
+
+    @pytest.mark.asyncio
+    async def test_recovery_skips_when_pool_none(self):
+        """If pool is not ready, recovery logs a warning and returns without raising."""
+        from unittest.mock import patch
+        from app.core.business.schema import mark_interrupted_business_plans
+
+        with patch("app.core.business.schema.get_pool", return_value=None):
+            await mark_interrupted_business_plans()  # must not raise
+
+
+# ── step_mark_complete guard ───────────────────────────────────────────────────
+
+class TestMarkCompleteGuard:
+    """step_mark_complete refuses to mark COMPLETED unless ALL mandatory sections are COMPLETED.
+
+    The guard queries for COMPLETED rows (not just non-FAILED), so it catches
+    FAILED, PENDING, RUNNING, and entirely-missing sections alike.
+    """
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_fails_if_mandatory_section_failed(self):
+        """A section that is FAILED (not in COMPLETED set) triggers the guard."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        # All mandatory sections COMPLETED except market_intelligence
+        present = _MANDATORY_SECTIONS - {"market_intelligence"}
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[{"section_key": k} for k in present])
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock) as mock_status:
+            with pytest.raises(RuntimeError, match="mandatory section"):
+                await step_mark_complete(plan_id="plan-1", org_id="org-1")
+            mock_status.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_fails_if_mandatory_section_pending(self):
+        """A section stuck in PENDING (absent from COMPLETED set) also triggers the guard."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        # Only half the mandatory sections returned as COMPLETED
+        partial = list(_MANDATORY_SECTIONS)[:5]
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[{"section_key": k} for k in partial])
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock) as mock_status:
+            with pytest.raises(RuntimeError, match="mandatory section"):
+                await step_mark_complete(plan_id="plan-1", org_id="org-1")
+            mock_status.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_succeeds_with_all_sections_completed(self):
+        """Calls _mark_plan_status('COMPLETED') only when ALL mandatory sections are COMPLETED."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(
+            return_value=[{"section_key": k} for k in _MANDATORY_SECTIONS]
+        )
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock) as mock_status:
+            result = await step_mark_complete(plan_id="plan-1", org_id="org-1")
+            mock_status.assert_awaited_once_with("plan-1", "COMPLETED", org_id="org-1")
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_error_names_all_incomplete_sections(self):
+        """RuntimeError message names every incomplete section, not just the first."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        # offer_pricing and go_to_market are missing from COMPLETED
+        present = _MANDATORY_SECTIONS - {"offer_pricing", "go_to_market"}
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[{"section_key": k} for k in present])
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock):
+            with pytest.raises(RuntimeError) as exc_info:
+                await step_mark_complete(plan_id="plan-1", org_id="org-1")
+            msg = str(exc_info.value)
+            assert "offer_pricing" in msg
+            assert "go_to_market" in msg
+
+    @pytest.mark.asyncio
+    async def test_mark_complete_queries_completed_status_for_mandatory_sections(self):
+        """Guard fetches COMPLETED rows for exactly _MANDATORY_SECTIONS."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_mark_complete, _MANDATORY_SECTIONS
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(
+            return_value=[{"section_key": k} for k in _MANDATORY_SECTIONS]
+        )
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_plan_status", new_callable=AsyncMock):
+            await step_mark_complete(plan_id="plan-x", org_id="org-x")
+
+        sql, plan_id_arg, sections_arg = mock_conn.fetch.call_args[0]
+        assert plan_id_arg == "plan-x"
+        assert set(sections_arg) == _MANDATORY_SECTIONS
+        assert "COMPLETED" in sql  # query filters on COMPLETED, not FAILED
+
+
+# ── Context fix: company_desc dependency ──────────────────────────────────────
+
+class TestContextFixDeps:
+    """After the dependency fix, market_intel and competitor_intel receive company_summary."""
+
+    def test_market_intel_depends_on_company_desc(self):
+        from app.core.business.workflow import build_business_plan_workflow
+        wf = build_business_plan_workflow(
+            plan_id="p", org_id="o", user_id="u",
+            idea_raw="Fintech payment solution", industry="Finance", stage="IDEA",
+        )
+        assert "company_desc" in wf.steps["market_intel"].depends_on
+
+    def test_competitor_intel_depends_on_company_desc(self):
+        from app.core.business.workflow import build_business_plan_workflow
+        wf = build_business_plan_workflow(
+            plan_id="p", org_id="o", user_id="u",
+            idea_raw="Fintech payment solution", industry="Finance", stage="IDEA",
+        )
+        assert "company_desc" in wf.steps["competitor_intel"].depends_on
+
+    def test_market_and_competitor_still_parallel_with_each_other(self):
+        """market_intel and competitor_intel do NOT depend on each other (still parallel)."""
+        from app.core.business.workflow import build_business_plan_workflow
+        wf = build_business_plan_workflow(
+            plan_id="p", org_id="o", user_id="u",
+            idea_raw="Logistics SaaS", industry="Logistics", stage="MVP",
+        )
+        assert "competitor_intel" not in wf.steps["market_intel"].depends_on
+        assert "market_intel" not in wf.steps["competitor_intel"].depends_on
+
+    @pytest.mark.asyncio
+    async def test_market_intel_passes_company_summary_from_context(self):
+        """step_market_intel reads company_desc.company_summary and forwards it to the agent."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_market_intel
+
+        mock_conn = AsyncMock()
+        company_summary = "A B2B SaaS payroll tool targeting SMBs."
+        ctx = {"company_desc.company_summary": company_summary}
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_section_running", new_callable=AsyncMock), \
+             patch("app.core.business.agents.run_market_intelligence",
+                   new=AsyncMock(return_value="market text")) as mock_agent:
+            await step_market_intel(
+                plan_id="p", org_id="o", user_id="u",
+                idea_raw="payroll SaaS", _context=ctx,
+            )
+
+        mock_agent.assert_awaited_once()
+        positional = mock_agent.call_args[0]
+        # signature: conn, plan_id, org_id, user_id, idea_raw, industry, company_summary, target_customers
+        assert positional[6] == company_summary
+
+    @pytest.mark.asyncio
+    async def test_competitor_intel_passes_company_summary_from_context(self):
+        """step_competitor_intel reads company_desc.company_summary and forwards it to the agent."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import step_competitor_intel
+
+        mock_conn = AsyncMock()
+        company_summary = "A B2B SaaS payroll tool targeting SMBs."
+        ctx = {"company_desc.company_summary": company_summary}
+
+        class FakeAcquire:
+            async def __aenter__(self): return mock_conn
+            async def __aexit__(self, *a): return False
+
+        with patch("app.core.business.workflow.acquire_scoped", return_value=FakeAcquire()), \
+             patch("app.core.business.workflow._mark_section_running", new_callable=AsyncMock), \
+             patch("app.core.business.agents.run_competitor_intelligence",
+                   new=AsyncMock(return_value="competitor text")) as mock_agent:
+            await step_competitor_intel(
+                plan_id="p", org_id="o", user_id="u",
+                idea_raw="payroll SaaS", _context=ctx,
+            )
+
+        mock_agent.assert_awaited_once()
+        positional = mock_agent.call_args[0]
+        # signature: conn, plan_id, org_id, user_id, idea_raw, industry, company_summary, market_summary
+        assert positional[6] == company_summary
+
+
+# ── P0-A: _mark_section_running COMPLETED guard ───────────────────────────────
+
+class TestMarkSectionRunningGuard:
+    """_mark_section_running must not overwrite sections whose status is COMPLETED."""
+
+    @pytest.mark.asyncio
+    async def test_sql_has_completed_guard(self):
+        """ON CONFLICT clause must carry WHERE bp_sections.status != 'COMPLETED'."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _mark_section_running
+
+        executed_sqls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture(sql, *args):
+            executed_sqls.append(sql)
+
+        mock_conn.execute = capture
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_section_running("plan-1", "intake", "org-1")
+
+        assert executed_sqls, "Expected at least one execute call"
+        guard_present = any("!= 'COMPLETED'" in sql for sql in executed_sqls)
+        assert guard_present, (
+            "Expected WHERE bp_sections.status != 'COMPLETED' guard in UPSERT SQL. "
+            f"Got SQL: {executed_sqls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_running_upsert_writes_running_status(self):
+        """Normal case: UPSERT sets status to RUNNING."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _mark_section_running
+
+        executed_sqls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture(sql, *args):
+            executed_sqls.append(sql)
+
+        mock_conn.execute = capture
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_section_running("plan-2", "company_description", "org-2")
+
+        assert any("RUNNING" in sql for sql in executed_sqls), (
+            "Expected RUNNING status in SQL"
+        )
+
+
+# ── P0-B: retry_sections context rebuild ──────────────────────────────────────
+
+class TestRetryContextRebuild:
+    """retry_sections must pass rebuilt prior-step context to each step function."""
+
+    @pytest.mark.asyncio
+    async def test_context_includes_intake_data_from_facts(self):
+        """_rebuild_context_for_retry populates intake.intake_data from USER facts."""
+        import json as _json
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _rebuild_context_for_retry
+
+        fact_rows = [
+            {"fact_key": "problem_statement", "value": _json.dumps("slow payroll"),
+             "source_type": "USER", "status": "UNVERIFIED", "confidence": 0.8},
+            {"fact_key": "solution",           "value": _json.dumps("cloud payroll"),
+             "source_type": "USER", "status": "UNVERIFIED", "confidence": 0.8},
+            {"fact_key": "target_customers",   "value": _json.dumps("SMBs"),
+             "source_type": "USER", "status": "UNVERIFIED", "confidence": 0.8},
+        ]
+        with patch("app.core.business.workflow._get_facts",
+                   new=AsyncMock(return_value=fact_rows)), \
+             patch("app.core.business.workflow._get_section",
+                   new=AsyncMock(return_value=None)):
+            ctx = await _rebuild_context_for_retry("plan-1", "org-1")
+
+        assert "intake.intake_data" in ctx
+        assert ctx["intake.intake_data"]["problem_statement"] == "slow payroll"
+        assert ctx["intake.intake_data"]["solution"] == "cloud payroll"
+        assert ctx["intake.intake_data"]["target_customers"] == "SMBs"
+
+    @pytest.mark.asyncio
+    async def test_context_includes_company_summary_from_completed_section(self):
+        """_rebuild_context_for_retry populates company_desc.company_summary from COMPLETED section."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _rebuild_context_for_retry
+
+        long_text = "X" * 2000
+        with patch("app.core.business.workflow._get_facts",
+                   new=AsyncMock(return_value=[])), \
+             patch("app.core.business.workflow._get_section",
+                   new=AsyncMock(return_value=long_text)):
+            ctx = await _rebuild_context_for_retry("plan-2", "org-2")
+
+        assert "company_desc.company_summary" in ctx
+        assert len(ctx["company_desc.company_summary"]) == 1000  # truncated to 1000
+
+    @pytest.mark.asyncio
+    async def test_failed_company_section_absent_from_context(self):
+        """When company_description is FAILED (not COMPLETED), _get_section returns None → no key."""
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import _rebuild_context_for_retry
+
+        with patch("app.core.business.workflow._get_facts",
+                   new=AsyncMock(return_value=[])), \
+             patch("app.core.business.workflow._get_section",
+                   new=AsyncMock(return_value=None)):
+            ctx = await _rebuild_context_for_retry("plan-3", "org-3")
+
+        assert "company_desc.company_summary" not in ctx
+
+    @pytest.mark.asyncio
+    async def test_retry_passes_rebuilt_context_to_step(self):
+        """retry_sections passes _context dict (from _rebuild_context_for_retry) to each step fn."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections
+
+        received_contexts: list = []
+
+        async def fake_step(**kwargs):
+            received_contexts.append(kwargs.get("_context"))
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        mock_conn.fetchval = AsyncMock(return_value=0)
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        rebuilt = {"intake.intake_data": {"solution": "cloud tool"}}
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow._rebuild_context_for_retry",
+                   new=AsyncMock(return_value=rebuilt)), \
+             patch("app.core.business.workflow.step_intake", fake_step), \
+             patch("app.core.business.scoring.compute_score",
+                   new=AsyncMock(return_value={})):
+            await retry_sections(
+                plan_id="plan-4", org_id="org-4", user_id="user-4",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        assert received_contexts == [rebuilt], (
+            f"Expected rebuilt context forwarded, got: {received_contexts}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_with_no_prior_data_passes_empty_context(self):
+        """When DB has no facts and no completed sections, _context is an empty dict."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections
+
+        received_contexts: list = []
+
+        async def fake_step(**kwargs):
+            received_contexts.append(kwargs.get("_context"))
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        mock_conn.fetchval = AsyncMock(return_value=0)
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow._rebuild_context_for_retry",
+                   new=AsyncMock(return_value={})), \
+             patch("app.core.business.workflow.step_intake", fake_step), \
+             patch("app.core.business.scoring.compute_score",
+                   new=AsyncMock(return_value={})):
+            await retry_sections(
+                plan_id="plan-5", org_id="org-5", user_id="user-5",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        assert received_contexts == [{}], (
+            "Expected empty dict context, got: {received_contexts}"
+        )
+
+
+# ── Lifecycle fix: retry_sections updates plan status ────────────────────────
+
+class TestRetryLifecycleUpdate:
+    """After retrying sections, retry_sections must write COMPLETED or FAILED
+    to bp_plans depending on whether all _MANDATORY_SECTIONS are COMPLETED."""
+
+    @pytest.mark.asyncio
+    async def test_retry_marks_plan_completed_when_all_mandatory_sections_pass(self):
+        """All mandatory sections COMPLETED → _mark_plan_status('COMPLETED')."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections, _MANDATORY_SECTIONS
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(
+            return_value=[{"section_key": k} for k in _MANDATORY_SECTIONS]
+        )
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        async def fake_step(**kwargs):
+            pass
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow.step_intake", fake_step), \
+             patch("app.core.business.workflow._rebuild_context_for_retry",
+                   new=AsyncMock(return_value={})), \
+             patch("app.core.business.workflow.compute_score",
+                   new=AsyncMock(return_value={"overall_score": 80, "breakdown": {}})), \
+             patch("app.core.business.workflow._mark_plan_status",
+                   new_callable=AsyncMock) as mock_status:
+            await retry_sections(
+                plan_id="plan-lc", org_id="org-lc", user_id="u",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        mock_status.assert_awaited_once_with("plan-lc", "COMPLETED", org_id="org-lc")
+
+    @pytest.mark.asyncio
+    async def test_retry_marks_plan_failed_when_mandatory_sections_incomplete(self):
+        """Some mandatory sections still FAILED → _mark_plan_status('FAILED')."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        from app.core.business.workflow import retry_sections, _MANDATORY_SECTIONS
+
+        # Only half completed
+        partial = list(_MANDATORY_SECTIONS)[:5]
+        mock_conn = AsyncMock()
+        mock_conn.fetch = AsyncMock(
+            return_value=[{"section_key": k} for k in partial]
+        )
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        async def fake_step(**kwargs):
+            pass
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped), \
+             patch("app.core.business.workflow.step_intake", fake_step), \
+             patch("app.core.business.workflow._rebuild_context_for_retry",
+                   new=AsyncMock(return_value={})), \
+             patch("app.core.business.workflow.compute_score",
+                   new=AsyncMock(return_value={"overall_score": 30, "breakdown": {}})), \
+             patch("app.core.business.workflow._mark_plan_status",
+                   new_callable=AsyncMock) as mock_status:
+            await retry_sections(
+                plan_id="plan-fail", org_id="org-fail", user_id="u",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        mock_status.assert_awaited_once_with("plan-fail", "FAILED", org_id="org-fail")
+
+
+# ── Lifecycle fix: retry endpoint sets GENERATING before background task ──────
+
+class TestRetryEndpointGeneratingTransition:
+    """retry_plan_sections must UPDATE plan status to GENERATING synchronously
+    (before returning 200) so the frontend SSE stream can start immediately."""
+
+    def _make_app(self):
+        from fastapi import FastAPI
+        from app.routers.business_plans import router
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    @pytest.mark.asyncio
+    async def test_retry_endpoint_sets_generating_before_responding(self):
+        """POST /plans/{id}/retry must write GENERATING to DB before returning."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from fastapi.testclient import TestClient
+
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append(sql)
+
+        mock_conn.execute = capture_execute
+        mock_conn.fetchrow = AsyncMock(return_value={
+            "id": plan_id, "organization_id": "org-1", "user_id": "user-1",
+            "idea_raw": "test idea", "industry": None, "stage": "IDEA",
+            "status": "FAILED", "readiness_score": None,
+            "workflow_run_id": None, "title": "",
+            "created_at": "2024-01-01", "updated_at": "2024-01-01",
+        })
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            yield mock_conn
+
+        with patch("app.routers.business_plans._resolve_user", return_value="user-1"), \
+             patch("app.routers.business_plans._resolve_org", return_value="org-1"), \
+             patch("app.routers.business_plans.acquire_scoped", mock_scoped), \
+             patch("app.routers.business_plans._run_retry_bg", new_callable=AsyncMock):
+            with TestClient(self._make_app(), raise_server_exceptions=False) as client:
+                r = client.post(
+                    f"/api/business/plans/{plan_id}/retry",
+                    json={"section_keys": ["intake"]},
+                    headers={"Authorization": "Bearer fake"},
+                )
+
+        assert r.status_code == 200
+        generating_writes = [s for s in execute_calls if "GENERATING" in s]
+        assert generating_writes, (
+            f"Expected UPDATE ... GENERATING before returning 200. Got: {execute_calls}"
+        )
+
+
+# ── Lifecycle fix: _run_retry_bg error handler ────────────────────────────────
+
+class TestRunRetryBgErrorHandler:
+    """_run_retry_bg must catch unexpected exceptions from retry_sections and
+    write FAILED to bp_plans so the plan is not stuck in GENERATING."""
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_marks_plan_failed(self):
+        """retry_sections raises → _run_retry_bg writes FAILED via acquire_scoped."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from app.routers.business_plans import _run_retry_bg
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append(sql)
+
+        mock_conn.execute = capture_execute
+        scoped_calls: list[str] = []
+
+        @asynccontextmanager
+        async def mock_scoped(oid):
+            scoped_calls.append(oid)
+            yield mock_conn
+
+        with patch("app.routers.business_plans.retry_sections",
+                   new_callable=AsyncMock,
+                   side_effect=RuntimeError("unexpected DB crash")), \
+             patch("app.routers.business_plans.acquire_scoped", mock_scoped):
+            await _run_retry_bg(
+                plan_id=plan_id, org_id=org_id, user_id="u",
+                idea_raw="test", industry=None, stage="IDEA",
+                section_keys=["intake"],
+            )
+
+        assert scoped_calls == [org_id], "acquire_scoped must be called with org_id"
+        failed_writes = [s for s in execute_calls if "FAILED" in s]
+        assert failed_writes, "Expected FAILED to be written on unexpected error"
+
+
+class TestMarkPlanStatusPausedGuard:
+    """_mark_plan_status must not overwrite PAUSED with COMPLETED or FAILED.
+
+    The SQL guard (AND status != 'PAUSED') makes the UPDATE a no-op when the
+    plan has been cancelled, so cancellation cannot be lost by a concurrent
+    retry finishing after the user pressed cancel.
+    """
+
+    @pytest.mark.asyncio
+    async def test_paused_plan_not_overwritten_with_completed(self):
+        """retry_sections finishing with all sections OK must not change PAUSED → COMPLETED."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.core.business.workflow import _mark_plan_status
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[tuple] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append((sql, args))
+
+        mock_conn.execute = capture_execute
+
+        @asynccontextmanager
+        async def mock_scoped(_oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_plan_status(plan_id, "COMPLETED", org_id=org_id)
+
+        assert len(execute_calls) == 1
+        sql, args = execute_calls[0]
+        assert "status != 'PAUSED'" in sql, (
+            "SQL must guard against overwriting PAUSED; found: " + sql
+        )
+        assert args[0] == "COMPLETED"
+        assert args[1] == plan_id
+
+    @pytest.mark.asyncio
+    async def test_paused_plan_not_overwritten_with_failed(self):
+        """retry_sections finishing with failures must not change PAUSED → FAILED."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from app.core.business.workflow import _mark_plan_status
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[tuple] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append((sql, args))
+
+        mock_conn.execute = capture_execute
+
+        @asynccontextmanager
+        async def mock_scoped(_oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_plan_status(plan_id, "FAILED", org_id=org_id)
+
+        sql, args = execute_calls[0]
+        assert "status != 'PAUSED'" in sql
+        assert args[0] == "FAILED"
+
+    @pytest.mark.asyncio
+    async def test_non_paused_plan_status_is_updated(self):
+        """Normal (non-PAUSED) plans still receive the status update."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, patch
+        import uuid
+        from app.core.business.workflow import _mark_plan_status
+
+        org_id  = str(uuid.uuid4())
+        plan_id = str(uuid.uuid4())
+        execute_calls: list[tuple] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            execute_calls.append((sql, args))
+
+        mock_conn.execute = capture_execute
+
+        @asynccontextmanager
+        async def mock_scoped(_oid):
+            yield mock_conn
+
+        with patch("app.core.business.workflow.acquire_scoped", mock_scoped):
+            await _mark_plan_status(plan_id, "COMPLETED", org_id=org_id)
+
+        assert len(execute_calls) == 1
+        sql, args = execute_calls[0]
+        assert args[0] == "COMPLETED"
+        assert args[1] == plan_id
+
+
+# ── P0: LLM truncation detection ─────────────────────────────────────────────
+
+class TestLLMTruncationDetection:
+    """_complete() must raise RuntimeError when finish_reason == 'length'."""
+
+    @pytest.mark.asyncio
+    async def test_truncated_response_raises_runtime_error(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.agents import _complete
+
+        mock_resp = MagicMock()
+        mock_resp.finish_reason = "length"
+        mock_resp.content = "partial content without end"
+        mock_resp.usage = MagicMock(total_tokens=2048)
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=mock_resp)
+
+        with patch("app.core.business.agents._inference", mock_engine):
+            with pytest.raises(RuntimeError, match="truncated"):
+                await _complete("system prompt", "user prompt")
+
+    @pytest.mark.asyncio
+    async def test_normal_response_does_not_raise(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.agents import _complete
+
+        mock_resp = MagicMock()
+        mock_resp.finish_reason = "stop"
+        mock_resp.content = "complete section text"
+        mock_resp.usage = MagicMock(total_tokens=500)
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=mock_resp)
+
+        with patch("app.core.business.agents._inference", mock_engine):
+            text, tokens = await _complete("sys", "usr")
+
+        assert text == "complete section text"
+        assert tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_missing_finish_reason_defaults_to_stop(self):
+        """A response with no finish_reason attribute must not raise."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.agents import _complete
+
+        mock_resp = MagicMock(spec=["content", "usage"])  # no finish_reason attribute
+        mock_resp.content = "text"
+        mock_resp.usage = None
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=mock_resp)
+
+        with patch("app.core.business.agents._inference", mock_engine):
+            text, _tokens = await _complete("sys", "usr")
+
+        assert text == "text"
+
+
+# ── P1: TAM/SAM/SOM multi-currency extraction ────────────────────────────────
+
+class TestTAMExtractionCurrencies:
+    """TAM/SAM/SOM regex must match non-dollar currency formats."""
+
+    def _run_pattern(self, text: str, key: str) -> bool:
+        """Return True if the updated regex finds a match for key in text."""
+        import re
+        _AMOUNT = (
+            r"(?:"
+            r"(?:\$|USD|SAR|AED|EUR|GBP|€|£|¥)\s*[\d,\.]+\s*(?:B|M|K|billion|million|thousand)?"
+            r"|[\d,\.]+\s*(?:B|M|K|billion|million|thousand)\s*(?:dollars?|USD|SAR|AED|EUR|GBP)?"
+            r"|[\d,\.،]+\s*(?:مليار|مليون|ألف)\s*(?:ريال|دولار|درهم|يورو)?"
+            r")"
+        )
+        return bool(re.search(rf"\b{key.upper()}\b.*?{_AMOUNT}", text, re.IGNORECASE))
+
+    def test_dollar_sign_still_matches(self):
+        assert self._run_pattern("TAM is $500M annually", "tam")
+
+    def test_sar_prefix_matches(self):
+        assert self._run_pattern("TAM SAR 5B for the Saudi market", "tam")
+
+    def test_aed_prefix_matches(self):
+        assert self._run_pattern("SAM: AED 2.5B in the UAE", "sam")
+
+    def test_usd_suffix_matches(self):
+        assert self._run_pattern("SOM 500M USD addressable share", "som")
+
+    def test_arabic_billion_riyal_matches(self):
+        assert self._run_pattern("TAM 500 مليار ريال سنويًا", "tam")
+
+    def test_arabic_million_dollar_matches(self):
+        assert self._run_pattern("SAM 3.6 مليون دولار", "sam")
+
+    def test_no_amount_does_not_match(self):
+        """A section with TAM but no numeric value must not produce a false match."""
+        assert not self._run_pattern("TAM is large and growing quickly", "tam")
+
+
+# ── P1: cancel_plan org isolation ────────────────────────────────────────────
+
+class TestCancelPlanOrgIsolation:
+    """cancel_plan must use acquire_scoped so RLS prevents cross-org cancellation."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_uses_acquire_scoped_not_bare_pool(self):
+        """The UPDATE in cancel_plan must go through acquire_scoped(org_id)."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.routers.business_plans import cancel_plan
+
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+        plan_id = uuid.uuid4()
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+
+        scoped_calls: list[str] = []
+
+        @asynccontextmanager
+        async def mock_scoped(oid: str):
+            scoped_calls.append(oid)
+            yield mock_conn
+
+        mock_request = MagicMock()
+
+        with (
+            patch("app.routers.business_plans._resolve_user", AsyncMock(return_value=user_id)),
+            patch("app.routers.business_plans._resolve_org",  AsyncMock(return_value=org_id)),
+            patch("app.routers.business_plans._assert_plan_owner", AsyncMock()),
+            patch("app.routers.business_plans.acquire_scoped", mock_scoped),
+        ):
+            await cancel_plan(plan_id, mock_request)
+
+        assert org_id in scoped_calls, (
+            "cancel_plan must call acquire_scoped(org_id) — "
+            "bare pool.acquire() bypasses RLS tenant isolation"
+        )
+
+
+# ── P1: VERIFIED status never written by AI agents ───────────────────────────
+
+class TestVerifiedStatusNeverWritten:
+    """No agent or workflow helper must write status='VERIFIED' to bp_facts."""
+
+    @pytest.mark.asyncio
+    async def test_idea_intake_never_writes_verified(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.core.business.agents import run_idea_intake
+
+        plan_id = str(uuid.uuid4())
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+
+        inserted_statuses: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            sql_upper = sql.upper()
+            if "BP_FACTS" in sql_upper and "INSERT" in sql_upper:
+                # status is the 6th positional value: $6 → args[5]
+                if len(args) >= 6:
+                    inserted_statuses.append(str(args[5]))
+            return None
+
+        mock_conn.execute = capture_execute
+
+        mock_resp = MagicMock()
+        mock_resp.finish_reason = "stop"
+        mock_resp.content = '{"title": "Test", "problem_statement": "p", "solution": "s"}'
+        mock_resp.usage = MagicMock(total_tokens=100)
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=mock_resp)
+
+        with patch("app.core.business.agents._inference", mock_engine):
+            await run_idea_intake(
+                mock_conn, plan_id, org_id, user_id,
+                "test idea", "tech", "IDEA"
+            )
+
+        assert "VERIFIED" not in inserted_statuses, (
+            f"run_idea_intake wrote VERIFIED status to bp_facts: {inserted_statuses}"
+        )
+
+    def test_verified_fact_status_enum_exists_but_unused(self):
+        """FactStatus.VERIFIED must be defined (schema contract) but no agent writes it."""
+        from app.core.business.models import FactStatus
+        assert FactStatus.VERIFIED.value == "VERIFIED"
+
+        # Verify no agent source file contains a literal 'VERIFIED' write
+        import ast, pathlib
+        agents_src = pathlib.Path("app/core/business/agents.py").read_text()
+        tree = ast.parse(agents_src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and node.value == "VERIFIED":
+                raise AssertionError(
+                    f"agents.py contains a literal 'VERIFIED' string at line {node.lineno} — "
+                    "this must never be written to bp_facts by an AI agent"
+                )
+
+
+# ── C: truncated LLM response never reaches _upsert_section ─────────────────
+
+class TestTruncationNeverWritesSection:
+    """When _complete() raises due to finish_reason == 'length', the section
+    must NOT be written to COMPLETED state — _upsert_section must not be called."""
+
+    @pytest.mark.asyncio
+    async def test_truncation_propagates_and_skips_upsert(self):
+        from unittest.mock import AsyncMock, MagicMock, patch, call
+        import uuid
+        from app.core.business.agents import run_market_intelligence
+
+        plan_id = str(uuid.uuid4())
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+
+        # _complete raises truncation error (finish_reason == "length")
+        trunc_resp = MagicMock()
+        trunc_resp.finish_reason = "length"
+        trunc_resp.content = "partial market analysis..."
+        trunc_resp.usage = MagicMock(total_tokens=2048)
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=trunc_resp)
+
+        upsert_calls: list = []
+
+        async def capture_upsert(*args, **kwargs):
+            upsert_calls.append(args)
+
+        with (
+            patch("app.core.business.agents._inference", mock_engine),
+            patch("app.core.business.agents._upsert_section", capture_upsert),
+        ):
+            with pytest.raises(RuntimeError, match="truncated"):
+                await run_market_intelligence(
+                    mock_conn, plan_id, org_id, user_id,
+                    "test idea", "tech", None, None,
+                )
+
+        assert len(upsert_calls) == 0, (
+            "_upsert_section must NOT be called when _complete() raises — "
+            "truncated content must not be committed as a COMPLETED section"
+        )
+
+    @pytest.mark.asyncio
+    async def test_successful_response_does_reach_upsert(self):
+        """Positive control: normal completion does call _upsert_section once."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.core.business.agents import run_market_intelligence
+
+        plan_id = str(uuid.uuid4())
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+
+        ok_resp = MagicMock()
+        ok_resp.finish_reason = "stop"
+        ok_resp.content = "TAM is $500M. SAM $50M. SOM $5M."
+        ok_resp.usage = MagicMock(total_tokens=300)
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=ok_resp)
+
+        upsert_calls: list = []
+
+        async def capture_upsert(*args, **kwargs):
+            upsert_calls.append(args)
+
+        with (
+            patch("app.core.business.agents._inference", mock_engine),
+            patch("app.core.business.agents._upsert_section", capture_upsert),
+        ):
+            await run_market_intelligence(
+                mock_conn, plan_id, org_id, user_id,
+                "test idea", "tech", None, None,
+            )
+
+        assert len(upsert_calls) == 1
+
+
+# ── B: cancel_plan cross-org rejection ───────────────────────────────────────
+
+class TestCancelPlanCrossOrgRejection:
+    """cancel_plan must propagate a 404 from _assert_plan_owner
+    without executing the DB UPDATE (cross-org attempt)."""
+
+    @pytest.mark.asyncio
+    async def test_cross_org_cancel_is_rejected_with_404(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from fastapi import HTTPException
+        import uuid
+        from app.routers.business_plans import cancel_plan
+
+        org_a  = str(uuid.uuid4())
+        user_b = str(uuid.uuid4())
+        plan_id = uuid.uuid4()  # belongs to org_a, not org_b
+
+        update_calls: list = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            update_calls.append(sql)
+
+        mock_conn.execute = capture_execute
+        mock_request = MagicMock()
+
+        from fastapi import HTTPException as HTTPEx
+
+        with (
+            patch("app.routers.business_plans._resolve_user", AsyncMock(return_value=user_b)),
+            patch("app.routers.business_plans._resolve_org",  AsyncMock(return_value=str(uuid.uuid4()))),  # different org
+            patch("app.routers.business_plans._assert_plan_owner",
+                  AsyncMock(side_effect=HTTPEx(status_code=404, detail="Plan not found"))),
+        ):
+            with pytest.raises(HTTPEx) as exc_info:
+                await cancel_plan(plan_id, mock_request)
+
+        assert exc_info.value.status_code == 404
+        assert len(update_calls) == 0, (
+            "DB UPDATE must not be called when _assert_plan_owner raises 404 — "
+            "cross-org cancel must be rejected before touching the database"
+        )

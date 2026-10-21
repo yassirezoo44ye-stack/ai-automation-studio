@@ -39,6 +39,7 @@ export function PublishToDiscoverModal({
   useEffect(() => {
     if (!currentOrgId || !sourceId) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCheckingDup(true);
     fetchMyCreations(currentOrgId, { limit: 100 })
       .then(resp => {
@@ -105,10 +106,13 @@ export function PublishToDiscoverModal({
   };
 
   return (
+    <>
+    {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
     <div
       role="dialog"
       aria-modal="true"
       aria-label={t("publish.modal.title")}
+      tabIndex={-1}
       style={{
         position: "fixed", inset: 0, zIndex: 600,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -120,6 +124,7 @@ export function PublishToDiscoverModal({
       <div
         style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }}
         onClick={onClose}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onClose(); }}
         role="button"
         tabIndex={-1}
         aria-label={t("publish.modal.close")}
@@ -257,12 +262,17 @@ export function PublishToDiscoverModal({
         </div>
 
         {/* Publish immediately checkbox */}
-        <label style={{
-          display: "flex", alignItems: "flex-start", gap: 10,
-          cursor: submitting ? "not-allowed" : "pointer",
-          userSelect: "none",
-        }}>
+        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+        <label
+          htmlFor="publish-immediately-checkbox"
+          style={{
+            display: "flex", alignItems: "flex-start", gap: 10,
+            cursor: submitting ? "not-allowed" : "pointer",
+            userSelect: "none",
+          }}
+        >
           <input
+            id="publish-immediately-checkbox"
             type="checkbox"
             checked={publishImmediately}
             onChange={e => setPublishImmediately(e.target.checked)}
@@ -354,5 +364,6 @@ export function PublishToDiscoverModal({
         </div>
       </div>
     </div>
+    </>
   );
 }

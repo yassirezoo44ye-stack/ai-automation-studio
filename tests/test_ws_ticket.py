@@ -21,7 +21,7 @@ import os
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
 
-from app.routers.ws_ticket import issue_ticket, consume_ticket, _store, _lock, _TTL_S
+from app.routers.ws_ticket import issue_ticket, consume_ticket, _store, _lock
 
 
 def _drain_store():
@@ -53,7 +53,6 @@ class TestIssueTicket:
         assert t1 != t2
 
     def test_raises_when_store_full(self):
-        from app.routers.ws_ticket import _MAX_TICKETS
         with patch("app.routers.ws_ticket._MAX_TICKETS", 1):
             issue_ticket("u1")
             with pytest.raises(RuntimeError, match="full"):

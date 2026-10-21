@@ -5,7 +5,7 @@ from app.commands.context import CommandContext
 from app.commands.result import CommandResult
 
 
-async def test_gen_handler(ctx: CommandContext) -> CommandResult:
+async def _test_gen_handler(ctx: CommandContext) -> CommandResult:
     arg = ctx.first_arg("world")
     return CommandResult.ok("test_gen", output=f"Hello from test_gen: {arg}")
 
@@ -13,7 +13,7 @@ async def test_gen_handler(ctx: CommandContext) -> CommandResult:
 def register(registry) -> None:
     registry.register(
         "test_gen",
-        test_gen_handler,
+        _test_gen_handler,
         description="test_gen — auto-generated plugin",
         group="plugin",
         source="plugin",

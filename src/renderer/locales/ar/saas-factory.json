@@ -51,6 +51,22 @@
       "description": "تطبيقك الـ SaaS مباشر وجاهز للاستخدام."
     }
   },
+  "review": {
+    "title": "مراجعة أمنية مطلوبة",
+    "subtitle": "اكتمل التحقق مع تحذيرات. راجع النتائج قبل الموافقة على النشر.",
+    "waitingSince": "منتظر منذ",
+    "findings": "النتائج",
+    "rlsCovered": "تم تأكيد عزل المستأجرين عبر RLS",
+    "rlsNotCovered": "تغطية RLS غير مؤكدة",
+    "approve": "موافقة",
+    "approving": "جارٍ الموافقة…",
+    "reject": "رفض",
+    "rejecting": "جارٍ الرفض…",
+    "rejectReason": "سبب الرفض (اختياري)",
+    "rejectReasonPlaceholder": "صِف المشكلة الأمنية…",
+    "confirmReject": "تأكيد الرفض",
+    "cancel": "إلغاء"
+  },
   "history": {
     "label": "المشاريع السابقة",
     "title": "المشاريع السابقة"

@@ -18,6 +18,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
+import { useOrg } from "../../contexts/OrgContext";
 import { useLangContext } from "../../contexts/lang";
 import type { Lang } from "../../contexts/lang";
 import { useToast } from "../../contexts/toast";
@@ -55,6 +56,8 @@ type AgentsResponse = { count: number; agents: AgentEntry[] };
 type WorkflowRun = { id: string; name: string; status: string; started_at?: string };
 type WorkflowsResponse = { runs: WorkflowRun[] };
 type ApprovalsResponse = { pending: string[] };
+type SecurityReviewItem = { project_id: string; idea_text: string; waiting_since: string };
+type SecurityReviewsResponse = { pending_security_reviews: SecurityReviewItem[] };
 
 // ── Integration nodes ─────────────────────────────────────────────────────
 
@@ -352,10 +355,13 @@ function QuickAction({ icon, label, desc, color, onClick }: {
 // HomePage
 // ══════════════════════════════════════════════════════════════════════════
 export function HomePage() {
-  const { setPage } = useAppContext();
+  const { setPage, setActiveProject } = useAppContext();
   const { lang } = useLangContext();
   const toast = useToast();
   const { t } = useTranslation("home");
+
+  const { loading: orgLoading, currentOrgId } = useOrg();
+  const orgReady = !orgLoading && !!currentOrgId;
 
   const [prompt, setPrompt]       = useState("");
   const [promptIdx, setPromptIdx] = useState(0);
@@ -386,15 +392,28 @@ export function HomePage() {
 
   const workflowsQ = useAsyncData<WorkflowsResponse>(
     () => apiFetch("/api/workflows/active").then(r => parseJSON<WorkflowsResponse>(r, "/api/workflows/active")),
-    [],
+    [currentOrgId],
+    { enabled: orgReady },
   );
   const workflowRuns = workflowsQ.data?.runs ?? [];
 
   const approvalsQ = useAsyncData<ApprovalsResponse>(
     () => apiFetch("/api/workflows/approvals/pending").then(r => parseJSON<ApprovalsResponse>(r, "/api/workflows/approvals/pending")),
-    [],
+    [currentOrgId],
+    { enabled: orgReady },
   );
   const pendingApprovals = approvalsQ.data?.pending ?? [];
+
+  const securityReviewsQ = useAsyncData<SecurityReviewsResponse>(
+    () => apiFetch("/api/saas-factory/projects/pending-review").then(r => parseJSON<SecurityReviewsResponse>(r, "/api/saas-factory/projects/pending-review")),
+    [currentOrgId],
+    { enabled: orgReady },
+  );
+  const securityReviews = securityReviewsQ.data?.pending_security_reviews ?? [];
+  const secReviewErr = securityReviewsQ.status === "error";
+  const pendingApprovalsTotal = secReviewErr
+    ? (pendingApprovals.length > 0 ? `${pendingApprovals.length}+?` : "?")
+    : pendingApprovals.length + securityReviews.length;
 
   const projectsQ = useAsyncData<Project[]>(
     () => apiFetch("/api/projects").then(r => parseJSON<Project[]>(r, "/api/projects")),
@@ -444,7 +463,7 @@ export function HomePage() {
     { label: "Success Rate",      value: stats ? `${stats.success_rate}%` : "—", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="20 6 9 17 4 12"/></svg>,                                                                    accent: false, sub: undefined,       onClick: undefined },
     { label: "AI Agents",         value: agents.length || (agentsQ.status === "loading" ? "…" : 0), icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/></svg>, accent: false, sub: `${runningAgents} running`, onClick: () => setPage("agentos") },
     { label: "Workflows",         value: workflowRuns.length || 0,     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,      accent: false, sub: "active",       onClick: () => setPage("automation") },
-    { label: "Pending Approvals", value: pendingApprovals.length || 0, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,                                                          accent: pendingApprovals.length > 0, sub: undefined, onClick: () => setPage("automation") },
+    { label: "Pending Approvals", value: pendingApprovalsTotal, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,                                                          accent: pendingApprovals.length > 0 || securityReviews.length > 0 || secReviewErr, sub: undefined, onClick: () => setPage(pendingApprovals.length > 0 ? "automation" : "saas-factory") },
     { label: "Failed Runs",       value: stats?.failed_runs ?? "—",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>,    accent: (stats?.failed_runs ?? 0) > 0, sub: undefined, onClick: () => setPage("runs") },
     { label: "Conversations",     value: stats?.conversations ?? "—",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,                                       accent: false, sub: undefined,       onClick: () => setPage("ai") },
   ];
@@ -472,6 +491,17 @@ export function HomePage() {
       onAction: () => setPage("automation"),
     });
   }
+  if (securityReviews.length > 0) {
+    const oldest = securityReviews[0];
+    const waitingSince = new Date(oldest.waiting_since).toLocaleDateString();
+    attentionItems.push({
+      severity: "warning",
+      title: `${securityReviews.length} SaaS project${securityReviews.length > 1 ? "s" : ""} awaiting security review`,
+      detail: `Oldest: "${oldest.idea_text}" — waiting since ${waitingSince}`,
+      action: "Review",
+      onAction: () => setPage("saas-factory"),
+    });
+  }
 
   const activity = stats?.recent_activity ?? [];
   const ideaChips = t("buildSection.ideas", { returnObjects: true }) as string[];
@@ -482,7 +512,6 @@ export function HomePage() {
     { label: "Build App with AI", desc: "AI Software Factory",                   color: "#2563EB", onClick: handleBuildApp,               icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
     { label: "New Agent",         desc: "Deploy an AI agent",                    color: "#0B7A70", onClick: () => setPage("agentos"),     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
     { label: "New Workflow",      desc: "Automate a business process",           color: "#A16207", onClick: () => setPage("automation"),  icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
-    { label: "Design Studio",     desc: "Visual UI design canvas",               color: "#DC2626", onClick: () => setPage("design"),      icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg> },
   ];
 
   return (
@@ -782,7 +811,7 @@ export function HomePage() {
                   {projects.slice(0, 6).map(p => (
                     <Card
                       key={p.id}
-                      onClick={() => { sessionStorage.setItem("flow_active_project", p.id); setPage("app-builder"); }}
+                      onClick={() => { setActiveProject(p.id, "build"); }}
                       style={{ display: "flex", flexDirection: "column", gap: 8 }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

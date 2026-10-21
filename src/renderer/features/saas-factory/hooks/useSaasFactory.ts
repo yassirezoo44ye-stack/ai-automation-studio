@@ -6,6 +6,8 @@ import {
   resumeProject,
   listProjects,
   deleteProject,
+  approveSecurityReview,
+  rejectSecurityReview,
 } from "../services/saasFactoryService";
 
 const TERMINAL_PHASES: FactoryPhase[] = ["LIVE", "FAILED", "CANCELLED"];
@@ -83,9 +85,36 @@ export function useSaasFactory() {
     if (!TERMINAL_PHASES.includes(p.phase)) startPolling(p.id);
   }, [startPolling]);
 
+  const approveReview = useCallback(async (id: string) => {
+    setError(null);
+    try {
+      await approveSecurityReview(id);
+      // DB is now DEPLOYING — fetch the updated state then resume polling
+      const updated = await getProject(id);
+      setProject(updated);
+      startPolling(id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to approve security review");
+    }
+  }, [startPolling]);
+
+  const rejectReview = useCallback(async (id: string, reason: string) => {
+    setError(null);
+    try {
+      await rejectSecurityReview(id, reason);
+      // DB is now FAILED (terminal) — fetch the updated state then stop polling
+      const updated = await getProject(id);
+      setProject(updated);
+      stopPolling();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to reject security review");
+    }
+  }, [stopPolling]);
+
   return {
     project, projects, loading, error,
     submit, resume, remove, loadProjects, openProject,
+    approveReview, rejectReview,
     stopPolling,
   };
 }

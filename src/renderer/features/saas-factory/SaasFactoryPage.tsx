@@ -3,18 +3,22 @@ import { useTranslation } from "react-i18next";
 import { IdeaInput } from "./components/IdeaInput";
 import { PipelineView } from "./components/PipelineView";
 import { useSaasFactory } from "./hooks/useSaasFactory";
+import { useOrg } from "../../contexts/OrgContext";
 import "./SaasFactoryPage.css";
 
 export function SaasFactoryPage() {
   const { t } = useTranslation("saas-factory");
+  const { loading: orgLoading, currentOrgId } = useOrg();
+  const orgReady = !orgLoading && !!currentOrgId;
   const {
     project, projects, loading, error,
     submit, resume, remove, loadProjects, openProject,
+    approveReview, rejectReview,
   } = useSaasFactory();
 
   useEffect(() => {
-    loadProjects();
-  }, [loadProjects]);
+    if (orgReady) loadProjects();
+  }, [loadProjects, orgReady, currentOrgId]);
 
   return (
     <div className="sf-page" role="main" aria-label={t("page.ariaLabel")}>
@@ -35,12 +39,14 @@ export function SaasFactoryPage() {
       {/* Main content: idea input OR active pipeline */}
       <div className="sf-page__body">
         {!project ? (
-          <IdeaInput onSubmit={submit} loading={loading} />
+          <IdeaInput onSubmit={submit} loading={loading} orgReady={orgReady} />
         ) : (
           <PipelineView
             project={project}
             onResume={() => resume(project.id)}
             onDelete={() => remove(project.id)}
+            onApprove={() => approveReview(project.id)}
+            onReject={(reason) => rejectReview(project.id, reason)}
           />
         )}
       </div>

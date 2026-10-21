@@ -20,8 +20,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import asyncpg
@@ -29,6 +31,8 @@ import asyncpg
 from app.ai.gateway import AIGateway
 from app.ai.models import CompletionRequest, Message
 from app.core.db import get_pool
+from app.core.observability.metrics import get_metrics
+from app.core.reliability import BulkheadFull
 
 log = logging.getLogger(__name__)
 
@@ -62,10 +66,20 @@ def _extract_json(text: str) -> dict[str, Any]:
     """Parse the first JSON block (fenced or bare) from an LLM response."""
     m = _JSON_FENCE.search(text)
     raw = m.group(1).strip() if m else text.strip()
+    # If still not bare JSON, try to find the outermost {...} block
+    if not raw.startswith("{"):
+        first = raw.find("{")
+        last = raw.rfind("}")
+        if first != -1 and last > first:
+            raw = raw[first : last + 1]
     try:
         result = json.loads(raw)
         return result if isinstance(result, dict) else {"value": result}
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        log.warning(
+            "_extract_json: could not parse JSON (len=%d): %s; falling back to raw",
+            len(text), exc,
+        )
         return {"raw": text.strip()}
 
 
@@ -75,6 +89,41 @@ class SaasFactoryPipeline:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
         self._gw = AIGateway(pool)
+        self._active: int = 0
+        self._max_active: int = int(os.getenv("BULKHEAD_SAAS_FACTORY_LIMIT", "4"))
+
+    # ── Concurrency guard (task-lifetime, not request-lifetime) ──────────────
+
+    def _reserve_slot(self) -> None:
+        """Sync — no await — so check+increment is atomic within asyncio's single thread."""
+        if self._active >= self._max_active:
+            raise BulkheadFull("saas_factory", self._max_active)
+        self._active += 1
+        m = get_metrics()
+        m.gauge("saas_factory_active_pipelines", "Currently executing SaaS Factory pipelines").set(self._active)
+        m.counter("saas_factory_pipelines_total", "Total SaaS Factory pipeline runs started").inc()
+
+    def _release_slot(self) -> None:
+        self._active = max(0, self._active - 1)
+        get_metrics().gauge("saas_factory_active_pipelines", "Currently executing SaaS Factory pipelines").set(self._active)
+
+    async def _run_pipeline_guarded(
+        self,
+        project_id: str,
+        org_id: str,
+        user_id: str,
+        idea_text: str,
+        checkpoint: Optional[dict[str, Any]] = None,
+        start_phase: str = "IDEA",
+    ) -> None:
+        """Thin wrapper: runs the pipeline and releases the concurrency slot on exit."""
+        try:
+            await self._run_pipeline(
+                project_id, org_id, user_id, idea_text,
+                checkpoint=checkpoint, start_phase=start_phase,
+            )
+        finally:
+            self._release_slot()
 
     # ── Public entry points ───────────────────────────────────────────────────
 
@@ -86,20 +135,29 @@ class SaasFactoryPipeline:
         idea_text: str,
     ) -> None:
         """Create the DB record and launch the pipeline as a background task."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO saas_factory_projects
-                  (id, org_id, created_by_user_id, idea_text, phase, checkpoint)
-                VALUES ($1, $2, $3, $4, 'IDEA', '{}')
-                ON CONFLICT (id) DO NOTHING
-                """,
-                uuid.UUID(project_id), uuid.UUID(org_id), uuid.UUID(user_id), idea_text,
-            )
-        asyncio.create_task(
-            self._run_pipeline(project_id, org_id, user_id, idea_text),
-            name=f"saas_factory:{project_id}",
-        )
+        self._reserve_slot()  # raises BulkheadFull (→ 503) if at limit
+        task_spawned = False
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO saas_factory_projects
+                      (id, org_id, created_by_user_id, idea_text, phase, checkpoint)
+                    VALUES ($1, $2, $3, $4, 'IDEA', '{}')
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    uuid.UUID(project_id), uuid.UUID(org_id), uuid.UUID(user_id), idea_text,
+                )
+            coro = self._run_pipeline_guarded(project_id, org_id, user_id, idea_text)
+            try:
+                asyncio.create_task(coro, name=f"saas_factory:{project_id}")
+                task_spawned = True
+            except Exception:
+                coro.close()
+                raise
+        finally:
+            if not task_spawned:
+                self._release_slot()
 
     async def resume(self, project_id: str, org_id: str, user_id: str) -> dict[str, Any]:
         """Resume a FAILED project from its last checkpoint."""
@@ -115,26 +173,39 @@ class SaasFactoryPipeline:
             raise ValueError(f"Cannot resume project in phase {row['phase']}")
 
         checkpoint = json.loads(row["checkpoint"] or "{}")
-        # Find the last completed phase so we restart from the next one
+        # Find the last completed phase so we restart from the next one.
+        # BUILDING is only counted as done when its build_status is "completed".
         last_done = None
         for phase in PHASES:
-            if phase in checkpoint:
-                last_done = phase
+            if phase not in checkpoint:
+                break
+            if phase == "BUILDING" and checkpoint["BUILDING"].get("build_status") != "completed":
+                break  # incomplete build — re-run BUILDING on resume
+            last_done = phase
         resume_phase = _NEXT_PHASE.get(last_done or "IDEA", "IDEA") if last_done else "IDEA"
 
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE saas_factory_projects SET phase=$1, error_message=NULL, "
-                "updated_at=now() WHERE id=$2 AND org_id=$3",
-                resume_phase, uuid.UUID(project_id), uuid.UUID(org_id),
-            )
-        asyncio.create_task(
-            self._run_pipeline(
+        self._reserve_slot()  # raises BulkheadFull before any DB mutation
+        task_spawned = False
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE saas_factory_projects SET phase=$1, error_message=NULL, "
+                    "updated_at=now() WHERE id=$2 AND org_id=$3",
+                    resume_phase, uuid.UUID(project_id), uuid.UUID(org_id),
+                )
+            coro = self._run_pipeline_guarded(
                 project_id, org_id, user_id, row["idea_text"],
                 checkpoint=checkpoint, start_phase=resume_phase,
-            ),
-            name=f"saas_factory:{project_id}:resume",
-        )
+            )
+            try:
+                asyncio.create_task(coro, name=f"saas_factory:{project_id}:resume")
+                task_spawned = True
+            except Exception:
+                coro.close()
+                raise
+        finally:
+            if not task_spawned:
+                self._release_slot()
         return {"project_id": project_id, "resumed_from": resume_phase}
 
     # ── Internal pipeline runner ──────────────────────────────────────────────
@@ -173,8 +244,18 @@ class SaasFactoryPipeline:
             try:
                 handler = phase_handlers[phase]
                 result = await handler(project_id, org_id, user_id, idea_text, cp)
+                # Pop internal pause signal before persisting — not part of phase data.
+                pause_signal = result.pop("_pipeline_pause", False)
                 cp[phase] = result
                 await self._save_checkpoint(project_id, org_id, cp)
+                if pause_signal:
+                    # Security warn: checkpoint saved; stop here and await human review.
+                    await self._set_phase(project_id, org_id, "PENDING_REVIEW")
+                    log.info(
+                        "saas_factory %s halted at %s — PENDING_REVIEW (security warn)",
+                        project_id, phase,
+                    )
+                    return
                 log.info("saas_factory %s phase %s done", project_id, phase)
             except Exception as exc:
                 log.exception("saas_factory %s phase %s failed", project_id, phase)
@@ -314,7 +395,7 @@ class SaasFactoryPipeline:
         }
 
     async def _poll_app_build(self, app_id: str, org_id: str, timeout: int = 600) -> str:
-        terminal = {"completed", "failed", "partial"}
+        terminal = {"ready", "completed", "failed", "partial"}
         elapsed = 0
         interval = 5
         while elapsed < timeout:
@@ -340,8 +421,14 @@ class SaasFactoryPipeline:
         app_name = build.get("app_name", "the app")
         build_status = build.get("build_status", "unknown")
 
-        if build_status == "failed":
-            return {"status": "skipped", "reason": "build_failed", "checks": []}
+        if build_status not in {"completed", "ready"}:
+            _reason_map = {
+                "failed": "build_failed",
+                "timeout": "build_timeout",
+                "partial": "build_partial",
+            }
+            reason = _reason_map.get(build_status, f"build_status_{build_status}")
+            raise RuntimeError(f"TESTING aborted: {reason}")
 
         # Fetch the built app's spec for test coverage analysis
         spec_summary: dict[str, Any] = {}
@@ -382,6 +469,8 @@ class SaasFactoryPipeline:
         resp = await self._gw.complete(req, org_id=org_id, user_id=user_id)
         result = _extract_json(resp.content)
         result["app_id"] = app_id
+        result["review_type"] = "ai_static_analysis"
+        result["executed"] = False
         return result
 
     # ── Phase 5 — VERIFYING ────────────────────────────────────────────────────
@@ -419,14 +508,170 @@ class SaasFactoryPipeline:
         resp = await self._gw.complete(req, org_id=org_id, user_id=user_id)
         result = _extract_json(resp.content)
         result["build_id"] = build.get("app_id")
+        result["review_type"] = "ai_static_analysis"
+        result["executed"] = False
 
-        overall = result.get("overall", "pass")
+        overall = result.get("overall")
+        _VALID_OVERALL = {"pass", "warn", "fail"}
+        if overall not in _VALID_OVERALL:
+            # None, unknown strings, or empty value — do not treat as pass.
+            raise RuntimeError(
+                "Security verification returned an invalid or unparseable response; "
+                f"cannot confirm security posture (overall={overall!r})"
+            )
         if overall == "fail":
             raise RuntimeError(
                 "Security verification failed: "
                 + str(result.get("findings", []))
             )
+        if overall == "warn":
+            # Pause pipeline — human security review required before deployment.
+            result["_pipeline_pause"] = True
         return result
+
+    # ── Human review gate ─────────────────────────────────────────────────────
+
+    async def approve(
+        self,
+        project_id: str,
+        org_id: str,
+        reviewer_user_id: str,
+    ) -> dict[str, Any]:
+        """Approve a PENDING_REVIEW project and resume from DEPLOYING.
+
+        Guards:
+        - Project must exist and belong to org_id (IDOR prevention).
+        - Phase must be PENDING_REVIEW.
+        - Saved VERIFYING checkpoint must contain overall='warn'.
+        - Transition is atomic: WHERE phase='PENDING_REVIEW' prevents double-approval.
+        - If task launch fails after DB commit, phase reverts to PENDING_REVIEW.
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT idea_text, phase, checkpoint FROM saas_factory_projects "
+                "WHERE id=$1 AND org_id=$2",
+                uuid.UUID(project_id), uuid.UUID(org_id),
+            )
+        if not row:
+            raise ValueError("Project not found")
+        if row["phase"] != "PENDING_REVIEW":
+            raise ValueError(
+                f"Project is not awaiting security review (phase={row['phase']!r})"
+            )
+
+        cp = json.loads(row["checkpoint"] or "{}")
+        verifying = cp.get("VERIFYING", {})
+        if verifying.get("overall") != "warn":
+            raise ValueError(
+                "Cannot approve: saved VERIFYING result is not 'warn' "
+                f"(overall={verifying.get('overall')!r})"
+            )
+
+        cp["_review"] = {
+            "decision": "approved",
+            "reviewer_user_id": reviewer_user_id,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        async with self._pool.acquire() as conn:
+            updated = await conn.execute(
+                "UPDATE saas_factory_projects "
+                "SET phase='DEPLOYING', checkpoint=$1, error_message=NULL, updated_at=now() "
+                "WHERE id=$2 AND org_id=$3 AND phase='PENDING_REVIEW'",
+                json.dumps(cp), uuid.UUID(project_id), uuid.UUID(org_id),
+            )
+        if updated == "UPDATE 0":
+            raise ValueError(
+                "Security review decision already recorded (concurrent approval or rejection)"
+            )
+
+        try:
+            self._reserve_slot()
+        except BulkheadFull:
+            # DB was already committed to DEPLOYING — revert it so re-approval is possible.
+            try:
+                async with self._pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE saas_factory_projects "
+                        "SET phase='PENDING_REVIEW', updated_at=now() "
+                        "WHERE id=$1 AND org_id=$2 AND phase='DEPLOYING'",
+                        uuid.UUID(project_id), uuid.UUID(org_id),
+                    )
+            except Exception:
+                log.exception("saas_factory %s DB revert failed on BulkheadFull", project_id)
+            raise
+        coro = self._run_pipeline_guarded(
+            project_id, org_id, reviewer_user_id, row["idea_text"],
+            checkpoint=cp, start_phase="DEPLOYING",
+        )
+        try:
+            asyncio.create_task(coro, name=f"saas_factory:{project_id}:approved")
+        except Exception as exc:
+            # create_task failed after DB commit — close the orphaned coroutine to
+            # prevent a "never awaited" warning, release the slot, then revert phase
+            # so the operator can re-approve without losing the audit entry.
+            coro.close()
+            self._release_slot()
+            log.exception("saas_factory %s create_task failed after approval", project_id)
+            try:
+                async with self._pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE saas_factory_projects "
+                        "SET phase='PENDING_REVIEW', updated_at=now() "
+                        "WHERE id=$1 AND org_id=$2 AND phase='DEPLOYING'",
+                        uuid.UUID(project_id), uuid.UUID(org_id),
+                    )
+            except Exception:
+                log.exception(
+                    "saas_factory %s DB revert failed after task launch failure", project_id
+                )
+            raise RuntimeError(f"Deployment task could not be launched: {exc}") from exc
+
+        return {"project_id": project_id, "resumed_from": "DEPLOYING"}
+
+    async def reject(
+        self,
+        project_id: str,
+        org_id: str,
+        reviewer_user_id: str,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        """Reject a PENDING_REVIEW project — blocks deployment, records decision."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT phase, checkpoint FROM saas_factory_projects "
+                "WHERE id=$1 AND org_id=$2",
+                uuid.UUID(project_id), uuid.UUID(org_id),
+            )
+        if not row:
+            raise ValueError("Project not found")
+        if row["phase"] != "PENDING_REVIEW":
+            raise ValueError(
+                f"Project is not awaiting security review (phase={row['phase']!r})"
+            )
+
+        cp = json.loads(row["checkpoint"] or "{}")
+        cp["_review"] = {
+            "decision": "rejected",
+            "reviewer_user_id": reviewer_user_id,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+        }
+
+        async with self._pool.acquire() as conn:
+            updated = await conn.execute(
+                "UPDATE saas_factory_projects "
+                "SET phase='FAILED', checkpoint=$1, "
+                "error_message='Security review rejected', updated_at=now() "
+                "WHERE id=$2 AND org_id=$3 AND phase='PENDING_REVIEW'",
+                json.dumps(cp), uuid.UUID(project_id), uuid.UUID(org_id),
+            )
+        if updated == "UPDATE 0":
+            raise ValueError(
+                "Security review decision already recorded (concurrent approval or rejection)"
+            )
+
+        return {"project_id": project_id, "status": "rejected"}
 
     # ── Phase 6 — DEPLOYING ────────────────────────────────────────────────────
 

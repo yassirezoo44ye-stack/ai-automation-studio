@@ -83,6 +83,19 @@ async def resolve_project_id(conn, project_id: Optional[str], user_id: uuid.UUID
             "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) RETURNING id",
             user_id, "Demo Project", "Default project for the chat UI",
         )
+    if project_id == "copilot":
+        # AI Copilot conversations live in a dedicated per-user project so
+        # they don't mix with regular Chat / AgentOS conversations.
+        pid = await conn.fetchval(
+            "SELECT id FROM projects WHERE user_id=$1 AND name=$2 ORDER BY created_at LIMIT 1",
+            user_id, "AI Copilot",
+        )
+        if pid:
+            return pid
+        return await conn.fetchval(
+            "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) RETURNING id",
+            user_id, "AI Copilot", "Conversations from the floating AI Copilot assistant",
+        )
     pid = uuid.UUID(project_id)
     owned = await conn.fetchval("SELECT 1 FROM projects WHERE id=$1 AND user_id=$2", pid, user_id)
     if not owned:

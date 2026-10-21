@@ -117,7 +117,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     data: loadedTasks, status: inlineTasksStatus, error: inlineTasksError,
     suggestedFix: inlineTasksFix, refetch: loadInlineTasks,
   } = useAsyncData(
-    () => apiJSON<{ tasks?: Task[] }>("/api/tasks?sort=created_at").then(d => (d.tasks ?? []).slice(0, 6)),
+    () => apiJSON<{ tasks?: Task[] }>(`/api/tasks?conversation_id=${activeConv}&sort=created_at`).then(d => (d.tasks ?? []).slice(0, 6)),
     [activeConv, showTasks],
     { enabled: !!activeConv && showTasks },
   );

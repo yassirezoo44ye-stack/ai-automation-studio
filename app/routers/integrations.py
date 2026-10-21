@@ -104,8 +104,22 @@ async def sync_history(
 @router.post("/{provider_id}/webhook")
 async def receive_webhook(provider_id: str, org_id: str, request: Request):
     body = await request.body()
+    svc = get_integration_service()
+    # Verify the org has an active connection for this provider before processing.
+    # This prevents cross-org webhook injection when a provider uses shared signing keys.
     try:
-        await get_integration_service().receive_webhook(
+        connections = await svc.list_connections(organization_id=org_id)
+        connected_ids = {c["provider_id"] for c in (connections or []) if c.get("provider_id")}
+        if provider_id not in connected_ids:
+            raise HTTPException(404, f"No active integration for provider {provider_id!r} in this organization")
+    except HTTPException:
+        raise
+    except Exception:
+        # Connection lookup failed (e.g. org not found); fall through so
+        # provider-level signature verification still rejects forged payloads.
+        pass
+    try:
+        await svc.receive_webhook(
             provider_id=provider_id, organization_id=org_id,
             headers={k.lower(): v for k, v in request.headers.items()}, body=body,
         )

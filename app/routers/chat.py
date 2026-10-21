@@ -26,6 +26,11 @@ class RunRequest(BaseModel):
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=4000)
     conversation_id: Optional[str] = None
+    # Text to store/display in place of `prompt` when the caller injects
+    # invisible context into `prompt` (e.g. "[Context: …]\n\nuser message").
+    # Storage (title, message content, usage log) uses this value when set;
+    # the model always receives the full `prompt`.
+    display_text: Optional[str] = Field(None, max_length=4000)
 
 
 class ConversationCreate(BaseModel):
@@ -42,6 +47,13 @@ async def run_stream(req: RunRequest, request: Request):
 
     history: list[dict] = []
     conv_id: Optional[uuid.UUID] = None
+
+    # Text for storage and display — stripped of any invisible context the
+    # caller injects into `prompt`.  The model always receives the full
+    # `prompt` (with its context annotation); only the DB rows and the
+    # conversation title use this cleaner value so they never show
+    # "[Context: …]" prefixes in the chat UI.
+    _user_text = req.display_text or req.prompt
 
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
@@ -66,12 +78,12 @@ async def run_stream(req: RunRequest, request: Request):
             pid = await resolve_project_id(conn, req.project_id, uid)
             conv_id = await conn.fetchval(
                 "INSERT INTO conversations (project_id, title) VALUES ($1, $2) RETURNING id",
-                pid, req.prompt[:60] + ("…" if len(req.prompt) > 60 else ""),
+                pid, _user_text[:60] + ("…" if len(_user_text) > 60 else ""),
             )
 
         await conn.execute(
             "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
-            conv_id, req.prompt,
+            conv_id, _user_text,
         )
         await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
         # Logged here (message saved) rather than only on AI success below —
@@ -81,7 +93,7 @@ async def run_stream(req: RunRequest, request: Request):
         # Recent Activity, which reads only from usage_logs.
         await conn.execute(
             "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'message_sent',$2)",
-            uid, json.dumps({"conversation_id": str(conv_id), "prompt_preview": req.prompt[:80]}),
+            uid, json.dumps({"conversation_id": str(conv_id), "prompt_preview": _user_text[:80]}),
         )
 
     history.append({"role": "user", "content": req.prompt})
@@ -173,7 +185,7 @@ async def run_stream(req: RunRequest, request: Request):
                     )
                     await conn.execute(
                         "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
-                        uid, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
+                        uid, json.dumps({"run_id": str(run_id), "prompt_preview": _user_text[:80]}),
                     )
             except Exception:
                 pass
