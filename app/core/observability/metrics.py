@@ -238,3 +238,7 @@ def _wire_defaults(m: MetricsRegistry) -> None:
     m.gauge    ("sandbox_execution_failures",  "Sandbox workers in crashed state")
     m.gauge    ("sandbox_cpu_seconds",         "Total CPU seconds used by running sandbox workers")
     m.gauge    ("sandbox_memory_mb",           "Total memory MB used by running sandbox workers")
+
+    # ── SaaS Factory ──────────────────────────────────────────────────────────
+    m.gauge  ("saas_factory_active_pipelines", "Currently executing SaaS Factory pipelines")
+    m.counter("saas_factory_pipelines_total",  "Total SaaS Factory pipeline runs started")

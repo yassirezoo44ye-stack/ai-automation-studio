@@ -518,8 +518,7 @@ async def cancel_plan(plan_id: UUID, request: Request) -> dict:
 
     await _assert_plan_owner(plan_id, user_id, org_id)
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await conn.execute(
             "UPDATE bp_plans SET status='PAUSED', updated_at=NOW() WHERE id=$1",
             plan_id,

@@ -35,6 +35,8 @@ def _make_pipeline(pool: MagicMock):
     p = SaasFactoryPipeline.__new__(SaasFactoryPipeline)
     p._pool = pool
     p._gw = MagicMock()
+    p._active = 0
+    p._max_active = 4
     return p
 
 

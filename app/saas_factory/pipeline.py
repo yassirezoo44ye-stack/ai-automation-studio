@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -30,6 +31,8 @@ import asyncpg
 from app.ai.gateway import AIGateway
 from app.ai.models import CompletionRequest, Message
 from app.core.db import get_pool
+from app.core.observability.metrics import get_metrics
+from app.core.reliability import BulkheadFull
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +89,41 @@ class SaasFactoryPipeline:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
         self._gw = AIGateway(pool)
+        self._active: int = 0
+        self._max_active: int = int(os.getenv("BULKHEAD_SAAS_FACTORY_LIMIT", "4"))
+
+    # ── Concurrency guard (task-lifetime, not request-lifetime) ──────────────
+
+    def _reserve_slot(self) -> None:
+        """Sync — no await — so check+increment is atomic within asyncio's single thread."""
+        if self._active >= self._max_active:
+            raise BulkheadFull("saas_factory", self._max_active)
+        self._active += 1
+        m = get_metrics()
+        m.gauge("saas_factory_active_pipelines", "Currently executing SaaS Factory pipelines").set(self._active)
+        m.counter("saas_factory_pipelines_total", "Total SaaS Factory pipeline runs started").inc()
+
+    def _release_slot(self) -> None:
+        self._active = max(0, self._active - 1)
+        get_metrics().gauge("saas_factory_active_pipelines", "Currently executing SaaS Factory pipelines").set(self._active)
+
+    async def _run_pipeline_guarded(
+        self,
+        project_id: str,
+        org_id: str,
+        user_id: str,
+        idea_text: str,
+        checkpoint: Optional[dict[str, Any]] = None,
+        start_phase: str = "IDEA",
+    ) -> None:
+        """Thin wrapper: runs the pipeline and releases the concurrency slot on exit."""
+        try:
+            await self._run_pipeline(
+                project_id, org_id, user_id, idea_text,
+                checkpoint=checkpoint, start_phase=start_phase,
+            )
+        finally:
+            self._release_slot()
 
     # ── Public entry points ───────────────────────────────────────────────────
 
@@ -97,20 +135,29 @@ class SaasFactoryPipeline:
         idea_text: str,
     ) -> None:
         """Create the DB record and launch the pipeline as a background task."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO saas_factory_projects
-                  (id, org_id, created_by_user_id, idea_text, phase, checkpoint)
-                VALUES ($1, $2, $3, $4, 'IDEA', '{}')
-                ON CONFLICT (id) DO NOTHING
-                """,
-                uuid.UUID(project_id), uuid.UUID(org_id), uuid.UUID(user_id), idea_text,
-            )
-        asyncio.create_task(
-            self._run_pipeline(project_id, org_id, user_id, idea_text),
-            name=f"saas_factory:{project_id}",
-        )
+        self._reserve_slot()  # raises BulkheadFull (→ 503) if at limit
+        task_spawned = False
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO saas_factory_projects
+                      (id, org_id, created_by_user_id, idea_text, phase, checkpoint)
+                    VALUES ($1, $2, $3, $4, 'IDEA', '{}')
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    uuid.UUID(project_id), uuid.UUID(org_id), uuid.UUID(user_id), idea_text,
+                )
+            coro = self._run_pipeline_guarded(project_id, org_id, user_id, idea_text)
+            try:
+                asyncio.create_task(coro, name=f"saas_factory:{project_id}")
+                task_spawned = True
+            except Exception:
+                coro.close()
+                raise
+        finally:
+            if not task_spawned:
+                self._release_slot()
 
     async def resume(self, project_id: str, org_id: str, user_id: str) -> dict[str, Any]:
         """Resume a FAILED project from its last checkpoint."""
@@ -137,19 +184,28 @@ class SaasFactoryPipeline:
             last_done = phase
         resume_phase = _NEXT_PHASE.get(last_done or "IDEA", "IDEA") if last_done else "IDEA"
 
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE saas_factory_projects SET phase=$1, error_message=NULL, "
-                "updated_at=now() WHERE id=$2 AND org_id=$3",
-                resume_phase, uuid.UUID(project_id), uuid.UUID(org_id),
-            )
-        asyncio.create_task(
-            self._run_pipeline(
+        self._reserve_slot()  # raises BulkheadFull before any DB mutation
+        task_spawned = False
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE saas_factory_projects SET phase=$1, error_message=NULL, "
+                    "updated_at=now() WHERE id=$2 AND org_id=$3",
+                    resume_phase, uuid.UUID(project_id), uuid.UUID(org_id),
+                )
+            coro = self._run_pipeline_guarded(
                 project_id, org_id, user_id, row["idea_text"],
                 checkpoint=checkpoint, start_phase=resume_phase,
-            ),
-            name=f"saas_factory:{project_id}:resume",
-        )
+            )
+            try:
+                asyncio.create_task(coro, name=f"saas_factory:{project_id}:resume")
+                task_spawned = True
+            except Exception:
+                coro.close()
+                raise
+        finally:
+            if not task_spawned:
+                self._release_slot()
         return {"project_id": project_id, "resumed_from": resume_phase}
 
     # ── Internal pipeline runner ──────────────────────────────────────────────
@@ -529,7 +585,22 @@ class SaasFactoryPipeline:
                 "Security review decision already recorded (concurrent approval or rejection)"
             )
 
-        coro = self._run_pipeline(
+        try:
+            self._reserve_slot()
+        except BulkheadFull:
+            # DB was already committed to DEPLOYING — revert it so re-approval is possible.
+            try:
+                async with self._pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE saas_factory_projects "
+                        "SET phase='PENDING_REVIEW', updated_at=now() "
+                        "WHERE id=$1 AND org_id=$2 AND phase='DEPLOYING'",
+                        uuid.UUID(project_id), uuid.UUID(org_id),
+                    )
+            except Exception:
+                log.exception("saas_factory %s DB revert failed on BulkheadFull", project_id)
+            raise
+        coro = self._run_pipeline_guarded(
             project_id, org_id, reviewer_user_id, row["idea_text"],
             checkpoint=cp, start_phase="DEPLOYING",
         )
@@ -537,16 +608,22 @@ class SaasFactoryPipeline:
             asyncio.create_task(coro, name=f"saas_factory:{project_id}:approved")
         except Exception as exc:
             # create_task failed after DB commit — close the orphaned coroutine to
-            # prevent a "never awaited" warning, then revert phase so the operator
-            # can re-approve without losing the audit entry.
+            # prevent a "never awaited" warning, release the slot, then revert phase
+            # so the operator can re-approve without losing the audit entry.
             coro.close()
+            self._release_slot()
             log.exception("saas_factory %s create_task failed after approval", project_id)
-            async with self._pool.acquire() as conn:
-                await conn.execute(
-                    "UPDATE saas_factory_projects "
-                    "SET phase='PENDING_REVIEW', updated_at=now() "
-                    "WHERE id=$1 AND org_id=$2",
-                    uuid.UUID(project_id), uuid.UUID(org_id),
+            try:
+                async with self._pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE saas_factory_projects "
+                        "SET phase='PENDING_REVIEW', updated_at=now() "
+                        "WHERE id=$1 AND org_id=$2 AND phase='DEPLOYING'",
+                        uuid.UUID(project_id), uuid.UUID(org_id),
+                    )
+            except Exception:
+                log.exception(
+                    "saas_factory %s DB revert failed after task launch failure", project_id
                 )
             raise RuntimeError(f"Deployment task could not be launched: {exc}") from exc
 

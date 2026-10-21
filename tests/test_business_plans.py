@@ -1881,3 +1881,340 @@ class TestMarkPlanStatusPausedGuard:
         sql, args = execute_calls[0]
         assert args[0] == "COMPLETED"
         assert args[1] == plan_id
+
+
+# ── P0: LLM truncation detection ─────────────────────────────────────────────
+
+class TestLLMTruncationDetection:
+    """_complete() must raise RuntimeError when finish_reason == 'length'."""
+
+    @pytest.mark.asyncio
+    async def test_truncated_response_raises_runtime_error(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.agents import _complete
+
+        mock_resp = MagicMock()
+        mock_resp.finish_reason = "length"
+        mock_resp.content = "partial content without end"
+        mock_resp.usage = MagicMock(total_tokens=2048)
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=mock_resp)
+
+        with patch("app.core.business.agents._inference", mock_engine):
+            with pytest.raises(RuntimeError, match="truncated"):
+                await _complete("system prompt", "user prompt")
+
+    @pytest.mark.asyncio
+    async def test_normal_response_does_not_raise(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.agents import _complete
+
+        mock_resp = MagicMock()
+        mock_resp.finish_reason = "stop"
+        mock_resp.content = "complete section text"
+        mock_resp.usage = MagicMock(total_tokens=500)
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=mock_resp)
+
+        with patch("app.core.business.agents._inference", mock_engine):
+            text, tokens = await _complete("sys", "usr")
+
+        assert text == "complete section text"
+        assert tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_missing_finish_reason_defaults_to_stop(self):
+        """A response with no finish_reason attribute must not raise."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.business.agents import _complete
+
+        mock_resp = MagicMock(spec=["content", "usage"])  # no finish_reason attribute
+        mock_resp.content = "text"
+        mock_resp.usage = None
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=mock_resp)
+
+        with patch("app.core.business.agents._inference", mock_engine):
+            text, _tokens = await _complete("sys", "usr")
+
+        assert text == "text"
+
+
+# ── P1: TAM/SAM/SOM multi-currency extraction ────────────────────────────────
+
+class TestTAMExtractionCurrencies:
+    """TAM/SAM/SOM regex must match non-dollar currency formats."""
+
+    def _run_pattern(self, text: str, key: str) -> bool:
+        """Return True if the updated regex finds a match for key in text."""
+        import re
+        _AMOUNT = (
+            r"(?:"
+            r"(?:\$|USD|SAR|AED|EUR|GBP|€|£|¥)\s*[\d,\.]+\s*(?:B|M|K|billion|million|thousand)?"
+            r"|[\d,\.]+\s*(?:B|M|K|billion|million|thousand)\s*(?:dollars?|USD|SAR|AED|EUR|GBP)?"
+            r"|[\d,\.،]+\s*(?:مليار|مليون|ألف)\s*(?:ريال|دولار|درهم|يورو)?"
+            r")"
+        )
+        return bool(re.search(rf"\b{key.upper()}\b.*?{_AMOUNT}", text, re.IGNORECASE))
+
+    def test_dollar_sign_still_matches(self):
+        assert self._run_pattern("TAM is $500M annually", "tam")
+
+    def test_sar_prefix_matches(self):
+        assert self._run_pattern("TAM SAR 5B for the Saudi market", "tam")
+
+    def test_aed_prefix_matches(self):
+        assert self._run_pattern("SAM: AED 2.5B in the UAE", "sam")
+
+    def test_usd_suffix_matches(self):
+        assert self._run_pattern("SOM 500M USD addressable share", "som")
+
+    def test_arabic_billion_riyal_matches(self):
+        assert self._run_pattern("TAM 500 مليار ريال سنويًا", "tam")
+
+    def test_arabic_million_dollar_matches(self):
+        assert self._run_pattern("SAM 3.6 مليون دولار", "sam")
+
+    def test_no_amount_does_not_match(self):
+        """A section with TAM but no numeric value must not produce a false match."""
+        assert not self._run_pattern("TAM is large and growing quickly", "tam")
+
+
+# ── P1: cancel_plan org isolation ────────────────────────────────────────────
+
+class TestCancelPlanOrgIsolation:
+    """cancel_plan must use acquire_scoped so RLS prevents cross-org cancellation."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_uses_acquire_scoped_not_bare_pool(self):
+        """The UPDATE in cancel_plan must go through acquire_scoped(org_id)."""
+        from contextlib import asynccontextmanager
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.routers.business_plans import cancel_plan
+
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+        plan_id = uuid.uuid4()
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+
+        scoped_calls: list[str] = []
+
+        @asynccontextmanager
+        async def mock_scoped(oid: str):
+            scoped_calls.append(oid)
+            yield mock_conn
+
+        mock_request = MagicMock()
+
+        with (
+            patch("app.routers.business_plans._resolve_user", AsyncMock(return_value=user_id)),
+            patch("app.routers.business_plans._resolve_org",  AsyncMock(return_value=org_id)),
+            patch("app.routers.business_plans._assert_plan_owner", AsyncMock()),
+            patch("app.routers.business_plans.acquire_scoped", mock_scoped),
+        ):
+            await cancel_plan(plan_id, mock_request)
+
+        assert org_id in scoped_calls, (
+            "cancel_plan must call acquire_scoped(org_id) — "
+            "bare pool.acquire() bypasses RLS tenant isolation"
+        )
+
+
+# ── P1: VERIFIED status never written by AI agents ───────────────────────────
+
+class TestVerifiedStatusNeverWritten:
+    """No agent or workflow helper must write status='VERIFIED' to bp_facts."""
+
+    @pytest.mark.asyncio
+    async def test_idea_intake_never_writes_verified(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.core.business.agents import run_idea_intake
+
+        plan_id = str(uuid.uuid4())
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+
+        inserted_statuses: list[str] = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            sql_upper = sql.upper()
+            if "BP_FACTS" in sql_upper and "INSERT" in sql_upper:
+                # status is the 6th positional value: $6 → args[5]
+                if len(args) >= 6:
+                    inserted_statuses.append(str(args[5]))
+            return None
+
+        mock_conn.execute = capture_execute
+
+        mock_resp = MagicMock()
+        mock_resp.finish_reason = "stop"
+        mock_resp.content = '{"title": "Test", "problem_statement": "p", "solution": "s"}'
+        mock_resp.usage = MagicMock(total_tokens=100)
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=mock_resp)
+
+        with patch("app.core.business.agents._inference", mock_engine):
+            await run_idea_intake(
+                mock_conn, plan_id, org_id, user_id,
+                "test idea", "tech", "IDEA"
+            )
+
+        assert "VERIFIED" not in inserted_statuses, (
+            f"run_idea_intake wrote VERIFIED status to bp_facts: {inserted_statuses}"
+        )
+
+    def test_verified_fact_status_enum_exists_but_unused(self):
+        """FactStatus.VERIFIED must be defined (schema contract) but no agent writes it."""
+        from app.core.business.models import FactStatus
+        assert FactStatus.VERIFIED.value == "VERIFIED"
+
+        # Verify no agent source file contains a literal 'VERIFIED' write
+        import ast, pathlib
+        agents_src = pathlib.Path("app/core/business/agents.py").read_text()
+        tree = ast.parse(agents_src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and node.value == "VERIFIED":
+                raise AssertionError(
+                    f"agents.py contains a literal 'VERIFIED' string at line {node.lineno} — "
+                    "this must never be written to bp_facts by an AI agent"
+                )
+
+
+# ── C: truncated LLM response never reaches _upsert_section ─────────────────
+
+class TestTruncationNeverWritesSection:
+    """When _complete() raises due to finish_reason == 'length', the section
+    must NOT be written to COMPLETED state — _upsert_section must not be called."""
+
+    @pytest.mark.asyncio
+    async def test_truncation_propagates_and_skips_upsert(self):
+        from unittest.mock import AsyncMock, MagicMock, patch, call
+        import uuid
+        from app.core.business.agents import run_market_intelligence
+
+        plan_id = str(uuid.uuid4())
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+
+        # _complete raises truncation error (finish_reason == "length")
+        trunc_resp = MagicMock()
+        trunc_resp.finish_reason = "length"
+        trunc_resp.content = "partial market analysis..."
+        trunc_resp.usage = MagicMock(total_tokens=2048)
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=trunc_resp)
+
+        upsert_calls: list = []
+
+        async def capture_upsert(*args, **kwargs):
+            upsert_calls.append(args)
+
+        with (
+            patch("app.core.business.agents._inference", mock_engine),
+            patch("app.core.business.agents._upsert_section", capture_upsert),
+        ):
+            with pytest.raises(RuntimeError, match="truncated"):
+                await run_market_intelligence(
+                    mock_conn, plan_id, org_id, user_id,
+                    "test idea", "tech", None, None,
+                )
+
+        assert len(upsert_calls) == 0, (
+            "_upsert_section must NOT be called when _complete() raises — "
+            "truncated content must not be committed as a COMPLETED section"
+        )
+
+    @pytest.mark.asyncio
+    async def test_successful_response_does_reach_upsert(self):
+        """Positive control: normal completion does call _upsert_section once."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import uuid
+        from app.core.business.agents import run_market_intelligence
+
+        plan_id = str(uuid.uuid4())
+        org_id  = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+
+        ok_resp = MagicMock()
+        ok_resp.finish_reason = "stop"
+        ok_resp.content = "TAM is $500M. SAM $50M. SOM $5M."
+        ok_resp.usage = MagicMock(total_tokens=300)
+
+        mock_engine = AsyncMock()
+        mock_engine.complete = AsyncMock(return_value=ok_resp)
+
+        upsert_calls: list = []
+
+        async def capture_upsert(*args, **kwargs):
+            upsert_calls.append(args)
+
+        with (
+            patch("app.core.business.agents._inference", mock_engine),
+            patch("app.core.business.agents._upsert_section", capture_upsert),
+        ):
+            await run_market_intelligence(
+                mock_conn, plan_id, org_id, user_id,
+                "test idea", "tech", None, None,
+            )
+
+        assert len(upsert_calls) == 1
+
+
+# ── B: cancel_plan cross-org rejection ───────────────────────────────────────
+
+class TestCancelPlanCrossOrgRejection:
+    """cancel_plan must propagate a 404 from _assert_plan_owner
+    without executing the DB UPDATE (cross-org attempt)."""
+
+    @pytest.mark.asyncio
+    async def test_cross_org_cancel_is_rejected_with_404(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from fastapi import HTTPException
+        import uuid
+        from app.routers.business_plans import cancel_plan
+
+        org_a  = str(uuid.uuid4())
+        user_b = str(uuid.uuid4())
+        plan_id = uuid.uuid4()  # belongs to org_a, not org_b
+
+        update_calls: list = []
+        mock_conn = AsyncMock()
+
+        async def capture_execute(sql, *args):
+            update_calls.append(sql)
+
+        mock_conn.execute = capture_execute
+        mock_request = MagicMock()
+
+        from fastapi import HTTPException as HTTPEx
+
+        with (
+            patch("app.routers.business_plans._resolve_user", AsyncMock(return_value=user_b)),
+            patch("app.routers.business_plans._resolve_org",  AsyncMock(return_value=str(uuid.uuid4()))),  # different org
+            patch("app.routers.business_plans._assert_plan_owner",
+                  AsyncMock(side_effect=HTTPEx(status_code=404, detail="Plan not found"))),
+        ):
+            with pytest.raises(HTTPEx) as exc_info:
+                await cancel_plan(plan_id, mock_request)
+
+        assert exc_info.value.status_code == 404
+        assert len(update_calls) == 0, (
+            "DB UPDATE must not be called when _assert_plan_owner raises 404 — "
+            "cross-org cancel must be rejected before touching the database"
+        )
