@@ -583,6 +583,8 @@ async def delete_plan(plan_id: UUID, request: Request) -> None:
 
     await _assert_plan_owner(plan_id, user_id, org_id)
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM bp_plans WHERE id=$1", plan_id)
+    async with acquire_scoped(org_id) as conn:
+        await conn.execute(
+            "DELETE FROM bp_plans WHERE id=$1 AND organization_id=$2",
+            plan_id, org_id,
+        )

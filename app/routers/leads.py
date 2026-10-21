@@ -141,6 +141,15 @@ async def capture_lead(
             follow_up_status = "enqueued"
     except Exception as exc:
         log.warning("lead capture follow-up enqueue failed lead_id=%s: %s", lead_id, exc)
+        if run_id:
+            try:
+                async with pool.acquire() as _conn:
+                    await _conn.execute(
+                        "UPDATE automation_runs SET status='enqueue_failed', updated_at=NOW() WHERE run_id=$1",
+                        run_id,
+                    )
+            except Exception:
+                pass
 
     if qualified_lead.get("status") == "qualified":
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=org_id)
@@ -230,6 +239,15 @@ async def create_lead(
             follow_up_status = "enqueued"
     except Exception as exc:
         log.warning("lead follow-up enqueue failed lead_id=%s: %s", lead_id, exc)
+        if run_id:
+            try:
+                async with pool.acquire() as _conn:
+                    await _conn.execute(
+                        "UPDATE automation_runs SET status='enqueue_failed', updated_at=NOW() WHERE run_id=$1",
+                        run_id,
+                    )
+            except Exception:
+                pass
 
     if qualified_lead.get("status") == "qualified":
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=ctx.org_id)
