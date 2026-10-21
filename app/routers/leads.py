@@ -98,6 +98,7 @@ async def capture_lead(
     qualified_lead = await svc.qualify(lead_id=lead_id, org_id=org_id)
 
     follow_up_status = "no_definition"
+    run_id = None
     try:
         from app.core.db import get_pool
         from app.core.jobs import get_job_queue
@@ -196,6 +197,7 @@ async def create_lead(
     qualified_lead = await svc.qualify(lead_id=lead_id, org_id=ctx.org_id)
 
     follow_up_status = "no_definition"
+    run_id = None
     try:
         from app.core.db import get_pool
         from app.core.jobs import get_job_queue
