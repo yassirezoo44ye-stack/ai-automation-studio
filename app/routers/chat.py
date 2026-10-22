@@ -54,6 +54,13 @@ async def run_stream(req: RunRequest, request: Request):
     # "[Context: …]" prefixes in the chat UI.
     _user_text = req.display_text or req.prompt
 
+    # Text for storage and display — stripped of any invisible context the
+    # caller injects into `prompt`.  The model always receives the full
+    # `prompt` (with its context annotation); only the DB rows and the
+    # conversation title use this cleaner value so they never show
+    # "[Context: …]" prefixes in the chat UI.
+    _user_text = req.display_text or req.prompt
+
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         if req.conversation_id:

@@ -11,6 +11,7 @@ Output: dist/flow-agent.exe (single-file executable for Windows)
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path

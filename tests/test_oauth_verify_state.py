@@ -40,7 +40,7 @@ _MOCKS = {
 }
 
 with mock.patch.dict(sys.modules, _MOCKS):
-    from app.routers.auth_users import _verify_and_consume_oauth_state
+    from app.routers.auth_users import _verify_and_consume_oauth_state, _OAUTH_BIND_COOKIE
     from fastapi import HTTPException
 
 

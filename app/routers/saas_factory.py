@@ -217,6 +217,44 @@ async def reject_security(
     return result
 
 
+@router.post("/projects/{project_id}/approve-security", status_code=202)
+async def approve_security(
+    project_id: str,
+    ctx: OrgContext = Depends(require_permission("saas_factory", "update")),
+) -> dict:
+    """Approve the security review for a PENDING_REVIEW project and resume from DEPLOYING."""
+    pipeline = get_pipeline()
+    try:
+        result = await pipeline.approve(
+            project_id=project_id,
+            org_id=ctx.org_id,
+            reviewer_user_id=ctx.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return result
+
+
+@router.post("/projects/{project_id}/reject-security", status_code=202)
+async def reject_security(
+    project_id: str,
+    body: SecurityRejectRequest,
+    ctx: OrgContext = Depends(require_permission("saas_factory", "update")),
+) -> dict:
+    """Reject the security review — marks the project FAILED and blocks deployment."""
+    pipeline = get_pipeline()
+    try:
+        result = await pipeline.reject(
+            project_id=project_id,
+            org_id=ctx.org_id,
+            reviewer_user_id=ctx.user_id,
+            reason=body.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return result
+
+
 @router.delete("/projects/{project_id}", status_code=204)
 async def delete_project(
     project_id: str,

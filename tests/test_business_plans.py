@@ -922,7 +922,7 @@ class TestSectionFailurePersistence:
     async def test_failed_section_writes_failed_status(self):
         """When the agent raises, _mark_section_failed must write status=FAILED to DB."""
         from contextlib import asynccontextmanager
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock, patch, call
         from app.core.business.workflow import step_intake
 
         plan_id = "plan-fail-1"
@@ -1695,7 +1695,7 @@ class TestRetryEndpointGeneratingTransition:
     async def test_retry_endpoint_sets_generating_before_responding(self):
         """POST /plans/{id}/retry must write GENERATING to DB before returning."""
         from contextlib import asynccontextmanager
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock, MagicMock, patch
         import uuid
         from fastapi.testclient import TestClient
 
@@ -1794,7 +1794,7 @@ class TestMarkPlanStatusPausedGuard:
     async def test_paused_plan_not_overwritten_with_completed(self):
         """retry_sections finishing with all sections OK must not change PAUSED → COMPLETED."""
         from contextlib import asynccontextmanager
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock, MagicMock, patch
         import uuid
         from app.core.business.workflow import _mark_plan_status
 
@@ -2097,7 +2097,7 @@ class TestTruncationNeverWritesSection:
 
     @pytest.mark.asyncio
     async def test_truncation_propagates_and_skips_upsert(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock, patch, call
         import uuid
         from app.core.business.agents import run_market_intelligence
 
@@ -2185,6 +2185,7 @@ class TestCancelPlanCrossOrgRejection:
     @pytest.mark.asyncio
     async def test_cross_org_cancel_is_rejected_with_404(self):
         from unittest.mock import AsyncMock, MagicMock, patch
+        from fastapi import HTTPException
         import uuid
         from app.routers.business_plans import cancel_plan
 

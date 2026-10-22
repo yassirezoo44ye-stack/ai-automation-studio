@@ -11,7 +11,6 @@ Adding a new platform:
 """
 from __future__ import annotations
 
-
 from app.integrations.social.base import SocialPublisherProvider
 from app.integrations.social.mock import MockSocialPublisherProvider
 from app.integrations.social.instagram import InstagramProvider
