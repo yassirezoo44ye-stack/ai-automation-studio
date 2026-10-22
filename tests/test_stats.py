@@ -53,9 +53,9 @@ class TestStatsIsScoped:
         app = _make_app()
         mock_pool_ctx, conn = _mock_pool()
 
-        with mock_pool_ctx, patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
-            with TestClient(app, raise_server_exceptions=False) as c:
-                res = c.get("/api/stats", headers={"X-Sub-Token": "alice-token"})
+        with mock_pool_ctx, patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL), \
+             TestClient(app, raise_server_exceptions=False) as c:
+            res = c.get("/api/stats", headers={"X-Sub-Token": "alice-token"})
 
         assert res.status_code == 200
 
@@ -90,12 +90,12 @@ class TestStatsIsScoped:
         app = _make_app()
         mock_pool_ctx, conn = _mock_pool()
 
-        with mock_pool_ctx, patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
-            with TestClient(app, raise_server_exceptions=False) as c:
-                res = c.get(
-                    "/api/stats/timeseries?days=7",
-                    headers={"X-Sub-Token": "alice-token"},
-                )
+        with mock_pool_ctx, patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL), \
+             TestClient(app, raise_server_exceptions=False) as c:
+            res = c.get(
+                "/api/stats/timeseries?days=7",
+                headers={"X-Sub-Token": "alice-token"},
+            )
 
         assert res.status_code == 200
         fetch_calls = conn.fetch.call_args_list
@@ -109,9 +109,9 @@ class TestStatsIsScoped:
         app = _make_app()
         mock_pool_ctx, conn = _mock_pool()
 
-        with mock_pool_ctx, patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
-            with TestClient(app, raise_server_exceptions=False) as c:
-                res = c.get("/api/usage-logs", headers={"X-Sub-Token": "alice-token"})
+        with mock_pool_ctx, patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL), \
+             TestClient(app, raise_server_exceptions=False) as c:
+            res = c.get("/api/usage-logs", headers={"X-Sub-Token": "alice-token"})
 
         assert res.status_code == 200
         sql, *params = conn.fetch.call_args_list[0].args
@@ -122,9 +122,9 @@ class TestStatsIsScoped:
         app = _make_app()
         mock_pool_ctx, conn = _mock_pool()
 
-        with mock_pool_ctx, patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
-            with TestClient(app, raise_server_exceptions=False) as c:
-                res = c.get("/api/agent-runs", headers={"X-Sub-Token": "alice-token"})
+        with mock_pool_ctx, patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL), \
+             TestClient(app, raise_server_exceptions=False) as c:
+            res = c.get("/api/agent-runs", headers={"X-Sub-Token": "alice-token"})
 
         assert res.status_code == 200
         sql, *params = conn.fetch.call_args_list[0].args
