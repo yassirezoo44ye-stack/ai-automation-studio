@@ -1,14 +1,7 @@
-# ── Stage 1: Build frontend ───────────────────────────────────────────────────
+# ── Stage 1: Node.js binary source ────────────────────────────────────────────
+# Frontend is built and served by Vercel. This stage only supplies the Node.js
+# runtime binaries needed by the Python backend at runtime.
 FROM node:20-slim AS frontend
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
-
-COPY index.html vite.config.ts tsconfig.json ./
-COPY src ./src
-COPY public ./public
-RUN npm run build
 
 # ── Stage 2: Multi-runtime backend (Python 3.11 + Node.js 20 LTS) ─────────────
 FROM python:3.11-slim AS backend
@@ -49,10 +42,6 @@ RUN python -c "import migrations; print('migrations package:', migrations.__file
  && test -f /app/migrations/versions/__init__.py \
  && test -f /app/migrations/versions/app_builder_schema.py \
  && test -f /app/migrations/versions/app_builder_async_schema.py
-
-# Copy built frontend from stage 1
-COPY --from=frontend /app/dist ./dist
-COPY --from=frontend /app/public ./public
 
 # Create runtime directories and a non-root user for security.
 # Running as root in production is a security risk — if the app is compromised,
