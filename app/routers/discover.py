@@ -360,13 +360,17 @@ async def update_creation(request: Request, creation_id: str, body: UpdateCreati
         # Build partial update
         sets, params = [], [creation_id]
         if body.title is not None:
-            params.append(body.title); sets.append(f"title=${len(params)}")
+            params.append(body.title)
+            sets.append(f"title=${len(params)}")
         if body.description is not None:
-            params.append(body.description); sets.append(f"description=${len(params)}")
+            params.append(body.description)
+            sets.append(f"description=${len(params)}")
         if body.thumbnail_url is not None:
-            params.append(body.thumbnail_url); sets.append(f"thumbnail_url=${len(params)}")
+            params.append(body.thumbnail_url)
+            sets.append(f"thumbnail_url=${len(params)}")
         if body.tags is not None:
-            params.append(body.tags); sets.append(f"tags=${len(params)}")
+            params.append(body.tags)
+            sets.append(f"tags=${len(params)}")
 
         if not sets:
             return _row_to_dict(await conn.fetchrow("SELECT * FROM flow_creations WHERE id=$1", creation_id))

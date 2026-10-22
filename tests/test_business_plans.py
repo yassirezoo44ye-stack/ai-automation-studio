@@ -2077,7 +2077,8 @@ class TestVerifiedStatusNeverWritten:
         assert FactStatus.VERIFIED.value == "VERIFIED"
 
         # Verify no agent source file contains a literal 'VERIFIED' write
-        import ast, pathlib
+        import ast
+        import pathlib
         agents_src = pathlib.Path("app/core/business/agents.py").read_text()
         tree = ast.parse(agents_src)
         for node in ast.walk(tree):
@@ -2187,7 +2188,7 @@ class TestCancelPlanCrossOrgRejection:
         import uuid
         from app.routers.business_plans import cancel_plan
 
-        org_a  = str(uuid.uuid4())
+        str(uuid.uuid4())
         user_b = str(uuid.uuid4())
         plan_id = uuid.uuid4()  # belongs to org_a, not org_b
 

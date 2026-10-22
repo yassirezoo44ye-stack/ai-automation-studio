@@ -171,14 +171,22 @@ async def update_task(task_id: str, body: TaskUpdate, request: Request):
         params.append(value)
         fields.append(f"{col} = ${len(params)}")
 
-    if body.title is not None:      set_field("title", body.title.strip())
-    if body.notes is not None:      set_field("notes", body.notes)
-    if body.project_id is not None: set_field("project_id", _parse_uuid(body.project_id, "project_id"))
-    if body.priority is not None:   set_field("priority", body.priority)
-    if body.category is not None:   set_field("category", body.category)
-    if body.tags is not None:       set_field("tags", body.tags)
-    if body.due_date is not None:   set_field("due_date", _parse_due_date(body.due_date))
-    if body.recurrence is not None: set_field("recurrence", body.recurrence)
+    if body.title is not None:
+        set_field("title", body.title.strip())
+    if body.notes is not None:
+        set_field("notes", body.notes)
+    if body.project_id is not None:
+        set_field("project_id", _parse_uuid(body.project_id, "project_id"))
+    if body.priority is not None:
+        set_field("priority", body.priority)
+    if body.category is not None:
+        set_field("category", body.category)
+    if body.tags is not None:
+        set_field("tags", body.tags)
+    if body.due_date is not None:
+        set_field("due_date", _parse_due_date(body.due_date))
+    if body.recurrence is not None:
+        set_field("recurrence", body.recurrence)
     if body.status is not None:
         set_field("status", body.status)
         set_field("completed_at", datetime.utcnow() if body.status == "done" else None)

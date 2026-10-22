@@ -345,12 +345,18 @@ def _node_type(files: dict, fset: set) -> str:
     try:
         pkg = json.loads(files["package.json"].read_text(encoding="utf-8"))
         deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
-        if "react" in deps:      return "react"
-        if "vue" in deps:        return "vue"
-        if "svelte" in deps:     return "svelte"
-        if "express" in deps:    return "express"
-        if "koa" in deps:        return "koa"
-        if "@nestjs/core" in deps: return "nestjs"
+        if "react" in deps:
+            return "react"
+        if "vue" in deps:
+            return "vue"
+        if "svelte" in deps:
+            return "svelte"
+        if "express" in deps:
+            return "express"
+        if "koa" in deps:
+            return "koa"
+        if "@nestjs/core" in deps:
+            return "nestjs"
     except Exception:
         pass
     return "node"

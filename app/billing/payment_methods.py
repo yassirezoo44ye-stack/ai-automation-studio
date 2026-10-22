@@ -60,36 +60,35 @@ class PaymentMethodService:
 
         org_uuid = uuid.UUID(org_id)
         seen_ids = []
-        async with self._pool.acquire() as conn:
-            async with conn.transaction():
-                for pm in methods.auto_paging_iter():
-                    card = pm.get("card") or {}
-                    seen_ids.append(pm["id"])
-                    await conn.execute(
-                        """INSERT INTO payment_methods
-                             (organization_id, stripe_payment_method_id, brand, last4,
-                              exp_month, exp_year, is_default, deleted_at)
-                           VALUES ($1,$2,$3,$4,$5,$6,$7,NULL)
-                           ON CONFLICT (stripe_payment_method_id) DO UPDATE SET
-                             brand=EXCLUDED.brand, last4=EXCLUDED.last4,
-                             exp_month=EXCLUDED.exp_month, exp_year=EXCLUDED.exp_year,
-                             is_default=EXCLUDED.is_default, deleted_at=NULL""",
-                        org_uuid, pm["id"], card.get("brand"), card.get("last4"),
-                        card.get("exp_month"), card.get("exp_year"), pm["id"] == default_pm,
-                    )
-                if seen_ids:
-                    await conn.execute(
-                        "UPDATE payment_methods SET deleted_at=NOW() "
-                        "WHERE organization_id=$1 AND stripe_payment_method_id != ALL($2::text[]) "
-                        "AND deleted_at IS NULL",
-                        org_uuid, seen_ids,
-                    )
-                else:
-                    await conn.execute(
-                        "UPDATE payment_methods SET deleted_at=NOW() "
-                        "WHERE organization_id=$1 AND deleted_at IS NULL",
-                        org_uuid,
-                    )
+        async with self._pool.acquire() as conn, conn.transaction():
+            for pm in methods.auto_paging_iter():
+                card = pm.get("card") or {}
+                seen_ids.append(pm["id"])
+                await conn.execute(
+                    """INSERT INTO payment_methods
+                         (organization_id, stripe_payment_method_id, brand, last4,
+                          exp_month, exp_year, is_default, deleted_at)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,NULL)
+                       ON CONFLICT (stripe_payment_method_id) DO UPDATE SET
+                         brand=EXCLUDED.brand, last4=EXCLUDED.last4,
+                         exp_month=EXCLUDED.exp_month, exp_year=EXCLUDED.exp_year,
+                         is_default=EXCLUDED.is_default, deleted_at=NULL""",
+                    org_uuid, pm["id"], card.get("brand"), card.get("last4"),
+                    card.get("exp_month"), card.get("exp_year"), pm["id"] == default_pm,
+                )
+            if seen_ids:
+                await conn.execute(
+                    "UPDATE payment_methods SET deleted_at=NOW() "
+                    "WHERE organization_id=$1 AND stripe_payment_method_id != ALL($2::text[]) "
+                    "AND deleted_at IS NULL",
+                    org_uuid, seen_ids,
+                )
+            else:
+                await conn.execute(
+                    "UPDATE payment_methods SET deleted_at=NOW() "
+                    "WHERE organization_id=$1 AND deleted_at IS NULL",
+                    org_uuid,
+                )
         return await self.list_for_org(org_id)
 
     async def list_for_org(self, org_id: str) -> list[dict[str, Any]]:

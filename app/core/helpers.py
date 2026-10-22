@@ -124,7 +124,7 @@ def strip_fences(text: str) -> str:
 
 # ── App-name sanitiser ────────────────────────────────────────────────────────
 
-import re as _re
+import re as _re  # noqa: E402
 
 def sanitize_name(name: str) -> str:
     """Replace characters that are unsafe in filenames/directory names with underscores."""

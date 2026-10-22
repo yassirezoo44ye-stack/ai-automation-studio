@@ -216,8 +216,10 @@ class _Iter:
     def __init__(self, items): self._items = iter(items)
     def __aiter__(self): return self
     async def __anext__(self):
-        try: return next(self._items)
-        except StopIteration as exc: raise StopAsyncIteration from exc
+        try:
+            return next(self._items)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
 
 
 def _aiter(items): return _Iter(items)

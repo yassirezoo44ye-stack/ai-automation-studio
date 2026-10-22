@@ -166,7 +166,8 @@ class MetricsRegistry:
 
     def reset(self) -> None:
         with self._lock:
-            for c in self._counters.values():  c.reset()
+            for c in self._counters.values():
+                c.reset()
 
 
 # ── Pre-wired OS-level metrics ─────────────────────────────────────────────────

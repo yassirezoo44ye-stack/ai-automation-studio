@@ -769,8 +769,10 @@ class TestConcurrency(unittest.TestCase):
                 c.inc()
 
         threads = [threading.Thread(target=_inc) for _ in range(10)]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
         self.assertEqual(c.value, 10_000)
 
     def test_parallel_memory_writes(self):
@@ -794,8 +796,10 @@ class TestConcurrency(unittest.TestCase):
                 errors.append(str(exc))
 
         threads = [threading.Thread(target=_write, args=(i,)) for i in range(5)]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
         self.assertEqual(errors, [], f"Thread errors: {errors}")
         self.assertGreaterEqual(mem.short.count, 1)
 

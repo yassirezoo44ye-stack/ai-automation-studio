@@ -77,30 +77,29 @@ class OrgSubscriptionService:
     ) -> None:
         """Upsert the subscription row AND sync organizations.plan — one
         transaction so the two never drift apart."""
-        async with self._pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    """INSERT INTO org_subscriptions
-                         (organization_id, stripe_customer_id, stripe_subscription_id,
-                          plan_id, status, current_period_end)
-                       VALUES ($1,$2,$3,$4,$5,$6)
-                       ON CONFLICT (organization_id) DO UPDATE SET
-                         stripe_customer_id     = COALESCE(EXCLUDED.stripe_customer_id, org_subscriptions.stripe_customer_id),
-                         stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, org_subscriptions.stripe_subscription_id),
-                         plan_id                = EXCLUDED.plan_id,
-                         status                 = EXCLUDED.status,
-                         current_period_end     = EXCLUDED.current_period_end,
-                         updated_at              = NOW()""",
-                    uuid.UUID(organization_id), stripe_customer_id, stripe_subscription_id,
-                    plan_id, status, current_period_end,
-                )
-                # An inactive/cancelled subscription drops the org back to free;
-                # an active-or-trialing one promotes it to the purchased tier.
-                effective_plan = plan_id if status in ACTIVE_STATUSES else "free"
-                await conn.execute(
-                    "UPDATE organizations SET plan=$2, updated_at=NOW() WHERE id=$1",
-                    uuid.UUID(organization_id), effective_plan,
-                )
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                """INSERT INTO org_subscriptions
+                     (organization_id, stripe_customer_id, stripe_subscription_id,
+                      plan_id, status, current_period_end)
+                   VALUES ($1,$2,$3,$4,$5,$6)
+                   ON CONFLICT (organization_id) DO UPDATE SET
+                     stripe_customer_id     = COALESCE(EXCLUDED.stripe_customer_id, org_subscriptions.stripe_customer_id),
+                     stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, org_subscriptions.stripe_subscription_id),
+                     plan_id                = EXCLUDED.plan_id,
+                     status                 = EXCLUDED.status,
+                     current_period_end     = EXCLUDED.current_period_end,
+                     updated_at              = NOW()""",
+                uuid.UUID(organization_id), stripe_customer_id, stripe_subscription_id,
+                plan_id, status, current_period_end,
+            )
+            # An inactive/cancelled subscription drops the org back to free;
+            # an active-or-trialing one promotes it to the purchased tier.
+            effective_plan = plan_id if status in ACTIVE_STATUSES else "free"
+            await conn.execute(
+                "UPDATE organizations SET plan=$2, updated_at=NOW() WHERE id=$1",
+                uuid.UUID(organization_id), effective_plan,
+            )
 
     async def find_org_by_subscription_id(self, stripe_subscription_id: str) -> str | None:
         async with self._pool.acquire() as conn:

@@ -202,8 +202,8 @@ class TestBuildPlan:
             is_server=True, port=3001,
         )
         lines = plan.as_log_lines()
-        assert any("npm" in l for l in lines)
-        assert any("3001" in l for l in lines)
+        assert any("npm" in ln for ln in lines)
+        assert any("3001" in ln for ln in lines)
 
     def test_as_log_lines_build(self):
         plan = BuildPlan(
@@ -213,8 +213,8 @@ class TestBuildPlan:
             is_server=False, output_dir="dist",
         )
         lines = plan.as_log_lines()
-        assert any("pnpm run build" in l for l in lines)
-        assert any("dist" in l for l in lines)
+        assert any("pnpm run build" in ln for ln in lines)
+        assert any("dist" in ln for ln in lines)
 
 
 # ── Error code tests ───────────────────────────────────────────────────────────
@@ -633,7 +633,7 @@ class TestPhasePlan:
             ),
             patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=3001),
         ):
-            events = await _collect(runner._phase_plan())
+            await _collect(runner._phase_plan())
         assert runner._build_plan is not None
         assert runner._build_plan.run_cmd != []
         assert runner._build_plan.port == 3001
@@ -650,7 +650,7 @@ class TestPhasePlan:
                 evidence="npm",
             ),
         ):
-            events = await _collect(runner._phase_plan())
+            await _collect(runner._phase_plan())
         assert runner._build_plan is not None
         assert runner._build_plan.is_server is False
         assert runner._build_plan.build_cmd != []
@@ -671,7 +671,7 @@ class TestPhasePlan:
             ),
             patch("app.execution.js_runtime.phases.process_mgr.allocate_port", return_value=3002),
         ):
-            events = await _collect(runner._phase_plan())
+            await _collect(runner._phase_plan())
         assert runner._build_plan is not None
         assert "node" in runner._build_plan.run_cmd
         assert len(runner._build_plan.warnings) > 0  # fallback warning emitted
@@ -825,7 +825,7 @@ class TestPhaseB:
             "app.execution.js_runtime.phases.rt_process.stream_process",
             side_effect=_fake_stream,
         ):
-            events = await _collect(runner._phase_b())
+            await _collect(runner._phase_b())
 
         assert runner._report.dependencies is not None
         assert runner._report.dependencies.passed

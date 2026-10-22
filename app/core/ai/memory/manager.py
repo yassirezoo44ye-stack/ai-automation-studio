@@ -121,10 +121,12 @@ class MemoryManager:
 
             if uid is not None:
                 clauses.append(f"user_id = ${i}")
-                args.append(uid); i += 1
+                args.append(uid)
+                i += 1
             if cid is not None:
                 clauses.append(f"conversation_id = ${i}")
-                args.append(cid); i += 1
+                args.append(cid)
+                i += 1
 
             where = " AND ".join(clauses)
             args.append(limit)

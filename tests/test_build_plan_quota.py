@@ -86,7 +86,7 @@ def _run(coro):
 # ── Import under test after env is set ────────────────────────────────────────
 
 from app.routers.build import build_plan  # noqa: E402
-import contextlib
+import contextlib  # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -311,7 +311,8 @@ class TestBuildEndpointUnaffected(unittest.TestCase):
     and that the fix to build_plan did not disturb it."""
 
     def test_build_still_calls_check_org_quota(self):
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         from app.routers.build import build_program
 
         pool, conn = _fake_pool()
@@ -365,7 +366,8 @@ class TestBuildEndpointUnaffected(unittest.TestCase):
 
     # Case I — Execution order on /api/build: quota must come before AI call
     def test_build_quota_before_ai(self):
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         from app.routers.build import build_program
 
         pool, conn = _fake_pool()

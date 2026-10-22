@@ -56,25 +56,24 @@ class TenancyService:
         if kind not in ("personal", "organization", "enterprise"):
             raise TenancyError(f"invalid kind {kind!r}")
         slug = _slugify(name)
-        async with self._pool.acquire() as conn:
-            async with conn.transaction():
-                # Ensure slug uniqueness with a numeric suffix on collision.
-                base, n = slug, 1
-                while await conn.fetchval(
-                    "SELECT 1 FROM organizations WHERE slug=$1 AND deleted_at IS NULL", slug
-                ):
-                    n += 1
-                    slug = f"{base}-{n}"
-                row = await conn.fetchrow(
-                    "INSERT INTO organizations (name, slug, kind, created_by, updated_by) "
-                    "VALUES ($1,$2,$3,$4,$4) RETURNING *",
-                    name, slug, kind, uuid.UUID(creator_id),
-                )
-                await conn.execute(
-                    "INSERT INTO organization_members (organization_id, user_id, role, created_by) "
-                    "VALUES ($1,$2,'owner',$2)",
-                    row["id"], uuid.UUID(creator_id),
-                )
+        async with self._pool.acquire() as conn, conn.transaction():
+            # Ensure slug uniqueness with a numeric suffix on collision.
+            base, n = slug, 1
+            while await conn.fetchval(
+                "SELECT 1 FROM organizations WHERE slug=$1 AND deleted_at IS NULL", slug
+            ):
+                n += 1
+                slug = f"{base}-{n}"
+            row = await conn.fetchrow(
+                "INSERT INTO organizations (name, slug, kind, created_by, updated_by) "
+                "VALUES ($1,$2,$3,$4,$4) RETURNING *",
+                name, slug, kind, uuid.UUID(creator_id),
+            )
+            await conn.execute(
+                "INSERT INTO organization_members (organization_id, user_id, role, created_by) "
+                "VALUES ($1,$2,'owner',$2)",
+                row["id"], uuid.UUID(creator_id),
+            )
         await self._log(str(row["id"]), creator_id, "organization.created",
                         resource="organization", resource_id=str(row["id"]), ip_address=ip_address)
         try:
