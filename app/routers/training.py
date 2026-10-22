@@ -31,17 +31,15 @@ from fastapi import APIRouter, HTTPException
 from fastapi.params import Depends
 
 from app.core.db import get_pool
-from app.tenancy.context import OrgContext, org_context, require_permission
+from app.tenancy.context import OrgContext, org_context
 from app.training.models import (
-    CourseCreate, CourseOut, CourseUpdate,
-    LearnerCreate, LearnerOut,
-    LessonCreate, LessonOut, LessonUpdate,
-    JobOut,
-    QuizCreate, QuizOut,
+    CourseCreate, CourseUpdate,
+    LearnerCreate,
+    LessonCreate, LessonUpdate,
+    QuizCreate,
     QuestionCreate,
-    ScriptCreate, ScriptOut,
-    VideoCreate, VideoOut,
-    CourseGenerateRequest,
+    ScriptCreate,
+    VideoCreate,
 )
 from app.integrations.video import get_video_registry
 

@@ -25,7 +25,7 @@ Security
 from __future__ import annotations
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 import uuid
