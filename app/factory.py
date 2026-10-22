@@ -584,7 +584,7 @@ def create_app() -> FastAPI:
         # hasn't run yet on this request (Starlette middleware order isn't
         # load-bearing here — both paths read the same header).
         org_id = getattr(request.state, "org_id", None) or request.headers.get("X-Organization-Id")
-        if org_id and path.startswith("/api/"):
+        if org_id and path.startswith("/api/") and response.status_code < 400:
             async def _meter():
                 try:
                     from app.billing import get_usage_service

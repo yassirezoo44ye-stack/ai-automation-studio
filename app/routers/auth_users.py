@@ -286,6 +286,9 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
             if not verify_password(body.password, user["password_hash"]):
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
+            if not user["email_verified"]:
+                span.set_tag("error", "email_not_verified")
+                raise HTTPException(403, "email_not_verified")
             span.set_tag("user_id", str(user["id"]))
 
             mfa = await conn.fetchrow(
@@ -652,6 +655,10 @@ async def change_password(
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2",
             hash_password(body.new_password),
+            uuid.UUID(current["id"]),
+        )
+        await conn.execute(
+            "DELETE FROM user_sessions WHERE user_id=$1",
             uuid.UUID(current["id"]),
         )
     return {"message": "Password changed successfully"}
@@ -1191,7 +1198,8 @@ async def microsoft_oauth_callback(code: str, request: Request, state: str | Non
         raise HTTPException(400, "Microsoft did not return an email address")
 
     async with get_pool().acquire() as conn:
-        user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft")
+        user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft",
+                                         provider_email_verified=True)
         session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     exchange_code = await _stash_oauth_session_for_exchange(session)
