@@ -435,7 +435,6 @@ class TestOrgIsolation:
 
 class TestPermissionEnforcement:
     def test_router_source_uses_require_permission_for_read(self):
-        import inspect
         import importlib
         import importlib.util
         _leads_path = str(Path(__file__).parent.parent / "app/routers/leads.py")

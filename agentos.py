@@ -39,7 +39,6 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-import textwrap
 
 # ── Force UTF-8 on Windows cp1252 terminals ────────────────────────────────────
 if hasattr(sys.stdout, "buffer") and (
@@ -146,7 +145,6 @@ async def cmd_analyze(args: list[str]) -> None:
 async def cmd_reflect(_: list[str]) -> None:
     from app.agents.reflection import get_reflector
     from app.agents.memory     import get_memory
-    from app.agents.evolution  import EvolutionEngine
 
     memory = get_memory()
     # Fire a manual reflection
@@ -242,7 +240,8 @@ async def cmd_memory(args: list[str]) -> None:
         for r in records:
             icon = ok("") if r.success else err("")
             print(f"{icon.strip()} [{r.kind}] {r.content[:80]}  {clr('grey', r.agent or '')}")
-    print(f"\n  {clr('grey', f'Short-term: {mem.stats[\"short_term\"]}  Long-term: {mem.stats[\"long_term\"]}')}")
+    _stats_line = f'Short-term: {mem.stats["short_term"]}  Long-term: {mem.stats["long_term"]}'
+    print(f"\n  {clr('grey', _stats_line)}")
 
 
 async def cmd_agents(args: list[str]) -> None:

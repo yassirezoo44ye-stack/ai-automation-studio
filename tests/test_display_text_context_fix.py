@@ -12,7 +12,6 @@ All DB interactions are mocked.
 """
 from __future__ import annotations
 
-import json
 import sys
 import unittest
 import uuid

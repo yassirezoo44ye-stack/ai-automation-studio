@@ -21,10 +21,3 @@ os.environ.setdefault(
 
 # Pre-load real implementations so test_leads.py stubs cannot replace them.
 # These imports are safe: the modules do not connect to a DB at import time.
-import app.tenancy            # noqa: E402 — needs env vars set above
-import app.tenancy.context    # noqa: E402
-import app.routers.ws         # noqa: E402
-import app.core.notifications          # noqa: E402
-import app.core.notifications.service  # noqa: E402
-import app.core.db            # noqa: E402
-import app.core.jobs          # noqa: E402

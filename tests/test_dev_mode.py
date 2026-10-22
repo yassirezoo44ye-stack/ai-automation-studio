@@ -8,11 +8,8 @@ Dev-mode routing tests — three required cases:
 from __future__ import annotations
 
 import asyncio
-import json
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 # ── Constant shared with build.py (keep in sync) ──────────────────────────────
 _DEV_ACCOUNT = "yassirezoo44.ye@gmail.com"
@@ -58,7 +55,7 @@ class TestDevMockProvider:
 
     def test_stream_yields_deltas_then_usage_done(self):
         """Stream must include delta chunks, then usage, then done."""
-        from app.ai.providers.dev_mock import DevMockProvider, _CHUNK_DELAY
+        from app.ai.providers.dev_mock import DevMockProvider
         from app.ai.models import CompletionRequest, Message
 
         async def _collect():
@@ -147,7 +144,6 @@ class TestRegistryRegistration:
 
     def test_dev_mock_not_in_default_chain(self):
         """default() must never return dev_mock — only explicit routing reaches it."""
-        from app.core.ai.registry.registry import platform_registry
         # Even if all other providers were unavailable, dev_mock must not be picked
         # by default() (it's not in the order list).
         order_ids = [

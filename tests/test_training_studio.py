@@ -12,7 +12,6 @@ Coverage:
 """
 from __future__ import annotations
 
-import types
 import unittest
 from datetime import datetime, timezone
 
