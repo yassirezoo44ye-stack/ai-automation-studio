@@ -168,8 +168,9 @@ async def run_stream(req: RunRequest, request: Request):
                 except Exception:
                     pass  # metering must never turn a successful reply into an error
 
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
+            # Save assistant reply BEFORE sending `done` — the client stops
+            # reading the stream on `done`, so a disconnect can race the save
+            # if we yield `done` first.
             try:
                 async with get_pool().acquire() as conn:
                     await conn.execute(
@@ -177,6 +178,16 @@ async def run_stream(req: RunRequest, request: Request):
                         conv_id, full_text,
                     )
                     await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
+            except Exception as e:
+                log.exception("run_stream: failed to save assistant message")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to save reply: ' + str(e)})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+            # Best-effort telemetry after `done` — failures are silent.
+            try:
+                async with get_pool().acquire() as conn:
                     pid2 = await resolve_project_id(conn, req.project_id, uid)
                     run_id = await conn.fetchval(
                         "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
