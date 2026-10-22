@@ -34,7 +34,7 @@ async def create_checkout(req: CheckoutRequest):
         )
         return {"url": session.url}
     except Exception as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
 
 
 @router.get("/api/subscription/status")
@@ -99,9 +99,9 @@ async def stripe_webhook(request: Request):
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except stripe.SignatureVerificationError:
-        raise HTTPException(400, "Invalid signature")
+        raise HTTPException(400, "Invalid signature") from None
     except Exception:
-        raise HTTPException(400, "Malformed webhook")
+        raise HTTPException(400, "Malformed webhook") from None
 
     from app.billing import get_webhook_event_service
     wh_svc = get_webhook_event_service()
@@ -120,7 +120,7 @@ async def stripe_webhook(request: Request):
         # every write inside _dispatch_webhook_event is an idempotent
         # upsert, and record() above will treat this same event id as
         # unfinished work (not a duplicate) on the retry.
-        raise HTTPException(500, "Webhook processing failed — will be retried")
+        raise HTTPException(500, "Webhook processing failed — will be retried") from None
 
     await wh_svc.mark_processed(event["id"])
     return {"received": True}

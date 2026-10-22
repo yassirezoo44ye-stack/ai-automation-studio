@@ -25,7 +25,6 @@ import logging
 import os
 import threading
 from collections import deque
-from typing import Optional
 
 from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.resources import Resource
@@ -66,20 +65,20 @@ class SpanHandle:
     def span_id(self) -> str:
         return _fmt_span_id(self._span.get_span_context().span_id)
 
-    def set_tag(self, key: str, value) -> "SpanHandle":
+    def set_tag(self, key: str, value) -> SpanHandle:
         self._span.set_attribute(key, str(value))
         return self
 
-    def add_event(self, name: str, **attrs) -> "SpanHandle":
+    def add_event(self, name: str, **attrs) -> SpanHandle:
         self._span.add_event(name, attributes={k: str(v) for k, v in attrs.items()})
         return self
 
-    def finish(self, error: Optional[str] = None) -> None:
+    def finish(self, error: str | None = None) -> None:
         if error:
             self._span.set_status(Status(StatusCode.ERROR, error))
         self._span.end()
 
-    def __enter__(self) -> "SpanHandle":
+    def __enter__(self) -> SpanHandle:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -207,8 +206,8 @@ class Tracer:
         name     : str,
         *,
         service  : str = "agentos",
-        trace_id : Optional[str] = None,
-        parent_id: Optional[str] = None,
+        trace_id : str | None = None,
+        parent_id: str | None = None,
     ) -> SpanHandle:
         # OBS_TRACING_ENABLED=false must disable ALL instrumentation, not
         # just FastAPIInstrumentor's HTTP auto-spans (which app.factory

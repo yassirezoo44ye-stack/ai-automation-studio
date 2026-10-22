@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
+from collections.abc import Callable
 
 from .executor import ToolExecutor
 
@@ -73,7 +74,7 @@ class ToolMarketplace:
 
     # ── Discovery ──────────────────────────────────────────────────────────────
 
-    def list_all(self, category: Optional[str] = None) -> list[dict[str, Any]]:
+    def list_all(self, category: str | None = None) -> list[dict[str, Any]]:
         results = list(self._catalog.values())
         if category:
             results = [m for m in results if m.category == category]
@@ -82,7 +83,7 @@ class ToolMarketplace:
     def categories(self) -> list[str]:
         return sorted({m.category for m in self._catalog.values()})
 
-    def get(self, name: str) -> Optional[ToolManifest]:
+    def get(self, name: str) -> ToolManifest | None:
         return self._catalog.get(name)
 
     def search(self, query: str) -> list[dict[str, Any]]:
@@ -125,8 +126,8 @@ class ToolMarketplace:
         self,
         tool_name:   str,
         arguments:   dict[str, Any],
-        user_id:     Optional[str] = None,
-        permissions: Optional[list[str]] = None,
+        user_id:     str | None = None,
+        permissions: list[str] | None = None,
     ) -> Any:
         return await self._executor.execute(
             tool_name=tool_name,

@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import threading
 from typing import Callable
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -104,10 +105,8 @@ class FlowTrayIcon:
 
     def stop(self) -> None:
         if self._icon:
-            try:
+            with contextlib.suppress(Exception):
                 self._icon.stop()
-            except Exception:
-                pass
 
     def update_state(self, state: str) -> None:
         """

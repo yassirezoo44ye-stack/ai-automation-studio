@@ -26,6 +26,7 @@ import sys
 import threading
 import time
 from typing import Callable, Optional
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -87,10 +88,8 @@ class DeviceAgentController:
         _STATE_LOG.info("state: %s → %s", self._state, state)
         self._state = state
         if self._on_state_change:
-            try:
+            with contextlib.suppress(Exception):
                 self._on_state_change(state)
-            except Exception:
-                pass
 
     @property
     def state(self) -> str:

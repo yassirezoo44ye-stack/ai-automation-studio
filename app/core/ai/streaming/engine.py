@@ -11,7 +11,8 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
+from collections.abc import AsyncGenerator
 
 from ..events.bus    import EventBus
 from ..events.events import StreamCancelled, StreamResumed
@@ -125,7 +126,7 @@ class StreamingEngine:
     async def stream_text(
         self,
         text: str,
-        session: Optional[StreamSession] = None,
+        session: StreamSession | None = None,
         chunk_size: int = 20,
     ) -> AsyncGenerator[str, None]:
         """Utility: stream a static string as tokens (useful for testing/replay)."""
@@ -140,7 +141,7 @@ class StreamingEngine:
         async for chunk in self.stream(_gen(), session):
             yield chunk
 
-    def get_session(self, session_id: str) -> Optional[StreamSession]:
+    def get_session(self, session_id: str) -> StreamSession | None:
         return self._sessions.get(session_id)
 
     def diagnostics(self) -> dict[str, Any]:

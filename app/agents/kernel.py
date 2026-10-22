@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 from app.agents.base    import AgentContext, AgentResult, EvolvableAgent
 from app.agents.intent  import IntentParser, IntentResult
@@ -88,7 +87,7 @@ class AgentKernel:
 
     # ── Boot ──────────────────────────────────────────────────────────────────
 
-    def boot(self, start_loop: bool = False) -> "AgentKernel":
+    def boot(self, start_loop: bool = False) -> AgentKernel:
         if self._booted:
             return self
 
@@ -129,7 +128,7 @@ class AgentKernel:
 
     # ── Agent registry ────────────────────────────────────────────────────────
 
-    def register_agent(self, agent: EvolvableAgent, *, owner: Optional[str] = None) -> None:
+    def register_agent(self, agent: EvolvableAgent, *, owner: str | None = None) -> None:
         """`owner` should be the plugin's installation_id for a
         plugin-provided agent (app.plugins.adapters.adapt_agent supplies
         it) — None (the default, used by every built-in agent via
@@ -149,7 +148,7 @@ class AgentKernel:
             return True
         return False
 
-    def get_agent(self, name: str) -> Optional[EvolvableAgent]:
+    def get_agent(self, name: str) -> EvolvableAgent | None:
         return self._agents.get(name)
 
     def all_agents(self) -> list[EvolvableAgent]:
@@ -161,7 +160,7 @@ class AgentKernel:
         it discloses other tenants' custom agents by name."""
         return list(self._agents.values())
 
-    def visible_agent_names(self, organization_id: Optional[str]) -> list[str]:
+    def visible_agent_names(self, organization_id: str | None) -> list[str]:
         """Names of agents this org may see or invoke: every built-in
         (owner=None) plus this org's own plugin-installed or
         self-generated agents. `organization_id=None` (no verified org)
@@ -171,7 +170,7 @@ class AgentKernel:
             if self._agent_owners.owner_of(name) in (None, organization_id)
         ]
 
-    def visible_agents(self, organization_id: Optional[str]) -> list[EvolvableAgent]:
+    def visible_agents(self, organization_id: str | None) -> list[EvolvableAgent]:
         names = set(self.visible_agent_names(organization_id))
         return [a for n, a in self._agents.items() if n in names]
 
@@ -181,13 +180,13 @@ class AgentKernel:
         self,
         raw_input  : str,
         caller     : str = "system",
-        user_id    : Optional[str] = None,
-        workspace  : Optional[str] = None,
-        project_id : Optional[str] = None,
+        user_id    : str | None = None,
+        workspace  : str | None = None,
+        project_id : str | None = None,
         deliberate : bool = False,
-        organization_id: Optional[str] = None,
-        run_id     : Optional[str] = None,
-        forced_intent: Optional[str] = None,
+        organization_id: str | None = None,
+        run_id     : str | None = None,
+        forced_intent: str | None = None,
     ) -> AgentResult:
         """
         Full pipeline: parse → route → (vote) → execute → reflect.
@@ -341,12 +340,12 @@ class AgentKernel:
         self,
         tasks     : list[str],
         caller    : str = "system",
-        user_id   : Optional[str] = None,
-        workspace : Optional[str] = None,
-        project_id: Optional[str] = None,
+        user_id   : str | None = None,
+        workspace : str | None = None,
+        project_id: str | None = None,
         parallel  : bool = False,
-        organization_id: Optional[str] = None,
-        run_id    : Optional[str] = None,
+        organization_id: str | None = None,
+        run_id    : str | None = None,
     ) -> list[AgentResult]:
         """
         run_id is shared across every task's underlying kernel.run() call,
@@ -380,7 +379,7 @@ class AgentKernel:
     async def deliberate_and_run(
         self,
         raw_input: str,
-        run_id   : Optional[str] = None,
+        run_id   : str | None = None,
         **kwargs,
     ) -> tuple[AgentResult, dict]:
         """
@@ -428,11 +427,11 @@ class AgentKernel:
         self,
         goal      : str,
         caller    : str = "system",
-        user_id   : Optional[str] = None,
-        workspace : Optional[str] = None,
-        project_id: Optional[str] = None,
-        organization_id: Optional[str] = None,
-        run_id    : Optional[str] = None,
+        user_id   : str | None = None,
+        workspace : str | None = None,
+        project_id: str | None = None,
+        organization_id: str | None = None,
+        run_id    : str | None = None,
     ) -> dict:
         """
         Decomposes goal into tasks, then executes them autonomously with no
@@ -469,43 +468,43 @@ class AgentKernel:
     # ── Autonomous development ────────────────────────────────────────────────
 
     async def generate_agent(self, description: str,
-                             agent_name: Optional[str] = None,
-                             organization_id: Optional[str] = None) -> dict:
+                             agent_name: str | None = None,
+                             organization_id: str | None = None) -> dict:
         if self._autonomy is None:
             return {"status": "error", "error": "autonomy engine not initialized"}
         return await self._autonomy.generate_agent(description, agent_name, org_id=organization_id)
 
-    async def suggest(self, n: int = 3, organization_id: Optional[str] = None) -> list[dict]:
+    async def suggest(self, n: int = 3, organization_id: str | None = None) -> list[dict]:
         if self._autonomy is None:
             return []
         suggestions = await self._autonomy.suggest_improvements(n, org_id=organization_id)
         return [s.to_dict() for s in suggestions]
 
-    async def implement(self, index: int, organization_id: Optional[str] = None) -> dict:
+    async def implement(self, index: int, organization_id: str | None = None) -> dict:
         if self._autonomy is None:
             return {"status": "error"}
         return await self._autonomy.implement_suggestion(index, org_id=organization_id)
 
-    async def autonomous_loop(self, cycles: int = 3, organization_id: Optional[str] = None) -> list[dict]:
+    async def autonomous_loop(self, cycles: int = 3, organization_id: str | None = None) -> list[dict]:
         if self._autonomy is None:
             return []
         return await self._autonomy.continuous_loop(cycles, org_id=organization_id)
 
     # ── Evolution ─────────────────────────────────────────────────────────────
 
-    async def evolve(self, organization_id: Optional[str] = None) -> dict:
+    async def evolve(self, organization_id: str | None = None) -> dict:
         if self._evolution is None:
             return {"status": "error", "error": "evolution engine not initialized"}
         return (await self._evolution.evolve(org_id=organization_id)).to_dict()
 
-    def evolution_analysis(self, organization_id: Optional[str] = None) -> dict:
+    def evolution_analysis(self, organization_id: str | None = None) -> dict:
         if self._evolution is None:
             return {"status": "not_initialized"}
         return self._evolution.analyze(org_id=organization_id).to_dict()
 
     # ── Status ────────────────────────────────────────────────────────────────
 
-    def status(self, organization_id: Optional[str] = None) -> dict:
+    def status(self, organization_id: str | None = None) -> dict:
         """Scoped to the caller's own org: agent_names/performance/
         memory_count/suggestions must never disclose another tenant's
         plugin-installed or self-generated agents, executions, or

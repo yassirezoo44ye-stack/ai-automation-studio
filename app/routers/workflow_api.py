@@ -35,6 +35,7 @@ from app.core.workflow import (
     WorkflowBuilder, RetryPolicy, get_workflow_engine,
 )
 from app.tenancy.context import OrgContext, org_context
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ async def approve_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_
         db_found = await record_approval_decision(approval_id, "approved", ctx.user_id)
     except Exception as exc:
         log.error("approve_step: DB write failed for %s: %s", approval_id, exc)
-        raise HTTPException(503, "Could not persist approval decision; try again")
+        raise HTTPException(503, "Could not persist approval decision; try again") from None
 
     # 2. Signal the in-memory engine
     engine_ok = engine.approve(run_id, step_id, org_id=ctx.org_id)
@@ -106,10 +107,8 @@ async def approve_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_
         # Run is no longer in engine (interrupted/expired).
         # Mark DB record 'orphaned' (best-effort — ignore secondary failure).
         if db_found:
-            try:
+            with contextlib.suppress(Exception):
                 await record_approval_decision(approval_id, "orphaned", ctx.user_id)
-            except Exception:
-                pass
         raise HTTPException(
             409,
             f"Approval for {run_id!r}/{step_id!r} was saved but the run is no longer active",
@@ -144,16 +143,14 @@ async def reject_step(run_id: str, step_id: str, ctx: OrgContext = Depends(org_c
         db_found = await record_approval_decision(approval_id, "rejected", ctx.user_id)
     except Exception as exc:
         log.error("reject_step: DB write failed for %s: %s", approval_id, exc)
-        raise HTTPException(503, "Could not persist rejection decision; try again")
+        raise HTTPException(503, "Could not persist rejection decision; try again") from None
 
     engine_ok = engine.reject(run_id, step_id, org_id=ctx.org_id)
 
     if not engine_ok:
         if db_found:
-            try:
+            with contextlib.suppress(Exception):
                 await record_approval_decision(approval_id, "orphaned", ctx.user_id)
-            except Exception:
-                pass
         raise HTTPException(
             409,
             f"Rejection for {run_id!r}/{step_id!r} was saved but the run is no longer active",

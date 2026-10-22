@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from app.execution.js_runtime.phases import PhaseRunner
 from app.runtime import registry
@@ -28,7 +27,7 @@ def can_handle(info) -> bool:
     return registry.has("node") or registry.has("npm")
 
 
-async def stream(project_id: str, ws: Path, info, command_override: Optional[str] = None):
+async def stream(project_id: str, ws: Path, info, command_override: str | None = None):
     runner = PhaseRunner(project_id=project_id, ws=ws, info=info)
     async for event_type, payload in runner.run():
         yield f"data: {json.dumps({'type': event_type, **payload})}\n\n"

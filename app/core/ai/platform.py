@@ -29,7 +29,8 @@ Usage::
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
+from collections.abc import AsyncGenerator
 
 from app.ai.models import CompletionRequest, CompletionResponse
 from app.core.ai.agents.runtime import AgentConfig, AgentRuntime
@@ -71,10 +72,10 @@ class AIPlatform:
         self._pool = pool
 
         # Lazy-created per-request services (pool-dependent)
-        self._engine:        Optional[InferenceEngine]  = None
-        self._memory_mgr:    Optional[MemoryManager]    = None
-        self._conv_svc:      Optional[ConversationService] = None
-        self._prompt_engine: Optional[PromptEngine]     = None
+        self._engine:        InferenceEngine | None  = None
+        self._memory_mgr:    MemoryManager | None    = None
+        self._conv_svc:      ConversationService | None = None
+        self._prompt_engine: PromptEngine | None     = None
 
         # Stateless / singleton services (Phase 1-2)
         self.registry:    PlatformProviderRegistry = platform_registry
@@ -90,9 +91,9 @@ class AIPlatform:
         self._policy:       PolicyEngine      = PolicyEngine(bus=bus)
         self.streaming:     StreamingEngine   = StreamingEngine(bus=bus)
         self.workflow:      WorkflowEngine    = WorkflowEngine(bus=bus)
-        self._knowledge:    Optional[KnowledgeEngine]  = None
-        self._marketplace:  Optional[ToolMarketplace]  = None
-        self._orchestrator: Optional[AIOrchestrator]   = None
+        self._knowledge:    KnowledgeEngine | None  = None
+        self._marketplace:  ToolMarketplace | None  = None
+        self._orchestrator: AIOrchestrator | None   = None
         self._builtin_agents: dict[str, AgentRuntime]  = {}
 
         # tools exposed directly (Phase 1 compat) + marketplace wrapper
@@ -141,8 +142,8 @@ class AIPlatform:
         self,
         request: CompletionRequest,
         *,
-        user_id:    Optional[str] = None,
-        org_id:     Optional[str] = None,
+        user_id:    str | None = None,
+        org_id:     str | None = None,
         auto_tools: bool          = True,
     ) -> CompletionResponse:
         return await self._engine_or_raise().complete(
@@ -153,8 +154,8 @@ class AIPlatform:
         self,
         request: CompletionRequest,
         *,
-        user_id:    Optional[str] = None,
-        org_id:     Optional[str] = None,
+        user_id:    str | None = None,
+        org_id:     str | None = None,
         auto_tools: bool          = True,
     ) -> AsyncGenerator[dict, None]:
         async for chunk in self._engine_or_raise().stream(
@@ -231,7 +232,7 @@ class AIPlatform:
     def create_agent(self, config: AgentConfig) -> AgentRuntime:
         return AgentRuntime(config=config, pool=self._pool, executor=self.tools)
 
-    def get_agent(self, name: str) -> Optional[AgentRuntime]:
+    def get_agent(self, name: str) -> AgentRuntime | None:
         """Return a pre-instantiated built-in agent by name, or None."""
         return self._builtin_agents.get(name)
 

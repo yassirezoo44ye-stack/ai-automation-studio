@@ -24,6 +24,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def _dpapi_protect(data: bytes) -> bytes:
         raise RuntimeError(
             "pywin32 is required for Windows credential storage. "
             "Install it with: pip install pywin32"
-        )
+        ) from None
 
 
 def _dpapi_unprotect(data: bytes) -> bytes:
@@ -76,7 +77,7 @@ def _dpapi_unprotect(data: bytes) -> bytes:
         _, plaintext = win32crypt.CryptUnprotectData(data, None, None, None, 0)
         return plaintext
     except ImportError:
-        raise RuntimeError("pywin32 is required for credential decryption")
+        raise RuntimeError("pywin32 is required for credential decryption") from None
 
 
 # ── Portable fallback (future macOS/Linux) ────────────────────────────────────
@@ -147,10 +148,8 @@ def load_credential() -> tuple[str, str, str] | None:
 def clear_credential() -> None:
     """Remove stored credentials — called on revocation."""
     if _CRED_FILE.exists():
-        try:
+        with contextlib.suppress(Exception):
             _CRED_FILE.unlink()
-        except Exception:
-            pass
     log.info("device credential cleared")
 
 

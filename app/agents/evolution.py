@@ -23,7 +23,8 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 if TYPE_CHECKING:
     from app.agents.memory import AgentMemory
@@ -84,10 +85,10 @@ class EvolutionEngine:
 
     def __init__(
         self,
-        memory  : "AgentMemory",
-        modifier: "SelfModifyingEngine",
-        reloader: "HotReloader",
-        owner_of: Optional[Callable[[str], Optional[str]]] = None,
+        memory  : AgentMemory,
+        modifier: SelfModifyingEngine,
+        reloader: HotReloader,
+        owner_of: Callable[[str], str | None] | None = None,
     ) -> None:
         self._memory   = memory
         self._modifier = modifier
@@ -103,11 +104,11 @@ class EvolutionEngine:
         # self-improvement behavior, not a per-tenant one.
         self._owner_of = owner_of
         self._last_run : float = 0.0
-        self._last_report: Optional[EvolutionReport] = None
+        self._last_report: EvolutionReport | None = None
 
     # ── Public ────────────────────────────────────────────────────────────────
 
-    def analyze(self, *, org_id: Optional[str] = None) -> EvolutionReport:
+    def analyze(self, *, org_id: str | None = None) -> EvolutionReport:
         """Build a performance report without making any changes."""
         underperformers = self._memory.underperformers(
             threshold=_THRESHOLD, min_calls=_MIN_CALLS
@@ -138,7 +139,7 @@ class EvolutionEngine:
         report.status = "stable" if not candidates else "pending"
         return report
 
-    async def evolve(self, *, org_id: Optional[str] = None) -> EvolutionReport:
+    async def evolve(self, *, org_id: str | None = None) -> EvolutionReport:
         """
         Analyze + rewrite underperforming agents using Claude.
         Respects cooldown to prevent runaway self-modification.
@@ -173,13 +174,13 @@ class EvolutionEngine:
         self._last_report = report
         return report
 
-    def last_report(self) -> Optional[EvolutionReport]:
+    def last_report(self) -> EvolutionReport | None:
         return self._last_report
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
     async def _rewrite_agent(self, candidate: EvolutionCandidate, *,
-                             org_id: Optional[str] = None) -> bool:
+                             org_id: str | None = None) -> bool:
         """
         Ask Claude to improve the agent source, then apply the patch.
         Returns True if the file was actually modified.
@@ -279,7 +280,7 @@ Rules:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _agent_file(agent_name: str) -> Optional[str]:
+def _agent_file(agent_name: str) -> str | None:
     """Map agent name to relative file path for SelfModifyingEngine."""
     candidates = [
         f"app/agents/builtin/{agent_name}_agent.py",

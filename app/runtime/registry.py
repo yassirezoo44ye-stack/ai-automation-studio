@@ -13,7 +13,6 @@ import logging
 import os
 import shutil
 from dataclasses import dataclass
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -22,8 +21,8 @@ log = logging.getLogger(__name__)
 class RuntimeInfo:
     name: str
     available: bool
-    path: Optional[str] = None
-    version: Optional[str] = None
+    path: str | None = None
+    version: str | None = None
 
 
 _registry: dict[str, RuntimeInfo] = {}
@@ -90,7 +89,7 @@ def best_python() -> str:
     return "python3" if has("python3") else "python"
 
 
-def get(name: str) -> Optional[RuntimeInfo]:
+def get(name: str) -> RuntimeInfo | None:
     """Return RuntimeInfo for a tool, or None if unknown."""
     return _registry.get(name)
 

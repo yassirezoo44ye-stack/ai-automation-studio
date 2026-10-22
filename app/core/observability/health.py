@@ -19,7 +19,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ class HealthRegistry:
     def __init__(self) -> None:
         self._probes: dict[str, _ProbeEntry] = {}
         # (report, taken_at) — see check_all()'s snapshot comment.
-        self._snapshot: Optional[tuple[dict, float]] = None
+        self._snapshot: tuple[dict, float] | None = None
         self._snapshot_ttl_s = float(os.getenv("HEALTH_SNAPSHOT_TTL_S", "5"))
 
     def register(
@@ -158,7 +158,7 @@ class HealthRegistry:
             "ts"     : time.time(),
         }
 
-    async def check(self, name: str) -> Optional[ProbeResult]:
+    async def check(self, name: str) -> ProbeResult | None:
         entry = self._probes.get(name)
         if not entry:
             return None

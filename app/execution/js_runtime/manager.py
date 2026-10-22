@@ -30,7 +30,7 @@ import logging
 import time
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 
 from app.runtime import process as rt_process
 
@@ -123,7 +123,7 @@ class RuntimeManager:
         self,
         ws: Path,
         *,
-        script: Optional[str] = None,
+        script: str | None = None,
         require_modules: bool = False,
     ) -> ValidationReport:
         """Run pre-execution checks and return a ValidationReport."""
@@ -135,11 +135,11 @@ class RuntimeManager:
         """Return all scripts from package.json, or {} if missing."""
         return self._resolver.list_scripts(ws)
 
-    def resolve_start_script(self, ws: Path) -> Optional[str]:
+    def resolve_start_script(self, ws: Path) -> str | None:
         """Return the best server start script name, or None."""
         return self._resolver.resolve_start(ws)
 
-    def resolve_build_script(self, ws: Path) -> Optional[str]:
+    def resolve_build_script(self, ws: Path) -> str | None:
         """Return the build script name, or None."""
         return self._resolver.resolve_build(ws)
 
@@ -150,7 +150,7 @@ class RuntimeManager:
         ws: Path,
         *,
         timeout: float = _INSTALL_TIMEOUT,
-    ) -> AsyncIterator[tuple[str, str, Optional[InstallResult]]]:
+    ) -> AsyncIterator[tuple[str, str, InstallResult | None]]:
         """
         Install dependencies and stream every output line in real-time.
 
@@ -263,7 +263,7 @@ class RuntimeManager:
         script: str,
         *,
         timeout: float = _SCRIPT_TIMEOUT,
-        extra_env: Optional[dict] = None,
+        extra_env: dict | None = None,
     ) -> tuple[int, list[str], list[str]]:
         """
         Run a package.json script and collect all output.
@@ -300,7 +300,7 @@ class RuntimeManager:
             ws.name, script, rc, duration,
         )
 
-        if rc == -1 and any("timed out" in l.lower() for l in stderr):
+        if rc == -1 and any("timed out" in ln.lower() for ln in stderr):
             raise ExecutionTimeout(
                 message=f'Script "{script}" timed out after {timeout:.0f}s',
                 timeout_seconds=timeout,

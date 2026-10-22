@@ -13,7 +13,7 @@ import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -87,7 +87,7 @@ class TenancyService:
             log.warning("event publish failed for organization.created org=%s", row["id"], exc_info=True)
         return dict(row)
 
-    async def get_organization(self, org_id: str) -> Optional[dict[str, Any]]:
+    async def get_organization(self, org_id: str) -> dict[str, Any] | None:
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             row = await conn.fetchrow(
@@ -185,7 +185,7 @@ class TenancyService:
 
     # ── Membership ────────────────────────────────────────────────────────────
 
-    async def get_member_role(self, org_id: str, user_id: str) -> Optional[str]:
+    async def get_member_role(self, org_id: str, user_id: str) -> str | None:
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             return await conn.fetchval(
@@ -426,7 +426,7 @@ class TenancyService:
                     uuid.UUID(org_id), name, description, uuid.UUID(actor_id),
                 )
             except asyncpg.UniqueViolationError:
-                raise TenancyError(f"team {name!r} already exists", 409)
+                raise TenancyError(f"team {name!r} already exists", 409) from None
         await self._log(org_id, actor_id, "team.created",
                         resource="team", resource_id=str(row["id"]), details={"name": name})
         return dict(row)
@@ -441,7 +441,7 @@ class TenancyService:
             )
         return [dict(r) for r in rows]
 
-    async def get_team(self, org_id: str, team_id: str) -> Optional[dict[str, Any]]:
+    async def get_team(self, org_id: str, team_id: str) -> dict[str, Any] | None:
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             row = await conn.fetchrow(
@@ -616,7 +616,7 @@ class TenancyService:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[TenancyService] = None
+_service: TenancyService | None = None
 
 
 def get_tenancy_service(pool: asyncpg.Pool | None = None) -> TenancyService:

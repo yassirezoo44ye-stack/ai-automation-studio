@@ -30,12 +30,13 @@ import logging
 import secrets
 import shlex
 from pathlib import Path
-from typing import AsyncIterator, AsyncGenerator, Optional
+from collections.abc import AsyncIterator, AsyncGenerator
 
 from app.execution import detector as det
 from app.execution.drivers import fallback, node, python_script, python_server, static
 from app.runtime.errors import sse_error
 from app.runtime.preflight import run_preflight_for_strategy, preflight_error_events
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -56,8 +57,8 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 async def run_stream(
     project_id: str,
     ws: Path,
-    command_override: Optional[str],
-    request_id: Optional[str] = None,
+    command_override: str | None,
+    request_id: str | None = None,
 ) -> AsyncIterator[str]:
     rid = request_id or secrets.token_hex(8)
     async for chunk in _with_heartbeat(_run(project_id, ws, command_override, rid)):
@@ -67,8 +68,8 @@ async def run_stream(
 async def run_sync(
     project_id: str,
     ws: Path,
-    command_override: Optional[str],
-    request_id: Optional[str] = None,
+    command_override: str | None,
+    request_id: str | None = None,
 ) -> dict:
     rid = request_id or secrets.token_hex(8)
     last: dict = {"type": "error", "category": "execution",
@@ -87,7 +88,7 @@ async def run_sync(
 
 # ── Core ──────────────────────────────────────────────────────────────────────
 
-async def _run(project_id: str, ws: Path, command_override: Optional[str], request_id: str = ""):
+async def _run(project_id: str, ws: Path, command_override: str | None, request_id: str = ""):
     # runtime_id is stable for this run's lifetime; request_id comes from the HTTP layer.
     runtime_id = secrets.token_hex(8)
 
@@ -182,10 +183,8 @@ async def _with_heartbeat(
                 yield _hb           # emit heartbeat; pending task still running
     finally:
         pending.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
             await pending
-        except (asyncio.CancelledError, StopAsyncIteration):
-            pass
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -194,7 +193,7 @@ def _ev(type_: str, **kw) -> str:
     return f"data: {json.dumps({'type': type_, **kw})}\n\n"
 
 
-def _validate_command(raw: str) -> Optional[list[str]]:
+def _validate_command(raw: str) -> list[str] | None:
     """Validate a user-supplied command. Returns arg list or None if unsafe."""
     if any(c in raw for c in _SHELL_CHARS):
         return None

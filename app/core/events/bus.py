@@ -16,10 +16,12 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
+from collections.abc import Awaitable, Callable
 
 from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +80,7 @@ class Event:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Event":
+    def from_dict(cls, d: dict[str, Any]) -> Event:
         return cls(
             type=d["type"], data=d.get("data", {}),
             organization_id=d.get("organization_id"),
@@ -164,11 +166,9 @@ class EventBus:
                              "error": str(exc), "ts": time.time()}
                     self._dlq.append(entry)
                     if self._redis is not None:
-                        try:
+                        with contextlib.suppress(Exception):
                             await self._redis.xadd(_DLQ, {"payload": json.dumps(entry)},
                                                    maxlen=1000, approximate=True)
-                        except Exception:
-                            pass
 
     # ── Subscribe ─────────────────────────────────────────────────────────────
 
@@ -236,7 +236,7 @@ def _matches(pattern: str, event_type: str) -> bool:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_bus: Optional[EventBus] = None
+_bus: EventBus | None = None
 
 
 def get_event_bus() -> EventBus:

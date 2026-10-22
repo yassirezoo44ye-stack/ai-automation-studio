@@ -25,7 +25,6 @@ allowed and silent, matching prior behavior for that case.
 from __future__ import annotations
 
 import threading
-from typing import Optional
 
 _UNCLAIMED = object()
 
@@ -37,7 +36,7 @@ class RegistrationConflictError(ValueError):
 class OwnershipTracker:
     def __init__(self, kind: str) -> None:
         self._kind = kind
-        self._owners: dict[str, Optional[str]] = {}
+        self._owners: dict[str, str | None] = {}
         # Matches the threading.Lock() convention already used by
         # AgentMemory/LayeredMemory for shared mutable registry state.
         # Without it, claim()'s check-then-act (read _owners, then write
@@ -46,7 +45,7 @@ class OwnershipTracker:
         # silent-overwrite hijack this module exists to prevent.
         self._lock = threading.Lock()
 
-    def claim(self, name: str, owner: Optional[str]) -> None:
+    def claim(self, name: str, owner: str | None) -> None:
         with self._lock:
             existing = self._owners.get(name, _UNCLAIMED)
             if existing is not _UNCLAIMED and existing != owner:
@@ -61,7 +60,7 @@ class OwnershipTracker:
         with self._lock:
             self._owners.pop(name, None)
 
-    def owner_of(self, name: str) -> Optional[str]:
+    def owner_of(self, name: str) -> str | None:
         """Current owner of `name`, or None if it's a built-in (or was
         never claimed — callers that only query names known to exist in
         the corresponding registry, e.g. AgentKernel._agents, don't need

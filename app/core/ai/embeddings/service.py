@@ -21,7 +21,6 @@ import logging
 import math
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -65,8 +64,8 @@ class EmbeddingsService:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    async def embed(self, text: str, *, model: Optional[str] = None,
-                    org_id: Optional[str] = None) -> EmbeddingResult:
+    async def embed(self, text: str, *, model: str | None = None,
+                    org_id: str | None = None) -> EmbeddingResult:
         """Return an embedding vector for a single text."""
         if not self.is_available:
             return self._stub(text)
@@ -80,8 +79,8 @@ class EmbeddingsService:
         self,
         texts: list[str],
         *,
-        model: Optional[str] = None,
-        org_id: Optional[str] = None,
+        model: str | None = None,
+        org_id: str | None = None,
     ) -> list[EmbeddingResult]:
         """Batch embed; falls back to sequential if provider doesn't support batching."""
         import asyncio
@@ -93,8 +92,8 @@ class EmbeddingsService:
         corpus: list[str],
         *,
         top_k: int = 5,
-        model: Optional[str] = None,
-        org_id: Optional[str] = None,
+        model: str | None = None,
+        org_id: str | None = None,
     ) -> list[SearchHit]:
         """Embed query and all corpus items, return top_k by cosine similarity."""
         if not corpus:
@@ -134,7 +133,7 @@ class EmbeddingsService:
     # ── Provider implementations ──────────────────────────────────────────────
 
     async def _openai_embed(self, text: str, *, model: str,
-                            org_id: Optional[str] = None) -> EmbeddingResult:
+                            org_id: str | None = None) -> EmbeddingResult:
         from app.core.org_quota import check_org_quota_id, record_org_tokens
         if not await check_org_quota_id(org_id):
             return self._stub(text)

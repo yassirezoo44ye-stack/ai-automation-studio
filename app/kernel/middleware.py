@@ -23,7 +23,8 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
+from collections.abc import Callable, Coroutine
 
 if TYPE_CHECKING:
     from app.kernel.state import KernelState
@@ -46,7 +47,7 @@ class KernelContext:
     """
     input     : str = ""
     caller    : str = "cli"
-    user_id   : Optional[str] = None
+    user_id   : str | None = None
     started_at: float = field(default_factory=time.time)
     extra     : dict[str, Any] = field(default_factory=dict)
 
@@ -75,7 +76,7 @@ async def timing_mw(ctx: KernelContext) -> KernelContext:
     return ctx
 
 
-def state_tracker_mw(state: "KernelState") -> MiddlewareFn:
+def state_tracker_mw(state: KernelState) -> MiddlewareFn:
     """Factory: returns middleware that records each command in KernelState."""
     async def _mw(ctx: KernelContext) -> KernelContext:
         # Extract command name (first word) for tracking
@@ -126,7 +127,7 @@ async def alias_resolver_mw(ctx: KernelContext) -> KernelContext:
 
 # ── Pipeline builder ──────────────────────────────────────────────────────────
 
-def default_pipeline(state: "KernelState") -> list[MiddlewareFn]:
+def default_pipeline(state: KernelState) -> list[MiddlewareFn]:
     """Return the default ordered middleware stack."""
     return [
         trim_input,

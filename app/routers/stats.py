@@ -1,7 +1,6 @@
 import json
 import uuid
 from datetime import date, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -110,7 +109,7 @@ async def stats_timeseries(request: Request, days: int = 14):
 
 
 @router.get("/api/agent-runs")
-async def list_agent_runs(request: Request, project_id: Optional[str] = None):
+async def list_agent_runs(request: Request, project_id: str | None = None):
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         if project_id:

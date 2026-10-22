@@ -24,7 +24,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -113,7 +113,7 @@ class SaasFactoryPipeline:
         org_id: str,
         user_id: str,
         idea_text: str,
-        checkpoint: Optional[dict[str, Any]] = None,
+        checkpoint: dict[str, Any] | None = None,
         start_phase: str = "IDEA",
     ) -> None:
         """Thin wrapper: runs the pipeline and releases the concurrency slot on exit."""
@@ -216,7 +216,7 @@ class SaasFactoryPipeline:
         org_id: str,
         user_id: str,
         idea_text: str,
-        checkpoint: Optional[dict[str, Any]] = None,
+        checkpoint: dict[str, Any] | None = None,
         start_phase: str = "IDEA",
     ) -> None:
         cp = checkpoint or {}
@@ -777,7 +777,7 @@ class SaasFactoryPipeline:
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 
-_pipeline: Optional[SaasFactoryPipeline] = None
+_pipeline: SaasFactoryPipeline | None = None
 
 
 def get_pipeline() -> SaasFactoryPipeline:

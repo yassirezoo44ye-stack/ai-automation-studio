@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from enum import Enum
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -28,7 +28,7 @@ class TextPart(BaseModel):
 class ImagePart(BaseModel):
     type: Literal["image_url"] = "image_url"
     url: str
-    detail: Optional[str] = "auto"
+    detail: str | None = "auto"
 
 class ToolUsePart(BaseModel):
     type: Literal["tool_use"] = "tool_use"
@@ -39,24 +39,24 @@ class ToolUsePart(BaseModel):
 class ToolResultPart(BaseModel):
     type: Literal["tool_result"] = "tool_result"
     tool_use_id: str
-    content: Union[str, list[TextPart]]
+    content: str | list[TextPart]
     is_error: bool = False
 
 ContentPart = Union[TextPart, ImagePart, ToolUsePart, ToolResultPart]
 
 class Message(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
-    content: Union[str, list[ContentPart]]
-    name: Optional[str] = None
+    content: str | list[ContentPart]
+    name: str | None = None
 
 
 # ── Tool / function schema ────────────────────────────────────────────────────
 
 class ToolParameter(BaseModel):
     type: str
-    description: Optional[str] = None
-    enum: Optional[list[str]] = None
-    items: Optional[dict[str, Any]] = None
+    description: str | None = None
+    enum: list[str] | None = None
+    items: dict[str, Any] | None = None
 
 class ToolSchema(BaseModel):
     """Provider-agnostic tool definition (maps to all provider formats)."""
@@ -76,25 +76,25 @@ class CompletionRequest(BaseModel):
     # remain available as string constants for internal call sites; every
     # existing caller passing "anthropic"/"openai"/"gemini" is unaffected —
     # this is a type-widening only, not a routing-behavior change.
-    provider: Optional[str] = None                  # None = use default
-    model: Optional[str] = None                     # None = use provider default
+    provider: str | None = None                  # None = use default
+    model: str | None = None                     # None = use provider default
     fallback_providers: list[str] = []
 
     # Generation parameters
     max_tokens: int = Field(2048, ge=1, le=32000)
     temperature: float = Field(0.7, ge=0.0, le=2.0)
-    top_p: Optional[float] = Field(None, ge=0.0, le=1.0)
-    system: Optional[str] = None
+    top_p: float | None = Field(None, ge=0.0, le=1.0)
+    system: str | None = None
 
     # Features
-    tools: Optional[list[ToolSchema]] = None
+    tools: list[ToolSchema] | None = None
     stream: bool = False
 
     # Gateway features
-    conversation_id: Optional[str] = None           # Link to stored conversation
-    prompt_id: Optional[str] = None                 # Use a versioned prompt template
+    conversation_id: str | None = None           # Link to stored conversation
+    prompt_id: str | None = None                 # Use a versioned prompt template
     prompt_variables: dict[str, str] = {}           # Variables for prompt template
-    cache_ttl: Optional[int] = None                 # Cache response for N seconds
+    cache_ttl: int | None = None                 # Cache response for N seconds
     memory_enabled: bool = False                    # Inject long-term memory context
     timeout: float = Field(60.0, ge=1.0, le=300.0)
     max_retries: int = Field(2, ge=0, le=5)
@@ -128,7 +128,7 @@ class CompletionResponse(BaseModel):
     tool_calls: list[ToolCall] = []
     finish_reason: str = "stop"
     usage: UsageStats = Field(default_factory=UsageStats)
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
     cached: bool = False
 
 
@@ -136,11 +136,11 @@ class CompletionResponse(BaseModel):
 
 class StreamChunk(BaseModel):
     type: Literal["delta", "tool_call", "usage", "done", "error", "conv_id"]
-    text: Optional[str] = None
-    tool_call: Optional[ToolCall] = None
-    usage: Optional[UsageStats] = None
-    error: Optional[str] = None
-    conv_id: Optional[str] = None
+    text: str | None = None
+    tool_call: ToolCall | None = None
+    usage: UsageStats | None = None
+    error: str | None = None
+    conv_id: str | None = None
 
 
 # ── Prompt versioning ─────────────────────────────────────────────────────────
@@ -149,8 +149,8 @@ class PromptVersion(BaseModel):
     id: str
     prompt_id: str
     version: int
-    system: Optional[str]
-    user_template: Optional[str]
+    system: str | None
+    user_template: str | None
     variables: list[str]
     created_at: str
     is_active: bool
@@ -160,8 +160,8 @@ class PromptVersion(BaseModel):
 
 class MemoryItem(BaseModel):
     id: str
-    conversation_id: Optional[str]
-    user_id: Optional[str]
+    conversation_id: str | None
+    user_id: str | None
     content: str
     importance: float = 1.0
     created_at: str

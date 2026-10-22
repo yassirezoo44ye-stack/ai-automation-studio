@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 class MemoryType(str, Enum):
@@ -22,7 +21,7 @@ class MemoryType(str, Enum):
 class MemoryScope:
     """Describes where a memory item lives and how long it persists."""
     memory_type:     MemoryType
-    ttl_seconds:     Optional[int]  = None   # None = persist forever
+    ttl_seconds:     int | None  = None   # None = persist forever
     max_items:       int            = 100
     importance_min:  float          = 0.0    # Only keep items above this threshold
     tags:            list[str]      = field(default_factory=list)
@@ -65,13 +64,13 @@ class MemoryItem:
     memory_type:     MemoryType
     content:         str
     importance:      float = 1.0
-    owner_id:        Optional[str] = None      # user_id or agent_id
-    conversation_id: Optional[str] = None
-    workspace_id:    Optional[str] = None
+    owner_id:        str | None = None      # user_id or agent_id
+    conversation_id: str | None = None
+    workspace_id:    str | None = None
     tags:            list[str] = field(default_factory=list)
-    embedding_id:    Optional[str] = None      # future: vector DB ID
-    created_at:      Optional[str] = None
-    expires_at:      Optional[str] = None
+    embedding_id:    str | None = None      # future: vector DB ID
+    created_at:      str | None = None
+    expires_at:      str | None = None
 
     def as_context_line(self) -> str:
         """Format for injection into a system prompt."""

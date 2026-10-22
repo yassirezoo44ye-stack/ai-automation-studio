@@ -29,7 +29,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class BuildCache:
             cache.store_node_modules(key, ws / 'node_modules')
     """
 
-    def __init__(self, root: Optional[Path] = None) -> None:
+    def __init__(self, root: Path | None = None) -> None:
         self._root = root or _CACHE_ROOT
         self._root.mkdir(parents=True, exist_ok=True)
         self._meta_file = self._root / "index.json"
@@ -103,10 +103,8 @@ class BuildCache:
         for req_file in ("requirements.txt", "pyproject.toml", "setup.cfg", "Pipfile.lock"):
             p = ws / req_file
             if p.exists():
-                try:
+                with contextlib.suppress(Exception):
                     h.update(p.read_bytes())
-                except Exception:
-                    pass
         return h.hexdigest()[:16]
 
     def key_for_build_output(self, ws: Path, runtime: str, build_cmd: str) -> str:
@@ -137,7 +135,7 @@ class BuildCache:
             return False
         return True
 
-    def get_entry(self, key: str) -> Optional[CacheEntry]:
+    def get_entry(self, key: str) -> CacheEntry | None:
         return self._entries.get(key) if self.has(key) else None
 
     # ── node_modules cache ────────────────────────────────────────────────────
@@ -285,7 +283,7 @@ class BuildCache:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _hash_deps_json(h: "hashlib._Hash", pkg_json: Path) -> None:
+def _hash_deps_json(h: hashlib._Hash, pkg_json: Path) -> None:
     if not pkg_json.exists():
         return
     try:
@@ -296,14 +294,12 @@ def _hash_deps_json(h: "hashlib._Hash", pkg_json: Path) -> None:
         pass
 
 
-def _hash_lockfiles(h: "hashlib._Hash", ws: Path, names: tuple[str, ...]) -> None:
+def _hash_lockfiles(h: hashlib._Hash, ws: Path, names: tuple[str, ...]) -> None:
     for name in names:
         p = ws / name
         if p.exists():
-            try:
+            with contextlib.suppress(Exception):
                 h.update(p.read_bytes())
-            except Exception:
-                pass
             break  # only hash the first matching lockfile
 
 
@@ -312,10 +308,8 @@ def _dir_size_bytes(path: Path) -> int:
     try:
         for p in path.rglob("*"):
             if p.is_file():
-                try:
+                with contextlib.suppress(Exception):
                     total += p.stat().st_size
-                except Exception:
-                    pass
     except Exception:
         pass
     return total

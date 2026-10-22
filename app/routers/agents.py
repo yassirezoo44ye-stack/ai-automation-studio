@@ -1,6 +1,5 @@
 import json
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -20,28 +19,28 @@ router = APIRouter(tags=["agents"])
 
 class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    avatar: Optional[str] = "🤖"
+    avatar: str | None = "🤖"
     system_prompt: str = Field(..., min_length=1, max_length=8000)
-    model: Optional[str] = "claude-sonnet-4-6"
-    temperature: Optional[float] = 1.0
-    description: Optional[str] = None
-    project_id: Optional[str] = None
+    model: str | None = "claude-sonnet-4-6"
+    temperature: float | None = 1.0
+    description: str | None = None
+    project_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
-    name: Optional[str] = None
-    avatar: Optional[str] = None
-    system_prompt: Optional[str] = None
-    model: Optional[str] = None
-    temperature: Optional[float] = None
-    description: Optional[str] = None
+    name: str | None = None
+    avatar: str | None = None
+    system_prompt: str | None = None
+    model: str | None = None
+    temperature: float | None = None
+    description: str | None = None
 
 
 class AgentChatRequest(BaseModel):
     agent_id: str
     prompt: str = Field(..., min_length=1, max_length=4000)
-    conversation_id: Optional[str] = None
-    project_id: Optional[str] = "demo"
+    conversation_id: str | None = None
+    project_id: str | None = "demo"
 
 
 @router.post("/api/agents")
@@ -128,7 +127,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
     await ensure_agents_table()
 
     history: list[dict] = []
-    conv_id: Optional[uuid.UUID] = None
+    conv_id: uuid.UUID | None = None
 
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
@@ -142,7 +141,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
             try:
                 conv_id = uuid.UUID(req.conversation_id)
             except ValueError:
-                raise HTTPException(400, "Invalid conversation_id")
+                raise HTTPException(400, "Invalid conversation_id") from None
             owned = await conn.fetchval(
                 "SELECT 1 FROM conversations c JOIN projects p ON c.project_id=p.id "
                 "WHERE c.id=$1 AND p.user_id=$2",
@@ -202,7 +201,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
             )
             engine = InferenceEngine(pool=get_pool())
             total_tokens = 0
-            stream_error: Optional[str] = None
+            stream_error: str | None = None
 
             async for chunk in engine.stream(
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,

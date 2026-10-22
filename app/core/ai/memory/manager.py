@@ -19,7 +19,6 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from app.ai import memory as mem
 from app.core.ai.events.bus import bus
@@ -49,9 +48,9 @@ class MemoryManager:
         content:         str,
         *,
         memory_type:     MemoryType = MemoryType.knowledge,
-        owner_id:        Optional[str] = None,
-        conversation_id: Optional[str] = None,
-        workspace_id:    Optional[str] = None,
+        owner_id:        str | None = None,
+        conversation_id: str | None = None,
+        workspace_id:    str | None = None,
         importance:      float = 1.0,
         tags:            list[str] | None = None,
     ) -> str:
@@ -105,9 +104,9 @@ class MemoryManager:
     async def recall(
         self,
         *,
-        owner_id:        Optional[str] = None,
-        conversation_id: Optional[str] = None,
-        memory_type:     Optional[MemoryType] = None,
+        owner_id:        str | None = None,
+        conversation_id: str | None = None,
+        memory_type:     MemoryType | None = None,
         limit:           int = _MAX_CONTEXT_ITEMS,
         importance_min:  float = 0.0,
     ) -> list[MemoryItem]:
@@ -185,7 +184,7 @@ class MemoryManager:
     async def build_context(
         self,
         *,
-        owner_id:    Optional[str] = None,
+        owner_id:    str | None = None,
         limit:       int           = _MAX_CONTEXT_ITEMS,
         importance_min: float      = 0.5,
     ) -> str:
@@ -206,7 +205,7 @@ class MemoryManager:
     # ── Conversation memory helpers ───────────────────────────────────────────
 
     async def load_history(
-        self, conversation_id: str, *, user_id: Optional[str] = None, limit: int = 40,
+        self, conversation_id: str, *, user_id: str | None = None, limit: int = 40,
     ):
         """Thin wrapper that delegates to the existing memory module.
         user_id must be forwarded — mem.load_history() treats a missing
@@ -222,9 +221,9 @@ class MemoryManager:
         conversation_id: str,
         role: str,
         content: str,
-        tool_call_id: Optional[str] = None,
+        tool_call_id: str | None = None,
         *,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> None:
         """Same user_id-forwarding requirement as load_history() above."""
         await mem.append_message(

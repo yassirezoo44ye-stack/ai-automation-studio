@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
@@ -28,6 +28,7 @@ from app.core.business.models import (
 from app.core.business.scoring import compute_score
 from app.core.business.export import export_plan
 from app.core.business.workflow import start_business_plan, retry_sections
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -42,10 +43,10 @@ async def _resolve_user(request: Request) -> str:
         try:
             return await owner_user_id(conn, request)
         except Exception:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+            raise HTTPException(status_code=401, detail="Unauthorized") from None
 
 
-async def _resolve_org(user_id: str) -> Optional[str]:
+async def _resolve_org(user_id: str) -> str | None:
     """Return the user's primary org_id (oldest membership, for determinism)."""
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -106,10 +107,8 @@ def _section_out(row: dict) -> dict:
 def _fact_out(row: dict) -> dict:
     val = row.get("value")
     if isinstance(val, str):
-        try:
+        with contextlib.suppress(Exception):
             val = json.loads(val)
-        except Exception:
-            pass
     return {
         "id":          str(row["id"]),
         "plan_id":     str(row["plan_id"]),
@@ -215,7 +214,7 @@ async def create_plan(
 
 async def _run_workflow_bg(
     plan_id: str, org_id: str, user_id: str,
-    idea_raw: str, industry: Optional[str], stage: str,
+    idea_raw: str, industry: str | None, stage: str,
 ) -> None:
     """Background task: run the full BUSINESS_PLAN_ENGINE workflow."""
     try:
@@ -231,7 +230,7 @@ async def _run_workflow_bg(
 
 async def _run_retry_bg(
     plan_id: str, org_id: str, user_id: str,
-    idea_raw: str, industry: Optional[str], stage: str,
+    idea_raw: str, industry: str | None, stage: str,
     section_keys: list[str],
 ) -> None:
     """Background task: wrap retry_sections; fall back to FAILED on unexpected error."""
@@ -326,7 +325,7 @@ async def create_sse_ticket(plan_id: UUID, request: Request) -> dict:
     try:
         ticket = issue_ticket(user_id)
     except RuntimeError:
-        raise HTTPException(status_code=503, detail="service busy — retry")
+        raise HTTPException(status_code=503, detail="service busy — retry") from None
     return {"ticket": ticket, "expires_in": 30}
 
 
@@ -563,7 +562,7 @@ async def export_plan_endpoint(
                 conn, plan_id, body.format, body.variant,
             )
         except NotImplementedError as exc:
-            raise HTTPException(status_code=501, detail=str(exc))
+            raise HTTPException(status_code=501, detail=str(exc)) from None
 
     return Response(
         content=content.encode("utf-8"),

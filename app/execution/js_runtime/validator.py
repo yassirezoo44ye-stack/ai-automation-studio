@@ -12,7 +12,6 @@ import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +61,7 @@ class WorkspaceValidator:
         self,
         ws: Path,
         *,
-        script: Optional[str] = None,
+        script: str | None = None,
         require_modules: bool = False,
     ) -> ValidationReport:
         report = ValidationReport(ok=True)
@@ -83,7 +82,7 @@ class WorkspaceValidator:
     # ── Private checks ────────────────────────────────────────────────────────
 
     def _check_package_json(
-        self, ws: Path, report: ValidationReport, script: Optional[str]
+        self, ws: Path, report: ValidationReport, script: str | None
     ) -> None:
         pkg_json = ws / "package.json"
         if not pkg_json.exists():

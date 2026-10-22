@@ -9,7 +9,6 @@ by hand.
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import Optional
 
 _org_id_var     : ContextVar[str] = ContextVar("obs_org_id", default="")
 _user_id_var    : ContextVar[str] = ContextVar("obs_user_id", default="")
@@ -21,7 +20,7 @@ def get_org_id() -> str:
     return _org_id_var.get()
 
 
-def set_org_id(v: Optional[str]) -> None:
+def set_org_id(v: str | None) -> None:
     _org_id_var.set(v or "")
 
 
@@ -29,7 +28,7 @@ def get_user_id() -> str:
     return _user_id_var.get()
 
 
-def set_user_id(v: Optional[str]) -> None:
+def set_user_id(v: str | None) -> None:
     _user_id_var.set(v or "")
 
 
@@ -37,7 +36,7 @@ def get_workflow_id() -> str:
     return _workflow_id_var.get()
 
 
-def set_workflow_id(v: Optional[str]) -> None:
+def set_workflow_id(v: str | None) -> None:
     _workflow_id_var.set(v or "")
 
 
@@ -45,7 +44,7 @@ def get_agent_id() -> str:
     return _agent_id_var.get()
 
 
-def set_agent_id(v: Optional[str]) -> None:
+def set_agent_id(v: str | None) -> None:
     _agent_id_var.set(v or "")
 
 

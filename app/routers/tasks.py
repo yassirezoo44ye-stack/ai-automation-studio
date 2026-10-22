@@ -1,7 +1,6 @@
 import json
 import uuid
 from datetime import datetime, timedelta
-from typing import List, Optional
 
 import anthropic
 from fastapi import APIRouter, HTTPException, Request
@@ -29,43 +28,43 @@ Return [] if there are no real actionable tasks. Do not invent tasks that weren'
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=300)
-    notes: Optional[str] = Field(None, max_length=5000)
-    project_id: Optional[str] = None
+    notes: str | None = Field(None, max_length=5000)
+    project_id: str | None = None
     priority: str = Field("medium", pattern="^(low|medium|high)$")
-    category: Optional[str] = Field(None, max_length=100)
-    tags: List[str] = Field(default_factory=list)
-    due_date: Optional[str] = None
+    category: str | None = Field(None, max_length=100)
+    tags: list[str] = Field(default_factory=list)
+    due_date: str | None = None
     recurrence: str = Field("none", pattern="^(none|daily|weekly|monthly)$")
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=300)
-    notes: Optional[str] = Field(None, max_length=5000)
-    project_id: Optional[str] = None
-    priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
-    category: Optional[str] = Field(None, max_length=100)
-    tags: Optional[List[str]] = None
-    due_date: Optional[str] = None
-    recurrence: Optional[str] = Field(None, pattern="^(none|daily|weekly|monthly)$")
-    status: Optional[str] = Field(None, pattern="^(pending|in_progress|done)$")
+    title: str | None = Field(None, min_length=1, max_length=300)
+    notes: str | None = Field(None, max_length=5000)
+    project_id: str | None = None
+    priority: str | None = Field(None, pattern="^(low|medium|high)$")
+    category: str | None = Field(None, max_length=100)
+    tags: list[str] | None = None
+    due_date: str | None = None
+    recurrence: str | None = Field(None, pattern="^(none|daily|weekly|monthly)$")
+    status: str | None = Field(None, pattern="^(pending|in_progress|done)$")
 
 
-def _parse_due_date(value: Optional[str]):
+def _parse_due_date(value: str | None):
     if not value:
         return None
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        raise HTTPException(400, "Invalid due_date — use ISO 8601 (e.g. 2026-07-10T09:00:00Z)")
+        raise HTTPException(400, "Invalid due_date — use ISO 8601 (e.g. 2026-07-10T09:00:00Z)") from None
 
 
-def _parse_uuid(value: Optional[str], field: str):
+def _parse_uuid(value: str | None, field: str):
     if not value:
         return None
     try:
         return uuid.UUID(value)
     except ValueError:
-        raise HTTPException(400, f"Invalid {field}")
+        raise HTTPException(400, f"Invalid {field}") from None
 
 
 def _task_row_to_dict(row) -> dict:
@@ -98,12 +97,12 @@ def _next_due_date(due, recurrence: str):
 @router.get("/api/tasks")
 async def list_tasks(
     request: Request,
-    status: Optional[str] = None,
-    priority: Optional[str] = None,
-    category: Optional[str] = None,
-    project_id: Optional[str] = None,
-    conversation_id: Optional[str] = None,
-    search: Optional[str] = None,
+    status: str | None = None,
+    priority: str | None = None,
+    category: str | None = None,
+    project_id: str | None = None,
+    conversation_id: str | None = None,
+    search: str | None = None,
     sort: str = "due_date",
 ):
     await ensure_tasks_table()
@@ -278,11 +277,11 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,
             )
         except anthropic.BadRequestError as e:
-            raise HTTPException(402, anthropic_error_message(e))
+            raise HTTPException(402, anthropic_error_message(e)) from None
         except RuntimeError as e:
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, str(e)) from None
         except Exception as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from None
 
     try:
         await record_org_tokens(org_id, resp.usage.total_tokens, str(conv_id), ref_type="tasks")
@@ -295,7 +294,7 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
     try:
         items = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(502, "Claude returned invalid JSON while extracting tasks.")
+        raise HTTPException(502, "Claude returned invalid JSON while extracting tasks.") from None
 
     created = []
     async with get_pool().acquire() as conn:

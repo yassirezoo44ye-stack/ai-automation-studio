@@ -9,14 +9,15 @@ from __future__ import annotations
 import inspect
 import json
 import logging
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from app.ai.models import ToolSchema
 from app.plugins.registry_guard import OwnershipTracker
 
 log = logging.getLogger(__name__)
 
-_REGISTRY: dict[str, "_ToolEntry"] = {}
+_REGISTRY: dict[str, _ToolEntry] = {}
 # Tracks which owner (a plugin installation_id, or None for a built-in)
 # holds each tool name — see registry_guard's docstring for why this
 # matters: without it, one org's plugin can silently hijack another

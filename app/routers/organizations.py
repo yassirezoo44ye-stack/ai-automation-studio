@@ -31,7 +31,7 @@ GET    /api/orgs/{org_id}/presence                online/offline status of every
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
@@ -72,12 +72,12 @@ class ChangeRoleRequest(BaseModel):
 
 class CreateTeamRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    description: Optional[str] = Field(default=None, max_length=2000)
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class UpdateTeamRequest(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    description: Optional[str] = Field(default=None, max_length=2000)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
 
 
 class AddTeamMemberRequest(BaseModel):
@@ -87,11 +87,11 @@ class AddTeamMemberRequest(BaseModel):
 class CreateApiKeyRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     scopes: list[str] = Field(default_factory=lambda: ["read"])
-    expires_in_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    expires_in_days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class UpdateOrgRequest(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    name: str | None = Field(default=None, min_length=2, max_length=120)
 
 
 def _org_out(o: dict) -> dict:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -47,7 +47,7 @@ class OrgSubscriptionService:
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
 
-    async def get(self, org_id: str) -> Optional[dict[str, Any]]:
+    async def get(self, org_id: str) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM org_subscriptions WHERE organization_id=$1",
@@ -55,7 +55,7 @@ class OrgSubscriptionService:
             )
         return dict(row) if row else None
 
-    async def get_stripe_customer_id(self, org_id: str) -> Optional[str]:
+    async def get_stripe_customer_id(self, org_id: str) -> str | None:
         row = await self.get(org_id)
         return row["stripe_customer_id"] if row else None
 
@@ -102,7 +102,7 @@ class OrgSubscriptionService:
                     uuid.UUID(organization_id), effective_plan,
                 )
 
-    async def find_org_by_subscription_id(self, stripe_subscription_id: str) -> Optional[str]:
+    async def find_org_by_subscription_id(self, stripe_subscription_id: str) -> str | None:
         async with self._pool.acquire() as conn:
             org_id = await conn.fetchval(
                 "SELECT organization_id FROM org_subscriptions WHERE stripe_subscription_id=$1",
@@ -110,7 +110,7 @@ class OrgSubscriptionService:
             )
         return str(org_id) if org_id else None
 
-    async def find_org_by_customer_id(self, stripe_customer_id: str) -> Optional[str]:
+    async def find_org_by_customer_id(self, stripe_customer_id: str) -> str | None:
         async with self._pool.acquire() as conn:
             org_id = await conn.fetchval(
                 "SELECT organization_id FROM org_subscriptions WHERE stripe_customer_id=$1",
@@ -154,7 +154,7 @@ class OrgSubscriptionService:
             log.warning("seat quantity sync failed for org=%s", org_id, exc_info=True)
 
 
-_service: Optional[OrgSubscriptionService] = None
+_service: OrgSubscriptionService | None = None
 
 
 def get_org_subscription_service(pool: asyncpg.Pool | None = None) -> OrgSubscriptionService:

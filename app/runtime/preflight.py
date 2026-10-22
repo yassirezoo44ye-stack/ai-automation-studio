@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Optional
 
 from app.runtime import registry
 
@@ -26,8 +25,8 @@ class ToolCheck:
     name: str
     display: str
     available: bool
-    version: Optional[str] = None
-    path: Optional[str] = None
+    version: str | None = None
+    path: str | None = None
     required_for: str = ""
     fix_hint: str = ""
 

@@ -19,7 +19,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -158,7 +158,7 @@ class PgMarketplaceStore:
         # dropped by every mutating method via invalidate_prefix("mkt:list").
         return await cached(f"mkt:list:{viewer_org_id or 'public'}", _load, ttl=60)
 
-    async def get_item(self, item_id: str, *, viewer_org_id: str | None = None) -> Optional[dict[str, Any]]:
+    async def get_item(self, item_id: str, *, viewer_org_id: str | None = None) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 f"SELECT {_ITEM_COLS} FROM marketplace_items "
@@ -226,7 +226,7 @@ class PgMarketplaceStore:
     async def record_install(
         self, item_id: str, *, org_id: str | None = None, user_email: str | None = None,
         version: str | None = None,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         # Scoped when org_id is known — this is what actually activates the
         # RLS policy already declared on marketplace_installs (previously a
         # permanent no-op since nothing called acquire_scoped for it).
@@ -313,7 +313,7 @@ class PgMarketplaceStore:
             )
         return [{**dict(r), "id": str(r["id"])} for r in rows]
 
-    async def get_version(self, item_id: str, version: str) -> Optional[dict[str, Any]]:
+    async def get_version(self, item_id: str, version: str) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT id, item_id, version, changelog, created_at "
@@ -367,7 +367,7 @@ class JsonMarketplaceStore:
     async def list_items(self, *, viewer_org_id: str | None = None) -> list[dict[str, Any]]:
         return [i for i in self._store.values() if self._visible(i, viewer_org_id)]
 
-    async def get_item(self, item_id: str, *, viewer_org_id: str | None = None) -> Optional[dict[str, Any]]:
+    async def get_item(self, item_id: str, *, viewer_org_id: str | None = None) -> dict[str, Any] | None:
         item = self._store.get(item_id)
         if item is None or not self._visible(item, viewer_org_id):
             return None
@@ -387,7 +387,7 @@ class JsonMarketplaceStore:
     async def record_install(
         self, item_id: str, *, org_id: str | None = None, user_email: str | None = None,
         version: str | None = None,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         item = self._store.get(item_id)
         if item is None:
             return None
@@ -414,7 +414,7 @@ class JsonMarketplaceStore:
         return [{"id": item_id, "item_id": item_id, "version": item["version"],
                   "changelog": item.get("metadata", {}).get("changelog"), "created_at": item.get("updated_at")}]
 
-    async def get_version(self, item_id: str, version: str) -> Optional[dict[str, Any]]:
+    async def get_version(self, item_id: str, version: str) -> dict[str, Any] | None:
         for v in await self.list_versions(item_id):
             if v["version"] == version:
                 return v
@@ -472,10 +472,7 @@ _store: PgMarketplaceStore | JsonMarketplaceStore | None = None
 async def init_marketplace_store(pool: asyncpg.Pool | None) -> None:
     """Called from the lifespan: pick backend, create schema, seed if empty."""
     global _store
-    if pool is not None:
-        _store = PgMarketplaceStore(pool)
-    else:
-        _store = JsonMarketplaceStore()
+    _store = PgMarketplaceStore(pool) if pool is not None else JsonMarketplaceStore()
     await _store.init()
     if await _store.count() == 0:
         for item in seed_items():

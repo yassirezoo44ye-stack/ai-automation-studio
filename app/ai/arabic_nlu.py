@@ -20,7 +20,6 @@ import time
 import uuid
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ DIALECT_LABELS = ["msa", "gulf", "egyptian", "levantine", "maghrebi", "unknown"]
 class Entity:
     type  : str           # person | place | date | tech | product | other
     value : str
-    span  : Optional[str] = None
+    span  : str | None = None
 
 @dataclass
 class ArabicNLUResult:
@@ -68,7 +67,7 @@ class ArabicNLUResult:
     confidence        : float         # 0.0 – 1.0
     entities          : list[Entity]  = field(default_factory=list)
     needs_clarification: bool         = False
-    clarification_prompt: Optional[str] = None
+    clarification_prompt: str | None = None
     response_language : str           = "ar"
     rtl               : bool          = True
     processing_ms     : float         = 0.0
@@ -228,7 +227,7 @@ class ArabicNLUPipeline:
 
     async def process(self, text: str, *, user_id: str = "anonymous",
                       session_id: str = "",
-                      organization_id: Optional[str] = None) -> ArabicNLUResult:
+                      organization_id: str | None = None) -> ArabicNLUResult:
         t0 = time.perf_counter()
 
         # 1. Language detection
@@ -284,7 +283,7 @@ class ArabicNLUPipeline:
         return result
 
     def _store_episode(self, result: ArabicNLUResult, user_id: str,
-                       session_id: str, organization_id: Optional[str] = None) -> None:
+                       session_id: str, organization_id: str | None = None) -> None:
         try:
             from app.memory.layered import MemoryItem
             item = MemoryItem(

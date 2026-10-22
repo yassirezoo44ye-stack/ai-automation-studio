@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from app.core.workflow.engine import (
     RetryPolicy, WorkflowBuilder, WorkflowEngine, WorkflowRun, WorkflowStatus,
@@ -38,7 +38,7 @@ _engine = WorkflowEngine()
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
 
-async def _get_section(plan_id: str, key: str, org_id: str) -> Optional[str]:
+async def _get_section(plan_id: str, key: str, org_id: str) -> str | None:
     """Fetch a completed section's content from DB."""
     async with acquire_scoped(org_id) as conn:
         row = await conn.fetchrow(
@@ -401,7 +401,7 @@ def build_business_plan_workflow(
     org_id: str,
     user_id: str,
     idea_raw: str,
-    industry: Optional[str],
+    industry: str | None,
     stage: str,
 ) -> WorkflowRun:
     """
@@ -478,7 +478,7 @@ async def start_business_plan(
     org_id: str,
     user_id: str,
     idea_raw: str,
-    industry: Optional[str],
+    industry: str | None,
     stage: str,
 ) -> WorkflowRun:
     """Start the workflow and mark plan as GENERATING."""
@@ -532,7 +532,7 @@ async def retry_sections(
     org_id: str,
     user_id: str,
     idea_raw: str,
-    industry: Optional[str],
+    industry: str | None,
     stage: str,
     section_keys: list[str],
 ) -> dict[str, str]:
@@ -592,7 +592,7 @@ async def retry_sections(
             """,
             plan_id, list(_MANDATORY_SECTIONS),
         )
-    all_complete = _MANDATORY_SECTIONS <= {r["section_key"] for r in completed_rows}
+    all_complete = {r["section_key"] for r in completed_rows} >= _MANDATORY_SECTIONS
     await _mark_plan_status(plan_id, "COMPLETED" if all_complete else "FAILED", org_id=org_id)
 
     return results

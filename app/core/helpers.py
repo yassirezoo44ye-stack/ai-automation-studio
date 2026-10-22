@@ -3,7 +3,6 @@ Cross-cutting helpers used by multiple routers.
 """
 import uuid
 from datetime import datetime
-from typing import Optional
 
 import anthropic
 from fastapi import HTTPException
@@ -62,7 +61,7 @@ def ai_circuit_report(success: bool, target_id: str = "anthropic") -> None:
 
 # ── Project ID resolution ─────────────────────────────────────────────────────
 
-async def resolve_project_id(conn, project_id: Optional[str], user_id: uuid.UUID) -> uuid.UUID:
+async def resolve_project_id(conn, project_id: str | None, user_id: uuid.UUID) -> uuid.UUID:
     """Resolve a frontend project_id to a UUID the caller actually owns.
 
     "demo"/None resolves to the caller's own personal demo project
@@ -134,7 +133,7 @@ def sanitize_name(name: str) -> str:
 
 # ── Task scheduling ───────────────────────────────────────────────────────────
 
-def next_due_date(due: Optional[datetime], recurrence: str) -> Optional[datetime]:
+def next_due_date(due: datetime | None, recurrence: str) -> datetime | None:
     """Return the next due date for a recurring task, or None if non-recurring."""
     if not due or recurrence == "none":
         return None

@@ -18,7 +18,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from app.ai import prompt_store as _store
 from app.ai.models import PromptVersion
@@ -32,8 +31,8 @@ _VAR_RE = re.compile(r"\{\{(\w+)\}\}")
 
 @dataclass
 class PromptPreview:
-    system:        Optional[str]
-    user_template: Optional[str]
+    system:        str | None
+    user_template: str | None
     missing_vars:  list[str]     # variables in template but not supplied
     extra_vars:    list[str]     # variables supplied but not in template
     valid:         bool
@@ -44,11 +43,11 @@ class PromptTestResult:
     prompt_id:  str
     version:    int
     variables:  dict[str, str]
-    rendered_system: Optional[str]
-    rendered_user:   Optional[str]
-    response:        Optional[str]  # AI response if executed
+    rendered_system: str | None
+    rendered_user:   str | None
+    response:        str | None  # AI response if executed
     success:         bool
-    error:           Optional[str] = None
+    error:           str | None = None
 
 
 class PromptEngine:
@@ -63,12 +62,12 @@ class PromptEngine:
     # ── Read ──────────────────────────────────────────────────────────────────
 
     async def get_active(
-        self, prompt_id: str, *, user_id: Optional[str] = None,
-    ) -> Optional[PromptVersion]:
+        self, prompt_id: str, *, user_id: str | None = None,
+    ) -> PromptVersion | None:
         return await _store.get_active_version(self._pool, prompt_id, user_id=user_id)
 
     async def list_versions(
-        self, prompt_id: str, *, user_id: Optional[str] = None,
+        self, prompt_id: str, *, user_id: str | None = None,
     ) -> list[PromptVersion]:
         return await _store.list_versions(self._pool, prompt_id, user_id=user_id)
 
@@ -79,7 +78,7 @@ class PromptEngine:
         prompt_id: str,
         variables: dict[str, str] | None = None,
         *,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> PromptPreview:
         """Render the active version with given variables. Never persists.
         Ownership-scoped via get_active() — an unowned prompt_id renders
@@ -113,8 +112,8 @@ class PromptEngine:
 
     def validate_template(
         self,
-        system:        Optional[str],
-        user_template: Optional[str],
+        system:        str | None,
+        user_template: str | None,
         variables:     dict[str, str],
     ) -> PromptPreview:
         """Validate a template without any DB interaction."""
@@ -124,7 +123,7 @@ class PromptEngine:
         missing   = sorted(found - supplied)
         extra     = sorted(supplied - found)
 
-        def sub(text: Optional[str]) -> Optional[str]:
+        def sub(text: str | None) -> str | None:
             if not text:
                 return text
             return _VAR_RE.sub(lambda m: variables.get(m.group(1), m.group(0)), text)
@@ -145,10 +144,10 @@ class PromptEngine:
         name:          str,
         slug:          str,
         description:   str = "",
-        system:        Optional[str] = None,
-        user_template: Optional[str] = None,
-        variables:     Optional[list[str]] = None,
-        user_id:       Optional[str] = None,
+        system:        str | None = None,
+        user_template: str | None = None,
+        variables:     list[str] | None = None,
+        user_id:       str | None = None,
     ) -> str:
         pid = await _store.create_prompt(
             self._pool,
@@ -172,11 +171,11 @@ class PromptEngine:
         self,
         prompt_id:     str,
         *,
-        user_id:       Optional[str] = None,
-        system:        Optional[str] = None,
-        user_template: Optional[str] = None,
-        variables:     Optional[list[str]] = None,
-    ) -> Optional[int]:
+        user_id:       str | None = None,
+        system:        str | None = None,
+        user_template: str | None = None,
+        variables:     list[str] | None = None,
+    ) -> int | None:
         """Returns the new version number, or None if prompt_id isn't owned
         by user_id — the router turns that into 404."""
         version = await _store.publish_version(
@@ -192,8 +191,8 @@ class PromptEngine:
         return version
 
     async def rollback(
-        self, prompt_id: str, target_version: int, *, user_id: Optional[str] = None,
-    ) -> Optional[int]:
+        self, prompt_id: str, target_version: int, *, user_id: str | None = None,
+    ) -> int | None:
         """
         Activate a historical version.
 
@@ -230,9 +229,9 @@ class PromptEngine:
         prompt_id:  str,
         variables:  dict[str, str] | None = None,
         *,
-        user_id:     Optional[str] = None,
-        provider_id: Optional[str] = None,
-        model:       Optional[str] = None,
+        user_id:     str | None = None,
+        provider_id: str | None = None,
+        model:       str | None = None,
     ) -> PromptTestResult:
         """Render the active prompt and optionally run it through an AI
         provider. Not currently reachable from any router — no /test

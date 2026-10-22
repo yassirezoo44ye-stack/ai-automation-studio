@@ -2,7 +2,6 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Optional
 
 import anthropic
 from fastapi import APIRouter, HTTPException, Request
@@ -25,17 +24,17 @@ router = APIRouter(tags=["chat"])
 class RunRequest(BaseModel):
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=4000)
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
     # Text to store/display in place of `prompt` when the caller injects
     # invisible context into `prompt` (e.g. "[Context: …]\n\nuser message").
     # Storage (title, message content, usage log) uses this value when set;
     # the model always receives the full `prompt`.
-    display_text: Optional[str] = Field(None, max_length=4000)
+    display_text: str | None = Field(None, max_length=4000)
 
 
 class ConversationCreate(BaseModel):
     project_id: str
-    title: Optional[str] = "New conversation"
+    title: str | None = "New conversation"
 
 
 @router.post("/api/run/stream")
@@ -46,7 +45,7 @@ async def run_stream(req: RunRequest, request: Request):
     org_id = await check_org_quota(request)
 
     history: list[dict] = []
-    conv_id: Optional[uuid.UUID] = None
+    conv_id: uuid.UUID | None = None
 
     # Text for storage and display — stripped of any invisible context the
     # caller injects into `prompt`.  The model always receives the full
@@ -61,7 +60,7 @@ async def run_stream(req: RunRequest, request: Request):
             try:
                 conv_id = uuid.UUID(req.conversation_id)
             except ValueError:
-                raise HTTPException(400, "Invalid conversation_id")
+                raise HTTPException(400, "Invalid conversation_id") from None
             owned = await conn.fetchval(
                 "SELECT 1 FROM conversations c JOIN projects p ON c.project_id=p.id "
                 "WHERE c.id=$1 AND p.user_id=$2",
@@ -140,7 +139,7 @@ async def run_stream(req: RunRequest, request: Request):
             )
             engine = InferenceEngine(pool=get_pool())
             total_tokens = 0
-            stream_error: Optional[str] = None
+            stream_error: str | None = None
 
             async for chunk in engine.stream(
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,
@@ -243,13 +242,13 @@ async def run_agent(req: RunRequest, request: Request):
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,
             )
         except anthropic.AuthenticationError:
-            raise HTTPException(401, "Invalid Anthropic API key.")
+            raise HTTPException(401, "Invalid Anthropic API key.") from None
         except anthropic.BadRequestError as e:
-            raise HTTPException(402, anthropic_error_message(e))
+            raise HTTPException(402, anthropic_error_message(e)) from None
         except RuntimeError as e:
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, str(e)) from None
         except Exception as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from None
 
     await record_org_tokens(org_id, resp.usage.total_tokens, req.project_id)
     summary = resp.content
@@ -284,7 +283,7 @@ async def create_conversation(body: ConversationCreate, request: Request):
 
 
 @router.get("/api/conversations")
-async def list_conversations(request: Request, project_id: Optional[str] = None):
+async def list_conversations(request: Request, project_id: str | None = None):
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         if project_id:
@@ -339,7 +338,7 @@ async def delete_conversation(conv_id: str, request: Request):
 
 
 @router.get("/api/search")
-async def search(q: str, request: Request, project_id: Optional[str] = None):
+async def search(q: str, request: Request, project_id: str | None = None):
     if not q or len(q) < 2:
         return {"conversations": [], "messages": []}
     async with get_pool().acquire() as conn:

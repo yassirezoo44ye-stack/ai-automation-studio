@@ -22,7 +22,7 @@ import datetime
 import logging
 import secrets
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated
 
 import asyncpg
 import jwt
@@ -70,7 +70,7 @@ def _client_ip(request: Request) -> str:
 
 
 async def get_current_user(
-    creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(_bearer)],
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> dict:
     """Dependency: decode JWT and return user dict {id, email}."""
     if not creds:
@@ -78,9 +78,9 @@ async def get_current_user(
     try:
         payload = decode_access_token(creds.credentials)
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired") from None
     except jwt.PyJWTError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token") from None
     return {"id": payload["sub"], "email": payload["email"]}
 
 
@@ -182,12 +182,12 @@ class ResetPasswordRequest(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    name: str | None = None
+    avatar_url: str | None = None
 
     @field_validator("avatar_url")
     @classmethod
-    def validate_avatar_url(cls, v: Optional[str]) -> Optional[str]:
+    def validate_avatar_url(cls, v: str | None) -> str | None:
         if v is None:
             return v
         if not v.startswith("https://"):
@@ -238,7 +238,7 @@ async def register(body: RegisterRequest, request: Request, _rl: None = _auth_rl
                     )
                 except asyncpg.UniqueViolationError:
                     span.set_tag("error", "email_already_registered")
-                    raise HTTPException(409, "Email already registered")
+                    raise HTTPException(409, "Email already registered") from None
 
                 await conn.execute(
                     """INSERT INTO email_verification_tokens (token, user_id, expires_at)
@@ -559,7 +559,7 @@ async def get_me(current: Annotated[dict, Depends(get_current_user)]):
 async def get_my_audit_log(
     current: Annotated[dict, Depends(get_current_user)],
     limit: int = 50,
-    before: Optional[str] = None,
+    before: str | None = None,
 ):
     """Paginated read access to the caller's own security events
     (register/login/MFA enable-disable/account deletion) — the audit_logs
@@ -869,11 +869,11 @@ async def _stash_oauth_state(state: str, bind_nonce: str) -> None:
         await redis.set(f"oauth_state:{state}", bind_nonce, ttl=_OAUTH_STATE_TTL)
     except Exception as exc:
         log.error("oauth state stash failed: %s", exc)
-        raise HTTPException(503, "OAuth sign-in temporarily unavailable — please retry.")
+        raise HTTPException(503, "OAuth sign-in temporarily unavailable — please retry.") from None
 
 
 async def _verify_and_consume_oauth_state(
-    state: Optional[str], request: Request, *, ip: str
+    state: str | None, request: Request, *, ip: str
 ) -> None:
     """Verify state + browser-binding nonce atomically (single-use).
 
@@ -896,7 +896,7 @@ async def _verify_and_consume_oauth_state(
         result = await redis.get_and_delete_if_matches(f"oauth_state:{state}", bind_cookie)
     except Exception as exc:
         log.error("oauth state verify failed: %s", exc)
-        raise HTTPException(503, "OAuth sign-in temporarily unavailable — please retry.")
+        raise HTTPException(503, "OAuth sign-in temporarily unavailable — please retry.") from None
     if result is None:
         log.warning("oauth callback: state unknown/expired/replayed ip=%s", ip)
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
@@ -1047,7 +1047,7 @@ async def google_oauth_start():
 
 
 @router.get("/google/callback")
-async def google_oauth_callback(code: str, request: Request, state: Optional[str] = None):
+async def google_oauth_callback(code: str, request: Request, state: str | None = None):
     if not _GOOGLE_CLIENT_ID:
         _oauth_not_configured("Google")
     await _verify_and_consume_oauth_state(state, request, ip=_client_ip(request))
@@ -1140,7 +1140,7 @@ async def microsoft_oauth_start():
 
 
 @router.get("/microsoft/callback")
-async def microsoft_oauth_callback(code: str, request: Request, state: Optional[str] = None):
+async def microsoft_oauth_callback(code: str, request: Request, state: str | None = None):
     if not _MICROSOFT_CLIENT_ID:
         _oauth_not_configured("Microsoft")
     await _verify_and_consume_oauth_state(state, request, ip=_client_ip(request))
@@ -1218,7 +1218,7 @@ async def github_oauth_start():
 
 
 @router.get("/github/callback")
-async def github_oauth_callback(code: str, request: Request, state: Optional[str] = None):
+async def github_oauth_callback(code: str, request: Request, state: str | None = None):
     if not _GITHUB_CLIENT_ID:
         _oauth_not_configured("GitHub")
     await _verify_and_consume_oauth_state(state, request, ip=_client_ip(request))

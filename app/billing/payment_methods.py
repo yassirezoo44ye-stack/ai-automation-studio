@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -103,22 +103,21 @@ class PaymentMethodService:
         return [dict(r) for r in rows]
 
     async def mark_default(self, org_id: str, stripe_payment_method_id: str) -> None:
-        async with self._pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    "UPDATE payment_methods SET is_default=false WHERE organization_id=$1",
-                    uuid.UUID(org_id),
-                )
-                await conn.execute(
-                    "UPDATE payment_methods SET is_default=true "
-                    "WHERE organization_id=$1 AND stripe_payment_method_id=$2",
-                    uuid.UUID(org_id), stripe_payment_method_id,
-                )
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                "UPDATE payment_methods SET is_default=false WHERE organization_id=$1",
+                uuid.UUID(org_id),
+            )
+            await conn.execute(
+                "UPDATE payment_methods SET is_default=true "
+                "WHERE organization_id=$1 AND stripe_payment_method_id=$2",
+                uuid.UUID(org_id), stripe_payment_method_id,
+            )
 
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[PaymentMethodService] = None
+_service: PaymentMethodService | None = None
 
 
 def get_payment_method_service(pool: asyncpg.Pool | None = None) -> PaymentMethodService:

@@ -9,7 +9,8 @@ registry is duplicated here, only wrapped for a single consistent surface.
 """
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from typing import Any
+from collections.abc import Awaitable, Callable
 
 from app.plugins.provider_types import AuthProviderBase, MemoryProviderBase, StorageProviderBase
 

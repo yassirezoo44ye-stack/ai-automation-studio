@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -52,8 +52,8 @@ class AssetService:
 
     async def add_asset(
         self, item_id: str, version: str, *,
-        content: Optional[str] = None, external_url: Optional[str] = None,
-        checksum_sha256: Optional[str] = None,
+        content: str | None = None, external_url: str | None = None,
+        checksum_sha256: str | None = None,
     ) -> dict[str, Any]:
         if content is not None:
             asset_type = "inline"
@@ -78,7 +78,7 @@ class AssetService:
             )
         return dict(row)
 
-    async def get_assets(self, item_id: str, version: Optional[str] = None) -> list[dict[str, Any]]:
+    async def get_assets(self, item_id: str, version: str | None = None) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
             if version:
                 rows = await conn.fetch(

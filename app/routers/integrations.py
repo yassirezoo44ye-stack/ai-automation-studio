@@ -11,7 +11,6 @@ verification instead (same pattern as /api/stripe/webhook).
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -47,7 +46,7 @@ async def list_connections(ctx: OrgContext = Depends(require_permission("integra
 
 class ConnectRequest(BaseModel):
     secrets: dict[str, str]
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
     granted_scopes: list[str] = []
 
 
@@ -62,9 +61,9 @@ async def connect(
             secrets=body.secrets, metadata=body.metadata, granted_scopes=body.granted_scopes,
         )
     except KeyError:
-        raise HTTPException(404, f"Unknown provider: {provider_id!r}")
+        raise HTTPException(404, f"Unknown provider: {provider_id!r}") from None
     except IntegrationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
 
 
 @router.delete("/{provider_id}", status_code=204)
@@ -85,9 +84,9 @@ async def trigger_sync(
     try:
         run_id = await get_integration_service().trigger_sync(provider_id=provider_id, organization_id=ctx.org_id)
     except KeyError:
-        raise HTTPException(404, f"Unknown provider: {provider_id!r}")
+        raise HTTPException(404, f"Unknown provider: {provider_id!r}") from None
     except IntegrationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return {"run_id": run_id}
 
 
@@ -124,11 +123,11 @@ async def receive_webhook(provider_id: str, org_id: str, request: Request):
             headers={k.lower(): v for k, v in request.headers.items()}, body=body,
         )
     except KeyError:
-        raise HTTPException(404, f"Unknown provider: {provider_id!r}")
+        raise HTTPException(404, f"Unknown provider: {provider_id!r}") from None
     except WebhookVerificationError:
-        raise HTTPException(401, "Signature verification failed")
+        raise HTTPException(401, "Signature verification failed") from None
     except WebhookDuplicateError:
         return {"status": "duplicate, already processed"}
     except IntegrationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return {"status": "received"}

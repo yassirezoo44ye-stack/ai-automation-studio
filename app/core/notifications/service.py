@@ -11,7 +11,7 @@ fan-out is cheap.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -41,10 +41,10 @@ class NotificationService:
 
     async def create(
         self, *, user_id: str, type_: str, title: str, message: str,
-        organization_id: Optional[str] = None, category: str = "system",
-        severity: str = "info", source: Optional[str] = None,
-        action: Optional[dict[str, Any]] = None, dismissible: bool = True,
-        expires_at: Optional[str] = None,
+        organization_id: str | None = None, category: str = "system",
+        severity: str = "info", source: str | None = None,
+        action: dict[str, Any] | None = None, dismissible: bool = True,
+        expires_at: str | None = None,
     ) -> dict[str, Any]:
         if category not in CATEGORIES:
             raise ValueError(f"invalid category {category!r}")
@@ -72,9 +72,9 @@ class NotificationService:
 
     async def list(
         self, *, user_id: str, unread_only: bool = False,
-        category: Optional[str] = None, severity: Optional[str] = None,
-        search: Optional[str] = None, include_archived: bool = False,
-        before: Optional[str] = None, limit: int = 30,
+        category: str | None = None, severity: str | None = None,
+        search: str | None = None, include_archived: bool = False,
+        before: str | None = None, limit: int = 30,
     ) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 200))
         clauses = ["user_id = $1", "(expires_at IS NULL OR expires_at > NOW())"]
@@ -213,7 +213,7 @@ class NotificationService:
 
 # ── Singleton wiring ─────────────────────────────────────────────────────────
 
-_service: Optional[NotificationService] = None
+_service: NotificationService | None = None
 
 
 def get_notification_service(pool: asyncpg.Pool | None = None) -> NotificationService:

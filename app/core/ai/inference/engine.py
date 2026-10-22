@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
 
 from app.ai.models import (
     CompletionRequest, CompletionResponse, StreamChunk,
@@ -56,8 +56,8 @@ class InferenceEngine:
         self,
         request: CompletionRequest,
         *,
-        user_id:     Optional[str] = None,
-        org_id:      Optional[str] = None,
+        user_id:     str | None = None,
+        org_id:      str | None = None,
         auto_tools:  bool          = True,
     ) -> CompletionResponse:
         """
@@ -132,8 +132,8 @@ class InferenceEngine:
         self,
         request: CompletionRequest,
         *,
-        user_id:    Optional[str] = None,
-        org_id:     Optional[str] = None,
+        user_id:    str | None = None,
+        org_id:     str | None = None,
         auto_tools: bool          = True,
     ) -> AsyncGenerator[dict, None]:
         """

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Optional
 
 from app.integrations.types import SyncResult, SyncStatus
 
@@ -37,7 +36,7 @@ class SyncEngine:
         for the first schedule_sync() call in the process."""
         self._ensure_handler()
 
-    async def schedule_sync(self, *, provider_id: str, organization_id: str, run_at: Optional[float] = None) -> str:
+    async def schedule_sync(self, *, provider_id: str, organization_id: str, run_at: float | None = None) -> str:
         """Enqueue a sync run. Returns the job id (also recorded in
         integration_sync_runs immediately as 'pending' so callers can
         list sync history without waiting on the job queue)."""
@@ -113,7 +112,7 @@ class SyncEngine:
         return [dict(r) for r in rows]
 
 
-_engine: Optional[SyncEngine] = None
+_engine: SyncEngine | None = None
 
 
 def get_sync_engine(pool=None) -> SyncEngine:

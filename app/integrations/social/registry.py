@@ -11,7 +11,6 @@ Adding a new platform:
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from app.integrations.social.base import SocialPublisherProvider
 from app.integrations.social.mock import MockSocialPublisherProvider
@@ -30,7 +29,7 @@ _PROVIDERS: dict[str, SocialPublisherProvider] = {
 
 class SocialPublisherRegistry:
 
-    def get(self, platform_id: str) -> Optional[SocialPublisherProvider]:
+    def get(self, platform_id: str) -> SocialPublisherProvider | None:
         """Return the provider for platform_id, or None if not registered."""
         return _PROVIDERS.get(platform_id)
 

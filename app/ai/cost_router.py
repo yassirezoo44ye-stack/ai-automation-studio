@@ -20,7 +20,7 @@ import logging
 import time
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from app.core.ai.models.catalog import ModelInfo, catalog as model_catalog
 
@@ -183,7 +183,7 @@ class CostRouter:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_router: Optional[CostRouter] = None
+_router: CostRouter | None = None
 
 
 def get_cost_router() -> CostRouter:

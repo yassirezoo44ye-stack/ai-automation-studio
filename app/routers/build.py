@@ -7,7 +7,6 @@ import shutil
 import time
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 import anthropic
 import httpx
@@ -25,6 +24,7 @@ from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 from app.execution import process_mgr
 from app.execution.runner import run_stream, run_sync
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -223,11 +223,11 @@ class BuildRequest(BaseModel):
     # produces files that match the pages, DB tables, and API routes the user
     # reviewed and approved — rather than free-form interpretation of the prompt.
     # Not a security-sensitive field: it only steers output style, not auth/quota.
-    plan: Optional[dict] = None
+    plan: dict | None = None
 
 
 class RunRequest2(BaseModel):
-    command: Optional[str] = None
+    command: str | None = None
 
 
 class FileWrite(BaseModel):
@@ -270,18 +270,18 @@ async def build_program(req: BuildRequest, request: Request):
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,
             )
         except anthropic.BadRequestError as e:
-            raise HTTPException(402, anthropic_error_message(e))
+            raise HTTPException(402, anthropic_error_message(e)) from None
         except RuntimeError as e:
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, str(e)) from None
         except Exception as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from None
 
     await record_org_tokens(org_id, resp.usage.total_tokens, req.project_id)
     raw = strip_fences(resp.content)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(502, f"Claude returned non-JSON: {raw[:200]}")
+        raise HTTPException(502, f"Claude returned non-JSON: {raw[:200]}") from None
 
     ws = workspace(req.project_id)
     written = []
@@ -327,7 +327,7 @@ def _build_prompt_with_spec(prompt: str, spec_context: str) -> str:
     )
 
 
-def _build_prompt_with_plan(prompt: str, plan: Optional[dict]) -> str:
+def _build_prompt_with_plan(prompt: str, plan: dict | None) -> str:
     """
     Inject an approved BuildPlan JSON into the code-generation prompt.
 
@@ -480,7 +480,7 @@ async def build_stream(req: BuildRequest, request: Request):
             ws = workspace(req.project_id)
             buf = ""
             last_heartbeat = time.time()
-            stream_error: Optional[str] = None
+            stream_error: str | None = None
             total_tokens = 0
 
             async for chunk in chunk_source:
@@ -546,10 +546,8 @@ async def build_stream(req: BuildRequest, request: Request):
 
             meta: dict = {}
             if parser.meta_lines:
-                try:
+                with contextlib.suppress(Exception):
                     meta = json.loads("\n".join(parser.meta_lines))
-                except Exception:
-                    pass
 
             yield _sse("done",
                        description=meta.get("description", ""),
@@ -631,17 +629,17 @@ async def build_plan(req: PlanRequest, request: Request):
             request_obj, user_id=str(uid), org_id=org_id, auto_tools=False,
         )
     except anthropic.BadRequestError as e:
-        raise HTTPException(402, anthropic_error_message(e))
+        raise HTTPException(402, anthropic_error_message(e)) from None
     except RuntimeError as e:
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, str(e)) from None
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, str(e)) from None
 
     raw = strip_fences(resp.content)
     try:
         plan = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(502, f"Plan generation failed: {raw[:200]}")
+        raise HTTPException(502, f"Plan generation failed: {raw[:200]}") from None
 
     # Guarantee required array fields are present (defensive normalisation)
     for field in ("pages", "database_tables", "api_routes", "agents", "workflows", "integrations"):
@@ -894,7 +892,7 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
     except httpx.ConnectError:
         rp_check = process_mgr.get_running(project_id)
         if rp_check is None:
-            raise HTTPException(503, detail={"error": "Server has exited"})
-        raise HTTPException(502, detail={"error": "Could not connect to server"})
+            raise HTTPException(503, detail={"error": "Server has exited"}) from None
+        raise HTTPException(502, detail={"error": "Could not connect to server"}) from None
     except httpx.TimeoutException:
-        raise HTTPException(504, detail={"error": "Server request timed out"})
+        raise HTTPException(504, detail={"error": "Server request timed out"}) from None

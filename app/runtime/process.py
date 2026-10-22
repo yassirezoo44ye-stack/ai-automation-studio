@@ -27,7 +27,8 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ def _validate_exe(cmd: list[str]) -> None:
         raise ValueError(f"Executable not allowed by runtime platform: {cmd[0]!r}")
 
 
-def _build_env(extra: Optional[dict] = None) -> dict:
+def _build_env(extra: dict | None = None) -> dict:
     env = {**os.environ}
     if extra:
         env.update(extra)
@@ -81,10 +82,10 @@ def _build_env(extra: Optional[dict] = None) -> dict:
 async def stream_process(
     cmd: list[str],
     cwd: str | Path | None = None,
-    env: Optional[dict] = None,
+    env: dict | None = None,
     merge_stderr: bool = True,
-    timeout: Optional[float] = None,
-) -> AsyncIterator[tuple[str, Optional[int]]]:
+    timeout: float | None = None,
+) -> AsyncIterator[tuple[str, int | None]]:
     """
     Async generator that yields output lines from a subprocess.
 
@@ -176,7 +177,7 @@ async def stream_process(
 async def run_process(
     cmd: list[str],
     cwd: str | Path | None = None,
-    env: Optional[dict] = None,
+    env: dict | None = None,
     timeout: float = 120.0,
 ) -> tuple[int, list[str], list[str]]:
     """
@@ -203,10 +204,8 @@ async def run_process(
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
         log.warning("run_process: timeout after %.0fs — killing %s", timeout, cmd)
-        try:
+        with contextlib.suppress(Exception):
             proc.kill()
-        except Exception:
-            pass
         return -1, [], [f"[runtime] Timed out after {timeout:.0f}s"]
     except FileNotFoundError:
         return 127, [], [f"[runtime] Executable not found: {cmd[0]}"]
@@ -227,7 +226,7 @@ async def run_process(
 async def start_persistent(
     cmd: list[str],
     cwd: str | None = None,
-    env: Optional[dict] = None,
+    env: dict | None = None,
 ) -> asyncio.subprocess.Process:
     """
     Start a long-running subprocess (server) and return its Process object.

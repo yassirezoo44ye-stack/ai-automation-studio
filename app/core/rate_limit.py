@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from typing import Optional
 
 from fastapi import HTTPException, Request
 
@@ -114,7 +113,7 @@ def require_rate_limit(
     key_prefix: str           = "req",
     max_calls : int           = 60,
     window    : int           = 60,
-    error_detail: Optional[str] = None,
+    error_detail: str | None = None,
 ) -> None:
     """FastAPI sync dependency: raise HTTP 429 when the limit is exceeded."""
     ip  = _real_ip(request)
@@ -143,7 +142,7 @@ def make_rate_limit_dep(
     key_prefix  : str = "req",
     max_calls   : int = 60,
     window      : int = 60,
-    error_detail: Optional[str] = None,
+    error_detail: str | None = None,
 ):
     """
     Factory for FastAPI Depends() usage:
@@ -166,7 +165,7 @@ async def require_rate_limit_async(
     key_prefix: str           = "req",
     max_calls : int           = 60,
     window    : int           = 60,
-    error_detail: Optional[str] = None,
+    error_detail: str | None = None,
 ) -> None:
     """FastAPI async dependency — uses Redis when available."""
     ip  = _real_ip(request)

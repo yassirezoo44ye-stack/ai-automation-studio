@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.params import Depends
@@ -166,8 +165,8 @@ async def _upsert_books(conn, books: list[dict]) -> list[str]:
 @router.get("/search")
 async def search_books(
     q:             str,
-    source:        Optional[str] = Query(None, description="Filter to one source"),
-    language:      Optional[str] = None,
+    source:        str | None = Query(None, description="Filter to one source"),
+    language:      str | None = None,
     has_full_text: bool          = False,
     has_audio:     bool          = False,
     page:          int           = Query(1, ge=1),
@@ -234,10 +233,10 @@ async def search_books(
 
 @router.get("/books")
 async def list_books(
-    language:      Optional[str] = None,
+    language:      str | None = None,
     has_full_text: bool          = False,
     has_audio:     bool          = False,
-    source:        Optional[str] = None,
+    source:        str | None = None,
     limit:         int           = Query(50, ge=1, le=200),
     offset:        int           = 0,
     ctx: OrgContext = Depends(org_context),
@@ -312,7 +311,7 @@ async def create_book(req: BookCreate, ctx: OrgContext = Depends(org_context)):
             )
         except Exception as exc:
             if "unique" in str(exc).lower():
-                raise HTTPException(409, "Book already exists for this source/id")
+                raise HTTPException(409, "Book already exists for this source/id") from None
             raise
     return _book_out(row)
 
@@ -536,7 +535,7 @@ async def add_to_shelf(
             )
         except Exception as exc:
             if "unique" in str(exc).lower():
-                raise HTTPException(409, "Book already on this shelf")
+                raise HTTPException(409, "Book already on this shelf") from None
             raise
     return {
         "id":       str(row["id"]),
@@ -575,7 +574,7 @@ async def remove_from_shelf(
 
 @router.get("/progress")
 async def list_reading_progress(
-    status: Optional[str] = None,
+    status: str | None = None,
     ctx: OrgContext = Depends(org_context),
 ):
     pool = get_pool()

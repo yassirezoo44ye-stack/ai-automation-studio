@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -55,7 +55,7 @@ async def _get_definition(conn, definition_id: str, org_id: str) -> dict:
     try:
         uid = uuid.UUID(definition_id)
     except ValueError:
-        raise _not_found()
+        raise _not_found() from None
     row = await conn.fetchrow(
         "SELECT * FROM automation_definitions "
         "WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL",
@@ -129,18 +129,18 @@ def _row_to_step(row: dict) -> dict:
 
 class DefinitionCreate(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     definition: dict = {}
     triggers: list = []
     is_active: bool = False
 
 
 class DefinitionUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    definition: Optional[dict] = None
-    triggers: Optional[list] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    definition: dict | None = None
+    triggers: list | None = None
+    is_active: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +376,7 @@ async def run_definition(
 # ---------------------------------------------------------------------------
 
 class RunCreate(BaseModel):
-    definition_id: Optional[str] = None
+    definition_id: str | None = None
     name: str = "manual-run"
     context: dict = {}
     triggered_by: str = "manual"
@@ -391,8 +391,8 @@ async def list_runs(
     ctx: OrgContext = Depends(require_permission("automation", "read")),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    status: Optional[str] = Query(None),
-    definition_id: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    definition_id: str | None = Query(None),
 ):
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -580,7 +580,7 @@ async def approve_step(
         )
     except Exception as exc:
         log.error("approve_step: persistence failed run_id=%s step_id=%s: %s", run_id, step_id, exc)
-        raise HTTPException(500, "Failed to persist approval decision")
+        raise HTTPException(500, "Failed to persist approval decision") from None
 
     if not updated:
         raise HTTPException(409, "Approval is not in a decidable state (already decided or not found)")
@@ -619,7 +619,7 @@ async def reject_step(
         )
     except Exception as exc:
         log.error("reject_step: persistence failed run_id=%s step_id=%s: %s", run_id, step_id, exc)
-        raise HTTPException(500, "Failed to persist rejection decision")
+        raise HTTPException(500, "Failed to persist rejection decision") from None
 
     if not updated:
         raise HTTPException(409, "Approval is not in a decidable state (already decided or not found)")

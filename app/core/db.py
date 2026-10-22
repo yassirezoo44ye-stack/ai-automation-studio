@@ -7,14 +7,13 @@ called once from the lifespan context manager in main.py.
 """
 import os
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import asyncpg
 
 from app.core.config import USER_ID, DEMO_PROJECT_ID
 from app.core.observability.tracer import get_tracer
 
-_pool: Optional[asyncpg.Pool] = None
+_pool: asyncpg.Pool | None = None
 
 # When the pool is saturated, waiting forever turns one slow spot into a
 # platform-wide stall — fail fast instead so callers surface a clear error

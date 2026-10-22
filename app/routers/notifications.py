@@ -16,7 +16,6 @@ PUT    /api/notifications/preferences
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -30,11 +29,11 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 @router.get("")
 async def list_notifications(
     unread_only: bool = False,
-    category: Optional[str] = None,
-    severity: Optional[str] = None,
-    search: Optional[str] = None,
+    category: str | None = None,
+    severity: str | None = None,
+    search: str | None = None,
     include_archived: bool = False,
-    before: Optional[str] = None,
+    before: str | None = None,
     limit: int = 30,
     user: dict = Depends(get_current_user),
 ):

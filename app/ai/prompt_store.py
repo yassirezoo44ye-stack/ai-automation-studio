@@ -10,7 +10,6 @@ import logging
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from app.ai.models import PromptVersion
 
@@ -21,7 +20,7 @@ _VAR_RE = re.compile(r"\{\{(\w+)\}\}")  # matches {{ variable_name }}
 
 # ── Ownership ────────────────────────────────────────────────────────────────
 
-async def is_owned_by(pool, prompt_id: Optional[str], user_id: Optional[str]) -> bool:
+async def is_owned_by(pool, prompt_id: str | None, user_id: str | None) -> bool:
     """True only if prompt_id (a UUID or a slug — this store's lookups accept
     either) names a real prompt owned by user_id. Every read/write function
     below calls this first — the single source of truth for prompt
@@ -54,8 +53,8 @@ async def is_owned_by(pool, prompt_id: Optional[str], user_id: Optional[str]) ->
 # ── Read ──────────────────────────────────────────────────────────────────────
 
 async def get_active_version(
-    pool, prompt_id: str, *, user_id: Optional[str] = None,
-) -> Optional[PromptVersion]:
+    pool, prompt_id: str, *, user_id: str | None = None,
+) -> PromptVersion | None:
     """Return the active version of a prompt owned by user_id. Ownership is
     checked HERE (via is_owned_by), not just by callers. Returns None if
     prompt_id is malformed, doesn't exist, isn't owned by user_id, or has
@@ -98,12 +97,12 @@ async def get_active_version(
 async def render(
     version: PromptVersion,
     variables: dict[str, str],
-) -> tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """
     Substitute variables into system and user_template.
     Returns (system, user_template) with all {{ var }} replaced.
     """
-    def sub(text: Optional[str]) -> Optional[str]:
+    def sub(text: str | None) -> str | None:
         if not text:
             return text
         def replace(m: re.Match) -> str:
@@ -122,10 +121,10 @@ async def create_prompt(
     name: str,
     slug: str,
     description: str = "",
-    system: Optional[str] = None,
-    user_template: Optional[str] = None,
-    variables: Optional[list[str]] = None,
-    user_id: Optional[str] = None,
+    system: str | None = None,
+    user_template: str | None = None,
+    variables: list[str] | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Create a new prompt with version 1. Returns the prompt ID."""
     uid = uuid.UUID(user_id) if user_id else None
@@ -155,11 +154,11 @@ async def publish_version(
     pool,
     prompt_id: str,
     *,
-    user_id: Optional[str] = None,
-    system: Optional[str] = None,
-    user_template: Optional[str] = None,
-    variables: Optional[list[str]] = None,
-) -> Optional[int]:
+    user_id: str | None = None,
+    system: str | None = None,
+    user_template: str | None = None,
+    variables: list[str] | None = None,
+) -> int | None:
     """Add a new version and activate it; deactivate previous versions.
     Returns the new version number, or None if prompt_id isn't owned by
     user_id (no write happens in that case) — the router turns that into
@@ -191,7 +190,7 @@ async def publish_version(
 
 
 async def list_versions(
-    pool, prompt_id: str, *, user_id: Optional[str] = None,
+    pool, prompt_id: str, *, user_id: str | None = None,
 ) -> list[PromptVersion]:
     """List all versions of a prompt owned by user_id, newest first.
     Returns [] if prompt_id is malformed, doesn't exist, or isn't owned by
@@ -231,7 +230,7 @@ async def list_versions(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _extract_variables(*texts: Optional[str]) -> list[str]:
+def _extract_variables(*texts: str | None) -> list[str]:
     """Extract unique {{ variable }} names from one or more template strings."""
     seen: list[str] = []
     for text in texts:

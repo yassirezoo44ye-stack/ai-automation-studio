@@ -20,7 +20,6 @@ Security:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -43,9 +42,9 @@ def _not_found() -> HTTPException:
 
 class CreateLeadRequest(BaseModel):
     name:   str           = Field(..., min_length=1, max_length=200)
-    email:  Optional[str] = Field(default=None, max_length=320)
-    phone:  Optional[str] = Field(default=None, max_length=30)
-    source: Optional[str] = Field(default=None, max_length=100)
+    email:  str | None = Field(default=None, max_length=320)
+    phone:  str | None = Field(default=None, max_length=30)
+    source: str | None = Field(default=None, max_length=100)
 
 
 class UpdateStatusRequest(BaseModel):
@@ -54,10 +53,10 @@ class UpdateStatusRequest(BaseModel):
 
 class CaptureLeadRequest(BaseModel):
     name:    str           = Field(..., min_length=1, max_length=200)
-    email:   Optional[str] = Field(default=None, max_length=320)
-    phone:   Optional[str] = Field(default=None, max_length=30)
-    source:  Optional[str] = Field(default=None, max_length=100)
-    message: Optional[str] = Field(default=None, max_length=2000)
+    email:   str | None = Field(default=None, max_length=320)
+    phone:   str | None = Field(default=None, max_length=30)
+    source:  str | None = Field(default=None, max_length=100)
+    message: str | None = Field(default=None, max_length=2000)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -166,8 +165,8 @@ async def capture_lead(
 
 @router.get("")
 async def list_leads(
-    status: Optional[str] = None,
-    before: Optional[str] = None,
+    status: str | None = None,
+    before: str | None = None,
     limit: int = 50,
     ctx: OrgContext = Depends(require_permission("leads", "read")),
 ):

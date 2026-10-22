@@ -65,7 +65,7 @@ async def _get_owned_installation(installation_id: str, org_id: str) -> dict[str
     try:
         installation_uuid = uuid.UUID(installation_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Plugin installation not found")
+        raise HTTPException(status_code=404, detail="Plugin installation not found") from None
     from app.core.db import get_pool
     async with get_pool().acquire() as conn:
         row = await conn.fetchrow(
@@ -194,7 +194,7 @@ async def uninstall_plugin(
             row["marketplace_item_id"], org_id=ctx.org_id, actor_id=ctx.user_id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.post("/installed/{installation_id}/upgrade")
@@ -217,7 +217,7 @@ async def reload_plugin(
     try:
         result = await get_plugin_loader().reload(row["marketplace_item_id"], org_id=ctx.org_id)
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from None
     except tuple(_LOADER_ERROR_STATUS.keys()) as exc:
         _raise_loader_error(exc)
     return _installation_out(result)

@@ -507,7 +507,7 @@ def create_app() -> FastAPI:
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         errors = exc.errors()
         detail = "; ".join(
-            f"{' -> '.join(str(l) for l in e['loc'])}: {e['msg']}" for e in errors
+            f"{' -> '.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in errors
         )
         # Pydantic puts the raw exception object (e.g. the ValueError a
         # field_validator raised) in ctx, which json.dumps can't serialize.
@@ -597,13 +597,12 @@ def create_app() -> FastAPI:
     # ── Global rate limiting (before auth, protects public endpoints too) ──
     @app.middleware("http")
     async def global_rate_limit_middleware(request: Request, call_next):
-        if request.url.path.startswith("/api/"):
-            if not check_rate_limit(f"global:{_real_ip(request)}", max_calls=300, window=60):
-                return JSONResponse(
-                    status_code=429,
-                    content={"detail": "Too many requests — please slow down."},
-                    headers={"Retry-After": "60"},
-                )
+        if request.url.path.startswith("/api/") and not check_rate_limit(f"global:{_real_ip(request)}", max_calls=300, window=60):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests — please slow down."},
+                headers={"Retry-After": "60"},
+            )
         return await call_next(request)
 
     # ── Auth middleware (pure ASGI — doesn't buffer SSE) ───────────────────

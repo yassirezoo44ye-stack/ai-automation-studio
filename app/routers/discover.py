@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import Literal
 import uuid
 
 from app.core.auth import verify_token, extract_auth_credentials
@@ -97,7 +97,7 @@ def _get_org_id(request: Request) -> str:
     return org_id
 
 
-def _get_user_id(request: Request) -> Optional[str]:
+def _get_user_id(request: Request) -> str | None:
     """Best-effort user extraction from JWT — None if not available."""
     try:
         _, bearer = extract_auth_credentials(request)
@@ -132,19 +132,19 @@ CreationType = Literal["APP", "AGENT", "WORKFLOW", "AUTOMATION", "TEMPLATE", "DE
 class CreateCreationRequest(BaseModel):
     type: CreationType
     title: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = None
+    description: str | None = None
     visibility: Literal["private", "public"] = "private"
-    source_type: Optional[str] = Field(None, max_length=30)
-    source_id: Optional[str] = None  # UUID string
-    thumbnail_url: Optional[str] = None
+    source_type: str | None = Field(None, max_length=30)
+    source_id: str | None = None  # UUID string
+    thumbnail_url: str | None = None
     tags: list[str] = []
 
 
 class UpdateCreationRequest(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    tags: Optional[list[str]] = None
+    title: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = None
+    thumbnail_url: str | None = None
+    tags: list[str] | None = None
 
 
 def _row_to_dict(row) -> dict:
@@ -167,7 +167,7 @@ def _row_to_dict(row) -> dict:
 @router.get("/discover")
 async def public_discover_feed(
     request: Request,
-    type: Optional[str] = None,
+    type: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ):
@@ -244,7 +244,7 @@ async def public_discover_feed(
 @router.get("/discover/mine")
 async def my_creations(
     request: Request,
-    type: Optional[str] = None,
+    type: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ):
@@ -285,7 +285,7 @@ async def create_creation(request: Request, body: CreateCreationRequest):
         try:
             source_id = uuid.UUID(body.source_id)
         except ValueError:
-            raise HTTPException(status_code=400, detail="source_id must be a valid UUID")
+            raise HTTPException(status_code=400, detail="source_id must be a valid UUID") from None
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -306,7 +306,7 @@ async def create_creation(request: Request, body: CreateCreationRequest):
             raise HTTPException(
                 status_code=409,
                 detail="This source is already in your creations.",
-            )
+            ) from None
     return _row_to_dict(row)
 
 

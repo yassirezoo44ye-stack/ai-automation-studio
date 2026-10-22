@@ -19,7 +19,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from app.core.db import get_pool
 
@@ -113,7 +113,7 @@ def serialize_context(ctx: dict) -> str:
         return "{}"
 
 
-def _epoch_to_dt(ts: Optional[float]) -> Optional[datetime]:
+def _epoch_to_dt(ts: float | None) -> datetime | None:
     """Convert an engine epoch float to a UTC-aware datetime, or None."""
     if ts is None:
         return None
@@ -123,7 +123,7 @@ def _epoch_to_dt(ts: Optional[float]) -> Optional[datetime]:
         return None
 
 
-def _parse_org_id(raw: Any) -> Optional[str]:
+def _parse_org_id(raw: Any) -> str | None:
     """Safely parse and validate an organization_id.
     Returns a canonical UUID string, or None if invalid/missing.
     Never raises — an invalid org_id is logged and returned as None so the
@@ -144,7 +144,7 @@ def _parse_org_id(raw: Any) -> Optional[str]:
         return None
 
 
-def _result_to_json(result: Any) -> Optional[str]:
+def _result_to_json(result: Any) -> str | None:
     """Serialize a step result to a JSON string, or None on failure."""
     if result is None:
         return None
@@ -209,8 +209,8 @@ async def upsert_run(run: Any, organization_id: str) -> None:
 
 
 async def set_run_definition(run_id: str, definition_id: str,
-                             triggered_by: Optional[str] = None,
-                             triggered_by_user: Optional[str] = None) -> None:
+                             triggered_by: str | None = None,
+                             triggered_by_user: str | None = None) -> None:
     """Link a run to its definition after creation (fire-and-forget)."""
     try:
         pool = get_pool()
@@ -355,7 +355,7 @@ async def create_approval_request(
     organization_id: str,
     run_id: str,
     step_id: str,
-) -> Optional[str]:
+) -> str | None:
     """Insert a new pending approval record.
 
     approval_id format: "{run_id}:{step_id}" — compatible with Engine A's
@@ -391,7 +391,7 @@ async def create_approval_request(
 async def record_approval_decision(
     approval_id: str,
     status: str,            # 'approved' | 'rejected' | 'orphaned'
-    decided_by: Optional[str] = None,
+    decided_by: str | None = None,
 ) -> bool:
     """Persist an approval decision.
 
@@ -423,7 +423,7 @@ async def record_approval_decision(
     return result is not None
 
 
-async def get_approval_org(approval_id: str) -> Optional[str]:
+async def get_approval_org(approval_id: str) -> str | None:
     """Look up the organization_id for an approval record.
     Used to verify org ownership before mutating engine state.
     """

@@ -25,7 +25,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -44,8 +44,8 @@ class ServiceHealth:
     state    : ServiceState
     uptime_s : float = 0.0
     restarts : int   = 0
-    last_tick: Optional[float] = None
-    error    : Optional[str]   = None
+    last_tick: float | None = None
+    error    : str | None   = None
 
     def to_dict(self) -> dict:
         return {
@@ -67,12 +67,12 @@ class BaseService(ABC):
     auto_restart: bool = True     # restart if the task crashes
 
     def __init__(self) -> None:
-        self._task       : Optional[asyncio.Task] = None
+        self._task       : asyncio.Task | None = None
         self._stop_event : asyncio.Event          = asyncio.Event()
-        self._started_at : Optional[float]        = None
-        self._last_tick  : Optional[float]        = None
+        self._started_at : float | None        = None
+        self._last_tick  : float | None        = None
         self._restarts   : int                    = 0
-        self._last_error : Optional[str]          = None
+        self._last_error : str | None          = None
 
     # ── Override in subclass ──────────────────────────────────────────────────
 
@@ -102,12 +102,10 @@ class BaseService(ABC):
                 except Exception as exc:
                     log.error("Service '%s' tick error: %s", self.name, exc)
                     self._last_error = str(exc)
-                try:
+                with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(
                         self._stop_event.wait(), timeout=self.interval_s
                     )
-                except asyncio.TimeoutError:
-                    pass
         finally:
             log.info("Service stopping: %s", self.name)
             try:
@@ -174,7 +172,7 @@ class ServiceRegistry:
         self._services[service.name] = service
         log.debug("Service registered: %s", service.name)
 
-    def get(self, name: str) -> Optional[BaseService]:
+    def get(self, name: str) -> BaseService | None:
         return self._services.get(name)
 
     def start(self, name: str) -> bool:
@@ -211,7 +209,7 @@ class ServiceRegistry:
     def status(self) -> list[dict]:
         return [s.health().to_dict() for s in self._services.values()]
 
-    def status_one(self, name: str) -> Optional[dict]:
+    def status_one(self, name: str) -> dict | None:
         svc = self._services.get(name)
         return svc.health().to_dict() if svc else None
 

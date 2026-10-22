@@ -15,7 +15,7 @@ calling into this service.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -38,7 +38,7 @@ class ChatService:
         self._pool = pool
 
     async def create_message(
-        self, *, organization_id: str, team_id: Optional[str], user_id: str, body: str,
+        self, *, organization_id: str, team_id: str | None, user_id: str, body: str,
     ) -> dict[str, Any]:
         body = body.strip()
         if not body:
@@ -59,8 +59,8 @@ class ChatService:
         return _row_to_dict(row)
 
     async def list_messages(
-        self, *, organization_id: str, team_id: Optional[str],
-        before: Optional[str] = None, limit: int = 50,
+        self, *, organization_id: str, team_id: str | None,
+        before: str | None = None, limit: int = 50,
     ) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 100))
         clauses = ["cm.organization_id=$1", "cm.deleted_at IS NULL"]
@@ -104,7 +104,7 @@ class ChatService:
 
 # ── Singleton wiring ─────────────────────────────────────────────────────────
 
-_service: Optional[ChatService] = None
+_service: ChatService | None = None
 
 
 def get_chat_service(pool: asyncpg.Pool | None = None) -> ChatService:

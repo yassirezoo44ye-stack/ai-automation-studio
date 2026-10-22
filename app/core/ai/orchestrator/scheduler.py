@@ -8,7 +8,8 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any
+from collections.abc import Callable, Coroutine
 
 from .planner import ExecutionPlan, PlannedTask
 
@@ -16,7 +17,7 @@ from .planner import ExecutionPlan, PlannedTask
 @dataclass
 class ScheduledTask:
     planned:       PlannedTask
-    agent_name:    Optional[str]
+    agent_name:    str | None
     max_retries:   int   = 2
     timeout_s:     float = 60.0
     attempt:       int   = 0
@@ -80,7 +81,7 @@ class TaskScheduler:
         sem: asyncio.Semaphore,
     ) -> dict[str, Any]:
         async with sem:
-            last_exc: Optional[Exception] = None
+            last_exc: Exception | None = None
             for attempt in range(task.max_retries + 1):
                 task.attempt = attempt
                 try:

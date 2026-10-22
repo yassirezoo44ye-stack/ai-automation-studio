@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -17,13 +17,13 @@ class PlannedTask:
     task_type:        str                   # "research" | "code" | "review" | "design" | etc.
     description:      str
     depends_on:       list[str]             = field(default_factory=list)
-    preferred_agent:  Optional[str]         = None
+    preferred_agent:  str | None         = None
     estimated_tokens: int                   = 500
     estimated_cost:   float                 = 0.0
     metadata:         dict[str, Any]        = field(default_factory=dict)
 
     @classmethod
-    def make(cls, task_type: str, description: str, **kw: Any) -> "PlannedTask":
+    def make(cls, task_type: str, description: str, **kw: Any) -> PlannedTask:
         return cls(id=str(uuid.uuid4()), task_type=task_type, description=description, **kw)
 
 
@@ -102,7 +102,7 @@ class TaskPlanner:
     def _task_from_sentence(self, sentence: str) -> PlannedTask:
         lower = sentence.lower()
         task_type = "general"
-        for kw, agent in self._AGENT_HINTS.items():
+        for kw, _agent in self._AGENT_HINTS.items():
             if kw in lower:
                 task_type = kw
                 break
@@ -126,7 +126,7 @@ class TaskPlanner:
         parts = re.split(r"\b(then|after that|next step|afterward)\b", prompt, flags=re.I)
         parts = [p.strip() for p in parts if p.strip() and len(p) > 5]
         tasks: list[PlannedTask] = []
-        prev_id: Optional[str] = None
+        prev_id: str | None = None
         for part in parts[:6]:
             t = self._task_from_sentence(part)
             if prev_id:
