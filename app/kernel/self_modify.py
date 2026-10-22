@@ -86,7 +86,7 @@ class SelfModifyingEngine:
         backup = self._backup(path, original)
         self._write(path, modified)
 
-        rec = self._state.record_modification(
+        self._state.record_modification(
             file=file, action="patch",
             before_hash=_sha256(original), after_hash=_sha256(modified),
             description=description or f"patch {occurrences} occurrence(s) of {find[:40]!r}",

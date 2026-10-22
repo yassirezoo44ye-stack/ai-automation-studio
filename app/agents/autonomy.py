@@ -156,7 +156,6 @@ class AutonomyEngine:
         # this org (via the prompt) and risk them resurfacing in the
         # generated suggestion text handed back to the caller.
         existing_agents = self._kernel.visible_agent_names(org_id)
-        memory_stats    = self._kernel._memory.global_stats(org_id=org_id)
         common_errors   = [s.name for s in self._kernel._memory.underperformers(org_id=org_id)]
 
         prompt = (

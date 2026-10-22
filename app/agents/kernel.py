@@ -26,7 +26,7 @@ import logging
 from typing import Optional
 
 from app.agents.base    import AgentContext, AgentResult, EvolvableAgent
-from app.agents.intent  import IntentParser
+from app.agents.intent  import IntentParser, IntentResult
 from app.agents.memory  import ExecutionRecord, AgentMemory, get_memory
 from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
@@ -531,9 +531,8 @@ class AgentKernel:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _adapt_routed(routed) -> "IntentResult":
+def _adapt_routed(routed) -> IntentResult:
     """Convert RoutedIntent → IntentResult duck-type."""
-    from app.agents.intent import IntentResult
     return IntentResult(
         intent     = routed.intent,
         args       = routed.args,

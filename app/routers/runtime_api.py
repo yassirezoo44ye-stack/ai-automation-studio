@@ -49,7 +49,6 @@ from app.execution.platform import (
     get_cache,
     get_registry,
 )
-from app.execution.platform.artifacts import ArtifactSystem
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["runtime"])
@@ -102,8 +101,7 @@ async def execute(req: ExecuteRequest, request: Request):
 
     async def _stream() -> AsyncIterator[str]:
         nonlocal execution_id
-        report    = None
-        artifacts = None
+        report = None
 
         async for event in engine.run(ws, project_id=req.project_id, options=req.options):
             d = event.to_sse_dict()

@@ -7,7 +7,6 @@ import asyncio
 import os
 import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import asyncpg
 import stripe
@@ -220,7 +219,6 @@ async def lifespan(app: FastAPI):
     # ── AI Business App Builder — tables + async columns + role permissions ──
     from migrations.versions.app_builder_schema import upgrade as init_app_builder_schema
     from migrations.versions.app_builder_async_schema import upgrade as init_app_builder_async_schema
-    from app.tenancy.schema import DEFAULT_PERMISSIONS
     async with pool.acquire() as conn:
         await init_app_builder_schema(conn)
         # Migration 010 — adds async build columns, fixes CHECK constraint,

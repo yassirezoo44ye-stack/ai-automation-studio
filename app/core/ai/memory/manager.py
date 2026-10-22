@@ -18,13 +18,13 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.ai import memory as mem
 from app.core.ai.events.bus import bus
 from app.core.ai.events.events import MemoryUpdated
-from app.core.ai.memory.types import MemoryItem, MemoryType, MEMORY_SCOPES
+from app.core.ai.memory.types import MemoryItem, MemoryType
 
 log = logging.getLogger(__name__)
 
@@ -67,11 +67,6 @@ class MemoryManager:
         NULL) rather than rejecting the whole store — same fail-open-on-
         the-link/fail-closed-on-the-data shape as AIGateway._enrich()
         silently not loading history for an unowned conversation_id."""
-        scope      = MEMORY_SCOPES[memory_type]
-        expires_at = None
-        if scope.ttl_seconds:
-            expires_at = datetime.now(timezone.utc) + timedelta(seconds=scope.ttl_seconds)
-
         if conversation_id and not await mem.is_owned_by(self._pool, conversation_id, owner_id):
             conversation_id = None
 
