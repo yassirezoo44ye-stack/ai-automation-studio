@@ -86,6 +86,7 @@ def _run(coro):
 # ── Import under test after env is set ────────────────────────────────────────
 
 from app.routers.build import build_plan  # noqa: E402
+import contextlib
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -205,10 +206,8 @@ class TestBuildPlanOverQuota(unittest.TestCase):
                   new=AsyncMock(side_effect=HTTPException(429, "Token quota exceeded"))),
             patch("app.routers.build.InferenceEngine", return_value=engine_mock),
         ):
-            try:
+            with contextlib.suppress(HTTPException):
                 _run(build_plan(_plan_request(), _fake_request()))
-            except HTTPException:
-                pass
 
         # Core invariant: quota guard fires BEFORE the AI call
         engine_mock.complete.assert_not_called()

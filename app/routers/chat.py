@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 import uuid
@@ -169,10 +170,8 @@ async def run_stream(req: RunRequest, request: Request):
                 return
 
             if total_tokens:
-                try:
+                with contextlib.suppress(Exception):  # metering must never turn a successful reply into an error
                     await record_org_tokens(org_id, total_tokens, str(conv_id))
-                except Exception:
-                    pass  # metering must never turn a successful reply into an error
 
             # Save assistant reply BEFORE sending `done` — the client stops
             # reading the stream on `done`, so a disconnect can race the save

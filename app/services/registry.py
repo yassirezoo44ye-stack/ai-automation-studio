@@ -81,10 +81,10 @@ class BaseService(ABC):
         """Called once per interval. Must be non-blocking (use asyncio)."""
         ...
 
-    async def on_start(self) -> None:
+    async def on_start(self) -> None:  # noqa: B027
         """Called once when the service starts."""
 
-    async def on_stop(self) -> None:
+    async def on_stop(self) -> None:  # noqa: B027
         """Called once when the service stops cleanly."""
 
     # ── Lifecycle (do not override) ───────────────────────────────────────────

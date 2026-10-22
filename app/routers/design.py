@@ -1,3 +1,4 @@
+import contextlib
 import json
 import uuid
 
@@ -102,10 +103,8 @@ Rules:
         except Exception as e:
             raise HTTPException(502, str(e)) from None
 
-    try:
+    with contextlib.suppress(Exception):
         await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
-    except Exception:
-        pass  # metering must never turn a successful reply into an error
     try:
         raw = resp.content.strip()
         if raw.startswith("```"):
@@ -286,10 +285,8 @@ async def _call_claude(
     engine = InferenceEngine(pool=get_pool())
     async with get_bulkhead("design", 8).acquire():
         resp = await engine.complete(request_obj, user_id=None, org_id=None, auto_tools=False)
-    try:
+    with contextlib.suppress(Exception):
         await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
-    except Exception:
-        pass  # metering must never turn a successful reply into an error
     raw = resp.content.strip()
     if raw.startswith("```"):
         raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
@@ -404,8 +401,6 @@ async def ai_assistant(req: AssistantRequest, request: Request):
         except Exception as e:
             raise HTTPException(502, str(e)) from None
 
-    try:
+    with contextlib.suppress(Exception):  # metering must never turn a successful reply into an error
         await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
-    except Exception:
-        pass  # metering must never turn a successful reply into an error
     return {"message": resp.content, "actions": []}

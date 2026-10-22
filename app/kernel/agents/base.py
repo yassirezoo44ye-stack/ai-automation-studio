@@ -72,7 +72,7 @@ class BaseAgent(ABC):
 
     name: str = "agent"
 
-    async def initialize(self, state: AgentState) -> None:
+    async def initialize(self, state: AgentState) -> None:  # noqa: B027
         """Called before execute(). Override for setup."""
         pass
 
@@ -80,7 +80,7 @@ class BaseAgent(ABC):
     async def execute(self, state: AgentState) -> None:
         """Main agent work. Write output to state.emit()."""
 
-    async def finalize(self, state: AgentState) -> None:
+    async def finalize(self, state: AgentState) -> None:  # noqa: B027
         """Called after execute(), even on failure. Override for cleanup."""
         pass
 

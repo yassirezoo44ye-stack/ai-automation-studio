@@ -66,7 +66,7 @@ class _ConnectionManager:
         results = await asyncio.gather(
             *(ws.send_text(frame) for ws in subs), return_exceptions=True,
         )
-        for ws, result in zip(subs, results):
+        for ws, result in zip(subs, results, strict=False):
             if isinstance(result, BaseException):
                 self.disconnect(ws, topic)
 

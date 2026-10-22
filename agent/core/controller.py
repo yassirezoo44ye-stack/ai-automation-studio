@@ -25,7 +25,8 @@ import logging
 import sys
 import threading
 import time
-from typing import Callable, Optional
+from typing import Optional
+from collections.abc import Callable
 import contextlib
 
 log = logging.getLogger(__name__)

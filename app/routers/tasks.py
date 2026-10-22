@@ -1,3 +1,4 @@
+import contextlib
 import json
 import uuid
 from datetime import datetime, timedelta
@@ -283,10 +284,8 @@ async def extract_tasks_from_conversation(conversation_id: str, request: Request
         except Exception as e:
             raise HTTPException(502, str(e)) from None
 
-    try:
+    with contextlib.suppress(Exception):  # metering must never turn a successful reply into an error
         await record_org_tokens(org_id, resp.usage.total_tokens, str(conv_id), ref_type="tasks")
-    except Exception:
-        pass  # metering must never turn a successful reply into an error
 
     raw = resp.content.strip()
     if raw.startswith("```"):

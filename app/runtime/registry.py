@@ -42,7 +42,7 @@ async def discover() -> None:
         *[_probe(n) for n in _PROBE_TARGETS],
         return_exceptions=True,
     )
-    for name, info in zip(_PROBE_TARGETS, infos):
+    for name, info in zip(_PROBE_TARGETS, infos, strict=False):
         _registry[name] = (
             info if isinstance(info, RuntimeInfo)
             else RuntimeInfo(name=name, available=False)

@@ -1,3 +1,4 @@
+import contextlib
 import json
 import uuid
 
@@ -223,10 +224,8 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 return
 
             if total_tokens:
-                try:
+                with contextlib.suppress(Exception):
                     await record_org_tokens(org_id, total_tokens, str(conv_id), ref_type="agents")
-                except Exception:
-                    pass  # metering must never turn a successful reply into an error
 
             yield f"data: {json.dumps({'type':'done'})}\n\n"
 

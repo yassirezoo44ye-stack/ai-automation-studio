@@ -201,6 +201,4 @@ def validate_incoming(msg: dict) -> bool:
         return False
     if msg.get("version") != PROTOCOL_VERSION:
         return False
-    if msg.get("type") not in _VALID_INCOMING_TYPES:
-        return False
-    return True
+    return msg.get("type") in _VALID_INCOMING_TYPES

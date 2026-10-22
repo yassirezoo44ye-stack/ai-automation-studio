@@ -17,6 +17,7 @@ Usage::
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import os
@@ -141,10 +142,8 @@ class EmbeddingsService:
             import openai
             client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             resp = await client.embeddings.create(input=text, model=model)
-            try:
+            with contextlib.suppress(Exception):
                 await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="embeddings")
-            except Exception:
-                pass  # metering must never turn a successful reply into an error
             return EmbeddingResult(
                 text=text,
                 embedding=resp.data[0].embedding,

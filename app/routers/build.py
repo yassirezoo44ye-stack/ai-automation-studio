@@ -524,10 +524,8 @@ async def build_stream(req: BuildRequest, request: Request):
                 return
 
             if total_tokens and not dev_mode:
-                try:
+                with contextlib.suppress(Exception):
                     await record_org_tokens(org_id, total_tokens, req.project_id)
-                except Exception:
-                    pass  # metering must never turn a successful build into an error
 
             # Flush remaining buffer (last line without trailing newline)
             if buf.strip():

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Callable
+from collections.abc import Callable
 import contextlib
 
 log = logging.getLogger(__name__)

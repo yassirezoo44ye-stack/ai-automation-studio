@@ -148,10 +148,8 @@ class AgentRuntime:
 
                 provider_enum = None
                 if self.config.provider_id:
-                    try:
+                    with contextlib.suppress(ValueError):
                         provider_enum = ProviderID(self.config.provider_id)
-                    except ValueError:
-                        pass  # openrouter/local — pass as-is via model string
 
                 req = CompletionRequest(
                     messages=messages,

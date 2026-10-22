@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import contextlib
 
 # ── Force UTF-8 on Windows cp1252 terminals ────────────────────────────────────
 if hasattr(sys.stdout, "buffer") and (
@@ -359,10 +360,8 @@ async def cmd_loop(args: list[str]) -> None:
     cycles = 3
     for a in args:
         if a.startswith("--cycles="):
-            try:
+            with contextlib.suppress(ValueError):
                 cycles = int(a.split("=")[1])
-            except ValueError:
-                pass
     kernel  = _get_kernel()
     results = await kernel.autonomous_loop(cycles)
     _print_json(results)

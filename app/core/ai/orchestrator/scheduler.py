@@ -66,7 +66,7 @@ class TaskScheduler:
                 *[self._run_with_retry(st, runner, sem) for st in scheduled],
                 return_exceptions=True,
             )
-            for st, res in zip(scheduled, group_results):
+            for st, res in zip(scheduled, group_results, strict=False):
                 if isinstance(res, Exception):
                     results[st.planned.id] = {"error": str(res), "success": False}
                 else:

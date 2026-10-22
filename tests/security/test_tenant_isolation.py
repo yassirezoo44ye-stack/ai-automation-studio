@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.agents.base import AgentContext, AgentResult, EvolvableAgent
 from app.agents.intent import IntentParser
 from app.agents.memory import AgentMemory, ExecutionRecord
+import contextlib
 
 
 # ── Shared helpers (mirrors tests/test_agent_os.py's construction pattern) ──────
@@ -249,10 +250,8 @@ class TestAgentExecutionIsolation:
             await asyncio.sleep(0.01)
             t_a.cancel()
             b_result = await t_b
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await t_a
-            except asyncio.CancelledError:
-                pass
             return b_result
 
         b_result = _run(scenario())

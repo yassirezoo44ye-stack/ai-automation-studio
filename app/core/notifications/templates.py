@@ -5,10 +5,10 @@ change to the dispatcher itself (Step "extensibility" from the spec).
 """
 from __future__ import annotations
 
-from typing import Any, NamedTuple, Union
+from typing import Any, NamedTuple
 from collections.abc import Callable
 
-SeverityFn = Union[str, Callable[[dict[str, Any]], str]]
+SeverityFn = str | Callable[[dict[str, Any]], str]
 
 
 class NotificationTemplate(NamedTuple):

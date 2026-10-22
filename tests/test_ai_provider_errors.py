@@ -732,7 +732,7 @@ def _aiter_items(items):
         async def __anext__(self):
             try:
                 return next(self._it)
-            except StopIteration:
-                raise StopAsyncIteration
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
 
     return _AI()

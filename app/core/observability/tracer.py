@@ -21,6 +21,7 @@ or without an external collector configured.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import threading
@@ -195,10 +196,8 @@ class Tracer:
         # auto-created HTTP spans (app.factory's instrument_app call) land
         # in the same ring buffer as every manually-created span here —
         # one tracer, not two disconnected ones.
-        try:
+        with contextlib.suppress(Exception):
             otel_trace.set_tracer_provider(self._provider)
-        except Exception:
-            pass  # already set (e.g. re-instantiated in a test) — non-fatal
         self._otel_tracer = self._provider.get_tracer("axon.observability")
 
     def start_span(

@@ -190,9 +190,8 @@ class TestNoProviderCallOnOverflow(unittest.IsolatedAsyncioTestCase):
         )
         with unittest.mock.patch(
             "app.core.ai.registry.registry.platform_registry.complete_with_events",
-        ) as mock_complete:
-            with self.assertRaises(ContextBudgetError):
-                await gw.complete(req)
+        ) as mock_complete, self.assertRaises(ContextBudgetError):
+            await gw.complete(req)
         mock_complete.assert_not_called()
 
     async def test_stream_raises_before_any_provider_call(self):
@@ -202,10 +201,9 @@ class TestNoProviderCallOnOverflow(unittest.IsolatedAsyncioTestCase):
         )
         with unittest.mock.patch(
             "app.core.ai.registry.registry.platform_registry.stream_with_events",
-        ) as mock_stream:
-            with self.assertRaises(ContextBudgetError):
-                async for _ in gw.stream(req):
-                    pass
+        ) as mock_stream, self.assertRaises(ContextBudgetError):
+            async for _ in gw.stream(req):
+                pass
         mock_stream.assert_not_called()
 
 

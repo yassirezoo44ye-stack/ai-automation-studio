@@ -1281,7 +1281,6 @@ class TestFrontendUrlSeparation:
 
     def test_missing_bind_cookie_rejects_despite_valid_state(self, client):
         """Missing oauth_bind cookie must produce 400 even when state is valid."""
-        import asyncio
         from app.core.cache.redis_adapter import get_redis
 
         state = "valid-state-no-cookie"

@@ -449,17 +449,15 @@ class TestRuntimeManager:
         _pkg(tmp_path, scripts={"build": "tsc"})
         _lockfile(tmp_path, "package-lock.json")
         m = RuntimeManager()
-        with _mock_probe({"npm"}):
-            with pytest.raises(ScriptNotFound):
-                await m.run_script(tmp_path, "nonexistent")
+        with _mock_probe({"npm"}), pytest.raises(ScriptNotFound):
+            await m.run_script(tmp_path, "nonexistent")
 
     @pytest.mark.asyncio
     async def test_run_script_raises_when_no_pm(self, tmp_path):
         _pkg(tmp_path, scripts={"build": "tsc"})
         m = RuntimeManager()
-        with _mock_probe(set()):
-            with pytest.raises(PackageManagerNotFound):
-                await m.run_script(tmp_path, "build")
+        with _mock_probe(set()), pytest.raises(PackageManagerNotFound):
+            await m.run_script(tmp_path, "build")
 
     @pytest.mark.asyncio
     async def test_install_emits_result_sentinel_when_no_pm(self, tmp_path):

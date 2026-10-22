@@ -115,10 +115,8 @@ class BuildCache:
         _hash_lockfiles(h, ws, ("package-lock.json", "pnpm-lock.yaml"))
         # Hash source files (shallow: only files directly in ws root)
         for f in sorted(ws.glob("*.{js,ts,jsx,tsx,html,css,json}")):
-            try:
+            with contextlib.suppress(Exception):
                 h.update(f.read_bytes()[:4096])  # first 4 KB is enough for a fingerprint
-            except Exception:
-                pass
         return h.hexdigest()[:16]
 
     # ── Lookup ────────────────────────────────────────────────────────────────

@@ -130,23 +130,22 @@ async def create_prompt(
     uid = uuid.UUID(user_id) if user_id else None
     vars_ = variables or _extract_variables(system, user_template)
 
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            pid = await conn.fetchval(
-                """
-                INSERT INTO ai_prompts (name, slug, description, user_id, created_at)
-                VALUES ($1,$2,$3,$4,$5) RETURNING id
-                """,
-                name, slug, description, uid, datetime.now(timezone.utc),
-            )
-            await conn.execute(
-                """
-                INSERT INTO ai_prompt_versions
-                  (prompt_id, version, system, user_template, variables, is_active, created_at)
-                VALUES ($1,1,$2,$3,$4,true,$5)
-                """,
-                pid, system, user_template, vars_, datetime.now(timezone.utc),
-            )
+    async with pool.acquire() as conn, conn.transaction():
+        pid = await conn.fetchval(
+            """
+            INSERT INTO ai_prompts (name, slug, description, user_id, created_at)
+            VALUES ($1,$2,$3,$4,$5) RETURNING id
+            """,
+            name, slug, description, uid, datetime.now(timezone.utc),
+        )
+        await conn.execute(
+            """
+            INSERT INTO ai_prompt_versions
+              (prompt_id, version, system, user_template, variables, is_active, created_at)
+            VALUES ($1,1,$2,$3,$4,true,$5)
+            """,
+            pid, system, user_template, vars_, datetime.now(timezone.utc),
+        )
     return str(pid)
 
 
@@ -168,24 +167,23 @@ async def publish_version(
     vars_ = variables or _extract_variables(system, user_template)
     pid   = uuid.UUID(prompt_id)
 
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                "UPDATE ai_prompt_versions SET is_active=false WHERE prompt_id=$1",
-                pid,
-            )
-            next_v = (await conn.fetchval(
-                "SELECT COALESCE(MAX(version),0)+1 FROM ai_prompt_versions WHERE prompt_id=$1",
-                pid,
-            ))
-            await conn.execute(
-                """
-                INSERT INTO ai_prompt_versions
-                  (prompt_id, version, system, user_template, variables, is_active, created_at)
-                VALUES ($1,$2,$3,$4,$5,true,$6)
-                """,
-                pid, next_v, system, user_template, vars_, datetime.now(timezone.utc),
-            )
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute(
+            "UPDATE ai_prompt_versions SET is_active=false WHERE prompt_id=$1",
+            pid,
+        )
+        next_v = (await conn.fetchval(
+            "SELECT COALESCE(MAX(version),0)+1 FROM ai_prompt_versions WHERE prompt_id=$1",
+            pid,
+        ))
+        await conn.execute(
+            """
+            INSERT INTO ai_prompt_versions
+              (prompt_id, version, system, user_template, variables, is_active, created_at)
+            VALUES ($1,$2,$3,$4,$5,true,$6)
+            """,
+            pid, next_v, system, user_template, vars_, datetime.now(timezone.utc),
+        )
     return next_v
 
 

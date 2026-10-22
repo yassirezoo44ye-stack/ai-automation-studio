@@ -12,7 +12,6 @@ All DB interactions are mocked.
 """
 from __future__ import annotations
 
-import json
 import sys
 import unittest
 import uuid
@@ -218,7 +217,7 @@ class _Iter:
     def __aiter__(self): return self
     async def __anext__(self):
         try: return next(self._items)
-        except StopIteration: raise StopAsyncIteration
+        except StopIteration as exc: raise StopAsyncIteration from exc
 
 
 def _aiter(items): return _Iter(items)

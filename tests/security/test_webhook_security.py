@@ -73,16 +73,14 @@ class TestSsrfGuard(unittest.TestCase):
     def test_private_rfc1918_ranges_blocked(self):
         from app.core.ssrf_guard import UnsafeUrlError, assert_public_url
         for host in ("10.0.0.5", "172.16.0.1", "192.168.1.1"):
-            with self.subTest(host=host):
-                with self.assertRaises(UnsafeUrlError):
-                    assert_public_url(f"http://{host}/x")
+            with self.subTest(host=host), self.assertRaises(UnsafeUrlError):
+                assert_public_url(f"http://{host}/x")
 
     def test_non_http_scheme_blocked(self):
         from app.core.ssrf_guard import UnsafeUrlError, assert_public_url
         for url in ("file:///etc/passwd", "gopher://127.0.0.1:6379/_INFO", "ftp://example.com/x"):
-            with self.subTest(url=url):
-                with self.assertRaises(UnsafeUrlError):
-                    assert_public_url(url)
+            with self.subTest(url=url), self.assertRaises(UnsafeUrlError):
+                assert_public_url(url)
 
     def test_url_with_no_hostname_blocked(self):
         from app.core.ssrf_guard import UnsafeUrlError, assert_public_url

@@ -89,7 +89,7 @@ class EventBus:
                 return_exceptions=True,
             )
             errors = []
-            for h, result in zip(handlers, results):
+            for h, result in zip(handlers, results, strict=False):
                 if isinstance(result, Exception):
                     errors.append(f"{h.__qualname__}: {result}")
                     log.error(

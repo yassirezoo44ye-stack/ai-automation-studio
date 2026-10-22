@@ -19,6 +19,7 @@ import types
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+import contextlib
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
@@ -499,10 +500,8 @@ class TestCreateLeadRequestValidation:
             for attr in dir(mod):
                 obj = getattr(mod, attr, None)
                 if obj is not None and hasattr(obj, "model_rebuild"):
-                    try:
+                    with contextlib.suppress(Exception):
                         obj.model_rebuild()
-                    except Exception:
-                        pass
         return mod
 
     def test_empty_name_rejected(self):

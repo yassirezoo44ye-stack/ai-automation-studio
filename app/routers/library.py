@@ -17,6 +17,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 
@@ -201,7 +202,7 @@ async def search_books(
     async with pool.acquire() as conn:
         await _upsert_books(conn, books_raw)
         # log search for analytics
-        try:
+        with contextlib.suppress(Exception):  # analytics write failure must never break search
             await conn.execute(
                 """
                 INSERT INTO library_search_history
@@ -215,8 +216,6 @@ async def search_books(
                             "has_full_text": has_full_text, "has_audio": has_audio}),
                 len(books_raw),
             )
-        except Exception:
-            pass  # analytics write failure must never break search
 
     total = sum(totals.values())
     return {

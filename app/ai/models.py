@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from enum import Enum
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -42,7 +42,7 @@ class ToolResultPart(BaseModel):
     content: str | list[TextPart]
     is_error: bool = False
 
-ContentPart = Union[TextPart, ImagePart, ToolUsePart, ToolResultPart]
+ContentPart = TextPart | ImagePart | ToolUsePart | ToolResultPart
 
 class Message(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
