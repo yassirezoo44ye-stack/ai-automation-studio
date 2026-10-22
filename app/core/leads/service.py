@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -50,9 +50,9 @@ class LeadService:
         self, *,
         org_id: str,
         name: str,
-        email: Optional[str] = None,
-        phone: Optional[str] = None,
-        source: Optional[str] = None,
+        email: str | None = None,
+        phone: str | None = None,
+        source: str | None = None,
     ) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -70,8 +70,8 @@ class LeadService:
     async def list(
         self, *,
         org_id: str,
-        status: Optional[str] = None,
-        before: Optional[str] = None,
+        status: str | None = None,
+        before: str | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 200))
@@ -94,7 +94,7 @@ class LeadService:
 
     # ── Get one ──────────────────────────────────────────────────────────────
 
-    async def get(self, *, lead_id: str, org_id: str) -> Optional[dict[str, Any]]:
+    async def get(self, *, lead_id: str, org_id: str) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM leads WHERE id = $1 AND organization_id = $2",
@@ -106,7 +106,7 @@ class LeadService:
 
     async def update_status(
         self, *, lead_id: str, org_id: str, status: str,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -146,8 +146,8 @@ class LeadService:
             f'{{\"score\": <integer 1-10>, \"notes\": \"<one sentence rationale>\"}}'
         )
 
-        ai_score: Optional[int] = None
-        ai_notes: Optional[str] = None
+        ai_score: int | None = None
+        ai_notes: str | None = None
         new_status = "new"
 
         try:
@@ -258,16 +258,13 @@ def _parse_qualification(content: str) -> dict[str, Any]:
         import json
         data = json.loads(match.group())
         score = data.get("score")
-        if isinstance(score, (int, float)):
-            score = max(1, min(10, int(score)))
-        else:
-            score = None
+        score = max(1, min(10, int(score))) if isinstance(score, (int, float)) else None
         return {"score": score, "notes": str(data.get("notes", ""))[:500]}
     except Exception:
         return {"notes": content[:200]}
 
 
-_service_instance: Optional[LeadService] = None
+_service_instance: LeadService | None = None
 
 
 def get_lead_service() -> LeadService:

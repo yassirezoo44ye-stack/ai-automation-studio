@@ -58,7 +58,7 @@ def _require_jwt_user_id(request: Request) -> str:
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(401, "Invalid or expired token")
+        raise HTTPException(401, "Invalid or expired token") from None
 
 # ── Ticket store ──────────────────────────────────────────────────────────────
 

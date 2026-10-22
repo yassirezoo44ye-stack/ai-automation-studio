@@ -5,9 +5,10 @@ change to the dispatcher itself (Step "extensibility" from the spec).
 """
 from __future__ import annotations
 
-from typing import Any, Callable, NamedTuple, Optional, Union
+from typing import Any, NamedTuple
+from collections.abc import Callable
 
-SeverityFn = Union[str, Callable[[dict[str, Any]], str]]
+SeverityFn = str | Callable[[dict[str, Any]], str]
 
 
 class NotificationTemplate(NamedTuple):
@@ -15,7 +16,7 @@ class NotificationTemplate(NamedTuple):
     severity: SeverityFn
     title: Callable[[dict[str, Any]], str]
     message: Callable[[dict[str, Any]], str]
-    action: Optional[Callable[[dict[str, Any]], dict[str, str]]] = None
+    action: Callable[[dict[str, Any]], dict[str, str]] | None = None
 
     def resolve_severity(self, data: dict[str, Any]) -> str:
         return self.severity(data) if callable(self.severity) else self.severity

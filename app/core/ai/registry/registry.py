@@ -283,7 +283,7 @@ class PlatformProviderRegistry:
                     try:
                         t0   = time.perf_counter()
                         resp = await with_retry(
-                            lambda: provider.complete(request),
+                            lambda p=provider: p.complete(request),
                             max_retries=1, base_delay=0.5, max_delay=2.0,
                             timeout=request.timeout,
                         )

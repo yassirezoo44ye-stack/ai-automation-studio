@@ -13,7 +13,6 @@ actually reads at runtime so plans are admin-editable without a deploy.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 # Canonical usage metrics (one row per metric per org per period).
@@ -64,7 +63,7 @@ class Plan:
     trial_days: int = 0
     max_agents: int = -1      # resource-count cap, distinct from usage_records metrics
     max_workflows: int = -1
-    stripe_price_id: Optional[str] = None
+    stripe_price_id: str | None = None
     is_purchasable: bool = True
     active: bool = True
 
@@ -113,7 +112,7 @@ _SEED_PLANS: dict[str, Plan] = {
     ),
     "enterprise": Plan(
         id="enterprise", name="Enterprise", price_monthly_usd=0.0,  # custom pricing
-        limits={m: -1 for m in METRICS},
+        limits=dict.fromkeys(METRICS, -1),
         features=("dedicated_support", "marketplace", "advanced_analytics", "sso",
                   "audit_logs", "custom_roles", "sla", "private_cloud", "custom_models"),
         max_agents=-1, max_workflows=-1, is_purchasable=False,

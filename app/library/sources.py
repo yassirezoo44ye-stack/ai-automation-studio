@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -31,14 +31,14 @@ def _str(v: Any) -> str:
     return str(v) if v is not None else ""
 
 
-def _int(v: Any) -> Optional[int]:
+def _int(v: Any) -> int | None:
     try:
         return int(v) if v is not None else None
     except (ValueError, TypeError):
         return None
 
 
-def _year_from_date(s: Optional[str]) -> Optional[int]:
+def _year_from_date(s: str | None) -> int | None:
     if not s:
         return None
     m = re.search(r"\b(\d{4})\b", str(s))
@@ -49,7 +49,7 @@ def _year_from_date(s: Optional[str]) -> Optional[int]:
 
 async def search_openlibrary(
     query: str,
-    language: Optional[str] = None,
+    language: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -125,8 +125,8 @@ async def search_openlibrary(
 
 async def search_google_books(
     query: str,
-    language: Optional[str] = None,
-    api_key: Optional[str] = None,
+    language: str | None = None,
+    api_key: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -192,7 +192,7 @@ async def search_google_books(
 
 async def search_gutenberg(
     query: str,
-    language: Optional[str] = None,
+    language: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -255,7 +255,7 @@ async def search_gutenberg(
 
 async def search_internet_archive(
     query: str,
-    language: Optional[str] = None,
+    language: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -339,10 +339,10 @@ AVAILABLE_SOURCES = list(_SOURCE_FN.keys())
 
 async def federated_search(
     query: str,
-    sources: Optional[list[str]] = None,
-    language: Optional[str] = None,
+    sources: list[str] | None = None,
+    language: str | None = None,
     limit_per_source: int = 10,
-    google_api_key: Optional[str] = None,
+    google_api_key: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Search all (or specified) sources concurrently.
 

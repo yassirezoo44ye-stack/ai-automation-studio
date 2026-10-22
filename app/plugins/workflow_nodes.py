@@ -10,7 +10,6 @@ by name and pass it straight into WorkflowBuilder.step(fn=get_node(name)).
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from app.core.workflow.engine import StepFn
 from app.plugins.registry_guard import OwnershipTracker
@@ -25,7 +24,7 @@ class WorkflowNodeRegistry:
         # plugin can silently hijack another org's workflow node name.
         self._owners = OwnershipTracker("workflow node")
 
-    def register(self, name: str, fn: StepFn, *, owner: Optional[str] = None) -> None:
+    def register(self, name: str, fn: StepFn, *, owner: str | None = None) -> None:
         self._owners.claim(name, owner)
         self._nodes[name] = fn
         log.debug("registered workflow node: %s (owner=%s)", name, owner)

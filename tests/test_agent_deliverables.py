@@ -90,9 +90,9 @@ class TestDownloadDeliverableEndpoint:
                 organization_id="org-owner",
             )
 
-        with patch("app.tenancy.context.optional_org_id", AsyncMock(return_value="org-other")):
-            with pytest.raises(Exception) as exc_info:
-                run(agentos_download_deliverable(deliverable_id, MagicMock(), {"id": "u1"}))
+        with patch("app.tenancy.context.optional_org_id", AsyncMock(return_value="org-other")), \
+             pytest.raises(Exception) as exc_info:
+            run(agentos_download_deliverable(deliverable_id, MagicMock(), {"id": "u1"}))
         assert getattr(exc_info.value, "status_code", None) == 404
 
     def test_matching_org_succeeds(self, tmp_path):

@@ -497,7 +497,6 @@ class TestBillingRequiredSSEPrefix:
     def _make_registry_with_billing_error(self, provider_id: str):
         """Return a PlatformProviderRegistry instance with provider marked billing-failed."""
         from app.core.ai.registry.registry import PlatformProviderRegistry
-        from app.core.ai.registry.registry import _BILLING_ERROR_TTL
 
         reg = PlatformProviderRegistry.__new__(PlatformProviderRegistry)
         reg._billing_errors = {}
@@ -733,7 +732,7 @@ def _aiter_items(items):
         async def __anext__(self):
             try:
                 return next(self._it)
-            except StopIteration:
-                raise StopAsyncIteration
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
 
     return _AI()

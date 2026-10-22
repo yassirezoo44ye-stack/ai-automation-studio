@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -45,12 +45,12 @@ class ProjectSummary(BaseModel):
     id: str
     idea_text: str
     phase: str
-    app_builder_app_id: Optional[str]
-    flow_creation_id: Optional[str]
-    error_message: Optional[str]
+    app_builder_app_id: str | None
+    flow_creation_id: str | None
+    error_message: str | None
     started_at: str
     updated_at: str
-    completed_at: Optional[str]
+    completed_at: str | None
 
 
 class ProjectDetail(ProjectSummary):
@@ -175,7 +175,7 @@ async def resume_project(
             user_id=ctx.user_id,
         )
     except ValueError as exc:
-        raise HTTPException(400, str(exc))
+        raise HTTPException(400, str(exc)) from None
     return result
 
 
@@ -193,7 +193,7 @@ async def approve_security(
             reviewer_user_id=ctx.user_id,
         )
     except ValueError as exc:
-        raise HTTPException(400, str(exc))
+        raise HTTPException(400, str(exc)) from None
     return result
 
 
@@ -213,7 +213,7 @@ async def reject_security(
             reason=body.reason,
         )
     except ValueError as exc:
-        raise HTTPException(400, str(exc))
+        raise HTTPException(400, str(exc)) from None
     return result
 
 

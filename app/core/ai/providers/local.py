@@ -12,7 +12,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import AsyncGenerator, Any
+from typing import Any
+from collections.abc import AsyncGenerator
 
 import httpx
 

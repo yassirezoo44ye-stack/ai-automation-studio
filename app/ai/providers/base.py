@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from app.ai.models import CompletionRequest, CompletionResponse, StreamChunk
 

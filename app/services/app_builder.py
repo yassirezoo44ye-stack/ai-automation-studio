@@ -37,7 +37,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import asyncpg
 
@@ -181,7 +181,7 @@ class ColumnDef:
     type: str
     nullable: bool = True
     unique: bool = False
-    default: Optional[str] = None
+    default: str | None = None
 
 
 @dataclass
@@ -195,7 +195,7 @@ class EntityDef:
 @dataclass
 class PageDef:
     name: str
-    entity: Optional[str] = None
+    entity: str | None = None
     kind: str = "list"   # list | detail | dashboard | form
 
 
@@ -235,7 +235,7 @@ class MultiDeviceConfig:
     """
     enabled: bool = False
     # Suggested primary device hostname/name pattern (hint for the LLM — not executed)
-    primary_device_hint: Optional[str] = None
+    primary_device_hint: str | None = None
     # Maximum concurrent sessions for this app (0 = use platform default)
     max_concurrent_sessions: int = 0
     # Whether the app's AI agent should suggest device sessions proactively
@@ -257,7 +257,7 @@ class AppSpec:
     integrations: list[str]
     settings: dict[str, Any]
     # Optional: multi-device control integration (Gate J)
-    multi_device_config: Optional[MultiDeviceConfig] = None
+    multi_device_config: MultiDeviceConfig | None = None
 
 
 # ── Build result ──────────────────────────────────────────────────────────────
@@ -279,7 +279,7 @@ class BuildResult:
     api_operations: int = 0
     workflows_created: int = 0
     agents_created: int = 0
-    canvas_id: Optional[str] = None
+    canvas_id: str | None = None
     steps: list[BuildStep] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     overall_status: str = "ready"  # ready | partial | failed
@@ -288,7 +288,7 @@ class BuildResult:
 # ── P0-B: Real CRUD route generation ─────────────────────────────────────────
 
 
-def _generate_crud_routes(app_id: str, spec: "AppSpec") -> dict:
+def _generate_crud_routes(app_id: str, spec: AppSpec) -> dict:
     """
     Generate minimal FastAPI CRUD route definitions for each AppSpec entity.
 
@@ -683,7 +683,7 @@ class AppBuilderService:
             settings = {}
 
         # Parse multi_device_config (Gate J)
-        multi_device_config: Optional[MultiDeviceConfig] = None
+        multi_device_config: MultiDeviceConfig | None = None
         raw_mdc = data.get("multi_device_config")
         if isinstance(raw_mdc, dict) and raw_mdc.get("enabled") is True:
             multi_device_config = MultiDeviceConfig(
@@ -915,7 +915,7 @@ class AppBuilderService:
 
     # ── Job handler (registered with JobQueue) ────────────────────────────────
 
-    async def build_job_handler(self, job: "Job") -> None:
+    async def build_job_handler(self, job: Job) -> None:
         """
         Entrypoint called by the JobQueue for 'app_builder.build' jobs.
         Extracts payload and runs the 12-step pipeline, updating job.progress
@@ -983,7 +983,7 @@ class AppBuilderService:
         user_id: str,
         user_email: str,
         include_automation: bool,
-        job: Optional[Any] = None,
+        job: Any | None = None,
     ) -> BuildResult:
         """
         Execute all 12 build steps, updating progress after each.
@@ -1602,7 +1602,7 @@ class AppBuilderService:
         status: str,
         result_dict: dict[str, Any],
         warnings: list[str],
-        canvas_id: Optional[str] = None,
+        canvas_id: str | None = None,
     ) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -1632,7 +1632,7 @@ class AppBuilderService:
         version_number: int,
         label: str,
         spec_dict: dict[str, Any],
-        change_summary: Optional[str] = None,
+        change_summary: str | None = None,
     ) -> None:
         ver_id = str(uuid.uuid4())
         async with self._pool.acquire() as conn:
@@ -1691,7 +1691,7 @@ class AppBuilderService:
 
 # ── Singleton factory ─────────────────────────────────────────────────────────
 
-_service: Optional[AppBuilderService] = None
+_service: AppBuilderService | None = None
 
 
 def get_app_builder_service() -> AppBuilderService:

@@ -17,7 +17,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+import contextlib
 
 
 # ── Result type ───────────────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ from typing import Optional
 class ProjectInfo:
     project_type: str           # e.g. "html", "python_script", "fastapi"
     run_strategy: str           # "static" | "script" | "server" | "unsupported"
-    entry_point: Optional[str]  # relative path, e.g. "main.py" or "index.html"
+    entry_point: str | None  # relative path, e.g. "main.py" or "index.html"
     confidence: str             # "high" | "medium" | "low"
     detected_by: list[str]      # files / patterns that triggered detection
     notes: list[str] = field(default_factory=list)  # human-readable messages
@@ -132,10 +132,8 @@ def _detect(ws: Path) -> ProjectInfo:
     # Read requirements.txt once for all framework checks
     reqs_lower = ""
     if "requirements.txt" in fset:
-        try:
+        with contextlib.suppress(Exception):
             reqs_lower = files["requirements.txt"].read_text(encoding="utf-8").lower()
-        except Exception:
-            pass
 
     # Flask — return run_strategy="flask" so python_server driver can handle it
     if _has_flask(reqs_lower, fset, files):
@@ -297,7 +295,7 @@ def _triggers_prefix(fset: set, prefix: str) -> list[str]:
     return [f for f in fset if f.startswith(prefix)]
 
 
-def _find_py_entry(fset: set) -> Optional[str]:
+def _find_py_entry(fset: set) -> str | None:
     priority = ("main.py", "app.py", "server.py", "run.py", "api.py",
                 "cli.py", "solution.py", "wsgi.py", "asgi.py", "index.py")
     for f in priority:
@@ -347,12 +345,18 @@ def _node_type(files: dict, fset: set) -> str:
     try:
         pkg = json.loads(files["package.json"].read_text(encoding="utf-8"))
         deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
-        if "react" in deps:      return "react"
-        if "vue" in deps:        return "vue"
-        if "svelte" in deps:     return "svelte"
-        if "express" in deps:    return "express"
-        if "koa" in deps:        return "koa"
-        if "@nestjs/core" in deps: return "nestjs"
+        if "react" in deps:
+            return "react"
+        if "vue" in deps:
+            return "vue"
+        if "svelte" in deps:
+            return "svelte"
+        if "express" in deps:
+            return "express"
+        if "koa" in deps:
+            return "koa"
+        if "@nestjs/core" in deps:
+            return "nestjs"
     except Exception:
         pass
     return "node"
@@ -363,7 +367,7 @@ def _unsupported(
     fset: set,
     reason: str,
     local_hint: str,
-    entry: Optional[str] = None,
+    entry: str | None = None,
 ) -> ProjectInfo:
     detected_by = [f for f in fset if not f.endswith((".png", ".jpg", ".ico", ".svg"))][:6]
     return ProjectInfo(
@@ -375,7 +379,7 @@ def _unsupported(
     )
 
 
-def _detect_inner_for_docker(ws: Path, fset: set) -> Optional[ProjectInfo]:
+def _detect_inner_for_docker(ws: Path, fset: set) -> ProjectInfo | None:
     """
     When Docker/Compose is detected, look for a runnable inner component
     (Next.js, Vite, Node.js, Python) and return its ProjectInfo so we can

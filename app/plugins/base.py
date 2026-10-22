@@ -20,7 +20,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class PluginType(str, Enum):
@@ -48,7 +48,7 @@ class PluginState(str, Enum):
 class PluginHealth:
     plugin_id : str
     state     : PluginState
-    message   : Optional[str] = None
+    message   : str | None = None
     checked_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
@@ -71,7 +71,7 @@ class PluginContext:
     """
     plugin_id      : str
     installation_id: str
-    organization_id: Optional[str]
+    organization_id: str | None
     config          : dict[str, Any]
     logger          : logging.Logger
 
@@ -100,7 +100,7 @@ class PluginContext:
         await get_event_bus().publish(type_, data, organization_id=self.organization_id)
 
     # ── Secret API ────────────────────────────────────────────────────────
-    async def get_secret(self, key: str) -> Optional[str]:
+    async def get_secret(self, key: str) -> str | None:
         from app.plugins.secrets import get_plugin_secret
         return await get_plugin_secret(self.installation_id, key)
 
@@ -132,7 +132,7 @@ class PluginBase(ABC):
     async def on_install(self, ctx: PluginContext) -> None:
         """Called once, right after the code is loaded for the first time."""
 
-    async def migrate(self, ctx: PluginContext, from_version: str, to_version: str) -> Optional[dict[str, Any]]:
+    async def migrate(self, ctx: PluginContext, from_version: str, to_version: str) -> dict[str, Any] | None:
         """Automatic Migration Support — called once during an upgrade
         (an installed plugin's version actually changing), before
         on_install/on_enable/register run for the new version. `ctx.config`

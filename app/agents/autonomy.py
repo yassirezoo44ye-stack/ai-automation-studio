@@ -23,7 +23,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.agents.kernel  import AgentKernel
@@ -43,7 +43,7 @@ class Suggestion:
     priority   : float        # 0–1
     implemented: bool = False
     timestamp  : float = field(default_factory=time.time)
-    organization_id: Optional[str] = None
+    organization_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -65,7 +65,7 @@ class AutonomyEngine:
     Falls back gracefully when API key is absent.
     """
 
-    def __init__(self, kernel: "AgentKernel") -> None:
+    def __init__(self, kernel: AgentKernel) -> None:
         self._kernel     = kernel
         self._suggestions: list[Suggestion] = []
         self._api_key    = os.getenv("ANTHROPIC_API_KEY", "")
@@ -75,9 +75,9 @@ class AutonomyEngine:
     async def generate_agent(
         self,
         description: str,
-        agent_name : Optional[str] = None,
+        agent_name : str | None = None,
         *,
-        org_id     : Optional[str] = None,
+        org_id     : str | None = None,
     ) -> dict:
         """
         Write a new agent file from a description using Claude.
@@ -140,7 +140,7 @@ class AutonomyEngine:
         }
 
     async def suggest_improvements(self, n: int = 3, *,
-                                   org_id: Optional[str] = None) -> list[Suggestion]:
+                                   org_id: str | None = None) -> list[Suggestion]:
         """
         Analyze current agents + memory → propose new agents / features.
         """
@@ -156,7 +156,6 @@ class AutonomyEngine:
         # this org (via the prompt) and risk them resurfacing in the
         # generated suggestion text handed back to the caller.
         existing_agents = self._kernel.visible_agent_names(org_id)
-        memory_stats    = self._kernel._memory.global_stats(org_id=org_id)
         common_errors   = [s.name for s in self._kernel._memory.underperformers(org_id=org_id)]
 
         prompt = (
@@ -211,7 +210,7 @@ class AutonomyEngine:
             return []
 
     async def implement_suggestion(self, index: int, *,
-                                   org_id: Optional[str] = None) -> dict:
+                                   org_id: str | None = None) -> dict:
         """Implement a previously generated suggestion by index. Scoped to
         the calling org's own suggestions — index alone isn't enough,
         since self._suggestions is a single kernel-wide list shared by
@@ -231,7 +230,7 @@ class AutonomyEngine:
         return {**result, "suggestion": s.to_dict()}
 
     async def continuous_loop(self, cycles: int = 3, *,
-                              org_id: Optional[str] = None) -> list[dict]:
+                              org_id: str | None = None) -> list[dict]:
         """
         N autonomous improvement cycles:
           1. Suggest improvements
@@ -256,10 +255,10 @@ class AutonomyEngine:
 
         return results
 
-    def pending_suggestions(self, *, org_id: Optional[str] = None) -> list[Suggestion]:
+    def pending_suggestions(self, *, org_id: str | None = None) -> list[Suggestion]:
         return [s for s in self._suggestions if not s.implemented and s.organization_id == org_id]
 
-    def all_suggestions(self, *, org_id: Optional[str] = None) -> list[dict]:
+    def all_suggestions(self, *, org_id: str | None = None) -> list[dict]:
         """self._suggestions is a single kernel-wide list shared by every
         org's suggest_improvements() calls — must filter here or one
         org's status view discloses another org's suggested agent ideas
@@ -269,7 +268,7 @@ class AutonomyEngine:
     # ── Internal ─────────────────────────────────────────────────────────────
 
     async def _generate_source(self, description: str, agent_name: str, *,
-                               org_id: Optional[str] = None) -> str:
+                               org_id: str | None = None) -> str:
         existing_source = _example_agent_source()
         from app.core.org_quota import check_org_quota_id, record_org_tokens
         if not await check_org_quota_id(org_id):
@@ -304,7 +303,7 @@ class AutonomyEngine:
             source = msg.content[0].text.strip()
             if source.startswith("```"):
                 lines  = source.split("\n")
-                source = "\n".join(l for l in lines if not l.startswith("```"))
+                source = "\n".join(ln for ln in lines if not ln.startswith("```"))
             return source
         except Exception as exc:
             log.error("generate_source failed: %s", exc)

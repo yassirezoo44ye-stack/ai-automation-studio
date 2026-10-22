@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 CallKind = Literal["register", "invoke", "lifecycle", "context_rpc"]
 
@@ -49,7 +49,7 @@ CallKind = Literal["register", "invoke", "lifecycle", "context_rpc"]
 class SandboxRequest:
     id: str
     call: CallKind
-    method: Optional[str] = None
+    method: str | None = None
     args: list = field(default_factory=list)
     kwargs: dict = field(default_factory=dict)
 
@@ -60,7 +60,7 @@ class SandboxRequest:
         })
 
     @classmethod
-    def from_json(cls, raw: str) -> "SandboxRequest":
+    def from_json(cls, raw: str) -> SandboxRequest:
         data = json.loads(raw)
         return cls(
             id=data["id"], call=data["call"], method=data.get("method"),
@@ -73,12 +73,12 @@ class SandboxResponse:
     id: str
     ok: bool
     result: Any = None
-    error: Optional[str] = None
+    error: str | None = None
 
     def to_json(self) -> str:
         return json.dumps({"id": self.id, "ok": self.ok, "result": self.result, "error": self.error})
 
     @classmethod
-    def from_json(cls, raw: str) -> "SandboxResponse":
+    def from_json(cls, raw: str) -> SandboxResponse:
         data = json.loads(raw)
         return cls(id=data["id"], ok=data["ok"], result=data.get("result"), error=data.get("error"))

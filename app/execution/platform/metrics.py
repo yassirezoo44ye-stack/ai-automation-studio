@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 from uuid import uuid4
 
 
@@ -20,17 +19,17 @@ class PhaseMetrics:
     """Timing for one lifecycle phase."""
     phase: str
     started_at: float = field(default_factory=time.time)
-    ended_at: Optional[float] = None
+    ended_at: float | None = None
     success: bool = False
-    error_code: Optional[str] = None
+    error_code: str | None = None
 
     @property
-    def duration_s(self) -> Optional[float]:
+    def duration_s(self) -> float | None:
         if self.ended_at is None:
             return None
         return round(self.ended_at - self.started_at, 3)
 
-    def complete(self, *, success: bool, error_code: Optional[str] = None) -> None:
+    def complete(self, *, success: bool, error_code: str | None = None) -> None:
         self.ended_at   = time.time()
         self.success    = success
         self.error_code = error_code
@@ -57,21 +56,21 @@ class ExecutionMetrics:
     project_id: str = ""
     runtime: str = ""
     started_at: float = field(default_factory=time.time)
-    ended_at: Optional[float] = None
+    ended_at: float | None = None
 
     # Phase breakdown
     phases: list[PhaseMetrics] = field(default_factory=list)
 
     # Resource usage (best-effort)
-    peak_memory_mb: Optional[float] = None
-    avg_cpu_pct: Optional[float] = None
-    disk_used_mb: Optional[float] = None
+    peak_memory_mb: float | None = None
+    avg_cpu_pct: float | None = None
+    disk_used_mb: float | None = None
 
     # Derived times (filled in by specific phases)
-    probe_duration_s: Optional[float] = None
-    install_duration_s: Optional[float] = None
-    build_duration_s: Optional[float] = None
-    launch_duration_s: Optional[float] = None
+    probe_duration_s: float | None = None
+    install_duration_s: float | None = None
+    build_duration_s: float | None = None
+    launch_duration_s: float | None = None
 
     # Cache behaviour
     cache_hit: bool = False
@@ -80,11 +79,11 @@ class ExecutionMetrics:
     # Final outcome
     success: bool = False
     exit_code: int = 0
-    error_code: Optional[str] = None
+    error_code: str | None = None
     artifact_count: int = 0
 
     @property
-    def total_duration_s(self) -> Optional[float]:
+    def total_duration_s(self) -> float | None:
         if self.ended_at is None:
             return None
         return round(self.ended_at - self.started_at, 3)
@@ -99,7 +98,7 @@ class ExecutionMetrics:
         pm: PhaseMetrics,
         *,
         success: bool,
-        error_code: Optional[str] = None,
+        error_code: str | None = None,
     ) -> None:
         pm.complete(success=success, error_code=error_code)
         # Update derived timing
@@ -113,7 +112,7 @@ class ExecutionMetrics:
             elif pm.phase in ("launch", "server"):
                 self.launch_duration_s = pm.duration_s
 
-    def finish(self, *, success: bool, exit_code: int = 0, error_code: Optional[str] = None) -> None:
+    def finish(self, *, success: bool, exit_code: int = 0, error_code: str | None = None) -> None:
         self.ended_at   = time.time()
         self.success    = success
         self.exit_code  = exit_code

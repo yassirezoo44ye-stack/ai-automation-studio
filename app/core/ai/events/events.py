@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 def _id() -> str:
@@ -67,8 +67,8 @@ class PromptStarted(AIEvent):
     request_id:      str            = field(default_factory=_id)
     provider_id:     str            = ""
     model:           str            = ""
-    conversation_id: Optional[str]  = None
-    user_id:         Optional[str]  = None
+    conversation_id: str | None  = None
+    user_id:         str | None  = None
     input_tokens_estimate: int      = 0
 
 
@@ -93,7 +93,7 @@ class StreamStarted(AIEvent):
     request_id:  str           = field(default_factory=_id)
     provider_id: str           = ""
     model:       str           = ""
-    user_id:     Optional[str] = None
+    user_id:     str | None = None
 
 
 @dataclass
@@ -113,7 +113,7 @@ class ToolCalled(AIEvent):
     tool_name:   str            = ""
     arguments:   dict[str, Any] = field(default_factory=dict)
     call_id:     str            = field(default_factory=_id)
-    user_id:     Optional[str]  = None
+    user_id:     str | None  = None
 
 
 @dataclass
@@ -123,7 +123,7 @@ class ToolFinished(AIEvent):
     call_id:     str   = ""
     success:     bool  = True
     latency_ms:  float = 0.0
-    error:       Optional[str] = None
+    error:       str | None = None
 
 
 # ── Conversation events ───────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ class ToolFinished(AIEvent):
 class ConversationCreated(AIEvent):
     event_type:      str           = "ai.conversation.created"
     conversation_id: str           = ""
-    user_id:         Optional[str] = None
+    user_id:         str | None = None
     title:           str           = ""
 
 
@@ -149,7 +149,7 @@ class MemoryUpdated(AIEvent):
     event_type:      str           = "ai.memory.updated"
     memory_id:       str           = ""
     memory_type:     str           = ""
-    user_id:         Optional[str] = None
+    user_id:         str | None = None
 
 
 # ── Prompt-store events ───────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ class PromptSaved(AIEvent):
     prompt_id:  str           = ""
     slug:       str           = ""
     version:    int           = 1
-    user_id:    Optional[str] = None
+    user_id:    str | None = None
 
 
 # ── Orchestrator events ───────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ class OrchestratorStarted(AIEvent):
     request_id:  str            = field(default_factory=_id)
     mode:        str            = "auto"
     task_count:  int            = 0
-    user_id:     Optional[str]  = None
+    user_id:     str | None  = None
 
 
 @dataclass
@@ -197,7 +197,7 @@ class TaskStarted(AIEvent):
     event_type:  str            = "ai.task.started"
     task_id:     str            = ""
     task_type:   str            = ""
-    agent_id:    Optional[str]  = None
+    agent_id:    str | None  = None
     request_id:  str            = ""
 
 
@@ -269,7 +269,7 @@ class WorkflowFailed(AIEvent):
 class AgentStarted(AIEvent):
     event_type:  str            = "ai.agent.started"
     agent_name:  str            = ""
-    agent_id:    Optional[str]  = None
+    agent_id:    str | None  = None
     task_id:     str            = ""
 
 
@@ -287,7 +287,7 @@ class AgentMessage(AIEvent):
     """Agent-to-agent communication through the bus."""
     event_type:   str            = "ai.agent.message"
     from_agent:   str            = ""
-    to_agent:     Optional[str]  = None    # None = broadcast
+    to_agent:     str | None  = None    # None = broadcast
     message_type: str            = ""
     payload:      dict[str, Any] = field(default_factory=dict)
 
@@ -311,9 +311,9 @@ class CostRecorded(AIEvent):
     amount_usd:      float          = 0.0
     provider_id:     str            = ""
     model:           str            = ""
-    conversation_id: Optional[str]  = None
-    project_id:      Optional[str]  = None
-    agent_name:      Optional[str]  = None
+    conversation_id: str | None  = None
+    project_id:      str | None  = None
+    agent_name:      str | None  = None
 
 
 @dataclass

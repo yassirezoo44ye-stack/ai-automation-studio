@@ -14,7 +14,7 @@ import sys
 import unittest
 import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -117,7 +117,7 @@ class TestApprovalRegistryWiring(unittest.TestCase):
     def test_engine_approve_wakes_registry_when_run_active(self):
         """When a run IS in engine._active, engine.approve() signals the Registry."""
         from app.core.workflow.engine import (
-            get_workflow_engine, WorkflowRun, _approval_registry,
+            get_workflow_engine, _approval_registry,
         )
         engine  = get_workflow_engine()
         run_id  = str(uuid.uuid4())

@@ -1,6 +1,6 @@
+import contextlib
 import json
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -31,15 +31,15 @@ DESIGN_SIZES = {
 
 class DesignAIRequest(BaseModel):
     prompt:   str
-    template: Optional[str] = "Instagram Post"
+    template: str | None = "Instagram Post"
 
 
 class DesignSaveRequest(BaseModel):
-    project_id:  Optional[str] = None
-    design_id:   Optional[str] = None
+    project_id:  str | None = None
+    design_id:   str | None = None
     name:        str           = "Untitled Design"
     canvas_json: dict
-    thumbnail:   Optional[str] = None
+    thumbnail:   str | None = None
     width:       int           = 1080
     height:      int           = 1080
 
@@ -99,23 +99,21 @@ Rules:
         try:
             resp = await engine.complete(request_obj, user_id=None, org_id=None, auto_tools=False)
         except RuntimeError as e:
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, str(e)) from None
         except Exception as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from None
 
-    try:
+    with contextlib.suppress(Exception):
         await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
-    except Exception:
-        pass  # metering must never turn a successful reply into an error
     try:
         raw = resp.content.strip()
         if raw.startswith("```"):
             raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
         canvas_json = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(502, "Claude returned invalid JSON for the design.")
+        raise HTTPException(502, "Claude returned invalid JSON for the design.") from None
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, str(e)) from None
     return {"canvas_json": canvas_json}
 
 
@@ -154,7 +152,7 @@ async def save_canvas(req: DesignSaveRequest, request: Request):
 
 
 @router.get("/api/design/canvases")
-async def list_canvases(request: Request, project_id: Optional[str] = None, limit: int = 50):
+async def list_canvases(request: Request, project_id: str | None = None, limit: int = 50):
     pool = get_pool()
     async with pool.acquire() as conn:
         uid = await owner_user_id(conn, request)
@@ -188,7 +186,7 @@ async def get_canvas(design_id: str, request: Request):
     try:
         uuid.UUID(design_id)
     except ValueError:
-        raise HTTPException(404, "Design not found")
+        raise HTTPException(404, "Design not found") from None
     pool = get_pool()
     async with pool.acquire() as conn:
         uid = await owner_user_id(conn, request)
@@ -226,7 +224,7 @@ async def delete_canvas(design_id: str, request: Request):
     try:
         uuid.UUID(design_id)
     except ValueError:
-        raise HTTPException(404, "Design not found")
+        raise HTTPException(404, "Design not found") from None
     pool = get_pool()
     async with pool.acquire() as conn:
         uid = await owner_user_id(conn, request)
@@ -263,7 +261,7 @@ class AssistantRequest(BaseModel):
 
 
 async def _call_claude(
-    system: str, user: str, max_tokens: int = 1200, *, org_id: Optional[str] = None,
+    system: str, user: str, max_tokens: int = 1200, *, org_id: str | None = None,
 ) -> str:
     """Callers (ai_palette/ai_fonts/ai_suggestions below) each wrap this in a
     broad try/except that falls back to a hardcoded default response on ANY
@@ -287,10 +285,8 @@ async def _call_claude(
     engine = InferenceEngine(pool=get_pool())
     async with get_bulkhead("design", 8).acquire():
         resp = await engine.complete(request_obj, user_id=None, org_id=None, auto_tools=False)
-    try:
+    with contextlib.suppress(Exception):
         await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
-    except Exception:
-        pass  # metering must never turn a successful reply into an error
     raw = resp.content.strip()
     if raw.startswith("```"):
         raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
@@ -401,12 +397,10 @@ async def ai_assistant(req: AssistantRequest, request: Request):
             )
             resp = await engine.complete(request_obj, user_id=None, org_id=None, auto_tools=False)
         except RuntimeError as e:
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, str(e)) from None
         except Exception as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from None
 
-    try:
+    with contextlib.suppress(Exception):  # metering must never turn a successful reply into an error
         await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="design")
-    except Exception:
-        pass  # metering must never turn a successful reply into an error
     return {"message": resp.content, "actions": []}

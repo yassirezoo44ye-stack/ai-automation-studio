@@ -9,7 +9,6 @@ Never hardcode model names anywhere else — always use catalog.get(model_id).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -380,7 +379,7 @@ class ModelCatalog:
         for m in models:
             self._by_provider.setdefault(m.provider_id, []).append(m)
 
-    def get(self, model_id: str) -> Optional[ModelInfo]:
+    def get(self, model_id: str) -> ModelInfo | None:
         return self._by_id.get(model_id)
 
     def for_provider(self, provider_id: str) -> list[ModelInfo]:
@@ -392,12 +391,12 @@ class ModelCatalog:
     def cheapest(
         self,
         *,
-        provider_id: Optional[str] = None,
+        provider_id: str | None = None,
         min_context: int = 0,
         requires_tools: bool = False,
         requires_vision: bool = False,
-        available_providers: Optional[set[str]] = None,
-    ) -> Optional[ModelInfo]:
+        available_providers: set[str] | None = None,
+    ) -> ModelInfo | None:
         candidates = self._candidates(
             provider_id=provider_id,
             min_context=min_context,
@@ -410,11 +409,11 @@ class ModelCatalog:
     def fastest(
         self,
         *,
-        provider_id: Optional[str] = None,
+        provider_id: str | None = None,
         min_context: int = 0,
         requires_tools: bool = False,
-        available_providers: Optional[set[str]] = None,
-    ) -> Optional[ModelInfo]:
+        available_providers: set[str] | None = None,
+    ) -> ModelInfo | None:
         order = {"fast": 0, "medium": 1, "slow": 2}
         candidates = self._candidates(
             provider_id=provider_id,
@@ -427,9 +426,9 @@ class ModelCatalog:
     def most_capable(
         self,
         *,
-        provider_id: Optional[str] = None,
-        available_providers: Optional[set[str]] = None,
-    ) -> Optional[ModelInfo]:
+        provider_id: str | None = None,
+        available_providers: set[str] | None = None,
+    ) -> ModelInfo | None:
         # Proxy: largest context × highest output cost (expensive = capable)
         candidates = [m for m in self._by_id.values()
                       if not m.deprecated
@@ -440,11 +439,11 @@ class ModelCatalog:
     def _candidates(
         self,
         *,
-        provider_id: Optional[str],
+        provider_id: str | None,
         min_context: int,
         requires_tools: bool = False,
         requires_vision: bool = False,
-        available_providers: Optional[set[str]] = None,
+        available_providers: set[str] | None = None,
     ) -> list[ModelInfo]:
         return [
             m for m in self._by_id.values()

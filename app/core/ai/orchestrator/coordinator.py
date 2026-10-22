@@ -7,7 +7,7 @@ events, and records costs.
 from __future__ import annotations
 
 import time
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from ..events.bus import EventBus
 from ..events.events import (
@@ -32,11 +32,11 @@ class ExecutionCoordinator:
 
     def __init__(
         self,
-        platform: "AIPlatform",
+        platform: AIPlatform,
         bus: EventBus,
         request_id: str,
-        user_id: Optional[str] = None,
-        org_id: Optional[str] = None,
+        user_id: str | None = None,
+        org_id: str | None = None,
     ) -> None:
         self._platform  = platform
         self._bus       = bus

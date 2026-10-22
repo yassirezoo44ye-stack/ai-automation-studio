@@ -21,7 +21,7 @@ import json
 import logging
 import re
 import unicodedata
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from app.ai.models import (
     CompletionRequest,
@@ -645,7 +645,7 @@ def _parse_landing_vars(prompt: str) -> dict:
     # ── Ad headline (line after "العنوان:") ───────────────────────────────────
     m = re.search(r'العنوان[^:\n]*:\s*\n?((?:[^\n]+\n?){1,3})', prompt)
     if m:
-        lines = [l.strip() for l in m.group(1).splitlines() if l.strip()]
+        lines = [ln.strip() for ln in m.group(1).splitlines() if ln.strip()]
         if lines:
             v["headline"]  = lines[0][:80]
         if len(lines) > 1:

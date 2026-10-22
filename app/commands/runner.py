@@ -22,7 +22,6 @@ import logging
 import shlex
 import time
 from pathlib import Path
-from typing import Optional
 
 from app.commands.context import CommandContext
 from app.commands.registry import CommandRegistry
@@ -51,7 +50,7 @@ class CommandRunner:
         raw: str,
         *,
         caller: str = "cli",
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         runtime_state: dict | None = None,
     ) -> CommandResult:
         """
@@ -77,7 +76,7 @@ class CommandRunner:
         *,
         raw_input: str = "",
         caller: str = "cli",
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         runtime_state: dict | None = None,
     ) -> CommandResult:
         """
@@ -93,7 +92,7 @@ class CommandRunner:
 
         # Resolve workspace from --workspace flag or first positional arg
         ws_raw = flags.get("workspace") or flags.get("w") or (args[0] if args else "")
-        workspace: Optional[Path] = None
+        workspace: Path | None = None
         if ws_raw:
             p = Path(ws_raw).expanduser().resolve()
             workspace = p if p.exists() else Path(ws_raw)

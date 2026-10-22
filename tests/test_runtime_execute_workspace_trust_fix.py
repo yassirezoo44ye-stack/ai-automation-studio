@@ -80,13 +80,13 @@ class TestRuntimeExecuteRequiresOwnership(unittest.TestCase):
 
         with patch("app.routers.runtime_api.get_pool", return_value=pool), \
              patch("app.core.auth.owner_email", return_value="bob@example.com"), \
-             patch("app.routers.runtime_api.UnifiedExecutionEngine") as MockEngine:
-            with TestClient(app, raise_server_exceptions=False) as c:
-                res = c.post(
-                    "/api/runtime/execute",
-                    json={"project_id": other_project_id},
-                    headers={"X-Sub-Token": "bob-token"},
-                )
+             patch("app.routers.runtime_api.UnifiedExecutionEngine") as MockEngine, \
+             TestClient(app, raise_server_exceptions=False) as c:
+            res = c.post(
+                "/api/runtime/execute",
+                json={"project_id": other_project_id},
+                headers={"X-Sub-Token": "bob-token"},
+            )
         self.assertEqual(res.status_code, 404)
         MockEngine.assert_not_called()
 

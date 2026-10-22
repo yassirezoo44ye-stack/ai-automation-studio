@@ -17,11 +17,11 @@ Usage::
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class EmbeddingsService:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    async def embed(self, text: str, *, model: Optional[str] = None,
-                    org_id: Optional[str] = None) -> EmbeddingResult:
+    async def embed(self, text: str, *, model: str | None = None,
+                    org_id: str | None = None) -> EmbeddingResult:
         """Return an embedding vector for a single text."""
         if not self.is_available:
             return self._stub(text)
@@ -80,8 +80,8 @@ class EmbeddingsService:
         self,
         texts: list[str],
         *,
-        model: Optional[str] = None,
-        org_id: Optional[str] = None,
+        model: str | None = None,
+        org_id: str | None = None,
     ) -> list[EmbeddingResult]:
         """Batch embed; falls back to sequential if provider doesn't support batching."""
         import asyncio
@@ -93,8 +93,8 @@ class EmbeddingsService:
         corpus: list[str],
         *,
         top_k: int = 5,
-        model: Optional[str] = None,
-        org_id: Optional[str] = None,
+        model: str | None = None,
+        org_id: str | None = None,
     ) -> list[SearchHit]:
         """Embed query and all corpus items, return top_k by cosine similarity."""
         if not corpus:
@@ -134,7 +134,7 @@ class EmbeddingsService:
     # ── Provider implementations ──────────────────────────────────────────────
 
     async def _openai_embed(self, text: str, *, model: str,
-                            org_id: Optional[str] = None) -> EmbeddingResult:
+                            org_id: str | None = None) -> EmbeddingResult:
         from app.core.org_quota import check_org_quota_id, record_org_tokens
         if not await check_org_quota_id(org_id):
             return self._stub(text)
@@ -142,10 +142,8 @@ class EmbeddingsService:
             import openai
             client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             resp = await client.embeddings.create(input=text, model=model)
-            try:
+            with contextlib.suppress(Exception):
                 await record_org_tokens(org_id, resp.usage.total_tokens, None, ref_type="embeddings")
-            except Exception:
-                pass  # metering must never turn a successful reply into an error
             return EmbeddingResult(
                 text=text,
                 embedding=resp.data[0].embedding,

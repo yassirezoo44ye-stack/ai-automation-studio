@@ -18,7 +18,6 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 from app.core.ai.events.bus import bus
 from app.core.ai.events.events import (
@@ -154,13 +153,13 @@ class TelemetryService:
             by_provider=providers,
         )
 
-    async def db_totals(self, *, user_id: Optional[str] = None, org_id: Optional[str] = None,
-                        since: Optional[datetime] = None) -> dict:
+    async def db_totals(self, *, user_id: str | None = None, org_id: str | None = None,
+                        since: datetime | None = None) -> dict:
         from app.ai import cost_tracker
         return await cost_tracker.totals(pool=self._pool, user_id=user_id, org_id=org_id, since=since)
 
-    async def db_by_provider(self, *, user_id: Optional[str] = None, org_id: Optional[str] = None,
-                             since: Optional[datetime] = None) -> list[dict]:
+    async def db_by_provider(self, *, user_id: str | None = None, org_id: str | None = None,
+                             since: datetime | None = None) -> list[dict]:
         from app.ai import cost_tracker
         return await cost_tracker.by_provider(pool=self._pool, user_id=user_id, org_id=org_id, since=since)
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -42,7 +42,7 @@ class WebhookEventService:
 
     async def record(
         self, *, stripe_event_id: str, event_type: str, payload: dict[str, Any],
-        organization_id: Optional[str] = None,
+        organization_id: str | None = None,
     ) -> bool:
         """Insert the raw event receipt, or detect a replayed delivery.
 
@@ -116,7 +116,7 @@ class WebhookEventService:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[WebhookEventService] = None
+_service: WebhookEventService | None = None
 
 
 def get_webhook_event_service(pool: asyncpg.Pool | None = None) -> WebhookEventService:

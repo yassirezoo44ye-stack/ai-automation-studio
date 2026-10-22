@@ -40,7 +40,7 @@ _MOCKS = {
 }
 
 with mock.patch.dict(sys.modules, _MOCKS):
-    from app.routers.auth_users import _verify_and_consume_oauth_state, _OAUTH_BIND_COOKIE
+    from app.routers.auth_users import _verify_and_consume_oauth_state
     from fastapi import HTTPException
 
 
@@ -91,9 +91,9 @@ async def test_state_absent_from_redis_raises_400():
     req = _make_request(bind_cookie="nonce-abc")
     redis = _make_redis(None)
 
-    with mock.patch("app.core.cache.redis_adapter.get_redis", mock.AsyncMock(return_value=redis)):
-        with pytest.raises(HTTPException) as exc_info:
-            await _verify_and_consume_oauth_state("state-xyz", req, ip="1.2.3.4")
+    with mock.patch("app.core.cache.redis_adapter.get_redis", mock.AsyncMock(return_value=redis)), \
+         pytest.raises(HTTPException) as exc_info:
+        await _verify_and_consume_oauth_state("state-xyz", req, ip="1.2.3.4")
 
     assert exc_info.value.status_code == 400
 
@@ -103,9 +103,9 @@ async def test_nonce_mismatch_raises_400():
     req = _make_request(bind_cookie="wrong-nonce")
     redis = _make_redis(False)
 
-    with mock.patch("app.core.cache.redis_adapter.get_redis", mock.AsyncMock(return_value=redis)):
-        with pytest.raises(HTTPException) as exc_info:
-            await _verify_and_consume_oauth_state("state-xyz", req, ip="1.2.3.4")
+    with mock.patch("app.core.cache.redis_adapter.get_redis", mock.AsyncMock(return_value=redis)), \
+         pytest.raises(HTTPException) as exc_info:
+        await _verify_and_consume_oauth_state("state-xyz", req, ip="1.2.3.4")
 
     assert exc_info.value.status_code == 400
 
@@ -145,9 +145,8 @@ async def test_redis_exception_raises_503():
     with mock.patch(
         "app.core.cache.redis_adapter.get_redis",
         mock.AsyncMock(return_value=failing_redis),
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await _verify_and_consume_oauth_state("state-xyz", req, ip="1.2.3.4")
+    ), pytest.raises(HTTPException) as exc_info:
+        await _verify_and_consume_oauth_state("state-xyz", req, ip="1.2.3.4")
 
     assert exc_info.value.status_code == 503
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -102,7 +102,7 @@ class PlanService:
         log.warning("unknown plan_id %r requested — falling back to free tier", plan_id)
         return self._cache.get("free") or _SEED_PLANS["free"]
 
-    async def update_plan(self, plan_id: str, *, actor_id: Optional[str] = None, **fields: Any) -> Plan:
+    async def update_plan(self, plan_id: str, *, actor_id: str | None = None, **fields: Any) -> Plan:
         """Admin edit — updates only the columns present in `fields`.
         Valid keys: name, price_monthly_usd, limits, features, trial_days,
         max_agents, max_workflows, stripe_price_id, is_purchasable, active."""
@@ -150,7 +150,7 @@ class PlanService:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[PlanService] = None
+_service: PlanService | None = None
 
 
 def get_plan_service(pool: asyncpg.Pool | None = None) -> PlanService:

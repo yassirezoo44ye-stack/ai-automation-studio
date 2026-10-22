@@ -23,7 +23,6 @@ import json
 import logging
 import time
 import uuid
-from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -63,7 +62,7 @@ def encrypt_webhook_secret(plaintext_secret: str) -> str:
     return _webhook_fernet().encrypt(plaintext_secret.encode()).decode()
 
 
-def decrypt_webhook_secret(encrypted: str) -> Optional[str]:
+def decrypt_webhook_secret(encrypted: str) -> str | None:
     """Decrypt a stored webhook secret.  Returns None if invalid."""
     try:
         return _webhook_fernet().decrypt(encrypted.encode()).decode()
@@ -73,7 +72,7 @@ def decrypt_webhook_secret(encrypted: str) -> Optional[str]:
 
 # ── Trigger lookup ────────────────────────────────────────────────────────────
 
-async def _load_trigger_secret(definition_id: str, trigger_id: str) -> Optional[str]:
+async def _load_trigger_secret(definition_id: str, trigger_id: str) -> str | None:
     """
     Look up the signing secret for a specific webhook trigger.
 
@@ -121,7 +120,7 @@ async def _load_trigger_secret(definition_id: str, trigger_id: str) -> Optional[
         return None
 
 
-async def _load_org_id(definition_id: str) -> Optional[str]:
+async def _load_org_id(definition_id: str) -> str | None:
     """Load organization_id for an active, non-deleted definition."""
     try:
         uid = uuid.UUID(definition_id)
@@ -142,8 +141,8 @@ async def _load_org_id(definition_id: str) -> Optional[str]:
 def _verify_signature(
     body_bytes: bytes,
     secret: str,
-    signature_header: Optional[str],
-    timestamp_header: Optional[str],
+    signature_header: str | None,
+    timestamp_header: str | None,
 ) -> bool:
     """
     Verify HMAC-SHA256 signature and timestamp freshness.
@@ -188,8 +187,8 @@ async def receive_webhook(
     definition_id: str,
     trigger_id: str,
     request: Request,
-    x_automation_signature: Optional[str] = Header(None, alias="X-Automation-Signature"),
-    x_automation_timestamp: Optional[str] = Header(None, alias="X-Automation-Timestamp"),
+    x_automation_signature: str | None = Header(None, alias="X-Automation-Signature"),
+    x_automation_timestamp: str | None = Header(None, alias="X-Automation-Timestamp"),
 ):
     """
     Receive a webhook call and enqueue an automation run.

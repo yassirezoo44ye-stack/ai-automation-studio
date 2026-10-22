@@ -350,7 +350,7 @@ base_theme = "@style/Theme.AppCompat.Light.DarkActionBar"
                 )
                 if rc_bf != 0:
                     yield log("📦 تثبيت Briefcase…", "cmd")
-                    async for line, code in _run_stream(
+                    async for line, _code in _run_stream(
                         ["python", "-m", "pip", "install", "briefcase", "--quiet"], str(bf_dir)
                     ):
                         if line.strip():
@@ -812,7 +812,7 @@ async def download_package(artifact_id: str, request: Request):
     try:
         aid = uuid.UUID(artifact_id)
     except ValueError:
-        raise HTTPException(404, "Artifact not found")
+        raise HTTPException(404, "Artifact not found") from None
 
     async with get_pool().acquire() as conn:
         user_id = await owner_user_id(conn, request)

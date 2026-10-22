@@ -9,7 +9,6 @@ PUT  /api/orgs/{org_id}/usage/limits/{metric} set per-org override (admin)
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -36,16 +35,16 @@ class SetLimitRequest(BaseModel):
 
 
 class UpdatePlanRequest(BaseModel):
-    name: Optional[str] = None
-    price_monthly_usd: Optional[float] = Field(default=None, ge=0)
-    limits: Optional[dict[str, int]] = None
-    features: Optional[list[str]] = None
-    trial_days: Optional[int] = Field(default=None, ge=0)
-    max_agents: Optional[int] = Field(default=None, ge=-1)
-    max_workflows: Optional[int] = Field(default=None, ge=-1)
-    stripe_price_id: Optional[str] = None
-    is_purchasable: Optional[bool] = None
-    active: Optional[bool] = None
+    name: str | None = None
+    price_monthly_usd: float | None = Field(default=None, ge=0)
+    limits: dict[str, int] | None = None
+    features: list[str] | None = None
+    trial_days: int | None = Field(default=None, ge=0)
+    max_agents: int | None = Field(default=None, ge=-1)
+    max_workflows: int | None = Field(default=None, ge=-1)
+    stripe_price_id: str | None = None
+    is_purchasable: bool | None = None
+    active: bool | None = None
 
 
 def _plan_out(p) -> dict:
@@ -79,7 +78,7 @@ async def update_plan(
     try:
         plan = await get_plan_service().update_plan(plan_id, actor_id=None, **fields)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from None
     return _plan_out(plan)
 
 
@@ -100,7 +99,7 @@ async def record_usage(
     try:
         await svc.check_quota(ctx.org_id, body.metric, body.amount)
     except QuotaExceeded as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from None
     total = await svc.record(
         ctx.org_id, body.metric, body.amount,
         ref_type=body.ref_type, ref_id=body.ref_id,

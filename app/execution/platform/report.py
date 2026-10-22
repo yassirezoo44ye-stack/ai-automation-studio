@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -33,7 +32,7 @@ class ExecutionReport:
 
     # ── Timing ───────────────────────────────────────────────────────────────
     started_at: float = field(default_factory=time.time)
-    ended_at: Optional[float] = None
+    ended_at: float | None = None
 
     # ── Outcome ──────────────────────────────────────────────────────────────
     success: bool = False
@@ -44,10 +43,10 @@ class ExecutionReport:
     error_fix: list[str] = field(default_factory=list)
 
     # ── Phase timing (seconds) ────────────────────────────────────────────────
-    probe_duration_s: Optional[float] = None
-    install_duration_s: Optional[float] = None
-    build_duration_s: Optional[float] = None
-    launch_duration_s: Optional[float] = None
+    probe_duration_s: float | None = None
+    install_duration_s: float | None = None
+    build_duration_s: float | None = None
+    launch_duration_s: float | None = None
 
     # ── Cache ─────────────────────────────────────────────────────────────────
     cache_hit: bool = False
@@ -56,12 +55,12 @@ class ExecutionReport:
     # ── Environment snapshot ─────────────────────────────────────────────────
     os_name: str = ""
     architecture: str = ""
-    node_version: Optional[str] = None
+    node_version: str | None = None
     python_version: str = ""
     pm_name: str = ""
     pm_version: str = ""
     disk_free_mb: int = 0
-    memory_free_mb: Optional[int] = None
+    memory_free_mb: int | None = None
 
     # ── Build plan ───────────────────────────────────────────────────────────
     install_cmd: str = ""
@@ -72,7 +71,7 @@ class ExecutionReport:
 
     # ── Runtime ──────────────────────────────────────────────────────────────
     preview_url: str = ""
-    pid: Optional[int] = None
+    pid: int | None = None
 
     # ── Artifacts ────────────────────────────────────────────────────────────
     artifacts: list[dict] = field(default_factory=list)   # Artifact.to_dict() records
@@ -87,7 +86,7 @@ class ExecutionReport:
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     @property
-    def total_duration_s(self) -> Optional[float]:
+    def total_duration_s(self) -> float | None:
         if self.ended_at is None:
             return None
         return round(self.ended_at - self.started_at, 3)

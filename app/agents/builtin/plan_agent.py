@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 from app.agents.base import AgentContext, AgentResult, EvolvableAgent
 
@@ -58,7 +57,7 @@ class PlanAgent(EvolvableAgent):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _llm_plan(goal: str, agents: list[str], api_key: str,
-                    ctx: Optional["AgentContext"] = None) -> list[str]:
+                    ctx: AgentContext | None = None) -> list[str]:
     org_id = ctx.organization_id if ctx is not None else None
     from app.core.org_quota import check_org_quota_id, record_org_tokens
     if not await check_org_quota_id(org_id):

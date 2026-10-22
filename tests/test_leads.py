@@ -19,6 +19,7 @@ import types
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+import contextlib
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
@@ -294,7 +295,7 @@ class TestLeadServiceCreate:
         conn.fetchrow = AsyncMock(return_value=_fake_lead(org_id=org_id, name="Test Lead"))
         svc = LeadService(_make_pool(conn))
 
-        result = run(svc.create(org_id=org_id, name="Test Lead"))
+        run(svc.create(org_id=org_id, name="Test Lead"))
 
         conn.fetchrow.assert_awaited_once()
         sql, *params = conn.fetchrow.call_args.args
@@ -435,11 +436,10 @@ class TestOrgIsolation:
 
 class TestPermissionEnforcement:
     def test_router_source_uses_require_permission_for_read(self):
-        import inspect
         import importlib
         import importlib.util
         _leads_path = str(Path(__file__).parent.parent / "app/routers/leads.py")
-        spec = importlib.util.spec_from_file_location(
+        importlib.util.spec_from_file_location(
             "leads_router_src",
             _leads_path,
         )
@@ -500,10 +500,8 @@ class TestCreateLeadRequestValidation:
             for attr in dir(mod):
                 obj = getattr(mod, attr, None)
                 if obj is not None and hasattr(obj, "model_rebuild"):
-                    try:
+                    with contextlib.suppress(Exception):
                         obj.model_rebuild()
-                    except Exception:
-                        pass
         return mod
 
     def test_empty_name_rejected(self):
@@ -868,7 +866,7 @@ class TestExternalLeadCapture:
         """Capture endpoint must use require_api_key, not require_permission."""
         assert "require_api_key" in _ROUTER_SRC
         cap_start = _ROUTER_SRC.find("async def capture_lead")
-        cap_block = _ROUTER_SRC[cap_start:]
+        _ROUTER_SRC[cap_start:]
         assert "require_api_key" in _ROUTER_SRC[:cap_start]  # imported
 
     def test_invalid_api_key_returns_401(self):

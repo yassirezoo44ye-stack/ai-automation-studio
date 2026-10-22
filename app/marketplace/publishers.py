@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -64,14 +64,14 @@ class PublisherService:
             )
         return dict(row)
 
-    async def get(self, publisher_id: str) -> Optional[dict[str, Any]]:
+    async def get(self, publisher_id: str) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM marketplace_publishers WHERE id=$1", uuid.UUID(str(publisher_id)),
             )
         return dict(row) if row else None
 
-    async def get_by_org(self, org_id: str) -> Optional[dict[str, Any]]:
+    async def get_by_org(self, org_id: str) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM marketplace_publishers WHERE organization_id=$1", uuid.UUID(str(org_id)),
@@ -91,7 +91,7 @@ class PublisherService:
                 item_id, uuid.UUID(str(publisher_id)),
             )
 
-    async def get_by_item(self, item_id: str) -> Optional[dict[str, Any]]:
+    async def get_by_item(self, item_id: str) -> dict[str, Any] | None:
         """Resolves a marketplace listing's linked publisher, if any — a
         dedicated JOIN rather than widening store.py's own get_item()
         fixed _ITEM_COLS list, so the Plugin Trust Model stays a purely
@@ -105,7 +105,7 @@ class PublisherService:
             )
         return dict(row) if row else None
 
-    async def set_public_key(self, publisher_id: str, public_key_pem: str) -> Optional[dict[str, Any]]:
+    async def set_public_key(self, publisher_id: str, public_key_pem: str) -> dict[str, Any] | None:
         """Registers the Ed25519 public key (PEM, see app/plugins/signing.py)
         a verified publisher signs their plugin bundles with — the anchor
         the Plugin Trust Model checks a bundle's declared signing key
@@ -119,7 +119,7 @@ class PublisherService:
             )
         return dict(row) if row else None
 
-    async def verify(self, publisher_id: str, *, admin_actor: Optional[str] = None) -> Optional[dict[str, Any]]:
+    async def verify(self, publisher_id: str, *, admin_actor: str | None = None) -> dict[str, Any] | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """UPDATE marketplace_publishers

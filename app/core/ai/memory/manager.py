@@ -18,13 +18,12 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import datetime, timezone
 
 from app.ai import memory as mem
 from app.core.ai.events.bus import bus
 from app.core.ai.events.events import MemoryUpdated
-from app.core.ai.memory.types import MemoryItem, MemoryType, MEMORY_SCOPES
+from app.core.ai.memory.types import MemoryItem, MemoryType
 
 log = logging.getLogger(__name__)
 
@@ -49,9 +48,9 @@ class MemoryManager:
         content:         str,
         *,
         memory_type:     MemoryType = MemoryType.knowledge,
-        owner_id:        Optional[str] = None,
-        conversation_id: Optional[str] = None,
-        workspace_id:    Optional[str] = None,
+        owner_id:        str | None = None,
+        conversation_id: str | None = None,
+        workspace_id:    str | None = None,
         importance:      float = 1.0,
         tags:            list[str] | None = None,
     ) -> str:
@@ -67,11 +66,6 @@ class MemoryManager:
         NULL) rather than rejecting the whole store — same fail-open-on-
         the-link/fail-closed-on-the-data shape as AIGateway._enrich()
         silently not loading history for an unowned conversation_id."""
-        scope      = MEMORY_SCOPES[memory_type]
-        expires_at = None
-        if scope.ttl_seconds:
-            expires_at = datetime.now(timezone.utc) + timedelta(seconds=scope.ttl_seconds)
-
         if conversation_id and not await mem.is_owned_by(self._pool, conversation_id, owner_id):
             conversation_id = None
 
@@ -110,9 +104,9 @@ class MemoryManager:
     async def recall(
         self,
         *,
-        owner_id:        Optional[str] = None,
-        conversation_id: Optional[str] = None,
-        memory_type:     Optional[MemoryType] = None,
+        owner_id:        str | None = None,
+        conversation_id: str | None = None,
+        memory_type:     MemoryType | None = None,
         limit:           int = _MAX_CONTEXT_ITEMS,
         importance_min:  float = 0.0,
     ) -> list[MemoryItem]:
@@ -127,10 +121,12 @@ class MemoryManager:
 
             if uid is not None:
                 clauses.append(f"user_id = ${i}")
-                args.append(uid); i += 1
+                args.append(uid)
+                i += 1
             if cid is not None:
                 clauses.append(f"conversation_id = ${i}")
-                args.append(cid); i += 1
+                args.append(cid)
+                i += 1
 
             where = " AND ".join(clauses)
             args.append(limit)
@@ -190,7 +186,7 @@ class MemoryManager:
     async def build_context(
         self,
         *,
-        owner_id:    Optional[str] = None,
+        owner_id:    str | None = None,
         limit:       int           = _MAX_CONTEXT_ITEMS,
         importance_min: float      = 0.5,
     ) -> str:
@@ -211,7 +207,7 @@ class MemoryManager:
     # ── Conversation memory helpers ───────────────────────────────────────────
 
     async def load_history(
-        self, conversation_id: str, *, user_id: Optional[str] = None, limit: int = 40,
+        self, conversation_id: str, *, user_id: str | None = None, limit: int = 40,
     ):
         """Thin wrapper that delegates to the existing memory module.
         user_id must be forwarded — mem.load_history() treats a missing
@@ -227,9 +223,9 @@ class MemoryManager:
         conversation_id: str,
         role: str,
         content: str,
-        tool_call_id: Optional[str] = None,
+        tool_call_id: str | None = None,
         *,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> None:
         """Same user_id-forwarding requirement as load_history() above."""
         await mem.append_message(

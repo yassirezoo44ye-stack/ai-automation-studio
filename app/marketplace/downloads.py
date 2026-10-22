@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -37,8 +37,8 @@ class DownloadService:
         self._pool = pool
 
     async def record_download(
-        self, item_id: str, version: Optional[str] = None, *,
-        org_id: Optional[str] = None, user_id: Optional[str] = None,
+        self, item_id: str, version: str | None = None, *,
+        org_id: str | None = None, user_id: str | None = None,
     ) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(

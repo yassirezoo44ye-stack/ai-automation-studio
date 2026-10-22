@@ -16,6 +16,7 @@ from pathlib import Path
 
 from app.commands.context import CommandContext
 from app.commands.result import CommandResult
+import contextlib
 
 
 async def build_handler(ctx: CommandContext) -> CommandResult:
@@ -51,10 +52,8 @@ async def build_handler(ctx: CommandContext) -> CommandResult:
                 target.mkdir(parents=True, exist_ok=True)
             elif item.is_file():
                 target.parent.mkdir(parents=True, exist_ok=True)
-                try:
+                with contextlib.suppress(Exception):
                     shutil.copy2(item, target)
-                except Exception:
-                    pass
 
         archive = shutil.make_archive(str(zip_path.with_suffix("")), "zip", tmp_base, ws.name)
         shutil.rmtree(tmp_base, ignore_errors=True)

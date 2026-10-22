@@ -24,7 +24,8 @@ import time
 import uuid
 from dataclasses import dataclass, field, asdict
 from enum import Enum
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
+from collections.abc import Awaitable, Callable
 
 from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
@@ -56,18 +57,18 @@ class Job:
     kind        : str
     payload     : dict
     status      : JobStatus        = JobStatus.PENDING
-    result      : Optional[Any]    = None
-    error       : Optional[str]    = None
+    result      : Any | None    = None
+    error       : str | None    = None
     progress    : int              = 0          # 0–100
     log_lines   : list[str]        = field(default_factory=list)
     created_at  : float            = field(default_factory=time.time)
-    started_at  : Optional[float]  = None
-    finished_at : Optional[float]  = None
+    started_at  : float | None  = None
+    finished_at : float | None  = None
     ttl         : int              = _JOB_TTL
     priority    : str              = "normal"   # high | normal | low
     max_retries : int              = 0
     attempts    : int              = 0
-    run_at      : Optional[float]  = None       # epoch; None = immediately
+    run_at      : float | None  = None       # epoch; None = immediately
     dead        : bool             = False      # failed beyond max_retries (DLQ)
 
     def to_dict(self) -> dict:
@@ -93,7 +94,7 @@ class _MemStore:
     async def save(self, job: Job) -> None:
         self._jobs[job.id] = job
 
-    async def load(self, job_id: str) -> Optional[Job]:
+    async def load(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 
     async def list_all(self) -> list[Job]:
@@ -124,7 +125,7 @@ class _RedisStore:
             self._cache._k(f"{self.PREFIX}{job.id}"), job.ttl
         )
 
-    async def load(self, job_id: str) -> Optional[Job]:
+    async def load(self, job_id: str) -> Job | None:
         import json
         raw = await self._cache.hgetall(f"{self.PREFIX}{job_id}")
         if not raw:
@@ -183,7 +184,7 @@ class JobQueue:
         # caller having to hold the coroutine.
         self._handlers   : dict[str, Callable[[Job], Awaitable[Any]]] = {}
         self._dispatching: set[str] = set()
-        self._scheduler_task: Optional[asyncio.Task] = None
+        self._scheduler_task: asyncio.Task | None = None
         # Worker pool: bounds how many scheduler-dispatched jobs run at
         # once so a burst can't starve the event loop.
         self._worker_sem = asyncio.Semaphore(int(os.getenv("JOB_WORKERS", "10")))
@@ -198,9 +199,9 @@ class JobQueue:
         *,
         priority    : str = "normal",
         max_retries : int = 0,
-        run_at      : Optional[float] = None,
-        org_id      : Optional[str]   = None,
-        idempotency_key: Optional[str] = None,
+        run_at      : float | None = None,
+        org_id      : str | None   = None,
+        idempotency_key: str | None = None,
     ) -> str:
         """`org_id`, when given, always overwrites payload["organization_id"]
         rather than merely defaulting it — a caller reachable from an HTTP
@@ -330,7 +331,7 @@ class JobQueue:
         job_id  : str,
         fn      : Callable[..., Awaitable[Any]],
         *,
-        on_progress: Optional[Callable[[int, str], None]] = None,
+        on_progress: Callable[[int, str], None] | None = None,
     ) -> Job:
         """
         Execute `fn(job)` in the background.
@@ -414,16 +415,16 @@ class JobQueue:
 
     # ── Queries ────────────────────────────────────────────────────────────────
 
-    async def get(self, job_id: str) -> Optional[Job]:
+    async def get(self, job_id: str) -> Job | None:
         return await self._store.load(job_id)
 
     async def list_jobs(
         self,
-        status  : Optional[JobStatus] = None,
-        kind    : Optional[str]       = None,
+        status  : JobStatus | None = None,
+        kind    : str | None       = None,
         limit   : int                 = 50,
         *,
-        org_id  : Optional[str]       = None,
+        org_id  : str | None       = None,
     ) -> list[Job]:
         """`org_id`, when given, scopes to jobs stamped with that
         organization (see JobQueue.submit's docstring) — reserved unset
@@ -476,7 +477,7 @@ class JobQueue:
 
     # ── Stats ──────────────────────────────────────────────────────────────────
 
-    async def stats(self, *, org_id: Optional[str] = None) -> dict:
+    async def stats(self, *, org_id: str | None = None) -> dict:
         all_jobs = await self._store.list_all()
         if org_id is not None:
             all_jobs = [j for j in all_jobs if j.payload.get("organization_id") == org_id]
@@ -497,7 +498,7 @@ class JobQueue:
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 
-_queue: Optional[JobQueue] = None
+_queue: JobQueue | None = None
 
 
 def get_job_queue(cache=None) -> JobQueue:

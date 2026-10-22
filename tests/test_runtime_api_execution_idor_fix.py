@@ -59,10 +59,10 @@ class TestRuntimeExecutionRoutesRequireOwnership(unittest.TestCase):
 
         pool = self._mock_pool(requester_uid=bob_uid)
         with patch("app.routers.runtime_api.get_pool", return_value=pool), \
-             patch("app.core.auth.owner_email", return_value="bob@example.com"):
-            with TestClient(self._app(), raise_server_exceptions=False) as c:
-                res = c.get(f"/api/runtime/{execution_id}/status",
-                            headers={"X-Sub-Token": "bob-token"})
+             patch("app.core.auth.owner_email", return_value="bob@example.com"), \
+             TestClient(self._app(), raise_server_exceptions=False) as c:
+            res = c.get(f"/api/runtime/{execution_id}/status",
+                        headers={"X-Sub-Token": "bob-token"})
         self.assertEqual(res.status_code, 404)
 
     def test_non_owner_report_does_not_leak_data(self):
@@ -73,10 +73,10 @@ class TestRuntimeExecutionRoutesRequireOwnership(unittest.TestCase):
 
         pool = self._mock_pool(requester_uid=bob_uid)
         with patch("app.routers.runtime_api.get_pool", return_value=pool), \
-             patch("app.core.auth.owner_email", return_value="bob@example.com"):
-            with TestClient(self._app(), raise_server_exceptions=False) as c:
-                res = c.get(f"/api/runtime/{execution_id}/report",
-                            headers={"X-Sub-Token": "bob-token"})
+             patch("app.core.auth.owner_email", return_value="bob@example.com"), \
+             TestClient(self._app(), raise_server_exceptions=False) as c:
+            res = c.get(f"/api/runtime/{execution_id}/report",
+                        headers={"X-Sub-Token": "bob-token"})
         self.assertEqual(res.status_code, 404)
         self.assertNotIn("secret", res.text)
 
@@ -90,10 +90,10 @@ class TestRuntimeExecutionRoutesRequireOwnership(unittest.TestCase):
 
         pool = self._mock_pool(requester_uid=bob_uid)
         with patch("app.routers.runtime_api.get_pool", return_value=pool), \
-             patch("app.core.auth.owner_email", return_value="bob@example.com"):
-            with TestClient(self._app(), raise_server_exceptions=False) as c:
-                res = c.delete(f"/api/runtime/{execution_id}",
-                               headers={"X-Sub-Token": "bob-token"})
+             patch("app.core.auth.owner_email", return_value="bob@example.com"), \
+             TestClient(self._app(), raise_server_exceptions=False) as c:
+            res = c.delete(f"/api/runtime/{execution_id}",
+                           headers={"X-Sub-Token": "bob-token"})
         self.assertEqual(res.status_code, 404)
 
         from app.routers.runtime_api import _executions

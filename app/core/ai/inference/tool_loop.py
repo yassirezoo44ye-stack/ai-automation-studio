@@ -11,7 +11,7 @@ Handles:
 from __future__ import annotations
 
 import logging
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
 
 from app.ai.models import CompletionRequest, CompletionResponse, Message
 from app.core.ai.tools.executor import ToolResult, executor as default_executor
@@ -26,8 +26,8 @@ async def run_tool_loop(
     response:    CompletionResponse,
     *,
     gateway,            # AIGateway or callable (request) → CompletionResponse
-    user_id:     Optional[str] = None,
-    org_id:      Optional[str] = None,
+    user_id:     str | None = None,
+    org_id:      str | None = None,
     max_rounds:  int            = _MAX_ROUNDS,
     tool_executor=None,
 ) -> CompletionResponse:
@@ -94,8 +94,8 @@ async def stream_tool_loop(
     request:    CompletionRequest,
     *,
     gateway,             # AIGateway or callable
-    user_id:    Optional[str] = None,
-    org_id:     Optional[str] = None,
+    user_id:    str | None = None,
+    org_id:     str | None = None,
     max_rounds: int            = _MAX_ROUNDS,
     tool_executor=None,
 ) -> AsyncGenerator[dict, None]:

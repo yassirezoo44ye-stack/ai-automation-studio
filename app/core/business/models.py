@@ -5,7 +5,7 @@ Used for API request/response and internal data transfer.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -55,7 +55,7 @@ class SectionStatus(str, Enum):
 class CreatePlanRequest(BaseModel):
     idea_raw:  str = Field(..., min_length=10, max_length=4000,
                            description="Free-text description of the business idea")
-    industry:  Optional[str] = None
+    industry:  str | None = None
     stage:     PlanStage     = PlanStage.IDEA
 
 
@@ -63,11 +63,11 @@ class PlanOut(BaseModel):
     id:              str
     title:           str
     idea_raw:        str
-    industry:        Optional[str]
+    industry:        str | None
     stage:           str
     status:          str
-    readiness_score: Optional[int]
-    workflow_run_id: Optional[str]
+    readiness_score: int | None
+    workflow_run_id: str | None
     created_at:      str
     updated_at:      str
 
@@ -78,12 +78,12 @@ class FactOut(BaseModel):
     fact_key:     str
     value:        Any
     source_type:  str
-    source_url:   Optional[str]
-    source_note:  Optional[str]
+    source_url:   str | None
+    source_note:  str | None
     status:       str
     confidence:   float
-    section:      Optional[str]
-    created_by:   Optional[str]
+    section:      str | None
+    created_by:   str | None
     created_at:   str
 
 
@@ -94,12 +94,12 @@ class SectionOut(BaseModel):
     title:        str
     content:      str
     status:       str
-    agent_name:   Optional[str]
-    model_used:   Optional[str]
+    agent_name:   str | None
+    model_used:   str | None
     tokens_used:  int
-    elapsed_ms:   Optional[int]
+    elapsed_ms:   int | None
     retry_count:  int
-    error_msg:    Optional[str]
+    error_msg:    str | None
     updated_at:   str
 
 
@@ -107,13 +107,13 @@ class CompetitorOut(BaseModel):
     id:              str
     plan_id:         str
     name:            str
-    website:         Optional[str]
-    description:     Optional[str]
+    website:         str | None
+    description:     str | None
     strengths:       list[str]
     weaknesses:      list[str]
-    pricing:         Optional[str]
-    market_position: Optional[str]
-    source_url:      Optional[str]
+    pricing:         str | None
+    market_position: str | None
+    source_url:      str | None
     verified:        bool
 
 
@@ -131,7 +131,7 @@ class PlanDetailOut(BaseModel):
     sections:    list[SectionOut]
     facts:       list[FactOut]
     competitors: list[CompetitorOut]
-    score:       Optional[ScoreOut]
+    score:       ScoreOut | None
 
 
 class RetryRequest(BaseModel):
@@ -150,7 +150,7 @@ class IdeaContext(BaseModel):
     """Minimal context for intake agent."""
     plan_id:  str
     idea_raw: str
-    industry: Optional[str]
+    industry: str | None
     stage:    str
 
 
@@ -158,43 +158,43 @@ class MarketContext(BaseModel):
     """Context slice for Market Intelligence agent."""
     plan_id:          str
     idea_raw:         str
-    industry:         Optional[str]
-    company_summary:  Optional[str]
-    target_customers: Optional[str]
+    industry:         str | None
+    company_summary:  str | None
+    target_customers: str | None
 
 
 class CompetitorContext(BaseModel):
     """Context slice for Competitor Intelligence agent."""
     plan_id:          str
     idea_raw:         str
-    industry:         Optional[str]
-    company_summary:  Optional[str]
-    market_summary:   Optional[str]
+    industry:         str | None
+    company_summary:  str | None
+    market_summary:   str | None
 
 
 class OfferContext(BaseModel):
     """Context slice for Offer & Pricing agent."""
     plan_id:          str
     idea_raw:         str
-    target_customers: Optional[str]
-    market_summary:   Optional[str]
+    target_customers: str | None
+    market_summary:   str | None
     competitors:      list[dict]
 
 
 class GTMContext(BaseModel):
     """Context slice for Go-To-Market agent."""
     plan_id:          str
-    company_summary:  Optional[str]
-    offer_summary:    Optional[str]
-    target_customers: Optional[str]
-    market_summary:   Optional[str]
+    company_summary:  str | None
+    offer_summary:    str | None
+    target_customers: str | None
+    market_summary:   str | None
 
 
 class OpsFinanceContext(BaseModel):
     """Context slice for Operations & Finance agent."""
     plan_id:         str
-    company_summary: Optional[str]
-    offer_summary:   Optional[str]
+    company_summary: str | None
+    offer_summary:   str | None
     stage:           str
 
 

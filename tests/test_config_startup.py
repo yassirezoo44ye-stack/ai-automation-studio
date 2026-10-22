@@ -41,18 +41,17 @@ class TestSessionSecretRequired:
                 del sys.modules[mod]
 
         with patch.dict(os.environ, env, clear=True), \
-             patch("stripe.api_key", "", create=True):
-            with patch("sys.exit") as mock_exit:
-                try:
-                    import app.core.config  # noqa
-                    importlib.reload(app.core.config)
-                except Exception:
-                    pass
-                # sys.exit(1) must have been called
-                calls = [str(c) for c in mock_exit.call_args_list]
-                assert any("1" in c for c in calls), (
-                    f"sys.exit(1) not called — calls were: {calls}"
-                )
+             patch("stripe.api_key", "", create=True), patch("sys.exit") as mock_exit:
+            try:
+                import app.core.config  # noqa
+                importlib.reload(app.core.config)
+            except Exception:
+                pass
+            # sys.exit(1) must have been called
+            calls = [str(c) for c in mock_exit.call_args_list]
+            assert any("1" in c for c in calls), (
+                f"sys.exit(1) not called — calls were: {calls}"
+            )
 
     def test_present_session_secret_does_not_exit(self):
         """When SESSION_SECRET is set, config loads without calling sys.exit."""

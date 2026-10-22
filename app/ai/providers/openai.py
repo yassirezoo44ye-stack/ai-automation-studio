@@ -5,7 +5,8 @@ All OpenAI-specific API calls are isolated to this file.
 from __future__ import annotations
 
 import json
-from typing import AsyncGenerator, Any
+from typing import Any
+from collections.abc import AsyncGenerator
 
 from app.ai.models import (
     CompletionRequest, CompletionResponse, StreamChunk,

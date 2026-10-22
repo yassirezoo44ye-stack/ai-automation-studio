@@ -7,7 +7,7 @@ class TestCapabilitiesCompute:
     def test_compute_returns_capabilities_object(self):
         from app.runtime.capabilities import Capabilities, compute
         # Build a minimal mock registry
-        caps = compute.__wrapped__() if hasattr(compute, "__wrapped__") else None
+        compute.__wrapped__() if hasattr(compute, "__wrapped__") else None
         # Just import — confirms no import-time errors
         assert Capabilities is not None
 

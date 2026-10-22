@@ -39,8 +39,8 @@ import ctypes
 import ctypes.wintypes
 import logging
 import threading
-import time
-from typing import Callable, Optional
+from collections.abc import Callable
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -432,17 +432,15 @@ class WindowsInputHookManager:
             # Don't call on_key; trigger failsafe callback instead.
             # The failsafe must NOT depend on the network.
             self.uninstall()
-            try:
+            with contextlib.suppress(Exception):
                 self._on_failsafe()
-            except Exception:
-                pass
             return 1  # suppress this keypress from reaching any application
 
         action = "up" if wParam in (WM_KEYUP, WM_SYSKEYUP) else "down"
 
         with self._lock:
             self._key_seq += 1
-            seq = self._key_seq
+            _seq = self._key_seq
 
         # Call without logging vk/scan — the callback knows not to log them
         self._on_key(vk, scan, flags, action)

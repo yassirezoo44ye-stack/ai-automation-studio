@@ -24,7 +24,7 @@ import math
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ async def _embed_via_gateway(text: str, gateway) -> list[float]:
 
 def _cosine(a: list[float], b: list[float]) -> float:
     """Cosine similarity between two equal-length vectors."""
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na  = math.sqrt(sum(x * x for x in a))
     nb  = math.sqrt(sum(x * x for x in b))
     if na == 0 or nb == 0:
@@ -93,14 +93,14 @@ def _tfidf_score(query: str, content: str) -> float:
 
 # ── pgvector schema setup ─────────────────────────────────────────────────────
 
-_SCHEMA_SQL = """
+_SCHEMA_SQL = f"""
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS semantic_memory (
     id          TEXT PRIMARY KEY,
     session_id  TEXT NOT NULL DEFAULT '',
     content     TEXT NOT NULL,
-    embedding   vector({dim}),
+    embedding   vector({_EMBEDDING_DIM}),
     metadata    JSONB DEFAULT '{{}}'::jsonb,
     created_at  DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
 );
@@ -111,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_semantic_memory_embedding
 
 CREATE INDEX IF NOT EXISTS idx_semantic_memory_session
     ON semantic_memory (session_id);
-""".format(dim=_EMBEDDING_DIM)
+"""
 
 
 async def _ensure_schema(pool) -> bool:
@@ -188,7 +188,7 @@ class SemanticMemory:
         self._gateway    = gateway
         self._pgvector   = False      # set to True after schema verified
         self._local      = _LocalStore()
-        self._init_task  : Optional[asyncio.Task] = None
+        self._init_task  : asyncio.Task | None = None
 
     async def initialize(self) -> None:
         if self._pool:

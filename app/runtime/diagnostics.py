@@ -8,7 +8,6 @@ tools, and install suggestions.
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Optional
 
 from app.runtime import registry, capabilities
 
@@ -18,11 +17,11 @@ class ToolReport:
     name: str
     display: str
     available: bool
-    version: Optional[str]
-    path: Optional[str]
+    version: str | None
+    path: str | None
     category: str
     required_for: list[str]
-    install_hint: Optional[str]
+    install_hint: str | None
 
 
 @dataclass

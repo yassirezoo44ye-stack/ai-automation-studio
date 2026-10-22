@@ -22,7 +22,7 @@ import threading
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -43,15 +43,15 @@ class ExecutionRecord:
     success    : bool
     duration_ms: float
     timestamp  : float = field(default_factory=time.time)
-    error      : Optional[str] = None
+    error      : str | None = None
     data       : dict  = field(default_factory=dict)
-    organization_id: Optional[str] = None
+    organization_id: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ExecutionRecord":
+    def from_dict(cls, d: dict) -> ExecutionRecord:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
@@ -63,7 +63,7 @@ class AgentStats:
     fail_count  : int
     avg_ms      : float
     success_rate: float     # 0.0–1.0
-    last_called : Optional[float]
+    last_called : float | None
 
     def to_dict(self) -> dict:
         return asdict(self)

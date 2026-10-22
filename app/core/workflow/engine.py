@@ -23,7 +23,8 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
+from collections.abc import Awaitable, Callable
 
 from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
@@ -80,21 +81,21 @@ class WorkflowStep:
     args            : dict[str, Any]          = field(default_factory=dict)
     depends_on      : list[str]               = field(default_factory=list)
     retry_policy    : RetryPolicy             = field(default_factory=RetryPolicy)
-    timeout_s       : Optional[float]         = None
-    condition       : Optional[Callable[[dict], bool]] = None   # if None, always run
-    on_success      : Optional[str]           = None    # next step id override
-    on_failure      : Optional[str]           = None    # error branch step id
-    compensation_fn : Optional[StepFn]        = None    # Saga rollback
+    timeout_s       : float | None         = None
+    condition       : Callable[[dict], bool] | None = None   # if None, always run
+    on_success      : str | None           = None    # next step id override
+    on_failure      : str | None           = None    # error branch step id
+    compensation_fn : StepFn | None        = None    # Saga rollback
     requires_approval: bool                   = False
     status          : StepStatus              = StepStatus.PENDING
-    result          : Optional[Any]           = None
-    error           : Optional[str]           = None
-    started_at      : Optional[float]         = None
-    finished_at     : Optional[float]         = None
+    result          : Any | None           = None
+    error           : str | None           = None
+    started_at      : float | None         = None
+    finished_at     : float | None         = None
     attempt         : int                     = 0
 
     @property
-    def duration_ms(self) -> Optional[float]:
+    def duration_ms(self) -> float | None:
         if self.started_at and self.finished_at:
             return (self.finished_at - self.started_at) * 1000
         return None
@@ -120,9 +121,9 @@ class WorkflowRun:
     status      : WorkflowStatus              = WorkflowStatus.PENDING
     context     : dict[str, Any]              = field(default_factory=dict)
     created_at  : float                       = field(default_factory=time.time)
-    started_at  : Optional[float]             = None
-    finished_at : Optional[float]             = None
-    error       : Optional[str]               = None
+    started_at  : float | None             = None
+    finished_at : float | None             = None
+    error       : str | None               = None
     _approval_events: dict[str, asyncio.Event] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -139,7 +140,7 @@ class WorkflowRun:
         }
 
     @property
-    def duration_ms(self) -> Optional[float]:
+    def duration_ms(self) -> float | None:
         if self.started_at and self.finished_at:
             return (self.finished_at - self.started_at) * 1000
         return None
@@ -205,7 +206,7 @@ class WorkflowBuilder:
         condition: Callable | None = None,
         compensation: StepFn | None = None,
         requires_approval: bool = False,
-    ) -> "WorkflowBuilder":
+    ) -> WorkflowBuilder:
         self._steps[step_id] = WorkflowStep(
             id               = step_id,
             name             = name,
@@ -235,7 +236,7 @@ def _topo_sort(steps: dict[str, WorkflowStep]) -> list[list[str]]:
     """
     Kahn's algorithm → returns execution groups (each group runs in parallel).
     """
-    in_degree: dict[str, int] = {sid: 0 for sid in steps}
+    in_degree: dict[str, int] = dict.fromkeys(steps, 0)
     children : dict[str, list[str]] = {sid: [] for sid in steps}
 
     for sid, step in steps.items():

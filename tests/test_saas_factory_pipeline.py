@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import contextlib
 
 
 def run(coro):
@@ -273,10 +274,9 @@ class TestRunPipelineHaltOnWarn:
 
         async def capture_execute(*args, **kwargs):
             sql = str(args[0]) if args else ""
-            if "checkpoint" in sql.lower() and "update" in sql.lower():
+            if "checkpoint" in sql.lower() and "update" in sql.lower() and len(args) > 1 and isinstance(args[1], str):
                 # args[1] is the checkpoint JSON
-                if len(args) > 1 and isinstance(args[1], str):
-                    saved_checkpoints.append(args[1])
+                saved_checkpoints.append(args[1])
 
         conn = AsyncMock()
         conn.execute = AsyncMock(side_effect=capture_execute)
@@ -320,10 +320,8 @@ class TestRunPipelineHaltOnWarn:
         async def capture_execute(*args, **kwargs):
             sql = str(args[0]) if args else ""
             if "checkpoint" in sql.lower() and len(args) > 1 and isinstance(args[1], str):
-                try:
+                with contextlib.suppress(Exception):
                     persisted.append(json.loads(args[1]))
-                except Exception:
-                    pass
 
         conn = AsyncMock()
         conn.execute = AsyncMock(side_effect=capture_execute)
@@ -393,10 +391,8 @@ class TestApproveMethod:
         async def capture(*args, **kwargs):
             sql = str(args[0]) if args else ""
             if "checkpoint" in sql.lower() and len(args) > 1 and isinstance(args[1], str):
-                try:
+                with contextlib.suppress(Exception):
                     saved_cps.append(json.loads(args[1]))
-                except Exception:
-                    pass
             return "UPDATE 1"
 
         conn.execute = AsyncMock(side_effect=capture)
@@ -538,10 +534,8 @@ class TestRejectMethod:
         async def capture(*args, **kwargs):
             sql = str(args[0]) if args else ""
             if "checkpoint" in sql.lower() and len(args) > 1 and isinstance(args[1], str):
-                try:
+                with contextlib.suppress(Exception):
                     saved_cps.append(json.loads(args[1]))
-                except Exception:
-                    pass
             return "UPDATE 1"
 
         conn.execute = AsyncMock(side_effect=capture)

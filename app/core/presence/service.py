@@ -69,7 +69,7 @@ class PresenceService:
             return {}
         redis = await get_redis()
         vals = await redis.mget(*[f"presence:{uid}" for uid in user_ids])
-        return {uid: (val is not None) for uid, val in zip(user_ids, vals)}
+        return {uid: (val is not None) for uid, val in zip(user_ids, vals, strict=False)}
 
     async def _publish_change(self, user_id: str, *, online: bool) -> None:
         redis = await get_redis()

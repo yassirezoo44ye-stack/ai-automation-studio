@@ -26,13 +26,15 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
+from collections.abc import AsyncGenerator
 
 from app.ai.models import (
     CompletionRequest, CompletionResponse, Message, ToolSchema,
 )
 from app.core.ai.tools.executor import ToolResult, executor as default_executor
 from app.core.ai.memory.types import MemoryType
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -41,8 +43,8 @@ log = logging.getLogger(__name__)
 class AgentConfig:
     name:            str
     system_prompt:   str          = ""
-    provider_id:     Optional[str] = None
-    model:           Optional[str] = None
+    provider_id:     str | None = None
+    model:           str | None = None
     max_tokens:      int           = 4096
     temperature:     float         = 0.7
     max_rounds:      int           = 8         # agentic loop limit
@@ -50,8 +52,8 @@ class AgentConfig:
     memory_type:     MemoryType    = MemoryType.agent
     tools:           list[str]     = field(default_factory=list)   # tool names to enable
     memory_enabled:  bool          = False
-    conversation_id: Optional[str] = None
-    agent_id:        Optional[str] = None
+    conversation_id: str | None = None
+    agent_id:        str | None = None
     metadata:        dict[str, Any] = field(default_factory=dict)
 
 
@@ -61,9 +63,9 @@ class AgentRunResult:
     content:      str
     tool_calls:   list[dict] = field(default_factory=list)
     rounds:       int        = 0
-    error:        Optional[str] = None
-    conversation_id: Optional[str] = None
-    usage:        Optional[dict] = None
+    error:        str | None = None
+    conversation_id: str | None = None
+    usage:        dict | None = None
 
 
 class AgentRuntime:
@@ -91,7 +93,7 @@ class AgentRuntime:
         """Called with the user prompt before the first LLM call. Return enriched prompt."""
         return prompt
 
-    async def on_tool_result(self, result: ToolResult) -> Optional[str]:
+    async def on_tool_result(self, result: ToolResult) -> str | None:
         """Called after each tool execution. Return a comment to inject or None."""
         return None
 
@@ -107,7 +109,7 @@ class AgentRuntime:
         self,
         prompt: str,
         *,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> AgentRunResult:
         """
         Run the agent until done or max_rounds reached.
@@ -137,7 +139,7 @@ class AgentRuntime:
         messages: list[Message] = [Message(role="user", content=prompt)]
         system   = self.config.system_prompt or None
         all_tool_calls: list[dict] = []
-        last_response: Optional[CompletionResponse] = None
+        last_response: CompletionResponse | None = None
         rounds = 0
 
         try:
@@ -146,10 +148,8 @@ class AgentRuntime:
 
                 provider_enum = None
                 if self.config.provider_id:
-                    try:
+                    with contextlib.suppress(ValueError):
                         provider_enum = ProviderID(self.config.provider_id)
-                    except ValueError:
-                        pass  # openrouter/local — pass as-is via model string
 
                 req = CompletionRequest(
                     messages=messages,
@@ -222,7 +222,7 @@ class AgentRuntime:
         self,
         prompt: str,
         *,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Streaming variant — yields SSE-compatible dicts.
@@ -243,13 +243,11 @@ class AgentRuntime:
                     tool_schemas.append(schema)
         allowed_tools = set(self.config.tools)
 
-        for round_num in range(self.config.max_rounds):
+        for _round_num in range(self.config.max_rounds):
             provider_enum = None
             if self.config.provider_id:
-                try:
+                with contextlib.suppress(ValueError):
                     provider_enum = ProviderID(self.config.provider_id)
-                except ValueError:
-                    pass
 
             req = CompletionRequest(
                 messages=messages,

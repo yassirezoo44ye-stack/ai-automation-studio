@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -46,7 +45,7 @@ async def _user_id(request: Request) -> str:
         return str(await owner_user_id(conn, request))
 
 
-async def _org_id(request: Request) -> Optional[str]:
+async def _org_id(request: Request) -> str | None:
     # tenant_context_middleware (app/factory.py) only stashes the raw
     # X-Organization-Id header value on request.state.org_id — by its own
     # docstring, it "never grants or denies anything"; membership is each
@@ -62,7 +61,7 @@ def _pool():
     return get_pool()
 
 
-async def _require_conversation_ownership(conversation_id: Optional[str], user_id: str) -> None:
+async def _require_conversation_ownership(conversation_id: str | None, user_id: str) -> None:
     """Reject an unowned conversation_id with 404 before spending a
     provider call on it. AIGateway itself already no-ops on an unowned
     conversation_id (empty history in, dropped write out — see
@@ -83,18 +82,18 @@ class ChatMessage(BaseModel):
 
 class InferenceRequest(BaseModel):
     messages:           list[ChatMessage]
-    provider:           Optional[ProviderID] = None
-    model:              Optional[str]        = None
+    provider:           ProviderID | None = None
+    model:              str | None        = None
     fallback_providers: list[ProviderID]     = []
     max_tokens:         int                  = Field(2048, ge=1, le=32000)
     temperature:        float                = Field(0.7, ge=0.0, le=2.0)
-    top_p:              Optional[float]      = None
-    system:             Optional[str]        = None
-    tools:              Optional[list[ToolSchema]] = None
-    conversation_id:    Optional[str]        = None
-    prompt_id:          Optional[str]        = None
+    top_p:              float | None      = None
+    system:             str | None        = None
+    tools:              list[ToolSchema] | None = None
+    conversation_id:    str | None        = None
+    prompt_id:          str | None        = None
     prompt_variables:   dict[str, str]       = {}
-    cache_ttl:          Optional[int]        = None
+    cache_ttl:          int | None        = None
     memory_enabled:     bool                 = False
     timeout:            float                = Field(60.0, ge=1.0, le=300.0)
     max_retries:        int                  = Field(2, ge=0, le=5)
@@ -133,8 +132,8 @@ class AIChatRequest(BaseModel):
     and returns { response } so the frontend needs no changes.
     """
     message:  str           = Field(..., min_length=1, max_length=8000)
-    context:  Optional[str] = None
-    app_name: Optional[str] = None
+    context:  str | None = None
+    app_name: str | None = None
 
 
 @router.post("/chat")
@@ -241,8 +240,8 @@ async def stream(req: InferenceRequest, request: Request):
 
 class ConvCreate(BaseModel):
     title:      str            = "New conversation"
-    project_id: Optional[str] = None
-    agent_id:   Optional[str] = None
+    project_id: str | None = None
+    agent_id:   str | None = None
 
 
 @router.post("/conversations")
@@ -308,17 +307,17 @@ async def delete_conversation(conv_id: str, request: Request):
 
 # ── Usage ─────────────────────────────────────────────────────────────────────
 
-def _parse_since(since: Optional[str]) -> Optional[datetime]:
+def _parse_since(since: str | None) -> datetime | None:
     if not since:
         return None
     try:
         return datetime.fromisoformat(since)
     except ValueError:
-        raise HTTPException(422, f"Invalid date format for 'since': {since!r}. Use ISO 8601.")
+        raise HTTPException(422, f"Invalid date format for 'since': {since!r}. Use ISO 8601.") from None
 
 
 @router.get("/usage")
-async def get_usage(request: Request, since: Optional[str] = None):
+async def get_usage(request: Request, since: str | None = None):
     from app.core.ai.telemetry.service import TelemetryService
     # Cheap, local validation before the DB-dependent identity resolution
     # below — since is now async (a real owner_user_id() DB call, not the
@@ -331,7 +330,7 @@ async def get_usage(request: Request, since: Optional[str] = None):
 
 
 @router.get("/usage/providers")
-async def get_usage_by_provider(request: Request, since: Optional[str] = None):
+async def get_usage_by_provider(request: Request, since: str | None = None):
     from app.core.ai.telemetry.service import TelemetryService
     since_dt = _parse_since(since)
     uid = await _user_id(request)
@@ -359,15 +358,15 @@ class PromptCreate(BaseModel):
     name:          str
     slug:          str
     description:   str            = ""
-    system:        Optional[str]  = None
-    user_template: Optional[str]  = None
-    variables:     Optional[list[str]] = None
+    system:        str | None  = None
+    user_template: str | None  = None
+    variables:     list[str] | None = None
 
 
 class PromptVersionCreate(BaseModel):
-    system:        Optional[str]  = None
-    user_template: Optional[str]  = None
-    variables:     Optional[list[str]] = None
+    system:        str | None  = None
+    user_template: str | None  = None
+    variables:     list[str] | None = None
 
 
 class PromptPreviewRequest(BaseModel):
@@ -445,7 +444,7 @@ async def rollback_prompt(prompt_id: str, version: int, request: Request):
 class MemoryCreate(BaseModel):
     content:         str
     importance:      float         = Field(1.0, ge=0.0, le=10.0)
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
     memory_type:     str           = "knowledge"
 
 
@@ -497,7 +496,7 @@ async def ai_diagnostics(include_db: bool = False):
 # ── Model catalog ─────────────────────────────────────────────────────────────
 
 @router.get("/models")
-async def list_models(provider: Optional[str] = None):
+async def list_models(provider: str | None = None):
     """Return known models from the catalog."""
     from app.core.ai.models.catalog import catalog
     available = platform.registry.available()

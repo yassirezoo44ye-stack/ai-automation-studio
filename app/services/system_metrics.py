@@ -9,6 +9,7 @@ things that happened."
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from app.services.registry import BaseService
@@ -60,12 +61,10 @@ class SystemMetricsService(BaseService):
             net = psutil.net_io_counters()
             m.gauge("system_network_bytes_sent", "Cumulative bytes sent").set(net.bytes_sent)
             m.gauge("system_network_bytes_recv", "Cumulative bytes received").set(net.bytes_recv)
-            try:
+            with contextlib.suppress(AttributeError):
                 m.gauge("system_open_fds", "Open file descriptors (process)").set(
                     self._proc.num_fds()
                 )
-            except AttributeError:
-                pass  # num_fds() is POSIX-only; skip on platforms without it (e.g. Windows)
         except Exception as exc:
             log.warning("system_metrics: sampling failed: %s", exc)
 

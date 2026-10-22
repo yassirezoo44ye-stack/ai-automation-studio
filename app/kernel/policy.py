@@ -113,7 +113,7 @@ class PolicyEngine:
         except ValueError:
             raise PolicyViolation(
                 f"Path traversal denied: {resolved} is outside project root {self._root}"
-            )
+            ) from None
 
     def _check_protected(self, resolved: Path) -> None:
         path_str = str(resolved).replace("\\", "/")

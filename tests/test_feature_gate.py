@@ -299,9 +299,8 @@ class TestDevBypass:
         from app.billing.feature_gate import FeatureGateService, FeatureNotEntitledError
         monkeypatch.delenv("ENVIRONMENT", raising=False)
         monkeypatch.setenv("FEATURE_GATE_DEV_BYPASS", "true")
-        with patched(org=_org("free")):
-            with pytest.raises(FeatureNotEntitledError):
-                run(FeatureGateService().check_feature(_org_id(), "marketplace"))
+        with patched(org=_org("free")), pytest.raises(FeatureNotEntitledError):
+            run(FeatureGateService().check_feature(_org_id(), "marketplace"))
 
     def test_dev_bypass_active_truth_table(self):
         from app.billing.feature_gate import dev_bypass_active

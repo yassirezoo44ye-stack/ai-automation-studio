@@ -32,6 +32,7 @@ from typing import Any
 import asyncpg
 
 from app.core.db import get_pool, write_audit
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -775,25 +776,24 @@ class DeviceControlService:
           3. Revoke all session authorizations
           4. Mark stopped
         """
-        async with get_pool().acquire() as conn:
-            async with conn.transaction():
-                row = await conn.fetchrow(
-                    "SELECT id, status FROM device_control_sessions "
-                    "WHERE id=$1 AND organization_id=$2 FOR UPDATE",
-                    uuid.UUID(session_id),
-                    uuid.UUID(org_id),
-                )
-                if row is None:
-                    raise ValueError("Session not found")
-                if row["status"] in ("stopped", "failed", "expired"):
-                    return  # already terminal
+        async with get_pool().acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT id, status FROM device_control_sessions "
+                "WHERE id=$1 AND organization_id=$2 FOR UPDATE",
+                uuid.UUID(session_id),
+                uuid.UUID(org_id),
+            )
+            if row is None:
+                raise ValueError("Session not found")
+            if row["status"] in ("stopped", "failed", "expired"):
+                return  # already terminal
 
-                await conn.execute(
-                    "UPDATE device_control_sessions "
-                    "SET status='stopping', updated_at=NOW() "
-                    "WHERE id=$1",
-                    uuid.UUID(session_id),
-                )
+            await conn.execute(
+                "UPDATE device_control_sessions "
+                "SET status='stopping', updated_at=NOW() "
+                "WHERE id=$1",
+                uuid.UUID(session_id),
+            )
 
         # Broadcast BEFORE marking stopped so agents get the stop signal
         await self._broadcast_to_session(session_id, {
@@ -996,10 +996,7 @@ class DeviceControlService:
             return False
         if row["session_status"] != "active":
             return False
-        if not row["enabled"]:
-            return False
-
-        return True
+        return bool(row["enabled"])
 
     async def get_session_token_for_device(
         self,
@@ -1062,10 +1059,8 @@ class DeviceControlService:
         text = json.dumps(frame)
         conns = _registry.all_in_session(session_id)
         for conn_obj in conns:
-            try:
+            with contextlib.suppress(Exception):
                 await conn_obj.ws.send_text(text)
-            except Exception:
-                pass
 
     async def handle_primary_disconnect(
         self,

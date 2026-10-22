@@ -7,14 +7,13 @@ called once from the lifespan context manager in main.py.
 """
 import os
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import asyncpg
 
 from app.core.config import USER_ID, DEMO_PROJECT_ID
 from app.core.observability.tracer import get_tracer
 
-_pool: Optional[asyncpg.Pool] = None
+_pool: asyncpg.Pool | None = None
 
 # When the pool is saturated, waiting forever turns one slow spot into a
 # platform-wide stall — fail fast instead so callers surface a clear error
@@ -48,10 +47,9 @@ async def acquire_scoped(org_id: str):
     tracer = get_tracer()
     with tracer.start_span("db.acquire_scoped", service="database") as span:
         span.set_tag("organization_id", org_id)
-        async with get_pool().acquire(timeout=_ACQUIRE_TIMEOUT_S) as conn:
-            async with conn.transaction():
-                await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
-                yield conn
+        async with get_pool().acquire(timeout=_ACQUIRE_TIMEOUT_S) as conn, conn.transaction():
+            await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
+            yield conn
 
 
 # ── Schema initialisation ─────────────────────────────────────────────────────

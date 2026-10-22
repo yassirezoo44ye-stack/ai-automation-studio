@@ -45,7 +45,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 from cryptography.fernet import Fernet, InvalidToken
@@ -172,7 +172,7 @@ def _dec(ciphertext: str) -> str:
         return _fernet().decrypt(ciphertext.encode()).decode()
     except (InvalidToken, Exception) as exc:
         log.error("token decrypt failed: %s", exc)
-        raise HTTPException(503, "Token decryption failed — reconnect the account.")
+        raise HTTPException(503, "Token decryption failed — reconnect the account.") from None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -242,13 +242,13 @@ def _job_out(row: dict) -> dict:
 # ── Request/response models ────────────────────────────────────────────────────
 
 class PostCreate(BaseModel):
-    title:              Optional[str]       = None
+    title:              str | None       = None
     caption:            str
     video_url:          str
-    thumbnail_url:      Optional[str]       = None
-    duration_seconds:   Optional[int]       = None
+    thumbnail_url:      str | None       = None
+    duration_seconds:   int | None       = None
     target_platforms:   list[str]
-    scheduled_at:       Optional[datetime]  = None
+    scheduled_at:       datetime | None  = None
     hashtags:           list[str]           = []
     metadata:           dict[str, Any]      = {}
 
@@ -265,15 +265,15 @@ class PostCreate(BaseModel):
 
 
 class PostUpdate(BaseModel):
-    title:              Optional[str]       = None
-    caption:            Optional[str]       = None
-    video_url:          Optional[str]       = None
-    thumbnail_url:      Optional[str]       = None
-    duration_seconds:   Optional[int]       = None
-    target_platforms:   Optional[list[str]] = None
-    scheduled_at:       Optional[datetime]  = None
-    hashtags:           Optional[list[str]] = None
-    metadata:           Optional[dict[str, Any]] = None
+    title:              str | None       = None
+    caption:            str | None       = None
+    video_url:          str | None       = None
+    thumbnail_url:      str | None       = None
+    duration_seconds:   int | None       = None
+    target_platforms:   list[str] | None = None
+    scheduled_at:       datetime | None  = None
+    hashtags:           list[str] | None = None
+    metadata:           dict[str, Any] | None = None
 
 
 class ScheduleRequest(BaseModel):
@@ -293,7 +293,7 @@ async def list_platforms(ctx: OrgContext = Depends(org_context)):
 
 @router.get("/accounts")
 async def list_accounts(
-    platform: Optional[str] = None,
+    platform: str | None = None,
     ctx: OrgContext = Depends(org_context),
 ):
     """List connected social accounts for the authenticated org."""
@@ -330,7 +330,7 @@ async def connect_account(
     try:
         provider = registry.get_or_raise(platform)
     except ValueError:
-        raise HTTPException(400, f"Unsupported platform: {platform!r}")
+        raise HTTPException(400, f"Unsupported platform: {platform!r}") from None
 
     # Generate state and bind nonce (same CSRF protection pattern as Google OAuth)
     state = uuid.uuid4().hex
@@ -346,7 +346,7 @@ async def connect_account(
         )
     except Exception as exc:
         log.error("social oauth state store failed: %s", exc)
-        raise HTTPException(503, "OAuth temporarily unavailable — please retry.")
+        raise HTTPException(503, "OAuth temporarily unavailable — please retry.") from None
 
     redirect_uri = str(request.url_for("social_oauth_callback", platform=platform))
     auth_url = provider.get_auth_url(redirect_uri=redirect_uri, state=state)
@@ -368,9 +368,9 @@ async def oauth_callback(
     platform: str,
     request: Request,
     response: Response,
-    code: Optional[str] = Query(default=None),
-    state: Optional[str] = Query(default=None),
-    error: Optional[str] = Query(default=None),
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
 ):
     """OAuth callback — validates state + bind nonce, exchanges code for tokens,
     saves encrypted tokens to social_platform_accounts."""
@@ -397,7 +397,7 @@ async def oauth_callback(
         state_data = await redis.get_json_and_delete(f"social_oauth:{state}")
     except Exception as exc:
         log.error("social oauth state fetch failed: %s", exc)
-        raise HTTPException(503, "OAuth temporarily unavailable — please retry.")
+        raise HTTPException(503, "OAuth temporarily unavailable — please retry.") from None
 
     if not state_data:
         log.warning("social oauth: unknown/expired state platform=%s ip=%s", platform, ip)
@@ -420,14 +420,14 @@ async def oauth_callback(
     try:
         provider = registry.get_or_raise(platform)
     except ValueError:
-        raise HTTPException(400, f"Unsupported platform: {platform!r}")
+        raise HTTPException(400, f"Unsupported platform: {platform!r}") from None
 
     redirect_uri = str(request.url_for("social_oauth_callback", platform=platform))
     try:
         token_result = await provider.exchange_code(code=code, redirect_uri=redirect_uri)
     except Exception as exc:
         log.error("social oauth exchange failed platform=%s: %s", platform, exc)
-        raise HTTPException(502, f"OAuth token exchange failed: {exc}")
+        raise HTTPException(502, f"OAuth token exchange failed: {exc}") from None
 
     # Persist encrypted tokens
     pool = get_pool()
@@ -437,7 +437,7 @@ async def oauth_callback(
     access_enc  = _enc(token_result.access_token)
     refresh_enc = _enc(token_result.refresh_token) if token_result.refresh_token else None
 
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
     if token_result.expires_in:
         from datetime import timedelta
         expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=token_result.expires_in)
@@ -489,7 +489,7 @@ async def disconnect_account(
     try:
         uid = uuid.UUID(account_id)
     except ValueError:
-        raise _not_found("Account")
+        raise _not_found("Account") from None
 
     async with pool.acquire() as conn:
         updated = await conn.fetchval(
@@ -541,8 +541,8 @@ async def create_post(
 
 @router.get("/posts")
 async def list_posts(
-    status:   Optional[str] = None,
-    platform: Optional[str] = None,
+    status:   str | None = None,
+    platform: str | None = None,
     limit:    int           = 50,
     offset:   int           = 0,
     ctx: OrgContext = Depends(org_context),
@@ -575,7 +575,7 @@ async def get_post(post_id: str, ctx: OrgContext = Depends(org_context)):
     try:
         uid = uuid.UUID(post_id)
     except ValueError:
-        raise _not_found("Post")
+        raise _not_found("Post") from None
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -618,7 +618,7 @@ async def update_post(
     try:
         uid = uuid.UUID(post_id)
     except ValueError:
-        raise _not_found("Post")
+        raise _not_found("Post") from None
 
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
     if not updates:
@@ -673,7 +673,7 @@ async def delete_post(post_id: str, ctx: OrgContext = Depends(org_context)):
     try:
         uid = uuid.UUID(post_id)
     except ValueError:
-        raise _not_found("Post")
+        raise _not_found("Post") from None
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -764,7 +764,7 @@ async def publish_post(
     try:
         uid = uuid.UUID(post_id)
     except ValueError:
-        raise _not_found("Post")
+        raise _not_found("Post") from None
 
     async with pool.acquire() as conn:
         post = await conn.fetchrow(
@@ -794,7 +794,7 @@ async def schedule_post(
     try:
         uid = uuid.UUID(post_id)
     except ValueError:
-        raise _not_found("Post")
+        raise _not_found("Post") from None
 
     if req.scheduled_at <= datetime.now(tz=timezone.utc):
         raise HTTPException(400, "scheduled_at must be in the future.")
@@ -826,7 +826,7 @@ async def cancel_post(post_id: str, ctx: OrgContext = Depends(org_context)):
     try:
         uid = uuid.UUID(post_id)
     except ValueError:
-        raise _not_found("Post")
+        raise _not_found("Post") from None
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -848,8 +848,8 @@ async def cancel_post(post_id: str, ctx: OrgContext = Depends(org_context)):
 
 @router.get("/jobs")
 async def list_jobs(
-    status:   Optional[str] = None,
-    platform: Optional[str] = None,
+    status:   str | None = None,
+    platform: str | None = None,
     limit:    int           = 50,
     offset:   int           = 0,
     ctx: OrgContext = Depends(org_context),
@@ -881,7 +881,7 @@ async def get_job(job_id: str, ctx: OrgContext = Depends(org_context)):
     try:
         uid = uuid.UUID(job_id)
     except ValueError:
-        raise _not_found("Job")
+        raise _not_found("Job") from None
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

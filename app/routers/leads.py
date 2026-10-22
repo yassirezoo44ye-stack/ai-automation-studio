@@ -20,7 +20,6 @@ Security:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -43,9 +42,9 @@ def _not_found() -> HTTPException:
 
 class CreateLeadRequest(BaseModel):
     name:   str           = Field(..., min_length=1, max_length=200)
-    email:  Optional[str] = Field(default=None, max_length=320)
-    phone:  Optional[str] = Field(default=None, max_length=30)
-    source: Optional[str] = Field(default=None, max_length=100)
+    email:  str | None = Field(default=None, max_length=320)
+    phone:  str | None = Field(default=None, max_length=30)
+    source: str | None = Field(default=None, max_length=100)
 
 
 class UpdateStatusRequest(BaseModel):
@@ -54,10 +53,10 @@ class UpdateStatusRequest(BaseModel):
 
 class CaptureLeadRequest(BaseModel):
     name:    str           = Field(..., min_length=1, max_length=200)
-    email:   Optional[str] = Field(default=None, max_length=320)
-    phone:   Optional[str] = Field(default=None, max_length=30)
-    source:  Optional[str] = Field(default=None, max_length=100)
-    message: Optional[str] = Field(default=None, max_length=2000)
+    email:   str | None = Field(default=None, max_length=320)
+    phone:   str | None = Field(default=None, max_length=30)
+    source:  str | None = Field(default=None, max_length=100)
+    message: str | None = Field(default=None, max_length=2000)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -98,6 +97,7 @@ async def capture_lead(
     qualified_lead = await svc.qualify(lead_id=lead_id, org_id=org_id)
 
     follow_up_status = "no_definition"
+    run_id = None
     try:
         from app.core.db import get_pool
         from app.core.jobs import get_job_queue
@@ -141,6 +141,15 @@ async def capture_lead(
             follow_up_status = "enqueued"
     except Exception as exc:
         log.warning("lead capture follow-up enqueue failed lead_id=%s: %s", lead_id, exc)
+        if run_id:
+            try:
+                async with pool.acquire() as _conn:
+                    await _conn.execute(
+                        "UPDATE automation_runs SET status='enqueue_failed', updated_at=NOW() WHERE run_id=$1",
+                        run_id,
+                    )
+            except Exception:
+                pass
 
     if qualified_lead.get("status") == "qualified":
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=org_id)
@@ -156,8 +165,8 @@ async def capture_lead(
 
 @router.get("")
 async def list_leads(
-    status: Optional[str] = None,
-    before: Optional[str] = None,
+    status: str | None = None,
+    before: str | None = None,
     limit: int = 50,
     ctx: OrgContext = Depends(require_permission("leads", "read")),
 ):
@@ -187,6 +196,7 @@ async def create_lead(
     qualified_lead = await svc.qualify(lead_id=lead_id, org_id=ctx.org_id)
 
     follow_up_status = "no_definition"
+    run_id = None
     try:
         from app.core.db import get_pool
         from app.core.jobs import get_job_queue
@@ -230,6 +240,15 @@ async def create_lead(
             follow_up_status = "enqueued"
     except Exception as exc:
         log.warning("lead follow-up enqueue failed lead_id=%s: %s", lead_id, exc)
+        if run_id:
+            try:
+                async with pool.acquire() as _conn:
+                    await _conn.execute(
+                        "UPDATE automation_runs SET status='enqueue_failed', updated_at=NOW() WHERE run_id=$1",
+                        run_id,
+                    )
+            except Exception:
+                pass
 
     if qualified_lead.get("status") == "qualified":
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=ctx.org_id)

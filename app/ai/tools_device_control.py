@@ -38,7 +38,6 @@ from __future__ import annotations
 import json
 import logging
 from contextvars import ContextVar
-from typing import Optional
 
 from app.ai.tools import tool
 
@@ -322,7 +321,7 @@ async def device_control_validate_session(
 async def device_control_propose_session(
     primary_device_id: str,
     target_device_ids: list[str],
-    session_name: Optional[str] = None,
+    session_name: str | None = None,
 ) -> str:
     try:
         org_id, user_id, user_email = _require_context()

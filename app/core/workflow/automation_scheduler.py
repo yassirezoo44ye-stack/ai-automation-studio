@@ -26,7 +26,8 @@ import logging
 import os
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ log = logging.getLogger(__name__)
 _SCHEDULER_INTERVAL = int(os.getenv("AUTOMATION_SCHEDULER_INTERVAL_S", "60"))
 
 # ── Background task handle (set by start/stop) ────────────────────────────────
-_scheduler_task: Optional[asyncio.Task] = None
+_scheduler_task: asyncio.Task | None = None
 
 
 # =============================================================================
@@ -83,7 +84,7 @@ async def _handle_automation_run(job: Any) -> None:
         log.warning("automation: could not mark run as running run_id=%s", run_id, exc_info=True)
 
     # Execute the workflow (if definition is available)
-    error: Optional[str] = None
+    error: str | None = None
     final_status = "completed"
 
     try:
@@ -500,9 +501,7 @@ async def stop_scheduler() -> None:
     if _scheduler_task is None or _scheduler_task.done():
         return
     _scheduler_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
         await asyncio.wait_for(_scheduler_task, timeout=5.0)
-    except (asyncio.CancelledError, asyncio.TimeoutError):
-        pass
     _scheduler_task = None
     log.info("automation scheduler: shutdown complete")

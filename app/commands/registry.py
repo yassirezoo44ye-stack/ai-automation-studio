@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any
+from collections.abc import Callable, Coroutine
 
 from app.commands.context import CommandContext
 from app.commands.result import CommandResult
@@ -99,7 +100,7 @@ class CommandRegistry:
 
     # ── Lookup ────────────────────────────────────────────────────────────────
 
-    def lookup(self, name: str) -> Optional[CommandMeta]:
+    def lookup(self, name: str) -> CommandMeta | None:
         """Return the CommandMeta for name (or its alias), or None."""
         canonical = self._aliases.get(name, name)
         return self._commands.get(canonical)

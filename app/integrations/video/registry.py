@@ -14,7 +14,6 @@ Adding a new provider:
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from app.integrations.video.base import VideoProvider
 from app.integrations.video.mock import MockVideoProvider
@@ -33,7 +32,7 @@ _DEFAULT_PROVIDER_ID = os.getenv("VIDEO_PROVIDER", "mock")
 class VideoProviderRegistry:
     """Thin resolver — no state beyond the built-in catalogue."""
 
-    def get(self, provider_id: str) -> Optional[VideoProvider]:
+    def get(self, provider_id: str) -> VideoProvider | None:
         """Return the provider for the given ID, or None if unknown."""
         return _BUILTIN_PROVIDERS.get(provider_id)
 

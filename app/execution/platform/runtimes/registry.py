@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from app.execution.platform.runtimes.abstract import AbstractRuntime
 
@@ -44,7 +43,7 @@ class RuntimeRegistry:
         self._runtimes.sort(key=lambda r: r.priority)
         log.debug("registered runtime: %s (priority=%d)", runtime.name, runtime.priority)
 
-    def select(self, workspace: Path) -> Optional[AbstractRuntime]:
+    def select(self, workspace: Path) -> AbstractRuntime | None:
         """
         Return the highest-priority runtime that detects the workspace.
         Returns None if no runtime matches.
@@ -63,7 +62,7 @@ class RuntimeRegistry:
         return list(self._runtimes)
 
     @classmethod
-    def default(cls) -> "RuntimeRegistry":
+    def default(cls) -> RuntimeRegistry:
         """Create a registry pre-loaded with all built-in runtimes."""
         from app.execution.platform.runtimes.node        import NodeRuntime
         from app.execution.platform.runtimes.python_rt   import PythonRuntime

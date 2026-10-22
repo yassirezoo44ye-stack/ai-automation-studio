@@ -32,7 +32,6 @@ Monitoring:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -47,8 +46,8 @@ router = APIRouter(tags=["agentos"])
 
 class RunRequest(BaseModel):
     input      : str
-    workspace  : Optional[str] = None
-    project_id : Optional[str] = None
+    workspace  : str | None = None
+    project_id : str | None = None
     caller     : str = "api"
     deliberate : bool = False
     # Client-generated, so a "live computer" viewer can start listening for
@@ -56,23 +55,23 @@ class RunRequest(BaseModel):
     # before firing this request — the id has to be known ahead of time,
     # since this call blocks until the agent finishes. Left unset by
     # callers that don't need live progress; one is generated for them.
-    run_id     : Optional[str] = None
+    run_id     : str | None = None
 
 
 class CollaborateRequest(BaseModel):
     tasks    : list[str] = Field(..., min_length=1)
     parallel : bool      = False
-    workspace: Optional[str] = None
+    workspace: str | None = None
     caller   : str = "api"
-    run_id   : Optional[str] = None
+    run_id   : str | None = None
 
 
 class PlanRequest(BaseModel):
     goal      : str
-    workspace : Optional[str] = None
+    workspace : str | None = None
     caller    : str = "api"
-    run_id    : Optional[str] = None
-    project_id: Optional[str] = None
+    run_id    : str | None = None
+    project_id: str | None = None
 
 
 class EvolveRequest(BaseModel):
@@ -81,7 +80,7 @@ class EvolveRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     description: str
-    agent_name : Optional[str] = None
+    agent_name : str | None = None
 
 
 class SuggestRequest(BaseModel):
@@ -151,7 +150,7 @@ async def agentos_run(req: RunRequest, request: Request):
         # A genuine concurrent duplicate (e.g. a double-click) — the
         # first call for this exact run_id is still in flight. 409, not
         # 503: the mechanism worked correctly, this isn't an outage.
-        raise HTTPException(409, str(exc))
+        raise HTTPException(409, str(exc)) from None
     except Exception:
         if entered:
             # A real failure inside _run() (or committing the guard) — the
@@ -160,7 +159,7 @@ async def agentos_run(req: RunRequest, request: Request):
             # masking it as a dedup problem.
             raise
         log.exception("agent_run idempotency check failed for run_id=%s", req.run_id)
-        raise HTTPException(503, "Could not verify request de-duplication — please retry.")
+        raise HTTPException(503, "Could not verify request de-duplication — please retry.") from None
 
 
 @router.post("/api/agentos/collaborate")

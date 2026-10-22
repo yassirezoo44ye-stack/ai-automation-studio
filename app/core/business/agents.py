@@ -15,7 +15,7 @@ import json
 import logging
 import re
 import time
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -63,8 +63,8 @@ async def _complete(
     *,
     model: str = _BEST_MODEL,
     max_tokens: int = 2048,
-    user_id: Optional[str] = None,
-    org_id:  Optional[str] = None,
+    user_id: str | None = None,
+    org_id:  str | None = None,
 ) -> tuple[str, int]:
     """Call InferenceEngine and return (text, total_tokens)."""
     req = CompletionRequest(
@@ -95,7 +95,7 @@ async def run_idea_intake(
     org_id: str,
     user_id: str,
     idea_raw: str,
-    industry: Optional[str],
+    industry: str | None,
     stage: str,
 ) -> dict[str, Any]:
     """
@@ -165,7 +165,7 @@ async def run_idea_intake(
 async def run_company_description(
     conn: asyncpg.Connection,
     plan_id: str, org_id: str, user_id: str,
-    idea_raw: str, industry: Optional[str],
+    idea_raw: str, industry: str | None,
     intake_data: dict,
 ) -> str:
     t0 = time.monotonic()
@@ -202,9 +202,9 @@ async def run_company_description(
 async def run_market_intelligence(
     conn: asyncpg.Connection,
     plan_id: str, org_id: str, user_id: str,
-    idea_raw: str, industry: Optional[str],
-    company_summary: Optional[str],
-    target_customers: Optional[str],
+    idea_raw: str, industry: str | None,
+    company_summary: str | None,
+    target_customers: str | None,
 ) -> str:
     t0 = time.monotonic()
 
@@ -260,9 +260,9 @@ async def run_market_intelligence(
 async def run_competitor_intelligence(
     conn: asyncpg.Connection,
     plan_id: str, org_id: str, user_id: str,
-    idea_raw: str, industry: Optional[str],
-    company_summary: Optional[str],
-    market_summary: Optional[str],
+    idea_raw: str, industry: str | None,
+    company_summary: str | None,
+    market_summary: str | None,
 ) -> str:
     t0 = time.monotonic()
 
@@ -327,8 +327,8 @@ async def run_competitor_intelligence(
 async def run_offer_pricing(
     conn: asyncpg.Connection,
     plan_id: str, org_id: str, user_id: str,
-    idea_raw: str, target_customers: Optional[str],
-    market_summary: Optional[str], competitors: list[dict],
+    idea_raw: str, target_customers: str | None,
+    market_summary: str | None, competitors: list[dict],
 ) -> str:
     t0 = time.monotonic()
 
@@ -361,8 +361,8 @@ async def run_offer_pricing(
 async def run_go_to_market(
     conn: asyncpg.Connection,
     plan_id: str, org_id: str, user_id: str,
-    company_summary: Optional[str], offer_summary: Optional[str],
-    target_customers: Optional[str], market_summary: Optional[str],
+    company_summary: str | None, offer_summary: str | None,
+    target_customers: str | None, market_summary: str | None,
 ) -> str:
     t0 = time.monotonic()
 
@@ -394,7 +394,7 @@ async def run_go_to_market(
 async def run_ops_finance(
     conn: asyncpg.Connection,
     plan_id: str, org_id: str, user_id: str,
-    company_summary: Optional[str], offer_summary: Optional[str],
+    company_summary: str | None, offer_summary: str | None,
     stage: str,
 ) -> str:
     t0 = time.monotonic()

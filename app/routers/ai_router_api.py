@@ -14,7 +14,6 @@ GET  /api/ai/usage/providers     spend broken down by provider
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -56,7 +55,7 @@ async def route(body: RouteBody):
             custom_weights=body.custom_weights,
         ))
     except LookupError as e:
-        raise HTTPException(422, str(e))
+        raise HTTPException(422, str(e)) from None
     return decision
 
 
@@ -121,17 +120,17 @@ async def budgets(
 
 # ── Usage / cost reporting ───────────────────────────────────────────────────
 
-def _parse_since(since: Optional[str]) -> Optional[datetime]:
+def _parse_since(since: str | None) -> datetime | None:
     if not since:
         return None
     try:
         return datetime.fromisoformat(since)
     except ValueError:
-        raise HTTPException(400, f"Invalid 'since' timestamp: {since!r} (expected ISO 8601)")
+        raise HTTPException(400, f"Invalid 'since' timestamp: {since!r} (expected ISO 8601)") from None
 
 
 @router.get("/api/ai/usage")
-async def usage_summary(request: Request, since: Optional[str] = None):
+async def usage_summary(request: Request, since: str | None = None):
     """Total spend from ai_usage_log — the consolidated cost ledger.
     Org-scoped when the caller is a verified member of the org named in
     X-Organization-Id, platform-wide otherwise (mirrors
@@ -161,7 +160,7 @@ async def usage_summary(request: Request, since: Optional[str] = None):
 
 
 @router.get("/api/ai/usage/providers")
-async def usage_by_provider(request: Request, since: Optional[str] = None):
+async def usage_by_provider(request: Request, since: str | None = None):
     from app.ai import cost_tracker
     from app.core.db import get_pool
     from app.tenancy.context import optional_org_id
@@ -184,7 +183,7 @@ async def usage_by_provider(request: Request, since: Optional[str] = None):
 
 
 @router.get("/api/ai/usage/monthly")
-async def usage_by_month(request: Request, since: Optional[str] = None):
+async def usage_by_month(request: Request, since: str | None = None):
     """Monthly cost rollup from ai_usage_log. Org-scoped when X-Organization-Id is present."""
     from app.ai import cost_tracker
     from app.core.db import get_pool

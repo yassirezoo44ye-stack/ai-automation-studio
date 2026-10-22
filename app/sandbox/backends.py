@@ -24,9 +24,11 @@ import sys
 import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
+from collections.abc import Awaitable, Callable
 
 from app.sandbox.permissions import SandboxLimits
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -51,8 +53,8 @@ class Worker:
 
     def __init__(
         self, process: asyncio.subprocess.Process, *,
-        installation_id: str, backend: str, container_name: Optional[str] = None,
-        context_rpc_handler: Optional[ContextRpcHandler] = None,
+        installation_id: str, backend: str, container_name: str | None = None,
+        context_rpc_handler: ContextRpcHandler | None = None,
         default_timeout: float = 30.0,
     ) -> None:
         self._process = process
@@ -73,9 +75,9 @@ class Worker:
         return self._process.returncode is None
 
     async def call(
-        self, call: str, *, method: Optional[str] = None,
-        args: Optional[list] = None, kwargs: Optional[dict] = None,
-        timeout: Optional[float] = None,
+        self, call: str, *, method: str | None = None,
+        args: list | None = None, kwargs: dict | None = None,
+        timeout: float | None = None,
     ) -> Any:
         """Send one request, service any context_rpc round-trips the
         worker sends back mid-call, and return the final result. `timeout`
@@ -106,7 +108,7 @@ class Worker:
             try:
                 line = await asyncio.wait_for(self._process.stdout.readline(), timeout=deadline_remaining)
             except asyncio.TimeoutError:
-                raise WorkerCrashedError(f"worker for installation {self.installation_id} timed out after {timeout}s")
+                raise WorkerCrashedError(f"worker for installation {self.installation_id} timed out after {timeout}s") from None
             deadline_remaining = max(0.001, deadline_remaining - (time.monotonic() - t0))
             if not line:
                 raise WorkerCrashedError(f"worker for installation {self.installation_id} closed its output unexpectedly")
@@ -159,10 +161,8 @@ class Worker:
         try:
             await asyncio.wait_for(self._process.wait(), timeout=timeout)
         except asyncio.TimeoutError:
-            try:
+            with contextlib.suppress(Exception):
                 self._process.kill()
-            except Exception:
-                pass
             await self._process.wait()
 
 
@@ -170,7 +170,7 @@ class SandboxBackend(ABC):
     @abstractmethod
     async def spawn(
         self, *, installation_id: str, workspace_dir: Path, entry_point: str,
-        plugin_id: str, org_id: Optional[str], config: dict,
+        plugin_id: str, org_id: str | None, config: dict,
         limits: SandboxLimits, secret_env: dict[str, str],
         context_rpc_handler: ContextRpcHandler,
     ) -> Worker:
@@ -186,7 +186,7 @@ def _prepare_workspace_runner(workspace_dir: Path) -> None:
 
 def _worker_env(
     *, installation_id: str, entry_point: str, plugin_id: str,
-    org_id: Optional[str], config: dict, secret_env: dict[str, str],
+    org_id: str | None, config: dict, secret_env: dict[str, str],
 ) -> dict[str, str]:
     env = {
         "AXON_ENTRY_POINT": entry_point,
@@ -382,8 +382,8 @@ async def _docker_available() -> bool:
         return False
 
 
-_backend: Optional[SandboxBackend] = None
-_backend_name: Optional[str] = None
+_backend: SandboxBackend | None = None
+_backend_name: str | None = None
 
 
 async def get_sandbox_backend() -> SandboxBackend:
@@ -397,9 +397,7 @@ async def get_sandbox_backend() -> SandboxBackend:
     forced = os.getenv("SANDBOX_BACKEND", "").lower()
     if forced == "process":
         _backend, _backend_name = ProcessBackend(), "process"
-    elif forced == "docker":
-        _backend, _backend_name = DockerBackend(), "docker"
-    elif await _docker_available():
+    elif forced == "docker" or await _docker_available():
         _backend, _backend_name = DockerBackend(), "docker"
     else:
         log.warning("sandbox: Docker unavailable — falling back to ProcessBackend (weaker isolation)")
@@ -408,5 +406,5 @@ async def get_sandbox_backend() -> SandboxBackend:
     return _backend
 
 
-def get_sandbox_backend_name() -> Optional[str]:
+def get_sandbox_backend_name() -> str | None:
     return _backend_name

@@ -7,7 +7,8 @@ from __future__ import annotations
 import base64
 import logging
 import re
-from typing import AsyncGenerator, Any
+from typing import Any
+from collections.abc import AsyncGenerator
 
 from app.ai.models import (
     CompletionRequest, CompletionResponse, StreamChunk,
