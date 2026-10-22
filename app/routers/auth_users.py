@@ -18,6 +18,7 @@ Endpoints:
   DELETE /api/auth/sessions/{session_id}
   DELETE /api/auth/me
 """
+import asyncio
 import datetime
 import logging
 import secrets
@@ -40,6 +41,7 @@ from app.core.jwt_utils import (
     decode_access_token,
     make_access_token,
     make_refresh_token,
+    revoke_user_tokens,
 )
 from app.core.passwords import hash_password, verify_password
 
@@ -437,11 +439,15 @@ async def logout(body: RefreshRequest):
 
 
 @router.post("/logout-all")
-async def logout_all(current: Annotated[dict, Depends(get_current_user)]):
+async def logout_all(current: Annotated[dict, Depends(get_current_user)], request: Request):
     async with get_pool().acquire() as conn:
         await conn.execute(
             "DELETE FROM user_sessions WHERE user_id=$1", uuid.UUID(current["id"])
         )
+    await revoke_user_tokens(current["id"])
+    asyncio.create_task(write_audit(
+        current["email"], "logout_all", ip_address=_client_ip(request),
+    ))
     return {"message": "All sessions terminated"}
 
 
@@ -522,9 +528,15 @@ async def forgot_password(body: ForgotPasswordRequest, _rl: None = _auth_rl):
 
 @router.post("/reset-password")
 async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
+    user_email: str | None = None
+    user_id_str: str | None = None
     async with get_pool().acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT user_id, expires_at FROM password_reset_tokens WHERE token=$1", body.token
+            """SELECT prt.user_id, prt.expires_at, u.email
+               FROM password_reset_tokens prt
+               JOIN users u ON u.id = prt.user_id
+               WHERE prt.token=$1""",
+            body.token,
         )
         if not row:
             raise HTTPException(400, "Invalid or expired reset link")
@@ -534,6 +546,8 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
             )
             raise HTTPException(400, "Reset link expired")
 
+        user_email = row["email"]
+        user_id_str = str(row["user_id"])
         pw_hash = hash_password(body.password)
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2", pw_hash, row["user_id"]
@@ -546,6 +560,10 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
             "DELETE FROM user_sessions WHERE user_id=$1", row["user_id"]
         )
 
+    if user_id_str:
+        await revoke_user_tokens(user_id_str)
+    if user_email:
+        asyncio.create_task(write_audit(user_email, "password.reset"))
     return {"message": "Password reset successfully. Please log in with your new password."}
 
 
@@ -645,6 +663,7 @@ async def update_me(
 async def change_password(
     body: ChangePasswordRequest,
     current: Annotated[dict, Depends(get_current_user)],
+    request: Request,
 ):
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
@@ -661,6 +680,10 @@ async def change_password(
             "DELETE FROM user_sessions WHERE user_id=$1",
             uuid.UUID(current["id"]),
         )
+    await revoke_user_tokens(current["id"])
+    asyncio.create_task(write_audit(
+        current["email"], "password.changed", ip_address=_client_ip(request),
+    ))
     return {"message": "Password changed successfully"}
 
 

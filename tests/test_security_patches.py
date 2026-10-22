@@ -27,6 +27,8 @@ import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
 
@@ -252,12 +254,18 @@ class TestChangePasswordClearsSessions:
 
         async def _go():
             nonlocal result
+            req          = MagicMock()
+            req.headers  = {}
+            req.client   = MagicMock()
+            req.client.host = "127.0.0.1"
             with patch("app.routers.auth_users.get_pool", return_value=pool), \
                  patch("app.routers.auth_users._get_user_by_id",
                        new=AsyncMock(return_value=user_record)), \
                  patch("app.routers.auth_users.verify_password", return_value=verify_ok), \
-                 patch("app.routers.auth_users.hash_password",
-                       return_value="hashed-new-pw"):
+                 patch("app.routers.auth_users.hash_password",   return_value="hashed-new-pw"), \
+                 patch("app.routers.auth_users.write_audit",     new=AsyncMock()), \
+                 patch("app.routers.auth_users.asyncio") as mock_asyncio:
+                mock_asyncio.create_task = MagicMock()
                 from app.routers.auth_users import change_password, ChangePasswordRequest
                 body    = ChangePasswordRequest(
                     current_password="old-pass",
@@ -265,7 +273,7 @@ class TestChangePasswordClearsSessions:
                 )
                 current = {"id": str(uid), "email": "alice@example.com"}
                 try:
-                    result = await change_password(body, current)
+                    result = await change_password(body, current, req)
                 except HTTPException:
                     pass
 
@@ -354,6 +362,10 @@ class TestChangePasswordClearsSessions:
         pool = _make_pool(conn)
 
         async def _go():
+            req          = MagicMock()
+            req.headers  = {}
+            req.client   = MagicMock()
+            req.client.host = "127.0.0.1"
             with patch("app.routers.auth_users.get_pool", return_value=pool), \
                  patch("app.routers.auth_users._get_user_by_id",
                        new=AsyncMock(return_value={
@@ -361,14 +373,17 @@ class TestChangePasswordClearsSessions:
                            "email_verified": True,
                        })), \
                  patch("app.routers.auth_users.verify_password", return_value=True), \
-                 patch("app.routers.auth_users.hash_password", return_value="new-hp"):
+                 patch("app.routers.auth_users.hash_password",   return_value="new-hp"), \
+                 patch("app.routers.auth_users.write_audit",     new=AsyncMock()), \
+                 patch("app.routers.auth_users.asyncio") as mock_asyncio:
+                mock_asyncio.create_task = MagicMock()
                 from app.routers.auth_users import change_password, ChangePasswordRequest
                 body    = ChangePasswordRequest(
                     current_password="old-pass",
                     new_password="NewPass123",
                 )
                 current = {"id": str(uid), "email": "alice@example.com"}
-                await change_password(body, current)
+                await change_password(body, current, req)
 
         asyncio.run(_go())
 
@@ -376,4 +391,227 @@ class TestChangePasswordClearsSessions:
             "UPDATE and DELETE must share a single connection. "
             f"pool.acquire() was called {pool.acquire.call_count} time(s); "
             "expected exactly 1."
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# H4: access-token revocation (logout_all / change_password)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAccessTokenRevocation:
+    """
+    Regression: before this fix, calling logout_all() or change_password()
+    deleted refresh tokens from user_sessions but left outstanding JWT access
+    tokens valid until their natural 5-minute expiry.  An attacker who stole
+    an access token retained API access for up to 5 minutes after the victim
+    logged out everywhere or changed their password.
+
+    Expected behaviour after the fix:
+      • logout_all()     → revoke_user_tokens(user_id) called (in-process store updated)
+      • change_password()→ revoke_user_tokens(user_id) called
+      • decode_access_token() on a token issued BEFORE revocation → ExpiredSignatureError
+      • decode_access_token() on a token issued AFTER  revocation → succeeds
+    """
+
+    _USER_ID = str(uuid.UUID("bbbbbbbb-0000-0000-0000-000000000002"))
+    _EMAIL   = "bob@example.com"
+
+    def _make_token_at(self, offset_seconds: float = 0.0) -> str:
+        """Issue a JWT whose iat is (now + offset_seconds)."""
+        import datetime as _dt
+        from app.core.jwt_utils import _SECRET, _ALGO
+        import jwt as _jwt
+        now = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=offset_seconds)
+        return _jwt.encode(
+            {"sub": self._USER_ID, "email": self._EMAIL, "type": "access",
+             "iat": now, "exp": now + _dt.timedelta(minutes=5)},
+            _SECRET, algorithm=_ALGO,
+        )
+
+    # ── change_password revokes tokens ───────────────────────────────────────
+
+    def test_change_password_revokes_access_tokens(self):
+        """
+        A token minted BEFORE change_password() must be rejected by
+        decode_access_token() immediately after the call completes.
+        """
+        import jwt as _jwt
+        from app.core.jwt_utils import decode_access_token, _revoked_before
+
+        uid  = uuid.UUID(self._USER_ID)
+        conn = _make_conn(uid)
+        pool = _make_pool(conn)
+
+        old_token = self._make_token_at(-1)  # issued 1s ago
+
+        async def _go():
+            with patch("app.routers.auth_users.get_pool",   return_value=pool), \
+                 patch("app.routers.auth_users._get_user_by_id",
+                       new=AsyncMock(return_value={
+                           "id": uid, "password_hash": "hp", "email_verified": True,
+                       })), \
+                 patch("app.routers.auth_users.verify_password", return_value=True), \
+                 patch("app.routers.auth_users.hash_password",   return_value="new-hp"), \
+                 patch("app.routers.auth_users.write_audit",     new=AsyncMock()), \
+                 patch("app.routers.auth_users.asyncio") as mock_asyncio:
+                mock_asyncio.create_task = MagicMock()
+                req = MagicMock()
+                req.headers = {}
+                req.client   = MagicMock()
+                req.client.host = "127.0.0.1"
+                from app.routers.auth_users import change_password, ChangePasswordRequest
+                body    = ChangePasswordRequest(current_password="old", new_password="NewPass123")
+                current = {"id": str(uid), "email": self._EMAIL}
+                await change_password(body, current, req)
+
+        asyncio.run(_go())
+
+        with pytest.raises(_jwt.ExpiredSignatureError):
+            decode_access_token(old_token)
+
+    # ── logout_all revokes tokens ─────────────────────────────────────────────
+
+    def test_logout_all_revokes_access_tokens(self):
+        """
+        A token minted BEFORE logout_all() must be rejected by
+        decode_access_token() immediately after the call completes.
+        """
+        import jwt as _jwt
+        from app.core.jwt_utils import decode_access_token
+
+        uid  = uuid.UUID(self._USER_ID)
+        conn = _make_conn(uid)
+        pool = _make_pool(conn)
+
+        old_token = self._make_token_at(-1)  # issued 1s ago
+
+        async def _go():
+            with patch("app.routers.auth_users.get_pool", return_value=pool), \
+                 patch("app.routers.auth_users.write_audit", new=AsyncMock()), \
+                 patch("app.routers.auth_users.asyncio") as mock_asyncio:
+                mock_asyncio.create_task = MagicMock()
+                req = MagicMock()
+                req.headers = {}
+                req.client   = MagicMock()
+                req.client.host = "127.0.0.1"
+                current = {"id": str(uid), "email": self._EMAIL}
+                from app.routers.auth_users import logout_all
+                await logout_all(current, req)
+
+        asyncio.run(_go())
+
+        with pytest.raises(_jwt.ExpiredSignatureError):
+            decode_access_token(old_token)
+
+    # ── new tokens issued after revocation are valid ──────────────────────────
+
+    def test_token_issued_after_revocation_is_valid(self):
+        """
+        A token minted AFTER logout_all() must still pass decode_access_token()
+        — only the pre-revocation tokens are invalidated.
+        """
+        import jwt as _jwt
+        from app.core.jwt_utils import decode_access_token
+
+        uid  = uuid.UUID(self._USER_ID)
+        conn = _make_conn(uid)
+        pool = _make_pool(conn)
+
+        async def _go():
+            with patch("app.routers.auth_users.get_pool", return_value=pool), \
+                 patch("app.routers.auth_users.write_audit", new=AsyncMock()), \
+                 patch("app.routers.auth_users.asyncio") as mock_asyncio:
+                mock_asyncio.create_task = MagicMock()
+                req = MagicMock()
+                req.headers = {}
+                req.client   = MagicMock()
+                req.client.host = "127.0.0.1"
+                current = {"id": str(uid), "email": self._EMAIL}
+                from app.routers.auth_users import logout_all
+                await logout_all(current, req)
+
+        asyncio.run(_go())
+
+        # Token issued AFTER logout_all must be accepted
+        new_token = self._make_token_at(+1)  # issued 1s from now
+        payload   = decode_access_token(new_token)
+        assert payload["sub"] == self._USER_ID
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# H5: audit log completeness
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestAuditLogCompleteness:
+    """
+    Regression: before this fix, logout_all() and change_password() silently
+    omitted security-event audit records even though login/register/MFA already
+    wrote them.  A stolen-session or password-change incident produced no trace
+    in audit_logs that a user or operator could inspect.
+
+    Expected behaviour after the fix:
+      • logout_all()     → write_audit called with action "logout_all"
+      • change_password()→ write_audit called with action "password.changed"
+    """
+
+    _USER_ID = uuid.UUID("cccccccc-0000-0000-0000-000000000003")
+    _EMAIL   = "carol@example.com"
+
+    def _make_req(self) -> MagicMock:
+        req = MagicMock()
+        req.headers = {}
+        req.client  = MagicMock()
+        req.client.host = "10.0.0.1"
+        return req
+
+    def test_logout_all_writes_audit(self):
+        conn = _make_conn(self._USER_ID)
+        pool = _make_pool(conn)
+        audit_mock = AsyncMock()
+
+        async def _go():
+            with patch("app.routers.auth_users.get_pool",    return_value=pool), \
+                 patch("app.routers.auth_users.write_audit",  audit_mock), \
+                 patch("app.routers.auth_users.asyncio") as mock_asyncio:
+                mock_asyncio.create_task = MagicMock(side_effect=lambda coro: coro)
+                current = {"id": str(self._USER_ID), "email": self._EMAIL}
+                from app.routers.auth_users import logout_all
+                await logout_all(current, self._make_req())
+
+        asyncio.run(_go())
+
+        audit_mock.assert_called_once()
+        call_args = audit_mock.call_args
+        assert call_args.args[1] == "logout_all", (
+            f"write_audit action must be 'logout_all'; got {call_args.args[1]!r}"
+        )
+
+    def test_change_password_writes_audit(self):
+        conn = _make_conn(self._USER_ID)
+        pool = _make_pool(conn)
+        audit_mock = AsyncMock()
+
+        async def _go():
+            with patch("app.routers.auth_users.get_pool", return_value=pool), \
+                 patch("app.routers.auth_users._get_user_by_id",
+                       new=AsyncMock(return_value={
+                           "id": self._USER_ID, "password_hash": "hp",
+                           "email_verified": True,
+                       })), \
+                 patch("app.routers.auth_users.verify_password", return_value=True), \
+                 patch("app.routers.auth_users.hash_password",   return_value="new-hp"), \
+                 patch("app.routers.auth_users.write_audit",  audit_mock), \
+                 patch("app.routers.auth_users.asyncio") as mock_asyncio:
+                mock_asyncio.create_task = MagicMock(side_effect=lambda coro: coro)
+                from app.routers.auth_users import change_password, ChangePasswordRequest
+                body    = ChangePasswordRequest(current_password="old", new_password="NewPass123")
+                current = {"id": str(self._USER_ID), "email": self._EMAIL}
+                await change_password(body, current, self._make_req())
+
+        asyncio.run(_go())
+
+        audit_mock.assert_called_once()
+        call_args = audit_mock.call_args
+        assert call_args.args[1] == "password.changed", (
+            f"write_audit action must be 'password.changed'; got {call_args.args[1]!r}"
         )
