@@ -4,6 +4,7 @@ import { FeedTopBar } from "./components/FeedTopBar";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
 import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI } from "./services/feedService";
+import { useAppContext } from "../../contexts/app";
 import type { FeedTab, FeedItem, FeedItemState } from "./types/feed.types";
 import "./FeedPage.css";
 
@@ -24,12 +25,15 @@ function initStates(items: FeedItem[]): Record<string, FeedItemState> {
 
 export function FeedPage() {
   const { t } = useTranslation("feed");
+  const { setPage } = useAppContext();
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
   const [items, setItems]       = useState<FeedItem[]>([]);
   const [isMock, setIsMock]     = useState(false);
   const [loading, setLoading]   = useState(true);
   const [feedError, setFeedError] = useState(false);
   const [states, setStates]     = useState<Record<string, FeedItemState>>({});
+  // Bumped by the retry button to re-run the load effect
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +49,12 @@ export function FeedPage() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
+  }, [loadAttempt]);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    setFeedError(false);
+    setLoadAttempt(n => n + 1);
   }, []);
 
   const { activeIndex, containerRef } = useFeedNavigation({ total: items.length });
@@ -97,6 +107,7 @@ export function FeedPage() {
       {!loading && feedError && (
         <div className="feed-state feed-state--error" role="alert">
           <p className="feed-state__title">{t("error.title")}</p>
+          <button className="feed-state__btn" onClick={retry}>{t("error.retry")}</button>
         </div>
       )}
 
@@ -105,6 +116,9 @@ export function FeedPage() {
         <div className="feed-state feed-state--empty" role="status">
           <p className="feed-state__title">{t("empty.title")}</p>
           <p className="feed-state__subtitle">{t("empty.subtitle")}</p>
+          <button className="feed-state__btn" onClick={() => setPage("app-builder")}>
+            {t("empty.cta")}
+          </button>
         </div>
       )}
 

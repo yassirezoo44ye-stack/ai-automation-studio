@@ -39,9 +39,11 @@
   },
   "empty": {
     "title": "No public creations yet",
-    "subtitle": "Be the first to publish something on Flow"
+    "subtitle": "Be the first to publish something on Flow",
+    "cta": "Start building"
   },
   "error": {
-    "title": "Could not load the feed"
+    "title": "Could not load the feed",
+    "retry": "Retry"
   }
 }
