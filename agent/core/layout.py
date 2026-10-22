@@ -44,8 +44,8 @@ def detect_edge_crossing(
 
     cx1 = current["position_x"]
     cy1 = current["position_y"]
-    cx2 = cx1 + current["width"]
-    cy2 = cy1 + current["height"]
+    _cx2 = cx1 + current["width"]
+    _cy2 = cy1 + current["height"]
 
     # Translate local cursor to virtual canvas coordinates
     vx = cx1 + x

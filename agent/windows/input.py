@@ -39,8 +39,7 @@ import ctypes
 import ctypes.wintypes
 import logging
 import threading
-import time
-from typing import Callable, Optional
+from typing import Callable
 
 log = logging.getLogger(__name__)
 
@@ -442,7 +441,7 @@ class WindowsInputHookManager:
 
         with self._lock:
             self._key_seq += 1
-            seq = self._key_seq
+            _seq = self._key_seq
 
         # Call without logging vk/scan — the callback knows not to log them
         self._on_key(vk, scan, flags, action)

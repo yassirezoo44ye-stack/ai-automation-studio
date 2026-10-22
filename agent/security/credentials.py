@@ -24,7 +24,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
