@@ -159,6 +159,60 @@ def make_rate_limit_dep(
     return _dep
 
 
+# ── Per-email login lockout ───────────────────────────────────────────────────
+
+_LOGIN_FAIL_MAX    = 5
+_LOGIN_FAIL_WINDOW = 900  # 15 minutes
+
+
+async def check_login_locked_async(email: str) -> bool:
+    """Return True if the account is temporarily locked (≥5 failures in 15 min)."""
+    key = f"login_fail:{email.lower()}"
+    rkey = f"rl:{key}"
+    try:
+        from app.core.cache import get_redis
+        cache = await get_redis()
+        if cache.backend == "redis":
+            count = await cache.get_int(rkey, 0)
+            return count >= _LOGIN_FAIL_MAX
+    except Exception as exc:
+        log.debug("check_login_locked redis fallback: %s", exc)
+    # In-process fallback
+    now = time.time()
+    rl_store[key] = [t for t in rl_store[key] if now - t < _LOGIN_FAIL_WINDOW]
+    return len(rl_store[key]) >= _LOGIN_FAIL_MAX
+
+
+async def record_login_failure_async(email: str) -> None:
+    """Increment the failed-login counter for *email*."""
+    key = f"login_fail:{email.lower()}"
+    rkey = f"rl:{key}"
+    now = time.time()
+    rl_store[key] = [t for t in rl_store[key] if now - t < _LOGIN_FAIL_WINDOW]
+    rl_store[key].append(now)
+    try:
+        from app.core.cache import get_redis
+        cache = await get_redis()
+        if cache.backend == "redis":
+            await cache.incr(rkey, ttl=_LOGIN_FAIL_WINDOW)
+    except Exception as exc:
+        log.debug("record_login_failure redis fallback: %s", exc)
+
+
+async def clear_login_failures_async(email: str) -> None:
+    """Reset the failed-login counter for *email* (called on successful login)."""
+    key = f"login_fail:{email.lower()}"
+    rkey = f"rl:{key}"
+    rl_store.pop(key, None)
+    try:
+        from app.core.cache import get_redis
+        cache = await get_redis()
+        if cache.backend == "redis":
+            await cache.delete(rkey)
+    except Exception as exc:
+        log.debug("clear_login_failures redis fallback: %s", exc)
+
+
 async def require_rate_limit_async(
     request   : Request,
     *,

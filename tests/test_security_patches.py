@@ -615,3 +615,162 @@ class TestAuditLogCompleteness:
         assert call_args.args[1] == "password.changed", (
             f"write_audit action must be 'password.changed'; got {call_args.args[1]!r}"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# H6: per-email login lockout
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestLoginLockout:
+    """
+    Regression: before this fix, an attacker could try unlimited passwords
+    against any account — only the per-IP global rate limit (300/min) applied,
+    which is far too permissive for a credential-stuffing or brute-force attack.
+
+    Expected behaviour after the fix:
+      • Failed logins increment a per-email counter (window = 15 min).
+      • After 5 failures the endpoint returns 429 immediately, before any DB
+        query, so the attacker cannot enumerate whether the account exists.
+      • A successful login resets the counter so legitimate users aren't
+        permanently blocked.
+    """
+
+    _EMAIL = "dave@example.com"
+
+    def _make_req(self) -> MagicMock:
+        req = MagicMock()
+        req.headers = {}
+        req.client  = MagicMock()
+        req.client.host = "1.2.3.4"
+        return req
+
+    def _make_login_body(self, password: str = "wrong"):
+        from app.routers.auth_users import LoginRequest
+        return LoginRequest(email=self._EMAIL, password=password)
+
+    # ── counter increments on bad password ───────────────────────────────────
+
+    def test_failed_login_increments_counter(self):
+        """
+        record_login_failure_async must be called when the password is wrong.
+        """
+        from app.core.rate_limit import rl_store
+
+        key = f"login_fail:{self._EMAIL}"
+        rl_store.pop(key, None)  # clean slate
+
+        user_row = {
+            "id": uuid.UUID("dddddddd-0000-0000-0000-000000000004"),
+            "password_hash": "hp",
+            "email_verified": True,
+        }
+        conn = _make_conn(user_row["id"])
+        pool = _make_pool(conn)
+
+        async def _go():
+            with patch("app.routers.auth_users.get_pool", return_value=pool), \
+                 patch("app.routers.auth_users._get_user_by_email",
+                       new=AsyncMock(return_value=user_row)), \
+                 patch("app.routers.auth_users.verify_password", return_value=False), \
+                 patch("app.routers.auth_users.check_login_locked_async",
+                       new=AsyncMock(return_value=False)), \
+                 patch("app.routers.auth_users.record_login_failure_async") as rec_mock:
+                rec_mock_async = AsyncMock()
+                rec_mock.side_effect = rec_mock_async
+                req = self._make_req()
+                from app.routers.auth_users import login
+                try:
+                    await login(self._make_login_body("wrong"), req)
+                except Exception:
+                    pass
+                rec_mock.assert_called_once()
+                call_email = rec_mock.call_args.args[0]
+                assert call_email.lower() == self._EMAIL.lower()
+
+        asyncio.run(_go())
+
+    # ── locked after 5 failures ───────────────────────────────────────────────
+
+    def test_account_locked_after_five_failures(self):
+        """
+        After 5 failed attempts check_login_locked_async returns True and the
+        endpoint raises 429 before touching the DB.
+        """
+        conn = _make_conn(uuid.UUID("dddddddd-0000-0000-0000-000000000004"))
+        pool = _make_pool(conn)
+
+        async def _go():
+            with patch("app.routers.auth_users.get_pool", return_value=pool), \
+                 patch("app.routers.auth_users.check_login_locked_async",
+                       new=AsyncMock(return_value=True)):
+                req = self._make_req()
+                from fastapi import HTTPException as _HTTPException
+                from app.routers.auth_users import login
+                try:
+                    await login(self._make_login_body(), req)
+                    assert False, "Expected HTTPException(429)"
+                except _HTTPException as exc:
+                    assert exc.status_code == 429, f"Expected 429, got {exc.status_code}"
+                    # DB must NOT have been queried
+                    pool.acquire.assert_not_called()
+
+        asyncio.run(_go())
+
+    # ── successful login clears counter ──────────────────────────────────────
+
+    def test_successful_login_clears_counter(self):
+        """
+        clear_login_failures_async must be called after a correct password.
+        """
+        from app.core.rate_limit import rl_store
+
+        key = f"login_fail:{self._EMAIL}"
+        rl_store[key] = [__import__("time").time()]  # seed one failure
+
+        user_id = uuid.UUID("dddddddd-0000-0000-0000-000000000004")
+        user_row = {
+            "id": user_id,
+            "password_hash": "hp",
+            "email_verified": True,
+            "email": self._EMAIL,
+            "full_name": "Dave",
+            "avatar_url": None,
+            "provider": None,
+            "mfa_enabled": False,
+            "created_at": __import__("datetime").datetime.utcnow(),
+        }
+        conn = _make_conn(user_id)
+        pool = _make_pool(conn)
+
+        mfa_row = None
+
+        async def _mock_fetchrow(sql, *args):
+            if "mfa_secrets" in sql:
+                return mfa_row
+            if "user_sessions" in sql.lower() or "INSERT" in sql:
+                return {"id": uuid.uuid4(), "token": "rt", "expires_at":
+                        __import__("datetime").datetime.utcnow()}
+            return None
+
+        conn.fetchrow = AsyncMock(side_effect=_mock_fetchrow)
+
+        async def _go():
+            with patch("app.routers.auth_users.get_pool", return_value=pool), \
+                 patch("app.routers.auth_users._get_user_by_email",
+                       new=AsyncMock(return_value=user_row)), \
+                 patch("app.routers.auth_users.verify_password", return_value=True), \
+                 patch("app.routers.auth_users.check_login_locked_async",
+                       new=AsyncMock(return_value=False)), \
+                 patch("app.routers.auth_users.clear_login_failures_async") as clr_mock, \
+                 patch("app.routers.auth_users._finish_login",
+                       new=AsyncMock(return_value={"access_token": "tok"})):
+                clr_mock_async = AsyncMock()
+                clr_mock.side_effect = clr_mock_async
+                req = self._make_req()
+                from app.routers.auth_users import login
+                await login(self._make_login_body("correct"), req)
+                clr_mock.assert_called_once()
+                call_email = clr_mock.call_args.args[0]
+                assert call_email.lower() == self._EMAIL.lower()
+
+        asyncio.run(_go())

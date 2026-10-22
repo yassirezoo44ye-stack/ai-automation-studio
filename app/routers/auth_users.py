@@ -34,7 +34,12 @@ from pydantic import BaseModel, EmailStr, field_validator
 from app.core.db import get_pool, write_audit
 from app.core.email import send_password_reset_email, send_verification_email
 from app.core.observability.tracer import get_tracer
-from app.core.rate_limit import make_rate_limit_dep
+from app.core.rate_limit import (
+    make_rate_limit_dep,
+    check_login_locked_async,
+    record_login_failure_async,
+    clear_login_failures_async,
+)
 from app.core.jwt_utils import (
     REFRESH_EXPIRE_DAYS_REMEMBER,
     REFRESH_EXPIRE_DAYS_SESSION,
@@ -280,17 +285,23 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
     with tracer.start_span("auth.login", service="auth") as span:
         ua = request.headers.get("User-Agent", "")
         ip = _client_ip(request)
+        if await check_login_locked_async(body.email):
+            span.set_tag("error", "account_locked")
+            raise HTTPException(429, "Too many failed login attempts — try again in 15 minutes")
         async with get_pool().acquire() as conn:
             user = await _get_user_by_email(conn, body.email)
             if not user or not user["password_hash"]:
+                await record_login_failure_async(body.email)
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
             if not verify_password(body.password, user["password_hash"]):
+                await record_login_failure_async(body.email)
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
             if not user["email_verified"]:
                 span.set_tag("error", "email_not_verified")
                 raise HTTPException(403, "email_not_verified")
+            await clear_login_failures_async(body.email)
             span.set_tag("user_id", str(user["id"]))
 
             mfa = await conn.fetchrow(
