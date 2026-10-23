@@ -140,5 +140,31 @@
       "unknownExplore": "# Explore the generated files to get started"
     },
     "installFileHeader": "# {{label}} — installation & run"
+  },
+  "runtimePanel": {
+    "livePreview": "Live Preview",
+    "buildFirst": "Build your app first, then click Run Project to see it here.",
+    "readyToRun": "Ready to Run",
+    "appBuilt": "Your app has been built. Click Run Project to start the runtime and preview it live.",
+    "runProject": "▶ Run Project",
+    "runNote": "Run = local preview · not a production deployment",
+    "startingRuntime": "Starting Runtime…",
+    "installingDeps": "Installing dependencies and launching your app",
+    "detectingType": "Detecting project type…",
+    "restart": "↺ Restart",
+    "stop": "■ Stop",
+    "open": "⇱ Open",
+    "iframeTitle": "App Preview",
+    "runtimeStopped": "Runtime Stopped",
+    "previewStopped": "The preview server has been stopped.",
+    "runAgain": "▶ Run Again",
+    "runFailed": "Run Failed",
+    "suggestions": "Suggestions",
+    "retry": "Retry",
+    "explainWithAI": "Explain with AI",
+    "explainNote": "\"Explain with AI\" will propose changes — you review before applying.",
+    "copyError": "Copy Error",
+    "copied": "Copied!",
+    "stopping": "Stopping runtime…"
   }
 }

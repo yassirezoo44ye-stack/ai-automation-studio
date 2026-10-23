@@ -17,7 +17,8 @@
  *   proxy URL  (/api/projects/{id}/proxy/) → iframe (same-origin relative URL)
  *   blob URL   (object URL from html driver) → iframe (blob: URL)
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export type RuntimeState =
   | "idle"
@@ -33,6 +34,7 @@ export type RuntimeError = {
   category: string;
   message: string;
   fix: string[];
+  severity?: "low" | "medium" | "high";
 };
 
 interface Props {
@@ -90,16 +92,17 @@ const BTN_DANGER: React.CSSProperties = {
 /* ── Sub-views ────────────────────────────────────────────────────────────── */
 
 function IdleView({ buildDone, onRun }: { buildDone: boolean; onRun: () => void }) {
+  const { t } = useTranslation("dev");
   if (!buildDone) {
     return (
       <div style={CENTER}>
         <div style={{ fontSize: 40, opacity: 0.15 }}>▶</div>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--t2)" }}>
-          Live Preview
+          {t("runtimePanel.livePreview")}
         </div>
-        <div style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.6, textAlign: "center", maxWidth: 300 }}>
-          Build your app first, then click <strong>Run Project</strong> to see it here.
-        </div>
+        <p style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.6, textAlign: "center", maxWidth: 300, margin: 0 }}>
+          {t("runtimePanel.buildFirst")}
+        </p>
       </div>
     );
   }
@@ -108,17 +111,16 @@ function IdleView({ buildDone, onRun }: { buildDone: boolean; onRun: () => void 
       <div style={CARD}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🚀</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>
-          Ready to Run
+          {t("runtimePanel.readyToRun")}
         </div>
         <div style={{ fontSize: 13, color: "var(--t4)", lineHeight: 1.6, marginBottom: 20 }}>
-          Your app has been built. Click <strong>Run Project</strong> to start the runtime
-          and preview it live.
+          {t("runtimePanel.appBuilt")}
         </div>
-        <button style={BTN_PRIMARY} onClick={onRun}>
-          ▶ Run Project
+        <button className="rp-btn-primary" style={BTN_PRIMARY} onClick={onRun}>
+          {t("runtimePanel.runProject")}
         </button>
         <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 12 }}>
-          Run = local preview · not a production deployment
+          {t("runtimePanel.runNote")}
         </div>
       </div>
     </div>
@@ -126,6 +128,7 @@ function IdleView({ buildDone, onRun }: { buildDone: boolean; onRun: () => void 
 }
 
 function StartingView({ messages }: { messages: string[] }) {
+  const { t } = useTranslation("dev");
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
@@ -145,24 +148,24 @@ function StartingView({ messages }: { messages: string[] }) {
           ))}
         </div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>
-          Starting Runtime…
+          {t("runtimePanel.startingRuntime")}
         </div>
         <div style={{ fontSize: 12, color: "var(--t4)", marginBottom: 16 }}>
-          Installing dependencies and launching your app
+          {t("runtimePanel.installingDeps")}
         </div>
-        {/* Live status log */}
+        {/* Live status log — 220px shows ~12 lines; enough for npm install output */}
         <div
           ref={logRef}
           style={{
             background: "#040506", borderRadius: 8, padding: "10px 14px",
-            maxHeight: 140, overflowY: "auto",
+            maxHeight: 220, overflowY: "auto",
             fontFamily: "var(--font-mono, monospace)", fontSize: 11,
-            color: "var(--green, #4ade80)", textAlign: "left",
+            color: "var(--green, #4ade80)", textAlign: "start",
             lineHeight: 1.6,
           }}
         >
           {messages.length === 0
-            ? <span style={{ color: "var(--t5)" }}>Detecting project type…</span>
+            ? <span style={{ color: "var(--t5)" }}>{t("runtimePanel.detectingType")}</span>
             : messages.map((m, i) => <div key={i}>{m}</div>)
           }
         </div>
@@ -176,14 +179,14 @@ function RunningView({
   previewType,
   onStop,
   onRestart,
-  label = "Running",
+  label,
 }: {
   previewUrl: string;
   previewType: "proxy" | "blob";
   onStop: () => void;
   onRestart: () => void;
   /** Status label shown in the toolbar. "Running" = real server; "Preview" = static blob. */
-  label?: string;
+  label: string;
 }) {
   // proxy URL is relative (/api/projects/.../proxy/) → same-origin iframe is safe
   // blob URL is object URL → also safe in iframe
@@ -191,7 +194,8 @@ function RunningView({
     ? `${window.location.origin}${previewUrl}`
     : previewUrl;
 
-  const isPreview = label !== "Running";
+  const { t } = useTranslation("dev");
+  const isPreview = label !== t("runtimePanel.stop").replace("■ ", "") && label === t("runtimePanel.livePreview");
   const dotColor  = isPreview ? "var(--teal, #0ea5e9)" : "var(--green)";
   const lblColor  = isPreview ? "var(--teal, #0ea5e9)" : "var(--green)";
 
@@ -219,21 +223,26 @@ function RunningView({
             {previewUrl}
           </div>
         </div>
-        <button style={BTN_GHOST} onClick={onRestart}>↺ Restart</button>
-        <button style={BTN_DANGER} onClick={onStop}>■ Stop</button>
+        <button className="rp-btn-ghost" style={BTN_GHOST} onClick={onRestart}>
+          {t("runtimePanel.restart")}
+        </button>
+        <button className="rp-btn-danger" style={BTN_DANGER} onClick={onStop}>
+          {t("runtimePanel.stop")}
+        </button>
         {previewType === "proxy" && (
           <button
+            className="rp-btn-ghost"
             style={BTN_GHOST}
             onClick={() => window.open(iframeSrc, "_blank")}
           >
-            ⇱ Open
+            {t("runtimePanel.open")}
           </button>
         )}
       </div>
       {/* Iframe preview */}
       <iframe
         src={iframeSrc}
-        title="App Preview"
+        title={t("runtimePanel.iframeTitle")}
         style={{ flex: 1, border: "none", width: "100%", height: "100%" }}
         sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
       />
@@ -242,18 +251,19 @@ function RunningView({
 }
 
 function StoppedView({ onRun }: { onRun: () => void }) {
+  const { t } = useTranslation("dev");
   return (
     <div style={CENTER}>
       <div style={CARD}>
         <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.4 }}>■</div>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--t2)", marginBottom: 8 }}>
-          Runtime Stopped
+          {t("runtimePanel.runtimeStopped")}
         </div>
         <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 20 }}>
-          The preview server has been stopped.
+          {t("runtimePanel.previewStopped")}
         </div>
-        <button style={BTN_PRIMARY} onClick={onRun}>
-          ▶ Run Again
+        <button className="rp-btn-primary" style={BTN_PRIMARY} onClick={onRun}>
+          {t("runtimePanel.runAgain")}
         </button>
       </div>
     </div>
@@ -262,28 +272,62 @@ function StoppedView({ onRun }: { onRun: () => void }) {
 
 function FailedView({
   error,
+  projectName,
   onRetry,
   onExplain,
 }: {
   error: RuntimeError;
+  projectName: string;
   onRetry: () => void;
   onExplain: (err: RuntimeError) => void;
 }) {
+  const { t } = useTranslation("dev");
+  const [copied, setCopied] = useState(false);
+
   const SEVERITY_COLOR: Record<string, string> = {
     high:   "var(--red, #ef4444)",
     medium: "var(--yellow, #eab308)",
     low:    "var(--t4)",
   };
-  const col = SEVERITY_COLOR[error.category === "unsupported" ? "medium" : "high"];
+  // Use the severity field when present; fall back to category-based heuristic.
+  const severity = error.severity ?? (error.category === "unsupported" ? "medium" : "high");
+  const col = SEVERITY_COLOR[severity] ?? SEVERITY_COLOR.high;
+
+  const copyError = async () => {
+    const text = [error.message, ...error.fix].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for browsers that block clipboard API
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div style={CENTER}>
-      <div style={{ ...CARD, maxWidth: 520, textAlign: "left" }}>
+      <div style={{ ...CARD, maxWidth: 520, textAlign: "start" }}>
         <div style={{
           fontSize: 12, fontWeight: 700, textTransform: "uppercase",
           letterSpacing: "0.08em", color: col, marginBottom: 8,
+          display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap",
         }}>
-          Run Failed
+          <span>{t("runtimePanel.runFailed")}</span>
+          {projectName && (
+            <span style={{
+              color: "var(--t4)", fontWeight: 400,
+              textTransform: "none", letterSpacing: 0, fontSize: 11,
+            }}>
+              — {projectName}
+            </span>
+          )}
         </div>
         <div style={{
           fontSize: 13, fontWeight: 600, color: "var(--t1)",
@@ -296,8 +340,11 @@ function FailedView({
 
         {error.fix.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t5)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-              Suggestions
+            <div style={{
+              fontSize: 11, fontWeight: 600, color: "var(--t5)",
+              textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8,
+            }}>
+              {t("runtimePanel.suggestions")}
             </div>
             {error.fix.map((step, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 12, color: "var(--t2)" }}>
@@ -308,14 +355,24 @@ function FailedView({
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button style={BTN_PRIMARY} onClick={onRetry}>↺ Retry</button>
-          <button style={BTN_GHOST} onClick={() => onExplain(error)}>
-            🤖 Explain with AI
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="rp-btn-primary" style={BTN_PRIMARY} onClick={onRetry}>
+            ↺ {t("runtimePanel.retry")}
+          </button>
+          <button className="rp-btn-ghost" style={BTN_GHOST} onClick={() => onExplain(error)}>
+            🤖 {t("runtimePanel.explainWithAI")}
+          </button>
+          <button
+            className="rp-btn-ghost"
+            style={{ ...BTN_GHOST, marginInlineStart: "auto" }}
+            onClick={copyError}
+            aria-label={t("runtimePanel.copyError")}
+          >
+            {copied ? `✓ ${t("runtimePanel.copied")}` : `⎘ ${t("runtimePanel.copyError")}`}
           </button>
         </div>
         <div style={{ marginTop: 10, fontSize: 11, color: "var(--t5)" }}>
-          "Fix with AI" will propose changes — you review before applying.
+          {t("runtimePanel.explainNote")}
         </div>
       </div>
     </div>
@@ -323,6 +380,7 @@ function FailedView({
 }
 
 function StoppingView() {
+  const { t } = useTranslation("dev");
   return (
     <div style={CENTER}>
       <div style={{ fontSize: 13, color: "var(--t4)", display: "flex", alignItems: "center", gap: 8 }}>
@@ -332,7 +390,7 @@ function StoppingView() {
           borderTopColor: "transparent",
           animation: "spin 0.8s linear infinite",
         }} />
-        Stopping runtime…
+        {t("runtimePanel.stopping")}
       </div>
     </div>
   );
@@ -346,13 +404,14 @@ export function RuntimePanel({
   previewType,
   runtimeError,
   buildDone,
-  projectName: _projectName,
+  projectName,
   startupMessages,
   onRun,
   onStop,
   onRestart,
   onExplainError,
 }: Props) {
+  const { t } = useTranslation("dev");
   return (
     <div style={{
       flex: 1, display: "flex", flexDirection: "column",
@@ -377,6 +436,7 @@ export function RuntimePanel({
           previewType={previewType}
           onStop={onStop}
           onRestart={onRestart}
+          label="Running"
         />
       )}
       {runtimeState === "preview" && previewUrl && previewType && (
@@ -385,7 +445,7 @@ export function RuntimePanel({
           previewType={previewType}
           onStop={onStop}
           onRestart={onRestart}
-          label="Preview"
+          label={t("runtimePanel.livePreview")}
         />
       )}
       {runtimeState === "stopping" && <StoppingView />}
@@ -395,6 +455,7 @@ export function RuntimePanel({
       {runtimeState === "failed" && runtimeError && (
         <FailedView
           error={runtimeError}
+          projectName={projectName}
           onRetry={onRun}
           onExplain={onExplainError}
         />

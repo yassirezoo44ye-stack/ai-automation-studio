@@ -2407,3 +2407,14 @@ button, [role="button"], input, textarea, select, a,
   /* Glow-pulse keyframe: frozen */
   @keyframes glow-pulse { to { box-shadow: 0 0 12px var(--accent-dim); } }
 }
+
+/* ── RuntimePanel button accessibility ──────────────────────────────────── */
+.rp-btn-primary:hover  { opacity: 0.9; }
+.rp-btn-ghost:hover    { background: var(--bg-hover, rgba(255,255,255,0.06)); }
+.rp-btn-danger:hover   { background: rgba(239,68,68,0.14); }
+.rp-btn-primary:focus-visible,
+.rp-btn-ghost:focus-visible,
+.rp-btn-danger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
