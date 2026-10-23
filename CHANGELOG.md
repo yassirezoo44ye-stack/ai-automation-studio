@@ -294,3 +294,164 @@ successful deploy to `main`.
 
 ### Other
 - ux: set app-builder as the default landing page after login
+
+## v1.0.28
+
+### Features
+- improve Flow settings, authentication, devices, and SaaS Factory
+- SaaS Factory F-1/F-7 + Business Lab Phase 1 fixes
+- add Flow Library module with 3M+ book catalog support
+- improve Flow settings, authentication, devices, and SaaS Factory
+- consolidate sidebar to AI Business Workspace navigation
+- stabilize multi-device control and app builder
+- add Flow Discover and unified creations
+- harden Flow multi-device control execution
+- add Flow multi-device control AgentOS foundation
+
+### Fixes
+- automation_runs lifecycle, leads NameError, Render 409, cache auth + platform-wide code quality audit
+- resolve all remaining ruff quality issues — clean zero-error baseline
+- resolve 52 ruff code-quality issues across codebase
+- clean up unused imports and dead code across project
+- remove dead code, duplicate imports, and undefined-name annotation
+- mark automation_runs enqueue_failed on JobQueue error; scope bp_plans DELETE
+- restrict runtime cache endpoints to admin+
+- resolve 26 pre-existing CI failures in test suite
+- rename test_gen_handler to avoid pytest collection
+- resolve SaaS Factory gate blockers
+
+### Other
+- fix(execution): resolve Run Failed for AI-generated subdirectory projects + security hardening
+- fix(execution): three-layer defense for Run Failed on AI-generated subdirectory projects
+- fix(execution): resolve "Run Failed" when AI builder generates files in subdirectory
+- fix timing side-channel: constant-time response for non-existent accounts
+- fix test_api_auth: isolate IP rate-limit test from per-email lockout
+- pro max batch 3: GZip compression + per-email login lockout
+- security: add JWT revocation, complete audit log coverage, and regression tests
+- fix(security): reduce access token TTL from 15 min to 5 min (H3 hardening)
+- fix(security): resolve phase 2 audit findings (WS ownership, session invalidation, billing meter, and OAuth verification)
+- fix(tests): collapse remaining nested with statements in test_stats.py (SIM117)
+- Merge origin/main into claude/extract-features-flow-studio-0cnm4v
+- refactor: comprehensive code quality audit — simplify, deduplicate, harden exceptions
+- fix(agent): remove unused imports and dead variable assignments
+- fix(routers): remove remaining unused imports in discover and training
+- fix(chat): save assistant message before yielding done event
+- chore: switch to split-deploy architecture (Vercel frontend, Render API only)
+- fix(leads): initialize run_id=None before try block to prevent NameError
+- fix(ci): treat Render 409 as success in deploy step
+- fix(app-builder): harden spec JSON repair and add regression tests
+- fix(lint): remove unused imports from test_audit_fixes.py to stay within ruff baseline
+- fix(security): P0/P1/P2 audit fixes — IDOR, automation, email, leads, SaaS Factory
+- fix(ci): remove unused imports/variables to bring ruff count below 104 baseline
+- fix(saas-factory): raise on incomplete build to stop pipeline reaching LIVE
+- fix(business-plans): prevent retry from overwriting PAUSED plan status
+- fix(business-plans): lifecycle status update and SSE GENERATING transition on retry
+- fix(business-lab): P0-A guard COMPLETED sections + P0-B rebuild context on retry
+- fix(business-lab): fix DAG deps, dead context reads, and plan completion guard
+- fix(ai-workspace): scope task strip to current conversation and patch agent_run log
+- fix(copilot): prevent [Context:] leak in stored messages and separate workspace
+- feat(saas-factory): add PENDING_REVIEW phase and security review UI
+- fix(workflow): add organization_id to WorkflowRun context for notification routing
+- Fix CI lint failures: ruff (F401/F841) and ESLint (exhaustive-deps, a11y, set-state-in-effect)
+- merge: integrate origin/main attribution routing into PR branch
+- test(backend): add automation scheduler and upload middleware tests
+- fix(pages): gate data fetches on org context being ready
+- fix(leads): correct follow-up email step schema + add backend tests
+- fix(runtime): JS project detection + CSP allow Google Fonts
+- fix(app-builder): i18n export labels + AICommandBar status-aware errors
+- fix(middleware): narrow exception swallowing to ClientDisconnect only
+- fix(upload): add ASGI-level request body size limit middleware
+- test(build): add upload size-limit tests — 50 MB per-file, 200 MB total
+- fix(social): eliminate TOCTOU race in social oauth callback
+- fix(auth): eliminate TOCTOU race in oauth_exchange — make get+delete atomic
+- fix(build): add 50 MB per-file and 200 MB per-request size caps to upload endpoint
+- fix(gemini): repair silent image-drop bug in _to_gemini_contents
+- fix(oauth): include FRONTEND_URL in CORS allowed origins and document in render.yaml
+- fix(oauth): add FRONTEND_URL so post-OAuth redirect targets frontend, not backend
+- fix(tests): resolve all 113 test failures — 0 failures, 2677 passing
+- fix(social): wire schema init into app startup — migration 014 gap
+- feat(social): Instagram Reels integration via Meta Graph API (Step 3)
+- fix(social): independent review — 3 bugs found and fixed
+- feat(social): TikTok Content Posting API integration (Step 2)
+- feat(social): Phase 1 foundation — migration, provider base, router
+- fix(auth): atomic get_and_delete_if_matches for OAuth state to prevent DoS
+- fix(auth): add browser-binding nonce cookie to restore Login CSRF protection (FINDING-1)
+- fix(auth): replace cookie-based OAuth state with server-side cache
+- fix(deploy): proxy /api/* to Render and correct backend URL in docs
+- fix(deploy): proxy /api/* to Render and correct backend URL in docs
+- fix(app-factory): distinguish Preview from Running; fix build toasts; guard short prompts
+- fix(events): register lead.qualified in EVENT_TYPES
+- fix(notifications): fix navigation, add real-time push and mute guard for lead.qualified
+- feat(new-project): rewrite as canonical project creation entry point
+- fix(navigation): establish browser history and home root
+- feat(navigation): consolidate engine entry points
+- feat(project-workspace): add URL project workspace contract
+- fix(auth): resolve OAuth account-takeover security blocker
+- fix(auth): ESLint clean-up + MFA tests + DEV_ACCOUNT_EMAIL config
+- feat(auth): Phase 1 — MFA frontend, OAuth MFA gate, deep-link routing, env var cleanup
+- fix(business-lab): persist section FAILED status and add startup recovery
+- fix(auth): add /api/track to PUBLIC_PREFIXES
+- fix(attribution): route POST /api/track to Render backend via VITE_API_URL
+- feat(marketing): add conversion attribution
+- merge: agency marketing landing + UTM attribution
+- feat(marketing): position Flow for small agencies
+- merge: SaaS Factory pipeline + UI redesign (sidebar/header)
+- feat(ui): restructure sidebar to 4 semantic groups + enrich header
+- feat(saas-factory): add SaaS Factory pipeline and UI
+- feat(feed): remove mock initial state, short commercial CTAs, micro-learning (#11)
+- feat(feed): remove mock initial state, short commercial CTAs, micro-learning
+- feat(flow): complete commercial lead engine (#10)
+- fix(settings): resolve react-hooks/set-state-in-effect and exhaustive-deps in ApiKeysTab
+- fix(leads): resolve CI lint and test path blockers
+- feat(flow): complete commercial lead engine access
+- feat(leads): enable commercial lead capture and email follow-up
+- feat(leads): add agency lead engine MVP
+- fix(feed): handle empty production feed
+- fix(discover): use correct JWT decoder for interactions
+- feat(discover): add optional immediate publishing
+- fix(feed): disable interactions on mock content
+- feat(automation): complete cloud routines frontend and test coverage
+- feat(automation): complete cloud routine execution flow
+- feat(ai): add monthly usage cost reporting
+- feat(feed): add initial interaction counts and harden state
+- feat(feed): implement Like/Save persistence (Phase 2)
+- feat(phase1): implement policy blocked_patterns and approval notifications
+- fix(ws): remove JWT fallback from remaining websocket hooks
+- fix(ws): migrate notifications to ticket auth
+- fix(business-plans): validate plan ids as UUIDs
+- fix(business-lab): replace JWT query-param SSE auth with short-lived ticket flow
+- fix(frontend): recover from stale dynamic chunks
+- fix(app-builder): normalize stream build errors
+- fix(app-builder): prevent single-character project names causing HTTP 422
+- fix(feed): repair sharing and disable unavailable comments
+- fix(business-lab): scope section workflow queries by organization
+- fix(business-lab): align workflow steps with engine contract
+- fix(business-lab): fix RLS on plan detail and WorkflowEngine API mismatch
+- fix(business-lab): use scoped connection for plan creation
+- fix(app-builder): harden plan mode for dev account
+- fix(discover): use shared auth infrastructure
+- fix(discover): enforce source uniqueness
+- feat(discover): add publish flow for apps and agents
+- fix(discover): fix auth middleware + SQL pagination bug
+- fix(devices): align session response contract
+- fix(devices): align enrollment token response contract
+- fix(app-builder): restore static preview runtime
+- fix(devices): inject permission dependencies
+- feat(feed): wire real data and build intents
+- feat(feed): add TikTok-style Flow Feed foundation
+- fix(runtime): detect static HTML apps before node
+- fix(build): make dev account matching case-sensitive
+- feat(app-builder): wire approved plan through build pipeline
+- feat(business): add Business Lab
+- feat(automation): add persistence and definitions API
+- ux(simplify): trim sidebar to 3 items and simplify landing copy
+- feat(inference): add POST /api/ai/chat for App Builder copilot
+- fix(app-builder): skip plan step when modifying from workspace
+- feat(app-builder): wire MODIFY + EXPORT flow
+- feat(dev_mock): dynamic landing page from prompt — no more generic template
+- fix(build): robust email comparison in _is_dev_account (case + strip)
+- feat(build): free unlimited usage for owner account via prompt-aware dev_mock
+- fix(build): remove dev_mock bypass — owner account now uses real Claude API
+- fix(i18n): disable browser auto-translate to prevent Arabic mangling
+- fix(anthropic): pop temperature/top_p from complete() path, catch TypeError
+- ux(app-builder): simplify interface for everyday users
