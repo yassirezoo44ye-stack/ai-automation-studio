@@ -223,5 +223,115 @@ class TestEdgeCases(unittest.TestCase):
         self.assertEqual(info.confidence, "high")
 
 
+# ── Subdirectory project root (AI-builder generates files in backend/) ────────
+
+class TestSubdirProjectRoot(unittest.TestCase):
+    """
+    Regression guard for "Run Failed" when AI builder generates all project
+    files inside a subdirectory (e.g. backend/) instead of the workspace root.
+
+    Before the fix the node driver received the workspace root, not backend/,
+    causing DEP_PKG_JSON_MISSING because backend/package.json was not found at
+    the root level.
+    """
+
+    def test_node_project_in_backend_subdir_detected(self):
+        """Node.js project under backend/ → effective_root points to backend/."""
+        pkg = json.dumps({"name": "api", "scripts": {"start": "node src/server.js"}})
+        ws = _make_ws({
+            "backend/package.json":    pkg,
+            "backend/src/server.js":   "const express = require('express'); express().listen(3000);",
+            "backend/src/routes.js":   "module.exports = [];",
+            "README.md":               "# AI SaaS",
+        })
+        info = detect(ws)
+        self.assertEqual(info.run_strategy, "node")
+        self.assertIsNotNone(info.effective_root,
+                             "effective_root must be set when project is in a subdir")
+        self.assertEqual(info.effective_root.name, "backend")
+
+    def test_python_project_in_backend_subdir_detected(self):
+        """Python project under backend/ → effective_root points to backend/."""
+        ws = _make_ws({
+            "backend/main.py":          "from fastapi import FastAPI\napp = FastAPI()",
+            "backend/requirements.txt": "fastapi\nuvicorn",
+            "README.md":                "# SaaS",
+        })
+        info = detect(ws)
+        self.assertIn(info.run_strategy, ("server", "script"))
+        self.assertIsNotNone(info.effective_root)
+        self.assertEqual(info.effective_root.name, "backend")
+
+    def test_node_in_server_subdir(self):
+        """Node.js project under server/ is also normalised."""
+        pkg = json.dumps({"name": "srv", "scripts": {"start": "node index.js"}})
+        ws = _make_ws({
+            "server/package.json": pkg,
+            "server/index.js":     "require('express')().listen(4000);",
+        })
+        info = detect(ws)
+        self.assertEqual(info.run_strategy, "node")
+        self.assertIsNotNone(info.effective_root)
+        self.assertEqual(info.effective_root.name, "server")
+
+    def test_root_package_json_not_redirected(self):
+        """When package.json is at root, effective_root stays None (no redirect)."""
+        pkg = json.dumps({"name": "root-app", "scripts": {"start": "node index.js"}})
+        ws = _make_ws({
+            "package.json": pkg,
+            "index.js":     "console.log('hi');",
+            "backend/extra.txt": "notes",
+        })
+        info = detect(ws)
+        self.assertEqual(info.run_strategy, "node")
+        self.assertIsNone(info.effective_root,
+                          "effective_root must be None when project is at workspace root")
+
+    def test_note_mentions_subdir(self):
+        """Detected subdir project includes a human-readable note about the redirect."""
+        pkg = json.dumps({"name": "api"})
+        ws = _make_ws({
+            "backend/package.json": pkg,
+            "backend/server.js":    "require('express')().listen(3000);",
+        })
+        info = detect(ws)
+        combined = " ".join(info.notes).lower()
+        self.assertIn("backend", combined)
+
+    def test_ai_builder_15_files_in_backend(self):
+        """
+        Simulates the exact AI-builder output that caused the original bug:
+        15 files all under backend/ — must detect node and set effective_root.
+        """
+        pkg = json.dumps({
+            "name": "saas-api",
+            "version": "1.0.0",
+            "scripts": {"start": "node src/server.js", "dev": "nodemon src/server.js"},
+            "dependencies": {"express": "^4.18.2", "cors": "^2.8.5"},
+        })
+        ws = _make_ws({
+            "backend/package.json":             pkg,
+            "backend/src/server.js":            "const express = require('express'); express().listen(3000);",
+            "backend/src/routes/auth.js":       "module.exports = require('express').Router();",
+            "backend/src/routes/users.js":      "module.exports = require('express').Router();",
+            "backend/src/middleware/auth.js":    "module.exports = (req, res, next) => next();",
+            "backend/src/models/user.js":        "module.exports = class User {};",
+            "backend/src/config/db.js":          "module.exports = {};",
+            "backend/src/utils/helpers.js":      "module.exports = {};",
+            "backend/src/controllers/auth.js":   "module.exports = {};",
+            "backend/src/controllers/users.js":  "module.exports = {};",
+            "backend/.env.example":              "PORT=3000\nDB_URL=",
+            "backend/.gitignore":                "node_modules/\n.env",
+            "backend/README.md":                 "# API",
+            "README.md":                         "# SaaS Project\n\nSee backend/ for the API.",
+        })
+        info = detect(ws)
+        self.assertEqual(info.run_strategy, "node",
+                         f"Expected node strategy, got {info.run_strategy!r}")
+        self.assertIsNotNone(info.effective_root,
+                             "effective_root must point to backend/ for AI-builder output")
+        self.assertEqual(info.effective_root.name, "backend")
+
+
 if __name__ == "__main__":
     unittest.main()
