@@ -15,6 +15,7 @@
  * Nothing here is fabricated. If a check isn't real, it says "Not configured".
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { BuildPlan } from "./BuildPlanPanel";
 import type { RuntimeState } from "./RuntimePanel";
 
@@ -57,11 +58,7 @@ interface Props {
 // Developer tabs (tests, security, api, database, git) remain in the
 // BottomTab type and their panels are still rendered — hidden from the bar
 // so everyday users see a clean interface.
-const TABS: { id: BottomTab; label: string }[] = [
-  { id: "build",   label: "بناء"    },
-  { id: "runtime", label: "تشغيل"  },
-  { id: "logs",    label: "السجل"  },
-];
+const TABS: BottomTab[] = ["build", "runtime", "logs"];
 
 function StatusDot({ status }: { status: "pass" | "fail" | "skip" | "running" }) {
   const c = status === "pass" ? "var(--green)" : status === "fail" ? "var(--red)" : status === "running" ? "var(--accent)" : "var(--t5)";
@@ -112,6 +109,7 @@ function RuntimeConsole({
   runtimeEvents: RuntimeEventItem[];
   runtimeState: RuntimeState;
 }) {
+  const { t } = useTranslation("dev");
   const [search, setSearch]    = useState("");
   const [paused, setPaused]    = useState(false);
   const [filter, setFilter]    = useState<LogFilter>("all");
@@ -180,11 +178,11 @@ function RuntimeConsole({
     );
   }
 
-  const FILTER_BTNS: { id: LogFilter; label: string }[] = [
-    { id: "all",    label: "All" },
-    { id: "stdout", label: "stdout" },
-    { id: "stderr", label: "stderr" },
-    { id: "errors", label: "Errors" },
+  const FILTER_BTNS: { id: LogFilter; labelKey: string }[] = [
+    { id: "all",    labelKey: "bottomTabBar.console.filterAll" },
+    { id: "stdout", labelKey: "bottomTabBar.console.filterStdout" },
+    { id: "stderr", labelKey: "bottomTabBar.console.filterStderr" },
+    { id: "errors", labelKey: "bottomTabBar.console.filterErrors" },
   ];
 
   return (
@@ -221,7 +219,7 @@ function RuntimeConsole({
                 cursor: "pointer",
               }}
             >
-              {fb.label}
+              {t(fb.labelKey)}
             </button>
           ))}
         </div>
@@ -238,7 +236,8 @@ function RuntimeConsole({
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search logs…"
+            placeholder={t("bottomTabBar.console.searchPlaceholder")}
+            aria-label={t("bottomTabBar.console.searchAriaLabel")}
             style={{
               width: "100%", paddingLeft: 24, paddingRight: 8, paddingBlock: 3,
               fontSize: 11, borderRadius: 6, border: "1px solid var(--b1)",
@@ -251,7 +250,7 @@ function RuntimeConsole({
         {/* Pause / resume */}
         <button
           onClick={() => setPaused(p => !p)}
-          title={paused ? "Resume auto-scroll" : "Pause auto-scroll"}
+          aria-label={paused ? t("bottomTabBar.console.resumeAriaLabel") : t("bottomTabBar.console.pauseAriaLabel")}
           style={{
             padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600,
             border: `1px solid ${paused ? "var(--accent-border)" : "var(--b1)"}`,
@@ -259,25 +258,28 @@ function RuntimeConsole({
             color: paused ? "var(--accent)" : "var(--t4)", cursor: "pointer", flexShrink: 0,
           }}
         >
-          {paused ? "⏸ Paused" : "⏵ Live"}
+          {paused ? t("bottomTabBar.console.paused") : t("bottomTabBar.console.live")}
         </button>
 
         {/* Clear */}
         <button
           onClick={() => { setCleared(Date.now()); setSearch(""); }}
-          title="Clear console"
+          aria-label={t("bottomTabBar.console.clearAriaLabel")}
           style={{
             padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600,
             border: "1px solid var(--b1)", background: "transparent", color: "var(--t4)", cursor: "pointer", flexShrink: 0,
           }}
         >
-          Clear
+          {t("bottomTabBar.console.clear")}
         </button>
 
         {/* Count */}
         {visible.length > 0 && (
           <span style={{ fontSize: 10, color: "var(--t5)", flexShrink: 0 }}>
-            {visible.length}{q ? ` / ${runtimeEvents.length}` : ""} lines
+            {q
+              ? t("bottomTabBar.console.linesFiltered", { visible: visible.length, total: runtimeEvents.length })
+              : t("bottomTabBar.console.linesCount", { count: visible.length })
+            }
           </span>
         )}
       </div>
@@ -291,10 +293,10 @@ function RuntimeConsole({
         {visible.length === 0 ? (
           <div style={{ textAlign: "center", padding: "20px", color: "var(--t5)", fontSize: 12 }}>
             {q
-              ? `No matches for "${search}"`
+              ? t("bottomTabBar.console.noMatches", { query: search })
               : runtimeState === "idle" || runtimeState === "ready_to_run"
-                ? "Runtime logs will appear here when you run the project."
-                : "Waiting for runtime events…"
+                ? t("bottomTabBar.console.emptyIdle")
+                : t("bottomTabBar.console.emptyWaiting")
             }
           </div>
         ) : (
@@ -335,6 +337,7 @@ export function BottomTabBar({
   runtimeEvents = [],
   runtimeState = "idle",
 }: Props) {
+  const { t: tFn } = useTranslation("dev");
   const [tab, setTab] = useState<BottomTab>("build");
   const [dragging, setDragging] = useState(false);
 
@@ -364,7 +367,7 @@ export function BottomTabBar({
       <div style={{ overflowY: "auto", height: "100%", padding: "8px 0" }}>
         {buildEvents.length === 0 && !isBuilding && !buildDone && (
           <div style={{ textAlign: "center", padding: "20px", color: "var(--t5)", fontSize: 12 }}>
-            Build timeline will appear here when you start a build.
+            {tFn("bottomTabBar.build.emptyHint")}
           </div>
         )}
         {buildEvents.map((ev, _i) => (
@@ -408,7 +411,7 @@ export function BottomTabBar({
                 }} />
               ))}
             </div>
-            <span style={{ fontSize: 11, color: "var(--t4)" }}>Building…</span>
+            <span style={{ fontSize: 11, color: "var(--t4)" }}>{tFn("bottomTabBar.build.building")}</span>
           </div>
         )}
 
@@ -416,7 +419,10 @@ export function BottomTabBar({
           <div style={{ padding: "8px 16px", display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 13, color: "var(--green)" }}>✓</span>
             <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>
-              Build complete — {fileCount > 0 ? `${fileCount} files` : "done"}
+              {fileCount > 0
+                ? tFn("bottomTabBar.build.buildComplete", { count: fileCount })
+                : tFn("bottomTabBar.build.buildCompleteNoCount")
+              }
               {language && ` · ${language}`}
             </span>
           </div>
@@ -584,7 +590,8 @@ export function BottomTabBar({
     }}>
       {/* Drag handle — resize bar between workspace and bottom panel */}
       <button
-        aria-label="Resize bottom panel — drag or press arrow keys"
+        className="btb-drag-handle"
+        aria-label={tFn("bottomTabBar.dragAriaLabel")}
         onMouseDown={startDrag}
         onKeyDown={e => {
           if (e.key === "ArrowUp")   onResize(Math.max(120, Math.min(480, height + 20)));
@@ -593,7 +600,7 @@ export function BottomTabBar({
         style={{
           height: 4, cursor: "row-resize", background: "transparent", border: "none", padding: 0,
           position: "absolute", top: 0, left: 0, right: 0, zIndex: 5,
-          transition: "background 0.15s", outline: "none", width: "100%",
+          transition: "background 0.15s", width: "100%",
         }}
         onMouseEnter={e => (e.currentTarget.style.background = "var(--accent)")}
         onMouseLeave={e => !dragging && (e.currentTarget.style.background = "transparent")}
@@ -605,13 +612,14 @@ export function BottomTabBar({
         padding: "0 8px", flexShrink: 0, overflowX: "auto",
         scrollbarWidth: "none",
       }}>
-        {TABS.map(t => {
-          const badge = tabBadge[t.id];
-          const isActive = tab === t.id;
+        {TABS.map(tabId => {
+          const badge = tabBadge[tabId];
+          const isActive = tab === tabId;
           return (
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
+              key={tabId}
+              className="btb-tab"
+              onClick={() => setTab(tabId)}
               style={{
                 flexShrink: 0, padding: "7px 14px", fontSize: 11, fontWeight: isActive ? 700 : 500,
                 border: "none", background: "transparent", cursor: "pointer",
@@ -620,7 +628,7 @@ export function BottomTabBar({
                 display: "flex", alignItems: "center", gap: 5, transition: "all 0.1s",
               }}
             >
-              {t.label}
+              {tFn(`bottomTabBar.tabs.${tabId}`)}
               {badge && (
                 <span style={{
                   fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 99,

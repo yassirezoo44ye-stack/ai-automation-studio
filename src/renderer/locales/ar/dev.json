@@ -141,6 +141,39 @@
     },
     "installFileHeader": "# {{label}} — التثبيت والتشغيل"
   },
+  "bottomTabBar": {
+    "tabs": {
+      "build":   "بناء",
+      "runtime": "تشغيل",
+      "logs":    "السجل"
+    },
+    "console": {
+      "filterAll":         "الكل",
+      "filterStdout":      "stdout",
+      "filterStderr":      "stderr",
+      "filterErrors":      "الأخطاء",
+      "searchPlaceholder": "بحث في السجلات…",
+      "searchAriaLabel":   "بحث في السجلات",
+      "pauseAriaLabel":    "إيقاف التمرير التلقائي",
+      "resumeAriaLabel":   "استئناف التمرير التلقائي",
+      "paused":            "⏸ متوقف",
+      "live":              "⏵ مباشر",
+      "clear":             "مسح",
+      "clearAriaLabel":    "مسح الطرفية",
+      "linesCount":        "{{count}} سطر",
+      "linesFiltered":     "{{visible}} / {{total}} سطر",
+      "noMatches":         "لا نتائج لـ \"{{query}}\"",
+      "emptyIdle":         "ستظهر سجلات التشغيل هنا عند تشغيل المشروع.",
+      "emptyWaiting":      "في انتظار أحداث التشغيل…"
+    },
+    "build": {
+      "emptyHint":             "سيظهر سجل البناء هنا عند بدء عملية البناء.",
+      "building":              "جارٍ البناء…",
+      "buildComplete":         "اكتمل البناء — {{count}} ملف",
+      "buildCompleteNoCount":  "اكتمل البناء"
+    },
+    "dragAriaLabel": "تغيير حجم اللوحة السفلية — اسحب أو اضغط مفاتيح الأسهم"
+  },
   "runtimePanel": {
     "livePreview": "معاينة مباشرة",
     "buildFirst": "أنشئ تطبيقك أولاً، ثم انقر على تشغيل المشروع لرؤيته هنا.",

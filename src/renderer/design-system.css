@@ -2418,3 +2418,7 @@ button, [role="button"], input, textarea, select, a,
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ── BottomTabBar accessibility ──────────────────────────────────────────── */
+.btb-tab:focus-visible         { outline: 2px solid var(--accent); outline-offset: -2px; }
+.btb-drag-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -141,6 +141,39 @@
     },
     "installFileHeader": "# {{label}} — installation & run"
   },
+  "bottomTabBar": {
+    "tabs": {
+      "build":   "Build",
+      "runtime": "Runtime",
+      "logs":    "Logs"
+    },
+    "console": {
+      "filterAll":         "All",
+      "filterStdout":      "stdout",
+      "filterStderr":      "stderr",
+      "filterErrors":      "Errors",
+      "searchPlaceholder": "Search logs…",
+      "searchAriaLabel":   "Search logs",
+      "pauseAriaLabel":    "Pause auto-scroll",
+      "resumeAriaLabel":   "Resume auto-scroll",
+      "paused":            "⏸ Paused",
+      "live":              "⏵ Live",
+      "clear":             "Clear",
+      "clearAriaLabel":    "Clear console",
+      "linesCount":        "{{count}} lines",
+      "linesFiltered":     "{{visible}} / {{total}} lines",
+      "noMatches":         "No matches for \"{{query}}\"",
+      "emptyIdle":         "Runtime logs will appear here when you run the project.",
+      "emptyWaiting":      "Waiting for runtime events…"
+    },
+    "build": {
+      "emptyHint":             "Build timeline will appear here when you start a build.",
+      "building":              "Building…",
+      "buildComplete":         "Build complete — {{count}} files",
+      "buildCompleteNoCount":  "Build complete — done"
+    },
+    "dragAriaLabel": "Resize bottom panel — drag or press arrow keys"
+  },
   "runtimePanel": {
     "livePreview": "Live Preview",
     "buildFirst": "Build your app first, then click Run Project to see it here.",
