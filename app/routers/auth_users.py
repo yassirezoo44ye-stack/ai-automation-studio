@@ -52,6 +52,10 @@ from app.core.passwords import hash_password, verify_password
 
 log = logging.getLogger(__name__)
 
+# Pre-computed once at startup; used as a timing sentinel so the response time
+# for a non-existent account is indistinguishable from a wrong-password attempt.
+_TIMING_DUMMY_HASH: str = hash_password("__timing_sentinel_do_not_use__")
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 _bearer = HTTPBearer(auto_error=False)
@@ -291,6 +295,11 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
         async with get_pool().acquire() as conn:
             user = await _get_user_by_email(conn, body.email)
             if not user or not user["password_hash"]:
+                # Always run a dummy hash so response time is indistinguishable
+                # from a wrong-password attempt — prevents account enumeration
+                # via timing side-channel (bcrypt takes ~100 ms; skipping it
+                # reveals whether the account exists).
+                verify_password(body.password, _TIMING_DUMMY_HASH)
                 await record_login_failure_async(body.email)
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
