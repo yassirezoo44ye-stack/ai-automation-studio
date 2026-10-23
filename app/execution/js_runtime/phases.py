@@ -292,7 +292,14 @@ class PhaseRunner:
                 if script in ("dev", "preview"):
                     plan.run_cmd += ["--", "--host", "0.0.0.0", "--port", str(port)]
             else:
-                entry = _find_entry(ws)
+                # Prefer the entry point the detector already resolved (relative
+                # to ws) over the hardcoded scan — avoids "node index.js" when
+                # the actual entry is e.g. src/server.js.
+                ep = self.info.entry_point
+                if ep and ep.endswith((".js", ".mjs", ".cjs")) and (ws / ep).exists():
+                    entry = ep
+                else:
+                    entry = _find_entry(ws)
                 plan.script_name = entry
                 plan.run_cmd     = ["node", entry]
                 plan.warnings.append(
@@ -834,7 +841,8 @@ def _check_external_services(ws: Path) -> list[str]:
 
 _ENTRY_CANDIDATES = (
     "index.js", "server.js", "app.js", "main.js",
-    "src/index.js", "src/server.js",
+    "src/index.js", "src/server.js", "src/app.js", "src/main.js",
+    "lib/index.js", "lib/server.js",
 )
 
 

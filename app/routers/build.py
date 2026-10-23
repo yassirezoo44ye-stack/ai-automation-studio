@@ -104,7 +104,8 @@ Rules:
 - Write clean, secure code: validate inputs, parameterise SQL, escape output.
 - For simple projects: one index.html with inline CSS/JS is fine.
 - For Python: include requirements.txt when 3rd-party packages are needed.
-- For Node: include package.json with all dependencies listed.
+- For Node: place package.json at the WORKSPACE ROOT (never inside backend/ or server/). Always include a "start" script, e.g. {"scripts": {"start": "node src/server.js"}}. Only create backend/ or frontend/ subdirectories when the user explicitly requests a split frontend+backend architecture.
+- For Node entry points: use src/server.js or server.js (not backend/src/server.js).
 
 After ALL files, append metadata on its own line (no extra text):
 <<<META>>>

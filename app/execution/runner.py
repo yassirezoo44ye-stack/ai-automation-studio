@@ -115,8 +115,18 @@ async def _run(project_id: str, ws: Path, command_override: str | None, request_
         return
 
     info = det.detect(ws)
-    log.info("run project=%s type=%s strategy=%s entry=%s request_id=%s runtime_id=%s",
-             project_id, info.project_type, info.run_strategy, info.entry_point, request_id, runtime_id)
+
+    # Use the effective root when the project lives in a subdirectory (e.g. backend/).
+    run_ws = info.effective_root if info.effective_root is not None else ws
+
+    log.info("run project=%s type=%s strategy=%s entry=%s run_ws=%s request_id=%s runtime_id=%s",
+             project_id, info.project_type, info.run_strategy, info.entry_point,
+             run_ws, request_id, runtime_id)
+
+    if run_ws != ws:
+        yield _ev_r("status",
+                    message=f"📂 Project found in '{run_ws.name}/' subdirectory — running from there",
+                    subdir=run_ws.name)
 
     yield _ev_r("status",
                 message=f"🔍 Detected: {info.project_type} ({info.confidence} confidence)",
@@ -135,7 +145,7 @@ async def _run(project_id: str, ws: Path, command_override: str | None, request_
     # ── Phase 3: driver dispatch ──────────────────────────────────────────────
     for driver in _DRIVER_CHAIN:
         if driver.can_handle(info):
-            async for chunk in driver.stream(project_id, ws, info, command_override):
+            async for chunk in driver.stream(project_id, run_ws, info, command_override):
                 yield chunk
             return
 

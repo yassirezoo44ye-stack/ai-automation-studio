@@ -197,6 +197,10 @@ async def job_ws(ws: WebSocket, job_id: str):
     Server streams {"type": "progress", "pct": 0-100, "log": "..."} frames.
     Connection closes when job reaches a terminal state.
     """
+    user_id = _user_id_from_ws_params(ws)
+    if not user_id:
+        await ws.close(code=4401, reason="unauthorized")
+        return
     topic = f"job:{job_id}"
     await manager.connect(ws, topic)
     hb    = asyncio.create_task(_heartbeat(ws))
@@ -208,6 +212,13 @@ async def job_ws(ws: WebSocket, job_id: str):
         if not job:
             await manager.send(ws, {"type": "error", "message": f"Job {job_id!r} not found"})
             return
+
+        job_org = job.payload.get("organization_id")
+        if job_org:
+            from app.tenancy.service import get_tenancy_service
+            if await get_tenancy_service().get_member_role(job_org, user_id) is None:
+                await ws.close(code=4403, reason="not authorized for this job")
+                return
 
         await manager.send(ws, {
             "type"   : "snapshot",

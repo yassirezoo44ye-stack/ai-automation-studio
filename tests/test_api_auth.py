@@ -87,7 +87,14 @@ class TestAuthRateLimit:
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(return_value=None)  # user not found → 401
 
-        with _mock_pool(conn):
+        # Disable the per-email lockout so this test stays focused on the
+        # IP-based rate limiter (10/min).  The lockout is tested separately
+        # in TestLoginLockout (test_security_patches.py).
+        with _mock_pool(conn), \
+             patch("app.routers.auth_users.check_login_locked_async",
+                   new=AsyncMock(return_value=False)), \
+             patch("app.routers.auth_users.record_login_failure_async",
+                   new=AsyncMock()):
             responses = [
                 client.post(
                     "/api/auth/login",

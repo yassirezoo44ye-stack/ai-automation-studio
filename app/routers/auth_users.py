@@ -18,6 +18,7 @@ Endpoints:
   DELETE /api/auth/sessions/{session_id}
   DELETE /api/auth/me
 """
+import asyncio
 import datetime
 import logging
 import secrets
@@ -33,17 +34,27 @@ from pydantic import BaseModel, EmailStr, field_validator
 from app.core.db import get_pool, write_audit
 from app.core.email import send_password_reset_email, send_verification_email
 from app.core.observability.tracer import get_tracer
-from app.core.rate_limit import make_rate_limit_dep
+from app.core.rate_limit import (
+    make_rate_limit_dep,
+    check_login_locked_async,
+    record_login_failure_async,
+    clear_login_failures_async,
+)
 from app.core.jwt_utils import (
     REFRESH_EXPIRE_DAYS_REMEMBER,
     REFRESH_EXPIRE_DAYS_SESSION,
     decode_access_token,
     make_access_token,
     make_refresh_token,
+    revoke_user_tokens,
 )
 from app.core.passwords import hash_password, verify_password
 
 log = logging.getLogger(__name__)
+
+# Pre-computed once at startup; used as a timing sentinel so the response time
+# for a non-existent account is indistinguishable from a wrong-password attempt.
+_TIMING_DUMMY_HASH: str = hash_password("__timing_sentinel_do_not_use__")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -278,14 +289,28 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
     with tracer.start_span("auth.login", service="auth") as span:
         ua = request.headers.get("User-Agent", "")
         ip = _client_ip(request)
+        if await check_login_locked_async(body.email):
+            span.set_tag("error", "account_locked")
+            raise HTTPException(429, "Too many failed login attempts — try again in 15 minutes")
         async with get_pool().acquire() as conn:
             user = await _get_user_by_email(conn, body.email)
             if not user or not user["password_hash"]:
+                # Always run a dummy hash so response time is indistinguishable
+                # from a wrong-password attempt — prevents account enumeration
+                # via timing side-channel (bcrypt takes ~100 ms; skipping it
+                # reveals whether the account exists).
+                verify_password(body.password, _TIMING_DUMMY_HASH)
+                await record_login_failure_async(body.email)
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
             if not verify_password(body.password, user["password_hash"]):
+                await record_login_failure_async(body.email)
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
+            if not user["email_verified"]:
+                span.set_tag("error", "email_not_verified")
+                raise HTTPException(403, "email_not_verified")
+            await clear_login_failures_async(body.email)
             span.set_tag("user_id", str(user["id"]))
 
             mfa = await conn.fetchrow(
@@ -434,11 +459,15 @@ async def logout(body: RefreshRequest):
 
 
 @router.post("/logout-all")
-async def logout_all(current: Annotated[dict, Depends(get_current_user)]):
+async def logout_all(current: Annotated[dict, Depends(get_current_user)], request: Request):
     async with get_pool().acquire() as conn:
         await conn.execute(
             "DELETE FROM user_sessions WHERE user_id=$1", uuid.UUID(current["id"])
         )
+    await revoke_user_tokens(current["id"])
+    asyncio.create_task(write_audit(
+        current["email"], "logout_all", ip_address=_client_ip(request),
+    ))
     return {"message": "All sessions terminated"}
 
 
@@ -519,9 +548,15 @@ async def forgot_password(body: ForgotPasswordRequest, _rl: None = _auth_rl):
 
 @router.post("/reset-password")
 async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
+    user_email: str | None = None
+    user_id_str: str | None = None
     async with get_pool().acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT user_id, expires_at FROM password_reset_tokens WHERE token=$1", body.token
+            """SELECT prt.user_id, prt.expires_at, u.email
+               FROM password_reset_tokens prt
+               JOIN users u ON u.id = prt.user_id
+               WHERE prt.token=$1""",
+            body.token,
         )
         if not row:
             raise HTTPException(400, "Invalid or expired reset link")
@@ -531,6 +566,8 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
             )
             raise HTTPException(400, "Reset link expired")
 
+        user_email = row["email"]
+        user_id_str = str(row["user_id"])
         pw_hash = hash_password(body.password)
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2", pw_hash, row["user_id"]
@@ -543,6 +580,10 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
             "DELETE FROM user_sessions WHERE user_id=$1", row["user_id"]
         )
 
+    if user_id_str:
+        await revoke_user_tokens(user_id_str)
+    if user_email:
+        asyncio.create_task(write_audit(user_email, "password.reset"))
     return {"message": "Password reset successfully. Please log in with your new password."}
 
 
@@ -642,6 +683,7 @@ async def update_me(
 async def change_password(
     body: ChangePasswordRequest,
     current: Annotated[dict, Depends(get_current_user)],
+    request: Request,
 ):
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
@@ -654,6 +696,14 @@ async def change_password(
             hash_password(body.new_password),
             uuid.UUID(current["id"]),
         )
+        await conn.execute(
+            "DELETE FROM user_sessions WHERE user_id=$1",
+            uuid.UUID(current["id"]),
+        )
+    await revoke_user_tokens(current["id"])
+    asyncio.create_task(write_audit(
+        current["email"], "password.changed", ip_address=_client_ip(request),
+    ))
     return {"message": "Password changed successfully"}
 
 
@@ -1191,7 +1241,8 @@ async def microsoft_oauth_callback(code: str, request: Request, state: str | Non
         raise HTTPException(400, "Microsoft did not return an email address")
 
     async with get_pool().acquire() as conn:
-        user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft")
+        user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft",
+                                         provider_email_verified=True)
         session = await _oauth_session_or_mfa_challenge(conn, user, _client_ip(request), request.headers.get("User-Agent", ""))
 
     exchange_code = await _stash_oauth_session_for_exchange(session)

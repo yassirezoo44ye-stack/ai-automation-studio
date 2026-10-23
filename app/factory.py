@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
 from app.core.config import (
@@ -584,7 +585,7 @@ def create_app() -> FastAPI:
         # hasn't run yet on this request (Starlette middleware order isn't
         # load-bearing here — both paths read the same header).
         org_id = getattr(request.state, "org_id", None) or request.headers.get("X-Organization-Id")
-        if org_id and path.startswith("/api/"):
+        if org_id and path.startswith("/api/") and response.status_code < 400:
             async def _meter():
                 try:
                     from app.billing import get_usage_service
@@ -674,6 +675,8 @@ def create_app() -> FastAPI:
     # Outermost middleware: enforces upload body limit at the ASGI receive level
     # so chunked bodies without Content-Length are rejected before full buffering.
     app.add_middleware(UploadBodySizeLimitMiddleware)
+    # Compress responses ≥1KB — runs outermost so it sees the full response.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     # ── API Routers (must be registered BEFORE the SPA catch-all) ───────────
     app.include_router(auth_users.router)

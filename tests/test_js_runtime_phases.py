@@ -85,9 +85,11 @@ def _lockfile(tmp_path: Path, name: str) -> Path:
 
 
 class _FakeInfo:
-    def __init__(self, project_type: str = "node", run_strategy: str = "node"):
+    def __init__(self, project_type: str = "node", run_strategy: str = "node",
+                 entry_point: str | None = None):
         self.project_type = project_type
         self.run_strategy = run_strategy
+        self.entry_point  = entry_point
 
 
 async def _collect(gen) -> list[tuple[str, dict]]:

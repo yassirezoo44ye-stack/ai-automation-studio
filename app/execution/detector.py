@@ -32,6 +32,9 @@ class ProjectInfo:
     notes: list[str] = field(default_factory=list)  # human-readable messages
     unsupported_reason: str = ""
     local_run_hint: str = ""    # how to run locally when unsupported
+    # Set when the project lives inside a subdirectory of the workspace root.
+    # Drivers and runner should use this as the working directory instead of ws.
+    effective_root: "Path | None" = None
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -51,6 +54,54 @@ def detect(ws: Path) -> ProjectInfo:
         )
 
 
+# Common subdirectory names where AI builders place project files.
+_SUBDIR_CANDIDATES = (
+    "backend", "server", "api", "app", "src",
+    "frontend", "client", "web",
+)
+
+# Indicator files whose presence at a directory root means "this is the project".
+_ROOT_INDICATORS = frozenset({
+    "package.json", "requirements.txt", "manage.py",
+    "main.py", "app.py", "server.py", "run.py", "api.py",
+    "index.html", "Cargo.toml", "pom.xml", "build.gradle",
+    "docker-compose.yml", "docker-compose.yaml", "Dockerfile",
+})
+
+
+def _find_subdir_project(ws: Path, fset: set) -> "Path | None":
+    """
+    If the workspace root has no recognisable entry point but a single common
+    subdirectory does, return that subdirectory so detection can re-run there.
+
+    Handles the common case where AI builders generate all files under
+    ``backend/``, ``server/``, ``src/``, etc. instead of the workspace root.
+    Returns None when root already has indicators or no matching subdir is found.
+    """
+    # Root already looks like a project — don't redirect.
+    if any(ind in fset for ind in _ROOT_INDICATORS):
+        return None
+
+    # Also stop if there are Python source or JS files at the root level
+    # (bare .py or .js at root without a named indicator still counts).
+    root_files = [f for f in fset if "/" not in f]
+    if any(f.endswith((".py", ".js", ".ts", ".html")) for f in root_files):
+        return None
+
+    for subdir_name in _SUBDIR_CANDIDATES:
+        subdir = ws / subdir_name
+        if not subdir.is_dir():
+            continue
+        sub_fset: set[str] = {
+            str(p.relative_to(subdir)).replace("\\", "/")
+            for p in subdir.rglob("*") if p.is_file()
+        }
+        if any(ind in sub_fset for ind in _ROOT_INDICATORS):
+            return subdir
+
+    return None
+
+
 # ── Internal detection logic ──────────────────────────────────────────────────
 
 def _detect(ws: Path) -> ProjectInfo:
@@ -59,6 +110,16 @@ def _detect(ws: Path) -> ProjectInfo:
         for p in ws.rglob("*") if p.is_file()
     }
     fset = set(files)
+
+    # ── Subdir normalisation ───────────────────────────────────────────────
+    # If all indicator files are inside a single subdirectory (e.g. backend/),
+    # re-detect from there so drivers receive the correct working directory.
+    subdir = _find_subdir_project(ws, fset)
+    if subdir is not None:
+        info = _detect(subdir)
+        info.effective_root = subdir
+        info.notes.insert(0, f"📂 Project found in '{subdir.name}/' — running from subdirectory.")
+        return info
 
     # ── Highest-confidence manifest files ─────────────────────────────────
 
