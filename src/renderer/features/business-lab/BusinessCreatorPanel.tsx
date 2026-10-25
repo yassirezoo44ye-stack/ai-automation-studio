@@ -18,7 +18,11 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     method: body ? "POST" : "GET",
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { detail?: string } | null;
+    const detail = typeof payload?.detail === "string" ? payload.detail : "";
+    throw new Error(detail || `Request failed (${response.status})`);
+  }
   return response.json() as Promise<T>;
 }
 
