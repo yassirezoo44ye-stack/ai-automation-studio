@@ -73,7 +73,7 @@ export function BusinessCreatorPanel() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const visual = CAPABILITY_ICONS[capability] ?? DEFAULT_ICON;
-  const canSubmit = !busy && description.trim().length >= 10;
+  const canSubmit = !busy && description.trim().length >= 10 && description.trim().length <= 3000;
   const canExecute = canSubmit && ["app", "store"].includes(capability);
   useEffect(() => {
     let active = true;
@@ -131,20 +131,20 @@ export function BusinessCreatorPanel() {
       </select>
       <label htmlFor="business-creator-description" style={{ display: "block", marginTop: 12, fontWeight: 600, fontSize: 14, color: "var(--t1,#111827)" }}>وصف المشروع</label>
       <textarea id="business-creator-description" aria-label="وصف المشروع" value={description} disabled={busy} onChange={e => { setDescription(e.target.value); setPlan(null); setError(""); }}
-        placeholder="صف المشروع الذي تريد إنشاءه" rows={3}
+        placeholder="صف المشروع الذي تريد إنشاءه" rows={3} maxLength={3000}
         style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 10, padding: 12, borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-input,var(--bg-card,#fff))", color: "var(--t1,#111827)", fontSize: 14, fontFamily: "inherit", resize: "vertical" }} />
-      <small style={{ display: "block", marginTop: 6, color: "var(--t3,#6b7280)" }}>أدخل 10 أحرف على الأقل. لا يتم نشر أي مشروع تلقائياً.</small>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 6, marginTop: 6, color: "var(--t3,#6b7280)", fontSize: 12 }}><span>أدخل 10 أحرف على الأقل. لا يتم نشر أي مشروع تلقائياً.</span><span aria-live="polite">{description.length} / 3000</span></div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, direction: "rtl" }}>
         <button type="button" disabled={!canSubmit} onClick={() => void submit(false)} style={{ minHeight: 46, flex: "1 1 140px", padding: "10px 16px", borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-card,#fff)", color: "var(--t1,#111827)", fontWeight: 600, cursor: "pointer" }}><span aria-hidden="true">🧭</span> {busy ? "جارٍ المعالجة…" : "تخطيط المشروع"}</button>
         <button type="button" disabled={!canExecute}
           onClick={() => void submit(true)} style={{ minHeight: 46, flex: "1 1 140px", padding: "10px 16px", borderRadius: 10, border: 0, background: "#4F46E5", color: "#fff", fontWeight: 700, cursor: "pointer" }}><span aria-hidden="true">🚀</span> {busy ? "جارٍ المعالجة…" : "بدء الإنشاء"}</button>
       </div>
-      {plan && <p role="status">الخطة فقط — لم يبدأ التنفيذ. المحرك: {plan.engine}. المخرجات: {plan.expected_deliverables.join(", ")}</p>}
-      {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory (مرحلة LIVE داخل Flow لا تعني نشره على الإنترنت). المعرف: {projectId}. الحالة: {PHASE_LABELS[projectPhase] ?? (projectPhase || "جارٍ التحميل")}</p>}
+      {plan && <p role="status" style={{ padding: 12, borderRadius: 10, background: "var(--bg-card,#fff)", border: "1px solid var(--b1,#e5e7eb)", color: "var(--t1,#111827)", overflowWrap: "anywhere" }}>الخطة فقط — لم يبدأ التنفيذ. المحرك: {plan.engine}. المخرجات: {plan.expected_deliverables.join(", ")}</p>}
+      {projectId && <p role="status" style={{ padding: 12, borderRadius: 10, background: "var(--bg-card,#fff)", border: "1px solid var(--b1,#e5e7eb)", color: "var(--t1,#111827)", overflowWrap: "anywhere" }}>تم إرسال المشروع إلى SaaS Factory (مرحلة LIVE داخل Flow لا تعني نشره على الإنترنت). المعرف: {projectId}. الحالة: {PHASE_LABELS[projectPhase] ?? (projectPhase || "جارٍ التحميل")}</p>}
       {projectError && <p role="alert">خطأ المشروع: {projectError}</p>}
       {pollError && <p role="alert">{pollError}</p>}
       {projectPhase === "PENDING_REVIEW" && <p role="status">المشروع ينتظر مراجعة أمنية قبل الاستكمال.</p>}
-      {error && <p role="alert">{error}</p>}
+      {error && <p role="alert" style={{ color: "var(--danger,#b91c1c)", overflowWrap: "anywhere" }}>{error}</p>}
       {!["app", "store"].includes(capability) && <small>التنفيذ غير متاح بعد لهذا النوع؛ التخطيط متاح.</small>}
     </section>
   );
