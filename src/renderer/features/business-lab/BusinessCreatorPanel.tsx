@@ -35,6 +35,7 @@ export function BusinessCreatorPanel() {
   const [projectId, setProjectId] = useState("");
   const [projectPhase, setProjectPhase] = useState("");
   const [projectError, setProjectError] = useState("");
+  const [pollError, setPollError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -45,7 +46,7 @@ export function BusinessCreatorPanel() {
     return () => { active = false; };
   }, []);
   const submit = async (execute: boolean) => {
-    setBusy(true); setError(""); setPlan(null); setProjectId(""); setProjectPhase(""); setProjectError("");
+    setBusy(true); setError(""); setPlan(null); setProjectId(""); setProjectPhase(""); setProjectError(""); setPollError("");
     try {
       const body = { capability, description };
       if (execute) {
@@ -68,9 +69,9 @@ export function BusinessCreatorPanel() {
         const response = await apiFetch(`/api/saas-factory/projects/${encodeURIComponent(projectId)}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json() as { phase: string; error_message?: string | null };
-        if (!cancelled) { setProjectPhase(data.phase); setProjectError(data.error_message ?? ""); }
+        if (!cancelled) { setProjectPhase(data.phase); setProjectError(data.error_message ?? ""); setPollError(""); }
       } catch {
-        if (!cancelled) setProjectPhase("تعذر قراءة حالة المشروع");
+        if (!cancelled) setPollError("تعذر تحديث حالة المشروع؛ ستتم إعادة المحاولة تلقائياً.");
       }
     };
     void poll();
@@ -93,8 +94,9 @@ export function BusinessCreatorPanel() {
           onClick={() => void submit(true)}>بدء الإنشاء</button>
       </div>
       {plan && <p role="status">الخطة فقط — لم يبدأ التنفيذ. المحرك: {plan.engine}. المخرجات: {plan.expected_deliverables.join(", ")}</p>}
-      {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory. المعرف: {projectId}. الحالة: {projectPhase || "جارٍ التحميل"}</p>}
-      {projectError && <p role="alert">فشل المشروع: {projectError}</p>}
+      {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory (مرحلة LIVE داخل Flow لا تعني نشره على الإنترنت). المعرف: {projectId}. الحالة: {projectPhase || "جارٍ التحميل"}</p>}
+      {projectError && <p role="alert">خطأ المشروع: {projectError}</p>}
+      {pollError && <p role="alert">{pollError}</p>}
       {projectPhase === "PENDING_REVIEW" && <p role="status">المشروع ينتظر مراجعة أمنية قبل الاستكمال.</p>}
       {error && <p role="alert">{error}</p>}
       {!["app", "store"].includes(capability) && <small>التنفيذ غير متاح بعد لهذا النوع؛ التخطيط متاح.</small>}
