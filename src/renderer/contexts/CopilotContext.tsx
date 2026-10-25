@@ -92,13 +92,26 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
+          if (done) {
+            buf += decoder.decode();
+            if (buf.trim()) {
+              // A final SSE frame may arrive without a trailing newline.
+              buf += "\n";
+            } else break;
+          } else {
+            buf += decoder.decode(value, { stream: true });
+          }
           const lines = buf.split("\n");
           buf = lines.pop() ?? "";
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
-            const ev = JSON.parse(line.slice(6)) as { type: string; conv_id?: string; text?: string; message?: string };
+            let ev: { type: string; conv_id?: string; text?: string; message?: string };
+            try {
+              ev = JSON.parse(line.slice(6));
+            } catch {
+              // Ignore malformed SSE frames without discarding valid subsequent events.
+              continue;
+            }
             if (ev.type === "conv_id" && ev.conv_id) {
               conversationIdRef.current = ev.conv_id;
             } else if (ev.type === "delta" && ev.text) {
@@ -111,7 +124,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
               closed = true;
             }
           }
-          if (closed) break;
+          if (closed || done) break;
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
