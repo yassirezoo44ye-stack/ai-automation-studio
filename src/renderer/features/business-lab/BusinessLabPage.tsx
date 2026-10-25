@@ -13,6 +13,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { businessService, type Plan, type PlanDetail, type Section } from "./services/businessService";
+import { BusinessCreatorPanel } from "./BusinessCreatorPanel";
 
 // ── Status badge colours ──────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -329,6 +330,7 @@ export function BusinessLabPage() {
         display: "flex", flexDirection: "column", background: "var(--bg-card,#fff)",
         overflowY: "auto",
       }}>
+        <BusinessCreatorPanel />
         <div style={{ padding: "16px 14px 10px", borderBottom: "1px solid var(--b1,#e5e7eb)" }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: "var(--t1,#111)", marginBottom: 10 }}>
             🧪 مختبر الأعمال
