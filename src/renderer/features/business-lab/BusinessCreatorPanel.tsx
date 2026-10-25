@@ -13,6 +13,18 @@ type Plan = {
   expected_deliverables: string[];
 };
 const API = "/api/business-creator";
+const CAPABILITY_ICONS: Record<string, { icon: string; color: string; background: string }> = {
+  content: { icon: "🎬", color: "#9D174D", background: "#FCE7F3" },
+  digital_products: { icon: "📚", color: "#6D28D9", background: "#EDE9FE" },
+  youtube: { icon: "▶️", color: "#B91C1C", background: "#FEE2E2" },
+  store: { icon: "🛍️", color: "#047857", background: "#D1FAE5" },
+  app: { icon: "🚀", color: "#4338CA", background: "#E0E7FF" },
+  marketing: { icon: "📣", color: "#B45309", background: "#FEF3C7" },
+  voiceover: { icon: "🎙️", color: "#0369A1", background: "#E0F2FE" },
+  analytics: { icon: "📊", color: "#0F766E", background: "#CCFBF1" },
+  freelance: { icon: "💼", color: "#7C3AED", background: "#F3E8FF" },
+};
+const DEFAULT_ICON = { icon: "✨", color: "#4338CA", background: "#E0E7FF" };
 async function request<T>(path: string, body?: unknown): Promise<T> {
   const response = await apiFetch(API + path, {
     method: body ? "POST" : "GET",
@@ -38,6 +50,7 @@ export function BusinessCreatorPanel() {
   const [pollError, setPollError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const visual = CAPABILITY_ICONS[capability] ?? DEFAULT_ICON;
   useEffect(() => {
     let active = true;
     void request<{ capabilities: Capability[] }>("/capabilities")
@@ -80,18 +93,24 @@ export function BusinessCreatorPanel() {
   }, [projectId, projectPhase]);
   return (
     <section aria-label="Business Creator" style={{ padding: 12, borderBottom: "1px solid var(--b1,#e5e7eb)" }}>
-      <strong>إنشاء مشروع رقمي</strong>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, direction: "rtl" }}>
+        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 48, height: 48, flexShrink: 0, borderRadius: 14, background: visual.background, color: visual.color, fontSize: 26 }}>{visual.icon}</span>
+        <div>
+          <strong style={{ display: "block", fontSize: 18, color: "var(--t1,#111827)" }}>إنشاء مشروع رقمي</strong>
+          <span style={{ fontSize: 13, color: "var(--t3,#6b7280)" }}>اختر الفكرة، راجع الخطة، ثم ابدأ الإنشاء</span>
+        </div>
+      </div>
       <select aria-label="نوع المشروع" value={capability} disabled={busy} onChange={e => { setCapability(e.target.value); setPlan(null); setError(""); }}
-        style={{ display: "block", width: "100%", marginTop: 8 }}>
+        style={{ display: "block", width: "100%", minHeight: 46, marginTop: 8, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-input,var(--bg-card,#fff))", color: "var(--t1,#111827)", fontSize: 14 }}>
         {items.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
       </select>
       <textarea aria-label="وصف المشروع" value={description} disabled={busy} onChange={e => { setDescription(e.target.value); setPlan(null); setError(""); }}
         placeholder="صف المشروع الذي تريد إنشاءه" rows={3}
-        style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 8 }} />
-      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-        <button type="button" disabled={busy || description.trim().length < 10} onClick={() => void submit(false)}>تخطيط</button>
+        style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 10, padding: 12, borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-input,var(--bg-card,#fff))", color: "var(--t1,#111827)", fontSize: 14, fontFamily: "inherit", resize: "vertical" }} />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, direction: "rtl" }}>
+        <button type="button" disabled={busy || description.trim().length < 10} onClick={() => void submit(false)} style={{ minHeight: 46, flex: "1 1 140px", padding: "10px 16px", borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-card,#fff)", color: "var(--t1,#111827)", fontWeight: 600, cursor: "pointer" }}><span aria-hidden="true">🧭</span> تخطيط المشروع</button>
         <button type="button" disabled={busy || description.trim().length < 10 || !["app", "store"].includes(capability)}
-          onClick={() => void submit(true)}>بدء الإنشاء</button>
+          onClick={() => void submit(true)} style={{ minHeight: 46, flex: "1 1 140px", padding: "10px 16px", borderRadius: 10, border: 0, background: "#4F46E5", color: "#fff", fontWeight: 700, cursor: "pointer" }}><span aria-hidden="true">🚀</span> بدء الإنشاء</button>
       </div>
       {plan && <p role="status">الخطة فقط — لم يبدأ التنفيذ. المحرك: {plan.engine}. المخرجات: {plan.expected_deliverables.join(", ")}</p>}
       {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory (مرحلة LIVE داخل Flow لا تعني نشره على الإنترنت). المعرف: {projectId}. الحالة: {projectPhase || "جارٍ التحميل"}</p>}
