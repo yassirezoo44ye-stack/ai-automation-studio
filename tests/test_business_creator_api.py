@@ -45,3 +45,17 @@ async def test_app_submission_uses_authenticated_tenant(monkeypatch):
     start.assert_awaited_once()
     assert start.await_args.kwargs["org_id"] == "org-1"
     assert start.await_args.kwargs["user_id"] == "user-1"
+
+
+@pytest.mark.asyncio
+async def test_store_submission_explicitly_requests_storefront(monkeypatch):
+    start = AsyncMock()
+    monkeypatch.setattr(api, "get_pipeline", lambda: SimpleNamespace(start=start))
+    result = await api.execute(
+        api.PlanRequest(capability="store", description="Sell handmade products to customers"),
+        SimpleNamespace(org_id="org-1", user_id="user-1"),
+    )
+    assert result["status"] == "submitted"
+    assert "online store" in start.await_args.kwargs["idea_text"]
+    assert "product catalog" in start.await_args.kwargs["idea_text"]
+    assert start.await_args.kwargs["org_id"] == "org-1"
