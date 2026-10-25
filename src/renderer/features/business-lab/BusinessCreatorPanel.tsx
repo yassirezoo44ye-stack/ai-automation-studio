@@ -15,7 +15,7 @@ type Plan = {
 const API = "/api/business-creator";
 const CAPABILITY_ICONS: Record<string, { icon: string; color: string; background: string }> = {
   content: { icon: "🎬", color: "#9D174D", background: "#FCE7F3" },
-  digital_products: { icon: "📚", color: "#6D28D9", background: "#EDE9FE" },
+  digital_product: { icon: "📚", color: "#6D28D9", background: "#EDE9FE" },
   youtube: { icon: "▶️", color: "#B91C1C", background: "#FEE2E2" },
   store: { icon: "🛍️", color: "#047857", background: "#D1FAE5" },
   app: { icon: "🚀", color: "#4338CA", background: "#E0E7FF" },
@@ -23,6 +23,17 @@ const CAPABILITY_ICONS: Record<string, { icon: string; color: string; background
   voiceover: { icon: "🎙️", color: "#0369A1", background: "#E0F2FE" },
   analytics: { icon: "📊", color: "#0F766E", background: "#CCFBF1" },
   freelance: { icon: "💼", color: "#7C3AED", background: "#F3E8FF" },
+};
+const CAPABILITY_LABELS: Record<string, string> = {
+  app: "تطبيق أو موقع إلكتروني",
+  store: "متجر إلكتروني",
+  content: "صناعة المحتوى",
+  digital_product: "منتجات رقمية",
+  youtube: "إنتاج محتوى يوتيوب",
+  marketing: "التسويق للأعمال",
+  voiceover: "التعليق الصوتي",
+  analytics: "تحليل البيانات",
+  freelance: "خدمات العمل الحر",
 };
 const DEFAULT_ICON = { icon: "✨", color: "#4338CA", background: "#E0E7FF" };
 async function request<T>(path: string, body?: unknown): Promise<T> {
@@ -100,11 +111,13 @@ export function BusinessCreatorPanel() {
           <span style={{ fontSize: 13, color: "var(--t3,#6b7280)" }}>اختر الفكرة، راجع الخطة، ثم ابدأ الإنشاء</span>
         </div>
       </div>
-      <select aria-label="نوع المشروع" value={capability} disabled={busy} onChange={e => { setCapability(e.target.value); setPlan(null); setError(""); }}
+      <label htmlFor="business-creator-capability" style={{ display: "block", marginTop: 12, fontWeight: 600, fontSize: 14, color: "var(--t1,#111827)" }}>نوع المشروع</label>
+      <select id="business-creator-capability" aria-label="نوع المشروع" value={capability} disabled={busy} onChange={e => { setCapability(e.target.value); setPlan(null); setError(""); }}
         style={{ display: "block", width: "100%", minHeight: 46, marginTop: 8, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-input,var(--bg-card,#fff))", color: "var(--t1,#111827)", fontSize: 14 }}>
-        {items.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
+        {items.map(item => <option key={item.id} value={item.id}>{CAPABILITY_ICONS[item.id]?.icon ?? "✨"} {CAPABILITY_LABELS[item.id] ?? item.title}</option>)}
       </select>
-      <textarea aria-label="وصف المشروع" value={description} disabled={busy} onChange={e => { setDescription(e.target.value); setPlan(null); setError(""); }}
+      <label htmlFor="business-creator-description" style={{ display: "block", marginTop: 12, fontWeight: 600, fontSize: 14, color: "var(--t1,#111827)" }}>وصف المشروع</label>
+      <textarea id="business-creator-description" aria-label="وصف المشروع" value={description} disabled={busy} onChange={e => { setDescription(e.target.value); setPlan(null); setError(""); }}
         placeholder="صف المشروع الذي تريد إنشاءه" rows={3}
         style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 10, padding: 12, borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-input,var(--bg-card,#fff))", color: "var(--t1,#111827)", fontSize: 14, fontFamily: "inherit", resize: "vertical" }} />
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, direction: "rtl" }}>
