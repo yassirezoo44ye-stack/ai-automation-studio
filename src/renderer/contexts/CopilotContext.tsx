@@ -7,10 +7,8 @@
  * that endpoint with a short context line before streaming; the raw
  * prefix is never shown in the UI, only the user's own text is.
  *
- * Conversations are kept in the caller's own "demo" project (the same
- * default every other chat surface in this app already resolves to via
- * resolve_project_id) under a distinct title, so no schema change was
- * needed to keep this separate in spirit from regular AI Workspace chats.
+ * Copilot uses a dedicated project_id ("copilot"), separate from the
+ * regular AI Workspace default ("demo").
  */
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -66,7 +64,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     const pageLabel = PAGE_LABELS[page] ?? page;
     const contextLine = `[Context: the user is currently on the "${pageLabel}" page` +
       (currentOrg ? ` of the "${currentOrg.name}" organization` : "") +
-      ` inside Axon AI Automation Studio. Answer helpfully and concisely; you may suggest which page to visit but cannot take actions yourself.]`;
+      ` inside Flow AI Automation Platform. Answer questions about the current page using only the context provided; do not claim to have inspected logs, files, or runtime errors unless those results are available. You may suggest navigation, but do not claim to have performed actions.]`;
     const promptWithContext = `${contextLine}\n\n${trimmed}`;
 
     const ctrl = new AbortController();
