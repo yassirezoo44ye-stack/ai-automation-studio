@@ -60,7 +60,11 @@ async def execute(
         project_id=project_id,
         org_id=ctx.org_id,
         user_id=ctx.user_id,
-        idea_text=body.description,
+        idea_text=(
+            f"Build an online store with a product catalog and storefront. {body.description}"
+            if body.capability == "store"
+            else body.description
+        ),
     )
     return {
         "project_id": project_id,
