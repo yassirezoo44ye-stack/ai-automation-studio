@@ -1,3 +1,4 @@
+import { apiFetch } from "../../shared/utils/api";
 import { useEffect, useState } from "react";
 
 type Capability = {
@@ -12,16 +13,9 @@ type Plan = {
   expected_deliverables: string[];
 };
 const API = "/api/business-creator";
-function headers(): HeadersInit {
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${localStorage.getItem("auth_token") ?? ""}`,
-  };
-}
 async function request<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(API + path, {
+  const response = await apiFetch(API + path, {
     method: body ? "POST" : "GET",
-    headers: headers(),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
@@ -67,7 +61,7 @@ export function BusinessCreatorPanel() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const response = await fetch(`/api/saas-factory/projects/${encodeURIComponent(projectId)}`, { headers: headers() });
+        const response = await apiFetch(`/api/saas-factory/projects/${encodeURIComponent(projectId)}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json() as { phase: string; error_message?: string | null };
         if (!cancelled) { setProjectPhase(data.phase); setProjectError(data.error_message ?? ""); }
