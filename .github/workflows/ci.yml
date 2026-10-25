@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, claude/extract-features-flow-studio-0cnm4v]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
