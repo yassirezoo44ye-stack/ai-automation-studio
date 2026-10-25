@@ -121,6 +121,18 @@ describe("CopilotProvider", () => {
     expect(body.project_id).toBe("copilot");
   });
 
+  it("handles malformed SSE and a final event without a trailing newline", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(mockStreamResponse([
+      "data: {invalid json}\\n",
+      'data: {"type":"delta","text":"Recovered"}',
+    ]));
+    render(<CopilotProvider><Consumer /></CopilotProvider>);
+    fireEvent.click(screen.getByText("ask"));
+    await waitFor(() => expect(screen.getByTestId("msg-assistant")).toHaveTextContent("Recovered"));
+    expect(screen.getByTestId("error")).toHaveTextContent("");
+  });
+
   it("surfaces a stream error instead of leaving the UI silently stuck", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(mockStreamResponse([
