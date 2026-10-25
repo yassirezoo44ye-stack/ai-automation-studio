@@ -73,6 +73,9 @@ describe("CopilotProvider", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.prompt).toContain("Billing");
     expect(body.prompt).toContain("Acme Inc");
+    expect(body.prompt).toContain("Flow AI Automation Platform");
+    expect(body.prompt).not.toContain("Axon");
+    expect(body.prompt).toContain("do not claim to have inspected logs");
     expect(body.prompt).toContain("Explain this page");
   });
 
