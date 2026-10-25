@@ -35,6 +35,7 @@ export function BusinessCreatorPanel() {
   const [description, setDescription] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [projectId, setProjectId] = useState("");
+  const [projectPhase, setProjectPhase] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -45,7 +46,7 @@ export function BusinessCreatorPanel() {
     return () => { active = false; };
   }, []);
   const submit = async (execute: boolean) => {
-    setBusy(true); setError(""); setProjectId("");
+    setBusy(true); setError(""); setProjectId(""); setProjectPhase("");
     try {
       const body = { capability, description };
       if (execute) {
@@ -60,6 +61,23 @@ export function BusinessCreatorPanel() {
       setBusy(false);
     }
   };
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/saas-factory/projects/${encodeURIComponent(projectId)}`, { headers: headers() });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json() as { phase: string };
+        if (!cancelled) setProjectPhase(data.phase);
+      } catch {
+        if (!cancelled) setProjectPhase("تعذر قراءة حالة المشروع");
+      }
+    };
+    void poll();
+    const interval = window.setInterval(() => void poll(), 5000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [projectId]);
   return (
     <section aria-label="Business Creator" style={{ padding: 12, borderBottom: "1px solid var(--b1,#e5e7eb)" }}>
       <strong>إنشاء مشروع رقمي</strong>
@@ -76,7 +94,7 @@ export function BusinessCreatorPanel() {
           onClick={() => void submit(true)}>بدء الإنشاء</button>
       </div>
       {plan && <p role="status">الخطة فقط — لم يبدأ التنفيذ. المحرك: {plan.engine}. المخرجات: {plan.expected_deliverables.join(", ")}</p>}
-      {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory. المعرف: {projectId}</p>}
+      {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory. المعرف: {projectId}. الحالة: {projectPhase || "جارٍ التحميل"}</p>}
       {error && <p role="alert">{error}</p>}
       {!["app", "store"].includes(capability) && <small>التنفيذ غير متاح بعد لهذا النوع؛ التخطيط متاح.</small>}
     </section>
