@@ -124,7 +124,7 @@ describe("CopilotProvider", () => {
   it("handles malformed SSE and a final event without a trailing newline", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(mockStreamResponse([
-      "data: {invalid json}\\n",
+      "data: {invalid json}\\n\\n",
       'data: {"type":"delta","text":"Recovered"}',
     ]));
     render(<CopilotProvider><Consumer /></CopilotProvider>);
