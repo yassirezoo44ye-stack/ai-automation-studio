@@ -36,6 +36,7 @@ export function BusinessCreatorPanel() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [projectId, setProjectId] = useState("");
   const [projectPhase, setProjectPhase] = useState("");
+  const [projectError, setProjectError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -46,7 +47,7 @@ export function BusinessCreatorPanel() {
     return () => { active = false; };
   }, []);
   const submit = async (execute: boolean) => {
-    setBusy(true); setError(""); setProjectId(""); setProjectPhase("");
+    setBusy(true); setError(""); setProjectId(""); setProjectPhase(""); setProjectError("");
     try {
       const body = { capability, description };
       if (execute) {
@@ -62,14 +63,14 @@ export function BusinessCreatorPanel() {
     }
   };
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || ["LIVE", "FAILED", "PENDING_REVIEW"].includes(projectPhase)) return;
     let cancelled = false;
     const poll = async () => {
       try {
         const response = await fetch(`/api/saas-factory/projects/${encodeURIComponent(projectId)}`, { headers: headers() });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json() as { phase: string };
-        if (!cancelled) setProjectPhase(data.phase);
+        const data = await response.json() as { phase: string; error_message?: string | null };
+        if (!cancelled) { setProjectPhase(data.phase); setProjectError(data.error_message ?? ""); }
       } catch {
         if (!cancelled) setProjectPhase("تعذر قراءة حالة المشروع");
       }
@@ -77,7 +78,7 @@ export function BusinessCreatorPanel() {
     void poll();
     const interval = window.setInterval(() => void poll(), 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [projectId]);
+  }, [projectId, projectPhase]);
   return (
     <section aria-label="Business Creator" style={{ padding: 12, borderBottom: "1px solid var(--b1,#e5e7eb)" }}>
       <strong>إنشاء مشروع رقمي</strong>
@@ -95,6 +96,8 @@ export function BusinessCreatorPanel() {
       </div>
       {plan && <p role="status">الخطة فقط — لم يبدأ التنفيذ. المحرك: {plan.engine}. المخرجات: {plan.expected_deliverables.join(", ")}</p>}
       {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory. المعرف: {projectId}. الحالة: {projectPhase || "جارٍ التحميل"}</p>}
+      {projectError && <p role="alert">فشل المشروع: {projectError}</p>}
+      {projectPhase === "PENDING_REVIEW" && <p role="status">المشروع ينتظر مراجعة أمنية قبل الاستكمال.</p>}
       {error && <p role="alert">{error}</p>}
       {!["app", "store"].includes(capability) && <small>التنفيذ غير متاح بعد لهذا النوع؛ التخطيط متاح.</small>}
     </section>
