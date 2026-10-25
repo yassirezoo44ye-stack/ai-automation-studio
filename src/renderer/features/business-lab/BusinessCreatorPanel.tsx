@@ -45,7 +45,7 @@ export function BusinessCreatorPanel() {
     return () => { active = false; };
   }, []);
   const submit = async (execute: boolean) => {
-    setBusy(true); setError(""); setProjectId(""); setProjectPhase(""); setProjectError("");
+    setBusy(true); setError(""); setPlan(null); setProjectId(""); setProjectPhase(""); setProjectError("");
     try {
       const body = { capability, description };
       if (execute) {
@@ -80,11 +80,11 @@ export function BusinessCreatorPanel() {
   return (
     <section aria-label="Business Creator" style={{ padding: 12, borderBottom: "1px solid var(--b1,#e5e7eb)" }}>
       <strong>إنشاء مشروع رقمي</strong>
-      <select aria-label="نوع المشروع" value={capability} onChange={e => { setCapability(e.target.value); setPlan(null); }}
+      <select aria-label="نوع المشروع" value={capability} disabled={busy} onChange={e => { setCapability(e.target.value); setPlan(null); setError(""); }}
         style={{ display: "block", width: "100%", marginTop: 8 }}>
         {items.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
       </select>
-      <textarea aria-label="وصف المشروع" value={description} onChange={e => setDescription(e.target.value)}
+      <textarea aria-label="وصف المشروع" value={description} disabled={busy} onChange={e => { setDescription(e.target.value); setPlan(null); setError(""); }}
         placeholder="صف المشروع الذي تريد إنشاءه" rows={3}
         style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 8 }} />
       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
