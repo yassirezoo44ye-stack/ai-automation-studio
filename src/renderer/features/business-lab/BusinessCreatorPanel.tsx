@@ -35,6 +35,17 @@ const CAPABILITY_LABELS: Record<string, string> = {
   analytics: "تحليل البيانات",
   freelance: "خدمات العمل الحر",
 };
+const PHASE_LABELS: Record<string, string> = {
+  IDEA: "استلام الفكرة",
+  BLUEPRINT: "إعداد المخطط",
+  BUILDING: "إنشاء المشروع",
+  TESTING: "فحص مبدئي",
+  VERIFYING: "مراجعة أمنية",
+  DEPLOYING: "حفظ المشروع داخل Flow",
+  LIVE: "مكتمل داخل Flow",
+  FAILED: "فشل الإنشاء",
+  PENDING_REVIEW: "بانتظار المراجعة",
+};
 const DEFAULT_ICON = { icon: "✨", color: "#4338CA", background: "#E0E7FF" };
 async function request<T>(path: string, body?: unknown): Promise<T> {
   const response = await apiFetch(API + path, {
@@ -62,6 +73,8 @@ export function BusinessCreatorPanel() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const visual = CAPABILITY_ICONS[capability] ?? DEFAULT_ICON;
+  const canSubmit = !busy && description.trim().length >= 10;
+  const canExecute = canSubmit && ["app", "store"].includes(capability);
   useEffect(() => {
     let active = true;
     void request<{ capabilities: Capability[] }>("/capabilities")
@@ -120,13 +133,14 @@ export function BusinessCreatorPanel() {
       <textarea id="business-creator-description" aria-label="وصف المشروع" value={description} disabled={busy} onChange={e => { setDescription(e.target.value); setPlan(null); setError(""); }}
         placeholder="صف المشروع الذي تريد إنشاءه" rows={3}
         style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 10, padding: 12, borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-input,var(--bg-card,#fff))", color: "var(--t1,#111827)", fontSize: 14, fontFamily: "inherit", resize: "vertical" }} />
+      <small style={{ display: "block", marginTop: 6, color: "var(--t3,#6b7280)" }}>أدخل 10 أحرف على الأقل. لا يتم نشر أي مشروع تلقائياً.</small>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, direction: "rtl" }}>
-        <button type="button" disabled={busy || description.trim().length < 10} onClick={() => void submit(false)} style={{ minHeight: 46, flex: "1 1 140px", padding: "10px 16px", borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-card,#fff)", color: "var(--t1,#111827)", fontWeight: 600, cursor: "pointer" }}><span aria-hidden="true">🧭</span> تخطيط المشروع</button>
-        <button type="button" disabled={busy || description.trim().length < 10 || !["app", "store"].includes(capability)}
-          onClick={() => void submit(true)} style={{ minHeight: 46, flex: "1 1 140px", padding: "10px 16px", borderRadius: 10, border: 0, background: "#4F46E5", color: "#fff", fontWeight: 700, cursor: "pointer" }}><span aria-hidden="true">🚀</span> بدء الإنشاء</button>
+        <button type="button" disabled={!canSubmit} onClick={() => void submit(false)} style={{ minHeight: 46, flex: "1 1 140px", padding: "10px 16px", borderRadius: 10, border: "1px solid var(--b1,#d1d5db)", background: "var(--bg-card,#fff)", color: "var(--t1,#111827)", fontWeight: 600, cursor: "pointer" }}><span aria-hidden="true">🧭</span> {busy ? "جارٍ المعالجة…" : "تخطيط المشروع"}</button>
+        <button type="button" disabled={!canExecute}
+          onClick={() => void submit(true)} style={{ minHeight: 46, flex: "1 1 140px", padding: "10px 16px", borderRadius: 10, border: 0, background: "#4F46E5", color: "#fff", fontWeight: 700, cursor: "pointer" }}><span aria-hidden="true">🚀</span> {busy ? "جارٍ المعالجة…" : "بدء الإنشاء"}</button>
       </div>
       {plan && <p role="status">الخطة فقط — لم يبدأ التنفيذ. المحرك: {plan.engine}. المخرجات: {plan.expected_deliverables.join(", ")}</p>}
-      {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory (مرحلة LIVE داخل Flow لا تعني نشره على الإنترنت). المعرف: {projectId}. الحالة: {projectPhase || "جارٍ التحميل"}</p>}
+      {projectId && <p role="status">تم إرسال المشروع إلى SaaS Factory (مرحلة LIVE داخل Flow لا تعني نشره على الإنترنت). المعرف: {projectId}. الحالة: {PHASE_LABELS[projectPhase] ?? (projectPhase || "جارٍ التحميل")}</p>}
       {projectError && <p role="alert">خطأ المشروع: {projectError}</p>}
       {pollError && <p role="alert">{pollError}</p>}
       {projectPhase === "PENDING_REVIEW" && <p role="status">المشروع ينتظر مراجعة أمنية قبل الاستكمال.</p>}
