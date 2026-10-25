@@ -7,10 +7,8 @@
  * that endpoint with a short context line before streaming; the raw
  * prefix is never shown in the UI, only the user's own text is.
  *
- * Conversations are kept in the caller's own "demo" project (the same
- * default every other chat surface in this app already resolves to via
- * resolve_project_id) under a distinct title, so no schema change was
- * needed to keep this separate in spirit from regular AI Workspace chats.
+ * Copilot uses a dedicated project_id ("copilot"), separate from the
+ * regular AI Workspace default ("demo").
  */
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -66,7 +64,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     const pageLabel = PAGE_LABELS[page] ?? page;
     const contextLine = `[Context: the user is currently on the "${pageLabel}" page` +
       (currentOrg ? ` of the "${currentOrg.name}" organization` : "") +
-      ` inside Axon AI Automation Studio. Answer helpfully and concisely; you may suggest which page to visit but cannot take actions yourself.]`;
+      ` inside Flow AI Automation Platform. Answer questions about the current page using only the context provided; do not claim to have inspected logs, files, or runtime errors unless those results are available. You may suggest navigation, but do not claim to have performed actions.]`;
     const promptWithContext = `${contextLine}\n\n${trimmed}`;
 
     const ctrl = new AbortController();
@@ -94,13 +92,26 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
+          if (done) {
+            buf += decoder.decode();
+            if (buf.trim()) {
+              // A final SSE frame may arrive without a trailing newline.
+              buf += "\n";
+            } else break;
+          } else {
+            buf += decoder.decode(value, { stream: true });
+          }
           const lines = buf.split("\n");
           buf = lines.pop() ?? "";
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
-            const ev = JSON.parse(line.slice(6)) as { type: string; conv_id?: string; text?: string; message?: string };
+            let ev: { type: string; conv_id?: string; text?: string; message?: string };
+            try {
+              ev = JSON.parse(line.slice(6));
+            } catch {
+              // Ignore malformed SSE frames without discarding valid subsequent events.
+              continue;
+            }
             if (ev.type === "conv_id" && ev.conv_id) {
               conversationIdRef.current = ev.conv_id;
             } else if (ev.type === "delta" && ev.text) {
@@ -113,7 +124,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
               closed = true;
             }
           }
-          if (closed) break;
+          if (closed || done) break;
         }
       } catch (err) {
         if ((err as Error).name !== "AbortError") {

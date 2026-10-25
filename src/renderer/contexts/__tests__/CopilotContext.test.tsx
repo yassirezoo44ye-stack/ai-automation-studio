@@ -73,6 +73,9 @@ describe("CopilotProvider", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.prompt).toContain("Billing");
     expect(body.prompt).toContain("Acme Inc");
+    expect(body.prompt).toContain("Flow AI Automation Platform");
+    expect(body.prompt).not.toContain("Axon");
+    expect(body.prompt).toContain("do not claim to have inspected logs");
     expect(body.prompt).toContain("Explain this page");
   });
 
@@ -116,6 +119,18 @@ describe("CopilotProvider", () => {
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.project_id).toBe("copilot");
+  });
+
+  it("handles malformed SSE and a final event without a trailing newline", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(mockStreamResponse([
+      "data: {invalid json}\n\n",
+      'data: {"type":"delta","text":"Recovered"}',
+    ]));
+    render(<CopilotProvider><Consumer /></CopilotProvider>);
+    fireEvent.click(screen.getByText("ask"));
+    await waitFor(() => expect(screen.getByTestId("msg-assistant")).toHaveTextContent("Recovered"));
+    expect(screen.getByTestId("error")).toHaveTextContent("");
   });
 
   it("surfaces a stream error instead of leaving the UI silently stuck", async () => {
