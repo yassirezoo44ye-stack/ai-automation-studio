@@ -33,6 +33,7 @@ const PAGE_LABELS: Record<Page, string> = {
   devices: "Devices",
   discover: "Discover",
   feed: "Flow Feed",
+  careers: "Career Assistant",
   leads: "Leads",
   "saas-factory": "SaaS Factory",
   "new-project": "New Project",

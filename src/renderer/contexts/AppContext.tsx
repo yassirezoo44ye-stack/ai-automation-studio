@@ -28,6 +28,7 @@ const PATH_TO_PAGE: Record<string, Page> = {
   "/devices":       "devices",
   "/discover":      "discover",
   "/feed":          "feed",
+  "/careers":        "careers",
   "/leads":         "leads",
   "/saas-factory":  "saas-factory",
   "/new-project":   "new-project",

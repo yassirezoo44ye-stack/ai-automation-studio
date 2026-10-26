@@ -73,6 +73,7 @@ from app.routers import ws_device        as ws_device_router
 # Flow Next — Discover (Phase 1)
 from app.routers import discover         as discover_router
 # Lead Engine
+from app.routers import careers          as careers_router
 from app.routers import leads            as leads_router
 # SaaS Factory
 from app.routers import saas_factory     as saas_factory_router
@@ -283,6 +284,12 @@ async def lifespan(app: FastAPI):
     async with pool.acquire() as conn:
         await init_social_publisher_schema(conn)
 
+    # Private career assistant: schema only; Gmail sync is opt-in per user.
+    from app.core.careers.schema import init_careers_schema
+    from app.core.careers.service import scheduler as career_scheduler
+    async with pool.acquire() as conn:
+        await init_careers_schema(conn)
+
     # ── Lead Engine ─────────────────────────────────────────────────────────
     from app.core.leads.schema import init_leads_schema
     from app.core.leads.service import init_lead_service
@@ -445,6 +452,7 @@ async def lifespan(app: FastAPI):
                                message=str(exc))
     get_health_registry().register("database", probe_db, critical=True, timeout_s=5.0)
 
+    career_task = asyncio.create_task(career_scheduler(pool))
     health.startup_complete = True
     yield
 
@@ -452,6 +460,11 @@ async def lifespan(app: FastAPI):
     from app.core.workflow.automation_scheduler import stop_scheduler
     await stop_scheduler()
     svc_registry.stop_all()
+    career_task.cancel()
+    try:
+        await career_task
+    except asyncio.CancelledError:
+        pass
     maintenance_task.cancel()
     cleanup_task.cancel()
     await pool.close()
@@ -722,6 +735,7 @@ def create_app() -> FastAPI:
     # Flow Next — Discover (Phase 1)
     app.include_router(discover_router.router)
     # Lead Engine
+    app.include_router(careers_router.router)
     app.include_router(leads_router.router)
     app.include_router(saas_factory_router.router)
     # Social Publisher — Phase 1
