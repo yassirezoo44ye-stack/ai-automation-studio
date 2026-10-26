@@ -52,6 +52,7 @@ const NAV_GROUPS: {
     showLabel: true,
     showSep: true,
     items: [
+      { id: "careers", navKey: "careers", icon: "careers" },
       { id: "leads",      navKey: "leads",      icon: "leads"      },
       { id: "automation", navKey: "automation",  icon: "automation"  },
       { id: "devices",    navKey: "devices",    icon: "devices"    },

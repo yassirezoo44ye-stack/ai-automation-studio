@@ -1,3 +1,5 @@
+import careersEn from "./locales/en/careers.json";
+import careersAr from "./locales/ar/careers.json";
 import i18next from "i18next";
 import { initReactI18next } from "react-i18next";
 
@@ -69,6 +71,7 @@ void i18next.use(initReactI18next).init({
       trainingStudio: trainingStudioEn, landing: landingEn, devices: devicesEn,
       discover: discoverEn,
       feed: feedEn,
+      careers: careersEn,
       leads: leadsEn,
       "saas-factory": saasFactoryEn,
     },
@@ -81,6 +84,7 @@ void i18next.use(initReactI18next).init({
       trainingStudio: trainingStudioAr, landing: landingAr, devices: devicesAr,
       discover: discoverAr,
       feed: feedAr,
+      careers: careersAr,
       leads: leadsAr,
       "saas-factory": saasFactoryAr,
     },
@@ -92,7 +96,7 @@ void i18next.use(initReactI18next).init({
     "common", "home", "settings", "auth", "social", "organizations", "sandbox", "plugins",
     "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos", "dev",
     "appBuilder", "runs", "integrations", "trainingStudio", "landing", "devices",
-    "discover", "feed", "leads", "saas-factory",
+    "careers", "discover", "feed", "leads", "saas-factory",
   ],
   interpolation: { escapeValue: false },
   returnEmptyString: false,

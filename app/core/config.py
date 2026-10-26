@@ -113,3 +113,8 @@ def get_environment() -> str:
 
 def is_development() -> bool:
     return get_environment() == "development"
+
+# Career assistant: separate read-only mailbox consent from Google sign-in.
+CAREER_GOOGLE_CLIENT_ID: str = os.getenv("CAREER_GOOGLE_CLIENT_ID", "")
+CAREER_GOOGLE_CLIENT_SECRET: str = os.getenv("CAREER_GOOGLE_CLIENT_SECRET", "")
+CAREER_GOOGLE_REDIRECT_URI: str = os.getenv("CAREER_GOOGLE_REDIRECT_URI", "")
