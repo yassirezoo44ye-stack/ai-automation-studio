@@ -34,6 +34,7 @@ const PAGE_LABELS: Record<Page, string> = {
   discover: "Discover",
   feed: "Flow Feed",
   careers: "Career Assistant",
+  "study-library": "Visual Study Library",
   leads: "Leads",
   "saas-factory": "SaaS Factory",
   "new-project": "New Project",

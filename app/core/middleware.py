@@ -66,17 +66,19 @@ class UploadBodySizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
         path = scope.get("path", "")
-        if not _UPLOAD_PATH_RE.match(path):
+        study_upload = path == "/api/study-library/lessons"
+        if not _UPLOAD_PATH_RE.match(path) and not study_upload:
             await self.app(scope, receive, send)
             return
+        body_limit = 11 * 1024 * 1024 if study_upload else _UPLOAD_BODY_LIMIT
 
         # --- Fast path: Content-Length declared ---
         raw_headers = dict(scope.get("headers", []))
         cl_bytes = raw_headers.get(b"content-length", b"")
         if cl_bytes:
             try:
-                if int(cl_bytes) > _UPLOAD_BODY_LIMIT:
-                    await _send_413(send)
+                if int(cl_bytes) > body_limit:
+                    await _send_413(send, study_upload)
                     return
             except ValueError:
                 pass  # malformed Content-Length — let the endpoint handle it
@@ -90,9 +92,9 @@ class UploadBodySizeLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 state["seen"] += len(message.get("body", b""))
-                if state["seen"] > _UPLOAD_BODY_LIMIT:
+                if state["seen"] > body_limit:
                     state["rejected"] = True
-                    await _send_413(send)         # send 413 directly (before app touches send)
+                    await _send_413(send, study_upload)  # before app touches send
                     return {"type": "http.disconnect"}
             return message
 
@@ -120,8 +122,9 @@ class UploadBodySizeLimitMiddleware:
                 )
 
 
-async def _send_413(send):
-    body = b'{"detail":"Upload request body exceeds the 200 MB limit"}'
+async def _send_413(send, study_upload=False):
+    body = (b'{"detail":"Study upload request body exceeds the 11 MiB limit"}' if study_upload
+            else b'{"detail":"Upload request body exceeds the 200 MB limit"}')
     await send({
         "type": "http.response.start",
         "status": 413,
