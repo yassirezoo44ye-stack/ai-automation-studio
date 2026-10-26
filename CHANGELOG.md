@@ -455,3 +455,11 @@ successful deploy to `main`.
 - fix(i18n): disable browser auto-translate to prevent Arabic mangling
 - fix(anthropic): pop temperature/top_p from complete() path, catch TypeError
 - ux(app-builder): simplify interface for everyday users
+
+## v1.0.29
+
+### Other
+- Add protected visual study library with Payhip purchase access (#20)
+- Merge pull request #19 from yassirezoo44ye-stack/feature/career-assistant
+- fix(careers): retain uncertainty after listing verification fails
+- feat(careers): add private job-alert assistant with Gmail consent
