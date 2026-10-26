@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OrgProvider }   from "./contexts/OrgContext";
 import { AppProvider }   from "./contexts/AppContext";
@@ -18,6 +18,7 @@ const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
 type AuthView = "landing" | "login" | "register";
+const StudyLibraryPage = lazy(() => import("./features/study-library/StudyLibraryPage").then(m => ({ default: m.StudyLibraryPage })));
 
 function AppInner() {
   const { user, loading, bootstrapError, pendingMfaChallenge } = useAuth();
@@ -76,6 +77,10 @@ function AppInner() {
   }
 
   // Not authenticated — show landing page or auth form
+  if (authView === "landing" && window.location.pathname === "/study-library") {
+    return <main><Suspense fallback={<LoadingSpinner fullPage label="تحميل المكتبة…" />}><StudyLibraryPage onSignIn={() => setAuthView("login")} /></Suspense></main>;
+  }
+
   if (authView === "landing") {
     return (
       <LandingPage

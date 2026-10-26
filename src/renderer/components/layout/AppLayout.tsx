@@ -73,6 +73,7 @@ const BusinessLabPage     = lazy(() => import("../../features/business-lab").the
 const DiscoverPage        = lazy(() => import("../../features/discover").then(m => ({ default: m.DiscoverPage })).catch(chunkFallback));
 const FeedPage            = lazy(() => import("../../features/feed").then(m => ({ default: m.FeedPage })).catch(chunkFallback));
 const CareersPage = lazy(() => import("../../features/careers/CareersPage").then(m => ({ default: m.CareersPage })).catch(chunkFallback));
+const StudyLibraryPage = lazy(() => import("../../features/study-library/StudyLibraryPage").then(m => ({ default: m.StudyLibraryPage })).catch(chunkFallback));
 const LeadsPage           = lazy(() => import("../../features/leads").then(m => ({ default: m.LeadsPage })).catch(chunkFallback));
 const SaasFactoryPage     = lazy(() => import("../../features/saas-factory").then(m => ({ default: m.SaasFactoryPage })).catch(chunkFallback));
 const NewProjectPage      = lazy(() => import("../../features/new-project/NewProjectPage").then(m => ({ default: m.NewProjectPage })).catch(chunkFallback));
@@ -104,6 +105,7 @@ const PAGE_NAV_KEY: Record<string, string> = {
   "discover":       "discover",
   "feed":           "feed",
   "careers":        "careers",
+  "study-library":  "studyLibrary",
   "leads":          "leads",
   "saas-factory":   "saasFactory",
   "new-project":    "newProject",
@@ -266,6 +268,7 @@ function WorkspaceContent() {
           {page === "discover"      && <DiscoverPage />}
           {page === "feed"          && <FeedPage />}
           {page === "careers"       && <CareersPage />}
+          {page === "study-library" && <StudyLibraryPage />}
           {page === "leads"         && <LeadsPage />}
           {page === "saas-factory"  && <SaasFactoryPage />}
           {page === "new-project"   && <NewProjectPage />}

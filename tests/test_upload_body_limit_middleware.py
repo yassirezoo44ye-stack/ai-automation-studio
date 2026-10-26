@@ -39,6 +39,7 @@ def _make_app():
         Route("/api/projects/proj-1/upload", _upload_endpoint, methods=["POST"]),
         Route("/api/projects/proj-1/other",  _other_endpoint,  methods=["POST"]),
         Route("/api/projects/proj-1/upload", _upload_endpoint, methods=["GET"]),
+        Route("/api/study-library/lessons", _upload_endpoint, methods=["POST"]),
     ])
     app.add_middleware(UploadBodySizeLimitMiddleware)
     return app
@@ -82,6 +83,28 @@ class TestContentLengthFastPath:
         )
         assert resp.status_code == 200
         assert resp.json()["received"] == len(payload)
+
+
+class TestStudyLibraryBodyLimit:
+    def test_study_upload_has_its_own_smaller_limit(self, client):
+        res = client.post("/api/study-library/lessons", content=b"x",
+                          headers={"content-length": str(11 * 1024 * 1024 + 1)})
+        assert res.status_code == 413
+        assert "11 MiB" in res.json()["detail"]
+
+    async def test_study_upload_without_content_length_is_bounded(self):
+        responses = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"x" * (11 * 1024 * 1024 + 1), "more_body": False}
+
+        async def send(message):
+            responses.append(message)
+
+        await _make_app()({"type": "http", "method": "POST", "path": "/api/study-library/lessons",
+                           "headers": []}, receive, send)
+        starts = [r for r in responses if r["type"] == "http.response.start"]
+        assert len(starts) == 1 and starts[0]["status"] == 413
 
 
 class TestChunkedStreamingPath:

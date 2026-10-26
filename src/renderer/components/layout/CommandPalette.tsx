@@ -152,6 +152,7 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
     },
 
     // Navigate
+    { id: "study-library", label: "افهمها بصريًا · Visual Study Library", sub: "ملخصات تعليمية · PDFs · paid library access", icon: Icons.discover(), group: "navigate", action: () => go("study-library") },
     { id: "home",         label: "Command Center",  sub: "KPIs · agents · workflows · activity",  icon: Icons.home(),            group: "navigate", action: () => go("home") },
     { id: "new-project",  label: "New Project",      sub: "Start a new build",                     icon: Icons["new-project"](),  group: "navigate", action: () => go("new-project") },
     { id: "agentos",      label: "Agents",           sub: "Deploy and manage AI agents",           icon: Icons.agentos(),        group: "navigate", action: () => go("agentos") },

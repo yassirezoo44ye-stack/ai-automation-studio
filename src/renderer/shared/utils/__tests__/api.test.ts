@@ -114,6 +114,19 @@ describe("apiFetch — 401 token_expired refresh-and-retry", () => {
 });
 
 describe("authH — always sends both credential headers when available", () => {
+  it("lets the browser set the multipart boundary while preserving bearer authentication", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { created: true }));
+    (window as unknown as Record<string, string>).__axon_access_token = "publisher-jwt";
+    const data = new FormData();
+    data.set("title", "Reviewed lesson");
+    await apiFetch("/api/study-library/lessons", { method: "POST", body: data });
+    const sent = fetchMock.mock.calls[0][1];
+    expect(sent?.body).toBe(data);
+    expect(sent?.headers).not.toHaveProperty("Content-Type");
+    expect(sent?.headers).toHaveProperty("Authorization", "Bearer publisher-jwt");
+  });
+
   it("includes X-Sub-Token, Authorization, and X-Organization-Id when all three are set", () => {
     localStorage.setItem("sub_token", "sub-tok");
     (window as unknown as Record<string, string>).__axon_access_token = "jwt-tok";

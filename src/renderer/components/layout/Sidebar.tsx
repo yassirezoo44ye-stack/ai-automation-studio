@@ -64,6 +64,7 @@ const NAV_GROUPS: {
     showSep: true,
     items: [
       { id: "discover", navKey: "discover", icon: "discover" },
+      { id: "study-library", navKey: "studyLibrary", icon: "discover" },
     ],
   },
   {
