@@ -335,7 +335,7 @@ def assess(job, profile: CareerProfile, today=None):
             and salary["max"] < profile.minimum_monthly_aed
         ):
             gaps.append("Listed salary below target / الراتب أقل من المطلوب")
-    if job.get("verification") == "email_only":
+    if job.get("verification") not in {"page_checked", "closed"}:
         checks.append("Full requirements unverified / الشروط الكاملة غير متحققة")
     if expired:
         gaps.append("Application deadline passed or listing closed / انتهى الإعلان")

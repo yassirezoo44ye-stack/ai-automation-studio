@@ -509,3 +509,12 @@ async def test_provider_failure_excludes_raw_response_and_token(monkeypatch):
     with pytest.raises(gmail.GmailUnavailable) as caught:
         await gmail.token_request({"refresh_token": "PRIVATE_TOKEN_VALUE"})
     assert "PRIVATE_TOKEN_VALUE" not in str(caught.value)
+
+
+def test_failed_public_verification_keeps_requirements_unverified():
+    job = {**parse_alert(ALERT)[0], "verification": "unavailable"}
+    result = assess(job, CareerProfile())
+    assert (
+        "Full requirements unverified / الشروط الكاملة غير متحققة" in result["checks"]
+    )
+    assert result["priority"] == "review"

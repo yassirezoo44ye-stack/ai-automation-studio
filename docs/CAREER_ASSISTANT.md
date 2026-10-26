@@ -86,7 +86,7 @@ are not downloaded. No mailbox data is sent to any model.
 
 ## Verification
 
-Verified: 69 backend tests (career assistant + notifications), all 384 frontend tests (including 16 career/navigation tests), typecheck, scoped ESLint, scoped Ruff and production build.
+Verified: 70 backend tests (career assistant + notifications), all 384 frontend tests (including 16 career/navigation tests), typecheck, scoped ESLint, scoped Ruff and production build.
 
 Run focused checks:
 
