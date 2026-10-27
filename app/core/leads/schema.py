@@ -38,8 +38,17 @@ _SQL_LEADS_INDEXES = [
 ]
 
 
+# Forward-compatible column additions (idempotent, safe on every boot).
+_SQL_LEADS_EVOLUTION = [
+    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS ai_tier TEXT "
+    "CHECK (ai_tier IN ('hot', 'warm', 'cold'))",
+]
+
+
 async def init_leads_schema(conn: asyncpg.Connection) -> None:
     await conn.execute(_SQL_LEADS)
+    for sql in _SQL_LEADS_EVOLUTION:
+        await conn.execute(sql)
     for idx in _SQL_LEADS_INDEXES:
         await conn.execute(idx)
     log.info("leads schema ready")

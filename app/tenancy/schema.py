@@ -173,7 +173,10 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_org_room
 DEFAULT_PERMISSIONS: dict[str, list[tuple[str, str]]] = {
     "owner": [("*", "*")],
     "admin": [
-        ("*", "read"), ("*", "create"), ("*", "update"), ("*", "delete"),
+        # "write" is the action leads/automation endpoints require
+        # (require_permission(..., "write")); without it admins got 403 there
+        # while lower-ranked managers/developers were allowed.
+        ("*", "read"), ("*", "create"), ("*", "update"), ("*", "delete"), ("*", "write"),
         ("members", "manage"), ("billing", "manage"), ("api_keys", "manage"),
         ("teams", "manage"), ("marketplace", "publish"), ("marketplace", "manage"),
         ("marketplace", "install"), ("plugins", "manage"), ("integrations", "manage"),

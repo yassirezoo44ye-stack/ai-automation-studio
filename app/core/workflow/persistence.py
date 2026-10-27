@@ -42,6 +42,21 @@ _UNSAFE_TYPE_NAMES = frozenset({
 # Serialization helpers
 # ---------------------------------------------------------------------------
 
+def decode_jsonb(value: Any, expected: type, default: Any) -> Any:
+    """Decode a JSONB column read through asyncpg.
+
+    The pool registers no jsonb codec (see app/routers/design.py), so JSONB
+    values arrive as raw text. Returns `default` for NULL, malformed JSON,
+    or a value of the wrong shape (e.g. a list where a dict is expected).
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return default
+    return value if isinstance(value, expected) else default
+
+
 def _safe_json_value(val: Any, *, _depth: int = 0) -> Any:
     """Recursively convert `val` to a JSON-safe representation.
 

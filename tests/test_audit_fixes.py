@@ -58,13 +58,27 @@ def test_capture_lead_payload_includes_run_id():
 
 
 def test_create_lead_payload_includes_run_id():
-    """create_lead must include run_id in the job queue payload."""
+    """create_lead must include run_id in the job queue payload.
+
+    Both endpoints enqueue through the shared _enqueue_lead_followup helper,
+    so: create_lead must call it, and the helper's submitted payload must
+    carry run_id (end-to-end coverage in tests/test_automation_scheduler.py).
+    """
     src = _src("app/routers/leads.py")
-    # Find the create endpoint's submit call (uses ctx.org_id)
-    create_idx = src.find("lead-followup:{ctx.org_id}:{lead_id}")
-    assert create_idx != -1, "create endpoint dedup key not found"
-    context = src[max(0, create_idx - 400): create_idx]
-    assert '"run_id": run_id' in context, (
+    create_start = src.find("async def create_lead")
+    assert create_start != -1, "create_lead endpoint not found"
+    create_end = src.find("\n@router", create_start + 1)
+    create_block = src[create_start:create_end if create_end != -1 else None]
+    assert "_enqueue_lead_followup(" in create_block, (
+        "create_lead must enqueue its follow-up via _enqueue_lead_followup"
+    )
+    helper_start = src.find("async def _enqueue_lead_followup")
+    assert helper_start != -1, "_enqueue_lead_followup helper not found"
+    helper_end = src.find("\ndef ", helper_start + 1)
+    helper = src[helper_start:helper_end if helper_end != -1 else None]
+    submit_idx = helper.find("get_job_queue().submit(")
+    assert submit_idx != -1, "helper must submit the follow-up job"
+    assert '"run_id": run_id' in helper[submit_idx:], (
         "create_lead job payload must include run_id to allow automation handler to proceed"
     )
 
@@ -112,12 +126,25 @@ def test_email_send_reraises_on_failure():
 # ── P1-4: Lead qualification requires valid score ─────────────────────────────
 
 def test_qualify_only_marks_qualified_with_valid_int_score():
-    """qualify() must only set status='qualified' when ai_score is an integer."""
+    """qualify() must only set status='qualified' for a validated classification
+    (integer score in range, known tier, non-empty reason); a failed or
+    malformed AI answer must not touch status. Behaviour is covered in
+    tests/test_leads.py (TestAIQualificationFailure)."""
     src = _src("app/core/leads/service.py")
-    # The old buggy line: new_status = "qualified"
-    # The fixed line: new_status = "qualified" if isinstance(ai_score, int) else "new"
-    assert 'new_status = "qualified" if isinstance(ai_score, int) else "new"' in src, (
-        'qualify must guard: new_status = "qualified" if isinstance(ai_score, int) else "new"'
+    qualify = src[src.find("async def qualify"):src.find("# ── Notification dispatch")]
+    assert qualify, "qualify() not found"
+    assert qualify.count("THEN 'qualified'") == 1, "exactly one place may set status to qualified"
+    validated = qualify.find("validate_lead_classification(")
+    set_qualified = qualify.find("THEN 'qualified'")
+    assert -1 < validated < set_qualified, (
+        "status may only become 'qualified' after validate_lead_classification succeeded"
+    )
+    assert "if result is not None:" in qualify[validated:set_qualified], (
+        "the qualifying UPDATE must be gated on a validated result"
+    )
+    failure_update = qualify[qualify.find("SET ai_notes = $1"):]
+    assert "status" not in failure_update.split("WHERE")[0], (
+        "the failure UPDATE must not change status"
     )
 
 

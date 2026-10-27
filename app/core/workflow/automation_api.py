@@ -9,6 +9,9 @@ Definitions:
   DELETE /api/automations/{id}             soft-delete
   POST   /api/automations/{id}/activate    set is_active=true
   POST   /api/automations/{id}/deactivate  set is_active=false
+  POST   /api/automations/{id}/triggers/{trigger_id}/secret
+                                           generate/rotate a webhook secret
+                                           (plaintext returned once)
 
 Runs:
   GET    /api/automation-runs              list (paginated, org-scoped)
@@ -26,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import uuid
 from typing import Any
 
@@ -33,6 +37,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.core.db import get_pool
+from app.core.workflow.persistence import decode_jsonb
 from app.tenancy.context import OrgContext, require_permission
 
 log = logging.getLogger(__name__)
@@ -66,6 +71,41 @@ async def _get_definition(conn, definition_id: str, org_id: str) -> dict:
     return dict(row)
 
 
+_SECRET_FIELDS = ("secret_encrypted", "has_secret")
+
+
+def _redact_triggers(triggers: list) -> list:
+    """API view of triggers: the encrypted webhook secret never leaves the
+    server; callers only learn whether one is provisioned."""
+    out = []
+    for t in triggers:
+        if isinstance(t, dict) and t.get("kind") == "webhook":
+            redacted = {k: v for k, v in t.items() if k not in _SECRET_FIELDS}
+            redacted["has_secret"] = bool(t.get("secret_encrypted"))
+            t = redacted
+        out.append(t)
+    return out
+
+
+def _merge_trigger_secrets(new_triggers: list, old_triggers: list) -> list:
+    """Client-supplied triggers may never set a secret; a webhook trigger
+    that keeps its id and kind keeps its already-provisioned secret (the
+    client only ever sees the redacted view, so it can't send it back)."""
+    old_secrets = {
+        t.get("id"): t.get("secret_encrypted")
+        for t in old_triggers
+        if isinstance(t, dict) and t.get("kind") == "webhook" and t.get("secret_encrypted")
+    }
+    out = []
+    for t in new_triggers:
+        if isinstance(t, dict):
+            t = {k: v for k, v in t.items() if k not in _SECRET_FIELDS}
+            if t.get("kind") == "webhook" and t.get("id") in old_secrets:
+                t["secret_encrypted"] = old_secrets[t["id"]]
+        out.append(t)
+    return out
+
+
 def _row_to_definition(row: dict) -> dict:
     """Convert a DB row to the API shape."""
     return {
@@ -73,8 +113,8 @@ def _row_to_definition(row: dict) -> dict:
         "organization_id": str(row["organization_id"]),
         "name":            row["name"],
         "description":     row["description"],
-        "definition":      row["definition"] if isinstance(row["definition"], dict) else {},
-        "triggers":        row["triggers"] if isinstance(row["triggers"], list) else [],
+        "definition":      decode_jsonb(row["definition"], dict, {}),
+        "triggers":        _redact_triggers(decode_jsonb(row["triggers"], list, [])),
         "is_active":       row["is_active"],
         "version":         row["version"],
         "created_by":      str(row["created_by"]) if row["created_by"] else None,
@@ -92,7 +132,7 @@ def _row_to_run(row: dict, steps: list[dict] | None = None) -> dict:
         "run_id":          row["run_id"],
         "name":            row["name"],
         "status":          row["status"],
-        "context":         row["context"] if isinstance(row["context"], dict) else {},
+        "context":         decode_jsonb(row["context"], dict, {}),
         "error":           row["error"],
         "triggered_by":    row["triggered_by"],
         "triggered_by_user": str(row["triggered_by_user"]) if row.get("triggered_by_user") else None,
@@ -114,9 +154,9 @@ def _row_to_step(row: dict) -> dict:
         "status":           row["status"],
         "attempt":          row["attempt"],
         "requires_approval": row["requires_approval"],
-        "depends_on":       row["depends_on"] if isinstance(row["depends_on"], list) else [],
-        "args":             row["args"] if isinstance(row["args"], dict) else {},
-        "result":           row["result"],
+        "depends_on":       decode_jsonb(row["depends_on"], list, []),
+        "args":             decode_jsonb(row["args"], dict, {}),
+        "result":           decode_jsonb(row["result"], (dict, list, str, int, float, bool), None),
         "error":            row["error"],
         "started_at":       row["started_at"].isoformat() if row.get("started_at") else None,
         "finished_at":      row["finished_at"].isoformat() if row.get("finished_at") else None,
@@ -202,7 +242,7 @@ async def create_definition(
             body.name,
             body.description,
             json.dumps(body.definition),
-            json.dumps(body.triggers),
+            json.dumps(_merge_trigger_secrets(body.triggers, [])),
             body.is_active,
             uuid.UUID(ctx.user_id),
         )
@@ -229,7 +269,7 @@ async def update_definition(
     pool = get_pool()
     async with pool.acquire() as conn:
         # raises 404 if not found or wrong org
-        await _get_definition(conn, definition_id, ctx.org_id)
+        current = await _get_definition(conn, definition_id, ctx.org_id)
         # Build update fields
         sets = ["updated_at = now()", "updated_by = $3", "version = version + 1"]
         params: list = [uuid.UUID(definition_id), uuid.UUID(ctx.org_id), uuid.UUID(ctx.user_id)]
@@ -248,8 +288,9 @@ async def update_definition(
             params.append(json.dumps(body.definition))
             idx += 1
         if body.triggers is not None:
+            old_triggers = decode_jsonb(current["triggers"], list, [])
             sets.append(f"triggers = ${idx}::jsonb")
-            params.append(json.dumps(body.triggers))
+            params.append(json.dumps(_merge_trigger_secrets(body.triggers, old_triggers)))
             idx += 1
         if body.is_active is not None:
             sets.append(f"is_active = ${idx}")
@@ -317,6 +358,57 @@ async def deactivate_definition(
     if row is None:
         raise _not_found()
     return _row_to_definition(dict(row))
+
+
+@router.post("/{definition_id}/triggers/{trigger_id}/secret")
+async def rotate_webhook_secret(
+    definition_id: str,
+    trigger_id: str,
+    ctx: OrgContext = Depends(require_permission("automation", "write")),
+):
+    """Generate (or rotate) the signing secret of a webhook trigger.
+
+    The plaintext is returned exactly once in this response; only the
+    Fernet-encrypted form is stored. Rotating invalidates the old secret.
+    """
+    from app.core.workflow.automation_webhooks import encrypt_webhook_secret
+
+    secret = secrets.token_urlsafe(32)
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT triggers FROM automation_definitions "
+                "WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL FOR UPDATE",
+                uuid.UUID(definition_id) if _valid_uuid(definition_id) else uuid.uuid4(),
+                uuid.UUID(ctx.org_id),
+            )
+            if row is None:
+                raise _not_found()
+            triggers = decode_jsonb(row["triggers"], list, [])
+            if not any(
+                isinstance(t, dict) and t.get("id") == trigger_id and t.get("kind") == "webhook"
+                for t in triggers
+            ):
+                raise _not_found("Webhook trigger not found")
+            encrypted = encrypt_webhook_secret(secret)
+            updated = [
+                {**t, "secret_encrypted": encrypted}
+                if isinstance(t, dict) and t.get("id") == trigger_id and t.get("kind") == "webhook"
+                else t
+                for t in triggers
+            ]
+            await conn.execute(
+                "UPDATE automation_definitions SET triggers = $1::jsonb, updated_at = now(), "
+                "updated_by = $3 WHERE id = $2",
+                json.dumps(updated), uuid.UUID(definition_id), uuid.UUID(ctx.user_id),
+            )
+    log.info("automation webhook secret rotated def=%s trigger=%s", definition_id[:8], trigger_id)
+    return {
+        "trigger_id":   trigger_id,
+        "secret":       secret,
+        "webhook_path": f"/api/webhooks/auto/{definition_id}/{trigger_id}",
+    }
 
 
 @router.post("/{definition_id}/run", status_code=202)
