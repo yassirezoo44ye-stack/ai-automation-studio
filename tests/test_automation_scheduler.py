@@ -601,9 +601,11 @@ class TestRunContextIsolation(unittest.TestCase):
         ctx = _build_run_context(payload, org_id=org, definition_id=def_id,
                                  triggered_by="webhook")
         self.assertEqual(ctx["organization_id"], org)
+        # org_id is kept for the email step, but always the server-side value
+        self.assertEqual(ctx["org_id"], org)
         self.assertEqual(ctx["definition_id"], def_id)
         self.assertEqual(ctx["triggered_by"], "webhook")
-        for key in ("org_id", "triggered_by_user", "user_id", "run_id"):
+        for key in ("triggered_by_user", "user_id", "run_id"):
             self.assertNotIn(key, ctx)
         self.assertEqual(ctx["trigger"], _LEAD)
         self.assertEqual(ctx["message"], _LEAD["message"])
