@@ -126,12 +126,25 @@ def test_email_send_reraises_on_failure():
 # ── P1-4: Lead qualification requires valid score ─────────────────────────────
 
 def test_qualify_only_marks_qualified_with_valid_int_score():
-    """qualify() must only set status='qualified' when ai_score is an integer."""
+    """qualify() must only set status='qualified' for a validated classification
+    (integer score in range, known tier, non-empty reason); a failed or
+    malformed AI answer must not touch status. Behaviour is covered in
+    tests/test_leads.py (TestAIQualificationFailure)."""
     src = _src("app/core/leads/service.py")
-    # The old buggy line: new_status = "qualified"
-    # The fixed line: new_status = "qualified" if isinstance(ai_score, int) else "new"
-    assert 'new_status = "qualified" if isinstance(ai_score, int) else "new"' in src, (
-        'qualify must guard: new_status = "qualified" if isinstance(ai_score, int) else "new"'
+    qualify = src[src.find("async def qualify"):src.find("# ── Notification dispatch")]
+    assert qualify, "qualify() not found"
+    assert qualify.count("THEN 'qualified'") == 1, "exactly one place may set status to qualified"
+    validated = qualify.find("validate_lead_classification(")
+    set_qualified = qualify.find("THEN 'qualified'")
+    assert -1 < validated < set_qualified, (
+        "status may only become 'qualified' after validate_lead_classification succeeded"
+    )
+    assert "if result is not None:" in qualify[validated:set_qualified], (
+        "the qualifying UPDATE must be gated on a validated result"
+    )
+    failure_update = qualify[qualify.find("SET ai_notes = $1"):]
+    assert "status" not in failure_update.split("WHERE")[0], (
+        "the failure UPDATE must not change status"
     )
 
 

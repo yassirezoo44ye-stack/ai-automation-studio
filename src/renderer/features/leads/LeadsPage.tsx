@@ -15,6 +15,7 @@ interface Lead {
   source: string | null;
   status: "new" | "qualified" | "contacted" | "won" | "lost";
   ai_score: number | null;
+  ai_tier?: "hot" | "warm" | "cold" | null;
   ai_notes: string | null;
   created_at: string;
   updated_at: string;
@@ -246,13 +247,24 @@ const STATUS_COLOR: Record<Lead["status"], string> = {
   lost:      C.red,
 };
 
-function ScoreBadge({ score }: { score: number | null }) {
+const TIER_COLOR: Record<"hot" | "warm" | "cold", string> = {
+  hot: C.red,
+  warm: C.amber,
+  cold: C.blue,
+};
+
+function ScoreBadge({ score, tier }: { score: number | null; tier?: Lead["ai_tier"] }) {
   const { t } = useTranslation("leads");
   if (score === null) return <span style={{ color: "var(--t4)", fontSize: 12 }}>{t("score.na")}</span>;
   const color = score >= 7 ? C.green : score >= 4 ? C.amber : C.red;
   return (
     <span style={{ fontWeight: 700, fontSize: 13, color }}>
       {t("score.label", { score })}
+      {tier && (
+        <span style={{ marginInlineStart: 6, fontSize: 11, fontWeight: 600, color: TIER_COLOR[tier] }}>
+          {t(`tier.${tier}`)}
+        </span>
+      )}
     </span>
   );
 }
@@ -392,7 +404,7 @@ function LeadRow({ lead, onStatusChange }: {
           ))}
         </select>
       </div>
-      <ScoreBadge score={lead.ai_score} />
+      <ScoreBadge score={lead.ai_score} tier={lead.ai_tier} />
       <div style={{ color: "var(--t3)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={lead.ai_notes ?? ""}>
         {lead.ai_notes || "—"}
       </div>

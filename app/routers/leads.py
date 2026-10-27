@@ -182,7 +182,7 @@ async def capture_lead(
         org_id=org_id, lead_id=lead_id, triggered_by="lead_capture", user_id=None,
     )
 
-    if qualified_lead.get("status") == "qualified":
+    if qualified_lead.get("ai_tier") == "hot":
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=org_id)
 
     # Return only safe fields — never expose org_id or internal state to caller
@@ -190,6 +190,7 @@ async def capture_lead(
         "id": qualified_lead["id"],
         "status": qualified_lead.get("status", "new"),
         "ai_score": qualified_lead.get("ai_score"),
+        "ai_tier": qualified_lead.get("ai_tier"),
         "follow_up_status": follow_up_status,
     }
 
@@ -230,7 +231,7 @@ async def create_lead(
         org_id=ctx.org_id, lead_id=lead_id, triggered_by="lead_engine", user_id=ctx.user_id,
     )
 
-    if qualified_lead.get("status") == "qualified":
+    if qualified_lead.get("ai_tier") == "hot":
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=ctx.org_id)
 
     return {**qualified_lead, "follow_up_status": follow_up_status}
@@ -271,6 +272,6 @@ async def requalify_lead(
     if existing is None:
         raise _not_found()
     lead = await svc.qualify(lead_id=lead_id, org_id=ctx.org_id)
-    if lead.get("status") == "qualified":
+    if lead.get("ai_tier") == "hot":
         await svc.dispatch_qualified_notification(lead=lead, org_id=ctx.org_id)
     return lead
