@@ -34,6 +34,88 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/leads", tags=["leads"])
 
 
+async def _enqueue_lead_followup(
+    *, org_id: str, lead_id: str, triggered_by: str, user_id: str | None,
+) -> str:
+    """Start the org's lead follow-up automation for one lead, if one exists.
+
+    Returns the follow_up_status reported to the caller:
+      "no_definition"  — the org has no active lead_followup automation
+      "enqueued"       — a pending run was recorded and its job submitted
+      "failed"         — the run could not be started; if its row was
+                         already written it is marked failed, never left
+                         'pending' forever
+    """
+    import json
+    import uuid as _uuid
+    from app.core.db import get_pool
+    from app.core.jobs import get_job_queue
+
+    run_id: str | None = None
+    pool = None
+    try:
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id FROM automation_definitions
+                WHERE organization_id = $1
+                  AND deleted_at IS NULL
+                  AND definition->>'lead_followup' = 'true'
+                LIMIT 1
+                """,
+                _uuid.UUID(org_id),
+            )
+        if not row:
+            return "no_definition"
+        run_id = str(_uuid.uuid4())
+        context = {"lead_id": lead_id}
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO automation_runs
+                    (organization_id, definition_id, run_id, name, status,
+                     context, triggered_by, triggered_by_user)
+                VALUES ($1,$2,$3,$4,'pending',$5::jsonb,$6,$7)
+                """,
+                _uuid.UUID(org_id),
+                row["id"],
+                run_id,
+                "lead-followup",
+                json.dumps(context),
+                triggered_by,
+                _uuid.UUID(user_id) if user_id else None,
+            )
+        await get_job_queue().submit(
+            "automation.trigger.manual",
+            payload={
+                "definition_id": str(row["id"]),
+                "run_id": run_id,
+                "context": context,
+                "triggered_by": triggered_by,
+                "triggered_by_user": user_id,
+            },
+            org_id=org_id,
+            # Tie dedup to the lead, not the run UUID, so concurrent duplicate
+            # requests (same lead_id + org) produce only one follow-up job.
+            idempotency_key=f"lead-followup:{org_id}:{lead_id}",
+        )
+        return "enqueued"
+    except Exception as exc:
+        log.warning("lead follow-up enqueue failed lead_id=%s: %s", lead_id, exc)
+        if run_id and pool is not None:
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE automation_runs SET status='failed', error=$2, finished_at=now() "
+                        "WHERE run_id=$1 AND status='pending'",
+                        run_id, "Follow-up could not be enqueued",
+                    )
+            except Exception:
+                log.warning("could not mark follow-up run failed run_id=%s", run_id, exc_info=True)
+        return "failed"
+
+
 def _not_found() -> HTTPException:
     return HTTPException(404, "Lead not found")
 
@@ -96,60 +178,9 @@ async def capture_lead(
 
     qualified_lead = await svc.qualify(lead_id=lead_id, org_id=org_id)
 
-    follow_up_status = "no_definition"
-    run_id = None
-    try:
-        from app.core.db import get_pool
-        from app.core.jobs import get_job_queue
-        import uuid as _uuid
-        pool = get_pool()
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT id FROM automation_definitions
-                WHERE organization_id = $1
-                  AND deleted_at IS NULL
-                  AND definition->>'lead_followup' = 'true'
-                LIMIT 1
-                """,
-                _uuid.UUID(org_id),
-            )
-        if row:
-            run_id = str(_uuid.uuid4())
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO automation_runs
-                        (organization_id, definition_id, run_id, name, status,
-                         context, triggered_by, triggered_by_user)
-                    VALUES ($1,$2,$3,$4,'pending',$5::jsonb,'lead_capture',NULL)
-                    """,
-                    _uuid.UUID(org_id),
-                    row["id"],
-                    run_id,
-                    "lead-followup",
-                    f'{{"lead_id":"{lead_id}"}}',
-                )
-            await get_job_queue().submit(
-                "automation.trigger.manual",
-                payload={"definition_id": str(row["id"]), "run_id": run_id, "context": {"lead_id": lead_id}},
-                org_id=org_id,
-                # Tie dedup to the lead, not the run UUID, so concurrent duplicate
-                # capture requests (same lead_id + org) produce only one follow-up job.
-                idempotency_key=f"lead-followup:{org_id}:{lead_id}",
-            )
-            follow_up_status = "enqueued"
-    except Exception as exc:
-        log.warning("lead capture follow-up enqueue failed lead_id=%s: %s", lead_id, exc)
-        if run_id:
-            try:
-                async with pool.acquire() as _conn:
-                    await _conn.execute(
-                        "UPDATE automation_runs SET status='enqueue_failed', updated_at=NOW() WHERE run_id=$1",
-                        run_id,
-                    )
-            except Exception:
-                pass
+    follow_up_status = await _enqueue_lead_followup(
+        org_id=org_id, lead_id=lead_id, triggered_by="lead_capture", user_id=None,
+    )
 
     if qualified_lead.get("status") == "qualified":
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=org_id)
@@ -195,60 +226,9 @@ async def create_lead(
 
     qualified_lead = await svc.qualify(lead_id=lead_id, org_id=ctx.org_id)
 
-    follow_up_status = "no_definition"
-    run_id = None
-    try:
-        from app.core.db import get_pool
-        from app.core.jobs import get_job_queue
-        import uuid as _uuid
-        pool = get_pool()
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT id FROM automation_definitions
-                WHERE organization_id = $1
-                  AND deleted_at IS NULL
-                  AND definition->>'lead_followup' = 'true'
-                LIMIT 1
-                """,
-                _uuid.UUID(ctx.org_id),
-            )
-        if row:
-            run_id = str(_uuid.uuid4())
-            async with pool.acquire() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO automation_runs
-                        (organization_id, definition_id, run_id, name, status,
-                         context, triggered_by, triggered_by_user)
-                    VALUES ($1,$2,$3,$4,'pending',$5::jsonb,'lead_engine',$6)
-                    """,
-                    _uuid.UUID(ctx.org_id),
-                    row["id"],
-                    run_id,
-                    "lead-followup",
-                    f'{{"lead_id":"{lead_id}"}}',
-                    _uuid.UUID(ctx.user_id),
-                )
-            await get_job_queue().submit(
-                "automation.trigger.manual",
-                payload={"definition_id": str(row["id"]), "run_id": run_id, "context": {"lead_id": lead_id}},
-                org_id=ctx.org_id,
-                # Tie dedup to the lead, not the run UUID — same as the capture endpoint.
-                idempotency_key=f"lead-followup:{ctx.org_id}:{lead_id}",
-            )
-            follow_up_status = "enqueued"
-    except Exception as exc:
-        log.warning("lead follow-up enqueue failed lead_id=%s: %s", lead_id, exc)
-        if run_id:
-            try:
-                async with pool.acquire() as _conn:
-                    await _conn.execute(
-                        "UPDATE automation_runs SET status='enqueue_failed', updated_at=NOW() WHERE run_id=$1",
-                        run_id,
-                    )
-            except Exception:
-                pass
+    follow_up_status = await _enqueue_lead_followup(
+        org_id=ctx.org_id, lead_id=lead_id, triggered_by="lead_engine", user_id=ctx.user_id,
+    )
 
     if qualified_lead.get("status") == "qualified":
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=ctx.org_id)

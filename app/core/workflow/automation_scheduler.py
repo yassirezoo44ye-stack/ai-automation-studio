@@ -449,8 +449,15 @@ def _make_email_step_fn(spec: dict):
                 f"<p>Thank you for your interest. A member of our team will be in touch shortly.</p>"
             )
 
+        # send_email only logs to the console when SMTP is not configured —
+        # that must fail the step, not be reported as "sent".
+        if not os.getenv("SMTP_HOST"):
+            raise RuntimeError(
+                f"email step '{spec.get('id', '?')}': SMTP is not configured "
+                f"(SMTP_HOST unset) — email not sent"
+            )
         await send_email(recipient, subject, body_html)
-        log.info("automation email step sent step_id=%s recipient=%s", spec.get("id"), recipient)
+        log.info("automation email step sent step_id=%s", spec.get("id"))
         return {"kind": "email", "status": "sent", "recipient": recipient}
 
     return _run_email

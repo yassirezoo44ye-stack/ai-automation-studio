@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import os
 import time
 import unittest
 import uuid
@@ -359,6 +360,13 @@ class TestEmailStepFn(unittest.TestCase):
     and the payload that LeadFollowupCard.makeFollowupPayload() now produces.
     """
 
+    def setUp(self):
+        # These tests cover the configured-SMTP path; the unconfigured path
+        # is covered by test_email_step_fails_when_smtp_not_configured.
+        smtp = patch.dict(os.environ, {"SMTP_HOST": "smtp.test.invalid"})
+        smtp.start()
+        self.addCleanup(smtp.stop)
+
     def _make_send_mock(self):
         """Return a coroutine mock for app.core.email.send_email."""
         m = AsyncMock()
@@ -445,6 +453,39 @@ class TestEmailStepFn(unittest.TestCase):
                 await fn(_context={})
 
         asyncio.run(_t())
+
+    def test_email_step_fails_when_smtp_not_configured(self):
+        """Without SMTP_HOST send_email only logs — the step must fail, not report 'sent'."""
+        from app.core.workflow.automation_scheduler import _make_email_step_fn
+        spec = {"id": "send-followup-email", "kind": "email",
+                "args": {"to": "lead@example.com", "subject": "Hi"}}
+        send_mock = self._make_send_mock()
+
+        async def _t():
+            fn = _make_email_step_fn(spec)
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("SMTP_HOST", None)
+                with patch("app.core.email.send_email", send_mock):
+                    with self.assertRaises(RuntimeError):
+                        await fn(_context={})
+            send_mock.assert_not_called()
+
+        asyncio.run(_t())
+
+    def test_email_step_does_not_log_recipient(self):
+        from app.core.workflow.automation_scheduler import _make_email_step_fn
+        spec = {"id": "send-followup-email", "kind": "email",
+                "args": {"to": "private.lead@example.com", "subject": "Hi"}}
+
+        async def _t():
+            fn = _make_email_step_fn(spec)
+            with patch("app.core.email.send_email", self._make_send_mock()):
+                with self.assertLogs("app.core.workflow.automation_scheduler", "INFO") as logs:
+                    await fn(_context={})
+            return logs
+
+        logs = asyncio.run(_t())
+        self.assertFalse(any("private.lead@example.com" in line for line in logs.output))
 
 
 # =============================================================================
@@ -769,6 +810,136 @@ class TestApprovalOwnershipAfterContextFix(unittest.TestCase):
         run = asyncio.run(_t())
         self.assertEqual(run.status.value, "completed")
         self.assertEqual(run.context["organization_id"], org)
+
+
+
+# =============================================================================
+# 7. Lead follow-up end-to-end — enqueue → job handler → email step → status
+# =============================================================================
+
+_FOLLOWUP_DEFINITION = {
+    "lead_followup": "true",
+    "steps": [{"id": "send-followup-email", "kind": "email",
+               "args": {"subject": "Thanks", "body": "<p>We will be in touch.</p>"}}],
+}
+
+
+class _LeadSqlConn:
+    """Fake asyncpg connection answering each query the follow-up path makes,
+    with JSONB returned as text exactly like the real pool."""
+
+    def __init__(self, def_id: str, lead_email: str | None = "lead@example.com"):
+        self.def_id = def_id
+        self.lead_email = lead_email
+        self.execute = AsyncMock(return_value="UPDATE 1")
+
+    async def fetchrow(self, sql, *args):
+        if "definition->>'lead_followup'" in sql:
+            return {"id": uuid.UUID(self.def_id)}
+        if "SELECT definition FROM automation_definitions" in sql:
+            return {"definition": json.dumps(_FOLLOWUP_DEFINITION)}
+        if "SELECT email FROM leads" in sql:
+            return {"email": self.lead_email} if self.lead_email else None
+        return None  # best-effort side paths (e.g. usage metering) see an empty table
+
+
+def _lead_pool(conn):
+    pool = MagicMock()
+    pool.acquire = MagicMock(side_effect=lambda: _AsyncCM(conn))
+    return pool
+
+
+class TestLeadFollowupEndToEnd(unittest.TestCase):
+
+    def _enqueue(self, conn, queue):
+        from app.routers.leads import _enqueue_lead_followup
+        org, lead = str(uuid.uuid4()), str(uuid.uuid4())
+
+        async def _t():
+            with patch("app.core.db.get_pool", return_value=_lead_pool(conn)), \
+                 patch("app.core.jobs.get_job_queue", return_value=queue):
+                return await _enqueue_lead_followup(
+                    org_id=org, lead_id=lead, triggered_by="lead_engine", user_id=None)
+
+        return asyncio.run(_t()), org, lead
+
+    def _run_submitted_job(self, conn, queue, org, smtp: bool):
+        """Feed the exact payload the enqueue step submitted to the real handler,
+        adding organization_id the way JobQueue.submit(org_id=...) does."""
+        from app.core.workflow.automation_scheduler import _handle_automation_run
+        payload = {**queue.submit.call_args.kwargs["payload"], "organization_id": org}
+        send_mock = AsyncMock()
+        p1, p2, p3 = _persistence_patches()
+        env = {"SMTP_HOST": "smtp.test.invalid"} if smtp else {}
+
+        async def _t():
+            with patch.dict(os.environ, env):
+                if not smtp:
+                    os.environ.pop("SMTP_HOST", None)
+                with patch("app.core.db.get_pool", return_value=_lead_pool(conn)), \
+                     p1, p2, p3, patch("app.core.email.send_email", send_mock):
+                    await _handle_automation_run(payload)
+
+        asyncio.run(_t())
+        return send_mock
+
+    def test_lead_followup_completes_and_sends_email(self):
+        conn, queue = _LeadSqlConn(str(uuid.uuid4())), MagicMock()
+        queue.submit = AsyncMock(return_value="job-1")
+        status, org, lead = self._enqueue(conn, queue)
+        self.assertEqual(status, "enqueued")
+        payload = queue.submit.call_args.kwargs["payload"]
+        self.assertTrue(payload["run_id"])
+        self.assertEqual(payload["context"], {"lead_id": lead})
+        self.assertEqual(queue.submit.call_args.kwargs["org_id"], org)
+
+        send_mock = self._run_submitted_job(conn, queue, org, smtp=True)
+        send_mock.assert_awaited_once()
+        self.assertEqual(send_mock.call_args.args[0], "lead@example.com")
+        self.assertEqual(send_mock.call_args.args[1], "Thanks")
+        status, error = _final_status_update(conn)
+        self.assertEqual(status, "completed")
+        self.assertIsNone(error)
+
+    def test_lead_followup_without_smtp_marks_run_failed(self):
+        conn, queue = _LeadSqlConn(str(uuid.uuid4())), MagicMock()
+        queue.submit = AsyncMock(return_value="job-1")
+        _, org, _ = self._enqueue(conn, queue)
+
+        send_mock = self._run_submitted_job(conn, queue, org, smtp=False)
+        send_mock.assert_not_called()
+        status, error = _final_status_update(conn)
+        self.assertEqual(status, "failed")
+        self.assertIn("SMTP", error)
+
+    def test_no_definition_reports_no_definition(self):
+        from app.routers.leads import _enqueue_lead_followup
+        conn, queue = MagicMock(), MagicMock()
+        conn.fetchrow = AsyncMock(return_value=None)
+        queue.submit = AsyncMock()
+
+        async def _t():
+            with patch("app.core.db.get_pool", return_value=_lead_pool(conn)), \
+                 patch("app.core.jobs.get_job_queue", return_value=queue):
+                return await _enqueue_lead_followup(
+                    org_id=str(uuid.uuid4()), lead_id=str(uuid.uuid4()),
+                    triggered_by="lead_engine", user_id=None)
+
+        self.assertEqual(asyncio.run(_t()), "no_definition")
+        queue.submit.assert_not_called()
+
+    def test_enqueue_failure_marks_run_failed_not_pending(self):
+        conn, queue = _LeadSqlConn(str(uuid.uuid4())), MagicMock()
+        queue.submit = AsyncMock(side_effect=RuntimeError("queue down"))
+        status, _, _ = self._enqueue(conn, queue)
+        self.assertEqual(status, "failed")
+        update = next(c for c in conn.execute.call_args_list
+                      if c.args[0].startswith("UPDATE automation_runs"))
+        # Must be a status the automation_runs CHECK constraint accepts, and
+        # only columns the table has (no updated_at on automation_runs).
+        self.assertIn("status='failed'", update.args[0])
+        self.assertNotIn("updated_at", update.args[0])
+        self.assertNotIn("enqueue_failed", update.args[0])
 
 
 if __name__ == "__main__":
