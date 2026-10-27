@@ -655,6 +655,236 @@ class TestWebhookSecretEncryption(unittest.TestCase):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 16. JSONB decoding (asyncpg returns JSONB as text — no codec on the pool)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDecodeJsonb(unittest.TestCase):
+    def test_text_is_decoded(self):
+        from app.core.workflow.persistence import decode_jsonb
+        self.assertEqual(decode_jsonb('[{"id": "t1"}]', list, []), [{"id": "t1"}])
+        self.assertEqual(decode_jsonb('{"a": 1}', dict, {}), {"a": 1})
+
+    def test_already_decoded_passthrough(self):
+        from app.core.workflow.persistence import decode_jsonb
+        self.assertEqual(decode_jsonb({"a": 1}, dict, {}), {"a": 1})
+
+    def test_bad_values_return_default(self):
+        from app.core.workflow.persistence import decode_jsonb
+        self.assertEqual(decode_jsonb(None, dict, {}), {})
+        self.assertEqual(decode_jsonb("not json", list, []), [])
+        self.assertEqual(decode_jsonb('{"a": 1}', list, []), [])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 17. External webhook through the real app + api_auth_middleware
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestExternalWebhookEndpoint(unittest.IsolatedAsyncioTestCase):
+    """End-to-end through create_app() (same pattern as
+    tests/test_api_key_middleware_passthrough.py): an external sender with
+    no session must reach the HMAC check, and only a valid signature is
+    accepted. The DB is faked the way asyncpg really behaves — JSONB as text."""
+
+    SECRET = "lead-intake-test-secret"
+
+    def setUp(self):
+        from app.core.workflow.automation_webhooks import encrypt_webhook_secret
+        self.org_id = str(uuid.uuid4())
+        self.def_id = str(uuid.uuid4())
+        self.trigger_id = "lead-intake"
+        triggers = [{"id": self.trigger_id, "kind": "webhook",
+                     "secret_encrypted": encrypt_webhook_secret(self.SECRET)}]
+        self.conn = AsyncMock()
+        self.conn.fetchrow = AsyncMock(return_value={
+            "triggers": json.dumps(triggers), "organization_id": uuid.UUID(self.org_id),
+        })
+        self.conn.fetchval = AsyncMock(return_value=uuid.UUID(self.org_id))
+        self.conn.execute = AsyncMock(return_value="INSERT 0 1")
+        self.pool = MagicMock()
+        self.pool.acquire = MagicMock(side_effect=lambda: _async_cm(self.conn))
+        self.queue = MagicMock()
+        self.queue.submit = AsyncMock(return_value="job-1")
+
+    def _headers(self, body: bytes, ts: int | None = None, secret: str | None = None) -> dict:
+        ts = int(time.time()) if ts is None else ts
+        digest = hmac.new((secret or self.SECRET).encode(), f"{ts}.".encode() + body,
+                          hashlib.sha256).hexdigest()
+        return {
+            "Content-Type": "application/json",
+            "X-Automation-Timestamp": str(ts),
+            "X-Automation-Signature": f"sha256={digest}",
+        }
+
+    async def _post(self, body: bytes, headers: dict, path: str | None = None):
+        from httpx import AsyncClient, ASGITransport
+        from app.factory import create_app
+        path = path or f"/api/webhooks/auto/{self.def_id}/{self.trigger_id}"
+        with patch("app.core.workflow.automation_webhooks.get_pool", return_value=self.pool), \
+             patch("app.core.workflow.automation_webhooks.get_job_queue", return_value=self.queue):
+            async with AsyncClient(transport=ASGITransport(app=create_app()),
+                                   base_url="http://test") as client:
+                return await client.post(path, content=body, headers=headers)
+
+    async def test_valid_hmac_is_accepted_without_session(self):
+        body = json.dumps({"name": "Ahmed", "message": "Quote for 20 employees"}).encode()
+        res = await self._post(body, self._headers(body))
+        self.assertEqual(res.status_code, 202, res.text)
+        self.assertEqual(res.json()["status"], "pending")
+        self.queue.submit.assert_awaited_once()
+        self.assertEqual(self.queue.submit.call_args.kwargs["payload"]["context"]["name"], "Ahmed")
+
+    async def test_invalid_hmac_is_rejected(self):
+        body = b'{"name": "Ahmed"}'
+        res = await self._post(body, self._headers(body, secret="wrong-secret"))
+        self.assertEqual(res.status_code, 401)
+        self.assertEqual(res.json()["detail"], "Webhook authentication failed")
+        self.queue.submit.assert_not_called()
+
+    async def test_tampered_body_is_rejected(self):
+        headers = self._headers(b'{"name": "Ahmed"}')
+        res = await self._post(b'{"name": "Mallory"}', headers)
+        self.assertEqual(res.status_code, 401)
+        self.queue.submit.assert_not_called()
+
+    async def test_expired_timestamp_is_rejected(self):
+        body = b'{"name": "Ahmed"}'
+        res = await self._post(body, self._headers(body, ts=int(time.time()) - 400))
+        self.assertEqual(res.status_code, 401)
+        self.assertEqual(res.json()["detail"], "Webhook authentication failed")
+        self.queue.submit.assert_not_called()
+
+    async def test_missing_signature_is_rejected(self):
+        body = b'{"name": "Ahmed"}'
+        headers = self._headers(body)
+        del headers["X-Automation-Signature"]
+        res = await self._post(body, headers)
+        self.assertEqual(res.status_code, 401)
+        self.assertEqual(res.json()["detail"], "Webhook authentication failed")
+        self.queue.submit.assert_not_called()
+
+    async def test_payload_organization_id_does_not_override_definition_org(self):
+        other = str(uuid.uuid4())
+        body = json.dumps({"name": "Ahmed", "organization_id": other}).encode()
+        res = await self._post(body, self._headers(body))
+        self.assertEqual(res.status_code, 202, res.text)
+        kwargs = self.queue.submit.call_args.kwargs
+        self.assertEqual(kwargs["org_id"], self.org_id)
+        self.assertEqual(kwargs["payload"]["organization_id"], self.org_id)
+        insert = next(c for c in self.conn.execute.call_args_list
+                      if "INSERT INTO automation_runs" in c.args[0])
+        self.assertEqual(insert.args[1], uuid.UUID(self.org_id))
+
+    async def test_public_prefix_is_limited_to_automation_webhooks(self):
+        """Only /api/webhooks/auto/ skips the session gate — a sibling path
+        still gets the middleware's 401."""
+        res = await self._post(b"{}", {}, path="/api/webhooks/other")
+        self.assertEqual(res.status_code, 401)
+        self.assertEqual(res.json()["detail"], "Subscription required")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 18. Webhook secret provisioning
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestWebhookSecretProvisioning(unittest.TestCase):
+
+    def _conn(self, triggers):
+        conn = MagicMock()
+        conn.transaction = MagicMock(return_value=_async_cm(None))
+        conn.fetchrow = AsyncMock(return_value=None if triggers is None
+                                  else {"triggers": json.dumps(triggers)})
+        conn.execute = AsyncMock(return_value="UPDATE 1")
+        pool = MagicMock()
+        pool.acquire = MagicMock(return_value=_async_cm(conn))
+        return pool, conn
+
+    def _ctx(self):
+        ctx = MagicMock()
+        ctx.org_id = str(uuid.uuid4())
+        ctx.user_id = str(uuid.uuid4())
+        return ctx
+
+    def test_rotate_stores_only_encrypted_secret_and_returns_plaintext_once(self):
+        from app.core.workflow.automation_api import rotate_webhook_secret
+        from app.core.workflow.automation_webhooks import decrypt_webhook_secret
+        def_id = str(uuid.uuid4())
+        pool, conn = self._conn([{"id": "t1", "kind": "webhook"},
+                                 {"id": "s1", "kind": "schedule"}])
+
+        async def _t():
+            with patch("app.core.workflow.automation_api.get_pool", return_value=pool):
+                with self.assertLogs("app.core.workflow.automation_api", "DEBUG") as logs:
+                    out = await rotate_webhook_secret(def_id, "t1", ctx=self._ctx())
+            return out, logs
+
+        out, logs = run(_t())
+        secret = out["secret"]
+        self.assertGreaterEqual(len(secret), 32)
+        self.assertEqual(out["webhook_path"], f"/api/webhooks/auto/{def_id}/t1")
+        stored_json = conn.execute.call_args.args[1]
+        self.assertNotIn(secret, stored_json)
+        stored = json.loads(stored_json)
+        self.assertEqual(decrypt_webhook_secret(stored[0]["secret_encrypted"]), secret)
+        self.assertNotIn("secret_encrypted", stored[1])
+        self.assertFalse(any(secret in line for line in logs.output))
+
+    def test_rotate_generates_distinct_secrets(self):
+        from app.core.workflow.automation_api import rotate_webhook_secret
+
+        async def _t():
+            outs = []
+            for _ in range(2):
+                pool, _ = self._conn([{"id": "t1", "kind": "webhook"}])
+                with patch("app.core.workflow.automation_api.get_pool", return_value=pool):
+                    outs.append(await rotate_webhook_secret(str(uuid.uuid4()), "t1", ctx=self._ctx()))
+            return outs
+
+        a, b = run(_t())
+        self.assertNotEqual(a["secret"], b["secret"])
+
+    def test_rotate_unknown_or_non_webhook_trigger_is_404(self):
+        from fastapi import HTTPException
+        from app.core.workflow.automation_api import rotate_webhook_secret
+        for triggers, trigger_id in (
+            (None, "t1"),                                   # definition missing / other org
+            ([{"id": "t1", "kind": "schedule"}], "t1"),     # not a webhook trigger
+            ([{"id": "t1", "kind": "webhook"}], "nope"),    # unknown trigger
+        ):
+            pool, conn = self._conn(triggers)
+
+            async def _t():
+                with patch("app.core.workflow.automation_api.get_pool", return_value=pool):
+                    with self.assertRaises(HTTPException) as cm:
+                        await rotate_webhook_secret(str(uuid.uuid4()), trigger_id, ctx=self._ctx())
+                return cm.exception
+
+            self.assertEqual(run(_t()).status_code, 404)
+            conn.execute.assert_not_called()
+
+    def test_api_view_redacts_secret(self):
+        from app.core.workflow.automation_api import _redact_triggers
+        out = _redact_triggers([
+            {"id": "t1", "kind": "webhook", "secret_encrypted": "gAAAA..."},
+            {"id": "t2", "kind": "webhook"},
+        ])
+        self.assertNotIn("secret_encrypted", out[0])
+        self.assertTrue(out[0]["has_secret"])
+        self.assertFalse(out[1]["has_secret"])
+
+    def test_client_cannot_set_secret_but_update_keeps_existing(self):
+        from app.core.workflow.automation_api import _merge_trigger_secrets
+        old = [{"id": "t1", "kind": "webhook", "secret_encrypted": "stored"}]
+        new = [
+            {"id": "t1", "kind": "webhook", "has_secret": True},
+            {"id": "t2", "kind": "webhook", "secret_encrypted": "client-forged"},
+        ]
+        merged = _merge_trigger_secrets(new, old)
+        self.assertEqual(merged[0]["secret_encrypted"], "stored")
+        self.assertNotIn("has_secret", merged[0])
+        self.assertNotIn("secret_encrypted", merged[1])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 

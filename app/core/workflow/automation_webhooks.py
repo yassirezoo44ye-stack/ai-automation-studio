@@ -30,6 +30,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from app.core.auth import derive_fernet_key
 from app.core.db import get_pool
 from app.core.jobs import get_job_queue
+from app.core.workflow.persistence import decode_jsonb
 
 log = logging.getLogger(__name__)
 
@@ -98,8 +99,8 @@ async def _load_trigger_secret(definition_id: str, trigger_id: str) -> str | Non
         if row is None:
             return None
 
-        triggers = row["triggers"]
-        if not isinstance(triggers, list):
+        triggers = decode_jsonb(row["triggers"], list, None)
+        if triggers is None:
             return None
 
         for trigger in triggers:
