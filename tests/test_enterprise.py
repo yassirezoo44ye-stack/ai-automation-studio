@@ -410,6 +410,28 @@ class TestTenancyLogic(unittest.TestCase):
         for role in ("developer", "operator", "viewer"):
             self.assertNotIn(("teams", "manage"), DEFAULT_PERMISSIONS[role])
 
+    def test_admin_can_write_leads_and_automation(self):
+        """Leads and automation endpoints require action "write". Admins
+        (rank above manager/developer, who have explicit leads/automation
+        write) must pass the real has_permission check; viewers must not."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.tenancy.schema import DEFAULT_PERMISSIONS
+        from app.tenancy.service import TenancyService
+
+        def allowed(role: str, resource: str, action: str) -> bool:
+            svc = TenancyService(MagicMock())
+            with patch.object(svc, "get_member_role", AsyncMock(return_value=role)), \
+                 patch.object(svc, "_permissions_for",
+                              AsyncMock(return_value=set(DEFAULT_PERMISSIONS[role]))):
+                return asyncio.run(svc.has_permission("org", "user", resource=resource, action=action))
+
+        for resource in ("leads", "automation"):
+            self.assertTrue(allowed("admin", resource, "write"), resource)
+            self.assertTrue(allowed("owner", resource, "write"), resource)
+            self.assertFalse(allowed("viewer", resource, "write"), resource)
+            self.assertFalse(allowed("operator", resource, "write"), resource)
+
     def test_team_members_has_full_audit_columns(self):
         """Every tenant-owned table must carry the 5-column audit contract
         (organization_id/created_by/updated_by/created_at/updated_at) —

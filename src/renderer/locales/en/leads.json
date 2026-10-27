@@ -68,5 +68,13 @@
     "hot": "Hot",
     "warm": "Warm",
     "cold": "Cold"
+  },
+  "noOrg": {
+    "title": "No organization selected",
+    "descriptionNoOrgs": "Leads belong to an organization. Create one to start capturing leads.",
+    "descriptionHasOrgs": "Pick an organization from the Organizations page to see its leads.",
+    "namePlaceholder": "Organization name",
+    "create": "Create organization",
+    "createError": "Could not create the organization"
   }
 }

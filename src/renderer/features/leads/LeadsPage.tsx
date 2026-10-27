@@ -5,6 +5,7 @@ import { useOrg } from "../../contexts/OrgContext";
 import { useToast } from "../../contexts/toast";
 import { C } from "../../styles/theme";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
+import { EmptyState } from "../../shared/ui/EmptyState";
 import { relTime } from "../../utils/time";
 
 interface Lead {
@@ -413,9 +414,53 @@ function LeadRow({ lead, onStatusChange }: {
   );
 }
 
+function CreateOrgForm() {
+  const { t } = useTranslation("leads");
+  const { createOrg } = useOrg();
+  const toast = useToast();
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      await createOrg(name.trim());
+    } catch {
+      toast(t("noOrg.createError"), "err");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+      <input
+        aria-label={t("noOrg.namePlaceholder")}
+        placeholder={t("noOrg.namePlaceholder")}
+        value={name}
+        onChange={e => setName(e.target.value)}
+        style={{
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 8,
+          padding: "8px 12px",
+          fontSize: 13,
+          color: "var(--t1)",
+          outline: "none",
+        }}
+      />
+      <GoldButton type="submit" disabled={saving || !name.trim()}>
+        {saving ? "…" : t("noOrg.create")}
+      </GoldButton>
+    </form>
+  );
+}
+
 export function LeadsPage() {
   const { t } = useTranslation("leads");
-  const { currentOrgId } = useOrg();
+  const { currentOrgId, orgs, loading: orgLoading } = useOrg();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -447,6 +492,21 @@ export function LeadsPage() {
   }
 
   const STATUSES: Array<Lead["status"] | ""> = ["", "new", "qualified", "contacted", "won", "lost"];
+
+  // Lead endpoints are org-scoped: without an organization the list request
+  // is never made, so show how to get one instead of an endless "loading".
+  if (!orgLoading && !currentOrgId) {
+    const hasOrgs = orgs.length > 0;
+    return (
+      <div style={{ padding: "24px 28px", maxWidth: 1100, margin: "0 auto" }}>
+        <EmptyState
+          title={t("noOrg.title")}
+          description={hasOrgs ? t("noOrg.descriptionHasOrgs") : t("noOrg.descriptionNoOrgs")}
+          action={hasOrgs ? undefined : <CreateOrgForm />}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: "24px 28px", maxWidth: 1100, margin: "0 auto" }}>
