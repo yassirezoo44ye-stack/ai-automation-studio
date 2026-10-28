@@ -68,9 +68,42 @@ def canonical_job_url(value: str) -> str | None:
             key = parse_qs(url.query).get("jk", [""])[0]
             if re.fullmatch(r"[a-f0-9]{16}", key):
                 return "https://ae.indeed.com/viewjob?jk=" + key
+        # Gulf job boards: rebuild from the numeric job id, never echo the raw path.
+        if host in {"bayt.com", "www.bayt.com"}:
+            match = re.fullmatch(
+                r"/(en|ar)/([a-z-]{2,30})/jobs/([a-z0-9-]{1,200}?)-(\d{5,})/?", url.path
+            )
+            if match:
+                return "https://www.bayt.com/{}/{}/jobs/{}-{}/".format(*match.groups())
+        if host in {"gulftalent.com", "www.gulftalent.com"}:
+            match = re.fullmatch(
+                r"/([a-z-]{2,30})/jobs/([a-z0-9-]{1,200}?)-(\d{5,})/?", url.path
+            )
+            if match:
+                return "https://www.gulftalent.com/{}/jobs/{}-{}".format(*match.groups())
+        if host in {"naukrigulf.com", "www.naukrigulf.com"}:
+            match = re.fullmatch(r"/([a-z0-9-]{1,300}?)-jid-(\d{6,})/?", url.path)
+            if match:
+                return "https://www.naukrigulf.com/{}-jid-{}".format(*match.groups())
     except ValueError:
         pass
     return None
+
+
+SOURCES = {
+    "linkedin.com": "linkedin",
+    "indeed.com": "indeed",
+    "bayt.com": "bayt",
+    "gulftalent.com": "gulftalent",
+    "naukrigulf.com": "naukrigulf",
+}
+
+
+def job_source(url):
+    host = urlsplit(url).hostname or ""
+    return next(
+        (name for domain, name in SOURCES.items() if host.endswith(domain)), "other"
+    )
 
 
 def salary_from_text(text):
@@ -179,7 +212,7 @@ def parse_alert(text: str, source="manual"):
         if url in seen:
             continue
         seen.add(url)
-        # Standard LinkedIn/Indeed plain MIME bodies: one job paragraph before URL.
+        # Standard plain MIME alert bodies: one job paragraph before URL.
         blocks = re.split(r"\n\s*\n|\n-{3,}\n", previous)
         block = next(
             (
@@ -215,7 +248,7 @@ def parse_alert(text: str, source="manual"):
                 "company": company[:200],
                 "location": location[:200],
                 "description": block.strip()[:16000],
-                "source": "linkedin" if "linkedin.com" in url else "indeed",
+                "source": job_source(url),
                 "source_requested": source,
                 "verification": "email_only",
                 "deadline": closing_date(block),

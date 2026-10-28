@@ -8,7 +8,10 @@ type Profile = {
   summary: string; roles: string[]; sectors: string[]; skills: string[]; languages: string[]; cities: string[];
   experience_years: number | null; minimum_monthly_aed: number | null; uae_driving_license: boolean | null;
 };
-type Connection = { configured: boolean; connected: boolean; enabled: boolean; interval_hours: number; last_sync: string | null; last_error: string | null };
+type Connection = {
+  configured: boolean; connected: boolean; enabled: boolean; interval_hours: number; last_sync: string | null; last_error: string | null;
+  missing?: string[]; redirect_uri?: string | null; lookback_days?: number; sources?: string[];
+};
 type Job = {
   id: string; title: string; company: string; location: string; url: string; status: string;
   description: string; source_received_at?: string | null; verification: string; deadline: string | null; source: string;
@@ -39,6 +42,8 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
   const [notice, setNotice] = useState("");
   const [draft, setDraft] = useState("");
   const exchangeStarted = useRef(false);
+  // Google returns to this exact page; the server's redirect URI must match it.
+  const callbackUri = window.location.origin + "/careers";
   const request = useCallback(async <T,>(path: string, method = "GET", body?: unknown, signal?: AbortSignal) => {
     const response = await apiFetch(`/api/careers${path}`, {
       method, headers: { "X-Organization-Id": orgId },
@@ -133,8 +138,15 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
           </form>
         </details>
         <div className="career-panel">
-          <h2>{t("inbox")}</h2><p>{t("gmailDescription")}</p>
-          {!connection?.configured && <p className="career-muted">{t("gmailNotConfigured")}</p>}
+          <h2>{t("inbox")}</h2>
+          <p>{t("gmailDescription", { sources: (connection?.sources ?? ["LinkedIn", "Indeed"]).join(", "), days: connection?.lookback_days ?? 14 })}</p>
+          {connection && !connection.configured && <div className="career-muted" role="status">
+            <p>{t("gmailNotConfigured")}</p>
+            {!!connection.missing?.length && <p>{t("missingSettings")} <code>{connection.missing.join(", ")}</code></p>}
+            <p>{t("registerRedirect")} <code>{callbackUri}</code></p>
+          </div>}
+          {connection?.configured && connection.redirect_uri && connection.redirect_uri !== callbackUri &&
+            <p role="alert">{t("redirectMismatch", { configured: connection.redirect_uri, expected: callbackUri })}</p>}
           {connection?.last_error && <p role="alert">{connection.last_error}</p>}
           <div className="career-actions">
             <button disabled={busy || !connection?.configured} onClick={() => void act(async () => {

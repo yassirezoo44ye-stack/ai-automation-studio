@@ -14,6 +14,7 @@ vi.mock("../../shared/utils/api", async importOriginal => {
 const mockFetch = vi.mocked(apiFetch);
 const profile = { summary: "Four years in food sales.", roles: ["Sales"], sectors: ["Food"], skills: [], languages: ["English"], cities: ["Dubai"], experience_years: 4, minimum_monthly_aed: 4000, uae_driving_license: null };
 let connected = false;
+let gmail: Record<string, unknown> = {};
 const job = {
   id: "job-1", title: "Sales Executive", company: "Example Foods", location: "Dubai", url: "https://www.linkedin.com/jobs/view/4470888126/", status: "new", source: "linkedin", verification: "email_only", deadline: null,
   description: "Food sales opportunity", salary: { text: null, min: null, max: null, kind: "unknown", period: "unknown" },
@@ -21,14 +22,14 @@ const job = {
 };
 
 beforeEach(async () => {
-  orgId = "org-a"; connected = false; sessionStorage.clear(); window.history.replaceState(null, "", "/careers");
+  orgId = "org-a"; connected = false; gmail = {}; sessionStorage.clear(); window.history.replaceState(null, "", "/careers");
   await i18n.changeLanguage("en");
   mockFetch.mockReset();
   mockFetch.mockImplementation(async (path, init) => {
     let body: unknown = {};
     if (path.endsWith("/profile")) body = profile;
     else if (path.endsWith("/jobs")) body = { items: [job] };
-    else if (path.endsWith("/gmail")) body = { configured: false, connected, enabled: false, interval_hours: 24, last_sync: null, last_error: null };
+    else if (path.endsWith("/gmail")) body = { configured: false, connected, enabled: false, interval_hours: 24, last_sync: null, last_error: null, ...gmail };
     else if (path.endsWith("/import")) body = { inserted: 1, warning: null };
     else if (path.endsWith("/draft")) body = { text: "Review this draft. [Your name]", sent: false };
     void init;
@@ -102,5 +103,20 @@ describe("Career assistant", () => {
     fireEvent.click(screen.getByRole("button", { name: "Extract jobs" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Internal server error");
     expect(screen.getByLabelText("Full message text or HTML")).toHaveValue("keep this text");
+  });
+
+  it("names missing server settings and the redirect URI to register", async () => {
+    gmail = { missing: ["CAREER_GOOGLE_CLIENT_ID", "CAREER_GOOGLE_CLIENT_SECRET"], lookback_days: 30, sources: ["LinkedIn", "Bayt"] };
+    render(<CareersPage />); await ready();
+    expect(screen.getByText(/from LinkedIn, Bayt received in the last 30 days/)).toBeInTheDocument();
+    expect(screen.getByText("CAREER_GOOGLE_CLIENT_ID, CAREER_GOOGLE_CLIENT_SECRET")).toBeInTheDocument();
+    expect(screen.getByText(window.location.origin + "/careers")).toBeInTheDocument();
+  });
+
+  it("warns when the configured redirect URI does not match this page", async () => {
+    gmail = { configured: true, redirect_uri: "https://elsewhere.example/careers" };
+    render(<CareersPage />); await ready();
+    expect(screen.getByRole("alert")).toHaveTextContent("https://elsewhere.example/careers");
+    expect(screen.getByRole("button", { name: "Connect Gmail (read only)" })).toBeEnabled();
   });
 });

@@ -63,18 +63,26 @@ disabled by default and support intervals from 6 to 168 hours (UI default: 24). 
 shown safely and deferred for an hour. Shutdown cancels and awaits the task before closing the pool.
 Polling requires an awake server; the next due run happens when a sleeping service resumes.
 
-Gmail query is fixed to recognised LinkedIn/Indeed job-alert senders within the last 14 days,
-excluding Spam and Trash. At most 100 matching messages are listed per run, newest-first; already
-processed IDs skip body retrieval. Backlogs beyond that window/bound need a future paginated cursor.
-Provider retrieval has a 90-second total timeout. Message arrival time is stored separately from the advertised application deadline. Attachments
+Gmail query covers LinkedIn/Indeed job-alert senders plus any sender on the bayt.com, gulftalent.com
+and naukrigulf.com domains (their non-alert mail yields no job links and is counted as unparsed),
+excluding Spam and Trash. Lookback is `CAREER_GMAIL_LOOKBACK_DAYS` (default 30, clamped 1–90) and at
+most `CAREER_GMAIL_MAX_MESSAGES` matching messages are listed per run (default 150, clamped 50–500),
+newest-first; already processed IDs skip body retrieval. Backlogs beyond that window/bound need a
+future paginated cursor. Provider retrieval has a 180-second total timeout.
+
+When Gmail is not configured, `GET /api/careers/gmail` returns the *names* of the missing variables
+(never values) and the page shows them with the exact redirect URI to register. When it is configured,
+the page warns if `CAREER_GOOGLE_REDIRECT_URI` differs from its own `/careers` URL. Message arrival time is stored separately from the advertised application deadline. Attachments
 are not downloaded. No mailbox data is sent to any model.
 
 ## Boundaries and known limits
 
 - Exact term matching, not semantic or recruiter-calibrated prediction; include English/Arabic
   keywords in the editable profile. Language gate parsing currently recognises English language names.
-- Supported direct URLs: LinkedIn numeric job IDs and Indeed `jk` IDs. Ad redirects without a public
-  job ID are not reverse-engineered. Unsupported messages are counted rather than populated with guesses.
+- Supported direct URLs: LinkedIn numeric job IDs, Indeed `jk` IDs, Bayt `/{lang}/{country}/jobs/…-{id}/`,
+  GulfTalent `/{country}/jobs/…-{id}` and Naukrigulf `…-jid-{id}` pages. The Gulf-board patterns follow
+  their public job-page URLs and have not yet been checked against real alert emails; tracking links
+  that hide the job URL are not followed. Ad redirects without a public job ID are not reverse-engineered. Unsupported messages are counted rather than populated with guesses.
 - The parser handles common email layouts, not arbitrary web pages or every newsletter layout.
 - Public-page verification is best-effort; 3xx responses are not followed. The full requirements still
   need user review, especially specialised experience and complex language requirements.

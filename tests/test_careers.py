@@ -459,7 +459,8 @@ async def test_gmail_sync_reads_only_alerts_and_preserves_message_arrival(monkey
         if request.url.host == "oauth2.googleapis.com":
             return httpx.Response(200, json={"access_token": "test-access"})
         if request.url.path.endswith("/messages"):
-            assert "newer_than:14d" in request.url.params["q"]
+            assert "newer_than:30d" in request.url.params["q"]
+            assert "from:bayt.com" in request.url.params["q"]
             return httpx.Response(
                 200, json={"messages": [{"id": "done"}, {"id": "new"}]}
             )
@@ -518,3 +519,117 @@ def test_failed_public_verification_keeps_requirements_unverified():
         "Full requirements unverified / الشروط الكاملة غير متحققة" in result["checks"]
     )
     assert result["priority"] == "review"
+
+
+@pytest.mark.parametrize(
+    ("url", "canonical", "source"),
+    [
+        (
+            "https://www.bayt.com/en/uae/jobs/sales-executive-4963240/?utm_source=alert&token=PRIVATE",
+            "https://www.bayt.com/en/uae/jobs/sales-executive-4963240/",
+            "bayt",
+        ),
+        (
+            "https://www.gulftalent.com/uae/jobs/accountant-447123?ref=alert",
+            "https://www.gulftalent.com/uae/jobs/accountant-447123",
+            "gulftalent",
+        ),
+        (
+            "https://www.naukrigulf.com/sales-jobs-in-dubai-uae-in-example-2-to-5-years-n-cd-1-jid-201023000123?src=jobalert",
+            "https://www.naukrigulf.com/sales-jobs-in-dubai-uae-in-example-2-to-5-years-n-cd-1-jid-201023000123",
+            "naukrigulf",
+        ),
+    ],
+)
+def test_gulf_job_boards_are_canonicalised_without_tracking(url, canonical, source):
+    assert canonical_job_url(url) == canonical
+    jobs = parse_alert(f"Sales Executive\nExample Foods - Dubai\n{url}\n")
+    assert [(j["url"], j["source"]) for j in jobs] == [(canonical, source)]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.bayt.com.evil.test/en/uae/jobs/sales-4963240/",
+        "https://www.bayt.com/en/uae/jobs/",
+        "https://www.bayt.com/en/uae/jobs/sales-4963240/apply/",
+        "https://www.gulftalent.com/uae/jobs/search",
+        "https://www.naukrigulf.com/sales-jobs-in-dubai",
+        "http://www.naukrigulf.com/sales-jid-201023000123",
+    ],
+)
+def test_gulf_job_board_non_job_or_spoofed_urls_rejected(url):
+    assert canonical_job_url(url) is None
+
+
+def test_sync_limits_are_clamped_and_query_names_all_sources(monkeypatch):
+    from app.core import config
+    from app.core.careers import gmail
+
+    monkeypatch.setattr(config, "CAREER_GMAIL_LOOKBACK_DAYS", "365")
+    monkeypatch.setattr(config, "CAREER_GMAIL_MAX_MESSAGES", "not-a-number")
+    assert gmail.limits() == (90, 150)
+    monkeypatch.setattr(config, "CAREER_GMAIL_LOOKBACK_DAYS", "0")
+    monkeypatch.setattr(config, "CAREER_GMAIL_MAX_MESSAGES", "9999")
+    assert gmail.limits() == (1, 500)
+    q = gmail.query(30)
+    assert q.startswith("newer_than:30d -in:trash -in:spam (")
+    for sender in gmail.SENDERS:
+        assert "from:" + sender in q
+
+
+@pytest.mark.asyncio
+async def test_sync_reads_at_most_the_configured_number_of_pages(monkeypatch):
+    import httpx
+
+    from app.core import config
+    from app.core.careers import gmail
+
+    monkeypatch.setattr(
+        gmail, "settings", lambda: ("id", "secret", "https://example.test/careers")
+    )
+    monkeypatch.setattr(config, "CAREER_GMAIL_MAX_MESSAGES", "100")
+    lists = []
+
+    def handler(request):
+        if request.url.host == "oauth2.googleapis.com":
+            return httpx.Response(200, json={"access_token": "a"})
+        lists.append(request)
+        return httpx.Response(200, json={"messages": [], "nextPageToken": "more"})
+
+    original_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        gmail.httpx,
+        "AsyncClient",
+        lambda **kwargs: original_client(
+            transport=httpx.MockTransport(handler), **kwargs
+        ),
+    )
+    assert await gmail.read_alerts("r", set()) == []
+    assert len(lists) == 2
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_connection_lists_missing_names_never_values(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.core import config
+
+    monkeypatch.setattr(config, "CAREER_GOOGLE_CLIENT_ID", "")
+    monkeypatch.setattr(config, "CAREER_GOOGLE_CLIENT_SECRET", "PRIVATE_SECRET_VALUE")
+    monkeypatch.setattr(config, "CAREER_GOOGLE_REDIRECT_URI", "")
+    conn = SimpleNamespace(fetchrow=AsyncMock(return_value=None))
+    ctx = OrgContext(
+        "11111111-1111-1111-1111-111111111111",
+        "22222222-2222-2222-2222-222222222222",
+        "",
+        "member",
+    )
+    result = await CareerService(Pool(conn)).connection(ctx)
+    assert result["configured"] is False
+    assert result["missing"] == [
+        "CAREER_GOOGLE_CLIENT_ID",
+        "CAREER_GOOGLE_REDIRECT_URI",
+    ]
+    assert result["redirect_uri"] is None
+    assert "PRIVATE_SECRET_VALUE" not in repr(result)

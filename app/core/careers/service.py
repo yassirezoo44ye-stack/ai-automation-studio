@@ -159,12 +159,17 @@ class CareerService:
                 *self.owner(ctx),
             )
         try:
-            gmail.settings()
+            redirect_uri = gmail.settings()[2]
             configured = True
         except gmail.GmailUnavailable:
-            configured = False
+            redirect_uri, configured = None, False
+        days, _ = gmail.limits()
         return {
             "configured": configured,
+            "missing": [] if configured else gmail.missing_settings(),
+            "redirect_uri": redirect_uri,
+            "lookback_days": days,
+            "sources": list(gmail.SOURCE_NAMES),
             "connected": bool(row),
             "enabled": row["enabled"] if row else False,
             "interval_hours": row["interval_hours"] if row else 24,
@@ -231,7 +236,8 @@ class CareerService:
                         gmail.read_alerts(
                             gmail.decrypt(row["refresh_encrypted"]), processed_ids
                         ),
-                        timeout=90,
+                        # Up to 500 serial message reads (CAREER_GMAIL_MAX_MESSAGES).
+                        timeout=180,
                     )
                 except TimeoutError:
                     raise gmail.GmailUnavailable(

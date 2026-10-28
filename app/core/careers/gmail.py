@@ -12,11 +12,58 @@ from cryptography.fernet import Fernet, InvalidToken
 from .engine import mime_text
 
 SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
-QUERY = "newer_than:14d -in:trash -in:spam (from:jobalerts-noreply@linkedin.com OR from:jobs-noreply@linkedin.com OR from:donotreply@jobalert.indeed.com)"
+# LinkedIn sends much non-job mail, so only its alert senders; the job boards
+# are matched by domain and their non-alert mail yields no job links.
+SENDERS = (
+    "jobalerts-noreply@linkedin.com",
+    "jobs-noreply@linkedin.com",
+    "donotreply@jobalert.indeed.com",
+    "bayt.com",
+    "gulftalent.com",
+    "naukrigulf.com",
+)
+SOURCE_NAMES = ("LinkedIn", "Indeed", "Bayt", "GulfTalent", "Naukrigulf")
+PAGE_SIZE = 50
 
 
 class GmailUnavailable(Exception):
     """Safe public error, deliberately excludes provider response or credentials."""
+
+
+def bounded(raw, default, low, high):
+    try:
+        return min(high, max(low, int(raw)))
+    except (TypeError, ValueError):
+        return default
+
+
+def limits():
+    from app.core.config import CAREER_GMAIL_LOOKBACK_DAYS, CAREER_GMAIL_MAX_MESSAGES
+
+    return (
+        bounded(CAREER_GMAIL_LOOKBACK_DAYS, 30, 1, 90),
+        bounded(CAREER_GMAIL_MAX_MESSAGES, 150, PAGE_SIZE, 500),
+    )
+
+
+def query(days):
+    senders = " OR ".join("from:" + s for s in SENDERS)
+    return f"newer_than:{days}d -in:trash -in:spam ({senders})"
+
+
+def missing_settings():
+    from app.core import config
+
+    # Names only: values (including the secret) never leave the server.
+    return [
+        name
+        for name in (
+            "CAREER_GOOGLE_CLIENT_ID",
+            "CAREER_GOOGLE_CLIENT_SECRET",
+            "CAREER_GOOGLE_REDIRECT_URI",
+        )
+        if not getattr(config, name, "")
+    ]
 
 
 def cipher():
@@ -126,13 +173,14 @@ async def read_alerts(refresh_token, processed):
     if not token.get("access_token"):
         raise GmailUnavailable("Reconnect Gmail / أعد ربط Gmail")
     alerts, page = [], None
-    # At most 100 matching messages per run; processed IDs do not consume body calls.
+    days, maximum = limits()
+    # Bounded matching messages per run; processed IDs do not consume body calls.
     try:
         async with httpx.AsyncClient(
             timeout=20, headers={"Authorization": "Bearer " + token["access_token"]}
         ) as client:
-            for _ in range(2):
-                params = {"q": QUERY, "maxResults": 50}
+            for _ in range(-(-maximum // PAGE_SIZE)):
+                params = {"q": query(days), "maxResults": PAGE_SIZE}
                 if page:
                     params["pageToken"] = page
                 response = await client.get(
