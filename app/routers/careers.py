@@ -7,12 +7,15 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.careers.ai import CareerAIError
 from app.core.careers.gmail import GmailUnavailable
 from app.core.careers.models import (
     CareerProfile,
+    FitRequest,
     ImportAlert,
     JobStatus,
     OAuthExchange,
+    ProfileExtract,
     ScheduleSettings,
 )
 from app.core.careers.service import CareerService
@@ -46,6 +49,17 @@ async def save_profile(
     return await service().save_profile(ctx, body)
 
 
+@router.post("/profile/extract")
+async def extract_profile(
+    body: ProfileExtract, ctx: Annotated[OrgContext, Depends(org_context)]
+):
+    """AI suggestion from a CV for the user to review; nothing is saved."""
+    try:
+        return {"profile": await service().extract_profile(ctx, body.text)}
+    except CareerAIError as exc:
+        raise HTTPException(502, str(exc)) from None
+
+
 @router.get("/jobs")
 async def list_jobs(ctx: Annotated[OrgContext, Depends(org_context)]):
     return {"items": await service().jobs(ctx), "limit": 500}
@@ -55,7 +69,10 @@ async def list_jobs(ctx: Annotated[OrgContext, Depends(org_context)]):
 async def import_alert(
     body: ImportAlert, ctx: Annotated[OrgContext, Depends(org_context)]
 ):
-    return await service().import_alert(ctx, body)
+    try:
+        return await service().import_alert(ctx, body)
+    except CareerAIError as exc:
+        raise HTTPException(502, str(exc)) from None
 
 
 @router.patch("/jobs/{job_id}/status")
@@ -75,6 +92,32 @@ async def draft(job_id: uuid.UUID, ctx: Annotated[OrgContext, Depends(org_contex
     return {"text": text, "sent": False}
 
 
+@router.post("/jobs/{job_id}/ai-draft")
+async def ai_draft(job_id: uuid.UUID, ctx: Annotated[OrgContext, Depends(org_context)]):
+    try:
+        text = await service().ai_draft(ctx, job_id)
+    except CareerAIError as exc:
+        raise HTTPException(502, str(exc)) from None
+    if text is None:
+        raise HTTPException(404, "Job not found")
+    return {"text": text, "sent": False, "ai": True}
+
+
+@router.post("/jobs/{job_id}/fit")
+async def ai_fit(
+    job_id: uuid.UUID,
+    ctx: Annotated[OrgContext, Depends(org_context)],
+    body: FitRequest | None = None,
+):
+    try:
+        result = await service().ai_fit(ctx, job_id, (body or FitRequest()).language)
+    except CareerAIError as exc:
+        raise HTTPException(502, str(exc)) from None
+    if result is None:
+        raise HTTPException(404, "Job not found")
+    return {"ai_fit": result}
+
+
 @router.post("/jobs/{job_id}/verify")
 async def verify(job_id: uuid.UUID, ctx: Annotated[OrgContext, Depends(org_context)]):
     import json
@@ -85,7 +128,11 @@ async def verify(job_id: uuid.UUID, ctx: Annotated[OrgContext, Depends(org_conte
     job = await svc.job(ctx, job_id)
     if job is None:
         raise HTTPException(404, "Job not found")
-    checked = await verify_listing(job)
+    try:
+        checked = await verify_listing(job)
+    except ValueError:
+        # Jobs found in pasted text may link to sites outside the allowlist.
+        raise HTTPException(400, "Only LinkedIn and Indeed listings can be checked") from None
     async with svc.pool.acquire() as conn:
         await conn.execute(
             "UPDATE career_jobs SET data=$4::jsonb,updated_at=now() WHERE organization_id=$1 AND user_id=$2 AND id=$3",

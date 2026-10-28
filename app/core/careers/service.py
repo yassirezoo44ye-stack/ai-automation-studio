@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 
-from . import gmail
+from . import ai, gmail
 from .engine import assess, draft_application, parse_alert
 from .models import CareerProfile
 
@@ -42,7 +42,19 @@ class CareerService:
         return profile
 
     async def import_on(self, conn, ctx, text, source="manual", received_at=None):
-        jobs, inserted = parse_alert(text, source), 0
+        jobs = parse_alert(text, source)
+        inserted = await self._insert_jobs(conn, ctx, jobs, received_at)
+        return {
+            "found": len(jobs),
+            "inserted": inserted,
+            "duplicates": len(jobs) - inserted,
+            "warning": None
+            if jobs
+            else "No supported direct job links found / لم توجد روابط وظائف مباشرة مدعومة",
+        }
+
+    async def _insert_jobs(self, conn, ctx, jobs, received_at=None):
+        inserted = 0
         for job in jobs:
             job["source_received_at"] = received_at
             result = await conn.fetchval(
@@ -53,18 +65,25 @@ class CareerService:
                 json.dumps(job),
             )
             inserted += result is not None
+        return inserted
+
+    async def import_alert(self, ctx, body):
+        async with self.pool.acquire() as conn, conn.transaction():
+            result = await self.import_on(conn, ctx, body.text, body.source)
+        if result["found"] or not body.use_ai:
+            return {**result, "method": "rules"}
+        # Unsupported format: let the AI find the openings. The AI call runs
+        # outside any DB transaction; its jobs are grounded in the text.
+        jobs = await ai.extract_jobs(self.ai_complete(ctx), body.text, body.source)
+        async with self.pool.acquire() as conn, conn.transaction():
+            inserted = await self._insert_jobs(conn, ctx, jobs)
         return {
             "found": len(jobs),
             "inserted": inserted,
             "duplicates": len(jobs) - inserted,
-            "warning": None
-            if jobs
-            else "No supported direct job links found / لم توجد روابط وظائف مباشرة مدعومة",
+            "warning": None if jobs else "No job openings found in this text / لم توجد وظائف في هذا النص",
+            "method": "ai",
         }
-
-    async def import_alert(self, ctx, body):
-        async with self.pool.acquire() as conn, conn.transaction():
-            return await self.import_on(conn, ctx, body.text, body.source)
 
     async def jobs(self, ctx):
         profile = await self.profile(ctx)
@@ -83,6 +102,10 @@ class CareerService:
             }
             for row in rows
         ]
+        current = ai.profile_hash(profile)
+        for item in items:
+            if isinstance(item.get("ai_fit"), dict):
+                item["ai_fit"]["stale"] = item["ai_fit"].get("profile_hash") != current
         return sorted(
             items,
             key=lambda x: (
@@ -116,6 +139,33 @@ class CareerService:
     async def draft(self, ctx, job_id):
         job = await self.job(ctx, job_id)
         return draft_application(job, await self.profile(ctx)) if job else None
+
+    # ── AI (app/core/careers/ai.py) ───────────────────────────────────────────
+
+    def ai_complete(self, ctx):
+        return ai.gateway_complete(self.pool, org_id=ctx.org_id, user_id=ctx.user_id)
+
+    async def extract_profile(self, ctx, text):
+        return await ai.extract_profile(self.ai_complete(ctx), text)
+
+    async def ai_draft(self, ctx, job_id):
+        job = await self.job(ctx, job_id)
+        return await ai.draft(self.ai_complete(ctx), job, await self.profile(ctx)) if job else None
+
+    async def ai_fit(self, ctx, job_id, language="en"):
+        job = await self.job(ctx, job_id)
+        if job is None:
+            return None
+        result = await ai.fit(self.ai_complete(ctx), job, await self.profile(ctx), language)
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE career_jobs SET data=data || jsonb_build_object('ai_fit',$4::jsonb),updated_at=now()
+                WHERE organization_id=$1 AND user_id=$2 AND id=$3""",
+                *self.owner(ctx),
+                job_id,
+                json.dumps(result),
+            )
+        return {**result, "stale": False}
 
     async def oauth_begin(self, ctx):
         state, verifier, url = gmail.authorization()
