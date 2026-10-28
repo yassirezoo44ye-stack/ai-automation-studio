@@ -7,6 +7,8 @@ POST   /api/leads/capture         external lead capture — API key auth, no JWT
 GET    /api/leads/{id}            get one lead
 PATCH  /api/leads/{id}/status     update lead status
 POST   /api/leads/{id}/qualify    re-run AI qualification
+POST   /api/leads/{id}/ai-followup  AI follow-up email draft (never sent)
+POST   /api/leads/brief           AI pipeline brief (counts + next actions)
 
 Security:
   • Authenticated endpoints require a verified OrgContext (JWT + org membership).
@@ -22,9 +24,12 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.core.leads import get_lead_service
+from app.core.leads.ai import LeadAIError
 from app.core.api_keys import require_api_key, ApiKeyRecord
 from app.core.rate_limit import make_rate_limit_dep
 from app.tenancy.context import OrgContext, require_permission
@@ -235,6 +240,43 @@ async def create_lead(
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=ctx.org_id)
 
     return {**qualified_lead, "follow_up_status": follow_up_status}
+
+
+class AIRequest(BaseModel):
+    language: Literal["en", "ar"] = "en"
+
+
+@router.post("/brief")
+async def pipeline_brief(
+    body: AIRequest | None = None,
+    ctx: OrgContext = Depends(require_permission("leads", "write")),
+):
+    """Counts are exact (SQL); the AI writes the summary and picks next
+    actions, each tied to a real open lead of this org."""
+    try:
+        return await get_lead_service().pipeline_brief(
+            org_id=ctx.org_id, user_id=ctx.user_id, language=(body or AIRequest()).language,
+        )
+    except LeadAIError as exc:
+        raise HTTPException(502, str(exc)) from None
+
+
+@router.post("/{lead_id}/ai-followup")
+async def ai_followup(
+    lead_id: str,
+    body: AIRequest | None = None,
+    ctx: OrgContext = Depends(require_permission("leads", "write")),
+):
+    try:
+        draft = await get_lead_service().ai_followup(
+            lead_id=lead_id, org_id=ctx.org_id, user_id=ctx.user_id,
+            language=(body or AIRequest()).language,
+        )
+    except LeadAIError as exc:
+        raise HTTPException(502, str(exc)) from None
+    if draft is None:
+        raise _not_found()
+    return draft
 
 
 @router.get("/{lead_id}")

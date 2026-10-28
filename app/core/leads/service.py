@@ -218,6 +218,76 @@ class LeadService:
                 )
         return _row_to_dict(row) if row else lead
 
+    # ── AI assistance (app/core/leads/ai.py) ──────────────────────────────────
+
+    def ai_complete(self, *, org_id: str, user_id: str | None = None):
+        """complete(system, prompt, max_tokens) through AIGateway for this org.
+        Provider errors become LeadAIError with a safe message; quota errors
+        pass through (HTTP 429)."""
+        from app.core.leads.ai import LeadAIError
+
+        async def complete(system: str, prompt: str, max_tokens: int) -> str:
+            from app.ai.gateway import AIGateway
+            from app.ai.models import CompletionRequest, Message
+            from app.billing import QuotaExceeded
+
+            request = CompletionRequest(
+                messages=[Message(role="user", content=prompt)],
+                system=system, max_tokens=max_tokens, temperature=0.3,
+            )
+            try:
+                response = await AIGateway(self._pool).complete(
+                    request, user_id=user_id, org_id=org_id,
+                )
+            except QuotaExceeded:
+                raise
+            except Exception:
+                log.warning("lead AI call failed org=%s", org_id[:8], exc_info=True)
+                raise LeadAIError(
+                    "AI is unavailable right now. Please retry. / الذكاء الاصطناعي غير متاح حالياً، أعد المحاولة"
+                ) from None
+            return response.content
+
+        return complete
+
+    async def ai_followup(
+        self, *, lead_id: str, org_id: str, user_id: str | None = None, language: str = "en",
+    ) -> dict[str, Any] | None:
+        from app.core.leads.ai import followup_draft
+
+        lead = await self.get(lead_id=lead_id, org_id=org_id)
+        if lead is None:
+            return None
+        return await followup_draft(self.ai_complete(org_id=org_id, user_id=user_id), lead, language)
+
+    async def pipeline_brief(
+        self, *, org_id: str, user_id: str | None = None, language: str = "en",
+    ) -> dict[str, Any]:
+        from app.core.leads.ai import OPEN_STATUSES, pipeline_brief, pipeline_stats
+
+        async with self._pool.acquire() as conn:
+            counts = await conn.fetch(
+                "SELECT ai_tier, status, count(*) AS n FROM leads "
+                "WHERE organization_id = $1 GROUP BY ai_tier, status",
+                uuid.UUID(org_id),
+            )
+            rows = await conn.fetch(
+                """
+                SELECT * FROM leads
+                WHERE organization_id = $1 AND status = ANY($2::text[])
+                ORDER BY CASE ai_tier WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 WHEN 'cold' THEN 2 ELSE 3 END,
+                         created_at DESC
+                LIMIT 40
+                """,
+                uuid.UUID(org_id), list(OPEN_STATUSES),
+            )
+        return await pipeline_brief(
+            self.ai_complete(org_id=org_id, user_id=user_id),
+            pipeline_stats([dict(r) for r in counts]),
+            [_row_to_dict(r) for r in rows],
+            language,
+        )
+
     # ── Notification dispatch ─────────────────────────────────────────────────
 
     async def dispatch_qualified_notification(
