@@ -63,6 +63,7 @@ from app.routers import ws_ticket        as ws_ticket_router
 from app.routers import training         as training_router
 from app.routers import library          as library_router
 from app.routers import study_library    as study_library_router
+from app.routers import study_workflows  as study_workflows_router
 # Business Lab — Plan & Validation Engine
 from app.routers import business_plans   as business_plans_router
 # Automation — Phase 5 Gate 3
@@ -288,6 +289,9 @@ async def lifespan(app: FastAPI):
     from app.routers.social_publisher import init_social_publisher_schema
     async with pool.acquire() as conn:
         await init_social_publisher_schema(conn)
+    from app.study.workflows import init_study_workflow_schema
+    async with pool.acquire() as conn:
+        await init_study_workflow_schema(conn)
 
     # Private career assistant: schema only; Gmail sync is opt-in per user.
     from app.core.careers.schema import init_careers_schema
@@ -735,6 +739,7 @@ def create_app() -> FastAPI:
     app.include_router(training_router.router)
     app.include_router(library_router.router)
     app.include_router(study_library_router.router)
+    app.include_router(study_workflows_router.router)
     # Business Lab — Plan & Validation Engine
     app.include_router(business_plans_router.router)
     # Automation — Phase 5 Gate 3
