@@ -488,3 +488,10 @@ successful deploy to `main`.
 ### Other
 - Merge pull request #24 from yassirezoo44ye-stack/claude/flow-lead-automation-audit-w3ldyc
 - fix(automation): interrupt pending runs whose in-memory job was lost
+
+## v1.0.33
+
+### Other
+- Merge pull request #25 from yassirezoo44ye-stack/claude/flow-lead-automation-audit-w3ldyc
+- fix(leads): declare AIRequest with the other request models
+- feat(leads): AI lead board, follow-up drafts and pipeline brief
