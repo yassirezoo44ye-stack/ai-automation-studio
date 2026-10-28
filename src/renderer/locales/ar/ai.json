@@ -1,7 +1,10 @@
 {
   "workspace": {
     "title": "مساحة عمل الذكاء الاصطناعي",
-    "tabs": { "chat": "محادثة", "agents": "الوكلاء" },
+    "tabs": {
+      "chat": "محادثة",
+      "agents": "الوكلاء"
+    },
     "newAgent": "+ وكيل جديد",
     "loadAgentsError": "تعذر تحميل الوكلاء"
   },
@@ -75,10 +78,10 @@
       "loadError": "فشل تحميل هذه المحادثة.",
       "emptyAgentName": "Flow AI",
       "emptyDescription": "ابدأ محادثة أو اختر واحدة من الشريط الجانبي.",
-      "suggestion1": "اكتب كود Python",
-      "suggestion2": "اشرح مفهومًا",
-      "suggestion3": "أصلح الخطأ في الكود",
-      "suggestion4": "أنشئ تطبيق ويب",
+      "suggestion1": "اكتب رسالة متابعة لعميل جديد",
+      "suggestion2": "خطط لأولويات مبيعاتي هذا الأسبوع",
+      "suggestion3": "اكتب منشور LinkedIn عن خدماتنا",
+      "suggestion4": "حوّل ملاحظاتي إلى عرض للعميل",
       "you": "أنت",
       "assistantFallback": "Claude",
       "now": "الآن",

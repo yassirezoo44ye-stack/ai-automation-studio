@@ -1,0 +1,28 @@
+/* Home — Ask Flow + Business pulse */
+.home-ai-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px;margin-bottom:18px}
+.home-ask,.home-pulse{padding:18px 20px;border-radius:16px;border:1px solid var(--b1);background:var(--bg-surface);min-width:0}
+.home-ask{background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 60%),var(--bg-surface)}
+.home-ask h2,.home-pulse h2{display:flex;align-items:center;margin:0;font-size:16px;font-weight:700;color:var(--t1)}
+.home-ask p{margin:6px 0 12px;font-size:12px;color:var(--t3);line-height:1.6}
+.home-ai-badge{display:inline-flex;align-items:center;padding:2px 7px;margin-inline-end:8px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,var(--accent),var(--teal))}
+.home-ask-form{display:flex;gap:8px}
+.home-ask-form input{flex:1;min-width:0;padding:10px 12px;font:inherit;font-size:13px;color:var(--t1);background:var(--bg-base);border:1px solid var(--b1);border-radius:10px}
+.home-ask-form input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.home-ask-form button{padding:0 18px;border:0;border-radius:10px;font:inherit;font-size:13px;font-weight:600;color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--accent),var(--teal))}
+.home-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.home-chips button{padding:4px 11px;border-radius:999px;font:inherit;font-size:11px;color:var(--t3);background:var(--bg-card);border:1px solid var(--b1);cursor:pointer}
+.home-chips button:hover{color:var(--accent);border-color:var(--accent-border,var(--accent))}
+.home-pulse-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.home-pulse-head button{border:0;background:none;padding:0;font:inherit;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer}
+.home-pulse-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0}
+.home-pulse-stats div{padding:8px 10px;border-radius:10px;background:var(--bg-card);border:1px solid var(--b1)}
+.home-pulse-stats dt{font-size:10px;color:var(--t4)}
+.home-pulse-stats dd{margin:2px 0 0;font-size:20px;font-weight:800;color:var(--t1)}
+.home-pulse-stats .is-hot dd{color:var(--red)}
+.home-pulse-stats .is-warm dd{color:var(--yellow)}
+.home-pulse-stats .is-cold dd{color:var(--teal)}
+.home-pulse-hot{margin:10px 0 0;font-size:12px;font-weight:600;color:var(--t2)}
+.home-muted{margin:8px 0 0;font-size:12px;color:var(--t4)}
+.home-ask :is(button):focus-visible,.home-pulse button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:900px){.home-ai-row{grid-template-columns:1fr}}
+@media(max-width:480px){.home-pulse-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.home-ask-form{flex-direction:column}.home-ask-form button{min-height:40px}}
