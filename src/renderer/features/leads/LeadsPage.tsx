@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON, APIError } from "../../shared/utils/api";
 import { useOrg } from "../../contexts/OrgContext";
@@ -7,6 +8,7 @@ import { C } from "../../styles/theme";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { relTime } from "../../utils/time";
+import "./leads.css";
 
 interface Lead {
   id: string;
@@ -240,32 +242,37 @@ export function LeadFollowupCard({ orgId }: { orgId: string | null }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STATUS_COLOR: Record<Lead["status"], string> = {
-  new:       C.gray,
-  qualified: C.blue,
-  contacted: C.amber,
-  won:       C.green,
-  lost:      C.red,
-};
+type Tier = "hot" | "warm" | "cold";
+type Column = Tier | "unscored";
+const STATUSES: Lead["status"][] = ["new", "qualified", "contacted", "won", "lost"];
+const COLUMNS: Column[] = ["hot", "warm", "cold", "unscored"];
+const columnOf = (lead: Lead): Column => lead.ai_tier ?? "unscored";
 
-const TIER_COLOR: Record<"hot" | "warm" | "cold", string> = {
-  hot: C.red,
-  warm: C.amber,
-  cold: C.blue,
+type Brief = {
+  stats: { total: number; open: number; tiers: Record<Column, number> };
+  summary: string | null;
+  actions: { lead_id: string; name: string; action: string }[];
 };
+type FollowupDraft = { leadId: string; name: string; email: string | null; subject: string; body: string };
 
-function ScoreBadge({ score, tier }: { score: number | null; tier?: Lead["ai_tier"] }) {
+function aiErrorKey(err: unknown): "ai.failed" | "ai.quota" | "states.actionError" {
+  // AI routes answer 502 when the model's answer is unusable and 429 on quota.
+  if (err instanceof APIError && err.details.status === 502) return "ai.failed";
+  if (err instanceof APIError && err.details.status === 429) return "ai.quota";
+  return "states.actionError";
+}
+
+function language(lang: string) {
+  return lang.startsWith("ar") ? "ar" : "en";
+}
+
+function ScoreRing({ score, tier }: { score: number | null; tier?: Lead["ai_tier"] }) {
   const { t } = useTranslation("leads");
-  if (score === null) return <span style={{ color: "var(--t4)", fontSize: 12 }}>{t("score.na")}</span>;
-  const color = score >= 7 ? C.green : score >= 4 ? C.amber : C.red;
+  if (score === null) return <span className="leads-ring is-empty" role="img" aria-label={t("score.na")}><span>–</span></span>;
   return (
-    <span style={{ fontWeight: 700, fontSize: 13, color }}>
-      {t("score.label", { score })}
-      {tier && (
-        <span style={{ marginInlineStart: 6, fontSize: 11, fontWeight: 600, color: TIER_COLOR[tier] }}>
-          {t(`tier.${tier}`)}
-        </span>
-      )}
+    <span className={`leads-ring is-${tier ?? "unscored"}`} style={{ "--score": score * 10 } as CSSProperties}
+      role="img" aria-label={t("score.aria", { score })}>
+      <span>{score}</span>
     </span>
   );
 }
@@ -299,118 +306,116 @@ function AddLeadForm({ onAdd }: { onAdd: (lead: Lead) => void }) {
       const followMsg = followKey ? t(`followUp.${followKey}` as never, { defaultValue: "" }) : "";
       toast(followMsg || t("actions.addLead"), "ok");
     } catch {
-      toast(t("states.error"), "err");
+      toast(t("states.actionError"), "err");
     } finally {
       setSaving(false);
     }
   }
 
   if (!open) {
-    return (
-      <GoldButton onClick={() => setOpen(true)} style={{ marginBottom: 16 }}>
-        + {t("actions.addLead")}
-      </GoldButton>
-    );
+    return <GoldButton onClick={() => setOpen(true)}>+ {t("actions.addLead")}</GoldButton>;
   }
 
   return (
-    <GlassCard style={{ padding: "18px 20px", marginBottom: 20 }}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+    <GlassCard className="leads-add">
+      <form onSubmit={handleSubmit}>
+        <p className="leads-muted"><b className="leads-ai-badge">AI</b>{t("form.aiNote")}</p>
+        <div className="leads-add-grid">
           {(["name", "email", "phone", "source"] as const).map(field => (
-            <input
-              key={field}
-              required={field === "name"}
-              placeholder={t(`form.${field}Placeholder` as never)}
-              value={form[field]}
-              onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-              style={{
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: 8,
-                padding: "8px 12px",
-                fontSize: 13,
-                color: "var(--t1)",
-                outline: "none",
-              }}
-            />
+            <label key={field}>{t(`form.${field}`)}
+              <input
+                required={field === "name"}
+                type={field === "email" ? "email" : field === "phone" ? "tel" : "text"}
+                placeholder={t(`form.${field}Placeholder` as never)}
+                value={form[field]}
+                onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
+              />
+            </label>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div className="leads-row">
           <GoldButton type="submit" disabled={saving || !form.name.trim()}>
-            {saving ? "…" : t("actions.addLead")}
+            {saving ? t("ai.working") : t("actions.addLead")}
           </GoldButton>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            style={{ background: "none", border: "none", color: "var(--t3)", cursor: "pointer", fontSize: 13 }}
-          >
-            Cancel
-          </button>
+          <button type="button" className="leads-link" onClick={() => setOpen(false)}>{t("form.cancel")}</button>
         </div>
       </form>
     </GlassCard>
   );
 }
 
-function LeadRow({ lead, onStatusChange }: {
+function LeadCard({ lead, highlighted, busy, onStatus, onRequalify, onDraft }: {
   lead: Lead;
-  onStatusChange: (id: string, status: Lead["status"]) => void;
+  highlighted: boolean;
+  busy: string | null;
+  onStatus: (lead: Lead, status: Lead["status"]) => void;
+  onRequalify: (lead: Lead) => void;
+  onDraft: (lead: Lead) => void;
 }) {
   const { t } = useTranslation("leads");
-  const toast = useToast();
-  const STATUSES: Lead["status"][] = ["new", "qualified", "contacted", "won", "lost"];
-
-  async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const next = e.target.value as Lead["status"];
-    try {
-      const res = await apiFetch(`/api/leads/${lead.id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: next }),
-      });
-      await parseJSON(res, `/api/leads/${lead.id}/status`);
-      onStatusChange(lead.id, next);
-    } catch {
-      toast(t("states.error"), "err");
-    }
-  }
-
+  const working = busy !== null;
   return (
-    <GlassCard style={{ padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 100px 120px 80px 1fr 90px", gap: 12, alignItems: "center", fontSize: 13 }}>
-      <div>
-        <div style={{ fontWeight: 600, color: "var(--t1)" }}>{lead.name}</div>
-        {lead.email && <div style={{ color: "var(--t3)", fontSize: 11 }}>{lead.email}</div>}
-        {lead.phone && <div style={{ color: "var(--t4)", fontSize: 11 }}>{lead.phone}</div>}
-      </div>
-      <div style={{ color: "var(--t3)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {lead.source || "—"}
-      </div>
-      <div>
-        <select
-          value={lead.status}
-          onChange={handleStatusChange}
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: 6,
-            padding: "3px 6px",
-            color: STATUS_COLOR[lead.status],
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {STATUSES.map(s => (
-            <option key={s} value={s}>{t(`status.${s}`)}</option>
-          ))}
+    <article id={`lead-${lead.id}`} className={`leads-card is-${columnOf(lead)}${highlighted ? " is-highlighted" : ""}`}>
+      <header>
+        <ScoreRing score={lead.ai_score} tier={lead.ai_tier} />
+        <div className="leads-card-title">
+          <h3>{lead.name}</h3>
+          <p>{lead.source || t("card.noSource")} · {relTime(lead.created_at)}</p>
+        </div>
+        {lead.ai_tier && <span className={`leads-pill is-${lead.ai_tier}`}>{t(`tier.${lead.ai_tier}`)}</span>}
+      </header>
+      {(lead.email || lead.phone) && (
+        <p className="leads-contact">
+          {lead.email && <a href={`mailto:${lead.email}`}>{lead.email}</a>}
+          {lead.phone && <a href={`tel:${lead.phone}`}>{lead.phone}</a>}
+        </p>
+      )}
+      <p className="leads-notes">{lead.ai_notes || t("card.noNotes")}</p>
+      <div className="leads-row">
+        <select aria-label={t("card.statusFor", { name: lead.name })} value={lead.status} disabled={working}
+          className={`leads-status is-${lead.status}`}
+          onChange={e => onStatus(lead, e.target.value as Lead["status"])}>
+          {STATUSES.map(s => <option key={s} value={s}>{t(`status.${s}`)}</option>)}
         </select>
+        <button type="button" className="leads-ai-button" disabled={working} onClick={() => onDraft(lead)}>
+          {busy === `draft-${lead.id}` ? t("ai.working") : t("actions.draftFollowup")}
+        </button>
+        <button type="button" className="leads-ghost" disabled={working} onClick={() => onRequalify(lead)}>
+          {busy === `qualify-${lead.id}` ? t("ai.working") : t("actions.requalifyAi")}
+        </button>
       </div>
-      <ScoreBadge score={lead.ai_score} tier={lead.ai_tier} />
-      <div style={{ color: "var(--t3)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={lead.ai_notes ?? ""}>
-        {lead.ai_notes || "—"}
+    </article>
+  );
+}
+
+function BriefPanel({ brief, busy, onRun, onJump }: {
+  brief: Brief | null; busy: boolean; onRun: () => void; onJump: (id: string) => void;
+}) {
+  const { t } = useTranslation("leads");
+  return (
+    <section className="leads-brief" aria-labelledby="leads-brief-title">
+      <div className="leads-brief-head">
+        <h2 id="leads-brief-title"><b className="leads-ai-badge">AI</b>{t("brief.title")}</h2>
+        <button type="button" className="leads-ai-button" disabled={busy} onClick={onRun}>
+          {busy ? t("ai.working") : t(brief ? "brief.refresh" : "brief.run")}
+        </button>
       </div>
-      <div style={{ color: "var(--t4)", fontSize: 11, textAlign: "right" }}>{relTime(lead.created_at)}</div>
-    </GlassCard>
+      {!brief && <p className="leads-muted">{t("brief.intro")}</p>}
+      {brief && !brief.summary && <p className="leads-muted">{t("brief.empty")}</p>}
+      {brief?.summary && <>
+        <p>{brief.summary}</p>
+        {brief.actions.length > 0 && <>
+          <h3>{t("brief.actions")}</h3>
+          <ol className="leads-actions">
+            {brief.actions.map(a => <li key={a.lead_id}>
+              <button type="button" className="leads-link" onClick={() => onJump(a.lead_id)}>{a.name}</button>
+              <span>{a.action}</span>
+            </li>)}
+          </ol>
+        </>}
+        <p className="leads-muted">{t("brief.note")}</p>
+      </>}
+    </section>
   );
 }
 
@@ -435,21 +440,12 @@ function CreateOrgForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+    <form onSubmit={handleSubmit} className="leads-row leads-center">
       <input
         aria-label={t("noOrg.namePlaceholder")}
         placeholder={t("noOrg.namePlaceholder")}
         value={name}
         onChange={e => setName(e.target.value)}
-        style={{
-          background: "rgba(255,255,255,0.06)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          borderRadius: 8,
-          padding: "8px 12px",
-          fontSize: 13,
-          color: "var(--t1)",
-          outline: "none",
-        }}
       />
       <GoldButton type="submit" disabled={saving || !name.trim()}>
         {saving ? "…" : t("noOrg.create")}
@@ -459,18 +455,23 @@ function CreateOrgForm() {
 }
 
 export function LeadsPage() {
-  const { t } = useTranslation("leads");
+  const { t, i18n } = useTranslation("leads");
+  const toast = useToast();
   const { currentOrgId, orgs, loading: orgLoading } = useOrg();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [statusFilter, setStatusFilter] = useState<Lead["status"] | "">("");
+  const [view, setView] = useState<"board" | "list">("board");
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [brief, setBrief] = useState<Brief | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [draft, setDraft] = useState<FollowupDraft | null>(null);
 
   useEffect(() => {
     if (!currentOrgId) return;
-    const url = statusFilter
-      ? `/api/leads?status=${statusFilter}&limit=100`
-      : "/api/leads?limit=100";
+    const url = "/api/leads?limit=100";
     let active = true;
     apiFetch(url)
       .then(res => parseJSON<{ leads: Lead[] }>(res, url))
@@ -480,25 +481,36 @@ export function LeadsPage() {
       .catch(() => {
         if (active) { setError(true); setLoading(false); }
       });
-    return () => { active = false; setLoading(true); setError(false); };
-  }, [currentOrgId, statusFilter]);
+    return () => { active = false; setLoading(true); setError(false); setBrief(null); };
+  }, [currentOrgId]);
 
-  function handleAdd(lead: Lead) {
-    setLeads(prev => [lead, ...prev]);
+  useEffect(() => {
+    if (!draft) return;
+    const close = (e: KeyboardEvent) => { if (e.key === "Escape") setDraft(null); };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [draft]);
+
+  const act = useCallback(async (name: string, work: () => Promise<void>) => {
+    setBusy(name);
+    try { await work(); }
+    catch (err) { toast(t(aiErrorKey(err)), "err"); }
+    finally { setBusy(null); }
+  }, [t, toast]);
+
+  const replace = (lead: Lead) => setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, ...lead } : l));
+
+  function jumpTo(id: string) {
+    setStatusFilter(""); setQuery(""); setHighlight(id);
+    requestAnimationFrame(() => document.getElementById(`lead-${id}`)?.scrollIntoView?.({ behavior: "smooth", block: "center" }));
   }
-
-  function handleStatusChange(id: string, status: Lead["status"]) {
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, status } : l));
-  }
-
-  const STATUSES: Array<Lead["status"] | ""> = ["", "new", "qualified", "contacted", "won", "lost"];
 
   // Lead endpoints are org-scoped: without an organization the list request
   // is never made, so show how to get one instead of an endless "loading".
   if (!orgLoading && !currentOrgId) {
     const hasOrgs = orgs.length > 0;
     return (
-      <div style={{ padding: "24px 28px", maxWidth: 1100, margin: "0 auto" }}>
+      <div className="leads-page">
         <EmptyState
           title={t("noOrg.title")}
           description={hasOrgs ? t("noOrg.descriptionHasOrgs") : t("noOrg.descriptionNoOrgs")}
@@ -508,68 +520,127 @@ export function LeadsPage() {
     );
   }
 
-  return (
-    <div style={{ padding: "24px 28px", maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)", margin: 0 }}>{t("page.title")}</h1>
-        <p style={{ fontSize: 13, color: "var(--t3)", margin: "4px 0 0" }}>{t("page.subtitle")}</p>
-      </div>
+  const needle = query.trim().toLocaleLowerCase();
+  const visible = leads.filter(l =>
+    (!statusFilter || l.status === statusFilter)
+    && (!needle || `${l.name} ${l.email ?? ""} ${l.source ?? ""}`.toLocaleLowerCase().includes(needle)));
+  const tierCount = (c: Column) => leads.filter(l => columnOf(l) === c).length;
+  const working = busy !== null;
 
-      <AddLeadForm onAdd={handleAdd} />
+  const card = (lead: Lead) => (
+    <LeadCard key={lead.id} lead={lead} highlighted={highlight === lead.id} busy={busy}
+      onStatus={(l, status) => void act(`status-${l.id}`, async () => {
+        const res = await apiFetch(`/api/leads/${l.id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+        replace(await parseJSON<Lead>(res, `/api/leads/${l.id}/status`));
+      })}
+      onRequalify={l => void act(`qualify-${l.id}`, async () => {
+        const res = await apiFetch(`/api/leads/${l.id}/qualify`, { method: "POST" });
+        replace(await parseJSON<Lead>(res, `/api/leads/${l.id}/qualify`));
+      })}
+      onDraft={l => void act(`draft-${l.id}`, async () => {
+        const res = await apiFetch(`/api/leads/${l.id}/ai-followup`, { method: "POST", body: JSON.stringify({ language: language(i18n.language) }) });
+        const data = await parseJSON<{ subject: string; body: string }>(res, `/api/leads/${l.id}/ai-followup`);
+        setDraft({ leadId: l.id, name: l.name, email: l.email, subject: data.subject, body: data.body });
+      })}
+    />
+  );
+
+  return (
+    <div className="leads-page" dir={i18n.dir()}>
+      <header className="leads-hero">
+        <div>
+          <span className="leads-eyebrow">FLOW · LEADS <b className="leads-ai-badge">AI</b></span>
+          <h1>{t("page.title")}</h1>
+          <p>{t("page.subtitle")}</p>
+        </div>
+        <dl className="leads-stats">
+          <div><dt>{t("stats.total")}</dt><dd>{leads.length}</dd></div>
+          {(["hot", "warm", "cold"] as const).map(c => <div key={c} className={`is-${c}`}><dt>{t(`tier.${c}`)}</dt><dd>{tierCount(c)}</dd></div>)}
+          <div><dt>{t("stats.won")}</dt><dd>{leads.filter(l => l.status === "won").length}</dd></div>
+        </dl>
+      </header>
+
+      <div className="leads-toolbar">
+        <AddLeadForm onAdd={lead => setLeads(prev => [lead, ...prev])} />
+        <label className="leads-search">{t("search.label")}
+          <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={t("search.hint")} />
+        </label>
+        <div className="leads-segment" role="group" aria-label={t("view.label")}>
+          {(["board", "list"] as const).map(v => <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)}>{t(`view.${v}`)}</button>)}
+        </div>
+      </div>
 
       <LeadFollowupCard key={currentOrgId ?? "none"} orgId={currentOrgId} />
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {STATUSES.map(s => (
-          <button
-            key={s || "all"}
-            onClick={() => setStatusFilter(s)}
-            style={{
-              padding: "4px 12px",
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.1)",
-              background: statusFilter === s ? "rgba(255,255,255,0.12)" : "transparent",
-              color: s ? STATUS_COLOR[s] : "var(--t2)",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {s ? t(`status.${s}`) : "All"}
+      {!loading && !error && leads.length > 0 && (
+        <BriefPanel brief={brief} busy={busy === "brief"} onJump={jumpTo} onRun={() => void act("brief", async () => {
+          const res = await apiFetch("/api/leads/brief", { method: "POST", body: JSON.stringify({ language: language(i18n.language) }) });
+          setBrief(await parseJSON<Brief>(res, "/api/leads/brief"));
+        })} />
+      )}
+
+      <div className="leads-tabs" role="group" aria-label={t("table.status")}>
+        {(["", ...STATUSES] as const).map(s => (
+          <button key={s || "all"} type="button" aria-pressed={statusFilter === s} onClick={() => setStatusFilter(s)}>
+            {s ? t(`status.${s}`) : t("filter.all")}
+            <span>{s ? leads.filter(l => l.status === s).length : leads.length}</span>
           </button>
         ))}
       </div>
 
-      {loading && (
-        <div style={{ textAlign: "center", color: "var(--t3)", padding: 48 }}>{t("states.loading")}</div>
-      )}
-
-      {!loading && error && (
-        <div role="alert" style={{ textAlign: "center", color: C.red, padding: 48 }}>{t("states.error")}</div>
-      )}
-
+      {loading && <div className="leads-skeleton" role="status"><span className="leads-sr">{t("states.loading")}</span><div /><div /><div /></div>}
+      {!loading && error && <div role="alert" className="leads-state is-error">{t("states.error")}</div>}
       {!loading && !error && leads.length === 0 && (
-        <div role="status" style={{ textAlign: "center", padding: 48 }}>
-          <p style={{ color: "var(--t2)", fontWeight: 600 }}>{t("states.empty")}</p>
-          <p style={{ color: "var(--t4)", fontSize: 13 }}>{t("states.emptyHint")}</p>
+        <div role="status" className="leads-state">
+          <p><strong>{t("states.empty")}</strong></p>
+          <p className="leads-muted">{t("states.emptyHint")}</p>
         </div>
       )}
+      {!loading && !error && leads.length > 0 && visible.length === 0 && (
+        <div role="status" className="leads-state"><p>{t("states.noMatch")}</p></div>
+      )}
 
-      {!loading && !error && leads.length > 0 && (
-        <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 120px 80px 1fr 90px", gap: 12, padding: "4px 16px", marginBottom: 4 }}>
-            {(["name", "source", "status", "aiScore", "aiNotes", "createdAt"] as const).map(col => (
-              <div key={col} style={{ fontSize: 11, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {t(`table.${col}`)}
-              </div>
-            ))}
+      {!loading && !error && visible.length > 0 && (view === "board"
+        ? <div className="leads-board">
+            {COLUMNS.map(c => {
+              const items = visible.filter(l => columnOf(l) === c);
+              return (
+                <section key={c} className={`leads-column is-${c}`} aria-label={t(`board.${c}`)}>
+                  <h2>{t(`board.${c}`)}<span>{items.length}</span></h2>
+                  {items.length ? items.map(card) : <p className="leads-muted">{t("board.empty")}</p>}
+                </section>
+              );
+            })}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {leads.map(lead => (
-              <LeadRow key={lead.id} lead={lead} onStatusChange={handleStatusChange} />
-            ))}
+        : <div className="leads-list">{visible.map(card)}</div>
+      )}
+
+      {draft && (
+        <div className="leads-drawer-backdrop">
+          <div className="leads-drawer" role="dialog" aria-modal="true" aria-label={t("draft.title", { name: draft.name })}>
+            <header>
+              <h2><b className="leads-ai-badge">AI</b>{t("draft.title", { name: draft.name })}</h2>
+              <button type="button" className="leads-ghost" onClick={() => setDraft(null)}>{t("draft.close")}</button>
+            </header>
+            <p className="leads-muted">{t("draft.note")}</p>
+            <label>{t("draft.subject")}
+              <input value={draft.subject} onChange={e => setDraft({ ...draft, subject: e.target.value })} />
+            </label>
+            <label className="leads-grow">{t("draft.body")}
+              <textarea autoFocus value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} />
+            </label>
+            <div className="leads-row">
+              <GoldButton type="button" disabled={working} onClick={() => void navigator.clipboard?.writeText(`${draft.subject}\n\n${draft.body}`).then(() => toast(t("draft.copied"), "ok"))}>
+                {t("draft.copy")}
+              </GoldButton>
+              {draft.email && (
+                <a className="leads-ghost" href={`mailto:${draft.email}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`}>
+                  {t("draft.openEmail")}
+                </a>
+              )}
+            </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
