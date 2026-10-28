@@ -138,6 +138,10 @@ class UpdateStatusRequest(BaseModel):
     status: str = Field(..., pattern="^(new|qualified|contacted|won|lost)$")
 
 
+class AIRequest(BaseModel):
+    language: Literal["en", "ar"] = "en"
+
+
 class CaptureLeadRequest(BaseModel):
     name:    str           = Field(..., min_length=1, max_length=200)
     email:   str | None = Field(default=None, max_length=320)
@@ -240,10 +244,6 @@ async def create_lead(
         await svc.dispatch_qualified_notification(lead=qualified_lead, org_id=ctx.org_id)
 
     return {**qualified_lead, "follow_up_status": follow_up_status}
-
-
-class AIRequest(BaseModel):
-    language: Literal["en", "ar"] = "en"
 
 
 @router.post("/brief")
