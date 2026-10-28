@@ -358,6 +358,10 @@ async def lifespan(app: FastAPI):
     # ── Background job queue (Redis-backed when available) ──────────────────
     from app.core.jobs import get_job_queue
     get_job_queue(cache=cache)
+    if not get_job_queue().durable:
+        # In-memory queue: jobs queued before this start are gone.
+        from app.core.workflow.automation_schema import mark_lost_pending_runs
+        await mark_lost_pending_runs()
 
     # ── Register App Builder background job handler ────────────────────────
     # Must run AFTER the job queue is initialised with get_job_queue(cache=cache)

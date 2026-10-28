@@ -257,6 +257,59 @@ class TestMarkInterruptedRuns(unittest.TestCase):
         run(_test())
 
 
+class TestMarkLostPendingRuns(unittest.TestCase):
+    """In-memory queue: pending runs from before a restart lost their job."""
+
+    def test_marks_only_old_pending_runs_interrupted(self):
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(return_value="UPDATE 6")
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(return_value=_async_cm(mock_conn))
+
+        async def _test():
+            with patch("app.core.db.get_pool", return_value=mock_pool):
+                import app.core.workflow.automation_schema as mod
+                await mod.mark_lost_pending_runs()
+            sql = mock_conn.execute.call_args[0][0]
+            self.assertIn("status      = 'interrupted'", sql)
+            self.assertIn("WHERE status = 'pending'", sql)
+            # Runs a still-running previous instance just queued are left alone.
+            self.assertIn("created_at < now() - interval '2 minutes'", sql)
+
+        run(_test())
+
+    def test_failure_is_non_fatal(self):
+        mock_pool = MagicMock()
+        mock_pool.acquire = MagicMock(side_effect=RuntimeError("db down"))
+
+        async def _test():
+            with patch("app.core.db.get_pool", return_value=mock_pool):
+                import app.core.workflow.automation_schema as mod
+                await mod.mark_lost_pending_runs()   # must not raise
+        run(_test())
+
+    def test_only_in_memory_queue_is_not_durable(self):
+        from app.core.cache.redis_adapter import LocalCacheBackend, RedisAdapter
+        from app.core.jobs.queue import JobQueue
+
+        class _RedisBackend(LocalCacheBackend):
+            @property
+            def backend_name(self):
+                return "redis"
+
+        self.assertFalse(JobQueue().durable)
+        self.assertFalse(JobQueue(cache=RedisAdapter(LocalCacheBackend())).durable)
+        self.assertTrue(JobQueue(cache=RedisAdapter(_RedisBackend())).durable)
+
+    def test_startup_sweeps_pending_runs_only_without_durable_queue(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parent.parent / "app" / "factory.py").read_text()
+        queue_init = src.index("get_job_queue(cache=cache)")
+        sweep = src.index("await mark_lost_pending_runs()")
+        self.assertLess(queue_init, sweep)
+        self.assertIn("if not get_job_queue().durable:", src[queue_init:sweep])
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. upsert_run (mock pool)
 # ─────────────────────────────────────────────────────────────────────────────
