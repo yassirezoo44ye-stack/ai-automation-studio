@@ -463,3 +463,16 @@ successful deploy to `main`.
 - Merge pull request #19 from yassirezoo44ye-stack/feature/career-assistant
 - fix(careers): retain uncertainty after listing verification fails
 - feat(careers): add private job-alert assistant with Gmail consent
+
+## v1.0.30
+
+### Other
+- Merge pull request #22 from yassirezoo44ye-stack/claude/flow-lead-automation-audit-w3ldyc
+- fix(jobs): dispatch queued jobs without Redis and store them on real Redis
+- Merge pull request #21 from yassirezoo44ye-stack/claude/flow-lead-automation-audit-w3ldyc
+- fix(leads): admin write access and a no-organization state
+- fix(leads): validated hot/warm/cold qualification through AIGateway
+- test(leads): check create_lead run_id via the shared enqueue helper
+- fix(leads): make lead follow-up honest end-to-end
+- test(automation): expect server-side org_id in run context
+- fix(automation): make webhook lead intake work end-to-end
