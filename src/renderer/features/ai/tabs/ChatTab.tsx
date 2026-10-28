@@ -18,6 +18,7 @@ import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
 import { useAsyncData } from "../../../shared/hooks/useAsyncData";
+import { clearAssistantHandoff, peekAssistantHandoff } from "../../../shared/utils/assistantHandoff";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { ErrorState, EmptyState } from "../../../shared/ui/StateViews";
 import { GoldButton } from "../../../shared/ui/gold";
@@ -87,7 +88,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   // the new id immediately, in the same handler that flips activeConv, so
   // the in-progress streamed reply is never hidden behind a loading state).
   const [messagesConvId, setMessagesConvId] = useState<string | null>(null);
-  const [prompt, setPrompt]                 = useState("");
+  // A question handed over from another page (Home's "Ask Flow") prefills the input once.
+  const [prompt, setPrompt]                 = useState(peekAssistantHandoff);
+  useEffect(() => { clearAssistantHandoff(); }, []);
   const [streaming, setStreaming]           = useState(false);
   const [searchQ, setSearchQ]               = useState("");
   // Same local-copy-synced-from-hook pattern as messages: setTaskStatus

@@ -1,7 +1,10 @@
 {
   "workspace": {
     "title": "AI Workspace",
-    "tabs": { "chat": "Chat", "agents": "Agents" },
+    "tabs": {
+      "chat": "Chat",
+      "agents": "Agents"
+    },
     "newAgent": "+ New Agent",
     "loadAgentsError": "Could not load agents"
   },
@@ -75,10 +78,10 @@
       "loadError": "Failed to load this conversation.",
       "emptyAgentName": "Flow AI",
       "emptyDescription": "Start a conversation or pick one from the sidebar.",
-      "suggestion1": "Write Python code",
-      "suggestion2": "Explain a concept",
-      "suggestion3": "Debug my script",
-      "suggestion4": "Build a web app",
+      "suggestion1": "Write a follow-up email for a new lead",
+      "suggestion2": "Plan my sales priorities this week",
+      "suggestion3": "Draft a LinkedIn post about our services",
+      "suggestion4": "Turn my notes into a client proposal",
       "you": "You",
       "assistantFallback": "Claude",
       "now": "now",
