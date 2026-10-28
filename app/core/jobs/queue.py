@@ -114,12 +114,24 @@ class _RedisStore:
     def __init__(self, cache) -> None:
         self._cache = cache
 
+    @staticmethod
+    def _encode(value: Any) -> Any:
+        # Redis hash fields accept only str/bytes/int/float: redis-py raises
+        # DataError on None and bool. load() reads "" back as None and
+        # "1"/"0" as the dead flag.
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "1" if value else "0"
+        return value
+
     async def save(self, job: Job) -> None:
         import json
         d = job.to_dict()
         d["log_lines"] = json.dumps(d["log_lines"])
         d["payload"]   = json.dumps(d["payload"])
         d["result"]    = json.dumps(d.get("result"))
+        d = {k: self._encode(v) for k, v in d.items()}
         await self._cache.hset(f"{self.PREFIX}{job.id}", d)
         await self._cache._b.expire(
             self._cache._k(f"{self.PREFIX}{job.id}"), job.ttl
@@ -177,7 +189,11 @@ class JobQueue:
     """
 
     def __init__(self, cache=None) -> None:
-        self._store  = _RedisStore(cache) if cache else _MemStore()
+        # Only a real Redis backend gives the cache-backed store anything
+        # (persistence across restarts); the in-process cache backend would
+        # just be a lossier _MemStore.
+        use_redis = cache is not None and getattr(cache, "backend", None) == "redis"
+        self._store  = _RedisStore(cache) if use_redis else _MemStore()
         self._active : dict[str, asyncio.Task] = {}
         # kind → handler; jobs of a registered kind are dispatched by the
         # scheduler loop (delayed jobs, requeued DLQ jobs) without the
