@@ -168,9 +168,13 @@ class LocalCacheBackend(CacheBackend):
             e.expires_at = time.monotonic() + ttl
 
     async def keys(self, pattern: str) -> list[str]:
+        # Redis KEYS matches every key type, hashes included (the job queue
+        # lists its jobs this way).
         import fnmatch
-        return [k for k in self._store if fnmatch.fnmatch(k, pattern)
-                and self._get_raw(k) is not None]
+        found = [k for k in list(self._store) if fnmatch.fnmatch(k, pattern)
+                 and self._get_raw(k) is not None]
+        found += [k for k in self._hashes if fnmatch.fnmatch(k, pattern)]
+        return found
 
     async def mget(self, *keys: str) -> list[str | None]:
         return [await self.get(k) for k in keys]
