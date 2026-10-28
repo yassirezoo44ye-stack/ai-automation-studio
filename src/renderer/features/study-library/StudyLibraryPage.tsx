@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { API, apiFetch } from "../../utils/api";
 import "./study-library.css";
+import { StudyContentWorkflow } from "./StudyContentWorkflow";
 
 type Lesson = { slug: string; title: string; subject: string; description: string; pages: number; published_at: string };
 type Catalog = { lessons: Lesson[]; checkout_url: string | null };
@@ -134,7 +135,7 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
         </article>)}</div>}
       {!loading && !error && <div className="study-pagination"><button className="study-secondary" disabled={offset === 0} onClick={() => setOffset(o => Math.max(0, o - 30))}>السابق</button><button className="study-secondary" disabled={!catalog || catalog.lessons.length < 30} onClick={() => setOffset(o => o + 30)}>التالي</button></div>}
     </section>
-    {isAdmin && <Publisher onPublished={reload} />}
+    {isAdmin && <><Publisher onPublished={reload} /><StudyContentWorkflow lessons={catalog?.lessons ?? []} /></>}
     <footer className="study-footer"><strong>القليل كل مرة. فهم يبقى.</strong><p>ملخصات تأسيسية عامة، غير مرتبطة بمنهج أو صف محدد. للاستخدام الشخصي.</p></footer>
   </section>;
 }

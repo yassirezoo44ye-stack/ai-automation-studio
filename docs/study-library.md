@@ -97,3 +97,37 @@ Run the focused backend and frontend tests and the normal production build.
 transaction/refund/concurrency behavior when `STUDY_TEST_DATABASE_URL` points
 to an isolated test database. It creates and drops its own temporary schema.
 Never point it at a production database.
+
+## Linked content workflow inside Flow
+
+The library administrator can open **إدارة المحتوى · ربط المكتبة والمنصات**
+inside `/study-library`, after selecting an organization they own or administer.
+This is a persisted platform workflow, not the local content-export script.
+
+1. Add a lesson using the existing PDF/cover publisher, then select that lesson.
+2. Enter a voiceover script and separate TikTok, Instagram and YouTube captions.
+   `lesson-content.json` from a prepared batch can fill the script/caption fields;
+   import is local until the user saves. It does not upload a batch or publish.
+3. Save a revision. A final public HTTPS video URL is required for approval;
+   saving a script alone neither records audio nor renders a video.
+4. Review the source PDF, captions, final video and rights, then approve the saved
+   revision. Editing content clears the approval. Stale revisions and changed
+   source PDF fingerprints cannot be approved or handed off.
+5. Create social drafts. One `social_posts` draft per platform is inserted in a
+   single transaction and linked back to the workflow. Repeating handoff cannot
+   duplicate posts, and no publish jobs or external API calls are triggered.
+6. Refresh linked-post statuses to read the actual social publisher state.
+
+Connection cards distinguish an implemented provider, configured service and
+saved account. A saved account is not evidence of a valid token or a successful
+publish. OAuth uses the existing social account endpoints, after a user clicks
+through. YouTube remains unimplemented in the current registry; its draft can be
+prepared, but this feature does not claim that YouTube publishing is available.
+No tokens, secrets, buyer emails or paid PDF URLs are returned by these endpoints.
+
+The additive schema initializes after the social publisher schema. Every workflow
+query is scoped to the authenticated organization and also requires the verified
+library administrator plus an organization owner/admin role. A publishing key
+cannot authorize these workflow endpoints. PDF access and Payhip verification
+are unchanged; a social draft never grants library purchase access. Carousel
+rendering and video production remain separate from this first platform handoff.
