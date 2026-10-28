@@ -495,3 +495,8 @@ successful deploy to `main`.
 - Merge pull request #25 from yassirezoo44ye-stack/claude/flow-lead-automation-audit-w3ldyc
 - fix(leads): declare AIRequest with the other request models
 - feat(leads): AI lead board, follow-up drafts and pipeline brief
+
+## v1.0.34
+
+### Other
+- Connect study library review workflow to social drafts (#27)
