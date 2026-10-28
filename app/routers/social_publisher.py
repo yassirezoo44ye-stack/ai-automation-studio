@@ -42,18 +42,23 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Any
+from typing import Annotated, Any
 
 import asyncpg
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, field_validator
+from redis.exceptions import RedisError
 
 from app.core.auth import derive_fernet_key
+from app.core.config import FRONTEND_URL
 from app.core.db import get_pool
+from app.integrations.social.oauth_handoff import frontend_origin
 from app.integrations.social.registry import get_social_registry
 from app.tenancy.context import OrgContext, org_context
 
@@ -324,7 +329,7 @@ async def connect_account(
     """Start OAuth flow for a social platform.
 
     Returns a redirect URL the client must open in a browser.
-    Sets a bind_nonce cookie to prevent CSRF (same pattern as Google OAuth).
+    Returns a short-lived, one-use form ticket; the top-level handoff sets the CSRF cookie.
     """
     registry = get_social_registry()
     try:
@@ -332,35 +337,63 @@ async def connect_account(
     except ValueError:
         raise HTTPException(400, f"Unsupported platform: {platform!r}") from None
 
-    # Generate state and bind nonce (same CSRF protection pattern as Google OAuth)
+    if not provider.is_available():
+        raise HTTPException(503, "Configure the platform service before connecting an account")
+    try:
+        frontend_origin(os.getenv("FRONTEND_URL", FRONTEND_URL))
+    except ValueError:
+        raise HTTPException(503, "Configure an HTTPS FRONTEND_URL before connecting accounts") from None
     state = uuid.uuid4().hex
     bind_nonce = uuid.uuid4().hex
-
+    ticket = uuid.uuid4().hex
     from app.core.cache.redis_adapter import get_redis
     try:
         redis = await get_redis()
-        await redis.set(
-            f"social_oauth:{state}",
-            json.dumps({"bind_nonce": bind_nonce, "platform": platform, "org_id": ctx.org_id, "user_id": ctx.user_id}),
-            ttl=600,
-        )
-    except Exception as exc:
-        log.error("social oauth state store failed: %s", exc)
-        raise HTTPException(503, "OAuth temporarily unavailable — please retry.") from None
+        await redis.set_json(f"social_oauth:{state}", {
+            "bind_nonce": bind_nonce, "platform": platform,
+            "org_id": ctx.org_id, "user_id": ctx.user_id,
+        }, ttl=600)
+        await redis.set_json(f"social_oauth_handoff:{ticket}", {
+            "state": state, "bind_nonce": bind_nonce, "platform": platform,
+        }, ttl=60)
+    except (OSError, RuntimeError, RedisError):
+        raise HTTPException(503, "OAuth temporarily unavailable; retry") from None
+    response.headers["Cache-Control"] = "no-store"
+    # Submit from the trusted frontend as a top-level POST. This sets the
+    # browser nonce on the API origin without relying on third-party cookies.
+    return {"auth_url": str(request.url_for("social_oauth_authorize", platform=platform)), "ticket": ticket}
 
+
+@router.post("/accounts/{platform}/authorize", name="social_oauth_authorize")
+async def authorize_account(
+    platform: str,
+    request: Request,
+    ticket: Annotated[str, Form(min_length=32, max_length=32, pattern=r"^[a-f0-9]{32}$")],
+):
+    try:
+        expected = frontend_origin(os.getenv("FRONTEND_URL", FRONTEND_URL))
+    except ValueError:
+        raise HTTPException(503, "Configure an HTTPS FRONTEND_URL") from None
+    if request.headers.get("origin", "") != expected:
+        raise HTTPException(403, "Start account connection from Flow")
+    from app.core.cache.redis_adapter import get_redis
+    try:
+        redis = await get_redis()
+        data = await redis.get_json_and_delete(f"social_oauth_handoff:{ticket}")
+    except (OSError, RuntimeError, RedisError):
+        raise HTTPException(503, "OAuth temporarily unavailable; retry") from None
+    if not isinstance(data, dict) or data.get("platform") != platform:
+        raise HTTPException(400, "Invalid or expired connection ticket")
+    try:
+        provider = get_social_registry().get_or_raise(platform)
+    except ValueError:
+        raise HTTPException(400, "Unsupported platform") from None
     redirect_uri = str(request.url_for("social_oauth_callback", platform=platform))
-    auth_url = provider.get_auth_url(redirect_uri=redirect_uri, state=state)
-
-    response.set_cookie(
-        key=_SOCIAL_OAUTH_BIND_COOKIE,
-        value=bind_nonce,
-        httponly=True,
-        secure=True,
-        samesite="lax",
-        max_age=600,
-        path="/api/social/accounts",
-    )
-    return {"auth_url": auth_url, "state": state}
+    target = provider.get_auth_url(redirect_uri=redirect_uri, state=data["state"])
+    response = RedirectResponse(target, status_code=303, headers={"Cache-Control":"no-store", "Referrer-Policy":"no-referrer"})
+    response.set_cookie(_SOCIAL_OAUTH_BIND_COOKIE, data["bind_nonce"], httponly=True, secure=True,
+                        samesite="lax", max_age=600, path="/api/social/accounts")
+    return response
 
 
 @router.get("/accounts/{platform}/callback", name="social_oauth_callback")
@@ -388,8 +421,9 @@ async def oauth_callback(
         log.warning("social oauth: missing bind cookie platform=%s ip=%s", platform, ip)
         raise HTTPException(400, "Invalid OAuth state — please retry sign-in.")
 
-    from app.core.cache.redis_adapter import get_redis
     import hmac as _hmac
+
+    from app.core.cache.redis_adapter import get_redis
     try:
         redis = await get_redis()
         # Atomically read-and-delete so a duplicate callback (double-click,

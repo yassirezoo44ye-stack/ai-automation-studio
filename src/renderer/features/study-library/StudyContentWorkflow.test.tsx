@@ -54,3 +54,19 @@ describe("linked study workflow", () => {
     expect(apiFetch).toHaveBeenCalledWith(`${root}/work-id/posts`, undefined);
   });
 });
+
+it("starts account OAuth with an explicit top-level POST rather than a third-party cookie fetch", async () => {
+  vi.mocked(apiFetch).mockImplementation(async path => {
+    if (path.endsWith("/connections")) return json({ platforms: [{ platform: "tiktok", implemented: true, configured: true, accounts: [] }] });
+    if (path.endsWith("/connect")) return json({ auth_url: "https://api.example/api/social/accounts/tiktok/authorize", ticket: "a".repeat(32) });
+    return json({ workflows: [] });
+  });
+  await open(); fireEvent.click(await screen.findByRole("button", { name: "ربط حساب TikTok" }));
+  const submit = await screen.findByRole("button", { name: /متابعة ربط TikTok/ });
+  const form = submit.closest("form");
+  expect(form).toHaveAttribute("method", "post");
+  expect(form).toHaveAttribute("target", "_blank");
+  expect(form).toHaveAttribute("rel", "noopener");
+  expect(form).toHaveAttribute("action", "https://api.example/api/social/accounts/tiktok/authorize");
+  expect(form?.querySelector('input[name="ticket"]')).toHaveValue("a".repeat(32));
+});
