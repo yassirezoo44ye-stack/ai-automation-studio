@@ -78,7 +78,8 @@ are not downloaded. No mailbox data is sent to any model.
 ## Boundaries and known limits
 
 - Exact term matching, not semantic or recruiter-calibrated prediction; include English/Arabic
-  keywords in the editable profile. Language gate parsing currently recognises English language names.
+  keywords in the editable profile. Language gate parsing recognises English and Arabic names of 14 common UAE workplace
+  languages (`LANGUAGES` in `engine.py`); place names such as «الإمارات العربية» are not read as Arabic.
 - Supported direct URLs: LinkedIn numeric job IDs, Indeed `jk` IDs, Bayt `/{lang}/{country}/jobs/…-{id}/`,
   GulfTalent `/{country}/jobs/…-{id}` and Naukrigulf `…-jid-{id}` pages. The Gulf-board patterns follow
   their public job-page URLs and have not yet been checked against real alert emails; tracking links

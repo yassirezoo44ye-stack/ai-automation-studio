@@ -17,7 +17,7 @@
   "yes": "Yes",
   "no": "No",
   "saveProfile": "Save profile & rank jobs",
-  "keywordsHint": "Separate keywords with commas. Matching uses exact terms: include English and Arabic variants. Language checks currently recognise English names.",
+  "keywordsHint": "Separate keywords with commas. Matching uses exact terms: include English and Arabic variants. Language checks recognise English and Arabic names of 14 common languages, such as English, Arabic, Hindi, Urdu and Tagalog.",
   "saved": "Profile saved; rankings updated.",
   "inbox": "Job alerts from Gmail",
   "gmailDescription": "Read job alerts from {{sources}} received in the last {{days}} days. Flow does not send applications or modify email.",

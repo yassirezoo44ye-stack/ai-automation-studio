@@ -633,3 +633,42 @@ async def test_unconfigured_connection_lists_missing_names_never_values(monkeypa
     ]
     assert result["redirect_uri"] is None
     assert "PRIVATE_SECRET_VALUE" not in repr(result)
+
+
+def test_arabic_language_requirements_and_profile_spellings_are_recognised():
+    job = {
+        **parse_alert(ALERT)[0],
+        "description": "يشترط إجادة اللغة الإنجليزية والأردية. الفرنسية ميزة إضافية.",
+    }
+    result = assess(job, CareerProfile(languages=["الانجليزية"]))
+    assert "Required language to confirm: urdu" in result["checks"]
+    assert "Required language to confirm: english" not in result["checks"]
+    assert "Required language to confirm: french" not in result["checks"]
+    assert not any(
+        "urdu" in x
+        for x in assess(job, CareerProfile(languages=["English", "Urdu"]))["checks"]
+    )
+
+
+def test_arab_place_names_are_not_an_arabic_language_requirement():
+    job = {
+        **parse_alert(ALERT)[0],
+        "description": "يشترط الإقامة في الإمارات العربية المتحدة. Must live in Dubai.",
+    }
+    result = assess(job, CareerProfile(languages=["English"]))
+    assert not any("arabic" in x for x in result["checks"])
+
+
+def test_arabic_two_language_choice_counts_known_languages():
+    job = {
+        **parse_alert(ALERT)[0],
+        "description": "مطلوب إجادة لغتين من: الهندية، التاميلية، الإنجليزية",
+    }
+    assert not any(
+        "languages" in x
+        for x in assess(job, CareerProfile(languages=["Hindi", "English"]))["checks"]
+    )
+    assert any(
+        "at least 2 languages" in x
+        for x in assess(job, CareerProfile(languages=["English"]))["checks"]
+    )

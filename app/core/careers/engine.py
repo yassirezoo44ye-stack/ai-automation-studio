@@ -279,6 +279,38 @@ def mime_text(payload):
     return "\n".join(plain) if plain else "\n".join(html)
 
 
+# Canonical name -> English and Arabic spellings (compared after hamza folding).
+LANGUAGES = {
+    "english": ("english", "الانجليزية", "الانكليزية"),
+    "arabic": ("arabic", "العربية"),
+    "hindi": ("hindi", "الهندية"),
+    "urdu": ("urdu", "الاردية", "الاوردية", "الاوردو"),
+    "malayalam": ("malayalam", "المالايالامية", "المليالم"),
+    "tamil": ("tamil", "التاميلية"),
+    "tagalog": ("tagalog", "filipino", "التاغالوغية", "الفلبينية"),
+    "bengali": ("bengali", "bangla", "البنغالية"),
+    "persian": ("persian", "farsi", "الفارسية"),
+    "russian": ("russian", "الروسية"),
+    "french": ("french", "الفرنسية"),
+    "german": ("german", "الالمانية"),
+    "spanish": ("spanish", "الاسبانية"),
+    "chinese": ("chinese", "mandarin", "الصينية"),
+}
+# Place names that contain "العربية" but say nothing about language.
+ARAB_PLACES = r"(?:الامارات|المملكة|جمهورية مصر|الدول|دول)\s+العربية"
+
+
+def fold(text):
+    return re.sub("[أإآ]", "ا", text.casefold())
+
+
+def language_name(value):
+    value = fold(value.strip())
+    return next(
+        (name for name, spellings in LANGUAGES.items() if value in spellings), value
+    )
+
+
 def assess(job, profile: CareerProfile, today=None):
     today = today or date.today()
     text = (job.get("title", "") + "\n" + job.get("description", "")).casefold()
@@ -300,9 +332,9 @@ def assess(job, profile: CareerProfile, today=None):
         or job.get("verification") == "closed"
     )
     required = re.findall(
-        r"[^\n.!?]*(?:required|mandatory|must|يشترط|إلزام)[^\n.!?]*", text
+        r"[^\n.!?]*(?:required|mandatory|must|يشترط|إلزام|مطلوب|يتطلب|يجب)[^\n.!?]*", text
     )
-    known_languages = {x.casefold().strip() for x in profile.languages}
+    known_languages = {language_name(x) for x in profile.languages}
     for line in required[:20]:
         if re.search(r"not (?:required|mandatory)|غير (?:مطلوب|إلزامي)", line):
             continue
@@ -311,26 +343,25 @@ def assess(job, profile: CareerProfile, today=None):
                 gaps.append("UAE driving licence required / رخصة قيادة مطلوبة")
             elif profile.uae_driving_license is None:
                 checks.append("Confirm UAE driving licence / تحقق من رخصة القيادة")
+        folded = re.sub(ARAB_PLACES, " ", fold(line))
         languages = [
-            language
-            for language in (
-                "hindi",
-                "malayalam",
-                "tamil",
-                "english",
-                "arabic",
-                "russian",
-            )
-            if language in line
-            and not re.search(
-                language + r"\s+(?:is\s+)?(?:an?\s+)?(?:advantage|preferred)", line
+            name
+            for name, spellings in LANGUAGES.items()
+            if any(
+                spelling in folded
+                and not re.search(
+                    re.escape(spelling)
+                    + r"\s+(?:is\s+)?(?:an?\s+)?(?:advantage|preferred|plus|ميزة|مفضلة?)",
+                    folded,
+                )
+                for spelling in spellings
             )
         ]
         choice = re.search(
             r"(?:at least )?(two|three|2|3|one|1) (?:languages|of)", line
-        )
+        ) or re.search(r"(لغتين|ثلاث لغات)", line)
         if choice:
-            needed = {"one": 1, "two": 2, "three": 3}.get(
+            needed = {"one": 1, "two": 2, "three": 3, "لغتين": 2, "ثلاث لغات": 3}.get(
                 choice[1], int(choice[1]) if choice[1].isdigit() else 1
             )
             if len(set(languages) & known_languages) < needed:
