@@ -90,7 +90,7 @@ function WorkspaceWorkflow({ lessons }: { lessons: Lesson[] }) {
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
-  const [auth, setAuth] = useState<{ platform: string; url: string } | null>(null);
+  const [auth, setAuth] = useState<{ platform: string; url: string; ticket: string } | null>(null);
   const [connecting, setConnecting] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
@@ -102,9 +102,10 @@ function WorkspaceWorkflow({ lessons }: { lessons: Lesson[] }) {
   async function connect(platform: string) {
     setConnecting(true); setError(""); setAuth(null);
     try {
-      const result = await call<{ auth_url: string }>(`/api/social/accounts/${platform}/connect`);
+      const result = await call<{ auth_url: string; ticket: string }>(`/api/social/accounts/${platform}/connect`);
       const url = new URL(result.auth_url); if (url.protocol !== "https:") throw new Error("رابط اتصال غير صالح.");
-      setAuth({ platform, url: url.href });
+      if (!/^[a-f0-9]{32}$/.test(result.ticket)) throw new Error("تعذّر إنشاء خطوة الربط.");
+      setAuth({ platform, url: url.href, ticket: result.ticket });
     } catch (error) { setError(error instanceof Error ? error.message : "تعذّر بدء الربط."); } finally { setConnecting(false); }
   }
   const current = result?.workflows.find(w => w.id === selected) ?? null;
@@ -114,7 +115,7 @@ function WorkspaceWorkflow({ lessons }: { lessons: Lesson[] }) {
     {error && <p role="alert">{error}</p>}
     {result && <>
       <div className="study-workflow-connections">{result.connections.map(c => <article key={c.platform}><strong>{names[c.platform]}</strong><p>{!c.implemented ? "مزوّد النشر غير متاح بعد" : !c.configured ? "يحتاج إعداد خدمة المنصة" : c.accounts.length ? "حساب محفوظ · تحقق من صلاحيته قبل النشر" : "مهيّأ · يحتاج ربط حساب"}</p>{c.implemented && c.configured && <button className="study-secondary" disabled={connecting} onClick={() => void connect(c.platform)}>ربط حساب {names[c.platform]}</button>}</article>)}</div>
-      {auth && <a className="study-primary" href={auth.url} target="_blank" rel="noopener noreferrer">متابعة ربط {names[auth.platform]} في نافذة جديدة ↗</a>}
+      {auth && <form action={auth.url} method="post" target="_blank" rel="noopener"><input type="hidden" name="ticket" value={auth.ticket} /><button className="study-primary" type="submit">متابعة ربط {names[auth.platform]} في نافذة جديدة ↗</button><p className="study-small">ابدأ هذه الخطوة خلال دقيقة، ثم عد وحدّث الاتصالات.</p></form>}
       <label>مسار محفوظ<select value={selected ?? ""} onChange={e => setSelected(e.target.value || null)}><option value="">إنشاء مسار جديد</option>{result.workflows.map(w => <option key={w.id} value={w.id}>{w.title} · {states[w.state]}</option>)}</select></label>
       {selected && !current ? <p role="status">جارٍ تحميل المسار المحفوظ…</p> : <Editor key={`${selected ?? "new"}-${current?.revision ?? 0}-${current?.state ?? "draft"}`} workflow={current} lessons={lessons} onSaved={id => { setSelected(id); setRefresh(n => n + 1); }} />}
     </>}

@@ -131,3 +131,18 @@ library administrator plus an organization owner/admin role. A publishing key
 cannot authorize these workflow endpoints. PDF access and Payhip verification
 are unchanged; a social draft never grants library purchase access. Carousel
 rendering and video production remain separate from this first platform handoff.
+
+### Cross-origin social account connection
+
+The authenticated `/api/social/accounts/{platform}/connect` request now returns
+an API-origin authorization URL and a one-use ticket (60-second TTL). Flow submits
+that ticket as a top-level POST from its configured HTTPS `FRONTEND_URL`. The API
+checks the browser Origin before consuming the ticket, sets the HttpOnly/Secure/
+SameSite=Lax nonce cookie as a first-party response, and redirects to the provider.
+This avoids relying on third-party cookies between Vercel and Render. The form
+uses `rel=noopener` (not `noreferrer`, which can suppress the Origin needed here).
+Only POST authorize and GET callback paths for the named platforms are exempt
+from the session middleware; account listing, connect and publishing remain
+session-protected. The existing callback still verifies and consumes state and
+matches the browser nonce. Missing/foreign origins, expired tickets, wrong
+platforms and replayed requests fail without exchanging credentials.
