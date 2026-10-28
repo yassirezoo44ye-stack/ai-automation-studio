@@ -482,3 +482,9 @@ successful deploy to `main`.
 ### Other
 - Merge pull request #23 from yassirezoo44ye-stack/claude/flow-lead-automation-audit-w3ldyc
 - feat(careers): AI-first Career Assistant with a guided redesign
+
+## v1.0.32
+
+### Other
+- Merge pull request #24 from yassirezoo44ye-stack/claude/flow-lead-automation-audit-w3ldyc
+- fix(automation): interrupt pending runs whose in-memory job was lost
