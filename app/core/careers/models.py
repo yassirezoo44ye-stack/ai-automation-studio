@@ -18,6 +18,17 @@ class CareerProfile(BaseModel):
 class ImportAlert(BaseModel):
     text: str = Field(min_length=1, max_length=200000)
     source: Literal["linkedin", "indeed", "manual"] = "manual"
+    # When the alert parser finds no supported job links, let the AI find
+    # the openings in the text instead.
+    use_ai: bool = False
+
+
+class ProfileExtract(BaseModel):
+    text: str = Field(min_length=20, max_length=30000)
+
+
+class FitRequest(BaseModel):
+    language: Literal["en", "ar"] = "en"
 
 
 class JobStatus(BaseModel):
