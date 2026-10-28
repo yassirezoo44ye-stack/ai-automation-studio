@@ -476,3 +476,9 @@ successful deploy to `main`.
 - fix(leads): make lead follow-up honest end-to-end
 - test(automation): expect server-side org_id in run context
 - fix(automation): make webhook lead intake work end-to-end
+
+## v1.0.31
+
+### Other
+- Merge pull request #23 from yassirezoo44ye-stack/claude/flow-lead-automation-audit-w3ldyc
+- feat(careers): AI-first Career Assistant with a guided redesign
