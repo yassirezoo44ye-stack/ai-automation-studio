@@ -205,6 +205,11 @@ class JobQueue:
         # once so a burst can't starve the event loop.
         self._worker_sem = asyncio.Semaphore(int(os.getenv("JOB_WORKERS", "10")))
 
+    @property
+    def durable(self) -> bool:
+        """True when jobs survive a process restart (Redis-backed store)."""
+        return isinstance(self._store, _RedisStore)
+
     # ── Submission ─────────────────────────────────────────────────────────────
 
     async def submit(
