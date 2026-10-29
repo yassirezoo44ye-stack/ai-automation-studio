@@ -37,7 +37,8 @@ const BASE_CREATION: FlowCreation = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  mockApiFetch.mockResolvedValue({ ok: true, json: async () => ({ lessons: [] }) } as Response);
 });
 
 /* ── loadFeedItems ──────────────────────────────────────────────── */
@@ -264,3 +265,22 @@ describe("creationToFeedItem — FeedIntent fields", () => {
  * inventing new infrastructure. The guard is enforced at the UI level via the
  * disabled prop on the Like/Save buttons in FeedActionPanel.
  */
+
+describe("study library in feed", () => {
+  it("keeps published lessons visible when Discover fails", async () => {
+    mockFetchDiscover.mockRejectedValueOnce(new Error("offline"));
+    mockApiFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ lessons: [{ slug: "networks", title: "الشبكات", description: "شرح", subject: "computing" }] }) } as Response);
+    const result = await loadFeedItems();
+    expect(result.items[0]).toMatchObject({ id: "study:networks", type: "STUDY", sourceId: "networks", targetPage: "study-library" });
+    expect(result.items[0].media.src).toContain("/lessons/networks/cover");
+    expect(result.error).toBe(true);
+  });
+  it("preserves creations when the catalog fails", async () => {
+    mockFetchDiscover.mockResolvedValueOnce({ items: [BASE_CREATION], total: 1 });
+    mockApiFetch.mockRejectedValueOnce(new Error("catalog unavailable"));
+    const result = await loadFeedItems();
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].id).toBe(BASE_CREATION.id);
+    expect(result.error).toBe(true);
+  });
+});

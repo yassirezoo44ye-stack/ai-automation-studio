@@ -39,16 +39,17 @@ function Publisher({ onPublished }: { onPublished: () => void }) {
 export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
   const { user } = useAuth();
   const [catalogResult, setCatalogResult] = useState<{ key: string; data: Catalog | null; error: string } | null>(null);
+  const [lessonSlug, setLessonSlug] = useState(() => new URLSearchParams(window.location.search).get("lesson") ?? "");
   const [subject, setSubject] = useState("");
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState(() => (new URLSearchParams(window.location.search).get("q") ?? "").slice(0, 120));
+  const [query, setQuery] = useState(search);
   const [offset, setOffset] = useState(0);
   const [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [accessResult, setAccessResult] = useState<{ key: string; granted: boolean; admin: boolean; failed: boolean } | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const reload = () => setRefresh(r => r + 1);
-  const requestKey = JSON.stringify([subject, query, offset, refresh]);
+  const requestKey = JSON.stringify([subject, query, offset, refresh, lessonSlug]);
   const loading = catalogResult?.key !== requestKey;
   const catalog = loading ? null : catalogResult?.data;
   const error = loading ? "" : catalogResult?.error;
@@ -64,13 +65,14 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
     const controller = new AbortController();
     const params = new URLSearchParams({ q: query, limit: "30", offset: String(offset) });
     if (subject) params.set("subject", subject);
+    if (lessonSlug) params.set("slug", lessonSlug);
     void apiFetch(`/api/study-library/catalog?${params}`, { signal: controller.signal }).then(async res => {
       if (!res.ok) throw new Error("catalog");
       const data: Catalog = await res.json();
       if (!controller.signal.aborted) setCatalogResult({ key: requestKey, data, error: "" });
     }).catch(() => { if (!controller.signal.aborted) setCatalogResult({ key: requestKey, data: null, error: "تعذّر تحميل الملخصات. تحقق من الاتصال ثم أعد المحاولة." }); });
     return () => controller.abort();
-  }, [subject, query, offset, requestKey]);
+  }, [subject, query, offset, requestKey, lessonSlug]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -119,15 +121,16 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
     </section>
     <section className="study-collection" aria-label="الملخصات التعليمية">
       <div className="study-section-title"><div><span className="study-eyebrow">تعلّم على طريقتك</span><h2>اختر فكرتك التالية</h2></div>
-        <form role="search" onSubmit={event => { event.preventDefault(); setOffset(0); setQuery(search.trim()); }}>
+        <form role="search" onSubmit={event => { event.preventDefault(); setLessonSlug(""); setOffset(0); setQuery(search.trim()); }}>
           <label className="study-sr-only" htmlFor="study-search">ابحث عن ملخص</label><input id="study-search" value={search} maxLength={120} onChange={event => setSearch(event.target.value)} placeholder="عن ماذا تريد أن تتعلّم؟" /><button className="study-secondary" type="submit">بحث</button>
         </form>
       </div>
-      <div className="study-filters" aria-label="تصفية حسب المادة">{subjects.map(([id, name, icon]) => <button key={id} aria-pressed={subject === id} onClick={() => { setSubject(id); setOffset(0); }}><span aria-hidden="true">{icon}</span>{name}</button>)}</div>
+      {lessonSlug && <button className="study-secondary" onClick={() => { setLessonSlug(""); window.history.replaceState(null, "", "/study-library"); }}>عرض كل الملخصات</button>}
+      <div className="study-filters" aria-label="تصفية حسب المادة">{subjects.map(([id, name, icon]) => <button key={id} aria-pressed={subject === id} onClick={() => { setLessonSlug(""); setSubject(id); setOffset(0); }}><span aria-hidden="true">{icon}</span>{name}</button>)}</div>
       <p role="status" className="study-notice">{notice}</p>
       {loading ? <div className="study-empty" role="status">جارٍ ترتيب الملخصات…</div> : error ? <div className="study-empty" role="alert"><p>{error}</p><button className="study-secondary" onClick={reload}>إعادة المحاولة</button></div>
         : !catalog?.lessons.length ? <div className="study-empty"><span aria-hidden="true">✦</span><h3>مساحة لفكرة جديدة</h3><p>{query || subject ? "لا توجد نتائج لهذه التصفية. جرّب مادة أو كلمة أخرى." : "لم تُضَف ملخصات إلى المكتبة بعد. ستظهر هنا عندما تُنشر."}</p></div>
-        : <div className="study-grid">{catalog.lessons.map(lesson => <article key={lesson.slug} className={`study-card study-${lesson.subject}`}>
+        : <div className="study-grid">{catalog.lessons.map(lesson => <article id={`lesson-${lesson.slug}`} key={lesson.slug} className={`study-card study-${lesson.subject}`}>
           <div className="study-cover"><img src={`${API}/api/study-library/lessons/${encodeURIComponent(lesson.slug)}/cover`} alt={`غلاف ${lesson.title}`} loading="lazy" /></div>
           <div className="study-card-content"><div className="study-card-meta"><span>{subjects.find(s => s[0] === lesson.subject)?.[1] ?? lesson.subject}</span><span>{lesson.pages} صفحات</span></div><h3>{lesson.title}</h3><p>{lesson.description}</p>
             <div className="study-card-bottom"><time dateTime={lesson.published_at}>{new Intl.DateTimeFormat("ar-AE", { day: "numeric", month: "short", timeZone: "Asia/Dubai" }).format(new Date(lesson.published_at))}</time><button className="study-secondary" disabled={membership !== "active" || downloading !== null} onClick={() => void download(lesson)}>{downloading === lesson.slug ? "جارٍ التنزيل…" : membership === "active" ? "تنزيل الملخص ↓" : "يتطلب دخول المكتبة"}</button></div>

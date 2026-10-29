@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { FeedTopBar } from "./components/FeedTopBar";
+import { StudyFeedCard } from "./components/StudyFeedCard";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
 import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI } from "./services/feedService";
@@ -24,6 +25,8 @@ function initStates(items: FeedItem[]): Record<string, FeedItemState> {
 
 export function FeedPage() {
   const { t } = useTranslation("feed");
+  const [contentFilter, setContentFilter] = useState<"all" | "study">("all");
+  const [refresh, setRefresh] = useState(0);
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
   const [items, setItems]       = useState<FeedItem[]>([]);
   const [isMock, setIsMock]     = useState(false);
@@ -45,9 +48,10 @@ export function FeedPage() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [refresh]);
 
-  const { activeIndex, containerRef } = useFeedNavigation({ total: items.length });
+  const visibleItems = contentFilter === "study" ? items.filter(item => item.type === "STUDY") : items;
+  const { activeIndex, containerRef, scrollToIndex } = useFeedNavigation({ total: visibleItems.length });
 
   /* ── Interaction handlers ──────────────────────────────────── */
   const toggleLike = useCallback((id: string) => {
@@ -75,13 +79,16 @@ export function FeedPage() {
   }, []);
 
   /* ── Navigation indicator ──────────────────────────────────── */
-  const total = items.length;
+  const total = visibleItems.length;
   const progressPct = total > 1 ? (activeIndex / (total - 1)) * 100 : 0;
 
   return (
     <div className="feed-page" role="main" aria-label={t("page.ariaLabel")}>
       {/* Top bar overlays the first card */}
       <FeedTopBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <div className="feed-content-filters" role="group" aria-label={t("study.filterLabel")}>
+        {(["all", "study"] as const).map(filter => <button key={filter} aria-pressed={contentFilter === filter} onClick={() => { scrollToIndex(0); setContentFilter(filter); }}>{t(`study.${filter}`)}</button>)}
+      </div>
 
       {/* Thin progress bar */}
       <div className="feed-progress" aria-hidden>
@@ -95,27 +102,30 @@ export function FeedPage() {
 
       {/* Error state */}
       {!loading && feedError && (
-        <div className="feed-state feed-state--error" role="alert">
-          <p className="feed-state__title">{t("error.title")}</p>
+        <div className={items.length ? "feed-partial-error" : "feed-state feed-state--error"} role="alert">
+          <p className="feed-state__title">{t(items.length ? "error.partial" : "error.title")}</p>
+          <button onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>{t("error.retry")}</button>
         </div>
       )}
 
       {/* Empty real feed */}
-      {!loading && !feedError && items.length === 0 && (
+      {!loading && !feedError && visibleItems.length === 0 && (
         <div className="feed-state feed-state--empty" role="status">
-          <p className="feed-state__title">{t("empty.title")}</p>
+          <p className="feed-state__title">{t(contentFilter === "study" ? "study.empty" : "empty.title")}</p>
           <p className="feed-state__subtitle">{t("empty.subtitle")}</p>
         </div>
       )}
 
       {/* Scrollable card stack — only when there are items */}
-      {items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div
           ref={containerRef}
           className="feed-scroll"
           aria-label={t("page.feedLabel")}
         >
-          {items.map((item, idx) => (
+          {visibleItems.map((item, idx) => item.type === "STUDY" ? (
+            <StudyFeedCard key={item.id} item={item} isActive={idx === activeIndex} />
+          ) : (
             <FeedCard
               key={item.id}
               item={item}
@@ -130,9 +140,9 @@ export function FeedPage() {
       )}
 
       {/* Dot indicator */}
-      {items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div className="feed-dots" aria-hidden>
-          {items.map((item, idx) => (
+          {visibleItems.map((item, idx) => (
             <span
               key={item.id}
               className={`feed-dot${idx === activeIndex ? " feed-dot--active" : ""}`}

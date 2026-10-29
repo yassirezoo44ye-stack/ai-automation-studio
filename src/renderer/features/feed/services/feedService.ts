@@ -1,3 +1,4 @@
+import { loadStudyItems } from "./studyFeedService";
 import type { FlowCreation, CreationType } from "../../discover/types/creation.types";
 import { fetchDiscoverFeed } from "../../discover/services/discoverService";
 import { apiFetch } from "../../../shared/utils/api";
@@ -88,10 +89,17 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
 
 /* ── Loader ──────────────────────────────────────────────────── */
 export async function loadFeedItems(): Promise<{ items: FeedItem[]; isMock: boolean; error: boolean }> {
-  try {
-    const { items } = await fetchDiscoverFeed({ limit: 30 });
-    return { items: items.map(creationToFeedItem), isMock: false, error: false };
-  } catch {
-    return { items: [], isMock: false, error: true };
-  }
+  const [creations, lessons] = await Promise.allSettled([
+    fetchDiscoverFeed({ limit: 30 }),
+    loadStudyItems(),
+  ]);
+  const studyItems = lessons.status === "fulfilled" ? lessons.value : [];
+  const creationItems = creations.status === "fulfilled" ? creations.value.items.map(creationToFeedItem) : [];
+  // A failed source must not hide the other source's published content.
+  return {
+    items: [...studyItems, ...creationItems],
+    isMock: false,
+    error: creations.status === "rejected" || lessons.status === "rejected",
+  };
 }
+
