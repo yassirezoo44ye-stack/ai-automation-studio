@@ -43,11 +43,16 @@
   },
   "error": {
     "title": "Could not load the feed",
-    "partial": "Some content could not load. Available items are shown."
+    "partial": "Some content could not load. Available items are shown.",
+    "retry": "Retry"
   },
   "study": {
     "label": "Visual Study Library",
     "access": "Downloading requires library access.",
-    "open": "Open summary"
+    "open": "Open summary",
+    "filterLabel": "Content type",
+    "all": "All",
+    "study": "Visual learning",
+    "empty": "No study summaries have been published yet."
   }
 }

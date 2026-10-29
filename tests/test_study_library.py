@@ -226,3 +226,25 @@ def test_checkout_only_uses_matching_payhip_product(monkeypatch):
         assert study._checkout_url() is None
     monkeypatch.setenv("STUDY_PAYHIP_CHECKOUT_URL", f"https://payhip.com/b/{PRODUCT}")
     assert study._checkout_url() == f"https://payhip.com/b/{PRODUCT}"
+
+
+@pytest.mark.asyncio
+async def test_catalog_exact_slug_filter(app_and_conn):
+    app, conn = app_and_conn
+    conn.fetch.return_value = []
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.get("/api/study-library/catalog?slug=network-basics")
+    assert response.status_code == 200
+    sql, *args = conn.fetch.await_args.args
+    assert "published_at <= NOW()" in sql
+    assert "slug=$5" in sql
+    assert args[-1] == "network-basics"
+
+
+@pytest.mark.asyncio
+async def test_catalog_invalid_slug_rejected_before_database(app_and_conn):
+    app, conn = app_and_conn
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.get("/api/study-library/catalog", params={"slug": "../private"})
+    assert response.status_code == 422
+    conn.fetch.assert_not_awaited()

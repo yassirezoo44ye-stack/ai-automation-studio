@@ -490,3 +490,9 @@
 
 .feed-partial-error { position: absolute; top: 70px; inset-inline: 16px; z-index: 6; pointer-events: none; background: #101827e6; border-radius: 8px; padding: 8px 12px; }
 .feed-partial-error .feed-state__title { font-size: 13px; }
+
+.feed-content-filters { position: absolute; top: 62px; inset-inline-start: 20px; z-index: 20; display: flex; gap: 8px; }
+.feed-content-filters button, .feed-partial-error button { color: white; background: #101827e6; border: 1px solid #ffffff55; border-radius: 20px; padding: 8px 14px; cursor: pointer; font: inherit; }
+.feed-content-filters button[aria-pressed="true"] { background: var(--accent, #6e32e0); }
+.feed-partial-error { top: 110px; pointer-events: auto; }
+.feed-study-card .feed-bottom-overlay { inset-inline-end: 20px; }

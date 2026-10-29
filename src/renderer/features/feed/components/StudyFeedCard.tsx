@@ -3,7 +3,7 @@ import type { FeedItem } from "../types/feed.types";
 
 export function StudyFeedCard({ item, isActive }: { item: FeedItem; isActive: boolean }) {
   const { t } = useTranslation("feed");
-  const href = `/study-library?q=${encodeURIComponent(item.title)}#lesson-${encodeURIComponent(item.sourceId ?? "")}`;
+  const href = `/study-library?lesson=${encodeURIComponent(item.sourceId ?? "")}`;
   return <article className={`feed-card feed-study-card${isActive ? " feed-card--active" : ""}`} aria-current={isActive}>
     <img className="feed-study-cover" src={item.media.src} alt={item.title} loading="lazy" />
     <div className="feed-card__vignette" aria-hidden />
