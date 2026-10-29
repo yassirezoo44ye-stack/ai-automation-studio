@@ -129,6 +129,7 @@ async def _publisher(request: Request):
 async def catalog(
     subject: str | None = None,
     q: str = Query("", max_length=120),
+    slug: str | None = Query(None, max_length=80, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$"),
     offset: int = Query(0, ge=0),
     limit: int = Query(30, ge=1, le=60),
 ):
@@ -140,11 +141,13 @@ async def catalog(
                FROM study_lessons WHERE published_at <= NOW()
                AND ($1::text IS NULL OR subject=$1)
                AND ($2::text = '' OR STRPOS(LOWER(title || ' ' || description), LOWER($2)) > 0)
+               AND ($5::text IS NULL OR slug=$5)
                ORDER BY published_at DESC, slug LIMIT $3 OFFSET $4""",
             subject,
             q.strip(),
             limit,
             offset,
+            slug,
         )
     return {
         "lessons": [dict(r, published_at=r["published_at"].isoformat()) for r in rows],
