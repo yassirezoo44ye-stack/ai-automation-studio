@@ -483,3 +483,10 @@
 /* The feed is an immersive dark experience regardless of app theme.
    We keep its own background: #000 and override nothing from the
    design-system light tokens — the page paints its own world. */
+
+.feed-study-card { background: #101827; }
+.feed-study-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.feed-study-card .feed-cta-btn { text-decoration: none; text-align: center; }
+
+.feed-partial-error { position: absolute; top: 70px; inset-inline: 16px; z-index: 6; pointer-events: none; background: #101827e6; border-radius: 8px; padding: 8px 12px; }
+.feed-partial-error .feed-state__title { font-size: 13px; }

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { FeedTopBar } from "./components/FeedTopBar";
+import { StudyFeedCard } from "./components/StudyFeedCard";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
 import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI } from "./services/feedService";
@@ -95,8 +96,8 @@ export function FeedPage() {
 
       {/* Error state */}
       {!loading && feedError && (
-        <div className="feed-state feed-state--error" role="alert">
-          <p className="feed-state__title">{t("error.title")}</p>
+        <div className={items.length ? "feed-partial-error" : "feed-state feed-state--error"} role="alert">
+          <p className="feed-state__title">{t(items.length ? "error.partial" : "error.title")}</p>
         </div>
       )}
 
@@ -115,7 +116,9 @@ export function FeedPage() {
           className="feed-scroll"
           aria-label={t("page.feedLabel")}
         >
-          {items.map((item, idx) => (
+          {items.map((item, idx) => item.type === "STUDY" ? (
+            <StudyFeedCard key={item.id} item={item} isActive={idx === activeIndex} />
+          ) : (
             <FeedCard
               key={item.id}
               item={item}

@@ -40,8 +40,8 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
   const { user } = useAuth();
   const [catalogResult, setCatalogResult] = useState<{ key: string; data: Catalog | null; error: string } | null>(null);
   const [subject, setSubject] = useState("");
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState(() => (new URLSearchParams(window.location.search).get("q") ?? "").slice(0, 120));
+  const [query, setQuery] = useState(search);
   const [offset, setOffset] = useState(0);
   const [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -127,7 +127,7 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
       <p role="status" className="study-notice">{notice}</p>
       {loading ? <div className="study-empty" role="status">جارٍ ترتيب الملخصات…</div> : error ? <div className="study-empty" role="alert"><p>{error}</p><button className="study-secondary" onClick={reload}>إعادة المحاولة</button></div>
         : !catalog?.lessons.length ? <div className="study-empty"><span aria-hidden="true">✦</span><h3>مساحة لفكرة جديدة</h3><p>{query || subject ? "لا توجد نتائج لهذه التصفية. جرّب مادة أو كلمة أخرى." : "لم تُضَف ملخصات إلى المكتبة بعد. ستظهر هنا عندما تُنشر."}</p></div>
-        : <div className="study-grid">{catalog.lessons.map(lesson => <article key={lesson.slug} className={`study-card study-${lesson.subject}`}>
+        : <div className="study-grid">{catalog.lessons.map(lesson => <article id={`lesson-${lesson.slug}`} key={lesson.slug} className={`study-card study-${lesson.subject}`}>
           <div className="study-cover"><img src={`${API}/api/study-library/lessons/${encodeURIComponent(lesson.slug)}/cover`} alt={`غلاف ${lesson.title}`} loading="lazy" /></div>
           <div className="study-card-content"><div className="study-card-meta"><span>{subjects.find(s => s[0] === lesson.subject)?.[1] ?? lesson.subject}</span><span>{lesson.pages} صفحات</span></div><h3>{lesson.title}</h3><p>{lesson.description}</p>
             <div className="study-card-bottom"><time dateTime={lesson.published_at}>{new Intl.DateTimeFormat("ar-AE", { day: "numeric", month: "short", timeZone: "Asia/Dubai" }).format(new Date(lesson.published_at))}</time><button className="study-secondary" disabled={membership !== "active" || downloading !== null} onClick={() => void download(lesson)}>{downloading === lesson.slug ? "جارٍ التنزيل…" : membership === "active" ? "تنزيل الملخص ↓" : "يتطلب دخول المكتبة"}</button></div>
