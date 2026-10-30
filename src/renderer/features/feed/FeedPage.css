@@ -505,3 +505,9 @@
 .feed-partial-error { top: 160px; }
 .feed-state { padding-top: 180px; }
 @media (max-width: 600px) { .feed-content-filters { gap: 6px; } .feed-content-filters input { width: 170px; } }
+
+.feed-study-pagination { position: absolute; inset-block-end: 12px; inset-inline-start: 20px; z-index: 25; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: calc(100% - 55px); }
+.feed-study-pagination button { font: inherit; color: white; background: #101827; border: 1px solid #ffffff88; padding: 8px 14px; border-radius: 16px; cursor: pointer; }
+.feed-study-pagination button:disabled { opacity: .6; cursor: wait; }
+.feed-study-pagination [role="alert"] { background: #101827; padding: 4px 8px; font-size: 13px; }
+.feed-study-card .feed-bottom-overlay { padding-bottom: 54px; }

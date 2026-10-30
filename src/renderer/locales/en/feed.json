@@ -68,6 +68,10 @@
       "biology": "Biology",
       "english": "English",
       "computing": "Computing"
-    }
+    },
+    "loadMore": "Load older summaries",
+    "loadingMore": "Loading more…",
+    "retryMore": "Retry older summaries",
+    "moreError": "Could not load more. Existing items are still available."
   }
 }
