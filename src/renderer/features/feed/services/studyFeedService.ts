@@ -1,8 +1,8 @@
 import { API, apiFetch } from "../../../shared/utils/api";
 import type { FeedItem } from "../types/feed.types";
 
-export async function loadStudyItems(): Promise<FeedItem[]> {
-  const response = await apiFetch("/api/study-library/catalog?limit=30&offset=0");
+export async function loadStudyItems(offset = 0): Promise<FeedItem[]> {
+  const response = await apiFetch(`/api/study-library/catalog?limit=30&offset=${offset}`);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const { lessons } = await response.json();
   return lessons.map((lesson: { slug: string; title: string; description: string; subject: string }) => ({
