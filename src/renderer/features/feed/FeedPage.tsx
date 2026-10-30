@@ -26,6 +26,8 @@ function initStates(items: FeedItem[]): Record<string, FeedItemState> {
 export function FeedPage() {
   const { t } = useTranslation("feed");
   const [contentFilter, setContentFilter] = useState<"all" | "study">("all");
+  const [search, setSearch] = useState("");
+  const [subject, setSubject] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
   const [items, setItems]       = useState<FeedItem[]>([]);
@@ -50,7 +52,12 @@ export function FeedPage() {
     return () => { cancelled = true; };
   }, [refresh]);
 
-  const visibleItems = contentFilter === "study" ? items.filter(item => item.type === "STUDY") : items;
+  const needle = search.trim().toLocaleLowerCase();
+  const visibleItems = items.filter(item =>
+    (contentFilter !== "study" || item.type === "STUDY") &&
+    (!subject || (item.type === "STUDY" && item.tags.includes(subject))) &&
+    (!needle || `${item.title} ${item.description}`.toLocaleLowerCase().includes(needle))
+  );
   const { activeIndex, containerRef, scrollToIndex } = useFeedNavigation({ total: visibleItems.length });
 
   /* ── Interaction handlers ──────────────────────────────────── */
@@ -87,7 +94,11 @@ export function FeedPage() {
       {/* Top bar overlays the first card */}
       <FeedTopBar activeTab={activeTab} onTabChange={setActiveTab} />
       <div className="feed-content-filters" role="group" aria-label={t("study.filterLabel")}>
-        {(["all", "study"] as const).map(filter => <button key={filter} aria-pressed={contentFilter === filter} onClick={() => { scrollToIndex(0); setContentFilter(filter); }}>{t(`study.${filter}`)}</button>)}
+        {(["all", "study"] as const).map(filter => <button key={filter} aria-pressed={contentFilter === filter} onClick={() => { scrollToIndex(0); setContentFilter(filter); setSubject(""); }}>{t(`study.${filter}`)}</button>)}
+        <label className="feed-search-label"><span>{t("study.search")}</span><input type="search" value={search} maxLength={120} placeholder={t("study.searchPlaceholder")} onChange={event => { scrollToIndex(0); setSearch(event.target.value); }} /></label>
+        {contentFilter === "study" && <label><span className="feed-control-label">{t("study.subject")}</span><select aria-label={t("study.subject")} value={subject} onChange={event => { scrollToIndex(0); setSubject(event.target.value); }}>
+          {["", "math", "physics", "chemistry", "biology", "english", "computing"].map(value => <option key={value} value={value}>{t(`study.subjects.${value || "all"}`)}</option>)}
+        </select></label>}
       </div>
 
       {/* Thin progress bar */}
@@ -109,10 +120,11 @@ export function FeedPage() {
       )}
 
       {/* Empty real feed */}
-      {!loading && !feedError && visibleItems.length === 0 && (
+      {!loading && visibleItems.length === 0 && (!feedError || items.length > 0) && (
         <div className="feed-state feed-state--empty" role="status">
-          <p className="feed-state__title">{t(contentFilter === "study" ? "study.empty" : "empty.title")}</p>
-          <p className="feed-state__subtitle">{t("empty.subtitle")}</p>
+          <p className="feed-state__title">{t(search || subject ? "study.noMatches" : contentFilter === "study" ? "study.empty" : "empty.title")}</p>
+          <p className="feed-state__subtitle">{t(search || subject ? "study.adjustFilters" : "empty.subtitle")}</p>
+          {(search || subject) && <button onClick={() => { setSearch(""); setSubject(""); }}>{t("study.clear")}</button>}
         </div>
       )}
 

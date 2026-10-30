@@ -53,6 +53,21 @@
     "filterLabel": "Content type",
     "all": "All",
     "study": "Visual learning",
-    "empty": "No study summaries have been published yet."
+    "empty": "No study summaries have been published yet.",
+    "search": "Search loaded content",
+    "searchPlaceholder": "Search loaded items…",
+    "subject": "Study subject",
+    "noMatches": "No matching items",
+    "adjustFilters": "Try another term or clear filters.",
+    "clear": "Clear filters",
+    "subjects": {
+      "all": "All subjects",
+      "math": "Mathematics",
+      "physics": "Physics",
+      "chemistry": "Chemistry",
+      "biology": "Biology",
+      "english": "English",
+      "computing": "Computing"
+    }
   }
 }

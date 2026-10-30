@@ -496,3 +496,12 @@
 .feed-content-filters button[aria-pressed="true"] { background: var(--accent, #6e32e0); }
 .feed-partial-error { top: 110px; pointer-events: auto; }
 .feed-study-card .feed-bottom-overlay { inset-inline-end: 20px; }
+
+.feed-content-filters { inset-inline-end: 20px; flex-wrap: wrap; align-items: center; }
+.feed-content-filters input, .feed-content-filters select { max-width: 100%; color: white; background: #101827; border: 1px solid #ffffff77; border-radius: 12px; padding: 8px 10px; font: inherit; }
+.feed-search-label { display: flex; align-items: center; gap: 8px; }
+.feed-search-label > span, .feed-control-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.feed-content-filters input { width: 230px; }
+.feed-partial-error { top: 160px; }
+.feed-state { padding-top: 180px; }
+@media (max-width: 600px) { .feed-content-filters { gap: 6px; } .feed-content-filters input { width: 170px; } }
