@@ -74,3 +74,16 @@ it("keeps previous summaries and retries the same offset after failure", async (
   expect(loadStudyItems).toHaveBeenNthCalledWith(2, 30);
   expect(screen.getByText("Lesson 0")).toBeInTheDocument();
 });
+it("discards an older pending page after feed refresh", async () => {
+  const first = Array.from({ length: 30 }, (_, i) => ({ ...lesson, id: `study:${i}`, title: `Lesson ${i}` }));
+  vi.mocked(loadFeedItems).mockResolvedValueOnce({ items: first, isMock: false, error: true }).mockResolvedValueOnce({ items: [{ ...lesson, title: "Fresh summary" }], isMock: false, error: false });
+  let resolvePage!: (items: FeedItem[]) => void;
+  vi.mocked(loadStudyItems).mockReturnValueOnce(new Promise(resolve => { resolvePage = resolve; }));
+  render(<FeedPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "study.loadMore" }));
+  fireEvent.click(screen.getByRole("button", { name: "error.retry" }));
+  await screen.findByText("Fresh summary");
+  resolvePage([{ ...lesson, id: "stale", title: "Stale summary" }]);
+  await waitFor(() => expect(screen.queryByText("Stale summary")).not.toBeInTheDocument());
+  expect(screen.getByText("Fresh summary")).toBeInTheDocument();
+});

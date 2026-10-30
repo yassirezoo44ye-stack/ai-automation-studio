@@ -61,7 +61,7 @@ export function FeedPage() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; if (generation.current === currentGeneration) generation.current++; };
+    return () => { cancelled = true; generation.current = currentGeneration + 1; };
   }, [refresh]);
 
   const needle = search.trim().toLocaleLowerCase();
