@@ -28,3 +28,20 @@ it("retries failed loading and replaces the error with available content", async
   expect(await screen.findByText("Network basics")).toBeInTheDocument();
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
 });
+it("combines study subject and text filtering and clears an empty result", async () => {
+  vi.mocked(loadFeedItems).mockResolvedValue({ items: [{ ...lesson, tags: ["computing"] }, { ...lesson, id: "study:fractions", title: "Fractions", sourceId: "fractions", tags: ["math"] }], isMock: false, error: false });
+  render(<FeedPage />);
+  await screen.findByText("Network basics");
+  fireEvent.click(screen.getByRole("button", { name: "study.study" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "study.subject" }), { target: { value: "math" } });
+  expect(screen.queryByText("Network basics")).not.toBeInTheDocument();
+  expect(screen.getByText("Fractions")).toBeInTheDocument();
+  const search = screen.getByRole("searchbox", { name: "study.search" });
+  const key = new KeyboardEvent("keydown", { key: "j", bubbles: true, cancelable: true });
+  search.dispatchEvent(key);
+  expect(key.defaultPrevented).toBe(false);
+  fireEvent.change(search, { target: { value: "absent" } });
+  expect(screen.getByText("study.noMatches")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "study.clear" }));
+  expect(screen.getByText("Network basics")).toBeInTheDocument();
+});
