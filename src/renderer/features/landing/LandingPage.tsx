@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, useReducedMotion } from "framer-motion";
-import AxonLogo from "../../AxonLogo";
+import FlowMark from "../../FlowMark";
 import { useLangContext } from "../../contexts/lang";
 import { captureUtm, trackEvent } from "../../lib/utm";
 import "./landing.css";
@@ -237,7 +237,7 @@ function Nav({ onSignIn, onSignUp }: Props) {
           onClick={() => scrollTo("lp-hero")}
           aria-label="Flow — home"
         >
-          <AxonLogo size={32} />
+          <FlowMark size={32} />
           <span className="lp-nav__wordmark">Flow</span>
         </button>
 
@@ -300,7 +300,7 @@ function Nav({ onSignIn, onSignUp }: Props) {
             style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 10 }}
             onClick={() => { scrollTo("lp-hero"); setMenuOpen(false); }}
           >
-            <AxonLogo size={28} />
+            <FlowMark size={28} />
             <span className="lp-nav__wordmark">Flow</span>
           </button>
           <button
@@ -839,7 +839,7 @@ function Footer() {
     <footer className="lp-footer" role="contentinfo">
       <div className="lp-footer__inner">
         <div className="lp-footer__brand">
-          <AxonLogo size={28} />
+          <FlowMark size={28} />
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: "var(--t2)", letterSpacing: "-0.02em" }}>
               Flow
@@ -847,6 +847,10 @@ function Footer() {
             <div className="lp-footer__tagline">{t("footer.tagline")}</div>
           </div>
         </div>
+        <nav aria-label="Legal" style={{ display: "flex", gap: 16, fontSize: 13 }}>
+          <a href="/privacy" style={{ color: "var(--t4)" }}>{t("footer.privacy")}</a>
+          <a href="/terms" style={{ color: "var(--t4)" }}>{t("footer.terms")}</a>
+        </nav>
         <div className="lp-footer__copy">
           {t("footer.copyright", { year: new Date().getFullYear() })}
         </div>

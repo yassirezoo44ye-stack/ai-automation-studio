@@ -27,7 +27,13 @@
     "body": "Every agency has the same 5–10 processes that eat time every week. Flow turns them into workflows that run automatically — so your team works on what only humans can do.",
     "exampleLabel": "Example:",
     "exampleRequest": "Collect this week's client data, generate a PDF report, email it to the client, and flag any performance drop.",
-    "steps": ["Collect Data", "Analyze", "Generate Report", "Send to Client", "Flag Issues"]
+    "steps": [
+      "Collect Data",
+      "Analyze",
+      "Generate Report",
+      "Send to Client",
+      "Flag Issues"
+    ]
   },
   "features": {
     "eyebrow": "Platform",
@@ -102,17 +108,35 @@
       {
         "title": "Client Reporting",
         "emoji": "📄",
-        "steps": ["Collect client data", "Analyze performance", "Generate PDF report", "Send to client", "Archive & alert"]
+        "steps": [
+          "Collect client data",
+          "Analyze performance",
+          "Generate PDF report",
+          "Send to client",
+          "Archive & alert"
+        ]
       },
       {
         "title": "Lead Follow-up",
         "emoji": "🎯",
-        "steps": ["New lead arrives", "Score & qualify", "Draft personalized email", "Schedule follow-up", "Track response"]
+        "steps": [
+          "New lead arrives",
+          "Score & qualify",
+          "Draft personalized email",
+          "Schedule follow-up",
+          "Track response"
+        ]
       },
       {
         "title": "Content Production",
         "emoji": "✍️",
-        "steps": ["Receive brief", "Research", "Draft content", "Review & approve", "Publish & report"]
+        "steps": [
+          "Receive brief",
+          "Research",
+          "Draft content",
+          "Review & approve",
+          "Publish & report"
+        ]
       }
     ]
   },
@@ -146,10 +170,22 @@
     "eyebrow": "Security",
     "headline": "Built for teams that care about security.",
     "items": [
-      { "title": "Multi-tenant", "body": "Full organization and team isolation out of the box." },
-      { "title": "Role permissions", "body": "Fine-grained access control for every resource." },
-      { "title": "Rate limiting", "body": "API-level protection with configurable limits." },
-      { "title": "Observability", "body": "Full audit trail and real-time monitoring." }
+      {
+        "title": "Multi-tenant",
+        "body": "Full organization and team isolation out of the box."
+      },
+      {
+        "title": "Role permissions",
+        "body": "Fine-grained access control for every resource."
+      },
+      {
+        "title": "Rate limiting",
+        "body": "API-level protection with configurable limits."
+      },
+      {
+        "title": "Observability",
+        "body": "Full audit trail and real-time monitoring."
+      }
     ]
   },
   "pricing": {
@@ -163,21 +199,43 @@
         "price": "$0",
         "description": "For individuals exploring AI automation.",
         "cta": "Start Free",
-        "features": ["1 workspace", "3 AI agents", "10 runs / month", "Workflow builder", "Community support"]
+        "features": [
+          "1 workspace",
+          "3 AI agents",
+          "10 runs / month",
+          "Workflow builder",
+          "Community support"
+        ]
       },
       "pro": {
         "name": "Pro",
         "price": "$19",
         "description": "For agencies moving fast with AI.",
         "cta": "Start Pro",
-        "features": ["3 workspaces", "Unlimited agents", "1,000 runs / month", "AI Gateway", "Monitoring & observability", "Team access", "Priority support"]
+        "features": [
+          "3 workspaces",
+          "Unlimited agents",
+          "1,000 runs / month",
+          "AI Gateway",
+          "Monitoring & observability",
+          "Team access",
+          "Priority support"
+        ]
       },
       "business": {
         "name": "Business",
         "price": "Custom",
         "description": "For agencies at scale.",
         "cta": "Talk to Sales",
-        "features": ["Unlimited workspaces", "Unlimited agents & runs", "Dedicated support", "SSO & advanced permissions", "SLA guarantee", "Custom integrations", "Onboarding assistance"]
+        "features": [
+          "Unlimited workspaces",
+          "Unlimited agents & runs",
+          "Dedicated support",
+          "SSO & advanced permissions",
+          "SLA guarantee",
+          "Custom integrations",
+          "Onboarding assistance"
+        ]
       }
     }
   },
@@ -190,6 +248,8 @@
   },
   "footer": {
     "tagline": "Automate your agency.",
-    "copyright": "© {{year}} Flow. All rights reserved."
+    "copyright": "© {{year}} Flow. All rights reserved.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service"
   }
 }

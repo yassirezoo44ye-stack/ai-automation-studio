@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth, MfaRequiredError } from "../../contexts/AuthContext";
 import type { MfaChallenge } from "../../contexts/AuthContext";
 import { trackEvent } from "../../lib/utm";
-import AxonLogo from "../../AxonLogo";
+import FlowMark from "../../FlowMark";
 import { parseJSON } from "../../utils/api";
 import { useForm } from "../../shared/forms/useForm";
 import { useAsyncSubmit } from "../../shared/forms/useAsyncSubmit";
@@ -357,7 +357,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
         {/* ── Left hero panel ── */}
         <div className="auth-left" aria-hidden="true">
           <div style={{ marginBottom: 40 }}>
-            <AxonLogo size={44} />
+            <FlowMark size={44} />
           </div>
           <h2 style={{
             fontSize: 30, fontWeight: 800, lineHeight: 1.25, letterSpacing: "-0.02em",
@@ -383,7 +383,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
           <div style={S.card}>
             {/* Logo — hidden on desktop (shown in left panel), visible on mobile */}
             <div className="auth-card-logo">
-              <AxonLogo size={48} />
+              <FlowMark size={48} />
             </div>
 
             {onBack && (
