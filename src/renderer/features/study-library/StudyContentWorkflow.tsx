@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useOrg } from "../../contexts/OrgContext";
-import { apiFetch } from "../../utils/api";
+import { studyFetch } from "./study-request";
 
 type Content = { voiceover: string; tiktok: string; instagram: string; youtube: string; video_url: string };
 type Workflow = { id: string; title: string; lesson_slug: string; revision: number; state: "draft" | "reviewed" | "handed_off"; content: Content };
@@ -13,12 +13,13 @@ const names: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram"
 const states = { draft: "مسودة", reviewed: "اعتُمدت هذه النسخة", handed_off: "أُنشئت مسودات الناشر" };
 const empty: Content = { voiceover: "", tiktok: "", instagram: "", youtube: "", video_url: "" };
 async function call<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await apiFetch(path, options); const body = await res.json();
-  if (!res.ok) throw new Error(res.status === 409 ? "تغيرت النسخة أو سبق تحويلها. حدّث المسار قبل المتابعة." : res.status === 403 ? "يتطلب هذا المسار إدارة المكتبة وصلاحية إدارة مساحة العمل." : "تعذّر تنفيذ الخطوة. تحقق من الحقول والاتصال ثم أعد المحاولة.");
+  const res = await studyFetch(path, options);
+  if (!res.ok) throw new Error(res.status === 409 ? "تغيرت النسخة أو سبق تحويلها. حدّث المسار قبل المتابعة." : res.status === 403 ? "يتطلب هذا المسار إدارة المكتبة وصلاحية إدارة مساحة العمل." : res.status === 401 ? "انتهت جلسة الدخول. سجّل الدخول مجددًا ثم أعد المحاولة." : res.status === 422 ? "راجع الحقول المطلوبة وحدود طول النص، واستخدم رابط فيديو HTTPS عامًا إن أضفته." : "تعذّر تنفيذ الخطوة. تحقق من الاتصال ثم أعد المحاولة.");
+  const body = await res.json();
   return body as T;
 }
 
-function Editor({ workflow, lessons, onSaved }: { workflow: Workflow | null; lessons: Lesson[]; onSaved: (id: string) => void }) {
+function Editor({ workflow, lessons, onSaved }: { workflow: Workflow | null; lessons: Lesson[]; onSaved: (workflow: Workflow, message: string) => void }) {
   const [slug, setSlug] = useState(workflow?.lesson_slug ?? lessons[0]?.slug ?? "");
   const [value, setValue] = useState<Content>(workflow?.content ?? empty);
   const [checked, setChecked] = useState(false);
@@ -32,14 +33,19 @@ function Editor({ workflow, lessons, onSaved }: { workflow: Workflow | null; les
     event.preventDefault(); setBusy(true); setNotice("");
     try {
       const result = await call<Workflow>(workflow ? `${ROOT}/${workflow.id}` : ROOT, { method: workflow ? "PUT" : "POST", body: JSON.stringify({ ...value, ...(workflow ? { revision: workflow.revision } : { lesson_slug: slug }) }) });
-      onSaved(result.id);
+      onSaved(result, "حُفظت مسودة المحتوى. يمكنك مراجعتها واعتمادها بعد إضافة الفيديو النهائي.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "تعذّر الحفظ."); } finally { setBusy(false); }
   }
   async function action(step: "review" | "handoff") {
     if (!workflow) return; setBusy(true); setNotice("");
     try {
-      await call(`${ROOT}/${workflow.id}/${step}`, { method: "POST", body: JSON.stringify({ revision: workflow.revision }) });
-      onSaved(workflow.id);
+      if (step === "review") {
+        const result = await call<Workflow>(`${ROOT}/${workflow.id}/${step}`, { method: "POST", body: JSON.stringify({ revision: workflow.revision }) });
+        onSaved(result, "اعتُمدت هذه النسخة. يمكنك الآن إنشاء مسودات الناشر.");
+      } else {
+        await call(`${ROOT}/${workflow.id}/${step}`, { method: "POST", body: JSON.stringify({ revision: workflow.revision }) });
+        onSaved({ ...workflow, state: "handed_off" }, "أُنشئت مسودات الناشر. لم يُنفّذ نشر خارجي.");
+      }
     } catch (error) { setNotice(error instanceof Error ? error.message : "تعذّر تنفيذ الخطوة."); } finally { setBusy(false); }
   }
   async function importContent(file: File | undefined) {
@@ -62,7 +68,7 @@ function Editor({ workflow, lessons, onSaved }: { workflow: Workflow | null; les
   return <section className="study-workflow-editor" aria-label="تحرير مسار المحتوى">
     <h3>{workflow ? workflow.title : "مسار جديد من ملخص موجود"}</h3>
     <p>{workflow ? `${states[workflow.state]} · النسخة ${workflow.revision}` : "أضف الملخص عبر إدارة المكتبة أولًا، ثم اختره هنا. تظهر هنا ملخصات نتائج البحث الحالية."}</p>
-    <form onSubmit={event => void save(event)}>
+    <form onSubmit={event => void save(event)} onInvalid={() => setNotice("اختر ملخصًا وأكمل نص التعليق وأوصاف المنصات الثلاث. رابط الفيديو اختياري عند حفظ المسودة.")}>
       <fieldset disabled={busy || locked}>
         {!workflow && <label>الملخص المصدر<select required value={slug} onChange={event => { setSlug(event.target.value); setValue(empty); setChecked(false); }}><option value="">اختر ملخصًا</option>{lessons.map(l => <option key={l.slug} value={l.slug}>{l.title}</option>)}</select></label>}
         <label>استيراد النص من حزمة المحتوى · اختياري<input type="file" accept="application/json,.json" onChange={event => void importContent(event.target.files?.[0])} /></label>
@@ -78,6 +84,8 @@ function Editor({ workflow, lessons, onSaved }: { workflow: Workflow | null; les
       <button className="study-secondary" onClick={() => void action("review")} disabled={busy || dirty || !checked || !value.video_url}>اعتماد هذه النسخة</button>
       <button className="study-primary" onClick={() => void action("handoff")} disabled={busy || dirty || workflow.state !== "reviewed"}>إنشاء مسودات في ناشر المنصات</button>
       {dirty && <p>احفظ تعديلاتك أولًا؛ كل تعديل يلغي اعتماد النسخة السابقة.</p>}
+      {!dirty && !value.video_url && <p>أضف رابط الفيديو النهائي واحفظه لإتاحة الاعتماد.</p>}
+      {!dirty && value.video_url && !checked && workflow.state !== "reviewed" && <p>حدّد مربع المراجعة لإتاحة اعتماد هذه النسخة.</p>}
     </div>}
     {locked && <div><p>أُرسلت المادة إلى قائمة مسودات الناشر. لم يُنفّذ نشر خارجي.</p><button className="study-secondary" onClick={() => void loadPosts()} disabled={busy}>تحديث حالة مسودات الناشر</button></div>}
     {posts && <ul>{posts.map(post => <li key={post.id}>{names[post.platform]} · {post.status === "draft" ? "مسودة، لم تُنشر" : post.status} <small dir="ltr">{post.id}</small></li>)}</ul>}
@@ -92,11 +100,20 @@ function WorkspaceWorkflow({ lessons }: { lessons: Lesson[] }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [auth, setAuth] = useState<{ platform: string; url: string; ticket: string } | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState("");
+  const reload = () => { setLoading(true); setNotice(""); setRefresh(n => n + 1); };
   useEffect(() => {
     const controller = new AbortController();
-    void Promise.all([call<{ workflows: Workflow[] }>(ROOT, { signal: controller.signal }), call<{ platforms: Connection[] }>(`${ROOT}/connections`, { signal: controller.signal })]).then(([work, connections]) => {
-      if (!controller.signal.aborted) { setResult({ workflows: work.workflows, connections: connections.platforms }); setError(""); }
-    }).catch(error => { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "تعذّر تحميل المسار."); });
+    void Promise.allSettled([call<{ workflows: Workflow[] }>(ROOT, { signal: controller.signal }), call<{ platforms: Connection[] }>(`${ROOT}/connections`, { signal: controller.signal })]).then(([work, connections]) => {
+      if (controller.signal.aborted) return;
+      const problems: string[] = [];
+      if (work.status === "rejected") problems.push("تعذّر تحديث المسارات المحفوظة. " + (work.reason instanceof Error ? work.reason.message : "أعد المحاولة."));
+      if (connections.status === "rejected") problems.push("تعذّر تحديث اتصالات المنصات. يمكنك حفظ مسودة المحتوى دون ربط المنصات.");
+      setResult(previous => ({ workflows: work.status === "fulfilled" ? work.value.workflows : previous?.workflows ?? [], connections: connections.status === "fulfilled" ? connections.value.platforms : previous?.connections ?? [] }));
+      setError(problems.join(" ")); setLoading(false);
+      if (!problems.length && refresh > 0) setNotice("تم تحديث المسارات واتصالات المنصات.");
+    });
     return () => controller.abort();
   }, [refresh]);
   async function connect(platform: string) {
@@ -111,13 +128,15 @@ function WorkspaceWorkflow({ lessons }: { lessons: Lesson[] }) {
   const current = result?.workflows.find(w => w.id === selected) ?? null;
   return <div className="study-content-workflow">
     <h2>من المكتبة إلى المنصات</h2><p>ملخص موجود ← نصوص محفوظة ← مراجعة النسخة ← فيديو نهائي ← مسودات الناشر. إنشاء المسودات لا ينشر الفيديو.</p>
-    <button className="study-secondary" onClick={() => setRefresh(n => n + 1)}>تحديث المسار والاتصالات</button>
+    <button className="study-secondary" disabled={loading} onClick={reload}>{loading ? "جارٍ تحديث المسار…" : "تحديث المسار والاتصالات"}</button>
+    {loading && <p role="status">جارٍ تحميل المسارات واتصالات المنصات…</p>}
+    <p role="status">{notice}</p>
     {error && <p role="alert">{error}</p>}
     {result && <>
       <div className="study-workflow-connections">{result.connections.map(c => <article key={c.platform}><strong>{names[c.platform]}</strong><p>{!c.implemented ? "مزوّد النشر غير متاح بعد" : !c.configured ? "يحتاج إعداد خدمة المنصة" : c.accounts.length ? "حساب محفوظ · تحقق من صلاحيته قبل النشر" : "مهيّأ · يحتاج ربط حساب"}</p>{c.implemented && c.configured && <button className="study-secondary" disabled={connecting} onClick={() => void connect(c.platform)}>ربط حساب {names[c.platform]}</button>}</article>)}</div>
       {auth && <form action={auth.url} method="post" target="_blank" rel="noopener"><input type="hidden" name="ticket" value={auth.ticket} /><button className="study-primary" type="submit">متابعة ربط {names[auth.platform]} في نافذة جديدة ↗</button><p className="study-small">ابدأ هذه الخطوة خلال دقيقة، ثم عد وحدّث الاتصالات.</p></form>}
       <label>مسار محفوظ<select value={selected ?? ""} onChange={e => setSelected(e.target.value || null)}><option value="">إنشاء مسار جديد</option>{result.workflows.map(w => <option key={w.id} value={w.id}>{w.title} · {states[w.state]}</option>)}</select></label>
-      {selected && !current ? <p role="status">جارٍ تحميل المسار المحفوظ…</p> : <Editor key={`${selected ?? "new"}-${current?.revision ?? 0}-${current?.state ?? "draft"}`} workflow={current} lessons={lessons} onSaved={id => { setSelected(id); setRefresh(n => n + 1); }} />}
+      {selected && !current ? <p role="alert">المسار المحدد غير متاح. حدّث القائمة أو اختر مسارًا آخر.</p> : <Editor key={`${selected ?? "new"}-${current?.revision ?? 0}-${current?.state ?? "draft"}`} workflow={current} lessons={lessons} onSaved={(saved, message) => { setResult(previous => ({ workflows: [saved, ...(previous?.workflows ?? []).filter(w => w.id !== saved.id)], connections: previous?.connections ?? [] })); setSelected(saved.id); setNotice(message); }} />}
     </>}
   </div>;
 }
