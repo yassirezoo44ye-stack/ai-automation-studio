@@ -175,7 +175,7 @@ function DetailPanel({ creation: c, orgId, onClose, onAction, isMine }: DetailPa
           <button
             onClick={handleTry}
             style={{
-              background: "var(--accent)", color: "#fff",
+              background: "var(--accent)", color: "var(--on-accent)",
               border: "none", borderRadius: 8,
               padding: "9px 16px", cursor: "pointer",
               fontWeight: 600, fontSize: 13, width: "100%",

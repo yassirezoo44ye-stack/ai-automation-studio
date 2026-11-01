@@ -274,7 +274,7 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
             <button
               type="submit"
               disabled={creating || !newKeyName.trim() || selectedScopes.length === 0}
-              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: creating || !newKeyName.trim() || selectedScopes.length === 0 ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() || selectedScopes.length === 0 ? 0.6 : 1 }}
+              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "var(--on-accent)", fontSize: 13, fontWeight: 600, cursor: creating || !newKeyName.trim() || selectedScopes.length === 0 ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() || selectedScopes.length === 0 ? 0.6 : 1 }}
             >
               {creating ? t("apiKeys.creating") : t("apiKeys.createButton")}
             </button>
@@ -413,8 +413,8 @@ export function SettingsPage() {
   ];
 
   const THEME_OPTIONS = [
-    { id: "dark"          as const, label: t("appearance.themeDark"),         bg: "#15121F" },
-    { id: "light"         as const, label: t("appearance.themeLight"),        bg: "#F5F4FA" },
+    { id: "dark"          as const, label: t("appearance.themeDark"),         bg: "#0B1220" },
+    { id: "light"         as const, label: t("appearance.themeLight"),        bg: "#F5F6F8" },
     { id: "high-contrast" as const, label: t("appearance.themeHighContrast"), bg: "#000000", swatchBorder: "#FFFF00" },
   ];
 

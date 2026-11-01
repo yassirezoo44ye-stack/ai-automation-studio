@@ -4,8 +4,8 @@
   "description": "Flow — AI Automation Studio",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#090909",
-  "theme_color": "#090909",
+  "background_color": "#0B1220",
+  "theme_color": "#0B1220",
   "orientation": "any",
   "icons": [
     {

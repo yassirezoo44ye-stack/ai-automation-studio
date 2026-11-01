@@ -214,9 +214,9 @@ export function AutomationPage() {
               <button key={id} onClick={() => setTab(id)} role="tab" aria-selected={tab === id} style={{
                 padding: "6px 16px", borderRadius: 9, border: "none", cursor: "pointer",
                 fontSize: 13, fontWeight: 500, transition: "all .18s",
-                background: tab === id ? "linear-gradient(135deg,var(--accent),var(--teal))" : "transparent",
-                color:      tab === id ? "#fff" : "var(--t4)",
-                boxShadow:  tab === id ? "0 2px 12px rgba(110,50,224,.35)" : "none",
+                background: tab === id ? "var(--accent)" : "transparent",
+                color:      tab === id ? "var(--on-accent)" : "var(--t4)",
+                boxShadow:  tab === id ? "0 2px 12px rgba(255,122,47,.35)" : "none",
               }}>{label}</button>
             ))}
           </div>

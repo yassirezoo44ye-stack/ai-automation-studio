@@ -44,7 +44,7 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--t1);
-  background: linear-gradient(135deg, var(--accent), var(--teal));
+  background: var(--accent);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -99,7 +99,7 @@
   border-radius: var(--r-md);
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -188,7 +188,7 @@
   border-radius: var(--r-lg);
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -372,7 +372,7 @@
   margin: 0 0 20px;
 }
 .lp-hero__headline span {
-  background: linear-gradient(135deg, var(--accent), var(--teal));
+  background: var(--accent);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -398,7 +398,7 @@
   border-radius: var(--r-lg);
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -910,7 +910,7 @@
   padding: 4px 14px;
   border-radius: var(--r-full);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -961,7 +961,7 @@
 }
 .lp-price-card--featured .lp-price-card__cta {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: var(--shadow-btn);
 }
 .lp-price-card--featured .lp-price-card__cta:hover {

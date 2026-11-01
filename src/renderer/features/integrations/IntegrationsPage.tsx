@@ -313,7 +313,7 @@ function ConnectModal({
             <button
               onClick={() => void handleConnect()}
               disabled={!allFilled || connecting}
-              style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 600, cursor: allFilled && !connecting ? "pointer" : "not-allowed", opacity: allFilled && !connecting ? 1 : 0.5, display: "flex", alignItems: "center", gap: 8 }}
+              style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "var(--on-accent)", fontSize: 14, fontWeight: 600, cursor: allFilled && !connecting ? "pointer" : "not-allowed", opacity: allFilled && !connecting ? 1 : 0.5, display: "flex", alignItems: "center", gap: 8 }}
             >
               {connecting ? (
                 <>
@@ -612,7 +612,7 @@ export function IntegrationsPage() {
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              style={{ padding: "6px 14px", borderRadius: 20, border: active ? "none" : "1px solid var(--b1)", background: active ? "var(--accent)" : "transparent", color: active ? "#fff" : "var(--t2)", fontSize: 13, fontWeight: active ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}
+              style={{ padding: "6px 14px", borderRadius: 20, border: active ? "none" : "1px solid var(--b1)", background: active ? "var(--accent)" : "transparent", color: active ? "var(--on-accent)" : "var(--t2)", fontSize: 13, fontWeight: active ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}
             >
               {t(cat.labelKey)}
               <span style={{ fontSize: 11, fontWeight: 600, background: active ? "rgba(255,255,255,0.25)" : "var(--bg-card)", padding: "1px 6px", borderRadius: 20, color: active ? "#fff" : "var(--t4)" }}>

@@ -32,7 +32,7 @@
 .career-workspace button:hover:not(:disabled),.career-actions a:hover{border-color:var(--accent-border,var(--accent))}
 .career-workspace button:active:not(:disabled){transform:translateY(1px)}
 .career-workspace button:disabled{opacity:.5;cursor:not-allowed}
-.career-workspace .career-primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+.career-workspace .career-primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600}
 .career-workspace .career-ai-button{color:#fff;border:0;font-weight:600;background:linear-gradient(135deg,var(--career-ai),var(--teal))}
 .career-workspace :is(button,a,input,textarea,select,summary):focus-visible{outline:2px solid var(--teal);outline-offset:3px}
 .career-ai-box{padding:16px;margin-bottom:18px;border-radius:14px;border:1px dashed color-mix(in srgb,var(--career-ai) 55%,var(--b1));background:color-mix(in srgb,var(--career-ai) 7%,transparent)}

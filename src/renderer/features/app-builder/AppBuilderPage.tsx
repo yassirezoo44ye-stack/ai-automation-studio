@@ -143,7 +143,7 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
             width: "100%", padding: "9px", borderRadius: 10, border: "none",
             background: isDownloading
               ? "var(--b2)"
-              : "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+              : "var(--accent)",
             color: isDownloading ? "var(--t4)" : "white",
             fontSize: 12, fontWeight: 600,
             cursor: isDownloading ? "not-allowed" : "pointer",
@@ -201,7 +201,7 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
         background: "var(--bg-surface)",
         borderRadius: 24, padding: "30px 32px",
         maxWidth: 420, width: "100%",
-        boxShadow: "var(--shadow-xl), 0 0 0 1px rgba(110,50,224,0.12)",
+        boxShadow: "var(--shadow-xl), 0 0 0 1px rgba(255,122,47,0.12)",
         border: `1px solid ${hasError ? "rgba(239,68,68,0.3)" : "var(--accent-border)"}`,
       }}>
         {/* Header */}
@@ -244,10 +244,10 @@ function BuildingOverlay({ phases, onCancel, errorMsg }: {
               <div style={{
                 height: "100%",
                 width: `${pct}%`,
-                background: "linear-gradient(90deg, var(--accent) 0%, var(--teal) 100%)",
+                background: "var(--accent)",
                 borderRadius: 99,
                 transition: "width 0.6s ease",
-                boxShadow: "0 0 8px rgba(110,50,224,0.5)",
+                boxShadow: "0 0 8px rgba(255,122,47,0.5)",
               }} />
             </div>
           </div>
@@ -478,8 +478,8 @@ function BillingErrorOverlay({
             onClick={onRetry}
             style={{
               flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
-              background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-              color: "white", fontSize: 13, cursor: "pointer", fontWeight: 600,
+              background: "var(--accent)",
+              color: "var(--on-accent)", fontSize: 13, cursor: "pointer", fontWeight: 600,
             }}
           >
             Try Again
@@ -1190,7 +1190,7 @@ export function AppBuilderPage() {
                   borderRadius: 12,
                   border: "none",
                   background: canBuild
-                    ? "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)"
+                    ? "var(--accent)"
                     : "var(--bg-card)",
                   color: canBuild ? "white" : "var(--t5)",
                   fontSize: 15, fontWeight: 700,
@@ -1452,7 +1452,7 @@ export function AppBuilderPage() {
             padding: "6px 14px", borderRadius: 8, border: "none",
             background: isDownloading
               ? "var(--b2)"
-              : "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+              : "var(--accent)",
             color: isDownloading ? "var(--t4)" : "white",
             fontSize: 12, fontWeight: 600,
             cursor: isDownloading ? "not-allowed" : "pointer",
@@ -1588,7 +1588,7 @@ export function AppBuilderPage() {
                 padding: "7px 16px", borderRadius: 8, border: "none",
                 background: isDownloading
                   ? "var(--b2)"
-                  : "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+                  : "var(--accent)",
                 color: isDownloading ? "var(--t4)" : "white",
                 fontSize: 12, fontWeight: 600,
                 cursor: isDownloading ? "not-allowed" : "pointer",

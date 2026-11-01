@@ -386,7 +386,7 @@
 
 .sf-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.sf-btn--primary  { background: var(--accent); color: #fff; }
+.sf-btn--primary  { background: var(--accent); color: var(--on-accent); }
 .sf-btn--primary:hover:not(:disabled) { opacity: 0.88; }
 
 .sf-btn--ghost    { background: transparent; border: 1px solid var(--b1); color: var(--t3); }

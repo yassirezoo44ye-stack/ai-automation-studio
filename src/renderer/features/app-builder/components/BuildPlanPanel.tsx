@@ -220,10 +220,10 @@ export function BuildPlanPanel({ plan, prompt, onApprove, onModify, onCancel, is
               flex: 1, padding: "9px 0", borderRadius: 10, border: "none",
               background: isRefining
                 ? "var(--bg-card)"
-                : "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+                : "var(--accent)",
               color: isRefining ? "var(--t5)" : "white",
               fontSize: 13, cursor: isRefining ? "not-allowed" : "pointer",
-              fontWeight: 700, boxShadow: isRefining ? "none" : "0 2px 12px rgba(110,50,224,0.35)",
+              fontWeight: 700, boxShadow: isRefining ? "none" : "0 2px 12px rgba(255,122,47,0.35)",
               transition: "all 0.12s",
             }}
           >

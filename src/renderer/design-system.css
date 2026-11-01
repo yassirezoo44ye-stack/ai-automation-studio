@@ -11,23 +11,23 @@
    palette. See plan doc for the full rationale + contrast math. ────── */
 :root {
   /* Background layers */
-  --bg-base:     #F5F4FA;
+  --bg-base:     #F5F6F8;
   --bg-surface:  #FFFFFF;
   --bg-elevated: #FFFFFF;
-  --bg-overlay:  rgba(23,20,40,0.45);
-  --bg-card:     rgba(23,20,40,0.035);
-  --bg-card-h:   rgba(110,50,224,0.05);
+  --bg-overlay:  rgba(11,18,32,0.45);
+  --bg-card:     rgba(11,18,32,0.035);
+  --bg-card-h:   rgba(194,65,12,0.05);
   --bg-glass:    #FFFFFF;
-  --bg-input:    rgba(23,20,40,0.035);
+  --bg-input:    rgba(11,18,32,0.035);
 
   /* Accent — Canva purple */
-  --accent:        #6E32E0;
-  --accent-2:      #7C3AED;
-  --accent-light:  #8B5CF6;
-  --accent-bright: #A78BFA;
-  --accent-dim:    rgba(110,50,224,0.10);
-  --accent-glow:   rgba(110,50,224,0.16);
-  --accent-border: rgba(110,50,224,0.28);
+  --accent:        #C2410C;
+  --accent-2:      #9A3412;
+  --accent-light:  #EA580C;
+  --accent-bright: #FF7A2F;
+  --accent-dim:    rgba(194,65,12,0.10);
+  --accent-glow:   rgba(194,65,12,0.16);
+  --accent-border: rgba(194,65,12,0.28);
 
   /* Secondary brand hue — teal (gradients, highlights) */
   --teal:     #0B7A70;
@@ -42,21 +42,22 @@
   --yellow-dim:   rgba(161,98,7,0.14);
   --blue:         #2563EB;
   --blue-dim:     rgba(37,99,235,0.15);
-  --purple-dim:   rgba(110,50,224,0.15);
+  --purple-dim:   rgba(255,122,47,0.15);
 
   /* Text scale — dark aubergine-ink, not pure black */
-  --t1: #1A1523;
-  --t2: #322B45;
-  --t3: #6B6480;
-  --t4: rgba(107,100,128,0.65);
-  --t5: rgba(107,100,128,0.35);
-  --ta: #7C3AED;
+  --t1: #0B1220;
+  --t2: #1F2A3D;
+  --t3: #4A5468;
+  --t4: rgba(74,84,104,0.70);
+  --t5: rgba(74,84,104,0.38);
+  --ta: #C2410C;
+  --on-accent: #FFFFFF;  /* text/icons placed on --accent */
 
   /* Borders */
-  --b1:  rgba(23,20,40,0.08);
-  --b2:  rgba(23,20,40,0.14);
-  --ba:  rgba(110,50,224,0.35);
-  --ba2: rgba(110,50,224,0.55);
+  --b1:  rgba(11,18,32,0.08);
+  --b2:  rgba(11,18,32,0.14);
+  --ba:  rgba(194,65,12,0.35);
+  --ba2: rgba(194,65,12,0.55);
 
   /* Radius scale — bumped for the friendlier Canva shape language */
   --r-xs:  6px;
@@ -68,14 +69,14 @@
   --r-full:9999px;
 
   /* Shadow scale — cool-tinted, soft (opaque cards, not glass) */
-  --shadow-xs:   0 1px 2px  rgba(23,20,40,0.06);
-  --shadow-sm:   0 2px 8px  rgba(23,20,40,0.08);
-  --shadow-md:   0 4px 16px rgba(23,20,40,0.10);
-  --shadow-lg:   0 8px 32px rgba(23,20,40,0.13);
-  --shadow-xl:   0 16px 48px rgba(23,20,40,0.16);
-  --shadow-glow: 0 0 0 3px rgba(110,50,224,0.12);
-  --shadow-btn:  0 4px 20px rgba(110,50,224,0.28);
-  --shadow-inset:inset 0 0 0 1px rgba(110,50,224,0.18);
+  --shadow-xs:   0 1px 2px  rgba(11,18,32,0.06);
+  --shadow-sm:   0 2px 8px  rgba(11,18,32,0.08);
+  --shadow-md:   0 4px 16px rgba(11,18,32,0.10);
+  --shadow-lg:   0 8px 32px rgba(11,18,32,0.13);
+  --shadow-xl:   0 16px 48px rgba(11,18,32,0.16);
+  --shadow-glow: 0 0 0 3px rgba(194,65,12,0.14);
+  --shadow-btn:  0 4px 16px rgba(194,65,12,0.24);
+  --shadow-inset:inset 0 0 0 1px rgba(194,65,12,0.18);
 
   /* Typography — Cairo-first for Arabic+Latin, JetBrains Mono for code */
   --font-sans: 'Cairo','Noto Sans','Segoe UI',system-ui,-apple-system,sans-serif;
@@ -104,9 +105,9 @@
      Raw color values — theme-agnostic, always accessible via var().
      Use semantic tokens (--accent, --green, etc.) in components;
      use --flow-* only for FLOW-specific decorative elements. ───── */
-  --flow-bg:               #090909;
-  --flow-surface:          #131313;
-  --flow-surface-elevated: #1C1C1C;
+  --flow-bg:               #0B1220;
+  --flow-surface:          #111A2B;
+  --flow-surface-elevated: #18233A;
   --flow-pink:             #FF1744;
   --flow-pink-hover:       #FF4569;
   --flow-green:            #00E676;
@@ -115,9 +116,11 @@
   --flow-purple:           #C051FF;
   --flow-cyan:             #00E5FF;
   --flow-orange:           #FF6D00;
+  --flow-signal:           #FF7A2F;  /* brand signal (logo output node) */
+  --flow-ink:              #0B1220;  /* brand ink */
 
   /* Semantic aliases — components use these for intent */
-  --color-primary: var(--flow-pink);
+  --color-primary: var(--flow-signal);
   --color-success: var(--flow-green);
   --color-info:    var(--flow-blue);
   --color-warning: var(--flow-yellow);
@@ -126,9 +129,9 @@
 
   /* Glow system — controlled, semantic, not decorative everywhere.
      Use: hover states, active indicators, AI activity, important CTAs. */
-  --glow-pink-subtle:   0 0  8px rgba(255,23,68,0.15);
-  --glow-pink-medium:   0 0 16px rgba(255,23,68,0.25);
-  --glow-pink-strong:   0 0 28px rgba(255,23,68,0.45);
+  --glow-pink-subtle:   0 0  8px rgba(255,122,47,0.15);
+  --glow-pink-medium:   0 0 16px rgba(255,122,47,0.25);
+  --glow-pink-strong:   0 0 28px rgba(255,122,47,0.40);
   --glow-green-subtle:  0 0  8px rgba(0,230,118,0.15);
   --glow-green-medium:  0 0 16px rgba(0,230,118,0.25);
   --glow-green-strong:  0 0 28px rgba(0,230,118,0.45);
@@ -144,13 +147,13 @@
   --glow-cyan-medium:   0 0 16px rgba(0,229,255,0.25);
 
   /* Skeleton shimmer */
-  --skeleton-base: rgba(23,20,40,0.06);
-  --skeleton-shine: rgba(23,20,40,0.12);
+  --skeleton-base: rgba(11,18,32,0.06);
+  --skeleton-shine: rgba(11,18,32,0.12);
 
   /* Aliases used by AuthPage and legacy components */
-  --border:    rgba(23,20,40,0.09);
+  --border:    rgba(11,18,32,0.09);
   --bg-hover:  rgba(23,20,40,0.05);
-  --bg-panel:  #FBFAFD;
+  --bg-panel:  #FAFBFC;
 
   /* Aliases used by DesignStudio module CSS */
   --surface-1:      var(--bg-elevated);
@@ -183,30 +186,30 @@
    FLOW is dark-first. This palette drives the primary production look:
    near-black surfaces, FLOW Pink as the primary accent (replaces Canva
    purple), FLOW Green as success/secondary. Backgrounds use the exact
-   reference hex values: #090909 / #131313 / #1C1C1C.
+   reference hex values: #0B1220 / #111A2B / #18233A (Flow ink).
 
    All components that consume var(--accent) / var(--bg-*) / var(--t*)
    tokens automatically pick up this palette — no component-level edits
    required for the core visual switch. ──────────────────────────────── */
 [data-theme="dark"] {
   /* Backgrounds — FLOW reference values */
-  --bg-base:     #090909;
-  --bg-surface:  #131313;
-  --bg-elevated: #1C1C1C;
-  --bg-overlay:  rgba(0,0,0,0.75);
-  --bg-card:     rgba(255,255,255,0.025);
-  --bg-card-h:   rgba(255,23,68,0.06);
-  --bg-glass:    #131313;
-  --bg-input:    rgba(255,255,255,0.04);
+  --bg-base:     #0B1220;
+  --bg-surface:  #111A2B;
+  --bg-elevated: #18233A;
+  --bg-overlay:  rgba(4,8,16,0.75);
+  --bg-card:     rgba(255,255,255,0.03);
+  --bg-card-h:   rgba(255,122,47,0.06);
+  --bg-glass:    #111A2B;
+  --bg-input:    rgba(255,255,255,0.045);
 
-  /* FLOW Pink — primary accent */
-  --accent:        #FF1744;
-  --accent-2:      #FF4569;
-  --accent-light:  #FF6B84;
-  --accent-bright: #FF99AA;
-  --accent-dim:    rgba(255,23,68,0.12);
-  --accent-glow:   rgba(255,23,68,0.22);
-  --accent-border: rgba(255,23,68,0.30);
+  /* FLOW Signal — primary accent (matches the logo's output node) */
+  --accent:        #FF7A2F;
+  --accent-2:      #FF8F52;
+  --accent-light:  #FFA06B;
+  --accent-bright: #FFC09A;
+  --accent-dim:    rgba(255,122,47,0.12);
+  --accent-glow:   rgba(255,122,47,0.22);
+  --accent-border: rgba(255,122,47,0.30);
 
   /* FLOW Green — secondary / success */
   --teal:     #00E676;
@@ -224,28 +227,29 @@
   --purple-dim:   rgba(192,81,255,0.14);
 
   /* Text — neutral-cool, not purple-tinted */
-  --t1: #F5F5F5;
-  --t2: #E0E0E0;
-  --t3: #9E9E9E;
-  --t4: rgba(158,158,158,0.65);
-  --t5: rgba(158,158,158,0.35);
-  --ta: #FF4569;
+  --t1: #F2F4F7;
+  --t2: #DCE1E8;
+  --t3: #A7B0C0;
+  --t4: rgba(167,176,192,0.70);
+  --t5: rgba(167,176,192,0.38);
+  --ta: #FF8F52;
+  --on-accent: #0B1220;  /* ink on signal orange: 7.2:1 */
 
   /* Borders */
   --b1:  rgba(255,255,255,0.07);
   --b2:  rgba(255,255,255,0.12);
-  --ba:  rgba(255,23,68,0.35);
-  --ba2: rgba(255,23,68,0.55);
+  --ba:  rgba(255,122,47,0.35);
+  --ba2: rgba(255,122,47,0.55);
 
   /* Shadows — deep blacks, no purple tint */
-  --shadow-xs:   0 1px 2px  rgba(0,0,0,0.50);
-  --shadow-sm:   0 2px 8px  rgba(0,0,0,0.60);
-  --shadow-md:   0 4px 16px rgba(0,0,0,0.70);
-  --shadow-lg:   0 8px 32px rgba(0,0,0,0.80);
-  --shadow-xl:   0 16px 48px rgba(0,0,0,0.90);
-  --shadow-glow: 0 0 0 3px rgba(255,23,68,0.15);
-  --shadow-btn:  0 4px 20px rgba(255,23,68,0.35);
-  --shadow-inset:inset 0 0 0 1px rgba(255,23,68,0.20);
+  --shadow-xs:   0 1px 2px  rgba(2,6,14,0.50);
+  --shadow-sm:   0 2px 8px  rgba(2,6,14,0.55);
+  --shadow-md:   0 4px 16px rgba(2,6,14,0.60);
+  --shadow-lg:   0 8px 32px rgba(2,6,14,0.70);
+  --shadow-xl:   0 16px 48px rgba(2,6,14,0.80);
+  --shadow-glow: 0 0 0 3px rgba(255,122,47,0.18);
+  --shadow-btn:  0 4px 16px rgba(255,122,47,0.28);
+  --shadow-inset:inset 0 0 0 1px rgba(255,122,47,0.20);
 
   --skeleton-base:  rgba(255,255,255,0.04);
   --skeleton-shine: rgba(255,255,255,0.08);
@@ -253,7 +257,7 @@
   /* Legacy aliases (backward compat) */
   --border:    rgba(255,255,255,0.07);
   --bg-hover:  rgba(255,255,255,0.04);
-  --bg-panel:  #0D0D0D;
+  --bg-panel:  #0E1626;
 
   --surface-1:      var(--bg-elevated);
   --surface-2:      var(--bg-surface);
@@ -407,13 +411,13 @@ svg         { display: block; }
 /* ── Scrollbars ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar              { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track        { background: transparent; }
-::-webkit-scrollbar-thumb        { background: var(--accent-dim, rgba(110,50,224,0.25)); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover  { background: var(--accent-glow, rgba(110,50,224,0.50)); }
+::-webkit-scrollbar-thumb        { background: var(--accent-dim, rgba(255,122,47,0.25)); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover  { background: var(--accent-glow, rgba(255,122,47,0.50)); }
 ::-webkit-scrollbar-corner       { background: transparent; }
 
 /* ── Focus ring ──────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid var(--accent, rgba(110,50,224,0.65));
+  outline: 2px solid var(--accent, rgba(255,122,47,0.65));
   outline-offset: 2px;
   border-radius: var(--r-sm);
   opacity: 0.85;
@@ -423,8 +427,8 @@ svg         { display: block; }
 input::placeholder, textarea::placeholder { color: var(--t5); }
 input:focus, textarea:focus, select:focus {
   /* !important: must override inline style objects (S.*) — removable after the Golden-phase styling migration */
-  box-shadow: 0 0 0 2.5px var(--accent-dim, rgba(110,50,224,0.35)) !important;
-  border-color: var(--accent-border, rgba(110,50,224,0.55)) !important;
+  box-shadow: 0 0 0 2.5px var(--accent-dim, rgba(255,122,47,0.35)) !important;
+  border-color: var(--accent-border, rgba(255,122,47,0.55)) !important;
 }
 
 /* ── Animations ──────────────────────────────────────────────────── */
@@ -469,14 +473,14 @@ input:focus, textarea:focus, select:focus {
 @keyframes pulse     { 0%,100%{opacity:1} 50%{opacity:.45} }
 @keyframes toastIn   { from{opacity:0;transform:translateX(16px) scale(.96)} to{opacity:1;transform:translateX(0) scale(1)} }
 @keyframes float     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
-@keyframes glow-pulse{ 0%,100%{box-shadow:0 0 12px var(--accent-dim,rgba(255,23,68,0.3))} 50%{box-shadow:0 0 24px var(--accent-glow,rgba(255,23,68,0.6))} }
+@keyframes glow-pulse{ 0%,100%{box-shadow:0 0 12px var(--accent-dim,rgba(255,122,47,0.3))} 50%{box-shadow:0 0 24px var(--accent-glow,rgba(255,122,47,0.6))} }
 @keyframes blink      { 0%,100%{opacity:1} 50%{opacity:0} }
 
 /* ── Typing indicator ────────────────────────────────────────────── */
 .typing { display:flex; align-items:center; gap:5px; padding:6px 0; }
 .typing span {
   width:7px; height:7px; border-radius:50%;
-  background: linear-gradient(135deg, var(--accent), var(--teal));
+  background: var(--accent);
   animation: bounce 1.4s var(--ease) infinite;
 }
 .typing span:nth-child(2){ animation-delay:.22s; }
@@ -560,9 +564,9 @@ input:focus, textarea:focus, select:focus {
   transition: all var(--t-base) var(--ease);
 }
 .pill-tab.active {
-  background: linear-gradient(135deg, var(--accent), var(--teal));
-  color: #fff;
-  box-shadow: 0 2px 10px rgba(110,50,224,0.35);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 2px 10px rgba(255,122,47,0.35);
 }
 .pill-tab:not(.active):hover { background: var(--bg-hover); color: var(--t2); }
 
@@ -577,7 +581,7 @@ input:focus, textarea:focus, select:focus {
   transition: background var(--t-fast), color var(--t-fast);
   display: flex; align-items: center; justify-content: center; gap: 5px;
 }
-.seg-btn.active { background: rgba(110,50,224,0.20); color: var(--t1); }
+.seg-btn.active { background: rgba(255,122,47,0.20); color: var(--t1); }
 .seg-btn:not(.active):hover { background: var(--bg-hover); color: var(--t2); }
 
 /* ── Cards ───────────────────────────────────────────────────────── */
@@ -652,14 +656,14 @@ input:focus, textarea:focus, select:focus {
 .md-body pre {
   position: relative;
   background: rgba(0,0,0,0.48);
-  border: 1px solid rgba(110,50,224,0.18);
+  border: 1px solid rgba(255,122,47,0.18);
   border-radius: var(--r-lg);
   padding: 18px 20px;
   overflow-x: auto; margin: 14px 0;
   font-family: var(--font-mono);
 }
 .md-body code {
-  background: rgba(110,50,224,0.14);
+  background: rgba(255,122,47,0.14);
   padding: 2px 7px; border-radius: var(--r-sm);
   font-size: 13px; color: #c4b5fd;
   font-family: var(--font-mono);
@@ -675,14 +679,14 @@ input:focus, textarea:focus, select:focus {
 .md-body a   { color: #818cf8; text-decoration: none; border-bottom: 1px solid rgba(129,140,248,.3); transition: border-color .15s; }
 .md-body a:hover { border-bottom-color: #818cf8; }
 .md-body blockquote {
-  border-inline-start: 3px solid rgba(110,50,224,.5);
+  border-inline-start: 3px solid rgba(255,122,47,.5);
   padding-block: 4px; padding-inline: 16px 0; margin: 12px 0;
   color: var(--t3); font-style: italic;
 }
 .md-body hr  { border: none; border-top: 1px solid var(--b1); margin: 16px 0; }
 .md-body table { border-collapse: collapse; width: 100%; margin: 14px 0; border-radius: var(--r-md); overflow: hidden; }
 .md-body th, .md-body td { border: 1px solid rgba(255,255,255,.06); padding: 10px 16px; font-size: 14px; }
-.md-body th  { background: rgba(110,50,224,.14); color: var(--t2); font-weight: 600; }
+.md-body th  { background: rgba(255,122,47,.14); color: var(--t2); font-weight: 600; }
 .md-body tr:nth-child(even) td { background: rgba(255,255,255,.025); }
 
 /* ── Settings tabs ───────────────────────────────────────────────── */
@@ -714,7 +718,7 @@ input:focus, textarea:focus, select:focus {
 }
 .project-card:hover {
   border-color: var(--ba);
-  box-shadow: 0 0 20px rgba(110,50,224,0.10);
+  box-shadow: 0 0 20px rgba(255,122,47,0.10);
   transform: translateY(-2px);
 }
 
@@ -748,7 +752,7 @@ input:focus, textarea:focus, select:focus {
 .cmd-modal {
   width: 580px; max-width: calc(100vw - 32px);
   background: rgba(10,12,22,0.98);
-  border: 1px solid rgba(110,50,224,0.35);
+  border: 1px solid rgba(255,122,47,0.35);
   border-radius: var(--r-xl);
   box-shadow: 0 24px 64px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04);
   overflow: hidden;
@@ -785,7 +789,7 @@ input:focus, textarea:focus, select:focus {
   color: var(--t3); font-size: 13px;
 }
 .cmd-item:hover, .cmd-item.active {
-  background: rgba(110,50,224,0.14);
+  background: rgba(255,122,47,0.14);
   color: var(--t1);
 }
 .cmd-item-icon {
@@ -816,14 +820,14 @@ input:focus, textarea:focus, select:focus {
 }
 .quick-action:hover {
   border-color: var(--ba);
-  box-shadow: 0 0 24px rgba(110,50,224,0.12);
+  box-shadow: 0 0 24px rgba(255,122,47,0.12);
   transform: translateY(-2px);
 }
 
 /* ── Welcome header ──────────────────────────────────────────────── */
 .welcome-header {
-  background: linear-gradient(135deg, rgba(110,50,224,0.08) 0%, rgba(11,122,112,0.06) 50%, transparent 100%);
-  border: 1px solid rgba(110,50,224,0.14);
+  background: linear-gradient(135deg, rgba(255,122,47,0.08) 0%, rgba(11,122,112,0.06) 50%, transparent 100%);
+  border: 1px solid rgba(255,122,47,0.14);
   border-radius: var(--r-xl);
   padding: 24px 28px;
   position: relative; overflow: hidden;
@@ -831,7 +835,7 @@ input:focus, textarea:focus, select:focus {
 .welcome-header::before {
   content: '';
   position: absolute; top: 0; inset-inline-end: 0; width: 300px; height: 100%;
-  background: radial-gradient(ellipse at right top, rgba(110,50,224,0.12), transparent 60%);
+  background: radial-gradient(ellipse at right top, rgba(255,122,47,0.12), transparent 60%);
   pointer-events: none;
 }
 
@@ -1020,7 +1024,7 @@ kbd {
 /* ── Skip to main content ────────────────────────────────────────── */
 .skip-link {
   position: absolute; top: -100%; inset-inline-start: var(--sp-4);
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--on-accent);
   padding: var(--sp-2) var(--sp-4);
   border-radius: var(--r-md);
   font-weight: 600; z-index: 9999;
@@ -1108,11 +1112,11 @@ kbd {
 .g-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .g-btn:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 .g-btn--primary {
-  background: linear-gradient(135deg, var(--accent), var(--teal));
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   box-shadow: var(--shadow-btn);
 }
-.g-btn--primary:hover:not(:disabled) { background: linear-gradient(135deg, var(--accent-light), var(--teal)); }
+.g-btn--primary:hover:not(:disabled) { background: var(--accent-2); }
 .g-btn--ghost {
   background: transparent; color: var(--t2);
   border-color: var(--b2);
@@ -1239,7 +1243,7 @@ kbd {
 .g-copilot-fab-wrap { position: fixed; inset-inline-end: 24px; bottom: 24px; z-index: 900; }
 .g-copilot-fab {
   width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer;
-  background: linear-gradient(135deg, var(--accent), var(--teal)); color: #fff;
+  background: var(--accent); color: var(--on-accent);
   display: flex; align-items: center; justify-content: center;
   box-shadow: var(--shadow-btn), var(--shadow-lg);
   transition: transform var(--t-base) var(--ease);
@@ -1317,7 +1321,7 @@ kbd {
   background: var(--bg-elevated);
   border: 1px solid var(--b2);
   border-radius: var(--r-2xl);
-  box-shadow: var(--shadow-xl), 0 0 40px rgba(110,50,224,0.06);
+  box-shadow: var(--shadow-xl), 0 0 40px rgba(255,122,47,0.06);
   outline: none;
 }
 .g-dialog__header {
@@ -1340,7 +1344,7 @@ kbd {
 .g-kpi__icon { color: var(--ta); opacity: 0.9; display: flex; }
 .g-kpi__value { font-size: 26px; font-weight: 800; color: var(--t1); font-variant-numeric: tabular-nums; }
 .g-kpi--accent .g-kpi__value {
-  background: linear-gradient(135deg, var(--accent), var(--teal));
+  background: var(--accent);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 
@@ -1504,7 +1508,7 @@ kbd {
   gap: 14px;
 }
 .dash-kpi--accent {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%);
+  background: var(--accent);
   border-color: transparent;
   box-shadow: var(--shadow-md);
 }
@@ -1521,7 +1525,7 @@ kbd {
 }
 .dash-kpi--accent .dash-kpi__icon {
   background: rgba(255,255,255,0.18);
-  color: #fff;
+  color: var(--on-accent);
 }
 .dash-kpi__body { min-width: 0; }
 .dash-kpi__value {
@@ -1531,7 +1535,7 @@ kbd {
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
-.dash-kpi--accent .dash-kpi__value { color: #fff; }
+.dash-kpi--accent .dash-kpi__value { color: var(--on-accent); }
 .dash-kpi__label {
   font-size: 11px;
   color: var(--t4);
@@ -1650,13 +1654,13 @@ kbd {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--teal));
+  background: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 10px;
   font-weight: 700;
-  color: #fff;
+  color: var(--on-accent);
   flex-shrink: 0;
 }
 
@@ -1693,7 +1697,7 @@ kbd {
 }
 .wf-step__bubble:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(110,50,224,0.20);
+  box-shadow: 0 6px 20px rgba(255,122,47,0.20);
 }
 
 .wf-step__label {
@@ -1744,13 +1748,13 @@ kbd {
 .agent-card:hover::before { opacity: 1; }
 .agent-card:hover {
   border-color: var(--ba);
-  box-shadow: 0 4px 16px rgba(110,50,224,0.12);
+  box-shadow: 0 4px 16px rgba(255,122,47,0.12);
   transform: translateY(-1px);
 }
 .agent-card--running {
   border-color: var(--accent-border);
   background: linear-gradient(135deg, var(--bg-surface) 0%, var(--accent-dim) 100%);
-  box-shadow: 0 0 0 2px var(--accent-dim), 0 4px 20px rgba(110,50,224,0.15);
+  box-shadow: 0 0 0 2px var(--accent-dim), 0 4px 20px rgba(255,122,47,0.15);
 }
 .agent-card__header {
   display: flex;
@@ -2082,8 +2086,8 @@ code, kbd, samp, pre,
 
 /* ── FLOW upgrade card ────────────────────────────────────────────── */
 .flow-upgrade-card {
-  background: linear-gradient(135deg, rgba(255,23,68,0.15) 0%, rgba(192,81,255,0.15) 100%);
-  border: 1px solid rgba(255,23,68,0.25);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-border);
   border-radius: var(--r-lg);
   padding: 14px;
   text-align: center;
@@ -2092,7 +2096,7 @@ code, kbd, samp, pre,
 .flow-upgrade-card__sub   { font-size: 11px; color: var(--t4); margin-bottom: 10px; }
 .flow-upgrade-card__btn {
   display: block; width: 100%;
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--on-accent);
   border: none; border-radius: var(--r-md);
   padding: 7px; font-family: inherit;
   font-size: 12px; font-weight: 700; cursor: pointer;
@@ -2126,7 +2130,7 @@ code, kbd, samp, pre,
 .flow-ai-state--idle      { background: var(--bg-card); border-color: var(--b1); color: var(--t4); }
 .flow-ai-state--thinking  { background: rgba(192,81,255,0.12); border-color: rgba(192,81,255,0.30); color: var(--flow-purple, #C051FF); }
 .flow-ai-state--planning  { background: rgba(41,121,255,0.12); border-color: rgba(41,121,255,0.30); color: var(--blue); }
-.flow-ai-state--executing { background: rgba(255,23,68,0.12); border-color: rgba(255,23,68,0.30); color: var(--accent); }
+.flow-ai-state--executing { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
 .flow-ai-state--complete  { background: rgba(0,230,118,0.12); border-color: rgba(0,230,118,0.30); color: var(--green); }
 .flow-ai-state--error     { background: rgba(255,23,68,0.12); border-color: rgba(255,23,68,0.30); color: var(--red); }
 .flow-ai-state--billing   { background: rgba(255,215,64,0.12); border-color: rgba(255,215,64,0.30); color: var(--yellow); }

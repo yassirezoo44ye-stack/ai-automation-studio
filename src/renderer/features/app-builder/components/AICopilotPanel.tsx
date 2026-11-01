@@ -175,7 +175,7 @@ export function AICopilotPanel({
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <div style={{
             width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-            background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
+            background: "var(--accent)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2">
@@ -293,7 +293,7 @@ export function AICopilotPanel({
                 <div style={{
                   maxWidth: "88%", padding: "9px 11px",
                   borderRadius: "11px 11px 3px 11px",
-                  background: "var(--accent)", color: "white",
+                  background: "var(--accent)", color: "var(--on-accent)",
                   fontSize: 12, lineHeight: 1.5,
                 }}>
                   {msg.content}

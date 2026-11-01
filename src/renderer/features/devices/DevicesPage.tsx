@@ -482,7 +482,7 @@ function ConfirmDialog({
 // ── Button styles ─────────────────────────────────────────────────────────────
 
 const primaryBtnStyle: React.CSSProperties = {
-  background: "var(--accent)", color: "#fff",
+  background: "var(--accent)", color: "var(--on-accent)",
   border: "none", borderRadius: 9, cursor: "pointer",
   padding: "9px 16px", fontSize: 13, fontWeight: 600,
 };

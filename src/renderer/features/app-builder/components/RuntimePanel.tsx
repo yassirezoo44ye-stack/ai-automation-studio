@@ -70,9 +70,9 @@ const CARD: React.CSSProperties = {
 
 const BTN_PRIMARY: React.CSSProperties = {
   padding: "10px 24px", borderRadius: 10, border: "none",
-  background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-  color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
-  boxShadow: "0 2px 12px rgba(110,50,224,0.35)",
+  background: "var(--accent)",
+  color: "var(--on-accent)", fontSize: 13, fontWeight: 700, cursor: "pointer",
+  boxShadow: "0 2px 12px rgba(255,122,47,0.35)",
 };
 
 const BTN_GHOST: React.CSSProperties = {

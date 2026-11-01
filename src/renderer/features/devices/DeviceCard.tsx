@@ -105,7 +105,7 @@ export function DeviceCard({ device, role, selected, onSelect, onRevoke, onDelet
             fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
             padding: "2px 7px", borderRadius: 20,
             background: role === "primary" ? "var(--accent)" : "rgba(46,204,113,0.2)",
-            color:      role === "primary" ? "#fff" : "#2ecc71",
+            color:      role === "primary" ? "var(--on-accent)" : "#2ecc71",
             flexShrink: 0,
           }}>
             {t(`role.${role}`)}

@@ -202,9 +202,9 @@ function PageTopBar({ onOpenCmd }: { onOpenCmd: () => void }) {
             aria-label={user.email}
             style={{
               width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-              background: "linear-gradient(135deg, var(--accent), var(--teal))",
+              background: "var(--accent)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 10, fontWeight: 700, color: "#fff",
+              fontSize: 10, fontWeight: 700, color: "var(--on-accent)",
               cursor: "default", userSelect: "none",
             }}
           >

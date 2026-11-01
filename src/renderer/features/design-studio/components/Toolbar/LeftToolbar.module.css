@@ -33,7 +33,7 @@
 
 .toolBtn.active {
   background:    var(--accent);
-  color:         #fff;
+  color:         var(--on-accent);
   border-radius: var(--radius-md);
 }
 

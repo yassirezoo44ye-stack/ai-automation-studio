@@ -36,8 +36,8 @@ export const S: Record<string, React.CSSProperties> = {
   },
   avatar: {
     width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-    background: "linear-gradient(135deg,rgba(110,50,224,0.30),rgba(11,122,112,0.22))",
-    border: "1px solid rgba(110,50,224,0.28)",
+    background: "var(--accent-dim)",
+    border: "1px solid rgba(255,122,47,0.28)",
     display: "flex", alignItems: "center", justifyContent: "center",
     marginTop: 2,
   },
@@ -64,10 +64,10 @@ export const S: Record<string, React.CSSProperties> = {
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 11, flexShrink: 0,
-    background: "linear-gradient(135deg,var(--accent),var(--teal))",
-    color: "#fff", border: "none", fontSize: 18, cursor: "pointer",
+    background: "var(--accent)",
+    color: "var(--on-accent)", border: "none", fontSize: 18, cursor: "pointer",
     display: "flex", alignItems: "center", justifyContent: "center",
-    boxShadow: "0 4px 14px rgba(110,50,224,0.40)",
+    boxShadow: "0 4px 14px rgba(255,122,47,0.40)",
   },
 
   // Forms
@@ -81,10 +81,10 @@ export const S: Record<string, React.CSSProperties> = {
 
   // Buttons
   btnPrimary: {
-    background: "linear-gradient(135deg,var(--accent),var(--teal))",
-    color: "#fff", border: "none", borderRadius: 9,
+    background: "var(--accent)",
+    color: "var(--on-accent)", border: "none", borderRadius: 9,
     padding: "9px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-    boxShadow: "0 3px 12px rgba(110,50,224,0.32)",
+    boxShadow: "0 3px 12px rgba(255,122,47,0.32)",
     transition: "filter .15s, transform .15s, box-shadow .15s",
   },
   btnSecondary: {
@@ -105,7 +105,7 @@ export const S: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
   },
   badgeNeutral: { background: "var(--bg-hover)",       color: "var(--t3)", border: "1px solid var(--b1)" },
-  badgeInfo:    { background: "rgba(110,50,224,.15)",  color: "var(--ta)", border: "1px solid rgba(110,50,224,.3)" },
+  badgeInfo:    { background: "rgba(255,122,47,.15)",  color: "var(--ta)", border: "1px solid rgba(255,122,47,.3)" },
   badgeSuccess: { background: "rgba(22,163,74,.12)",   color: "#16A34A",   border: "1px solid rgba(22,163,74,.3)" },
   badgeWarning: { background: "rgba(161,98,7,.12)",    color: "#A16207",   border: "1px solid rgba(161,98,7,.3)" },
   badgeError:   { background: "rgba(220,38,38,.12)",   color: "#DC2626",   border: "1px solid rgba(220,38,38,.3)" },

@@ -425,7 +425,7 @@ function Row({ label, value }: { label: string; value: string }) {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const primaryBtnStyle: React.CSSProperties = {
-  background: "var(--accent)", color: "#fff",
+  background: "var(--accent)", color: "var(--on-accent)",
   border: "none", borderRadius: 9, cursor: "pointer",
   padding: "8px 14px", fontSize: 13, fontWeight: 600,
   flexShrink: 0,

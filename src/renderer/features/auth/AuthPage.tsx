@@ -1,3 +1,4 @@
+import type React from "react";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth, MfaRequiredError } from "../../contexts/AuthContext";
@@ -34,7 +35,7 @@ const S = {
     flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer",
     fontSize: 13, fontWeight: 600, transition: "all .15s",
     background: active ? "var(--accent)" : "transparent",
-    color: active ? "#fff" : "var(--t3)",
+    color: active ? "var(--on-accent)" : "var(--t3)",
   }),
   divider: {
     display: "flex", alignItems: "center", gap: 10,
@@ -118,18 +119,48 @@ function OAuthRow({ onSelect, disabled = false }: { onSelect: (provider: "google
 
 function BenefitItem({ text }: { text: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
       <div style={{
-        width: 22, height: 22, borderRadius: 6,
-        background: "rgba(11,122,112,0.15)",
+        width: 22, height: 22, borderRadius: 7,
+        background: "rgba(255,122,47,0.14)",
         display: "flex", alignItems: "center", justifyContent: "center",
         flexShrink: 0, marginTop: 1,
       }}>
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-          <path d="M2 6l3 3 5-5" stroke="var(--teal)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M2 6l3 3 5-5" stroke="#FF8F52" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </div>
-      <span style={{ fontSize: 14, color: "var(--t2)", lineHeight: 1.5 }}>{text}</span>
+      <span style={{ fontSize: 14, color: "#DCE1E8", lineHeight: 1.5 }}>{text}</span>
+    </div>
+  );
+}
+
+/** Brand illustration: a three-step workflow drawn in the logo's node language. */
+function WorkflowIllustration() {
+  const card: React.CSSProperties = {
+    display: "flex", alignItems: "center", gap: 12,
+    padding: "12px 14px", borderRadius: 14,
+    background: "#111A2B", border: "1px solid rgba(255,255,255,0.08)",
+    color: "#F2F4F7", fontSize: 13, fontWeight: 600,
+  };
+  const sub: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: "#A7B0C0", marginTop: 1 };
+  const rail: React.CSSProperties = { width: 2, height: 18, background: "rgba(255,255,255,0.14)", marginInlineStart: 25 };
+  return (
+    <div dir="ltr" style={{ maxWidth: 300, marginBottom: 40 }}>
+      <div style={card}>
+        <span style={{ width: 22, height: 22, borderRadius: "50%", border: "3px solid #F2F4F7", boxSizing: "border-box", flexShrink: 0 }} />
+        <div><div>New lead</div><div style={sub}>Trigger · Form submitted</div></div>
+      </div>
+      <div style={rail} />
+      <div style={card}>
+        <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#F2F4F7", flexShrink: 0 }} />
+        <div><div>AI qualifies</div><div style={sub}>Claude · Gemini</div></div>
+      </div>
+      <div style={rail} />
+      <div style={{ ...card, borderColor: "rgba(255,122,47,0.45)" }}>
+        <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#FF7A2F", flexShrink: 0 }} />
+        <div><div>Reply sent</div><div style={sub}>Action · WhatsApp, Email</div></div>
+      </div>
     </div>
   );
 }
@@ -323,11 +354,8 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
           flex-direction: column;
           justify-content: center;
           padding: 56px 52px;
-          background: var(--bg-base);
-          background-image:
-            radial-gradient(ellipse 140% 80% at 15% 65%, rgba(110,50,224,0.14) 0%, transparent 65%),
-            radial-gradient(ellipse 70% 55% at 85% 10%, rgba(11,122,112,0.10) 0%, transparent 55%);
-          border-inline-end: 1px solid var(--b1);
+          background: #0B1220;
+          border-inline-end: 1px solid rgba(255,255,255,0.06);
           overflow: hidden;
         }
         .auth-right {
@@ -338,7 +366,6 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
           padding: 40px 32px;
           overflow-y: auto;
           background: var(--bg-base);
-          background-image: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(110,50,224,0.06) 0%, transparent 70%);
         }
         .auth-card-logo {
           display: none;
@@ -356,19 +383,18 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
       <div className="auth-split">
         {/* ── Left hero panel ── */}
         <div className="auth-left" aria-hidden="true">
-          <div style={{ marginBottom: 40 }}>
-            <FlowMark size={44} />
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 44 }}>
+            <FlowMark size={40} style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.08)", borderRadius: 10 }} />
+            <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", color: "#F2F4F7" }}>Flow</span>
           </div>
+          <WorkflowIllustration />
           <h2 style={{
-            fontSize: 30, fontWeight: 800, lineHeight: 1.25, letterSpacing: "-0.02em",
-            margin: "0 0 14px",
-            background: "linear-gradient(135deg, var(--t1) 30%, var(--accent) 100%)",
-            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
+            fontSize: 30, fontWeight: 800, lineHeight: 1.3, letterSpacing: "-0.02em",
+            margin: "0 0 12px", color: "#F2F4F7",
           }}>
             {t("hero.title")}
           </h2>
-          <p style={{ fontSize: 14, color: "var(--t3)", lineHeight: 1.65, margin: "0 0 36px", maxWidth: 300 }}>
+          <p style={{ fontSize: 14, color: "#A7B0C0", lineHeight: 1.7, margin: "0 0 28px", maxWidth: 320 }}>
             {t("hero.description")}
           </p>
           <div>
@@ -398,14 +424,13 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
                   fontFamily: "var(--font-sans)",
                   transition: "color 0.15s",
                 }}
-                aria-label="Back to home"
                 onMouseEnter={e => (e.currentTarget.style.color = "var(--t2)")}
                 onMouseLeave={e => (e.currentTarget.style.color = "var(--t4)")}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 12H5M12 5l-7 7 7 7"/>
                 </svg>
-                Back to Flow
+                {t("backToFlow")}
               </button>
             )}
 

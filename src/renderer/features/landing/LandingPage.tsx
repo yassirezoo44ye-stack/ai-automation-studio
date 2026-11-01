@@ -799,7 +799,7 @@ function FinalCtaSection({ onSignIn, onSignUp }: Props) {
             {t("finalCta.headline1")}
             <br />
             <span style={{
-              background: "linear-gradient(135deg, var(--accent), var(--teal))",
+              background: "var(--accent)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               backgroundClip: "text",
@@ -891,7 +891,7 @@ export function LandingPage({ onSignIn, onSignUp }: Props) {
           insetInlineStart: 0,
           padding: "8px 14px",
           background: "var(--accent)",
-          color: "#fff",
+          color: "var(--on-accent)",
           fontSize: 13,
           fontWeight: 600,
           borderRadius: "0 0 var(--r-md) 0",

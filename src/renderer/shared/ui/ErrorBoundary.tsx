@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <p style={{ color: "var(--t4)", fontSize: 13 }}>{this.state.error}</p>
           <button
             onClick={() => this.setState({ error: null })}
-            style={{ marginTop: 12, padding: "8px 20px", borderRadius: 8, background: "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}
+            style={{ marginTop: 12, padding: "8px 20px", borderRadius: 8, background: "var(--accent)", color: "var(--on-accent)", border: "none", cursor: "pointer", fontSize: 13 }}
           >
             Retry
           </button>

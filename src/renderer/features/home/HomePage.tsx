@@ -238,7 +238,7 @@ function AgentRow({ agent, onNavigate, lang }: { agent: AgentEntry; onNavigate: 
         width: 28, height: 28, borderRadius: 8, flexShrink: 0,
         background: isRunning ? "var(--accent)" : "var(--bg-base)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        color: isRunning ? "white" : "var(--t4)",
+        color: isRunning ? "var(--on-accent)" : "var(--t4)",
       }}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/></svg>
       </div>
@@ -539,7 +539,7 @@ export function HomePage() {
           </button>
           <button
             onClick={handleBuildApp}
-            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 14px", borderRadius: 7, border: "none", background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)", color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 8px rgba(110,50,224,0.28)" }}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 14px", borderRadius: 7, border: "none", background: "var(--accent)", color: "var(--on-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 8px rgba(110,50,224,0.28)" }}
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             Build with AI
@@ -578,8 +578,8 @@ export function HomePage() {
               style={{
                 position: "absolute", insetInlineEnd: 8, top: "50%", transform: "translateY(-50%)",
                 padding: "6px 14px", borderRadius: 7, border: "none",
-                background: prompt.trim().length > 2 ? "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)" : "var(--bg-card)",
-                color: prompt.trim().length > 2 ? "white" : "var(--t4)",
+                background: prompt.trim().length > 2 ? "var(--accent)" : "var(--bg-card)",
+                color: prompt.trim().length > 2 ? "var(--on-accent)" : "var(--t4)",
                 fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.15s",
               }}
             >
@@ -780,7 +780,7 @@ export function HomePage() {
                       />
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={createProject} disabled={saving || newName.trim().length < 2}
-                          style={{ padding: "6px 14px", borderRadius: 7, border: "none", background: "var(--accent)", color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: (saving || newName.trim().length < 2) ? 0.5 : 1 }}>
+                          style={{ padding: "6px 14px", borderRadius: 7, border: "none", background: "var(--accent)", color: "var(--on-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: (saving || newName.trim().length < 2) ? 0.5 : 1 }}>
                           {saving ? "Creating…" : "Create"}
                         </button>
                         <button onClick={() => { setCreating(false); setNewName(""); setNewDesc(""); }}
@@ -802,7 +802,7 @@ export function HomePage() {
                   <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 4 }}>No projects yet</div>
                   <div style={{ fontSize: 11, color: "var(--t5)", marginBottom: 12 }}>Use AI to generate a full-stack app in seconds</div>
                   <button onClick={handleBuildApp}
-                    style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)", color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "var(--accent)", color: "var(--on-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Build with AI
                   </button>
                 </Card>
