@@ -2,6 +2,8 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AuthPage } from "../AuthPage";
 import { MfaRequiredError } from "../../../contexts/AuthContext";
+import { oauthStartUrl } from "../oauth";
+vi.mock("../oauth", () => ({ oauthStartUrl: vi.fn() }));
 
 const login = vi.fn();
 const register = vi.fn();
@@ -27,6 +29,25 @@ vi.mock("../../../contexts/AuthContext", () => ({
     }
   },
 }));
+
+describe("OAuth start recovery", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("blocks competing starts while the first request is pending", () => {
+    vi.mocked(oauthStartUrl).mockImplementationOnce(() => new Promise(() => {}));
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Google" }));
+    fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
+    expect(oauthStartUrl).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Microsoft" })).toBeDisabled();
+  });
+  it("re-enables sign-in choices after configuration failure", async () => {
+    vi.mocked(oauthStartUrl).mockRejectedValueOnce(new Error("تعذر الاتصال بخدمة تسجيل الدخول"));
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Google" }));
+    expect(await screen.findByText("تعذر الاتصال بخدمة تسجيل الدخول")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Google" })).toBeEnabled();
+  });
+});
 
 // ── Reset-password tab (URL-driven) ─────────────────────────────────────────
 

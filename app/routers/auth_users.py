@@ -27,7 +27,7 @@ from typing import Annotated
 
 import asyncpg
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -868,6 +868,19 @@ _APP_URL_BASE            = _os.getenv("APP_URL", "http://localhost:8000")
 _FRONTEND_BASE           = _os.getenv("FRONTEND_URL", _APP_URL_BASE)
 
 
+@router.get("/oauth-config")
+async def oauth_public_config(response: Response) -> dict:
+    """Start OAuth on the same origin used for its callback and bind cookie."""
+    from urllib.parse import urlsplit
+    base = _APP_URL_BASE.rstrip("/")
+    url = urlsplit(base)
+    local = url.hostname in {"localhost", "127.0.0.1", "::1"}
+    if (url.scheme != "https" and not (local and url.scheme == "http")) or not url.netloc or url.username or url.password or url.path or url.query or url.fragment:
+        raise HTTPException(503, "OAuth origin is not configured correctly")
+    response.headers["Cache-Control"] = "no-store"
+    return {"origin": base}
+
+
 def _oauth_not_configured(provider: str):
     raise HTTPException(503, f"{provider} OAuth is not configured on this server. "
                              f"Set {provider.upper()}_CLIENT_ID and {provider.upper()}_CLIENT_SECRET.")
@@ -913,7 +926,7 @@ def _set_bind_cookie(response: RedirectResponse, nonce: str) -> None:
 
 async def _stash_oauth_state(state: str, bind_nonce: str) -> None:
     """Store the CSRF state + browser-binding nonce server-side (single-use)."""
-    from app.core.cache.redis_adapter import get_redis
+    from app.core.oauth_store import get_oauth_store as get_redis
     try:
         redis = await get_redis()
         await redis.set(f"oauth_state:{state}", bind_nonce, ttl=_OAUTH_STATE_TTL)
@@ -938,7 +951,7 @@ async def _verify_and_consume_oauth_state(
     if not bind_cookie:
         log.warning("oauth callback: missing bind cookie ip=%s", ip)
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
-    from app.core.cache.redis_adapter import get_redis
+    from app.core.oauth_store import get_oauth_store as get_redis
     try:
         redis = await get_redis()
         # Atomic: state is consumed ONLY when bind_cookie matches the stored nonce.
@@ -965,7 +978,7 @@ async def _stash_oauth_session_for_exchange(session: dict) -> str:
     subsequent same-tab navigation, and any access log that captures full
     request URLs. The frontend gets back only an opaque code, redeemed once
     via POST /api/auth/oauth-exchange (see below)."""
-    from app.core.cache.redis_adapter import get_redis
+    from app.core.oauth_store import get_oauth_store as get_redis
     code  = secrets.token_urlsafe(32)
     redis = await get_redis()
     await redis.set_json(f"oauth_exchange:{code}", session, ttl=_OAUTH_EXCHANGE_TTL)
@@ -983,7 +996,7 @@ async def oauth_exchange(body: OAuthExchangeRequest):
     Single-use: the entry is deleted on read, so a captured/replayed code
     (e.g. from a shared link or proxy log) is worthless after the first
     legitimate redemption, and the whole thing expires in 60s regardless."""
-    from app.core.cache.redis_adapter import get_redis
+    from app.core.oauth_store import get_oauth_store as get_redis
     redis  = await get_redis()
     key    = f"oauth_exchange:{body.code}"
     # get_json_and_delete is atomic (GETDEL on real Redis, dict.pop on local
