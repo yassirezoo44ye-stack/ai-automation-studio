@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { oauthStartUrl } from "./oauth";
 afterEach(() => vi.unstubAllGlobals());
 describe("canonical OAuth origin", () => {
+  it("reports network failure without navigating to a fallback host", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    await expect(oauthStartUrl("google")).rejects.toThrow("تعذر الاتصال");
+  });
   it.each(["google", "github", "microsoft"] as const)("starts %s directly on callback host", async provider => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ origin: "https://backend.example.test" }))));
     expect(await oauthStartUrl(provider)).toBe(`https://backend.example.test/api/auth/${provider}`);

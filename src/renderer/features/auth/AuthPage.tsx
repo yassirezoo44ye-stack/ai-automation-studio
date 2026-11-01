@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth, MfaRequiredError } from "../../contexts/AuthContext";
 import type { MfaChallenge } from "../../contexts/AuthContext";
@@ -94,18 +94,18 @@ function MicrosoftIcon() {
   );
 }
 
-function OAuthRow({ onSelect }: { onSelect: (provider: "google" | "github" | "microsoft") => void }) {
+function OAuthRow({ onSelect, disabled = false }: { onSelect: (provider: "google" | "github" | "microsoft") => void; disabled?: boolean }) {
   const { t } = useTranslation("auth");
   return (
     <>
       <div style={S.oauthRow}>
-        <button style={S.oauthBtn("#4285F4")} onClick={() => onSelect("google")} type="button">
+        <button disabled={disabled} style={S.oauthBtn("#4285F4")} onClick={() => onSelect("google")} type="button">
           <GoogleIcon /> {t("oauth.google")}
         </button>
-        <button style={S.oauthBtn("#24292e")} onClick={() => onSelect("github")} type="button">
+        <button disabled={disabled} style={S.oauthBtn("#24292e")} onClick={() => onSelect("github")} type="button">
           <GitHubIcon /> {t("oauth.github")}
         </button>
-        <button style={S.oauthBtn("#2f2f2f")} onClick={() => onSelect("microsoft")} type="button">
+        <button disabled={disabled} style={S.oauthBtn("#2f2f2f")} onClick={() => onSelect("microsoft")} type="button">
           <MicrosoftIcon /> {t("oauth.microsoft")}
         </button>
       </div>
@@ -166,6 +166,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthStarting, setOauthStarting] = useState(false);
+  const oauthPending = useRef(false);
   // Local MFA challenge state for password-login MFA flow.
   // OAuth-initiated MFA is read from context's pendingMfaChallenge.
   const [localMfaChallenge, setLocalMfaChallenge] = useState<MfaChallenge | null>(null);
@@ -184,10 +185,11 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   }, []);
 
   async function handleOAuth(provider: "google" | "github" | "microsoft") {
-    if (oauthStarting) return;
+    if (oauthPending.current) return;
+    oauthPending.current = true;
     setOauthStarting(true); setOauthError(null);
     try { window.location.href = await oauthStartUrl(provider); }
-    catch (error) { setOauthError(error instanceof Error ? error.message : "تعذر تسجيل الدخول"); setOauthStarting(false); }
+    catch (error) { setOauthError(error instanceof Error ? error.message : "تعذر تسجيل الدخول"); setOauthStarting(false); oauthPending.current = false; }
   }
 
   // ── Login ──────────────────────────────────────────────────────────────────
@@ -426,7 +428,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
             {/* ── Login ── */}
             {effectiveTab === "login" && (
               <>
-                <OAuthRow onSelect={handleOAuth} />
+                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} />
                 {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
                 <form onSubmit={loginForm.handleSubmit} noValidate>
                   <EmailField {...loginForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
@@ -446,7 +448,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
             {/* ── Register ── */}
             {effectiveTab === "register" && !registeredEmail && (
               <>
-                <OAuthRow onSelect={handleOAuth} />
+                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} />
                 {registerSubmit.error && <ErrorBanner message={registerSubmit.error} suggestedFix={registerSubmit.suggestedFix} onRetry={registerForm.isValid ? registerSubmit.retry : undefined} />}
                 <form onSubmit={registerForm.handleSubmit} noValidate>
                   <TextField {...registerForm.register("name")} label={t("register.name")} required autoFocus autoComplete="name" />
