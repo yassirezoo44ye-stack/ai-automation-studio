@@ -93,11 +93,11 @@
     "add": "Add jobs",
     "shortlist": "Review your shortlist"
   },
-  "aiProfileTitle": "Build your profile from your CV",
-  "aiProfileHint": "Paste your CV or a few lines about your experience. AI fills in the fields below using only terms found in your text. Review them, then save.",
-  "cvLabel": "CV or experience",
-  "cvPlaceholder": "e.g. Sales Executive at Example Foods, 2020–2024. Skills: Zoho Books, key accounts. Languages: English, Arabic.",
-  "aiFill": "Fill profile with AI",
+  "aiProfileTitle": "Start with a short bio",
+  "aiProfileHint": "Tell us your experience and what you are looking for. We organize stated facts into a draft for review before saving. We do not gather personal data from outside sources without your permission.",
+  "cvLabel": "Short bio about you",
+  "cvPlaceholder": "Example: Four years in food sales, looking for work in Dubai. I speak Arabic and English.",
+  "aiFill": "Build my profile from my bio",
   "aiWorking": "AI is working…",
   "aiFilled": "AI suggestions added. Review them, then save your profile.",
   "aiFailed": "AI couldn't produce a reliable result. Nothing was changed. Please retry.",
@@ -125,5 +125,12 @@
   "draftFor": "Application draft: {{title}}",
   "copy": "Copy text",
   "copied": "Draft copied.",
-  "useTemplate": "Use basic template instead"
+  "useTemplate": "Use basic template instead",
+  "bioPreview": "Your professional summary draft",
+  "bioReview": "Review and edit details (optional)",
+  "bioMissing": "Add any missing details to your bio or edit them below:",
+  "bioAskRole": "What role are you looking for?",
+  "bioAskLanguages": "Which languages do you speak?",
+  "bioAskYears": "How many years of experience do you have?",
+  "bioAskCity": "Which city would you like to work in?"
 }

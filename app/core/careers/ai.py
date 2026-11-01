@@ -82,12 +82,12 @@ def _strings(value: object, *, limit: int, length: int) -> list[str]:
 # ── Profile from CV ───────────────────────────────────────────────────────────
 
 _PROFILE_SYSTEM = (
-    "You extract a job seeker's profile from their CV. Output only one JSON "
+    "You extract a job seeker's profile from a short biography or CV. Output only one JSON "
     "object, no prose. Copy terms exactly as written in the CV; never invent "
     "or embellish. " + _UNTRUSTED
 )
 _PROFILE_PROMPT = """Return JSON with these keys:
-- "summary": 2-4 sentences in the CV's language, using only facts stated in the CV
+- "summary": a concise professional paragraph in the input language, using only stated facts; do not invent employers, dates, credentials or achievements
 - "roles": job titles held or targeted, copied from the CV
 - "skills": skills and tools, copied from the CV
 - "sectors": industries worked in, copied from the CV
