@@ -249,6 +249,8 @@ export function BusinessLabPage() {
   const [loading, setLoading]     = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const actionPending = useRef(false);
   const selectionVersion = useRef(0);
   const stopStream                = useRef<(() => void) | null>(null);
 
@@ -308,27 +310,37 @@ export function BusinessLabPage() {
 
   const handleRetry = async (keys: string[]) => {
     if (!selected) return;
-    await businessService.retrySections(selected, keys);
-    await selectPlan(selected);
+    await runAction(async () => { await businessService.retrySections(selected, keys); await selectPlan(selected); });
   };
 
   const handleCancel = async () => {
     if (!selected) return;
-    await businessService.cancelPlan(selected);
-    await selectPlan(selected);
+    await runAction(async () => { await businessService.cancelPlan(selected); await selectPlan(selected); });
   };
 
   const handleExport = async (variant: string) => {
     if (!selected) return;
-    await businessService.exportPlan(selected, "markdown", variant);
+    await runAction(() => businessService.exportPlan(selected, "markdown", variant));
   };
 
   const handleDelete = async () => {
     if (!selected) return;
     if (!window.confirm("هل تريد حذف هذه الخطة نهائياً؟")) return;
+    await runAction(async () => {
     await businessService.deletePlan(selected);
+    ++selectionVersion.current;
+    stopStream.current?.(); stopStream.current = null;
     setSelected(null); setDetail(null);
     await loadPlans();
+    });
+  };
+
+  const runAction = async (action: () => Promise<unknown>) => {
+    if (actionPending.current) return;
+    actionPending.current = true; setActionError(null);
+    try { await action(); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "تعذر إكمال العملية"); }
+    finally { actionPending.current = false; }
   };
 
   return (
@@ -405,6 +417,7 @@ export function BusinessLabPage() {
 
       {/* ── Main content ── */}
       <div className="business-lab-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        {actionError && <div role="alert" style={{ padding: 20 }}>{actionError}</div>}
         {detailError && <div role="alert" style={{ padding: 20 }}><p>{detailError}</p><button onClick={() => selected && void selectPlan(selected)}>إعادة تحميل الخطة</button></div>}
         {!selected && (
           <div style={{
@@ -656,8 +669,9 @@ export function BusinessLabPage() {
                           </div>
                         ))}
                       </div>
-                      <button onClick={() => void businessService.recomputeScore(selected).then(s => {
-                        setDetail(prev => prev ? { ...prev, score: s } : prev);
+                      <button onClick={() => void runAction(async () => {
+                        const s = await businessService.recomputeScore(selected);
+                        setDetail(prev => prev?.plan.id === selected ? { ...prev, score: s } : prev);
                       })} style={{
                         marginTop: 16, padding: "8px 14px", borderRadius: 8,
                         border: "1px solid var(--b1,#e5e7eb)", background: "transparent",
