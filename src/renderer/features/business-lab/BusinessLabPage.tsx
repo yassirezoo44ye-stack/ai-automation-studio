@@ -13,6 +13,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { businessService, type Plan, type PlanDetail, type Section } from "./services/businessService";
+import "./business-lab.css";
 
 // ── Status badge colours ──────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -247,6 +248,8 @@ export function BusinessLabPage() {
   const [showNew, setShowNew]     = useState(false);
   const [loading, setLoading]     = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const selectionVersion = useRef(0);
   const stopStream                = useRef<(() => void) | null>(null);
 
   // Load plan list
@@ -261,18 +264,21 @@ export function BusinessLabPage() {
 
   // Load detail + start stream when plan selected
   const selectPlan = useCallback(async (id: string) => {
+    const version = ++selectionVersion.current;
+    setDetailError(null);
     setSelected(id); setTab("overview"); setDetail(null);
     stopStream.current?.(); stopStream.current = null;
     setLoading(true);
     try {
       const d = await businessService.getPlan(id);
+      if (version !== selectionVersion.current) return;
       setDetail(d);
 
       // Stream live updates for in-progress plans
-      if (d.plan.status === "GENERATING") {
+      if (d.plan.status === "GENERATING" || d.plan.status === "DRAFT") {
         const stop = businessService.streamStatus(id, (data) => {
           setDetail(prev => {
-            if (!prev) return prev;
+            if (!prev || prev.plan.id !== id || version !== selectionVersion.current) return prev;
             const evt = data as Record<string, unknown>;
             const secs = (evt.sections ?? {}) as Record<string, { status: string; tokens_used: number; error_msg: string | null }>;
             const updatedSections = prev.sections.map(s =>
@@ -290,13 +296,15 @@ export function BusinessLabPage() {
         });
         stopStream.current = stop;
       }
-    } catch { /* ignore */ } finally {
-      setLoading(false);
+    } catch (error) {
+      if (version === selectionVersion.current) setDetailError(error instanceof Error ? error.message : "تعذر تحميل الخطة");
+    } finally {
+      if (version === selectionVersion.current) setLoading(false);
     }
   }, [loadPlans]);
 
   // Cleanup on unmount
-  useEffect(() => () => stopStream.current?.(), []);
+  useEffect(() => () => { ++selectionVersion.current; stopStream.current?.(); }, []);
 
   const handleRetry = async (keys: string[]) => {
     if (!selected) return;
@@ -324,12 +332,12 @@ export function BusinessLabPage() {
   };
 
   return (
-    <div style={{
+    <div className="business-lab" style={{
       display: "flex", height: "100%", overflow: "hidden",
       background: "var(--bg,#f9fafb)", fontFamily: "inherit",
     }}>
       {/* ── Sidebar: plan list ── */}
-      <div style={{
+      <div className="business-lab-sidebar" style={{
         width: 260, flexShrink: 0, borderRight: "1px solid var(--b1,#e5e7eb)",
         display: "flex", flexDirection: "column", background: "var(--bg-card,#fff)",
         overflowY: "auto",
@@ -396,7 +404,8 @@ export function BusinessLabPage() {
       </div>
 
       {/* ── Main content ── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div className="business-lab-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        {detailError && <div role="alert" style={{ padding: 20 }}><p>{detailError}</p><button onClick={() => selected && void selectPlan(selected)}>إعادة تحميل الخطة</button></div>}
         {!selected && (
           <div style={{
             flex: 1, display: "flex", flexDirection: "column",
