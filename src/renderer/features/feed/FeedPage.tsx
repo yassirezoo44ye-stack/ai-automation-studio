@@ -8,6 +8,7 @@ import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI
 import { loadStudyItems } from "./services/studyFeedService";
 import type { FeedTab, FeedItem, FeedItemState } from "./types/feed.types";
 import "./FeedPage.css";
+import { useAppContext } from "../../contexts/app";
 
 /** Build the initial local interaction state from an item array */
 function initStates(items: FeedItem[]): Record<string, FeedItemState> {
@@ -26,6 +27,7 @@ function initStates(items: FeedItem[]): Record<string, FeedItemState> {
 
 export function FeedPage() {
   const { t } = useTranslation("feed");
+  const { setPage } = useAppContext();
   const [contentFilter, setContentFilter] = useState<"all" | "study">("all");
   const [search, setSearch] = useState("");
   const [subject, setSubject] = useState("");
@@ -36,7 +38,8 @@ export function FeedPage() {
   const pagingRequest = useRef(false);
   const generation = useRef(0);
   const [refresh, setRefresh] = useState(0);
-  const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
+  const activeTab: FeedTab = "for-you";
+  const [sharedUnavailable, setSharedUnavailable] = useState(false);
   const [items, setItems]       = useState<FeedItem[]>([]);
   const [isMock, setIsMock]     = useState(false);
   const [loading, setLoading]   = useState(true);
@@ -46,8 +49,9 @@ export function FeedPage() {
   useEffect(() => {
     const currentGeneration = ++generation.current;
     let cancelled = false;
-    loadFeedItems()
-      .then(({ items: loaded, isMock: mock, error: err }) => {
+    const sharedId = /^\/feed\/([^/]+)\/?$/.exec(window.location.pathname)?.[1];
+    loadFeedItems(sharedId)
+      .then(({ items: loaded, isMock: mock, error: err, sharedUnavailable: missing }) => {
         if (cancelled) return;
         setItems(loaded);
         const count = loaded.filter(item => item.type === "STUDY").length;
@@ -57,6 +61,7 @@ export function FeedPage() {
         setStates(initStates(loaded));
         setIsMock(mock);
         setFeedError(err);
+        setSharedUnavailable(Boolean(missing));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -126,7 +131,11 @@ export function FeedPage() {
   return (
     <div className="feed-page" role="main" aria-label={t("page.ariaLabel")}>
       {/* Top bar overlays the first card */}
-      <FeedTopBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <FeedTopBar activeTab={activeTab} onTabChange={tab => {
+        if (tab === "explore") setPage("discover");
+        if (tab === "for-you") { setContentFilter("all"); setSearch(""); setSubject(""); scrollToIndex(0); }
+      }} />
+      {!loading && sharedUnavailable && <p role="alert">{t("error.sharedUnavailable")}</p>}
       <div className="feed-content-filters" role="group" aria-label={t("study.filterLabel")}>
         {(["all", "study"] as const).map(filter => <button key={filter} aria-pressed={contentFilter === filter} onClick={() => { scrollToIndex(0); setContentFilter(filter); setSubject(""); }}>{t(`study.${filter}`)}</button>)}
         <label className="feed-search-label"><span>{t("study.search")}</span><input type="search" value={search} maxLength={120} placeholder={t("study.searchPlaceholder")} onChange={event => { scrollToIndex(0); setSearch(event.target.value); }} /></label>

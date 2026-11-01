@@ -58,6 +58,15 @@ vi.mock("../services/businessService", () => ({
 }));
 
 describe("BusinessLabPage", () => {
+  it("shows a retry control instead of a misleading empty state on list failure", async () => {
+    const { businessService } = await import("../services/businessService");
+    vi.mocked(businessService.listPlans).mockRejectedValueOnce(new Error("تعذر تحميل الخطط"));
+    render(<BusinessLabPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("تعذر تحميل الخطط");
+    expect(screen.queryByText("لا توجد خطط بعد.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "إعادة تحميل الخطط" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });

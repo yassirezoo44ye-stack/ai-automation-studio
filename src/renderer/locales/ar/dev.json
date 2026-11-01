@@ -7,7 +7,9 @@
     "downloadZip": "⬇ ZIP",
     "clearWorkspace": "🗑 مسح",
     "confirmClear": "مسح جميع الملفات في بيئة العمل هذه؟",
-    "toastCleared": "تم مسح بيئة العمل"
+    "toastCleared": "تم مسح بيئة العمل",
+    "clearFailed": "تعذّر مسح مساحة العمل. لم تُحذف ملفاتك.",
+    "downloadFailed": "تعذّر تنزيل المشروع. أعد المحاولة."
   },
   "tabsAriaLabel": "تبويبات بيئة التطوير",
   "tabs": {

@@ -207,6 +207,7 @@ class TestSseStreamEndpoint:
             patch("app.routers.business_plans._resolve_org", return_value="org-1"),
             patch("app.routers.business_plans._assert_plan_owner", return_value={}),
             patch("app.routers.business_plans.get_pool", return_value=pool),
+            patch("app.routers.business_plans.acquire_scoped", side_effect=lambda org_id: pool.acquire()),
         ):
             with TestClient(app) as client:
                 r = client.get(f"{self.BASE}/stream/{_PLAN_ID}?ticket={ticket}")

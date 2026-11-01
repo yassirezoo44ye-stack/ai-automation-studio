@@ -27,7 +27,8 @@
       "updated": "Agent updated",
       "created": "Agent created",
       "saveFailed": "Failed to save",
-      "deleted": "Deleted {{name}}"
+      "deleted": "Deleted {{name}}",
+      "deleteFailed": "Could not delete the agent."
     },
     "deleteConfirm": "Delete agent \"{{name}}\"?",
     "empty": {

@@ -16,6 +16,7 @@ import {
   type ReactNode, type FormEvent, type CSSProperties, type MouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useToast } from "../../contexts/toast";
 import {
   GoldButton, GlassCard, Dialog, KpiCard,
 } from "../../shared/ui/gold";
@@ -472,11 +473,14 @@ function CreateCourseDialog({ open, onClose, onCreate }: {
 
 function CourseBuilder({ course, onBack }: { course: Course; onBack: () => void }) {
   const { t } = useTranslation("trainingStudio");
+  const toast = useToast();
   const [lessons,     setLessons]     = useState<Lesson[]>([]);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [loadingL,    setLoadingL]    = useState(true);
   const [dirty,       setDirty]       = useState(false);
   const [saving,      setSaving]      = useState(false);
+  const [status, setStatus] = useState(course.status);
+  const [publishing, setPublishing] = useState(false);
 
   // course title edit
   const [editTitle, setEditTitle] = useState(course.title);
@@ -505,14 +509,19 @@ function CourseBuilder({ course, onBack }: { course: Course; onBack: () => void 
       setDirty(false);
     } catch {
       // keep dirty so user can retry
+      toast(t("errors.actionFailed"), "err");
     } finally {
       setSaving(false);
     }
   };
 
   const publishCourse = async () => {
-    const newStatus = course.status === "published" ? "draft" : "published";
-    try { await updateCourse(course.id, { status: newStatus }); } catch {}
+    if (publishing) return;
+    const newStatus = status === "published" ? "draft" : "published";
+    setPublishing(true);
+    try { const updated = await updateCourse(course.id, { status: newStatus }); setStatus(updated.status); }
+    catch { toast(t("errors.actionFailed"), "err"); }
+    finally { setPublishing(false); }
   };
 
   const addLesson = async () => {
@@ -524,7 +533,7 @@ function CourseBuilder({ course, onBack }: { course: Course; onBack: () => void 
       });
       setLessons(prev => [...prev, l]);
       setActiveLesson(l);
-    } catch {}
+    } catch { toast(t("errors.actionFailed"), "err"); }
   };
 
   const removeLesson = async (id: string) => {
@@ -533,7 +542,7 @@ function CourseBuilder({ course, onBack }: { course: Course; onBack: () => void 
       await deleteLesson(id);
       setLessons(prev => prev.filter(l => l.id !== id));
       setActiveLesson(prev => prev?.id === id ? null : prev);
-    } catch {}
+    } catch { toast(t("errors.actionFailed"), "err"); }
   };
 
   const moveLesson = async (id: string, dir: -1 | 1) => {
@@ -545,7 +554,8 @@ function CourseBuilder({ course, onBack }: { course: Course; onBack: () => void 
     [reordered[idx], reordered[newIdx]] = [reordered[newIdx], reordered[idx]];
     setLessons(reordered);
     // persist positions
-    await Promise.all(reordered.map((l, i) => updateLesson(l.id, { position: i }).catch(() => {})));
+    try { await Promise.all(reordered.map((l, i) => updateLesson(l.id, { position: i }))); }
+    catch { toast(t("errors.actionFailed"), "err"); loadLessons(); }
   };
 
   return (
@@ -576,8 +586,8 @@ function CourseBuilder({ course, onBack }: { course: Course; onBack: () => void 
           <GoldButton variant="ghost" onClick={saveCourse} disabled={!dirty || saving}>
             {saving ? t("courseBuilder.saving") : t("courseBuilder.save")}
           </GoldButton>
-          <GoldButton variant="primary" onClick={publishCourse}>
-            {course.status === "published" ? t("courseBuilder.unpublish") : t("courseBuilder.publish")}
+          <GoldButton variant="primary" onClick={publishCourse} disabled={publishing}>
+            {status === "published" ? t("courseBuilder.unpublish") : t("courseBuilder.publish")}
           </GoldButton>
         </div>
       </div>
@@ -701,6 +711,7 @@ function LessonEditor({ lesson, courseId: _courseId, onChange }: {
   onChange: (l: Lesson) => void;
 }) {
   const { t } = useTranslation("trainingStudio");
+  const toast = useToast();
   const [title,  setTitle]  = useState(lesson.title);
   const [desc,   setDesc]   = useState(lesson.description ?? "");
   const [dirty,  setDirty]  = useState(false);
@@ -746,14 +757,14 @@ function LessonEditor({ lesson, courseId: _courseId, onChange }: {
       const updated = await updateLesson(lesson.id, { title: title.trim(), description: desc.trim() || undefined });
       onChange(updated);
       setDirty(false);
-    } catch {} finally { setSaving(false); }
+    } catch { toast(t("errors.actionFailed"), "err"); } finally { setSaving(false); }
   };
 
   const createVideoForLesson = async () => {
     try {
       const v = await createVideo(lesson.id, { title: `${lesson.title} video`, language: "en" });
       setVideos(prev => [...prev, v]);
-    } catch {}
+    } catch { toast(t("errors.actionFailed"), "err"); }
   };
 
   const handleGenerateVideo = async (videoId: string) => {
@@ -761,7 +772,7 @@ function LessonEditor({ lesson, courseId: _courseId, onChange }: {
     try {
       const updated = await generateVideo(videoId);
       setVideos(prev => prev.map(v => v.id === videoId ? updated : v));
-    } catch {} finally { setGeneratingVideo(null); }
+    } catch { toast(t("errors.actionFailed"), "err"); } finally { setGeneratingVideo(null); }
   };
 
   const saveScript = async (e: FormEvent) => {
@@ -772,7 +783,7 @@ function LessonEditor({ lesson, courseId: _courseId, onChange }: {
       setScripts(prev => [s, ...prev]);
       setScriptOpen(false);
       setScriptContent("");
-    } catch {} finally { setSavingScript(false); }
+    } catch { toast(t("errors.actionFailed"), "err"); } finally { setSavingScript(false); }
   };
 
   const saveQuiz = async (e: FormEvent) => {
@@ -783,7 +794,7 @@ function LessonEditor({ lesson, courseId: _courseId, onChange }: {
       setQuizzes(prev => [...prev, q]);
       setQuizOpen(false);
       setQuizTitle("");
-    } catch {} finally { setSavingQuiz(false); }
+    } catch { toast(t("errors.actionFailed"), "err"); } finally { setSavingQuiz(false); }
   };
 
   return (
@@ -949,6 +960,7 @@ function LessonEditor({ lesson, courseId: _courseId, onChange }: {
 
 function VideoStudioSection() {
   const { t } = useTranslation("trainingStudio");
+  const toast = useToast();
   const [courses,  setCourses]  = useState<Course[]>([]);
   const [lessons,  setLessons]  = useState<Lesson[]>([]);
   const [videos,   setVideos]   = useState<Video[]>([]);
@@ -982,7 +994,7 @@ function VideoStudioSection() {
     try {
       const updated = await generateVideo(videoId);
       setVideos(prev => prev.map(v => v.id === videoId ? updated : v));
-    } catch {} finally { setGenerating(null); }
+    } catch { toast(t("errors.actionFailed"), "err"); } finally { setGenerating(null); }
   };
 
   const createAndGenerate = async () => {
@@ -991,7 +1003,7 @@ function VideoStudioSection() {
       const v = await createVideo(selLesson.id, { title: selLesson.title, language: "en" });
       setVideos(prev => [...prev, v]);
       await handleGenerate(v.id);
-    } catch {}
+    } catch { toast(t("errors.actionFailed"), "err"); }
   };
 
   return (
@@ -1134,6 +1146,7 @@ function VideoCard({ video, onGenerate, generating }: { video: Video; onGenerate
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ScriptsSection() {
+  const toast = useToast();
   const { t, i18n } = useTranslation("trainingStudio");
   const [courses,  setCourses]  = useState<Course[]>([]);
   const [lessons,  setLessons]  = useState<Lesson[]>([]);
@@ -1170,7 +1183,7 @@ function ScriptsSection() {
       const s = await createScript(selLesson.id, { content: content.trim() });
       setScripts(prev => [s, ...prev]);
       setContent(""); setAdding(false);
-    } catch {} finally { setSaving(false); }
+    } catch { toast(t("errors.actionFailed"), "err"); } finally { setSaving(false); }
   };
 
   return (
@@ -1243,6 +1256,7 @@ function ScriptsSection() {
 
 function QuizzesSection() {
   const { t } = useTranslation("trainingStudio");
+  const toast = useToast();
   const [courses,  setCourses]  = useState<Course[]>([]);
   const [lessons,  setLessons]  = useState<Lesson[]>([]);
   const [quizzes,  setQuizzes]  = useState<Quiz[]>([]);
@@ -1288,7 +1302,7 @@ function QuizzesSection() {
       const q = await createQuiz(selLesson!.id, { title: quizTitle.trim() });
       setQuizzes(prev => [...prev, q]);
       setSelQuiz(q); setCreating(false); setQuizTitle("");
-    } catch {} finally { setSavingQ(false); }
+    } catch { toast(t("errors.actionFailed"), "err"); } finally { setSavingQ(false); }
   };
 
   const addQ = async (e: FormEvent) => {
@@ -1305,7 +1319,7 @@ function QuizzesSection() {
         position: 0,
       });
       setQText(""); setQOpts(["","","",""]); setQExpl(""); setAddingQ(false);
-    } catch {} finally { setSavingQQ(false); }
+    } catch { toast(t("errors.actionFailed"), "err"); } finally { setSavingQQ(false); }
   };
 
   return (

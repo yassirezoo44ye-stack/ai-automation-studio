@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
+import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
 import { useAsyncData } from "../../../shared/hooks/useAsyncData";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
@@ -170,10 +171,11 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     setPendingTaskIds(prev => new Set(prev).add(task.id));
     setInlineTasks(prev => prev.map(x => x.id === task.id ? { ...x, status: status as Task["status"] } : x));
     try {
-      await apiFetch(`/api/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/tasks/${task.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
+      if (!response.ok) throw new Error(t("chatTab.toast.updateTaskFailed"));
     } catch (err) {
       toast(describeError(err, t("chatTab.toast.updateTaskFailed")), "err");
       loadInlineTasks();
@@ -655,15 +657,16 @@ const MessageRow = memo(function MessageRow({
   msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
 }) {
   const { t } = useTranslation("ai");
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    void navigator.clipboard.writeText(msg.content).then(() => {
+    void copyText(msg.content).then(() => {
       setCopied(true);
       // Reset the "Copied!" indicator after 2 s so it's ready for re-use.
       const id = setTimeout(() => setCopied(false), 2000);
       return () => clearTimeout(id);
-    });
+    }).catch(() => toast(t("common:actions.copyFailed"), "err"));
   }
 
   const isUser = msg.role === "user";

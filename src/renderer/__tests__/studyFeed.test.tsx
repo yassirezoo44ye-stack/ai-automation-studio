@@ -4,6 +4,8 @@ import { vi, it, expect, beforeEach } from "vitest";
 import { FeedPage } from "../features/feed/FeedPage";
 import { loadFeedItems } from "../features/feed/services/feedService";
 import type { FeedItem } from "../features/feed/types/feed.types";
+const setPage = vi.hoisted(() => vi.fn());
+vi.mock("../contexts/app", () => ({ useAppContext: () => ({ setPage }) }));
 vi.mock("../features/feed/services/studyFeedService", () => ({ loadStudyItems: vi.fn() }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("../features/feed/services/feedService", () => ({ loadFeedItems: vi.fn(), toggleLike: vi.fn(), toggleSave: vi.fn() }));
@@ -12,6 +14,14 @@ const lesson: FeedItem = { id: "study:networks", type: "STUDY", title: "Network 
 beforeEach(() => {
   vi.resetAllMocks();
   Element.prototype.scrollTo = vi.fn();
+});
+it("opens Discover from Explore and identifies Following as unavailable", async () => {
+  vi.mocked(loadFeedItems).mockResolvedValue({ items: [lesson], isMock: false, error: false });
+  render(<FeedPage />); await screen.findByText("Network basics");
+  fireEvent.click(screen.getByRole("button", { name: "topBar.explore" }));
+  expect(setPage).toHaveBeenCalledWith("discover");
+  expect(screen.getByRole("tab", { name: "topBar.following" })).toBeDisabled();
+  expect(screen.getByRole("tab", { name: "topBar.following" })).toHaveAttribute("title", "topBar.followingUnavailable");
 });
 it("shows real lesson links and filters creations without losing lessons", async () => {
   vi.mocked(loadFeedItems).mockResolvedValue({ items: [lesson, { ...lesson, id: "app", type: "APP", title: "Sales app" }], isMock: false, error: false });

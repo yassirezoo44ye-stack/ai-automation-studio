@@ -810,6 +810,7 @@ function JobsMonitor() {
   // is a nested per-status map, not a flat Record<string, number>.
   type JobStats = { total: number; active: number; dead: number; counts: Record<string, number> };
   const { t } = useTranslation("agentos");
+  const toast = useToast();
   const [jobs, setJobs]       = useState<Job[]>([]);
   const [stats, setStats]     = useState<JobStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -835,8 +836,11 @@ function JobsMonitor() {
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   const cancel = async (job_id: string) => {
-    await apiFetch(`/api/jobs/${job_id}`, { method: "DELETE" }).catch(() => {});
-    load();
+    try {
+      const response = await apiFetch(`/api/jobs/${job_id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Job cancellation rejected");
+      await load();
+    } catch { toast(t("common:actions.failed"), "err"); }
   };
 
   const STATUS_KIND: Record<string, string> = {

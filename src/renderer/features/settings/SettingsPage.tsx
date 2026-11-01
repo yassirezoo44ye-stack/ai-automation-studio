@@ -7,6 +7,7 @@ import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
 import { GlassCard } from "../../shared/ui/gold";
 import AxonLogo from "../../AxonLogo";
+import { copyText } from "../../shared/utils/clipboard";
 
 const codeStyle: React.CSSProperties = {
   background: "var(--accent-dim)", padding: "2px 8px",
@@ -138,7 +139,8 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
     setRevoking(keyId);
     setConfirmRevoke(null);
     try {
-      await apiFetch(`/api/orgs/${orgId}/api-keys/${keyId}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/orgs/${orgId}/api-keys/${keyId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Key revocation rejected");
       setKeys(prev => prev.filter(k => k.key_id !== keyId));
     } catch {
       setError(t("apiKeys.errorRevoke"));
@@ -150,25 +152,11 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
   function handleCopy() {
     if (!createdKey) return;
     setCopyFailed(false);
-    navigator.clipboard.writeText(createdKey.api_key).then(() => {
+    copyText(createdKey.api_key).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => {
-      // Clipboard API unavailable — try legacy execCommand
-      try {
-        const el = document.createElement("textarea");
-        el.value = createdKey.api_key;
-        el.style.cssText = "position:fixed;opacity:0;pointer-events:none";
-        document.body.appendChild(el);
-        el.focus();
-        el.select();
-        document.execCommand("copy");
-        document.body.removeChild(el);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        setCopyFailed(true);
-      }
+      setCopyFailed(true);
     });
   }
 

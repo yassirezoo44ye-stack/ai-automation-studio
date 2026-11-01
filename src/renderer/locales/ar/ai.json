@@ -27,7 +27,8 @@
       "updated": "تم تحديث الوكيل",
       "created": "تم إنشاء الوكيل",
       "saveFailed": "فشل الحفظ",
-      "deleted": "تم حذف {{name}}"
+      "deleted": "تم حذف {{name}}",
+      "deleteFailed": "تعذّر حذف الوكيل."
     },
     "deleteConfirm": "حذف الوكيل \"{{name}}\"؟",
     "empty": {

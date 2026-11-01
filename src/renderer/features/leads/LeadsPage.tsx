@@ -9,6 +9,7 @@ import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { relTime } from "../../utils/time";
 import "./leads.css";
+import { copyText } from "../../shared/utils/clipboard";
 
 interface Lead {
   id: string;
@@ -630,7 +631,7 @@ export function LeadsPage() {
               <textarea autoFocus value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} />
             </label>
             <div className="leads-row">
-              <GoldButton type="button" disabled={working} onClick={() => void navigator.clipboard?.writeText(`${draft.subject}\n\n${draft.body}`).then(() => toast(t("draft.copied"), "ok"))}>
+              <GoldButton type="button" disabled={working} onClick={() => void copyText(`${draft.subject}\n\n${draft.body}`).then(() => toast(t("draft.copied"), "ok")).catch(() => toast(t("common:actions.copyFailed"), "err"))}>
                 {t("draft.copy")}
               </GoldButton>
               {draft.email && (

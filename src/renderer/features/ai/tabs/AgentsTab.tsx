@@ -48,8 +48,11 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
 
   async function deleteAgent(id: string, name: string) {
     if (!confirm(t("agentsTab.deleteConfirm", { name }))) return;
-    await apiFetch(`/api/agents/${id}`, { method: "DELETE" });
-    toast(t("agentsTab.toast.deleted", { name })); onRefresh();
+    try {
+      const response = await apiFetch(`/api/agents/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Agent deletion rejected");
+      toast(t("agentsTab.toast.deleted", { name })); onRefresh();
+    } catch { toast(t("agentsTab.toast.deleteFailed"), "err"); }
   }
 
   function openForm(template?: Partial<Agent>) {

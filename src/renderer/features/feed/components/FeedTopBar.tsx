@@ -27,8 +27,10 @@ export function FeedTopBar({ activeTab, onTabChange }: FeedTopBarProps) {
         {TABS.map(tab => (
           <button
             key={tab.id}
-            role="tab"
-            aria-selected={activeTab === tab.id}
+            role={tab.id === "explore" ? "button" : "tab"}
+            aria-selected={tab.id === "explore" ? undefined : activeTab === tab.id}
+            disabled={tab.id === "following"}
+            title={tab.id === "following" ? t("topBar.followingUnavailable") : undefined}
             className={`feed-topbar__tab${activeTab === tab.id ? " feed-topbar__tab--active" : ""}`}
             onClick={() => onTabChange(tab.id)}
           >

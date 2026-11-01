@@ -126,10 +126,10 @@ export function AutomationPage() {
     setWfLoading(true);
     try {
       const r = await apiFetch("/api/automation-runs?status=running&limit=20");
-      if (r.ok) { const d = await r.json(); setWfRuns(d.items ?? []); }
-    } catch {}
+      const d = await parseJSON<{ items?: WfRun[] }>(r, "/api/automation-runs"); setWfRuns(d.items ?? []);
+    } catch { toast(t("toast.loadWorkflowsFailed"), "err"); }
     finally { setWfLoading(false); }
-  }, []);
+  }, [toast, t]);
 
   const runDemoWorkflow = async (kind: string) => {
     setRunningDemo(kind);
@@ -170,19 +170,19 @@ export function AutomationPage() {
   }
 
   async function updateStatus(id: string, status: TaskStatus) {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
     try {
-      await apiFetch(`/api/tasks/${id}`, {
+      const response = await apiFetch(`/api/tasks/${id}`, {
         method: "PUT", headers: authH(),
         body: JSON.stringify({ status }),
       });
-    } catch { loadTasks(); }
+      if (!response.ok) throw new Error("Task update rejected");
+      setTasks(prev => prev.map(task => task.id === id ? { ...task, status } : task));
+    } catch { toast(t("toast.updateTaskFailed"), "err"); await loadTasks(); }
   }
 
   async function deleteTask(id: string) {
-    setTasks(prev => prev.filter(t => t.id !== id));
-    try { await apiFetch(`/api/tasks/${id}`, { method: "DELETE" }); }
-    catch { loadTasks(); }
+    try { const response = await apiFetch(`/api/tasks/${id}`, { method: "DELETE" }); if (!response.ok) throw new Error("Task deletion rejected"); setTasks(prev => prev.filter(task => task.id !== id)); }
+    catch { toast(t("toast.deleteTaskFailed"), "err"); await loadTasks(); }
   }
 
   const filtered = tasks

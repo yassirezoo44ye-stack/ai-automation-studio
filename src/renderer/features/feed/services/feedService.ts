@@ -1,6 +1,6 @@
 import { loadStudyItems } from "./studyFeedService";
 import type { FlowCreation, CreationType } from "../../discover/types/creation.types";
-import { fetchDiscoverFeed } from "../../discover/services/discoverService";
+import { fetchDiscoverFeed, getCreation } from "../../discover/services/discoverService";
 import { apiFetch } from "../../../shared/utils/api";
 import type { FeedItem, FeedContentType, CTAType, FeedCreator, FeedMedia } from "../types/feed.types";
 import type { Page } from "../../../types";
@@ -88,18 +88,29 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
 }
 
 /* ── Loader ──────────────────────────────────────────────────── */
-export async function loadFeedItems(): Promise<{ items: FeedItem[]; isMock: boolean; error: boolean }> {
+export async function loadFeedItems(sharedId?: string): Promise<{ items: FeedItem[]; isMock: boolean; error: boolean; sharedUnavailable?: boolean }> {
   const [creations, lessons] = await Promise.allSettled([
     fetchDiscoverFeed({ limit: 30 }),
     loadStudyItems(),
   ]);
   const studyItems = lessons.status === "fulfilled" ? lessons.value : [];
   const creationItems = creations.status === "fulfilled" ? creations.value.items.map(creationToFeedItem) : [];
+  let items = [...studyItems, ...creationItems];
+  let sharedUnavailable = false;
+  if (sharedId) {
+    let shared = items.find(item => item.id === sharedId);
+    if (!shared && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(sharedId)) {
+      try { shared = creationToFeedItem(await getCreation(sharedId)); } catch { sharedUnavailable = true; }
+    }
+    if (shared) items = [shared, ...items.filter(item => item.id !== sharedId)];
+    else sharedUnavailable = true;
+  }
   // A failed source must not hide the other source's published content.
   return {
-    items: [...studyItems, ...creationItems],
+    items,
     isMock: false,
     error: creations.status === "rejected" || lessons.status === "rejected",
+    ...(sharedUnavailable ? { sharedUnavailable: true } : {}),
   };
 }
 

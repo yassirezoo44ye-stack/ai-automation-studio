@@ -97,21 +97,27 @@ export function DevWorkspace() {
 
   const clearWorkspace = async () => {
     if (!confirm(t("header.confirmClear"))) return;
-    await apiFetch(`/api/projects/${projectId}/files`, { method: "DELETE" });
+    try {
+    const response = await apiFetch(`/api/projects/${projectId}/files`, { method: "DELETE" });
+    if (!response.ok) throw new Error("Workspace clear rejected");
     setFiles([]); setExistingFiles([]); setActiveFile(null);
     setRunOutput(""); setRunCmd(""); setRunError(null);
     if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }
     toast(t("header.toastCleared"));
+    } catch { toast(t("header.clearFailed"), "err"); }
   };
 
   const downloadZip = async () => {
+    try {
     const r = await apiFetch(`/api/projects/${projectId}/download`);
-    if (!r.ok) return;
+    if (!r.ok) throw new Error("Download rejected");
     const blob = await r.blob();
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob); a.href = url;
     a.download = "project.zip";
-    a.click();
+    document.body.appendChild(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch { toast(t("header.downloadFailed"), "err"); }
   };
 
   const openHtmlPreview = useCallback((fs: BuildFile[]) => {
@@ -136,7 +142,7 @@ export function DevWorkspace() {
       const d = await parseJSON<{ path: string; content: string }>(r, ep);
       setActiveFile({ path: d.path, content: d.content });
       setTab("files");
-    } catch {}
+    } catch { toast(t("common:actions.failed"), "err"); }
   };
 
   const allFiles = buildState === "done"

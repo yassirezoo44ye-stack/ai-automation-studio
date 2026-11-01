@@ -224,7 +224,8 @@
     "loadFailed":   "Failed to load. Please try again.",
     "saveFailed":   "Failed to save.",
     "deleteFailed": "Failed to delete.",
-    "generateFailed":"Generation failed. Check your provider settings."
+    "generateFailed":"Generation failed. Check your provider settings.",
+    "actionFailed": "Could not complete the action. Check the connection and try again."
   },
   "actions": {
     "retry":   "Retry",
