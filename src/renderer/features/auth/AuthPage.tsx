@@ -10,6 +10,7 @@ import { useAsyncSubmit } from "../../shared/forms/useAsyncSubmit";
 import { all, required, email as emailValidator, minLength, matchesField, passwordStrength } from "../../shared/forms/validators";
 import { EmailField, PasswordField, TextField, Checkbox, SubmitButton, ErrorBanner, SuccessBanner } from "../../shared/ui/forms";
 import { GoldButton } from "../../shared/ui/gold";
+import { oauthStartUrl } from "./oauth";
 
 type Tab = "login" | "register" | "forgot" | "reset" | "mfa";
 
@@ -163,6 +164,8 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
       : null,
   );
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [oauthStarting, setOauthStarting] = useState(false);
   // Local MFA challenge state for password-login MFA flow.
   // OAuth-initiated MFA is read from context's pendingMfaChallenge.
   const [localMfaChallenge, setLocalMfaChallenge] = useState<MfaChallenge | null>(null);
@@ -180,8 +183,11 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     }
   }, []);
 
-  function handleOAuth(provider: "google" | "github" | "microsoft") {
-    window.location.href = `${API}/api/auth/${provider}`;
+  async function handleOAuth(provider: "google" | "github" | "microsoft") {
+    if (oauthStarting) return;
+    setOauthStarting(true); setOauthError(null);
+    try { window.location.href = await oauthStartUrl(provider); }
+    catch (error) { setOauthError(error instanceof Error ? error.message : "تعذر تسجيل الدخول"); setOauthStarting(false); }
   }
 
   // ── Login ──────────────────────────────────────────────────────────────────
@@ -403,6 +409,8 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
 
             <h1 style={S.title}>{cardTitle}</h1>
             <p style={S.sub}>{cardSub}</p>
+            {oauthError && <ErrorBanner message={oauthError} />}
+            {oauthStarting && <p role="status">جارٍ فتح مزوّد تسجيل الدخول…</p>}
 
             {effectiveTab !== "forgot" && effectiveTab !== "reset" && effectiveTab !== "mfa" && (
               <div style={S.tabs} role="tablist">

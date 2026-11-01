@@ -27,7 +27,7 @@ from typing import Annotated
 
 import asyncpg
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -866,6 +866,19 @@ _APP_URL_BASE            = _os.getenv("APP_URL", "http://localhost:8000")
 # deployment APP_URL is the backend base and FRONTEND_URL is the Vercel origin.
 # For single-host setups both default to the same value.
 _FRONTEND_BASE           = _os.getenv("FRONTEND_URL", _APP_URL_BASE)
+
+
+@router.get("/oauth-config")
+async def oauth_public_config(response: Response) -> dict:
+    """Start OAuth on the same origin used for its callback and bind cookie."""
+    from urllib.parse import urlsplit
+    base = _APP_URL_BASE.rstrip("/")
+    url = urlsplit(base)
+    local = url.hostname in {"localhost", "127.0.0.1", "::1"}
+    if (url.scheme != "https" and not (local and url.scheme == "http")) or not url.netloc or url.username or url.password or url.path or url.query or url.fragment:
+        raise HTTPException(503, "OAuth origin is not configured correctly")
+    response.headers["Cache-Control"] = "no-store"
+    return {"origin": base}
 
 
 def _oauth_not_configured(provider: str):
