@@ -6,6 +6,7 @@ import { useLangContext } from "../../contexts/lang";
 import { motion } from "framer-motion";
 import { Icons } from "../../icons";
 import type { Page } from "../../types";
+import FlowMark from "../../FlowMark";
 
 type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
@@ -117,16 +118,7 @@ function FlowLogo() {
       marginBottom: 6,
       flexShrink: 0,
     }}>
-      <div style={{
-        width: 30, height: 30, borderRadius: 9, flexShrink: 0,
-        background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "var(--glow-pink-subtle)",
-      }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-        </svg>
-      </div>
+      <FlowMark size={30} style={{ flexShrink: 0 }} />
       <div>
         <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "-0.4px", color: "var(--t1)", lineHeight: 1.2 }}>Flow</div>
         <div style={{ fontSize: 9.5, color: "var(--t5)", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>مساعدك الذكي</div>
@@ -145,16 +137,7 @@ function FlowIcon() {
       marginBottom: 6,
       flexShrink: 0,
     }}>
-      <div style={{
-        width: 30, height: 30, borderRadius: 9,
-        background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "var(--glow-pink-subtle)",
-      }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-        </svg>
-      </div>
+      <FlowMark size={30} style={{ flexShrink: 0 }} />
     </div>
   );
 }

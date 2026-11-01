@@ -21,7 +21,7 @@ import { useAsyncData } from "../../../shared/hooks/useAsyncData";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { ErrorState, EmptyState } from "../../../shared/ui/StateViews";
 import { GoldButton } from "../../../shared/ui/gold";
-import AxonLogo from "../../../AxonLogo";
+import FlowMark from "../../../FlowMark";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";
 import { PRIORITY_COLOR } from "../../../constants";
 import "../chat.css";
@@ -485,7 +485,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           {!showMessagesLoading && !showMessagesError && messages.length === 0 && (
             <div style={{ margin: "auto", textAlign: "center", color: "var(--t5)", paddingBottom: 80, animation: "fadeIn .4s ease" }}>
               <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
+                {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <FlowMark size={40} />}
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>
                 {activeAgent ? activeAgent.name : t("chatTab.messages.emptyAgentName")}

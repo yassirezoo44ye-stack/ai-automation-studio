@@ -6,7 +6,7 @@ import { useLangContext } from "../../contexts/lang";
 import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
 import { GlassCard } from "../../shared/ui/gold";
-import AxonLogo from "../../AxonLogo";
+import FlowMark from "../../FlowMark";
 
 const codeStyle: React.CSSProperties = {
   background: "var(--accent-dim)", padding: "2px 8px",
@@ -704,7 +704,7 @@ export function SettingsPage() {
           {tab === "about" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, animation: "slideUp .2s ease" }}>
               <GlassCard lift={false} style={{ display: "flex", gap: 20, alignItems: "center" }}>
-                <AxonLogo size={52} />
+                <FlowMark size={52} />
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-0.4px" }}>Flow</div>
                   <div style={{ fontSize: 13, color: "var(--t4)", marginTop: 2 }}>{t("about.tagline")}</div>

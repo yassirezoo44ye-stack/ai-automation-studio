@@ -88,7 +88,7 @@ export function makeDefaultBrandKit(): FullBrandKit {
   return {
     id:          uid(),
     name:        "Default Brand",
-    description: "Axon Studio default brand kit",
+    description: "Flow default brand kit",
     colors: [
       { id: uid(), name: "Primary",   value: "#4f46e5" },
       { id: uid(), name: "Secondary", value: "#06b6d4" },
