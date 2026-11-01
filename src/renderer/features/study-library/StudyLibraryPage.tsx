@@ -89,7 +89,7 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
       const data = await res.json();
       if (!controller.signal.aborted) setAccessResult({ key: accessKey, identity: accessIdentity, granted: Boolean(data.has_access), admin: Boolean(data.is_admin), failed: false });
       if (!controller.signal.aborted && refresh > 0) setNotice(data.has_access ? "تم التحقق: صلاحية دخول المكتبة فعّالة." : "تم التحقق: لم نجد صلاحية دخول فعّالة لهذا الحساب.");
-    }).catch(() => { if (!controller.signal.aborted) setAccessResult({ key: accessKey, identity: accessIdentity, granted: false, admin: false, failed: true }); });
+    }).catch(() => { if (!controller.signal.aborted) { setAccessResult({ key: accessKey, identity: accessIdentity, granted: false, admin: false, failed: true }); setNotice(""); } });
     return () => controller.abort();
   }, [userId, emailVerified, accessKey, accessIdentity, refresh]);
 

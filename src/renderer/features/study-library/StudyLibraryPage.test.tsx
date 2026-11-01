@@ -50,6 +50,16 @@ describe("Study Library purchase boundary", () => {
     expect(screen.getByRole("button", { name: "التالي" })).toBeDisabled();
     expect(screen.getByText(/لا توجد صفحة تالية/)).toBeInTheDocument();
   });
+
+  it("clears the pending notice and allows retry after an access recheck fails", async () => {
+    auth.user = { id: "buyer", email: "reader@example.com", email_verified: true };
+    respond({ has_access: true, is_admin: false }); render(<StudyLibraryPage />);
+    const retry = await screen.findByRole("button", { name: "إعادة التحقق" });
+    respond({}, 503); fireEvent.click(retry);
+    await screen.findByText(/تعذّر التحقق من صلاحية الدخول الآن/);
+    expect(screen.queryByText("جارٍ إعادة التحقق من صلاحية الدخول…")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "إعادة التحقق" })).toBeEnabled();
+  });
   it("clears a search with no matches and restores the full catalog", async () => {
     vi.mocked(apiFetch).mockImplementation(async path => {
       const q = new URL(path, "https://test.local").searchParams.get("q");
