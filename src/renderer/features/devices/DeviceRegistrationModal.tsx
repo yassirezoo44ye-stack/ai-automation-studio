@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { devicesService } from "./services/devicesService";
 import type { EnrollmentToken } from "./types/devices.types";
+import { copyText } from "../../shared/utils/clipboard";
 
 interface Props {
   onClose: () => void;
@@ -55,11 +56,13 @@ export function DeviceRegistrationModal({ onClose }: Props) {
     }
   };
 
-  const copyToken = () => {
+  const copyToken = async () => {
     if (!token) return;
-    void navigator.clipboard.writeText(token.enrollment_token);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setCopied(false); setError(null);
+    try {
+      await copyText(token.enrollment_token);
+      setCopied(true); setTimeout(() => setCopied(false), 2500);
+    } catch { setError(t("common:actions.copyFailed")); }
   };
 
   const reset = () => {

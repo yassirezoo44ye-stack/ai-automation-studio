@@ -51,7 +51,7 @@ async def _resolve_org(user_id: str) -> str | None:
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT organization_id FROM organization_members WHERE user_id=$1 ORDER BY joined_at LIMIT 1",
+            "SELECT organization_id FROM organization_members WHERE user_id=$1 AND deleted_at IS NULL ORDER BY created_at, organization_id LIMIT 1",
             user_id,
         )
     return str(row["organization_id"]) if row else None
@@ -360,12 +360,13 @@ async def stream_plan_status_v2(plan_id: UUID, request: Request) -> StreamingRes
     await _assert_plan_owner(plan_id, user_id, org_id)
 
     async def _generator():
-        pool = get_pool()
         seen_statuses: dict[str, str] = {}
         terminal = {"COMPLETED", "FAILED", "PAUSED"}
 
         for _ in range(120):  # max 2 min polling
-            async with pool.acquire() as conn:
+            if await request.is_disconnected():
+                break
+            async with acquire_scoped(org_id) as conn:
                 plan_row = await conn.fetchrow(
                     "SELECT status, readiness_score FROM bp_plans WHERE id=$1", plan_id,
                 )
@@ -373,6 +374,10 @@ async def stream_plan_status_v2(plan_id: UUID, request: Request) -> StreamingRes
                     "SELECT section_key, status, tokens_used, error_msg FROM bp_sections WHERE plan_id=$1",
                     plan_id,
                 )
+
+            if not plan_row:
+                yield 'data: {"done": true, "error": "Plan no longer available"}\n\n'
+                break
 
             payload: dict[str, Any] = {}
             for s in sections:

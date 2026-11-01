@@ -9,12 +9,28 @@ import {
   toggleSave,
   creationToFeedItem,
 } from "../features/feed/services/feedService";
-import { fetchDiscoverFeed } from "../features/discover/services/discoverService";
+import { fetchDiscoverFeed, getCreation } from "../features/discover/services/discoverService";
 import { apiFetch } from "../shared/utils/api";
 import type { FlowCreation } from "../features/discover/types/creation.types";
 
 const mockFetchDiscover = vi.mocked(fetchDiscoverFeed);
 const mockApiFetch = vi.mocked(apiFetch);
+
+it("loads the shared creation directly even when it is outside the initial feed page", async () => {
+  mockFetchDiscover.mockResolvedValue({ items: [], total: 0 } as Awaited<ReturnType<typeof fetchDiscoverFeed>>);
+  vi.mocked(getCreation).mockResolvedValue(BASE_CREATION);
+  const result = await loadFeedItems(BASE_CREATION.id);
+  expect(result.items[0].id).toBe(BASE_CREATION.id);
+  expect(getCreation).toHaveBeenCalledWith(BASE_CREATION.id);
+});
+
+it("reports an unavailable shared creation without hiding the rest of the feed", async () => {
+  mockFetchDiscover.mockResolvedValue({ items: [BASE_CREATION], total: 1 } as Awaited<ReturnType<typeof fetchDiscoverFeed>>);
+  vi.mocked(getCreation).mockRejectedValue(new Error("Not found"));
+  const result = await loadFeedItems("bbbbbbbb-0000-4000-8000-000000000002");
+  expect(result.sharedUnavailable).toBe(true);
+  expect(result.items.some(item => item.id === BASE_CREATION.id)).toBe(true);
+});
 
 const BASE_CREATION: FlowCreation = {
   id: "aaaaaaaa-0000-4000-8000-000000000001",

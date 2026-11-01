@@ -1,0 +1,6050 @@
+{
+  "note": "JSX source sites, not runtime button counts. Handlers and guards do not prove successful execution. Functional evidence is recorded separately in docs/platform-actions-review.md.",
+  "filesScanned": 162,
+  "nativeButtons": 361,
+  "composedButtons": 151,
+  "actionSites": 604,
+  "manualReview": 0,
+  "actions": [
+    {
+      "path": "src/renderer/App.tsx",
+      "line": 46,
+      "element": "button",
+      "handler": "{() => window.location.reload()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/AppLayout.tsx",
+      "line": 179,
+      "element": "button",
+      "handler": "{onOpenCmd}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/AppLayout.tsx",
+      "line": 186,
+      "element": "button",
+      "handler": "{toggleTheme}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/AppLayout.tsx",
+      "line": 308,
+      "element": "a",
+      "handler": null,
+      "destination": "\"#main-content\"",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/AppLayout.tsx",
+      "line": 311,
+      "element": "button",
+      "handler": "{() => setMobileOpen(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/CommandPalette.tsx",
+      "line": 202,
+      "element": "div",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/CommandPalette.tsx",
+      "line": 204,
+      "element": "div",
+      "handler": "{e => e.stopPropagation()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/CommandPalette.tsx",
+      "line": 218,
+      "element": "button",
+      "handler": "{() => setQ(\"\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/CommandPalette.tsx",
+      "line": 254,
+      "element": "div",
+      "handler": "{() => run(item)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/Sidebar.tsx",
+      "line": 187,
+      "element": "div",
+      "handler": "{onMobileClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/Sidebar.tsx",
+      "line": 198,
+      "element": "button",
+      "handler": "{() => setSidebarCollapsed(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/Sidebar.tsx",
+      "line": 249,
+      "element": "button",
+      "handler": "{() => handleNav(item.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/Sidebar.tsx",
+      "line": 280,
+      "element": "button",
+      "handler": "{toggleLang}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/components/layout/Sidebar.tsx",
+      "line": 297,
+      "element": "button",
+      "handler": "{() => void logout()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/contexts/ToastContext.tsx",
+      "line": 23,
+      "element": "button",
+      "handler": "{() => dismiss(t.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 161,
+      "element": "GoldButton",
+      "handler": "{onRetry}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 202,
+      "element": "GoldButton",
+      "handler": "{download}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 313,
+      "element": "GoldButton",
+      "handler": "{() => setMode(m)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 330,
+      "element": "GoldButton",
+      "handler": "{submit}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 378,
+      "element": "GoldButton",
+      "handler": "{() => setInput(ex)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 383,
+      "element": "GoldButton",
+      "handler": "{() => setInput(activeProjectId ? `run --project=${activeProjectId}` : \"run\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 531,
+      "element": "GoldButton",
+      "handler": "{() => run(\"evolve\", onEvolve)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 534,
+      "element": "GoldButton",
+      "handler": "{() => run(\"suggest\", onSuggest)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 596,
+      "element": "GoldButton",
+      "handler": "{() => genDesc.trim() && run(\"gen\", () => onGenerate(genDesc).then(() => setGenDesc(\"\")))}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 754,
+      "element": "GoldButton",
+      "handler": "{refresh}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 760,
+      "element": "button",
+      "handler": "{() => setTab(tabDef.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 864,
+      "element": "GoldButton",
+      "handler": "{load}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/agentos/AgentOSPage.tsx",
+      "line": 903,
+      "element": "GoldButton",
+      "handler": "{() => cancel(job.job_id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/AIRoutingPage.tsx",
+      "line": 44,
+      "element": "GoldButton",
+      "handler": "{() => setTab(tabDef.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/BudgetsTab.tsx",
+      "line": 77,
+      "element": "GoldButton",
+      "handler": "{() => void save()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/BudgetsTab.tsx",
+      "line": 80,
+      "element": "GoldButton",
+      "handler": "{() => setEditing(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/BudgetsTab.tsx",
+      "line": 87,
+      "element": "GoldButton",
+      "handler": "{() => { setValue(String(data.limit)); setEditing(true); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/BudgetsTab.tsx",
+      "line": 143,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/BudgetsTab.tsx",
+      "line": 151,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/CostAnalyticsTab.tsx",
+      "line": 36,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/ModelsTab.tsx",
+      "line": 57,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/ProvidersTab.tsx",
+      "line": 49,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/UsageReportsTab.tsx",
+      "line": 48,
+      "element": "GoldButton",
+      "handler": "{() => setWindowIdx(i)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai-routing/tabs/UsageReportsTab.tsx",
+      "line": 64,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/AIWorkspace.tsx",
+      "line": 60,
+      "element": "button",
+      "handler": "{() => setTab(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/AIWorkspace.tsx",
+      "line": 71,
+      "element": "GoldButton",
+      "handler": "{() => { setChatAgentId(null); setTab(\"agents\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/AgentsTab.tsx",
+      "line": 106,
+      "element": "GoldButton",
+      "handler": "{() => void saveAgent()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/AgentsTab.tsx",
+      "line": 110,
+      "element": "GoldButton",
+      "handler": "{() => { setView(\"list\"); setEditing(null); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/AgentsTab.tsx",
+      "line": 134,
+      "element": "GoldButton",
+      "handler": "{() => openForm()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/AgentsTab.tsx",
+      "line": 161,
+      "element": "button",
+      "handler": "{() => onChatWith(a.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/AgentsTab.tsx",
+      "line": 164,
+      "element": "button",
+      "handler": "{() => openForm(a)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/AgentsTab.tsx",
+      "line": 167,
+      "element": "button",
+      "handler": "{() => void deleteAgent(a.id, a.name)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/AgentsTab.tsx",
+      "line": 170,
+      "element": "button",
+      "handler": "{() => setPublishTarget({ id: a.id, name: a.name, description: a.description ?? undefined })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/AgentsTab.tsx",
+      "line": 200,
+      "element": "div",
+      "handler": "{() => openForm({ name: tpl.name, avatar: tpl.avatar, description: tpl.description, system_prompt: tpl.system_prompt, model: \"claude-sonnet-4-6\", temperature: 1 })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 307,
+      "element": "GoldButton",
+      "handler": "{() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 367,
+      "element": "div",
+      "handler": "{() => { if (!isDeleting) setActiveConv(c.id); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 384,
+      "element": "button",
+      "handler": "{e => { if (!isDeleting) void deleteConv(e, c.id); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 429,
+      "element": "button",
+      "handler": "{() => setContextPanelOpen(p => !p)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 456,
+      "element": "button",
+      "handler": "{() => void setTaskStatus(task, task.status === \"done\" ? \"pending\" : \"done\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 471,
+      "element": "button",
+      "handler": "{() => setShowTasks(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 505,
+      "element": "GoldButton",
+      "handler": "{() => setPrompt(s)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 539,
+      "element": "GoldButton",
+      "handler": "{() => abortRef.current?.abort()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 548,
+      "element": "GoldButton",
+      "handler": "{() => void sendMessage()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 568,
+      "element": "button",
+      "handler": "{() => setContextPanelOpen(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 614,
+      "element": "button",
+      "handler": "{() => void exportConv()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 628,
+      "element": "button",
+      "handler": "{() => void extractTasks()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/ai/tabs/ChatTab.tsx",
+      "line": 708,
+      "element": "button",
+      "handler": "{handleCopy}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 116,
+      "element": "button",
+      "handler": "{() => setSection(s.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 138,
+      "element": "button",
+      "handler": "{onDownload}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 156,
+      "element": "button",
+      "handler": "{onPublishToDiscover}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 311,
+      "element": "button",
+      "handler": "{onCancel}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 447,
+      "element": "button",
+      "handler": "{onDismiss}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 459,
+      "element": "a",
+      "handler": null,
+      "destination": "{creditsUrl}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 477,
+      "element": "button",
+      "handler": "{onRetry}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1077,
+      "element": "button",
+      "handler": "{() => setPage(\"home\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1173,
+      "element": "button",
+      "handler": "{() => { setBuildError(null); setPhases(INITIAL_PHASES); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1184,
+      "element": "button",
+      "handler": "{() => { if (canBuild) void handleStartBuild(entryPrompt.trim()); }}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1226,
+      "element": "button",
+      "handler": "{() => setEntryPrompt(s)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1296,
+      "element": "button",
+      "handler": "{() => setPage(\"home\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1371,
+      "element": "button",
+      "handler": "{() => setPage(\"home\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1407,
+      "element": "button",
+      "handler": "{() => void handleRestart()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1415,
+      "element": "button",
+      "handler": "{() => window.open(`${window.location.origin}${previewUrl}`, \"_blank\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1422,
+      "element": "button",
+      "handler": "{() => void handleStop()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1433,
+      "element": "button",
+      "handler": "{() => void handleRun()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1447,
+      "element": "button",
+      "handler": "{handleDownload}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1577,
+      "element": "button",
+      "handler": "{() => setBuildDone(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/AppBuilderPage.tsx",
+      "line": 1583,
+      "element": "button",
+      "handler": "{handleDownload}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/AICopilotPanel.tsx",
+      "line": 205,
+      "element": "button",
+      "handler": "{() => setAction(a.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/AICopilotPanel.tsx",
+      "line": 243,
+      "element": "button",
+      "handler": "{() => setInput(s)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/AICopilotPanel.tsx",
+      "line": 269,
+      "element": "button",
+      "handler": "{() => setInput(`Explain this error and how to fix it: ${buildError}`)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/AICopilotPanel.tsx",
+      "line": 371,
+      "element": "button",
+      "handler": "{() => void send()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BottomTabBar.tsx",
+      "line": 213,
+      "element": "button",
+      "handler": "{() => setFilter(fb.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BottomTabBar.tsx",
+      "line": 252,
+      "element": "button",
+      "handler": "{() => setPaused(p => !p)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BottomTabBar.tsx",
+      "line": 266,
+      "element": "button",
+      "handler": "{() => { setCleared(Date.now()); setSearch(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BottomTabBar.tsx",
+      "line": 586,
+      "element": "button",
+      "handler": "{startDrag}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BottomTabBar.tsx",
+      "line": 612,
+      "element": "button",
+      "handler": "{() => setTab(t.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BuildPlanPanel.tsx",
+      "line": 176,
+      "element": "button",
+      "handler": "{onCancel}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BuildPlanPanel.tsx",
+      "line": 188,
+      "element": "button",
+      "handler": "{() => setEditing(true)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BuildPlanPanel.tsx",
+      "line": 202,
+      "element": "button",
+      "handler": "{() => { setEditing(false); onModify(editedPrompt); }}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/BuildPlanPanel.tsx",
+      "line": 216,
+      "element": "button",
+      "handler": "{onApprove}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/RuntimePanel.tsx",
+      "line": 117,
+      "element": "button",
+      "handler": "{onRun}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/RuntimePanel.tsx",
+      "line": 222,
+      "element": "button",
+      "handler": "{onRestart}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/RuntimePanel.tsx",
+      "line": 223,
+      "element": "button",
+      "handler": "{onStop}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/RuntimePanel.tsx",
+      "line": 225,
+      "element": "button",
+      "handler": "{() => window.open(iframeSrc, \"_blank\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/RuntimePanel.tsx",
+      "line": 255,
+      "element": "button",
+      "handler": "{onRun}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/RuntimePanel.tsx",
+      "line": 312,
+      "element": "button",
+      "handler": "{onRetry}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/app-builder/components/RuntimePanel.tsx",
+      "line": 313,
+      "element": "button",
+      "handler": "{() => onExplain(error)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 102,
+      "element": "button",
+      "handler": "{() => onSelect(\"google\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 105,
+      "element": "button",
+      "handler": "{() => onSelect(\"github\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 108,
+      "element": "button",
+      "handler": "{() => onSelect(\"microsoft\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 390,
+      "element": "button",
+      "handler": "{onBack}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 419,
+      "element": "button",
+      "handler": "{() => switchTab(\"login\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 422,
+      "element": "button",
+      "handler": "{() => switchTab(\"register\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 433,
+      "element": "form",
+      "handler": "{loginForm.handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 438,
+      "element": "button",
+      "handler": "{() => { forgotForm.setValue(\"email\", loginForm.values.email); switchTab(\"forgot\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 453,
+      "element": "form",
+      "handler": "{registerForm.handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 474,
+      "element": "GoldButton",
+      "handler": "{() => switchTab(\"login\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 477,
+      "element": "button",
+      "handler": "{handleResend}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 485,
+      "element": "form",
+      "handler": "{forgotForm.handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 493,
+      "element": "button",
+      "handler": "{() => switchTab(\"login\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 501,
+      "element": "form",
+      "handler": "{resetForm.handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 518,
+      "element": "GoldButton",
+      "handler": "{() => switchTab(\"login\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 526,
+      "element": "form",
+      "handler": "{mfaForm.handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/auth/AuthPage.tsx",
+      "line": 576,
+      "element": "button",
+      "handler": "{() => switchTab(\"login\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 45,
+      "element": "button",
+      "handler": "{() => onStatusChange(task.id, task.status === \"done\" ? \"pending\" : \"done\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 80,
+      "element": "button",
+      "handler": "{() => onStatusChange(task.id, \"in_progress\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 87,
+      "element": "button",
+      "handler": "{() => onDelete(task.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 214,
+      "element": "button",
+      "handler": "{() => setTab(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 225,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(c => !c)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 249,
+      "element": "GoldButton",
+      "handler": "{() => void createTask()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 250,
+      "element": "GoldButton",
+      "handler": "{() => { setCreating(false); setNewTitle(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 259,
+      "element": "button",
+      "handler": "{() => setFilter(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 285,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 350,
+      "element": "GoldButton",
+      "handler": "{loadWorkflows}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 415,
+      "element": "GoldButton",
+      "handler": "{() => runDemoWorkflow(wf.kind)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 478,
+      "element": "button",
+      "handler": "{() => decide(a.run_id, a.step_id, \"approve\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/automation/AutomationPage.tsx",
+      "line": 483,
+      "element": "button",
+      "handler": "{() => decide(a.run_id, a.step_id, \"reject\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/BillingPage.tsx",
+      "line": 89,
+      "element": "button",
+      "handler": "{() => setTab(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/BillingHistoryTab.tsx",
+      "line": 77,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/InvoicesTab.tsx",
+      "line": 67,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/InvoicesTab.tsx",
+      "line": 99,
+      "element": "a",
+      "handler": null,
+      "destination": "{inv.hosted_invoice_url ?? inv.invoice_pdf_url ?? \"#\"}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/PaymentMethodsTab.tsx",
+      "line": 78,
+      "element": "GoldButton",
+      "handler": "{() => void sync()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/PaymentMethodsTab.tsx",
+      "line": 81,
+      "element": "GoldButton",
+      "handler": "{() => void openPortal()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/PaymentMethodsTab.tsx",
+      "line": 93,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/SubscriptionTab.tsx",
+      "line": 82,
+      "element": "GoldButton",
+      "handler": "{() => void openPortal()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/SubscriptionTab.tsx",
+      "line": 109,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "disabled-or-conditional",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/SubscriptionTab.tsx",
+      "line": 111,
+      "element": "GoldButton",
+      "handler": "{() => void upgrade(p.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/SubscriptionTab.tsx",
+      "line": 115,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "disabled-or-conditional",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/billing/tabs/SubscriptionTab.tsx",
+      "line": 117,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "disabled-or-conditional",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 181,
+      "element": "button",
+      "handler": "{submit}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 200,
+      "element": "div",
+      "handler": "{() => setOpen(o => !o)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 361,
+      "element": "button",
+      "handler": "{() => setShowNew(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 383,
+      "element": "button",
+      "handler": "{() => void loadPlans()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 391,
+      "element": "div",
+      "handler": "{() => void selectPlan(p.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 421,
+      "element": "button",
+      "handler": "{() => selected && void selectPlan(selected)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 449,
+      "element": "button",
+      "handler": "{() => setTab(t)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 462,
+      "element": "button",
+      "handler": "{handleCancel}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 467,
+      "element": "button",
+      "handler": "{handleDelete}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 533,
+      "element": "button",
+      "handler": "{() => void handleRetry( detail.sections.filter(s => s.status === \"FAILED\").map(s => s.section_key) )}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 603,
+      "element": "a",
+      "handler": null,
+      "destination": "{c.website}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 672,
+      "element": "button",
+      "handler": "{() => void runAction(async () => { const s = await businessService.recomputeScore(selected); setDetail(prev => prev?.plan.id === selected ? { ...prev, score: s } : prev); })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/business-lab/BusinessLabPage.tsx",
+      "line": 710,
+      "element": "button",
+      "handler": "{() => void handleExport(variant)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 62,
+      "element": "button",
+      "handler": "{() => onChange(values.filter(x => x !== v))}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 203,
+      "element": "button",
+      "handler": "{() => jumpTo(s.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 208,
+      "element": "button",
+      "handler": "{() => void act(\"load\", load)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 220,
+      "element": "button",
+      "handler": "{() => void act(\"profile-ai\", async () => { const result = await request<{ profile: Profile }>(\"/profile/extract\", \"POST\", { text: cv }); const ai = result.profile; setProfile(p => { const lists = Object.fromEntries(listKeys.map(k => [k, merge(p[k], ai[k])])) as Pick<Profile, ListKey>; return { ...p, ...lists, summary: ai.summary.trim() ? ai.summary : p.summary, experience_years: ai.experience_years ?? p.experience_years, }; }); setNotice(t(\"aiFilled\")); setBioProcessed(true); setReviewOpen(fals",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 237,
+      "element": "form",
+      "handler": "{e => { e.preventDefault(); void act(\"profile\", async () => { await request(\"/profile\", \"PUT\", profile); await load(); setNotice(t(\"saved\")); }); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 259,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 265,
+      "element": "form",
+      "handler": "{e => { e.preventDefault(); void act(\"import\", async () => { const result = await request<{ inserted: number; warning: string | null; method?: string }>(\"/import\", \"POST\", { text, source: \"manual\", use_ai: true }); await load(); setNotice(result.warning ? bilingual(result.warning) : t(result.method === \"ai\" ? \"importedAi\" : \"imported\", { count: result.inserted })); }, true); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 273,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 280,
+      "element": "button",
+      "handler": "{() => void act(\"gmail\", async () => { const result = await request<{ url: string }>(\"/gmail/connect\", \"POST\"); sessionStorage.setItem(\"flow-career-oauth-org\", orgId); window.location.assign(result.url); })}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 286,
+      "element": "button",
+      "handler": "{() => void act(\"sync\", async () => { const result = await request<{ inserted: number; busy: boolean; unparsed_messages: number }>(\"/gmail/sync\", \"POST\"); await load(); setNotice(result.busy ? t(\"syncBusy\") : t(\"imported\", { count: result.inserted }) + (result.unparsed_messages ? \" \" + t(\"unparsed\", { count: result.unparsed_messages }) : \"\")); })}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 290,
+      "element": "button",
+      "handler": "{() => void act(\"gmail\", async () => { await request(\"/gmail\", \"DELETE\"); await load(); })}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 310,
+      "element": "button",
+      "handler": "{() => setFilter(s)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 318,
+      "element": "button",
+      "handler": "{() => jumpTo(\"career-add\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 360,
+      "element": "button",
+      "handler": "{() => void act(`fit-${job.id}`, async () => { const result = await request<{ ai_fit: AiFit }>(`/jobs/${job.id}/fit`, \"POST\", { language: i18n.language.startsWith(\"ar\") ? \"ar\" : \"en\" }); setJobs(list => list.map(j => j.id === job.id ? { ...j, ai_fit: result.ai_fit } : j)); }, true)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 368,
+      "element": "button",
+      "handler": "{() => void act(`draft-${job.id}`, () => openDraft(job, true), true)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 369,
+      "element": "a",
+      "handler": null,
+      "destination": "{job.url}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 370,
+      "element": "button",
+      "handler": "{() => void act(`verify-${job.id}`, async () => { await request(`/jobs/${job.id}/verify`, \"POST\"); await load(); })}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 384,
+      "element": "button",
+      "handler": "{() => setDraft(null)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 389,
+      "element": "button",
+      "handler": "{() => void copyText(draft.text).then(() => setNotice(t(\"copied\"))).catch(() => setError(t(\"common:actions.copyFailed\")))}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/careers/CareersPage.tsx",
+      "line": 390,
+      "element": "button",
+      "handler": "{() => { const job = jobs.find(j => j.id === draft.jobId); if (job) void act(`draft-${job.id}`, () => openDraft(job, false)); }}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/DesignStudio.tsx",
+      "line": 350,
+      "element": "button",
+      "handler": "{() => setPanel(p.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/DesignStudio.tsx",
+      "line": 424,
+      "element": "button",
+      "handler": "{() => dispatch({ type: \"SET_PAGE\", pageId: page.id })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/DesignStudio.tsx",
+      "line": 435,
+      "element": "button",
+      "handler": "{() => dispatch({ type: \"ADD_PAGE\", page: { id: `p_${Date.now()}`, name: t(\"shell.defaultPageName\", { num: state.project.pages.length + 1 }), width: 1280, height: 720, backgroundColor: \"#ffffff\", json: { version: \"6.6.0\", objects: [] }, thumbnail: \"\", }, })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/AICommandBar.tsx",
+      "line": 151,
+      "element": "div",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/AICommandBar.tsx",
+      "line": 190,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/AICommandBar.tsx",
+      "line": 239,
+      "element": "button",
+      "handler": "{() => void handleBuild()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/AICommandBar.tsx",
+      "line": 254,
+      "element": "button",
+      "handler": "{() => void handleBuild(true)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/AICommandBar.tsx",
+      "line": 282,
+      "element": "button",
+      "handler": "{() => setPrompt(ex)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/AICommandBar.tsx",
+      "line": 373,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/ExportModal.tsx",
+      "line": 43,
+      "element": "div",
+      "handler": "{e => { if (e.target === e.currentTarget) onClose(); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/ExportModal.tsx",
+      "line": 47,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/ExportModal.tsx",
+      "line": 55,
+      "element": "button",
+      "handler": "{() => setFormat(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/ExportModal.tsx",
+      "line": 73,
+      "element": "button",
+      "handler": "{() => setScale(s)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/ExportModal.tsx",
+      "line": 103,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Modals/ExportModal.tsx",
+      "line": 104,
+      "element": "button",
+      "handler": "{() => void handleExport()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AIPanel.tsx",
+      "line": 164,
+      "element": "button",
+      "handler": "{() => { setTool(id); setError(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AIPanel.tsx",
+      "line": 208,
+      "element": "button",
+      "handler": "{run}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AIPanel.tsx",
+      "line": 231,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "disabled-or-conditional",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AIPanel.tsx",
+      "line": 240,
+      "element": "button",
+      "handler": "{() => void insertImage(src)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AIPanel.tsx",
+      "line": 272,
+      "element": "button",
+      "handler": "{run}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AIPanel.tsx",
+      "line": 306,
+      "element": "button",
+      "handler": "{run}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AIPanel.tsx",
+      "line": 329,
+      "element": "button",
+      "handler": "{run}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AppTreePanel.tsx",
+      "line": 193,
+      "element": "button",
+      "handler": "{() => onSectionChange(\"overview\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AppTreePanel.tsx",
+      "line": 204,
+      "element": "button",
+      "handler": "{() => toggleGroup(group.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AppTreePanel.tsx",
+      "line": 220,
+      "element": "button",
+      "handler": "{() => !item.comingSoon && onSectionChange(item.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AssetsPanel.tsx",
+      "line": 80,
+      "element": "button",
+      "handler": "{() => setTab(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AssetsPanel.tsx",
+      "line": 111,
+      "element": "button",
+      "handler": "{() => onInsert(asset.src)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AssetsPanel.tsx",
+      "line": 118,
+      "element": "button",
+      "handler": "{() => void handleFav(asset.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/AssetsPanel.tsx",
+      "line": 125,
+      "element": "button",
+      "handler": "{() => void handleDelete(asset.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/BrandKitPanel.tsx",
+      "line": 131,
+      "element": "button",
+      "handler": "{() => setAddingColor(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/BrandKitPanel.tsx",
+      "line": 144,
+      "element": "button",
+      "handler": "{() => removeColor(c.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/BrandKitPanel.tsx",
+      "line": 161,
+      "element": "button",
+      "handler": "{addColor}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/BrandKitPanel.tsx",
+      "line": 171,
+      "element": "button",
+      "handler": "{() => setAddingColor(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/BrandKitPanel.tsx",
+      "line": 183,
+      "element": "button",
+      "handler": "{addFont}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/BrandKitPanel.tsx",
+      "line": 192,
+      "element": "button",
+      "handler": "{() => removeFont(f.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/BrandKitPanel.tsx",
+      "line": 201,
+      "element": "button",
+      "handler": "{addLogo}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/BrandKitPanel.tsx",
+      "line": 211,
+      "element": "button",
+      "handler": "{() => removeLogo(l.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/ComponentsPanel.tsx",
+      "line": 72,
+      "element": "button",
+      "handler": "{() => setCategory(cat)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/ComponentsPanel.tsx",
+      "line": 94,
+      "element": "div",
+      "handler": "{() => void insertComponent(comp.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/HistoryPanel.tsx",
+      "line": 67,
+      "element": "button",
+      "handler": "{() => commandManager.undo(null as never)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/HistoryPanel.tsx",
+      "line": 73,
+      "element": "button",
+      "handler": "{() => commandManager.redo(null as never)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/LayersPanel.tsx",
+      "line": 58,
+      "element": "li",
+      "handler": "{() => onSelect(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/LayersPanel.tsx",
+      "line": 67,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); handleVisibility(id, !visible); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/LayersPanel.tsx",
+      "line": 79,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); handleLock(id, !locked); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PagesPanel.tsx",
+      "line": 63,
+      "element": "button",
+      "handler": "{addPage}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PagesPanel.tsx",
+      "line": 70,
+      "element": "div",
+      "handler": "{() => setPage(page.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PagesPanel.tsx",
+      "line": 95,
+      "element": "input",
+      "handler": "{e => e.stopPropagation()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PagesPanel.tsx",
+      "line": 112,
+      "element": "div",
+      "handler": "{e => e.stopPropagation()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PagesPanel.tsx",
+      "line": 113,
+      "element": "button",
+      "handler": "{() => reorderPage(idx, idx - 1)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PagesPanel.tsx",
+      "line": 120,
+      "element": "button",
+      "handler": "{() => reorderPage(idx, idx + 1)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PagesPanel.tsx",
+      "line": 127,
+      "element": "button",
+      "handler": "{() => duplicatePage(page.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PagesPanel.tsx",
+      "line": 133,
+      "element": "button",
+      "handler": "{() => removePage(page.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PropertiesPanel.tsx",
+      "line": 50,
+      "element": "button",
+      "handler": "{onBringForward}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/PropertiesPanel.tsx",
+      "line": 60,
+      "element": "button",
+      "handler": "{onSendBackward}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/TemplatesPanel.tsx",
+      "line": 38,
+      "element": "button",
+      "handler": "{() => setCategory(cat)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/TemplatesPanel.tsx",
+      "line": 51,
+      "element": "button",
+      "handler": "{() => onApply(tpl)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/TokensPanel.tsx",
+      "line": 85,
+      "element": "button",
+      "handler": "{() => setCategory(cat.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/TokensPanel.tsx",
+      "line": 113,
+      "element": "button",
+      "handler": "{() => deleteToken(token.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Panels/TokensPanel.tsx",
+      "line": 147,
+      "element": "button",
+      "handler": "{addToken}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/LeftToolbar.tsx",
+      "line": 144,
+      "element": "button",
+      "handler": "{() => onToolChange(tool.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 73,
+      "element": "button",
+      "handler": "{onUndo}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 82,
+      "element": "button",
+      "handler": "{onRedo}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 94,
+      "element": "button",
+      "handler": "{onZoomOut}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 95,
+      "element": "button",
+      "handler": "{onZoomReset}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 98,
+      "element": "button",
+      "handler": "{onZoomIn}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 104,
+      "element": "button",
+      "handler": "{() => onModeChange(tab.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 119,
+      "element": "button",
+      "handler": "{onBuildWithAI}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 139,
+      "element": "button",
+      "handler": "{onSave}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/components/Toolbar/TopToolbar.tsx",
+      "line": 142,
+      "element": "button",
+      "handler": "{onExport}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/features/properties/inspectors/TypographyInspector.tsx",
+      "line": 131,
+      "element": "button",
+      "handler": "{() => { const v: \"italic\" | \"normal\" = fontStyle === \"italic\" ? \"normal\" : \"italic\"; setFontStyle(v); void applyFont({ fontStyle: v }); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/features/properties/inspectors/TypographyInspector.tsx",
+      "line": 132,
+      "element": "button",
+      "handler": "{() => { const v = !underline; setUnderline(v); void applyFont({ underline: v }); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/design-studio/features/properties/inspectors/TypographyInspector.tsx",
+      "line": 134,
+      "element": "button",
+      "handler": "{() => { setTextAlign(a); void applyFont({ textAlign: a }); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/DevWorkspace.tsx",
+      "line": 202,
+      "element": "GoldButton",
+      "handler": "{downloadZip}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/DevWorkspace.tsx",
+      "line": 203,
+      "element": "GoldButton",
+      "handler": "{clearWorkspace}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/DevWorkspace.tsx",
+      "line": 219,
+      "element": "button",
+      "handler": "{() => setTab(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 87,
+      "element": "button",
+      "handler": "{() => { setFailed(false); setCopied(false); copyText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); }).catch(() => setFailed(true)); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 127,
+      "element": "button",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 251,
+      "element": "button",
+      "handler": "{() => setPm(p)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 318,
+      "element": "button",
+      "handler": "{downloadCommands}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 339,
+      "element": "QuickAction",
+      "handler": "{onOpenPreview}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 340,
+      "element": "QuickAction",
+      "handler": "{onViewFiles}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 341,
+      "element": "QuickAction",
+      "handler": "{onViewFiles}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 342,
+      "element": "QuickAction",
+      "handler": "{onOpenTerminal}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 343,
+      "element": "QuickAction",
+      "handler": "{onExportZip}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/components/InstallationPanel.tsx",
+      "line": 344,
+      "element": "QuickAction",
+      "handler": "{onOpenPackage}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/BuildTab.tsx",
+      "line": 134,
+      "element": "GoldButton",
+      "handler": "{buildState === \"building\" ? stop : () => void build()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/BuildTab.tsx",
+      "line": 182,
+      "element": "GoldButton",
+      "handler": "{() => onPrompt(tpl.prompt)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/FilesTab.tsx",
+      "line": 37,
+      "element": "div",
+      "handler": "{() => onSelect(f)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/PackageTab.tsx",
+      "line": 200,
+      "element": "GoldButton",
+      "handler": "{() => handleLangChange(l.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/PackageTab.tsx",
+      "line": 259,
+      "element": "button",
+      "handler": "{checkPreflight}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/PackageTab.tsx",
+      "line": 317,
+      "element": "GoldButton",
+      "handler": "{() => uploadRef.current?.click()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/PackageTab.tsx",
+      "line": 343,
+      "element": "GoldButton",
+      "handler": "{state === \"building\" ? () => abortRef.current?.abort() : () => void pack()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/PackageTab.tsx",
+      "line": 352,
+      "element": "a",
+      "handler": null,
+      "destination": "{downloadUrl}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/PreviewTab.tsx",
+      "line": 43,
+      "element": "GoldButton",
+      "handler": "{onOpenPreview}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/RunTab.tsx",
+      "line": 175,
+      "element": "GoldButton",
+      "handler": "{() => onSwitchTab(\"generate\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/RunTab.tsx",
+      "line": 203,
+      "element": "GoldButton",
+      "handler": "{stop}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/RunTab.tsx",
+      "line": 207,
+      "element": "GoldButton",
+      "handler": "{() => void run()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/dev/tabs/RunTab.tsx",
+      "line": 213,
+      "element": "GoldButton",
+      "handler": "{() => onSwitchTab(\"preview\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceCard.tsx",
+      "line": 60,
+      "element": "div",
+      "handler": "{onSelect}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceCard.tsx",
+      "line": 118,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); onRevoke(); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceCard.tsx",
+      "line": 131,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); onDelete(); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceControlPanel.tsx",
+      "line": 170,
+      "element": "button",
+      "handler": "{() => void onStopSession(activeSession.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceControlPanel.tsx",
+      "line": 193,
+      "element": "button",
+      "handler": "{() => setView(\"list\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceControlPanel.tsx",
+      "line": 267,
+      "element": "button",
+      "handler": "{() => void handleCreate()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceControlPanel.tsx",
+      "line": 289,
+      "element": "button",
+      "handler": "{() => setView(\"create\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceControlPanel.tsx",
+      "line": 369,
+      "element": "button",
+      "handler": "{onStart}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceLayoutEditor.tsx",
+      "line": 149,
+      "element": "div",
+      "handler": "{e => { e.stopPropagation(); toggleDevice(en.device_id); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceRegistrationModal.tsx",
+      "line": 76,
+      "element": "div",
+      "handler": "{(e) => { if (e.target === e.currentTarget) onClose(); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceRegistrationModal.tsx",
+      "line": 102,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceRegistrationModal.tsx",
+      "line": 167,
+      "element": "button",
+      "handler": "{copyToken}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceRegistrationModal.tsx",
+      "line": 257,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceRegistrationModal.tsx",
+      "line": 261,
+      "element": "button",
+      "handler": "{() => void generate()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DeviceRegistrationModal.tsx",
+      "line": 271,
+      "element": "button",
+      "handler": "{reset}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DevicesPage.tsx",
+      "line": 176,
+      "element": "button",
+      "handler": "{refetch}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DevicesPage.tsx",
+      "line": 188,
+      "element": "button",
+      "handler": "{() => setShowEnrollModal(true)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DevicesPage.tsx",
+      "line": 260,
+      "element": "button",
+      "handler": "{() => setShowEnrollModal(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DevicesPage.tsx",
+      "line": 465,
+      "element": "button",
+      "handler": "{onCancel}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/devices/DevicesPage.tsx",
+      "line": 468,
+      "element": "button",
+      "handler": "{() => void confirm()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 98,
+      "element": "div",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 127,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 175,
+      "element": "button",
+      "handler": "{handleTry}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 188,
+      "element": "button",
+      "handler": "{() => handleAction(\"clone\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 206,
+      "element": "button",
+      "handler": "{() => handleAction(\"publish\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 220,
+      "element": "button",
+      "handler": "{() => handleAction(\"unpublish\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 234,
+      "element": "button",
+      "handler": "{() => handleAction(\"delete\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 259,
+      "element": "button",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 323,
+      "element": "button",
+      "handler": "{() => onChange(f)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 437,
+      "element": "button",
+      "handler": "{() => setTab(t_)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/DiscoverPage.tsx",
+      "line": 490,
+      "element": "CreationCard",
+      "handler": "{() => setSelected(c)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/components/PublishToDiscoverModal.tsx",
+      "line": 124,
+      "element": "div",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/components/PublishToDiscoverModal.tsx",
+      "line": 154,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/components/PublishToDiscoverModal.tsx",
+      "line": 327,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/discover/components/PublishToDiscoverModal.tsx",
+      "line": 340,
+      "element": "button",
+      "handler": "{() => void handleSubmit()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/FeedPage.tsx",
+      "line": 140,
+      "element": "button",
+      "handler": "{() => { scrollToIndex(0); setContentFilter(filter); setSubject(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/FeedPage.tsx",
+      "line": 148,
+      "element": "button",
+      "handler": "{() => void loadMoreStudy()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/FeedPage.tsx",
+      "line": 166,
+      "element": "button",
+      "handler": "{() => { setLoading(true); setLoadingMore(false); setRefresh(value => value + 1); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/FeedPage.tsx",
+      "line": 175,
+      "element": "button",
+      "handler": "{() => { setSearch(\"\"); setSubject(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/FeedActionPanel.tsx",
+      "line": 43,
+      "element": "button",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/FeedActionPanel.tsx",
+      "line": 149,
+      "element": "ActionBtn",
+      "handler": "{onLike}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/FeedActionPanel.tsx",
+      "line": 160,
+      "element": "ActionBtn",
+      "handler": "{onComment}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/FeedActionPanel.tsx",
+      "line": 169,
+      "element": "ActionBtn",
+      "handler": "{handleShare}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/FeedActionPanel.tsx",
+      "line": 177,
+      "element": "ActionBtn",
+      "handler": "{onSave}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/FeedActionPanel.tsx",
+      "line": 189,
+      "element": "button",
+      "handler": "{onBuild}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/FeedBottomOverlay.tsx",
+      "line": 70,
+      "element": "button",
+      "handler": "{onBuild}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/FeedTopBar.tsx",
+      "line": 28,
+      "element": "button",
+      "handler": "{() => onTabChange(tab.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/feed/components/StudyFeedCard.tsx",
+      "line": 15,
+      "element": "a",
+      "handler": null,
+      "destination": "{href}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 145,
+      "element": "button",
+      "handler": "{onAction}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 155,
+      "element": "div",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 184,
+      "element": "div",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 221,
+      "element": "div",
+      "handler": "{onNavigate}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 298,
+      "element": "button",
+      "handler": "{onAction}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 318,
+      "element": "button",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 533,
+      "element": "button",
+      "handler": "{() => setCreating(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 540,
+      "element": "button",
+      "handler": "{handleBuildApp}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 576,
+      "element": "button",
+      "handler": "{handleBuildApp}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 593,
+      "element": "button",
+      "handler": "{() => { setPrompt(idea); promptRef.current?.focus(); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 609,
+      "element": "KpiTile",
+      "handler": "{k.onClick}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 619,
+      "element": "button",
+      "handler": "{() => setPage(\"integrations\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 623,
+      "element": "button",
+      "handler": "{() => setPage(\"integrations\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 642,
+      "element": "button",
+      "handler": "{handleBuildApp}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 646,
+      "element": "button",
+      "handler": "{() => { setPrompt(uc.prompt); promptRef.current?.focus(); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 678,
+      "element": "button",
+      "handler": "{() => setPage(\"agentos\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 782,
+      "element": "button",
+      "handler": "{createProject}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 786,
+      "element": "button",
+      "handler": "{() => { setCreating(false); setNewName(\"\"); setNewDesc(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 804,
+      "element": "button",
+      "handler": "{handleBuildApp}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 812,
+      "element": "Card",
+      "handler": "{() => { setActiveProject(p.id, \"build\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 821,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); void deleteProject(p.id, p.name); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/home/HomePage.tsx",
+      "line": 882,
+      "element": "button",
+      "handler": "{() => setPage(item.page)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 247,
+      "element": "motion.div",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 254,
+      "element": "motion.div",
+      "handler": "{e => e.stopPropagation()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 309,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 313,
+      "element": "button",
+      "handler": "{() => void handleConnect()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 430,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "disabled-or-conditional",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 435,
+      "element": "button",
+      "handler": "{() => onConnect(integration)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 441,
+      "element": "button",
+      "handler": "{() => onDisconnect(integration.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 449,
+      "element": "button",
+      "handler": "{() => onConnect(integration)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 580,
+      "element": "button",
+      "handler": "{refresh}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 612,
+      "element": "button",
+      "handler": "{() => setActiveCategory(cat.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/integrations/IntegrationsPage.tsx",
+      "line": 630,
+      "element": "button",
+      "handler": "{refresh}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 234,
+      "element": "button",
+      "handler": "{() => scrollTo(\"lp-hero\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 247,
+      "element": "button",
+      "handler": "{() => scrollTo(\"lp-features\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 252,
+      "element": "button",
+      "handler": "{() => scrollTo(\"lp-how\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 257,
+      "element": "button",
+      "handler": "{() => scrollTo(\"lp-pricing\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 265,
+      "element": "button",
+      "handler": "{toggleLang}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 272,
+      "element": "button",
+      "handler": "{onSignIn}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 275,
+      "element": "button",
+      "handler": "{onSignUp}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 281,
+      "element": "button",
+      "handler": "{() => setMenuOpen(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 299,
+      "element": "button",
+      "handler": "{() => { scrollTo(\"lp-hero\"); setMenuOpen(false); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 306,
+      "element": "button",
+      "handler": "{() => setMenuOpen(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 316,
+      "element": "button",
+      "handler": "{() => scrollTo(\"lp-features\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 321,
+      "element": "button",
+      "handler": "{() => scrollTo(\"lp-how\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 326,
+      "element": "button",
+      "handler": "{() => scrollTo(\"lp-pricing\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 332,
+      "element": "button",
+      "handler": "{() => { onSignIn(); setMenuOpen(false); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 335,
+      "element": "button",
+      "handler": "{() => { onSignUp(); setMenuOpen(false); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 338,
+      "element": "button",
+      "handler": "{() => { toggleLang(); setMenuOpen(false); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 410,
+      "element": "button",
+      "handler": "{onSignUp}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 418,
+      "element": "button",
+      "handler": "{() => document.getElementById(\"lp-how\")?.scrollIntoView({ behavior: \"smooth\" })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 752,
+      "element": "button",
+      "handler": "{onSignUp}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 812,
+      "element": "button",
+      "handler": "{onSignUp}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 820,
+      "element": "button",
+      "handler": "{onSignIn}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/landing/LandingPage.tsx",
+      "line": 882,
+      "element": "a",
+      "handler": null,
+      "destination": "\"#lp-hero\"",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 166,
+      "element": "button",
+      "handler": "{() => { setOpen(v => !v); setPermDenied(false); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 197,
+      "element": "form",
+      "handler": "{handleSave}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 227,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 230,
+      "element": "button",
+      "handler": "{() => { setOpen(false); setPermDenied(false); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 317,
+      "element": "GoldButton",
+      "handler": "{() => setOpen(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 322,
+      "element": "form",
+      "handler": "{handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 338,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 341,
+      "element": "button",
+      "handler": "{() => setOpen(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 370,
+      "element": "a",
+      "handler": null,
+      "destination": "{`mailto:${lead.email}`}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 371,
+      "element": "a",
+      "handler": null,
+      "destination": "{`tel:${lead.phone}`}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 381,
+      "element": "button",
+      "handler": "{() => onDraft(lead)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 384,
+      "element": "button",
+      "handler": "{() => onRequalify(lead)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 400,
+      "element": "button",
+      "handler": "{onRun}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 412,
+      "element": "button",
+      "handler": "{() => onJump(a.lead_id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 444,
+      "element": "form",
+      "handler": "{handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 451,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 570,
+      "element": "button",
+      "handler": "{() => setView(v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 585,
+      "element": "button",
+      "handler": "{() => setStatusFilter(s)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 624,
+      "element": "button",
+      "handler": "{() => setDraft(null)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 634,
+      "element": "GoldButton",
+      "handler": "{() => void copyText(`${draft.subject}\\n\\n${draft.body}`).then(() => toast(t(\"draft.copied\"), \"ok\")).catch(() => toast(t(\"common:actions.copyFailed\"), \"err\"))}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/leads/LeadsPage.tsx",
+      "line": 638,
+      "element": "a",
+      "handler": null,
+      "destination": "{`mailto:${draft.email}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 118,
+      "element": "div",
+      "handler": "{() => onToggleDetails(item.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 195,
+      "element": "GoldButton",
+      "handler": "{() => onToggleDetails(item.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 200,
+      "element": "GoldButton",
+      "handler": "{() => onUninstall(item.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 204,
+      "element": "GoldButton",
+      "handler": "{() => onInstall(item.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 239,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 243,
+      "element": "button",
+      "handler": "{() => setTab(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 272,
+      "element": "button",
+      "handler": "{() => onChange(\"all\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 290,
+      "element": "button",
+      "handler": "{() => onChange(c.slug)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 447,
+      "element": "button",
+      "handler": "{() => setSortBy(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/MarketplacePage.tsx",
+      "line": 475,
+      "element": "button",
+      "handler": "{() => { setSearch(\"\"); void load(\"\", category); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/tabs/ReviewsTab.tsx",
+      "line": 91,
+      "element": "button",
+      "handler": "{() => void submit()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/tabs/VersionsTab.tsx",
+      "line": 94,
+      "element": "button",
+      "handler": "{() => void rollback(v.version)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/marketplace/tabs/VersionsTab.tsx",
+      "line": 108,
+      "element": "button",
+      "handler": "{() => void loadChangelog(v.version)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/new-project/NewProjectPage.tsx",
+      "line": 112,
+      "element": "button",
+      "handler": "{() => { void handleCardClick(type); }}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/observability/ObservabilityPage.tsx",
+      "line": 45,
+      "element": "GoldButton",
+      "handler": "{() => setTab(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/observability/components.tsx",
+      "line": 68,
+      "element": "GoldButton",
+      "handler": "{onRetry}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/observability/tabs/AlertsTracesTab.tsx",
+      "line": 76,
+      "element": "GoldButton",
+      "handler": "{() => setSub(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/observability/tabs/AlertsTracesTab.tsx",
+      "line": 92,
+      "element": "GoldButton",
+      "handler": "{() => void toggleRule(rule)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/organizations/OrganizationsPage.tsx",
+      "line": 70,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(c => !c)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/organizations/OrganizationsPage.tsx",
+      "line": 85,
+      "element": "GoldButton",
+      "handler": "{() => void handleCreate()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/organizations/OrganizationsPage.tsx",
+      "line": 88,
+      "element": "GoldButton",
+      "handler": "{() => { setCreating(false); setNewName(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/organizations/OrganizationsPage.tsx",
+      "line": 102,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/organizations/OrganizationsPage.tsx",
+      "line": 119,
+      "element": "div",
+      "handler": "{() => setCurrentOrgId(org.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/organizations/OrganizationsPage.tsx",
+      "line": 155,
+      "element": "GoldButton",
+      "handler": "{() => void refreshOrgs()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/organizations/OrganizationsPage.tsx",
+      "line": 164,
+      "element": "GoldButton",
+      "handler": "{() => void loadActivity(currentOrgId)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/PluginsPage.tsx",
+      "line": 153,
+      "element": "GoldButton",
+      "handler": "{() => setPage(\"organizations\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/PluginsPage.tsx",
+      "line": 171,
+      "element": "button",
+      "handler": "{() => setTopTab(tabId)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/PluginsPage.tsx",
+      "line": 209,
+      "element": "GoldButton",
+      "handler": "{() => toggleDetails(inst.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/PluginsPage.tsx",
+      "line": 212,
+      "element": "GoldButton",
+      "handler": "{() => void toggleEnabled(inst)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/PluginsPage.tsx",
+      "line": 218,
+      "element": "GoldButton",
+      "handler": "{() => void uninstall(inst)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/PluginsPage.tsx",
+      "line": 231,
+      "element": "button",
+      "handler": "{() => setDetailTab(dt)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/PluginsPage.tsx",
+      "line": 280,
+      "element": "GoldButton",
+      "handler": "{() => (alreadyInstalled ? setTopTab(\"installed\") : void install(p.id))}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/tabs/ConfigTab.tsx",
+      "line": 60,
+      "element": "GoldButton",
+      "handler": "{() => void save()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/plugins/tabs/PermissionsTab.tsx",
+      "line": 54,
+      "element": "GoldButton",
+      "handler": "{() => void approve()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/runs/RunsPage.tsx",
+      "line": 218,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/runs/RunsPage.tsx",
+      "line": 366,
+      "element": "button",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/runs/RunsPage.tsx",
+      "line": 383,
+      "element": "button",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/runs/RunsPage.tsx",
+      "line": 402,
+      "element": "button",
+      "handler": "{() => setFilter(tab.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/runs/RunsPage.tsx",
+      "line": 456,
+      "element": "tr",
+      "handler": "{() => setSelected(isSelected ? null : run)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/runs/RunsPage.tsx",
+      "line": 507,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); void cancel(run.id); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/SaasFactoryPage.tsx",
+      "line": 42,
+      "element": "IdeaInput",
+      "handler": "{submit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/SaasFactoryPage.tsx",
+      "line": 60,
+      "element": "button",
+      "handler": "{() => openProject(p)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/IdeaInput.tsx",
+      "line": 35,
+      "element": "form",
+      "handler": "{handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/IdeaInput.tsx",
+      "line": 53,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/IdeaInput.tsx",
+      "line": 67,
+      "element": "button",
+      "handler": "{() => setIdea(ex)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/PipelineView.tsx",
+      "line": 112,
+      "element": "button",
+      "handler": "{handleApprove}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/PipelineView.tsx",
+      "line": 119,
+      "element": "button",
+      "handler": "{() => setRejectMode(true)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/PipelineView.tsx",
+      "line": 142,
+      "element": "button",
+      "handler": "{handleReject}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/PipelineView.tsx",
+      "line": 149,
+      "element": "button",
+      "handler": "{() => { setRejectMode(false); setRejectReason(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/PipelineView.tsx",
+      "line": 217,
+      "element": "button",
+      "handler": "{onResume}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/saas-factory/components/PipelineView.tsx",
+      "line": 234,
+      "element": "button",
+      "handler": "{onDelete}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/sandbox/SandboxPage.tsx",
+      "line": 157,
+      "element": "GoldButton",
+      "handler": "{() => setPage(\"organizations\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/sandbox/SandboxPage.tsx",
+      "line": 175,
+      "element": "button",
+      "handler": "{() => setTopTab(tabId)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/sandbox/SandboxPage.tsx",
+      "line": 215,
+      "element": "GoldButton",
+      "handler": "{() => toggleDetails(w.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/sandbox/SandboxPage.tsx",
+      "line": 218,
+      "element": "GoldButton",
+      "handler": "{() => void stopWorker(w)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/sandbox/SandboxPage.tsx",
+      "line": 233,
+      "element": "button",
+      "handler": "{() => setDetailTab(dt)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/sandbox/SandboxPage.tsx",
+      "line": 271,
+      "element": "GoldButton",
+      "handler": "{() => void approveRequest(req)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 200,
+      "element": "button",
+      "handler": "{handleCopy}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 213,
+      "element": "button",
+      "handler": "{handleDismissCreated}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 226,
+      "element": "form",
+      "handler": "{e => void handleCreate(e)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 262,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 298,
+      "element": "button",
+      "handler": "{() => void handleRevoke(key.key_id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 305,
+      "element": "button",
+      "handler": "{() => setConfirmRevoke(null)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 313,
+      "element": "button",
+      "handler": "{() => setConfirmRevoke(key.key_id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 430,
+      "element": "div",
+      "handler": "{() => setTab(n.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 453,
+      "element": "button",
+      "handler": "{loadSystemInfo}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 577,
+      "element": "a",
+      "handler": null,
+      "destination": "\"https://console.anthropic.com/settings/billing\"",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 629,
+      "element": "button",
+      "handler": "{() => setTheme(opt.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/settings/SettingsPage.tsx",
+      "line": 666,
+      "element": "button",
+      "handler": "{() => setLang(l.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/social/SocialPage.tsx",
+      "line": 33,
+      "element": "button",
+      "handler": "{() => setTab(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/social/SocialPage.tsx",
+      "line": 124,
+      "element": "GoldButton",
+      "handler": "{fetchInfo}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/social/SocialPage.tsx",
+      "line": 153,
+      "element": "GoldButton",
+      "handler": "{fetchTranscript}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/social/SocialPage.tsx",
+      "line": 164,
+      "element": "GoldButton",
+      "handler": "{() => askQuestion(q)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/social/SocialPage.tsx",
+      "line": 216,
+      "element": "button",
+      "handler": "{() => askQuestion()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/social/SocialPage.tsx",
+      "line": 286,
+      "element": "button",
+      "handler": "{() => setPlatform(p)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/social/SocialPage.tsx",
+      "line": 319,
+      "element": "GoldButton",
+      "handler": "{generate}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/social/SocialPage.tsx",
+      "line": 345,
+      "element": "GoldButton",
+      "handler": "{() => copy(v.text + (v.hashtags?.length ? \"\\n\\n\" + v.hashtags.join(\" \") : \"\"), i)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyContentWorkflow.tsx",
+      "line": 71,
+      "element": "form",
+      "handler": "{event => void save(event)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyContentWorkflow.tsx",
+      "line": 79,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyContentWorkflow.tsx",
+      "line": 84,
+      "element": "button",
+      "handler": "{() => void action(\"review\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyContentWorkflow.tsx",
+      "line": 85,
+      "element": "button",
+      "handler": "{() => void action(\"handoff\")}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyContentWorkflow.tsx",
+      "line": 90,
+      "element": "button",
+      "handler": "{() => void loadPosts()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyContentWorkflow.tsx",
+      "line": 131,
+      "element": "button",
+      "handler": "{reload}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyContentWorkflow.tsx",
+      "line": 136,
+      "element": "button",
+      "handler": "{() => void connect(c.platform)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyContentWorkflow.tsx",
+      "line": 137,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 29,
+      "element": "form",
+      "handler": "{submit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 36,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 124,
+      "element": "button",
+      "handler": "{onSignIn}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 125,
+      "element": "a",
+      "handler": null,
+      "destination": "{catalog.checkout_url}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 127,
+      "element": "button",
+      "handler": "{() => { setNotice(\"جارٍ إعادة التحقق من صلاحية الدخول…\"); reload(); }}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 132,
+      "element": "form",
+      "handler": "{event => { event.preventDefault(); setLessonSlug(\"\"); setOffset(0); setQuery(search.trim()); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 133,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 136,
+      "element": "button",
+      "handler": "{resetFilters}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 137,
+      "element": "button",
+      "handler": "{() => { setLessonSlug(\"\"); setSubject(id); setOffset(0); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 139,
+      "element": "button",
+      "handler": "{reload}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 140,
+      "element": "button",
+      "handler": "{resetFilters}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 144,
+      "element": "button",
+      "handler": "{() => void download(lesson)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 147,
+      "element": "button",
+      "handler": "{() => setOffset(o => Math.max(0, o - 30))}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/study-library/StudyLibraryPage.tsx",
+      "line": 147,
+      "element": "button",
+      "handler": "{() => setOffset(o => o + 30)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 263,
+      "element": "GoldButton",
+      "handler": "{() => setShowGeneralChat(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 264,
+      "element": "GoldButton",
+      "handler": "{() => setCreatingTeam(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 265,
+      "element": "GoldButton",
+      "handler": "{() => setInviting(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 291,
+      "element": "GoldButton",
+      "handler": "{() => void createTeam()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 294,
+      "element": "GoldButton",
+      "handler": "{() => { setCreatingTeam(false); setNewTeamName(\"\"); setNewTeamDesc(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 309,
+      "element": "GoldButton",
+      "handler": "{() => void loadTeams()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 325,
+      "element": "div",
+      "handler": "{() => void toggleTeam(team.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 334,
+      "element": "GoldButton",
+      "handler": "{() => void toggleTeam(team.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 338,
+      "element": "GoldButton",
+      "handler": "{() => setChatTeam(prev => prev === team.id ? null : team.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 342,
+      "element": "GoldButton",
+      "handler": "{() => void deleteTeam(team.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 366,
+      "element": "GoldButton",
+      "handler": "{() => void removeTeamMember(team.id, m.user_id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 385,
+      "element": "GoldButton",
+      "handler": "{() => void addTeamMember(team.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 415,
+      "element": "GoldButton",
+      "handler": "{() => void invite()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 418,
+      "element": "GoldButton",
+      "handler": "{() => { setInviting(false); setInviteEmail(\"\"); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 432,
+      "element": "GoldButton",
+      "handler": "{() => void load()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/TeamsPage.tsx",
+      "line": 483,
+      "element": "GoldButton",
+      "handler": "{() => void removeMember(m.user_id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/teams/components/TeamChatPanel.tsx",
+      "line": 83,
+      "element": "GoldButton",
+      "handler": "{() => void submit()}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 96,
+      "element": "button",
+      "handler": "{() => setSection(id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 204,
+      "element": "button",
+      "handler": "{() => onNavigate(\"courses\")}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 317,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 352,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 360,
+      "element": "CourseCard",
+      "handler": "{() => setSelected(c)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 378,
+      "element": "GlassCard",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 438,
+      "element": "form",
+      "handler": "{handleSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 460,
+      "element": "GoldButton",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 461,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 569,
+      "element": "button",
+      "handler": "{onBack}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 586,
+      "element": "GoldButton",
+      "handler": "{saveCourse}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 589,
+      "element": "GoldButton",
+      "handler": "{publishCourse}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 609,
+      "element": "button",
+      "handler": "{addLesson}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 627,
+      "element": "div",
+      "handler": "{() => setActiveLesson(l)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 647,
+      "element": "MoveBtn",
+      "handler": "{e => { e.stopPropagation(); moveLesson(l.id, -1); }}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 648,
+      "element": "MoveBtn",
+      "handler": "{e => { e.stopPropagation(); moveLesson(l.id, 1); }}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 650,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); removeLesson(l.id); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 663,
+      "element": "button",
+      "handler": "{addLesson}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 694,
+      "element": "button",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 810,
+      "element": "GoldButton",
+      "handler": "{saveLesson}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 837,
+      "element": "GoldButton",
+      "handler": "{() => setScriptOpen(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 863,
+      "element": "GoldButton",
+      "handler": "{createVideoForLesson}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 879,
+      "element": "a",
+      "handler": null,
+      "destination": "{v.url}",
+      "hasDisabledGuard": false,
+      "wiring": "link",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 884,
+      "element": "GoldButton",
+      "handler": "{() => handleGenerateVideo(v.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 898,
+      "element": "GoldButton",
+      "handler": "{() => setQuizOpen(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 919,
+      "element": "form",
+      "handler": "{saveScript}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 928,
+      "element": "GoldButton",
+      "handler": "{() => setScriptOpen(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 929,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 938,
+      "element": "form",
+      "handler": "{saveQuiz}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 946,
+      "element": "GoldButton",
+      "handler": "{() => setQuizOpen(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 947,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1032,
+      "element": "button",
+      "handler": "{() => setSelLesson(l)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1056,
+      "element": "GoldButton",
+      "handler": "{createAndGenerate}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1071,
+      "element": "GoldButton",
+      "handler": "{createAndGenerate}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1135,
+      "element": "GoldButton",
+      "handler": "{() => onGenerate(video.id)}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1192,
+      "element": "GoldButton",
+      "handler": "{() => setAdding(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1215,
+      "element": "GoldButton",
+      "handler": "{() => setAdding(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1235,
+      "element": "form",
+      "handler": "{save}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1242,
+      "element": "GoldButton",
+      "handler": "{() => setAdding(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1243,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1336,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1343,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1349,
+      "element": "button",
+      "handler": "{() => setSelQuiz(q)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1371,
+      "element": "GoldButton",
+      "handler": "{() => setPreview(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1374,
+      "element": "GoldButton",
+      "handler": "{() => setAddingQ(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1393,
+      "element": "form",
+      "handler": "{createQ}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1398,
+      "element": "GoldButton",
+      "handler": "{() => setCreating(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1399,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1408,
+      "element": "form",
+      "handler": "{addQ}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1449,
+      "element": "GoldButton",
+      "handler": "{() => setAddingQ(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1450,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1524,
+      "element": "button",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "disabled-or-conditional",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1586,
+      "element": "GoldButton",
+      "handler": "{() => setAdding(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1595,
+      "element": "GoldButton",
+      "handler": "{() => setAdding(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1621,
+      "element": "form",
+      "handler": "{handleAdd}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1630,
+      "element": "GoldButton",
+      "handler": "{() => setAdding(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1631,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/features/training-studio/TrainingStudioPage.tsx",
+      "line": 1768,
+      "element": "button",
+      "handler": "{onRetry}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/CopyButton.tsx",
+      "line": 18,
+      "element": "button",
+      "handler": "{() => void copy()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/ErrorBoundary.tsx",
+      "line": 36,
+      "element": "button",
+      "handler": "{() => this.setState({ error: null })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/PageBoundary.tsx",
+      "line": 15,
+      "element": "button",
+      "handler": "{() => this.setState({ err: null })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/StateViews.tsx",
+      "line": 39,
+      "element": "GoldButton",
+      "handler": "{onRetry}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/copilot/CopilotButton.tsx",
+      "line": 11,
+      "element": "button",
+      "handler": "{() => setOpen(!open)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/copilot/CopilotPanel.tsx",
+      "line": 53,
+      "element": "button",
+      "handler": "{reset}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/copilot/CopilotPanel.tsx",
+      "line": 55,
+      "element": "button",
+      "handler": "{() => setOpen(false)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/copilot/CopilotPanel.tsx",
+      "line": 85,
+      "element": "GoldButton",
+      "handler": "{goToSuggestedPage}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/copilot/CopilotPanel.tsx",
+      "line": 86,
+      "element": "button",
+      "handler": "{dismissAction}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/copilot/CopilotPanel.tsx",
+      "line": 90,
+      "element": "form",
+      "handler": "{onSubmit}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/copilot/CopilotPanel.tsx",
+      "line": 99,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "form-submit",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/forms/ErrorBanner.tsx",
+      "line": 21,
+      "element": "GoldButton",
+      "handler": "{onRetry}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/forms/ErrorBanner.tsx",
+      "line": 26,
+      "element": "button",
+      "handler": "{onDismiss}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/forms/PasswordField.tsx",
+      "line": 39,
+      "element": "button",
+      "handler": "{() => setVisible(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/forms/SubmitButton.tsx",
+      "line": 14,
+      "element": "GoldButton",
+      "handler": null,
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "disabled-or-conditional",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/gold.tsx",
+      "line": 27,
+      "element": "motion.button",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/gold.tsx",
+      "line": 55,
+      "element": "motion.div",
+      "handler": "{onClick}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/gold.tsx",
+      "line": 114,
+      "element": "motion.div",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/gold.tsx",
+      "line": 120,
+      "element": "motion.div",
+      "handler": "{e => e.stopPropagation()}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/gold.tsx",
+      "line": 133,
+      "element": "button",
+      "handler": "{onClose}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/ActivityFilter.tsx",
+      "line": 10,
+      "element": "button",
+      "handler": "{() => onChange(null)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/ActivityFilter.tsx",
+      "line": 20,
+      "element": "button",
+      "handler": "{() => onChange(g.id)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationBell.tsx",
+      "line": 12,
+      "element": "button",
+      "handler": "{() => setOpen(v => !v)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationItem.tsx",
+      "line": 33,
+      "element": "div",
+      "handler": "{activate}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationItem.tsx",
+      "line": 55,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); onArchive(n.id); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationItem.tsx",
+      "line": 62,
+      "element": "button",
+      "handler": "{e => { e.stopPropagation(); onRemove(n.id); }}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationPanel.tsx",
+      "line": 97,
+      "element": "button",
+      "handler": "{markAllRead}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationPanel.tsx",
+      "line": 98,
+      "element": "button",
+      "handler": "{() => setSettingsOpen(true)}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationPanel.tsx",
+      "line": 103,
+      "element": "button",
+      "handler": "{() => setFilters({ unreadOnly: false })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationPanel.tsx",
+      "line": 108,
+      "element": "button",
+      "handler": "{() => setFilters({ unreadOnly: true })}",
+      "destination": null,
+      "hasDisabledGuard": false,
+      "wiring": "handler",
+      "verification": "source-only"
+    },
+    {
+      "path": "src/renderer/shared/ui/notifications/NotificationPanel.tsx",
+      "line": 152,
+      "element": "GoldButton",
+      "handler": "{loadMore}",
+      "destination": null,
+      "hasDisabledGuard": true,
+      "wiring": "handler",
+      "verification": "source-only"
+    }
+  ]
+}

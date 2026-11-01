@@ -69,6 +69,8 @@ vi.mock("../features/integrations", () => ({ IntegrationsPage: () => <div>INTEGR
 // ── Discover / Feed ──
 vi.mock("../features/discover", () => ({ DiscoverPage: () => <div>DISCOVER_PAGE_CONTENT</div> }));
 vi.mock("../features/feed", () => ({ FeedPage: () => <div>FEED_PAGE_CONTENT</div> }));
+vi.mock("../features/careers/CareersPage", () => ({ CareersPage: () => <div>CAREERS_PAGE_CONTENT</div> }));
+vi.mock("../features/study-library/StudyLibraryPage", () => ({ StudyLibraryPage: () => <div>STUDY_PAGE_CONTENT</div> }));
 
 // ── Platform ──
 vi.mock("../features/observability", () => ({ ObservabilityPage: () => <div>OBSERVABILITY_PAGE_CONTENT</div> }));
@@ -106,6 +108,22 @@ describe("navigation", () => {
     newProjectShouldThrow = false;
   });
 
+  it.each([
+    ["/home", "HOME"], ["/ai", "AI"], ["/dev", "DEV"], ["/design", "DESIGN"],
+    ["/automation", "AUTOMATION"], ["/social", "SOCIAL"], ["/settings", "SETTINGS"],
+    ["/agentos", "AGENTOS"], ["/marketplace", "MARKETPLACE"], ["/organizations", "ORGANIZATIONS"],
+    ["/teams", "TEAMS"], ["/billing", "BILLING"], ["/plugins", "PLUGINS"], ["/sandbox", "SANDBOX"],
+    ["/ai-routing", "AI_ROUTING"], ["/observability", "OBSERVABILITY"], ["/app-builder", "APP_BUILDER"],
+    ["/runs", "RUNS"], ["/integrations", "INTEGRATIONS"], ["/training", "TRAINING_STUDIO"],
+    ["/business-lab", "BUSINESS_LAB"], ["/devices", "DEVICES"], ["/discover", "DISCOVER"],
+    ["/feed", "FEED"], ["/careers", "CAREERS"], ["/study-library", "STUDY"], ["/leads", "LEADS"],
+    ["/saas-factory", "SAAS_FACTORY"], ["/new-project", "NEW_PROJECT"],
+  ])("opens the correct page for direct route %s", async (path, content) => {
+    window.history.replaceState(null, "", path); renderApp();
+    await screen.findByText(`${content}_PAGE_CONTENT`, {}, { timeout: 8000 });
+    expect(window.location.pathname).toBe(path);
+  });
+
   /**
    * All sidebar nav buttons — title attribute matches the i18n label.
    * Label → page content invariant: the content shown must always match
@@ -119,6 +137,16 @@ describe("navigation", () => {
     // [title in sidebar, expected main content] pairs — new consolidated nav
     const cases: [string, string][] = [
       ["New Project", "NEW_PROJECT_PAGE_CONTENT"],
+      ["My AI Assistant", "AI_PAGE_CONTENT"],
+      ["Flow Feed", "FEED_PAGE_CONTENT"],
+      ["Career Assistant", "CAREERS_PAGE_CONTENT"],
+      ["Leads", "LEADS_PAGE_CONTENT"],
+      ["Automate", "AUTOMATION_PAGE_CONTENT"],
+      ["Devices", "DEVICES_PAGE_CONTENT"],
+      ["Discover", "DISCOVER_PAGE_CONTENT"],
+      ["Visual Study Library", "STUDY_PAGE_CONTENT"],
+      ["Teams", "TEAMS_PAGE_CONTENT"],
+      ["Billing", "BILLING_PAGE_CONTENT"],
       ["Settings",    "SETTINGS_PAGE_CONTENT"],
       ["Home",        "HOME_PAGE_CONTENT"],
     ];

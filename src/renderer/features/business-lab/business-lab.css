@@ -1,0 +1,8 @@
+.business-lab { min-height: 0; min-width: 0; }
+.business-lab-content { min-width: 0; min-height: 0; }
+@media (max-width: 650px) {
+  .business-lab { flex-direction: column; overflow-y: auto !important; }
+  .business-lab-sidebar { width: 100% !important; flex-shrink: 0; max-height: 55dvh; }
+  .business-lab-content { flex: none !important; overflow: visible !important; }
+  .business-lab-content > div { flex-wrap: wrap; }
+}

@@ -6,6 +6,7 @@ import { MD_COMPONENTS } from "../../shared/ui/md-components";
 import { S } from "../../styles/theme";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
 import ReactMarkdown from "react-markdown";
+import { copyText } from "../../shared/utils/clipboard";
 
 type SocialTab = "youtube" | "facebook";
 type YTInfo = { title: string; channel: string; duration: number; view_count: number; like_count: number; description: string; thumbnail: string; upload_date: string };
@@ -264,10 +265,13 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
     finally { setGen(false); }
   }
 
-  function copy(text: string, i: number) {
-    navigator.clipboard.writeText(text);
-    setCopied(i); setTimeout(() => setCopied(null), 2000);
-    toast(t("facebook.copied"));
+  async function copy(text: string, i: number) {
+    setCopied(null);
+    try {
+      await copyText(text);
+      setCopied(i); setTimeout(() => setCopied(null), 2000);
+      toast(t("facebook.copied"));
+    } catch { toast(t("common:actions.copyFailed"), "err"); }
   }
 
   const platformIcon: Record<string,string> = { facebook:"📘", instagram:"📸", twitter:"🐦", linkedin:"💼" };

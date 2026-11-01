@@ -96,6 +96,9 @@
     "createTaskFailed": "فشل إنشاء المهمة",
     "taskCreated": "تم إنشاء المهمة",
     "workflowStarted": "بدأ سير العمل — معرّف التشغيل: {{runId}}",
-    "workflowStartFailed": "فشل بدء سير العمل"
+    "workflowStartFailed": "فشل بدء سير العمل",
+    "loadWorkflowsFailed": "تعذّر تحميل عمليات الأتمتة",
+    "updateTaskFailed": "تعذّر تحديث المهمة. لم يُحفظ التغيير.",
+    "deleteTaskFailed": "تعذّر حذف المهمة. ما زالت محفوظة."
   }
 }

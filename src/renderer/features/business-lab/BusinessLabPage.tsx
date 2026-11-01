@@ -13,6 +13,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { businessService, type Plan, type PlanDetail, type Section } from "./services/businessService";
+import "./business-lab.css";
 
 // ── Status badge colours ──────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -145,6 +146,8 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
       <div style={{ fontSize: 15, fontWeight: 700, color: "var(--t1,#111)" }}>خطة عمل جديدة ✨</div>
 
       <textarea
+        aria-label="وصف فكرة العمل"
+        maxLength={4000}
         value={idea} onChange={e => setIdea(e.target.value)}
         placeholder="صف فكرتك بحرية… ماذا تريد أن تبني؟ من هم عملاؤك؟ ما المشكلة التي تحلها؟"
         rows={4} style={{
@@ -244,11 +247,18 @@ export function BusinessLabPage() {
   const [tab, setTab]             = useState<Tab>("overview");
   const [showNew, setShowNew]     = useState(false);
   const [loading, setLoading]     = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const actionPending = useRef(false);
+  const selectionVersion = useRef(0);
   const stopStream                = useRef<(() => void) | null>(null);
 
   // Load plan list
   const loadPlans = useCallback(async () => {
-    try { setPlans(await businessService.listPlans()); } catch { /* ignore */ }
+    setListError(null);
+    try { setPlans(await businessService.listPlans()); }
+    catch (error) { setListError(error instanceof Error ? error.message : "تعذر تحميل الخطط"); }
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -256,18 +266,21 @@ export function BusinessLabPage() {
 
   // Load detail + start stream when plan selected
   const selectPlan = useCallback(async (id: string) => {
+    const version = ++selectionVersion.current;
+    setDetailError(null);
     setSelected(id); setTab("overview"); setDetail(null);
     stopStream.current?.(); stopStream.current = null;
     setLoading(true);
     try {
       const d = await businessService.getPlan(id);
+      if (version !== selectionVersion.current) return;
       setDetail(d);
 
       // Stream live updates for in-progress plans
-      if (d.plan.status === "GENERATING") {
+      if (d.plan.status === "GENERATING" || d.plan.status === "DRAFT") {
         const stop = businessService.streamStatus(id, (data) => {
           setDetail(prev => {
-            if (!prev) return prev;
+            if (!prev || prev.plan.id !== id || version !== selectionVersion.current) return prev;
             const evt = data as Record<string, unknown>;
             const secs = (evt.sections ?? {}) as Record<string, { status: string; tokens_used: number; error_msg: string | null }>;
             const updatedSections = prev.sections.map(s =>
@@ -285,46 +298,58 @@ export function BusinessLabPage() {
         });
         stopStream.current = stop;
       }
-    } catch { /* ignore */ } finally {
-      setLoading(false);
+    } catch (error) {
+      if (version === selectionVersion.current) setDetailError(error instanceof Error ? error.message : "تعذر تحميل الخطة");
+    } finally {
+      if (version === selectionVersion.current) setLoading(false);
     }
   }, [loadPlans]);
 
   // Cleanup on unmount
-  useEffect(() => () => stopStream.current?.(), []);
+  useEffect(() => () => { ++selectionVersion.current; stopStream.current?.(); }, []);
 
   const handleRetry = async (keys: string[]) => {
     if (!selected) return;
-    await businessService.retrySections(selected, keys);
-    await selectPlan(selected);
+    await runAction(async () => { await businessService.retrySections(selected, keys); await selectPlan(selected); });
   };
 
   const handleCancel = async () => {
     if (!selected) return;
-    await businessService.cancelPlan(selected);
-    await selectPlan(selected);
+    await runAction(async () => { await businessService.cancelPlan(selected); await selectPlan(selected); });
   };
 
   const handleExport = async (variant: string) => {
     if (!selected) return;
-    await businessService.exportPlan(selected, "markdown", variant);
+    await runAction(() => businessService.exportPlan(selected, "markdown", variant));
   };
 
   const handleDelete = async () => {
     if (!selected) return;
     if (!window.confirm("هل تريد حذف هذه الخطة نهائياً؟")) return;
+    await runAction(async () => {
     await businessService.deletePlan(selected);
+    ++selectionVersion.current;
+    stopStream.current?.(); stopStream.current = null;
     setSelected(null); setDetail(null);
     await loadPlans();
+    });
+  };
+
+  const runAction = async (action: () => Promise<unknown>) => {
+    if (actionPending.current) return;
+    actionPending.current = true; setActionError(null);
+    try { await action(); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "تعذر إكمال العملية"); }
+    finally { actionPending.current = false; }
   };
 
   return (
-    <div style={{
+    <div className="business-lab" style={{
       display: "flex", height: "100%", overflow: "hidden",
       background: "var(--bg,#f9fafb)", fontFamily: "inherit",
     }}>
       {/* ── Sidebar: plan list ── */}
-      <div style={{
+      <div className="business-lab-sidebar" style={{
         width: 260, flexShrink: 0, borderRight: "1px solid var(--b1,#e5e7eb)",
         display: "flex", flexDirection: "column", background: "var(--bg-card,#fff)",
         overflowY: "auto",
@@ -353,7 +378,11 @@ export function BusinessLabPage() {
         )}
 
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-          {plans.length === 0 && (
+          {listError && <div role="alert" style={{ padding: 16 }}>
+            <p>{listError}</p>
+            <button onClick={() => void loadPlans()}>إعادة تحميل الخطط</button>
+          </div>}
+          {!listError && plans.length === 0 && (
             <div style={{ padding: 16, fontSize: 12, color: "var(--t4,#9ca3af)", textAlign: "center" }}>
               لا توجد خطط بعد.<br />ابدأ بإضافة فكرتك ✨
             </div>
@@ -387,7 +416,9 @@ export function BusinessLabPage() {
       </div>
 
       {/* ── Main content ── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div className="business-lab-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        {actionError && <div role="alert" style={{ padding: 20 }}>{actionError}</div>}
+        {detailError && <div role="alert" style={{ padding: 20 }}><p>{detailError}</p><button onClick={() => selected && void selectPlan(selected)}>إعادة تحميل الخطة</button></div>}
         {!selected && (
           <div style={{
             flex: 1, display: "flex", flexDirection: "column",
@@ -638,8 +669,9 @@ export function BusinessLabPage() {
                           </div>
                         ))}
                       </div>
-                      <button onClick={() => void businessService.recomputeScore(selected).then(s => {
-                        setDetail(prev => prev ? { ...prev, score: s } : prev);
+                      <button onClick={() => void runAction(async () => {
+                        const s = await businessService.recomputeScore(selected);
+                        setDetail(prev => prev?.plan.id === selected ? { ...prev, score: s } : prev);
                       })} style={{
                         marginTop: 16, padding: "8px 14px", borderRadius: 8,
                         border: "1px solid var(--b1,#e5e7eb)", background: "transparent",

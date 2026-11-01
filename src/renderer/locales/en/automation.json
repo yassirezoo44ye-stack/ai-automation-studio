@@ -96,6 +96,9 @@
     "createTaskFailed": "Failed to create task",
     "taskCreated": "Task created",
     "workflowStarted": "Workflow started — run_id: {{runId}}",
-    "workflowStartFailed": "Failed to start workflow"
+    "workflowStartFailed": "Failed to start workflow",
+    "loadWorkflowsFailed": "Could not load workflow runs",
+    "updateTaskFailed": "Task update failed. Your task was kept.",
+    "deleteTaskFailed": "Task deletion failed. Your task was kept."
   }
 }

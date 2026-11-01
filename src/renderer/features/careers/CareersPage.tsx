@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useOrg } from "../../contexts/OrgContext";
 import { APIError, apiFetch, parseJSON } from "../../shared/utils/api";
 import "./careers.css";
+import { copyText } from "../../shared/utils/clipboard";
 
 type ListKey = "roles" | "skills" | "sectors" | "languages" | "cities";
 type Profile = {
@@ -385,7 +386,7 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
         <p className="career-muted">{t("draftNote")}</p>
         <label>{t("draftText")}<textarea autoFocus className="career-draft" value={draft.text} onChange={e => setDraft({ ...draft, text: e.target.value })} /></label>
         <div className="career-actions">
-          <button type="button" className="career-primary" onClick={() => void navigator.clipboard?.writeText(draft.text).then(() => setNotice(t("copied")))}>{t("copy")}</button>
+          <button type="button" className="career-primary" onClick={() => void copyText(draft.text).then(() => setNotice(t("copied"))).catch(() => setError(t("common:actions.copyFailed")))}>{t("copy")}</button>
           {draft.ai && <button type="button" disabled={working} onClick={() => {
             const job = jobs.find(j => j.id === draft.jobId);
             if (job) void act(`draft-${job.id}`, () => openDraft(job, false));

@@ -3,21 +3,21 @@
  * Wraps all /api/business/* endpoints.
  */
 
+import { API as API_ORIGIN, apiFetch } from "../../../shared/utils/api";
 const API = "/api/business";
 
-function authHeaders(): HeadersInit {
-  const token = localStorage.getItem("auth_token") ?? "";
-  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-}
-
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+  const res = await apiFetch(`${API}${path}`, {
     method,
-    headers: authHeaders(),
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
+    let msg = `تعذر إكمال الطلب (${res.status}). حاول مرة أخرى.`;
+    try {
+      const error = await res.json();
+      if (typeof error.detail === "string" && res.status < 500) msg = error.detail;
+      if (res.status === 422) msg = "راجع المدخلات: وصف الفكرة من 10 إلى 4000 حرف.";
+    } catch { /* Keep a readable message for non-JSON errors. */ }
     throw new Error(msg || `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as unknown as T;
@@ -119,9 +119,8 @@ export const businessService = {
     req<Score>("POST", `/plans/${id}/score`),
 
   exportPlan: async (id: string, format_: string, variant: string): Promise<void> => {
-    const res = await fetch(`${API}/plans/${id}/export`, {
+    const res = await apiFetch(`${API}/plans/${id}/export`, {
       method: "POST",
-      headers: authHeaders(),
       body: JSON.stringify({ format: format_, variant }),
     });
     if (!res.ok) throw new Error(`Export failed: ${res.status}`);
@@ -147,14 +146,13 @@ export const businessService = {
 
     (async () => {
       try {
-        const res = await fetch(`${API}/plans/${id}/sse-ticket`, {
+        const res = await apiFetch(`${API}/plans/${id}/sse-ticket`, {
           method: "POST",
-          headers: authHeaders(),
         });
         if (!res.ok || cancelled) return;
         const { ticket } = await res.json() as { ticket: string };
         if (cancelled) return;
-        es = new EventSource(`/api/business/stream/${id}?ticket=${encodeURIComponent(ticket)}`);
+        es = new EventSource(`${API_ORIGIN}/api/business/stream/${id}?ticket=${encodeURIComponent(ticket)}`);
         es.onmessage = (e) => {
           try { onEvent(JSON.parse(e.data)); } catch { /* skip malformed */ }
         };

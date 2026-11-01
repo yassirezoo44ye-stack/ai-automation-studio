@@ -108,7 +108,9 @@
   "actions": {
     "cancel": "Cancel",
     "delete": "Delete",
-    "save": "Save"
+    "save": "Save",
+    "copyFailed": "Could not copy. Select the text and copy it manually.",
+    "failed": "Could not complete this action. Please try again."
   },
   "time": {
     "justNow": "just now",

@@ -237,6 +237,15 @@ describe("ApiKeysTab — create key", () => {
 });
 
 describe("ApiKeysTab — revoke key", () => {
+  it("keeps a key visible when the server rejects revocation", async () => {
+    setupExistingKeys([makeKey({ name: "Still active key" })]);
+    await openApiKeysTab(); await screen.findByText("Still active key");
+    mockedApiFetch.mockResolvedValueOnce(fakeRes(403));
+    fireEvent.click(screen.getByRole("button", { name: /revoke/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirm/i }));
+    await screen.findByText(/Failed to revoke|Could not revoke/i);
+    expect(screen.getByText("Still active key")).toBeInTheDocument();
+  });
   it("revokes key via DELETE /api/orgs/{org_id}/api-keys/{key_id}", async () => {
     setupExistingKeys([makeKey({ key_id: "key-99" })]);
     await openApiKeysTab();
