@@ -145,6 +145,8 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
       <div style={{ fontSize: 15, fontWeight: 700, color: "var(--t1,#111)" }}>خطة عمل جديدة ✨</div>
 
       <textarea
+        aria-label="وصف فكرة العمل"
+        maxLength={4000}
         value={idea} onChange={e => setIdea(e.target.value)}
         placeholder="صف فكرتك بحرية… ماذا تريد أن تبني؟ من هم عملاؤك؟ ما المشكلة التي تحلها؟"
         rows={4} style={{
@@ -244,11 +246,14 @@ export function BusinessLabPage() {
   const [tab, setTab]             = useState<Tab>("overview");
   const [showNew, setShowNew]     = useState(false);
   const [loading, setLoading]     = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
   const stopStream                = useRef<(() => void) | null>(null);
 
   // Load plan list
   const loadPlans = useCallback(async () => {
-    try { setPlans(await businessService.listPlans()); } catch { /* ignore */ }
+    setListError(null);
+    try { setPlans(await businessService.listPlans()); }
+    catch (error) { setListError(error instanceof Error ? error.message : "تعذر تحميل الخطط"); }
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -353,7 +358,11 @@ export function BusinessLabPage() {
         )}
 
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-          {plans.length === 0 && (
+          {listError && <div role="alert" style={{ padding: 16 }}>
+            <p>{listError}</p>
+            <button onClick={() => void loadPlans()}>إعادة تحميل الخطط</button>
+          </div>}
+          {!listError && plans.length === 0 && (
             <div style={{ padding: 16, fontSize: 12, color: "var(--t4,#9ca3af)", textAlign: "center" }}>
               لا توجد خطط بعد.<br />ابدأ بإضافة فكرتك ✨
             </div>

@@ -51,7 +51,7 @@ async def _resolve_org(user_id: str) -> str | None:
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT organization_id FROM organization_members WHERE user_id=$1 ORDER BY joined_at LIMIT 1",
+            "SELECT organization_id FROM organization_members WHERE user_id=$1 AND deleted_at IS NULL ORDER BY created_at, organization_id LIMIT 1",
             user_id,
         )
     return str(row["organization_id"]) if row else None
