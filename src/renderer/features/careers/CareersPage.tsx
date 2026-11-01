@@ -84,6 +84,8 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [text, setText] = useState("");
   const [cv, setCv] = useState("");
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [bioProcessed, setBioProcessed] = useState(false);
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("match");
   const [query, setQuery] = useState("");
@@ -226,6 +228,8 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
                 };
               });
               setNotice(t("aiFilled"));
+              setBioProcessed(true);
+              setReviewOpen(false);
             }, true)}>{busy === "profile-ai" ? t("aiWorking") : t("aiFill")}</button>
           </div>
 
@@ -233,6 +237,13 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
             await request("/profile", "PUT", profile);
             await load(); setNotice(t("saved"));
           }); }}>
+            {profile.summary && <div className="career-ai-box"><h3>{t("bioPreview")}</h3><p>{profile.summary}</p></div>}
+            {bioProcessed && (!profile.roles.length || !profile.languages.length || profile.experience_years === null || !profile.cities.length) && <div className="career-muted" role="status">
+              {t("bioMissing")}
+              <ul>{!profile.roles.length && <li>{t("bioAskRole")}</li>}{!profile.languages.length && <li>{t("bioAskLanguages")}</li>}{profile.experience_years === null && <li>{t("bioAskYears")}</li>}{!profile.cities.length && <li>{t("bioAskCity")}</li>}</ul>
+            </div>}
+            <details open={reviewOpen} onToggle={event => setReviewOpen(event.currentTarget.open)}>
+              <summary>{t("bioReview")}</summary>
             <label>{t("summary")}<textarea maxLength={6000} value={profile.summary} onChange={e => setProfile({ ...profile, summary: e.target.value })} /></label>
             <p className="career-muted">{t("keywordsHint")}</p>
             {listKeys.map(k => <ChipInput key={k} label={t(k)} hint={t("chipHint")} values={profile[k]} onChange={v => setProfile(p => ({ ...p, [k]: v }))} />)}
@@ -243,6 +254,7 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
                 <option value="unknown">{t("unknown")}</option><option value="true">{t("yes")}</option><option value="false">{t("no")}</option>
               </select></label>
             </div>
+            </details>
             <button className="career-primary" disabled={working}>{t("saveProfile")}</button>
           </form>
         </section>

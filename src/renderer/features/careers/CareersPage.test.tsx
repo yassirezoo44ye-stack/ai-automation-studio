@@ -88,13 +88,20 @@ describe("Career assistant", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("fills the profile from a CV with AI for review, without saving it", async () => {
+  it("starts with a short bio and keeps manual profile details optional", async () => {
     render(<CareersPage />); await ready();
-    const button = screen.getByRole("button", { name: "Fill profile with AI" });
+    expect(screen.getByLabelText("Short bio about you")).toBeVisible();
+    expect(screen.getByText("Review and edit details (optional)").closest("details")).not.toHaveAttribute("open");
+  });
+
+  it("fills the profile from a short bio with AI for review, without saving it", async () => {
+    render(<CareersPage />); await ready();
+    const button = screen.getByRole("button", { name: "Build my profile from my bio" });
     expect(button).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("CV or experience"), { target: { value: "Sales Executive at Example Foods. Zoho Books. Arabic." } });
+    fireEvent.change(screen.getByLabelText("Short bio about you"), { target: { value: "Sales Executive at Example Foods. Zoho Books. Arabic." } });
     fireEvent.click(button);
     await screen.findByText("AI suggestions added. Review them, then save your profile.");
+    fireEvent.click(screen.getByText("Review and edit details (optional)"));
     const extract = mockFetch.mock.calls.find(([path]) => path.endsWith("/profile/extract"));
     expect(JSON.parse(String(extract?.[1]?.body))).toEqual({ text: "Sales Executive at Example Foods. Zoho Books. Arabic." });
     // Existing values are kept and AI values are added as removable chips.
@@ -107,6 +114,7 @@ describe("Career assistant", () => {
 
   it("edits list fields as chips and saves them as arrays", async () => {
     render(<CareersPage />); await ready();
+    fireEvent.click(screen.getByText("Review and edit details (optional)"));
     const skills = screen.getByLabelText("Skills");
     fireEvent.change(skills, { target: { value: "Excel" } });
     fireEvent.keyDown(skills, { key: "Enter" });
