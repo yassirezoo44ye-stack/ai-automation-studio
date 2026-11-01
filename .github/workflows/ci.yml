@@ -191,10 +191,10 @@ jobs:
         run: docker build -t axon:ci-${{ github.sha }} .
 
   # ── Deploy: trigger Render only after CI passes on main ─────────────────────
-  # render.yaml has autoDeploy: false — Render no longer deploys on every
-  # push by itself. This is now the only trigger. Requires a repo secret
-  # RENDER_DEPLOY_HOOK_URL — see DEPLOYMENT.md for how to create it; it
-  # can't be created from here.
+  # Intended configuration: render.yaml has autoDeploy: false and CI owns
+  # the trigger. Dashboard settings can drift from that file; verify them.
+  # Requires the hook for the exact RENDER_SERVICE_ID below, stored only
+  # in RENDER_DEPLOY_HOOK_URL — see DEPLOYMENT.md.
   deploy:
     name: Deploy to Render
     runs-on: ubuntu-latest
@@ -202,36 +202,17 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
-      - name: Trigger Render deploy hook
-        # Secret passed via env (not interpolated into the command string)
-        # so the value never appears in the runner's generated script file.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate target and trigger Render deploy hook
+        # The hook stays in the secret environment. Only public service/commit
+        # identifiers are logged; a mismatched target fails before any request.
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set — nothing can deploy (render.yaml has autoDeploy: false). Follow the one-time setup in DEPLOYMENT.md."
-            exit 1
-          fi
-          # ref pins the deploy to the exact commit this CI run validated.
-          # Without it, Render builds whatever the branch tip is at hook
-          # time — which may be a LATER, unvalidated push that landed while
-          # this run's tests were executing.
-          #
-          # Render documents 202 as queued behind another deployment.
-          # A 409 is a rejected deployment (suspended service/workspace gate),
-          # not evidence that this commit is being deployed.
-          if echo "$RENDER_DEPLOY_HOOK_URL" | grep -q '?'; then
-            DEPLOY_URL="${RENDER_DEPLOY_HOOK_URL}&ref=${GITHUB_SHA}"
-          else
-            DEPLOY_URL="${RENDER_DEPLOY_HOOK_URL}?ref=${GITHUB_SHA}"
-          fi
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$DEPLOY_URL")
-          if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "201" ] || [ "$HTTP_STATUS" = "202" ]; then
-            echo "Render accepted the deploy request (HTTP $HTTP_STATUS); the health check must still verify the exact commit."
-          else
-            echo "::error::Render rejected the deploy request (HTTP $HTTP_STATUS). A 409 does not confirm an active deploy; check service/workspace availability."
-            exit 1
-          fi
+          RENDER_SERVICE_ID: srv-d6705koboq4c7384n0cg
+        run: python3 scripts/trigger_render_deploy.py
 
 
   # ── Post-deploy smoke test ───────────────────────────────────────────────────
