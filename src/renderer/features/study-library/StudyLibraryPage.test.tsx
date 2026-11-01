@@ -24,7 +24,7 @@ describe("Study Library purchase boundary", () => {
     render(<StudyLibraryPage />);
     await screen.findByText(lesson.title);
     fireEvent.change(screen.getByRole("textbox", { name: "ابحث عن ملخص" }), { target: { value: "التجاره" } });
-    fireEvent.click(screen.getByRole("button", { name: "بحث", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^بحث$/ }));
     fireEvent.click(await screen.findByRole("button", { name: "مسح البحث وعرض كل الملخصات" }));
     await screen.findByText(lesson.title);
     expect(screen.getByRole("textbox", { name: "ابحث عن ملخص" })).toHaveValue("");
