@@ -926,7 +926,7 @@ def _set_bind_cookie(response: RedirectResponse, nonce: str) -> None:
 
 async def _stash_oauth_state(state: str, bind_nonce: str) -> None:
     """Store the CSRF state + browser-binding nonce server-side (single-use)."""
-    from app.core.cache.redis_adapter import get_redis
+    from app.core.oauth_store import get_oauth_store as get_redis
     try:
         redis = await get_redis()
         await redis.set(f"oauth_state:{state}", bind_nonce, ttl=_OAUTH_STATE_TTL)
@@ -951,7 +951,7 @@ async def _verify_and_consume_oauth_state(
     if not bind_cookie:
         log.warning("oauth callback: missing bind cookie ip=%s", ip)
         raise HTTPException(400, "Invalid or expired OAuth state (possible CSRF) — please retry sign-in.")
-    from app.core.cache.redis_adapter import get_redis
+    from app.core.oauth_store import get_oauth_store as get_redis
     try:
         redis = await get_redis()
         # Atomic: state is consumed ONLY when bind_cookie matches the stored nonce.
@@ -978,7 +978,7 @@ async def _stash_oauth_session_for_exchange(session: dict) -> str:
     subsequent same-tab navigation, and any access log that captures full
     request URLs. The frontend gets back only an opaque code, redeemed once
     via POST /api/auth/oauth-exchange (see below)."""
-    from app.core.cache.redis_adapter import get_redis
+    from app.core.oauth_store import get_oauth_store as get_redis
     code  = secrets.token_urlsafe(32)
     redis = await get_redis()
     await redis.set_json(f"oauth_exchange:{code}", session, ttl=_OAUTH_EXCHANGE_TTL)
@@ -996,7 +996,7 @@ async def oauth_exchange(body: OAuthExchangeRequest):
     Single-use: the entry is deleted on read, so a captured/replayed code
     (e.g. from a shared link or proxy log) is worthless after the first
     legitimate redemption, and the whole thing expires in 60s regardless."""
-    from app.core.cache.redis_adapter import get_redis
+    from app.core.oauth_store import get_oauth_store as get_redis
     redis  = await get_redis()
     key    = f"oauth_exchange:{body.code}"
     # get_json_and_delete is atomic (GETDEL on real Redis, dict.pop on local

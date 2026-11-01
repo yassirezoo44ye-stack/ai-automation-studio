@@ -19,7 +19,17 @@ Manual verification on a preview with real provider configuration:
 4. Reject missing/mismatched binding cookies, replayed callbacks and expired state.
 5. Simulate configuration lookup failure and verify a readable error without navigation.
 
-This patch does not change state lifetime or remove cookie binding. Shared Redis
-is still required for reliable cross-worker state storage. An in-process cache
-loses state on restart and cannot share it across workers. No state tokens,
-cookies, authorization codes or credentials should be copied into reports.
+For durable storage without Redis, set `OAUTH_STORAGE=postgres` after the new
+schema is initialized by application startup. It stores both state and session
+exchange slots in PostgreSQL, hashes lookup keys and encrypts payloads using a
+namespace-specific key derived from SESSION_SECRET. All workers must share that
+secret and database. Preserve the secret across restarts. Slots expire after the
+existing 600/60-second lifetimes and use conditional DELETE RETURNING for atomic
+single consumption. Expired rows are cleaned when new slots are written.
+
+The default `OAUTH_STORAGE=cache` preserves existing Redis/cache behavior for a
+staged rollout. Local fallback still loses state on restart. Changing storage
+invalidates in-flight attempts, which must be restarted. Never fall back silently
+from PostgreSQL on database errors. No state tokens, cookies, authorization codes
+or credentials should be copied into reports. Live concurrent PostgreSQL testing
+is required before enabling the new option in production.

@@ -56,6 +56,8 @@ async def acquire_scoped(org_id: str):
 
 async def init_db(conn: asyncpg.Connection) -> None:
     """Create all core tables and seed the demo user/project if absent."""
+    from app.core.oauth_store import DDL as oauth_slots_ddl
+    await conn.execute(oauth_slots_ddl)
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
