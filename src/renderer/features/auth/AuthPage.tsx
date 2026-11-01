@@ -458,6 +458,12 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
                   <PasswordField {...registerForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
                   <SubmitButton loading={registerSubmit.isSubmitting} loadingText={t("register.submitting")}>{t("register.submit")}</SubmitButton>
                 </form>
+                <p style={{ marginTop: 14, fontSize: 12, lineHeight: 1.6, color: "var(--t4)", textAlign: "center" }}>
+                  {t("register.legalPrefix")}{" "}
+                  <a href="/terms" target="_blank" rel="noopener" style={{ color: "var(--t2)" }}>{t("register.terms")}</a>
+                  {" "}{t("register.legalAnd")}{" "}
+                  <a href="/privacy" target="_blank" rel="noopener" style={{ color: "var(--t2)" }}>{t("register.privacy")}</a>.
+                </p>
               </>
             )}
 
