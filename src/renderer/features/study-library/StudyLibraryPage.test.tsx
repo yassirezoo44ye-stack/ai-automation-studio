@@ -16,6 +16,19 @@ function respond(access: unknown = { has_access: false, is_admin: false }, statu
 beforeEach(() => { vi.resetAllMocks(); auth.user = null; });
 
 describe("Study Library purchase boundary", () => {
+  it("clears a search with no matches and restores the full catalog", async () => {
+    vi.mocked(apiFetch).mockImplementation(async path => {
+      const q = new URL(path, "https://test.local").searchParams.get("q");
+      return json({ lessons: q ? [] : [lesson], checkout_url: null });
+    });
+    render(<StudyLibraryPage />);
+    await screen.findByText(lesson.title);
+    fireEvent.change(screen.getByRole("textbox", { name: "ابحث عن ملخص" }), { target: { value: "التجاره" } });
+    fireEvent.click(screen.getByRole("button", { name: /^بحث$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "مسح البحث وعرض كل الملخصات" }));
+    await screen.findByText(lesson.title);
+    expect(screen.getByRole("textbox", { name: "ابحث عن ملخص" })).toHaveValue("");
+  });
   it("shows the public catalog and sign-in without allowing anonymous downloads", async () => {
     respond(); const signIn = vi.fn(); render(<StudyLibraryPage onSignIn={signIn} />);
     await screen.findByText(lesson.title);

@@ -268,7 +268,7 @@ function WorkspaceContent() {
           {page === "discover"      && <DiscoverPage />}
           {page === "feed"          && <FeedPage />}
           {page === "careers"       && <CareersPage />}
-          {page === "study-library" && <StudyLibraryPage />}
+          {page === "study-library" && <div className="study-library-workspace"><StudyLibraryPage /></div>}
           {page === "leads"         && <LeadsPage />}
           {page === "saas-factory"  && <SaasFactoryPage />}
           {page === "new-project"   && <NewProjectPage />}

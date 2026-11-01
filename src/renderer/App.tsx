@@ -78,7 +78,7 @@ function AppInner() {
 
   // Not authenticated — show landing page or auth form
   if (authView === "landing" && window.location.pathname === "/study-library") {
-    return <main><Suspense fallback={<LoadingSpinner fullPage label="تحميل المكتبة…" />}><StudyLibraryPage onSignIn={() => setAuthView("login")} /></Suspense></main>;
+    return <main className="study-library-public" aria-label="مكتبة الملخصات التعليمية"><Suspense fallback={<LoadingSpinner fullPage label="تحميل المكتبة…" />}><StudyLibraryPage onSignIn={() => setAuthView("login")} /></Suspense></main>;
   }
 
   if (authView === "landing") {
