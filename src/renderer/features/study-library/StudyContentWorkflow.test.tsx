@@ -43,7 +43,9 @@ describe("linked study workflow", () => {
     mockWorkflow("reviewed"); await open(); await screen.findByLabelText("مسار محفوظ");
     fireEvent.change(screen.getByLabelText("مسار محفوظ"), { target: { value: "work-id" } });
     fireEvent.click(screen.getByRole("button", { name: "إنشاء مسودات في ناشر المنصات" }));
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(`${root}/work-id/handoff`, { method: "POST", body: JSON.stringify({ revision: 2 }) }));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(`${root}/work-id/handoff`, expect.objectContaining({ method: "POST", body: JSON.stringify({ revision: 2 }) })));
+    await screen.findByText("أُنشئت مسودات الناشر. لم يُنفّذ نشر خارجي.");
+    expect(screen.getByRole("button", { name: "تحديث حالة مسودات الناشر" })).toBeEnabled();
     expect(vi.mocked(apiFetch).mock.calls.some(([path]) => path.includes("/publish"))).toBe(false);
   });
   it("reads the real draft status after handoff", async () => {
@@ -51,8 +53,45 @@ describe("linked study workflow", () => {
     fireEvent.change(screen.getByLabelText("مسار محفوظ"), { target: { value: "work-id" } });
     fireEvent.click(screen.getByRole("button", { name: "تحديث حالة مسودات الناشر" }));
     await screen.findByText(/مسودة، لم تُنشر/);
-    expect(apiFetch).toHaveBeenCalledWith(`${root}/work-id/posts`, undefined);
+    expect(apiFetch).toHaveBeenCalledWith(`${root}/work-id/posts`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
+});
+
+it("keeps draft creation available when the platform connection service fails", async () => {
+  vi.mocked(apiFetch).mockImplementation(async path => path.endsWith("/connections") ? json({}, 503) : json({ workflows: [] }));
+  await open();
+  await screen.findByText(/تعذّر تحديث اتصالات المنصات/);
+  expect(screen.getByRole("button", { name: "حفظ مسودة المحتوى" })).toBeEnabled();
+  expect(screen.getByLabelText("نص التعليق الصوتي")).toBeVisible();
+});
+
+it("shows a saved draft immediately without depending on another connections request", async () => {
+  const saved = { id: "new-id", title: lesson.title, lesson_slug: lesson.slug, revision: 1, state: "draft", content };
+  vi.mocked(apiFetch).mockImplementation(async (path, options) => {
+    if (options?.method === "POST") return json(saved, 201);
+    if (path.endsWith("/connections")) return json({ platforms: [] });
+    return json({ workflows: [] });
+  });
+  await open();
+  for (const [label, value] of [["نص التعليق الصوتي", content.voiceover], ["وصف TikTok", content.tiktok], ["وصف Instagram", content.instagram], ["وصف YouTube", content.youtube]]) fireEvent.change(await screen.findByLabelText(label), { target: { value } });
+  fireEvent.click(screen.getByRole("button", { name: "حفظ مسودة المحتوى" }));
+  await screen.findByText(/حُفظت مسودة المحتوى/);
+  expect(screen.getByLabelText("مسار محفوظ")).toHaveValue("new-id");
+  expect(screen.getByRole("button", { name: "اعتماد هذه النسخة" })).toBeDisabled();
+  expect(vi.mocked(apiFetch).mock.calls.filter(([p]) => p.endsWith("/connections"))).toHaveLength(1);
+});
+
+it("confirms a successful manual refresh", async () => {
+  mockWorkflow(); await open();
+  fireEvent.click(await screen.findByRole("button", { name: "تحديث المسار والاتصالات" }));
+  await screen.findByText("تم تحديث المسارات واتصالات المنصات.");
+});
+
+it("explains required fields rather than silently ignoring an incomplete draft", async () => {
+  mockWorkflow(); await open();
+  const input = await screen.findByLabelText("نص التعليق الصوتي");
+  fireEvent.invalid(input);
+  expect(screen.getByText(/اختر ملخصًا وأكمل نص التعليق/)).toBeInTheDocument();
 });
 
 it("starts account OAuth with an explicit top-level POST rather than a third-party cookie fetch", async () => {

@@ -11,6 +11,9 @@
 @media(max-width:1100px){.study-orbit{opacity:.3;width:180px;height:180px}.study-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.study-library{padding:24px 18px}.study-orbit{display:none}.study-hero h1{font-size:48px}.study-intro{font-size:14px}.study-access,.study-section-title{flex-direction:column;align-items:stretch;gap:14px}.study-section-title form{max-width:none}.study-grid{grid-template-columns:1fr}.study-cover{aspect-ratio:1.4}.study-cover img{max-height:240px}.study-publisher form{grid-template-columns:1fr}.study-facts{gap:6px}.study-facts span{padding:4px 8px}.study-access-actions{justify-content:flex-start}}
 
 .study-content-workflow { padding: 20px 0; }
+.study-pagination { flex-wrap: wrap; align-items: center; }
+.study-publisher [role=alert] { color: #9a3434; }
+.study-workflow-editor form { display: block; }
 .study-workflow-connections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
 .study-workflow-connections article, .study-workflow-editor { padding: 18px; border: 1px solid #d9d2e5; border-radius: 14px; background: #fff; }
 .study-content-workflow > label, .study-workflow-editor label { display: grid; gap: 7px; margin: 14px 0; }
