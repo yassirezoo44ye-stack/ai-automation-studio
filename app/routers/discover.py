@@ -177,7 +177,12 @@ async def public_discover_feed(
     Optionally filter by ?type=APP|AGENT|WORKFLOW|AUTOMATION|TEMPLATE|DEVICE_WORKFLOW
     Includes user_liked/user_saved when a valid JWT is present.
     """
-    limit = min(limit, 100)
+    # Bound pagination before passing values to PostgreSQL LIMIT/OFFSET.
+    # Negative values otherwise trigger a database error instead of a 422.
+    if not 1 <= limit <= 100:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 100")
+    if offset < 0:
+        raise HTTPException(status_code=422, detail="offset must be non-negative")
     pool = get_pool()
     async with pool.acquire() as conn:
         if type:
