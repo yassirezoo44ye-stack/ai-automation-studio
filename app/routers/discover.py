@@ -256,7 +256,10 @@ async def my_creations(
     """List my org's creations (private + public). Auth required."""
     _require_auth(request)
     org_id = _get_org_id(request)
-    limit = min(limit, 100)
+    if not 1 <= limit <= 100:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 100")
+    if offset < 0:
+        raise HTTPException(status_code=422, detail="offset must be non-negative")
     pool = get_pool()
     async with pool.acquire() as conn:
         if type:
