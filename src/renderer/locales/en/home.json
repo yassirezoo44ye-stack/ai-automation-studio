@@ -11,7 +11,13 @@
     "label": "AI Business OS",
     "title": "What do you want to build?",
     "buildBtn": "Build App →",
-    "ideas": ["CRM", "Inventory", "HR Portal", "Support Tickets", "Project Tracker"],
+    "ideas": [
+      "CRM",
+      "Inventory",
+      "HR Portal",
+      "Support Tickets",
+      "Project Tracker"
+    ],
     "ideaPrompt": "Build a {{idea}} system with AI automation"
   },
   "stats": {
@@ -64,10 +70,22 @@
     "deleteFailed": "Failed to delete app"
   },
   "quickNav": {
-    "agents":       { "label": "Agents",       "desc": "Manage AI agents"      },
-    "automations":  { "label": "Automations",   "desc": "Workflows & triggers"  },
-    "runs":         { "label": "Runs",          "desc": "Monitor executions"    },
-    "integrations": { "label": "Integrations",  "desc": "Connect your tools"    }
+    "agents": {
+      "label": "Agents",
+      "desc": "Manage AI agents"
+    },
+    "automations": {
+      "label": "Automations",
+      "desc": "Workflows & triggers"
+    },
+    "runs": {
+      "label": "Runs",
+      "desc": "Monitor executions"
+    },
+    "integrations": {
+      "label": "Integrations",
+      "desc": "Connect your tools"
+    }
   },
   "agents": {
     "title": "Active Agents",
@@ -84,5 +102,164 @@
     "empty": "No active workflows",
     "emptyDesc": "Workflows will appear here when triggered",
     "viewAll": "View All"
+  },
+  "cc": {
+    "title": "Command Center",
+    "live": "LIVE",
+    "newProject": "New Project",
+    "buildWithAi": "Build with AI",
+    "factory": "AI SOFTWARE FACTORY",
+    "build": "Build",
+    "examples": [
+      "Build a CRM for my sales team with contacts, deals, and follow-ups",
+      "Create an inventory management system with low-stock alerts",
+      "Build an HR onboarding portal with task checklists and document storage",
+      "Create a customer support ticketing system with AI triage",
+      "Build a project tracker with time logging and team collaboration"
+    ],
+    "ask": {
+      "title": "Ask Flow",
+      "subtitle": "Your AI assistant for leads, follow-ups, content and planning.",
+      "label": "Your question",
+      "placeholder": "e.g. Write a follow-up for a lead who asked about pricing",
+      "submit": "Ask",
+      "suggestions": [
+        "Write a follow-up email for a new lead",
+        "Plan this week's sales priorities",
+        "Draft a LinkedIn post about our services",
+        "Summarise what a good lead looks like"
+      ]
+    },
+    "pulse": {
+      "title": "Business pulse",
+      "open": "Open leads",
+      "hot": "Hot",
+      "warm": "Warm",
+      "cold": "Cold",
+      "open_": "Open",
+      "hotNow": "Contact now: {{names}}",
+      "noHot": "No hot leads right now.",
+      "empty": "No open leads yet — add or capture your first lead.",
+      "noOrg": "Select an organization to see your leads.",
+      "error": "Could not load leads."
+    },
+    "kpi": {
+      "projects": "Projects",
+      "activeRuns": "Active Runs",
+      "successRate": "Success Rate",
+      "agents": "AI Agents",
+      "workflows": "Workflows",
+      "approvals": "Pending Approvals",
+      "failedRuns": "Failed Runs",
+      "conversations": "Conversations",
+      "live": "live",
+      "running": "{{count}} running",
+      "active": "active"
+    },
+    "agentRuns_one": "{{count}} run",
+    "agentRuns_other": "{{count}} runs",
+    "attention": {
+      "title": "Needs Your Attention",
+      "failedRuns_one": "{{count}} failed agent run",
+      "failedRuns_other": "{{count}} failed agent runs",
+      "lastFailed": "Last: {{agent}} in \"{{project}}\" — {{error}}",
+      "viewRuns": "View Runs",
+      "approvals_one": "{{count}} workflow waiting for approval",
+      "approvals_other": "{{count}} workflows waiting for approval",
+      "approvalsDetail": "Human approval required to continue execution",
+      "review": "Review",
+      "security_one": "{{count}} SaaS project awaiting security review",
+      "security_other": "{{count}} SaaS projects awaiting security review",
+      "oldest": "Oldest: \"{{idea}}\" — waiting since {{date}}",
+      "allClear": "All systems operational",
+      "allClearHint": "No issues requiring attention"
+    },
+    "integrations": {
+      "first": "Node",
+      "second": "Integrations"
+    },
+    "useCases": {
+      "first": "Use",
+      "second": "Cases",
+      "items": {
+        "support": "AI Customer Support",
+        "leads": "Lead Qualification",
+        "content": "Content Generation",
+        "email": "Email Automation",
+        "analytics": "Data Analytics",
+        "ecommerce": "E-commerce Ops",
+        "hr": "HR Onboarding",
+        "finance": "Financial Reports",
+        "social": "Social Media Mgmt",
+        "seo": "SEO & Marketing",
+        "project": "Project Management",
+        "codereview": "AI Code Review"
+      }
+    },
+    "viewAll": "View All",
+    "buildOne": "Build One",
+    "workforce": "AI Workforce — {{running}} running · {{idle}} idle",
+    "manageAgents": "Manage Agents",
+    "noAgents": "No agents deployed",
+    "noAgentsHint": "Create your first AI agent to automate work",
+    "recentWork": "Recent Work",
+    "activityError": "Could not load activity",
+    "noActivity": "No activity yet — start by building an app or running an agent",
+    "activityActions": {
+      "agent_run": "Agent run",
+      "message_sent": "Message sent",
+      "build": "Build",
+      "project_created": "Project created",
+      "conversation_created": "Conversation started",
+      "deployment": "Deployment"
+    },
+    "projects": "Projects — {{count}}",
+    "appBuilder": "App Builder",
+    "createProject": "Create Project",
+    "projectName": "Project name",
+    "projectDesc": "Description (optional)",
+    "create": "Create",
+    "noProjects": "No projects yet",
+    "noProjectsHint": "Use AI to generate a full-stack app in seconds",
+    "quickActions": "Quick Actions",
+    "quick": {
+      "chat": {
+        "label": "New Conversation",
+        "desc": "Chat with AI assistants"
+      },
+      "build": {
+        "label": "Build App with AI",
+        "desc": "AI Software Factory"
+      },
+      "agent": {
+        "label": "New Agent",
+        "desc": "Deploy an AI agent"
+      },
+      "workflow": {
+        "label": "New Workflow",
+        "desc": "Automate a business process"
+      }
+    },
+    "activeWorkflows": "Active Workflows",
+    "noWorkflows": "No active workflows",
+    "platform": {
+      "title": "Platform",
+      "gateway": {
+        "label": "AI Gateway",
+        "sub": "Models · Budgets · Usage"
+      },
+      "observability": {
+        "label": "Observability",
+        "sub": "Metrics · Alerts · Logs"
+      },
+      "integrations": {
+        "label": "Integrations",
+        "sub": "Connect external services"
+      },
+      "marketplace": {
+        "label": "Marketplace",
+        "sub": "Templates & packages"
+      }
+    }
   }
 }

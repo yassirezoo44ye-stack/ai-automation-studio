@@ -2,8 +2,9 @@
  * FLOW Command Center — home page
  *
  * Sections:
- *   1. Command Bar hero (Build with AI prompt)
- *   2. KPI strip — 8 metrics
+ *   1. Ask Flow (hands a question to My AI Assistant) + Business pulse (leads)
+ *   2. Command Bar hero (Build with AI prompt)
+ *   3. KPI strip — 8 metrics
  *   3. Two-column body:
  *      LEFT  — AI Workforce | Needs Attention | Recent Work
  *      RIGHT — Quick Actions | Active Workflows | Quick Nav
@@ -14,6 +15,7 @@
  *   GET /api/workflows/active → active workflow runs
  *   GET /api/workflows/approvals/pending → pending approvals count
  *   GET /api/projects        → project list
+ *   GET /api/leads           → lead tiers for the business pulse (org-scoped)
  */
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -26,8 +28,10 @@ import { apiFetch, parseJSON } from "../../utils/api";
 import { relTime } from "../../utils/time";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAsyncData } from "../../shared/hooks/useAsyncData";
+import { handOffToAssistant } from "../../shared/utils/assistantHandoff";
 import { ErrorState } from "../../shared/ui/StateViews";
 import type { Project } from "../../types";
+import "./home.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +62,8 @@ type WorkflowsResponse = { runs: WorkflowRun[] };
 type ApprovalsResponse = { pending: string[] };
 type SecurityReviewItem = { project_id: string; idea_text: string; waiting_since: string };
 type SecurityReviewsResponse = { pending_security_reviews: SecurityReviewItem[] };
+type PulseLead = { id: string; name: string; status: string; ai_tier?: "hot" | "warm" | "cold" | null; ai_score: number | null };
+type LeadsResponse = { leads?: PulseLead[] };
 
 // ── Integration nodes ─────────────────────────────────────────────────────
 
@@ -101,13 +107,7 @@ const USE_CASES: UseCaseDef[] = [
   { id: "codereview",name: "AI Code Review",          color: "orange", prompt: "Build an AI-powered code review system with automated quality gates, security scanning, and PR summaries", svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>` },
 ];
 
-const EXAMPLE_PROMPTS = [
-  "Build a CRM for my sales team with contacts, deals, and follow-ups",
-  "Create an inventory management system with low-stock alerts",
-  "Build an HR onboarding portal with task checklists and document storage",
-  "Create a customer support ticketing system with AI triage",
-  "Build a project tracker with time logging and team collaboration",
-];
+const EXAMPLE_PROMPT_COUNT = 5;
 
 const ACTION_META: Record<string, { color: string; icon: React.ReactNode }> = {
   agent_run:            { color: "var(--accent)", icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
@@ -212,6 +212,7 @@ function KpiTile({
 // ── Agent workforce card ───────────────────────────────────────────────────
 
 function AgentRow({ agent, onNavigate, lang }: { agent: AgentEntry; onNavigate: () => void; lang: Lang }) {
+  const { t } = useTranslation("home");
   const liveStatus = agent.live?.status ?? "idle";
   const isRunning  = liveStatus === "running";
   const isError    = liveStatus === "error";
@@ -250,9 +251,9 @@ function AgentRow({ agent, onNavigate, lang }: { agent: AgentEntry; onNavigate: 
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
           <Dot color={dotColor} pulse={isRunning} />
-          <span style={{ fontSize: 10, color: dotColor, fontWeight: 600, textTransform: "capitalize" }}>{liveStatus}</span>
+          <span style={{ fontSize: 10, color: dotColor, fontWeight: 600, textTransform: "capitalize" }}>{t(`agents.status.${liveStatus}`, { defaultValue: liveStatus })}</span>
           {(agent.stats?.run_count ?? 0) > 0 && (
-            <span style={{ fontSize: 10, color: "var(--t5)", marginLeft: 2 }}>· {agent.stats.run_count} runs</span>
+            <span style={{ fontSize: 10, color: "var(--t5)", marginLeft: 2 }}>· {t("cc.agentRuns", { count: agent.stats.run_count })}</span>
           )}
         </div>
       </div>
@@ -364,6 +365,7 @@ export function HomePage() {
   const orgReady = !orgLoading && !!currentOrgId;
 
   const [prompt, setPrompt]       = useState("");
+  const [question, setQuestion]   = useState("");
   const [promptIdx, setPromptIdx] = useState(0);
   const [creating, setCreating]   = useState(false);
   const [newName, setNewName]     = useState("");
@@ -373,7 +375,7 @@ export function HomePage() {
 
   // Cycle placeholder
   useEffect(() => {
-    const id = setInterval(() => setPromptIdx(i => (i + 1) % EXAMPLE_PROMPTS.length), 4000);
+    const id = setInterval(() => setPromptIdx(i => (i + 1) % EXAMPLE_PROMPT_COUNT), 4000);
     return () => clearInterval(id);
   }, []);
 
@@ -421,7 +423,21 @@ export function HomePage() {
   );
   const projects = projectsQ.data ?? [];
 
+  const leadsQ = useAsyncData<LeadsResponse>(
+    () => apiFetch("/api/leads?limit=100").then(r => parseJSON<LeadsResponse>(r, "/api/leads?limit=100")),
+    [currentOrgId],
+    { enabled: orgReady },
+  );
+  const pulseLeads = leadsQ.data?.leads ?? [];
+  const openLeads = pulseLeads.filter(l => !["won", "lost"].includes(l.status));
+  const hotLeads = openLeads.filter(l => l.ai_tier === "hot");
+
   // ── Handlers ────────────────────────────────────────────────────────────
+  function askAssistant(text: string) {
+    handOffToAssistant(text);
+    setPage("ai");
+  }
+
   function handleBuildApp() {
     if (prompt.trim().length > 3) sessionStorage.setItem("flow_builder_prompt", prompt.trim());
     setPage("app-builder");
@@ -458,14 +474,14 @@ export function HomePage() {
   const idleAgents    = agents.filter(a => a.live?.status !== "running").length;
 
   const kpis = [
-    { label: "Projects",          value: stats?.projects ?? "—",       icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>,                                     accent: true, sub: undefined,       onClick: () => setPage("app-builder") },
-    { label: "Active Runs",       value: stats?.active_runs ?? "—",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,                                           accent: false, sub: "live",         onClick: () => setPage("runs") },
-    { label: "Success Rate",      value: stats ? `${stats.success_rate}%` : "—", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="20 6 9 17 4 12"/></svg>,                                                                    accent: false, sub: undefined,       onClick: undefined },
-    { label: "AI Agents",         value: agents.length || (agentsQ.status === "loading" ? "…" : 0), icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/></svg>, accent: false, sub: `${runningAgents} running`, onClick: () => setPage("agentos") },
-    { label: "Workflows",         value: workflowRuns.length || 0,     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,      accent: false, sub: "active",       onClick: () => setPage("automation") },
-    { label: "Pending Approvals", value: pendingApprovalsTotal, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,                                                          accent: pendingApprovals.length > 0 || securityReviews.length > 0 || secReviewErr, sub: undefined, onClick: () => setPage(pendingApprovals.length > 0 ? "automation" : "saas-factory") },
-    { label: "Failed Runs",       value: stats?.failed_runs ?? "—",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>,    accent: (stats?.failed_runs ?? 0) > 0, sub: undefined, onClick: () => setPage("runs") },
-    { label: "Conversations",     value: stats?.conversations ?? "—",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,                                       accent: false, sub: undefined,       onClick: () => setPage("ai") },
+    { label: t("cc.kpi.projects"),          value: stats?.projects ?? "—",       icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>,                                     accent: true, sub: undefined,       onClick: () => setPage("app-builder") },
+    { label: t("cc.kpi.activeRuns"),       value: stats?.active_runs ?? "—",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,                                           accent: false, sub: t("cc.kpi.live"),         onClick: () => setPage("runs") },
+    { label: t("cc.kpi.successRate"),      value: stats ? `${stats.success_rate}%` : "—", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="20 6 9 17 4 12"/></svg>,                                                                    accent: false, sub: undefined,       onClick: undefined },
+    { label: t("cc.kpi.agents"),         value: agents.length || (agentsQ.status === "loading" ? "…" : 0), icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3"/></svg>, accent: false, sub: t("cc.kpi.running", { count: runningAgents }), onClick: () => setPage("agentos") },
+    { label: t("cc.kpi.workflows"),         value: workflowRuns.length || 0,     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,      accent: false, sub: t("cc.kpi.active"),       onClick: () => setPage("automation") },
+    { label: t("cc.kpi.approvals"), value: pendingApprovalsTotal, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,                                                          accent: pendingApprovals.length > 0 || securityReviews.length > 0 || secReviewErr, sub: undefined, onClick: () => setPage(pendingApprovals.length > 0 ? "automation" : "saas-factory") },
+    { label: t("cc.kpi.failedRuns"),       value: stats?.failed_runs ?? "—",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>,    accent: (stats?.failed_runs ?? 0) > 0, sub: undefined, onClick: () => setPage("runs") },
+    { label: t("cc.kpi.conversations"),     value: stats?.conversations ?? "—",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,                                       accent: false, sub: undefined,       onClick: () => setPage("ai") },
   ];
 
   // ── Attention items ──────────────────────────────────────────────────────
@@ -476,18 +492,18 @@ export function HomePage() {
     const item = stats?.failed_run_items?.[0];
     attentionItems.push({
       severity: "critical",
-      title: `${stats!.failed_runs} failed agent run${stats!.failed_runs > 1 ? "s" : ""}`,
-      detail: item ? `Last: ${item.agent_type} in "${item.project_name}" — ${item.error.slice(0, 80)}` : undefined,
-      action: "View Runs",
+      title: t("cc.attention.failedRuns", { count: stats!.failed_runs }),
+      detail: item ? t("cc.attention.lastFailed", { agent: item.agent_type, project: item.project_name, error: item.error.slice(0, 80) }) : undefined,
+      action: t("cc.attention.viewRuns"),
       onAction: () => setPage("runs"),
     });
   }
   if (pendingApprovals.length > 0) {
     attentionItems.push({
       severity: "warning",
-      title: `${pendingApprovals.length} workflow${pendingApprovals.length > 1 ? "s" : ""} waiting for approval`,
-      detail: "Human approval required to continue execution",
-      action: "Review",
+      title: t("cc.attention.approvals", { count: pendingApprovals.length }),
+      detail: t("cc.attention.approvalsDetail"),
+      action: t("cc.attention.review"),
       onAction: () => setPage("automation"),
     });
   }
@@ -496,22 +512,24 @@ export function HomePage() {
     const waitingSince = new Date(oldest.waiting_since).toLocaleDateString();
     attentionItems.push({
       severity: "warning",
-      title: `${securityReviews.length} SaaS project${securityReviews.length > 1 ? "s" : ""} awaiting security review`,
-      detail: `Oldest: "${oldest.idea_text}" — waiting since ${waitingSince}`,
-      action: "Review",
+      title: t("cc.attention.security", { count: securityReviews.length }),
+      detail: t("cc.attention.oldest", { idea: oldest.idea_text, date: waitingSince }),
+      action: t("cc.attention.review"),
       onAction: () => setPage("saas-factory"),
     });
   }
 
   const activity = stats?.recent_activity ?? [];
   const ideaChips = t("buildSection.ideas", { returnObjects: true }) as string[];
+  const examplePrompts = t("cc.examples", { returnObjects: true }) as string[];
+  const askSuggestions = t("cc.ask.suggestions", { returnObjects: true }) as string[];
 
   // ── Quick Actions ────────────────────────────────────────────────────────
   const quickActions = [
-    { label: "New Conversation",  desc: "Chat with AI assistants",               color: "#6E32E0", onClick: () => setPage("ai"),          icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
-    { label: "Build App with AI", desc: "AI Software Factory",                   color: "#2563EB", onClick: handleBuildApp,               icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
-    { label: "New Agent",         desc: "Deploy an AI agent",                    color: "#0B7A70", onClick: () => setPage("agentos"),     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
-    { label: "New Workflow",      desc: "Automate a business process",           color: "#A16207", onClick: () => setPage("automation"),  icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
+    { label: t("cc.quick.chat.label"), desc: t("cc.quick.chat.desc"),               color: "#6E32E0", onClick: () => setPage("ai"),          icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+    { label: t("cc.quick.build.label"), desc: t("cc.quick.build.desc"),                   color: "#2563EB", onClick: handleBuildApp,               icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> },
+    { label: t("cc.quick.agent.label"), desc: t("cc.quick.agent.desc"),                    color: "#0B7A70", onClick: () => setPage("agentos"),     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3"/></svg> },
+    { label: t("cc.quick.workflow.label"), desc: t("cc.quick.workflow.desc"),           color: "#A16207", onClick: () => setPage("automation"),  icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> },
   ];
 
   return (
@@ -524,9 +542,9 @@ export function HomePage() {
         background: "var(--bg-surface)", flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>Command Center</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)" }}>{t("cc.title")}</div>
           <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", background: "var(--accent-dim)", padding: "2px 6px", borderRadius: 4 }}>
-            LIVE
+            {t("cc.live")}
           </span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -535,14 +553,14 @@ export function HomePage() {
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 7, border: "1px solid var(--b2)", background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New Project
+            {t("cc.newProject")}
           </button>
           <button
             onClick={handleBuildApp}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 14px", borderRadius: 7, border: "none", background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)", color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 8px rgba(110,50,224,0.28)" }}
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            Build with AI
+            {t("cc.buildWithAi")}
           </button>
         </div>
       </div>
@@ -550,10 +568,59 @@ export function HomePage() {
       {/* ── Scrollable body ─────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px 40px" }}>
 
+        {/* ── Ask Flow + Business pulse ───────────────────────────── */}
+        <div className="home-ai-row">
+          <section className="home-ask" aria-labelledby="home-ask-title">
+            <h2 id="home-ask-title"><span className="home-ai-badge">AI</span>{t("cc.ask.title")}</h2>
+            <p>{t("cc.ask.subtitle")}</p>
+            <form onSubmit={e => { e.preventDefault(); askAssistant(question); }} className="home-ask-form">
+              <input value={question} onChange={e => setQuestion(e.target.value)} aria-label={t("cc.ask.label")} placeholder={t("cc.ask.placeholder")} />
+              <button type="submit">{t("cc.ask.submit")}</button>
+            </form>
+            <div className="home-chips">
+              {(Array.isArray(askSuggestions) ? askSuggestions : []).map(s => (
+                <button key={s} type="button" onClick={() => askAssistant(s)}>{s}</button>
+              ))}
+            </div>
+          </section>
+          <section className="home-pulse" aria-labelledby="home-pulse-title">
+            <div className="home-pulse-head">
+              <h2 id="home-pulse-title">{t("cc.pulse.title")}</h2>
+              <button type="button" onClick={() => setPage("leads")}>{t("cc.pulse.open")} →</button>
+            </div>
+            {!orgReady ? (
+              <p className="home-muted">{t("cc.pulse.noOrg")}</p>
+            ) : leadsQ.status === "loading" ? (
+              <div className="skeleton" style={{ height: 64, borderRadius: 10 }} />
+            ) : leadsQ.status === "error" ? (
+              <p className="home-muted">{t("cc.pulse.error")}</p>
+            ) : (
+              <>
+                <dl className="home-pulse-stats">
+                  {(["hot", "warm", "cold"] as const).map(tier => (
+                    <div key={tier} className={`is-${tier}`}>
+                      <dt>{t(`cc.pulse.${tier}`)}</dt>
+                      <dd>{openLeads.filter(l => l.ai_tier === tier).length}</dd>
+                    </div>
+                  ))}
+                  <div><dt>{t("cc.pulse.open_")}</dt><dd>{openLeads.length}</dd></div>
+                </dl>
+                {hotLeads.length > 0 ? (
+                  <p className="home-pulse-hot">
+                    {t("cc.pulse.hotNow", { names: hotLeads.slice(0, 3).map(l => l.name).join("، ") })}
+                  </p>
+                ) : (
+                  <p className="home-muted">{openLeads.length ? t("cc.pulse.noHot") : t("cc.pulse.empty")}</p>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+
         {/* ── AI Build Hero ──────────────────────────────────────── */}
         <div className="dash-hero" style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "var(--accent)", textTransform: "uppercase", marginBottom: 6 }}>
-            ✦ AI SOFTWARE FACTORY
+            ✦ {t("cc.factory")}
           </div>
           <div style={{ position: "relative" }}>
             <textarea
@@ -561,7 +628,8 @@ export function HomePage() {
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleBuildApp(); } }}
-              placeholder={EXAMPLE_PROMPTS[promptIdx]}
+              placeholder={Array.isArray(examplePrompts) && examplePrompts.length ? examplePrompts[promptIdx % examplePrompts.length] : ""}
+              aria-label={t("cc.factory")}
               rows={2}
               style={{
                 width: "100%", padding: "12px 110px 12px 14px",
@@ -583,7 +651,7 @@ export function HomePage() {
                 fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.15s",
               }}
             >
-              Build →
+              {t("cc.build")} →
             </button>
           </div>
 
@@ -614,9 +682,9 @@ export function HomePage() {
         <div className="flow-section-header" style={{ marginBottom: 18 }}>
           <div className="flow-section-header" style={{ marginBottom: 12 }}>
             <span className="flow-section-title">
-              Node <span className="flow-section-title__accent">Integrations</span>
+              {t("cc.integrations.first")} <span className="flow-section-title__accent">{t("cc.integrations.second")}</span>
             </span>
-            <button className="flow-section-viewall" onClick={() => setPage("integrations")}>View All →</button>
+            <button className="flow-section-viewall" onClick={() => setPage("integrations")}>{t("cc.viewAll")} →</button>
           </div>
           <div className="flow-nodes-grid">
             {NODE_INTEGRATIONS.map(node => (
@@ -637,9 +705,9 @@ export function HomePage() {
         <div style={{ marginBottom: 20 }}>
           <div className="flow-section-header" style={{ marginBottom: 12 }}>
             <span className="flow-section-title">
-              Use <span className="flow-section-title__accent">Cases</span>
+              {t("cc.useCases.first")} <span className="flow-section-title__accent">{t("cc.useCases.second")}</span>
             </span>
-            <button className="flow-section-viewall" onClick={handleBuildApp}>Build One →</button>
+            <button className="flow-section-viewall" onClick={handleBuildApp}>{t("cc.buildOne")} →</button>
           </div>
           <div className="flow-cases-grid">
             {USE_CASES.map(uc => (
@@ -647,10 +715,10 @@ export function HomePage() {
                 key={uc.id}
                 className={`flow-case-card flow-case--${uc.color}`}
                 onClick={() => { setPrompt(uc.prompt); promptRef.current?.focus(); }}
-                title={uc.name}
+                title={t(`cc.useCases.items.${uc.id}`, { defaultValue: uc.name })}
               >
                 <div className="flow-case-card__icon" dangerouslySetInnerHTML={{ __html: uc.svg }} />
-                <div className="flow-case-card__name">{uc.name}</div>
+                <div className="flow-case-card__name">{t(`cc.useCases.items.${uc.id}`, { defaultValue: uc.name })}</div>
               </button>
             ))}
           </div>
@@ -665,21 +733,21 @@ export function HomePage() {
             {/* AI Workforce */}
             <div style={{ marginBottom: 20 }}>
               <SectionHeader
-                title={`AI Workforce — ${runningAgents} running · ${idleAgents} idle`}
-                action="Manage Agents"
+                title={t("cc.workforce", { running: runningAgents, idle: idleAgents })}
+                action={t("cc.manageAgents")}
                 onAction={() => setPage("agentos")}
               />
               {agentsQ.status === "loading" ? (
                 <div>{[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 46, borderRadius: 8, marginBottom: 6 }} />)}</div>
               ) : agents.length === 0 ? (
                 <Card style={{ textAlign: "center", padding: "24px 16px" }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 4 }}>No agents deployed</div>
-                  <div style={{ fontSize: 11, color: "var(--t5)", marginBottom: 12 }}>Create your first AI agent to automate work</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 4 }}>{t("cc.noAgents")}</div>
+                  <div style={{ fontSize: 11, color: "var(--t5)", marginBottom: 12 }}>{t("cc.noAgentsHint")}</div>
                   <button
                     onClick={() => setPage("agentos")}
                     style={{ padding: "6px 14px", borderRadius: 7, border: "none", background: "var(--accent-dim)", color: "var(--accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
                   >
-                    + New Agent
+                    + {t("cc.quick.agent.label")}
                   </button>
                 </Card>
               ) : (
@@ -691,14 +759,14 @@ export function HomePage() {
 
             {/* Needs Your Attention */}
             <div style={{ marginBottom: 20 }}>
-              <SectionHeader title="Needs Your Attention" />
+              <SectionHeader title={t("cc.attention.title")} />
               {attentionItems.length === 0 && (statsQ.status !== "loading") ? (
                 <Card>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
                     <span style={{ fontSize: 18 }}>✓</span>
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--t2)" }}>All systems operational</div>
-                      <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 2 }}>No issues requiring attention</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--t2)" }}>{t("cc.attention.allClear")}</div>
+                      <div style={{ fontSize: 11, color: "var(--t5)", marginTop: 2 }}>{t("cc.attention.allClearHint")}</div>
                     </div>
                   </div>
                 </Card>
@@ -716,14 +784,14 @@ export function HomePage() {
 
             {/* Recent Work — unified activity timeline */}
             <div style={{ marginBottom: 20 }}>
-              <SectionHeader title="Recent Work" />
+              <SectionHeader title={t("cc.recentWork")} />
               {statsQ.status === "loading" ? (
                 <div>{[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ height: 38, borderRadius: 8, marginBottom: 6 }} />)}</div>
               ) : statsQ.status === "error" ? (
-                <ErrorState message="Could not load activity" onRetry={statsQ.refetch} />
+                <ErrorState message={t("cc.activityError")} onRetry={statsQ.refetch} />
               ) : activity.length === 0 ? (
                 <Card style={{ textAlign: "center", padding: "24px 16px" }}>
-                  <div style={{ fontSize: 12, color: "var(--t4)" }}>No activity yet — start by building an app or running an agent</div>
+                  <div style={{ fontSize: 12, color: "var(--t4)" }}>{t("cc.noActivity")}</div>
                 </Card>
               ) : (
                 <Card style={{ padding: "4px 0" }}>
@@ -740,7 +808,7 @@ export function HomePage() {
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)", textTransform: "capitalize" }}>
-                            {a.action.replace(/_/g, " ")}
+                            {t(`cc.activityActions.${a.action}`, { defaultValue: a.action.replace(/_/g, " ") })}
                           </div>
                           {a.details.prompt_preview && (
                             <div style={{ fontSize: 11, color: "var(--t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -759,8 +827,8 @@ export function HomePage() {
             {/* Projects grid */}
             <div>
               <SectionHeader
-                title={`Projects — ${projects.length}`}
-                action="App Builder"
+                title={t("cc.projects", { count: projects.length })}
+                action={t("cc.appBuilder")}
                 onAction={() => setPage("app-builder")}
               />
               <AnimatePresence>
@@ -769,23 +837,23 @@ export function HomePage() {
                     initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--accent-border)", borderRadius: 10, padding: 16, marginBottom: 12, boxShadow: "0 0 0 3px var(--accent-dim)" }}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--t1)", marginBottom: 10 }}>Create Project</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--t1)", marginBottom: 10 }}>{t("cc.createProject")}</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Project name" autoFocus
+                      <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t("cc.projectName")} aria-label={t("cc.projectName")} autoFocus
                         style={{ padding: "8px 12px", fontSize: 13, borderRadius: 7, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t1)", outline: "none" }}
                         onKeyDown={e => e.key === "Enter" && createProject()}
                       />
-                      <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description (optional)"
+                      <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder={t("cc.projectDesc")} aria-label={t("cc.projectDesc")}
                         style={{ padding: "8px 12px", fontSize: 12, borderRadius: 7, border: "1px solid var(--b1)", background: "var(--bg-card)", color: "var(--t1)", outline: "none", resize: "vertical", minHeight: 48, fontFamily: "inherit" }}
                       />
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={createProject} disabled={saving || newName.trim().length < 2}
                           style={{ padding: "6px 14px", borderRadius: 7, border: "none", background: "var(--accent)", color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: (saving || newName.trim().length < 2) ? 0.5 : 1 }}>
-                          {saving ? "Creating…" : "Create"}
+                          {saving ? t("createForm.creating") : t("cc.create")}
                         </button>
                         <button onClick={() => { setCreating(false); setNewName(""); setNewDesc(""); }}
                           style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid var(--b1)", background: "transparent", color: "var(--t3)", fontSize: 12, cursor: "pointer" }}>
-                          Cancel
+                          {t("createForm.cancel")}
                         </button>
                       </div>
                     </div>
@@ -799,11 +867,11 @@ export function HomePage() {
                 </div>
               ) : projects.length === 0 ? (
                 <Card style={{ textAlign: "center", padding: "28px 16px" }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 4 }}>No projects yet</div>
-                  <div style={{ fontSize: 11, color: "var(--t5)", marginBottom: 12 }}>Use AI to generate a full-stack app in seconds</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t3)", marginBottom: 4 }}>{t("cc.noProjects")}</div>
+                  <div style={{ fontSize: 11, color: "var(--t5)", marginBottom: 12 }}>{t("cc.noProjectsHint")}</div>
                   <button onClick={handleBuildApp}
                     style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)", color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                    Build with AI
+                    {t("cc.buildWithAi")}
                   </button>
                 </Card>
               ) : (
@@ -819,6 +887,8 @@ export function HomePage() {
                           {p.name.charAt(0).toUpperCase()}
                         </div>
                         <button
+                          aria-label={t("card.deleteTitle")}
+                          title={t("card.deleteTitle")}
                           onClick={e => { e.stopPropagation(); void deleteProject(p.id, p.name); }}
                           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t5)", padding: 3, borderRadius: 5, display: "flex", transition: "color 0.12s" }}
                           onMouseEnter={e => (e.currentTarget.style.color = "var(--red)")}
@@ -841,7 +911,7 @@ export function HomePage() {
 
             {/* Quick Actions */}
             <div>
-              <SectionHeader title="Quick Actions" />
+              <SectionHeader title={t("cc.quickActions")} />
               {quickActions.map(a => (
                 <QuickAction key={a.label} {...a} />
               ))}
@@ -849,12 +919,12 @@ export function HomePage() {
 
             {/* Active Workflows */}
             <div>
-              <SectionHeader title="Active Workflows" action="View All" onAction={() => setPage("automation")} />
+              <SectionHeader title={t("cc.activeWorkflows")} action={t("cc.viewAll")} onAction={() => setPage("automation")} />
               {workflowsQ.status === "loading" ? (
                 <div>{[1, 2].map(i => <div key={i} className="skeleton" style={{ height: 38, borderRadius: 8, marginBottom: 6 }} />)}</div>
               ) : workflowRuns.length === 0 ? (
                 <Card style={{ textAlign: "center", padding: "16px" }}>
-                  <div style={{ fontSize: 11, color: "var(--t5)" }}>No active workflows</div>
+                  <div style={{ fontSize: 11, color: "var(--t5)" }}>{t("cc.noWorkflows")}</div>
                 </Card>
               ) : (
                 workflowRuns.slice(0, 4).map(run => {
@@ -872,15 +942,15 @@ export function HomePage() {
 
             {/* Platform Nav */}
             <div>
-              <SectionHeader title="Platform" />
+              <SectionHeader title={t("cc.platform.title")} />
               {[
-                { label: "AI Gateway",   sub: "Models · Budgets · Usage",   page: "ai-routing" as const,    color: "#6E32E0" },
-                { label: "Observability",sub: "Metrics · Alerts · Logs",     page: "observability" as const, color: "#0B7A70" },
-                { label: "Integrations", sub: "Connect external services",   page: "integrations" as const,  color: "#2563EB" },
-                { label: "Marketplace",  sub: "Templates & packages",        page: "marketplace" as const,   color: "#A16207" },
+                { label: t("cc.platform.gateway.label"),       sub: t("cc.platform.gateway.sub"),       page: "ai-routing" as const,    color: "#6E32E0" },
+                { label: t("cc.platform.observability.label"), sub: t("cc.platform.observability.sub"), page: "observability" as const, color: "#0B7A70" },
+                { label: t("cc.platform.integrations.label"),  sub: t("cc.platform.integrations.sub"),  page: "integrations" as const,  color: "#2563EB" },
+                { label: t("cc.platform.marketplace.label"),   sub: t("cc.platform.marketplace.sub"),   page: "marketplace" as const,   color: "#A16207" },
               ].map(item => (
                 <button
-                  key={item.label}
+                  key={item.page}
                   onClick={() => setPage(item.page)}
                   className="dash-qnav"
                   style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 10px", borderRadius: 8, background: "var(--bg-card)", border: "1px solid var(--b1)", cursor: "pointer", textAlign: "left", marginBottom: 5, transition: "border-color 0.12s" }}
