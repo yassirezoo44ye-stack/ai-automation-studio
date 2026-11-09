@@ -42,6 +42,9 @@ class ChatPreviewConfigTests(unittest.TestCase):
             "https://flow-api-pp9r.onrender.com",
             "https://flow-chat-review-api.onrender.com.evil.example",
             "https://unrelated.onrender.com",
+            "https://flow-chat-review-api-abc.extra.onrender.com",
+            "https://flow-chat-review-api-.onrender.com",
+            "https://flow-chat-review-api-abc_.onrender.com",
         ]:
             with self.subTest(value=value), self.assertRaises(ValueError):
                 make_preview_config(self.source, value)
@@ -69,6 +72,29 @@ class ChatPreviewConfigTests(unittest.TestCase):
         a = make_preview_config(self.source, self.backend + "/")
         self.assertEqual(a, make_preview_config(a, self.backend))
 
+    def test_rejects_a_second_policy_that_would_block_staging(self):
+        self.source["headers"][0]["headers"].append({
+            "key": "Content-Security-Policy", "value": "default-src 'self';"
+        })
+        with self.assertRaisesRegex(ValueError, "exactly one connect-src"):
+            make_preview_config(self.source, self.backend)
+
+    def test_rejects_duplicate_connect_directives(self):
+        self.source["headers"][0]["headers"][0]["value"] += " connect-src 'none';"
+        with self.assertRaisesRegex(ValueError, "exactly one connect-src"):
+            make_preview_config(self.source, self.backend)
+
+    def test_updates_every_policy_and_accepts_case_insensitive_directive(self):
+        policy = copy.deepcopy(self.source["headers"][0]["headers"][0])
+        policy["value"] = policy["value"].replace("connect-src", "CONNECT-SRC")
+        self.source["headers"][0]["headers"].append(policy)
+        result = make_preview_config(self.source, self.backend)
+        for index in (0, 2):
+            value = result["headers"][0]["headers"][index]["value"]
+            self.assertIn(self.backend, value)
+            self.assertNotIn("production.onrender.com", value)
+
 
 if __name__ == "__main__":
     unittest.main()
+
