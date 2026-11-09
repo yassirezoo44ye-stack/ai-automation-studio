@@ -1,5 +1,6 @@
 import contextlib
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
@@ -15,6 +16,7 @@ from app.core.helpers import resolve_project_id
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["agents"])
 
 
@@ -168,6 +170,10 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
     history.append({"role": "user", "content": req.prompt})
 
     async def event_stream():
+        # The user message is already durable. Acknowledge it before admission
+        # to AI capacity so the client can distinguish saved input from a
+        # request that never reached persistence.
+        yield f"data: {json.dumps({'type':'conv_id','conv_id':str(conv_id)})}\n\n"
         try:
             bulkhead_cm = bulkhead.acquire()
             await bulkhead_cm.__aenter__()
@@ -176,13 +182,6 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
             return
         full_text = ""
         try:
-            yield f"data: {json.dumps({'type':'conv_id','conv_id':str(conv_id)})}\n\n"
-
-            # P0 context budgeting — same fix and rationale as chat.py's
-            # run_stream (see app/core/ai/context/manager.py's
-            # budget_history() docstring). A ContextBudgetError here is
-            # caught by this function's own except Exception below, same
-            # SSE error channel already used for provider errors.
             budgeted_history = budget_history(
                 history, model=agent["model"] or "claude-sonnet-4-6",
                 max_tokens=2048, system=agent["system_prompt"],
@@ -192,11 +191,11 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 messages=[Message(role=h["role"], content=h["content"]) for h in budgeted_history],
                 model=agent["model"] or "claude-sonnet-4-6",
                 max_tokens=2048,
-                temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
+                temperature=1.0,
                 system=agent["system_prompt"],
-                conversation_id=None,  # agents.py reuses chat.py's own conversations/messages
-                prompt_id=None,        # tables, distinct from AIGateway's ai_conversations/
-                memory_enabled=False,  # ai_messages — same isolation as chat.py's migration.
+                conversation_id=None,
+                prompt_id=None,
+                memory_enabled=False,
                 tools=None,
                 stream=True,
             )
@@ -227,8 +226,8 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 with contextlib.suppress(Exception):
                     await record_org_tokens(org_id, total_tokens, str(conv_id), ref_type="agents")
 
-            yield f"data: {json.dumps({'type':'done'})}\n\n"
-
+            # Persist the completed assistant turn before sending `done`.
+            # The frontend treats `done` as the server's save acknowledgment.
             try:
                 async with get_pool().acquire() as conn:
                     await conn.execute(
@@ -241,9 +240,14 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                         uuid.UUID(agent_id),
                     )
             except Exception:
-                pass
-        except Exception as e:
-            yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
+                log.exception("agent_chat_stream: failed to save assistant reply")
+                yield f"data: {json.dumps({'type':'error','message':'Failed to save reply. Your message is saved; please retry.'})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'type':'done'})}\n\n"
+        except Exception:
+            log.exception("agent_chat_stream failed")
+            yield f"data: {json.dumps({'type':'error','message':'The assistant could not complete this reply.'})}\n\n"
         finally:
             await bulkhead_cm.__aexit__(None, None, None)
 

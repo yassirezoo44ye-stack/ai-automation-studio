@@ -13,6 +13,7 @@ from app.ai.models import CompletionRequest, Message
 from app.core.ai.context.manager import ContextBudgetError, budget_history
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
+from app.core.chat.prompt_contract import MAX_PROMPT_CHARACTERS
 from app.core.db import get_pool
 from app.core.helpers import resolve_project_id, anthropic_error_message
 from app.core.org_quota import check_org_quota, record_org_tokens
@@ -24,13 +25,13 @@ router = APIRouter(tags=["chat"])
 
 class RunRequest(BaseModel):
     project_id: str
-    prompt: str = Field(..., min_length=1, max_length=4000)
+    prompt: str = Field(..., min_length=1, max_length=MAX_PROMPT_CHARACTERS)
     conversation_id: str | None = None
     # Text to store/display in place of `prompt` when the caller injects
     # invisible context into `prompt` (e.g. "[Context: …]\n\nuser message").
     # Storage (title, message content, usage log) uses this value when set;
     # the model always receives the full `prompt`.
-    display_text: str | None = Field(None, max_length=4000)
+    display_text: str | None = Field(None, max_length=MAX_PROMPT_CHARACTERS)
 
 
 class ConversationCreate(BaseModel):
@@ -106,6 +107,8 @@ async def run_stream(req: RunRequest, request: Request):
     history.append({"role": "user", "content": req.prompt})
 
     async def event_stream():
+        # Persistence acknowledgment must also reach clients rejected by the AI bulkhead.
+        yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': str(conv_id)})}\n\n"
         # The bulkhead slot is held for the whole stream — a StreamingResponse
         # returns from the handler immediately, so guarding only the handler
         # body would release the slot before any tokens flow.
@@ -117,7 +120,6 @@ async def run_stream(req: RunRequest, request: Request):
             return
         full_text = ""
         try:
-            yield f"data: {json.dumps({'type': 'conv_id', 'conv_id': str(conv_id)})}\n\n"
 
             # P0 context budgeting: history was built above with zero upper
             # bound (every prior message in the conversation). budget_history()
@@ -394,3 +396,4 @@ async def export_conversation(conv_id: str, request: Request):
     md = "\n".join(lines)
     return Response(content=md, media_type="text/markdown",
                     headers={"Content-Disposition": 'attachment; filename="conversation.md"'})
+
