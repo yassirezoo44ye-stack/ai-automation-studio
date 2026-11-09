@@ -69,7 +69,7 @@ describe("Copilot composer recovery", () => {
     const draft = "  العربية\n  CREATE TABLE example (id INT);\n" + "x".repeat(4100);
     const input = screen.getByRole("textbox", { name: "Ask the copilot" });
     fireEvent.change(input, { target: { value: draft } });
-    fireEvent.click(screen.getByRole("button", { name: "Send", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(send).toHaveBeenCalledWith(draft));
     expect(input).toHaveValue(draft);
     expect(screen.getByRole("alert")).toHaveTextContent("4000");
@@ -80,7 +80,7 @@ describe("Copilot composer recovery", () => {
     renderButton(baseCtx({ open: true, send }));
     const input = screen.getByRole("textbox", { name: "Ask the copilot" });
     fireEvent.change(input, { target: { value: "build a page" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(input).toHaveValue(""));
     expect(send).toHaveBeenCalledWith("build a page");
   });
@@ -91,7 +91,7 @@ describe("Copilot composer recovery", () => {
     renderButton(baseCtx({ open: true, send }));
     const input = screen.getByRole("textbox", { name: "Ask the copilot" });
     fireEvent.change(input, { target: { value: "first request" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
     fireEvent.change(input, { target: { value: "next request" } });
     await act(async () => { finish(true); });
     expect(input).toHaveValue("next request");
