@@ -14,7 +14,7 @@ import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
-import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
+import { apiFetch, apiJSON, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
@@ -26,6 +26,7 @@ import { GoldButton } from "../../../shared/ui/gold";
 import AxonLogo from "../../../AxonLogo";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";
 import { PRIORITY_COLOR } from "../../../constants";
+import { validatePrompt, promptCharacters, MAX_PROMPT_CHARACTERS, readChatEvents } from "../../../shared/utils/chatReliability";
 import "../chat.css";
 
 /** Extracts a user-readable message from any caught error, preferring APIError's diagnostics. */
@@ -107,6 +108,14 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
+  const sendingRef = useRef(false);
+  const initialHistoryRef = useRef(false);
+  useEffect(() => {
+    if (initialHistoryRef.current || projectId !== "demo" || streaming || convsStatus === "loading" || convsStatus === "error") return;
+    initialHistoryRef.current = true;
+    if (!activeConv && convs.length) setActiveConv(convs[0].id);
+  }, [convs, convsStatus, projectId, streaming, activeConv]);
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -132,24 +141,21 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const {
     data: loadedMessages, status: messagesStatus, error: messagesError,
     suggestedFix: messagesFix, refetch: reloadMessages,
-  } = useAsyncData<Message[]>(
+  } = useAsyncData<{ conversationId: string | null; messages: Message[] }>(
     async () => {
       const path = `/api/conversations/${activeConv}/messages`;
       const msgs = await apiJSON<{ id: string; role: string; content: string }[]>(path);
-      return msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
+      return { conversationId: activeConv, messages: msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content })) };
     },
     [activeConv],
-    { enabled: !!activeConv, isEmpty: () => false },
+    { enabled: !!activeConv && !streaming, isEmpty: () => false },
   );
-  // Sync loaded history into the local, streaming-mutable copy.
+  // Tag history with its source. Never replace a live reply with an older GET.
   useEffect(() => {
-    if (!loadedMessages) return;
-    void Promise.resolve().then(() => {
-      setMessages(loadedMessages);
-      setMessagesConvId(activeConv);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadedMessages]);
+    if (!loadedMessages || streaming || loadedMessages.conversationId !== activeConv) return;
+    setMessages(loadedMessages.messages);
+    setMessagesConvId(activeConv);
+  }, [loadedMessages, activeConv, streaming]);
 
   // ── Actions (unchanged logic) ─────────────────────────────────────
 
@@ -221,61 +227,60 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   }
 
   async function sendMessage() {
-    const text = prompt.trim();
-    if (!text || streaming) return;
-    setPrompt("");
+    const text = prompt;
+    if (sendingRef.current || streaming) return;
+    const validation = validatePrompt(text, agentId === "default" ? MAX_PROMPT_CHARACTERS : 4000);
+    if (validation) { toast(validation, "err"); return; }
+    if (activeConv && (messagesConvId !== activeConv || messagesStatus === "loading" || messagesStatus === "error")) return;
+    sendingRef.current = true;
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
     const assistantId = crypto.randomUUID();
     setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "" }]);
 
+    let acknowledged = false;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const useAgent = agentId !== "default";
-    const url = useAgent ? `${API}/api/agents/${agentId}/chat/stream` : `${API}/api/run/stream`;
+    const url = useAgent ? `/api/agents/${agentId}/chat/stream` : "/api/run/stream";
 
     try {
-      const res = await fetch(url, {
-        method: "POST", headers: authH(),
+      const res = await apiFetch(url, {
+        method: "POST",
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "", closed = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === "conv_id" && !activeConv) {
-            // Claim this id for the messages already in local state *before*
-            // flipping activeConv, so the messages-loading effect (keyed on
-            // activeConv) sees them as already in sync and never shows a
-            // loading state over the reply that's actively streaming in.
+      for await (const ev of readChatEvents(res.body)) {
+        if (ev.type === "conv_id" && ev.conv_id) {
+          acknowledged = true;
+          // The server has acknowledged saving the user message.
+          setPrompt(current => current === text ? "" : current);
+          if (!activeConv) {
             setMessagesConvId(ev.conv_id);
             setActiveConv(ev.conv_id);
             loadConvs();
           }
-          else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
-          else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
-          else if (ev.type === "done")   { loadConvs(); closed = true; }
+        } else if (ev.type === "delta") {
+          setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (ev.text ?? "") } : m));
+        } else if (ev.type === "error") {
+          throw new Error(ev.message ?? "Stream failed");
+        } else if (ev.type === "done") {
+          loadConvs();
         }
-        if (closed) break;
       }
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
         const msg = (err as Error).message ?? "";
+        toast(msg || t("chatTab.toast.backendOffline"), "err");
         setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg }) } : m));
       }
-    } finally { setStreaming(false); abortRef.current = null; }
+    } finally {
+      if (!acknowledged) setMessages(previous => previous.filter(message => message.id !== userMsg.id && message.id !== assistantId));
+      sendingRef.current = false; setStreaming(false); abortRef.current = null;
+    }
   }
 
   // ── Derived state ─────────────────────────────────────────────────
@@ -308,6 +313,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         {/* Top controls */}
         <div className="chat-rail__top">
           <GoldButton
+            disabled={streaming}
             onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
             style={{ fontSize: 12 }}
           >
@@ -325,6 +331,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
           <select
             value={projectId}
+            disabled={streaming}
             onChange={e => setProjectId(e.target.value)}
             className="g-input"
             aria-label={t("chatTab.contextPanel.project")}
@@ -338,6 +345,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
           <select
             value={agentId}
+            disabled={streaming}
             onChange={e => setAgentId(e.target.value)}
             className="g-input"
             aria-label={t("chatTab.contextPanel.activeAgent")}
@@ -374,9 +382,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     tabIndex={0}
                     aria-label={c.title}
                     aria-current={c.id === activeConv ? "page" : undefined}
-                    onClick={() => { if (!isDeleting) setActiveConv(c.id); }}
+                    onClick={() => { if (!isDeleting && !streaming) setActiveConv(c.id); }}
                     onKeyDown={e => {
-                      if (!isDeleting && (e.key === "Enter" || e.key === " ")) {
+                      if (!isDeleting && !streaming && (e.key === "Enter" || e.key === " ")) {
                         e.preventDefault(); setActiveConv(c.id);
                       }
                     }}
@@ -386,6 +394,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     <span className="conv-item__time">{relTime(c.updated_at)}</span>
                     <button
                       className="conv-item__del"
+                      disabled={streaming}
                       onClick={e => { if (!isDeleting) void deleteConv(e, c.id); }}
                       aria-label={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
                       title={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
@@ -527,6 +536,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
         {/* Composer */}
         <div style={{ padding: "10px 16px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0 }}>
+          <div role="status" style={{ fontSize: 12 }}>{promptCharacters(prompt)} / {agentId === "default" ? MAX_PROMPT_CHARACTERS : 4000}</div>
           <textarea
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
@@ -550,7 +560,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             ) : (
               <GoldButton
                 onClick={() => void sendMessage()}
-                disabled={!prompt.trim()}
+                disabled={!prompt.trim() || !!validatePrompt(prompt, agentId === "default" ? MAX_PROMPT_CHARACTERS : 4000) || (!!activeConv && (messagesConvId !== activeConv || messagesStatus === "loading" || messagesStatus === "error"))}
                 aria-label={t("chatTab.input.send")}
                 style={{ height: 36, paddingInline: 16, fontSize: 13 }}
               >
@@ -748,3 +758,4 @@ const MessageRow = memo(function MessageRow({
     </div>
   );
 });
+

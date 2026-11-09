@@ -1,0 +1,19 @@
+name: Chat reliability contract
+on:
+  pull_request:
+    paths:
+      - 'src/renderer/shared/utils/chatReliability.ts'
+      - 'tests/frontend/chat-reliability.node.mjs'
+      - '.github/workflows/chat-reliability.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --experimental-strip-types --test tests/frontend/chat-reliability.node.mjs
