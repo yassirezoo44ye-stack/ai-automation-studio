@@ -50,6 +50,9 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
   const requestInFlightRef = useRef(false);
   const generationRef = useRef(0);
   const historyRequestRef = useRef(0);
+  // Prevent a delayed initial history request from claiming the UI after the
+  // user has already started a fresh turn (before the server emits conv_id).
+  const interactionRef = useRef(0);
 
   const refreshConversations = useCallback(async () => {
     const response = await fetch(`${API}/api/conversations?project_id=${encodeURIComponent(COPILOT_PROJECT)}`, {
@@ -60,20 +63,22 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     return items;
   }, []);
 
-  // The endpoint scopes the list through the authenticated user's project.
-  // The message endpoint independently verifies ownership before returning rows.
+  // Load both the server-backed history rail and latest active conversation.
+  // The endpoint scopes the list through the authenticated user's project;
+  // message retrieval independently enforces conversation ownership.
   useEffect(() => {
     let mounted = true;
     const requestId = ++historyRequestRef.current;
+    const interactionAtStart = interactionRef.current;
     setLoadingHistory(true);
     void refreshConversations().then(async items => {
-      if (!mounted || requestId !== historyRequestRef.current || !items.length) return;
+      if (!mounted || requestId !== historyRequestRef.current || interactionRef.current !== interactionAtStart || !items.length) return;
       const first = items[0];
       const response = await fetch(`${API}/api/conversations/${encodeURIComponent(first.id)}/messages`, {
         headers: authH(),
       });
       const rows = await jsonOrThrow<{ id: string; role: string; content: string }[]>(response);
-      if (!mounted || requestId !== historyRequestRef.current || conversationIdRef.current) return;
+      if (!mounted || requestId !== historyRequestRef.current || interactionRef.current !== interactionAtStart || conversationIdRef.current) return;
       conversationIdRef.current = first.id;
       setMessages(rows.filter(m => m.role === "user" || m.role === "assistant")
         .map(m => ({ id: m.id, role: m.role as CopilotMessage["role"], content: m.content, status: "complete" })));
@@ -86,6 +91,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
   }, [refreshConversations]);
 
   const openConversation = useCallback(async (id: string) => {
+    interactionRef.current += 1;
     if (requestInFlightRef.current) {
       generationRef.current += 1;
       abortRef.current?.abort();
@@ -123,13 +129,12 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
       (currentOrg ? ` of the "${currentOrg.name}" organization` : "") +
       ` inside Axon AI Automation Studio. Answer helpfully and concisely; you may suggest which page to visit but cannot take actions yourself.]`;
     const promptWithContext = `${contextLine}\n\n${trimmed}`;
-    // Match RunRequest's 4,000-character limit before changing the conversation
-    // or letting the composer clear its draft.
     if (promptWithContext.length > MAX_REQUEST_CHARACTERS) {
       setError(`This message is too long (${promptWithContext.length} characters; limit ${MAX_REQUEST_CHARACTERS}). Shorten it and try again.`);
       return false;
     }
 
+    interactionRef.current += 1;
     requestInFlightRef.current = true;
     const generation = ++generationRef.current;
     const userMsg: CopilotMessage = { id: crypto.randomUUID(), role: "user", content: trimmed, status: "complete" };
@@ -203,14 +208,9 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     }
   }, [page, currentOrg, refreshConversations]);
 
-  // Keep the flag synchronized with the synchronous ref guard; this prevents
-  // rapid clicks from starting parallel fetches before React re-renders.
-  useEffect(() => {
-    if (requestInFlightRef.current) setStreaming(true);
-  }, [messages]);
-
   const dismissAction = useCallback(() => setSuggestedAction(null), []);
   const reset = useCallback(() => {
+    interactionRef.current += 1;
     historyRequestRef.current += 1;
     generationRef.current += 1;
     abortRef.current?.abort();

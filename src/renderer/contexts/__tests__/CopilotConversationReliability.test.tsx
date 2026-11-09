@@ -51,20 +51,24 @@ describe("Copilot conversation reliability", () => {
     expect(screen.getByTestId("messages")).toBeEmptyDOMElement();
   });
 
-  it("keeps the previous history from replacing a newly streamed answer", async () => {
+  it("does not let delayed initial history replace a turn started before conv_id arrives", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    let releaseHistory!: (value: unknown) => void;
-    fetchMock.mockReturnValueOnce(new Promise(resolve => { releaseHistory = resolve; }));
-    fetchMock.mockResolvedValueOnce(stream([
-      { type: "conv_id", conv_id: "new-conv" },
-      { type: "delta", text: "fresh answer" },
-      { type: "done" },
-    ]));
+    let releaseList!: (value: unknown) => void;
+    let releaseStream!: (value: unknown) => void;
+    fetchMock.mockReturnValueOnce(new Promise(resolve => { releaseList = resolve; }));
+    fetchMock.mockReturnValueOnce(new Promise(resolve => { releaseStream = resolve; }));
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [{ id: "old-u", role: "user", content: "old history" }] });
     render(<CopilotProvider><Harness /></CopilotProvider>);
+
     fireEvent.click(screen.getByText("send"));
+    await act(async () => releaseList({ ok: true, json: async () => [{ id: "old", title: "Old", updated_at: "earlier" }] }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(screen.getByTestId("messages")).not.toHaveTextContent("old history");
+    await act(async () => releaseStream(stream([
+      { type: "conv_id", conv_id: "new" }, { type: "delta", text: "fresh answer" }, { type: "done" },
+    ])));
     await waitFor(() => expect(screen.getByTestId("messages")).toHaveTextContent("assistant:fresh answer"));
-    await act(async () => releaseHistory({ ok: true, json: async () => [{ id: "old", title: "Old", updated_at: "earlier" }] }));
-    expect(screen.getByTestId("messages")).toHaveTextContent("assistant:fresh answer");
+    expect(screen.getByTestId("messages")).not.toHaveTextContent("old history");
   });
 
   it("does not mix a switched conversation with the previous stream", async () => {
