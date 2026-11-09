@@ -102,6 +102,6 @@ describe("Copilot conversation reliability", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     await act(async () => resolveRequest({ ok: false, status: 503 }));
-    await waitFor(() => expect(screen.getByTestId("messages")).toHaveTextContent("assistant:Request failed (503)"));
+    await waitFor(() => expect(screen.getByTestId("messages")).toHaveTextContent("503"));
   });
 });

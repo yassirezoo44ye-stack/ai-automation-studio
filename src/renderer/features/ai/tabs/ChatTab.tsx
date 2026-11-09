@@ -26,7 +26,7 @@ import { GoldButton } from "../../../shared/ui/gold";
 import AxonLogo from "../../../AxonLogo";
 import type { Message, Conv, Project, Agent, Task } from "../../../types";
 import { PRIORITY_COLOR } from "../../../constants";
-import { validatePrompt, promptCharacters, MAX_PROMPT_CHARACTERS, readChatEvents } from "../../../shared/utils/chatReliability";
+import { validatePrompt, promptCharacters, MAX_PROMPT_CHARACTERS, readChatEvents, chatHttpFailure } from "../../../shared/utils/chatReliability";
 import "../chat.css";
 
 /** Extracts a user-readable message from any caught error, preferring APIError's diagnostics. */
@@ -259,7 +259,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId }),
         signal: ctrl.signal,
       });
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(await chatHttpFailure(res));
+      if (!res.body) throw new Error("No response stream was received. Your draft is unchanged.");
 
       for await (const ev of readChatEvents(res.body)) {
         if (ev.type === "conv_id" && ev.conv_id) {

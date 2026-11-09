@@ -14,7 +14,7 @@ import { CopilotContext, type CopilotConversation, type CopilotMessage, type Cop
 import { matchCopilotAction } from "../shared/ui/copilot/copilotActions";
 import type { Page } from "../shared/types";
 
-import { validatePrompt } from "../shared/utils/chatReliability";
+import { validatePrompt, chatHttpFailure } from "../shared/utils/chatReliability";
 const COPILOT_PROJECT = "copilot";
 
 const PAGE_LABELS: Record<Page, string> = {
@@ -172,7 +172,8 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
         }),
         signal: ctrl.signal,
       });
-      if (!res.ok || !res.body) throw new Error(`Request failed (${res.status})`);
+      if (!res.ok) throw new Error(await chatHttpFailure(res));
+      if (!res.body) throw new Error("No response stream was received. Your draft is unchanged.");
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
