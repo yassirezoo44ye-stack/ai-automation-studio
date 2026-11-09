@@ -106,6 +106,21 @@ async def init_db(conn: asyncpg.Connection) -> None:
             created_at      TIMESTAMPTZ DEFAULT NOW()
         )
     ''')
+    # Chat persistence (phase A) — additive and idempotent, existing rows keep
+    # working: archived_at NULL = active; status defaults to 'complete';
+    # client_request_id NULL = legacy row with no retry dedupe.
+    for _chat_sql in (
+        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_request_id UUID",
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'complete'",
+        # One user row and one assistant row per client request id: a retry
+        # with the same id can never insert a duplicate.
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_messages_client_request_role "
+        "ON messages (client_request_id, role) WHERE client_request_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_messages_conversation_created "
+        "ON messages (conversation_id, created_at)",
+    ):
+        await conn.execute(_chat_sql)
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS agent_runs (
             id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
