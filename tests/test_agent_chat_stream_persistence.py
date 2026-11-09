@@ -32,7 +32,7 @@ def _test_client(*, fail_assistant_save=False, bulkhead_fail=False, timeline=Non
     timeline = timeline if timeline is not None else []
     conn = AsyncMock()
     conn.fetchrow = AsyncMock(return_value={
-        "id": agent_id, "model": "fake-model", "system_prompt": "test system",
+        "id": agent_id, "model": "claude-sonnet-4-6", "system_prompt": "test system",
     })
     conn.fetchval = AsyncMock(return_value=conv_id)
     conn.fetch = AsyncMock(return_value=[])
@@ -62,7 +62,7 @@ def _test_client(*, fail_assistant_save=False, bulkhead_fail=False, timeline=Non
         patch("app.routers.agents.ensure_agents_table", new=AsyncMock()),
         patch("app.routers.agents.ai_rate_limit"),
         patch("app.routers.agents.check_org_quota", new=AsyncMock(return_value=None)),
-        patch("app.routers.agents.get_bulkhead", return_value=_Bulkhead(fail=bulkhead_fail)),
+        patch("app.core.reliability.get_bulkhead", return_value=_Bulkhead(fail=bulkhead_fail)),
         patch("app.routers.agents.InferenceEngine.stream", new=fake_provider_stream),
     ]
     for item in patches:
