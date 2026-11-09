@@ -34,6 +34,15 @@ a separate config with the actual API URL returned by Render:
 The generator only accepts a flow-chat-review-api onrender.com hostname,
 updates API rewriting and CSP connections together, rejects production and
 credential-bearing URLs, and refuses to overwrite its source configuration.
+The CLI rejects source/output aliases, including symbolic and hard links. It
+reads and writes UTF-8 and atomically replaces the generated output after successful
+validation, preserving an existing output if validation or replacement fails.
+CLI errors omit the supplied URL and credentials.
+
+Run the local configuration and file/CLI regression checks before deployment:
+
+    python -m unittest discover -s tests -p 'test_chat_preview*.py' -v
+
 Deploy it only as a Vercel preview using the separate local config, preserving the
 existing project's identity. Never use a production deployment flag.
 No Vercel environment or production routing was changed by this preparation.

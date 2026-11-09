@@ -2,7 +2,9 @@
 import argparse
 import copy
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -57,18 +59,39 @@ def make_preview_config(source: dict, backend_url: str) -> dict:
     return result
 
 
+def write_preview_config(source_path: Path, output_path: Path, backend_url: str) -> None:
+    if source_path.resolve() == output_path.resolve() or (
+        output_path.exists() and source_path.samefile(output_path)
+    ):
+        raise ValueError("Output must be separate from the production source config.")
+    config = make_preview_config(
+        json.loads(source_path.read_text(encoding="utf-8")), backend_url
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=output_path.parent,
+            prefix=".flow-preview-", suffix=".json", delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(json.dumps(config, ensure_ascii=False, indent=2) + "\n")
+        os.replace(temporary_path, output_path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", default="vercel.json")
     parser.add_argument("--backend-url", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
-    source_path, output_path = Path(args.source), Path(args.output)
-    if source_path.resolve() == output_path.resolve():
-        parser.error("Output must be separate from the production source config.")
-    config = make_preview_config(json.loads(source_path.read_text()), args.backend_url)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n")
+    try:
+        write_preview_config(Path(args.source), Path(args.output), args.backend_url)
+    except (OSError, ValueError):
+        parser.error("Could not generate preview config. Check the separate output path, source JSON and approved staging origin.")
 
 
 if __name__ == "__main__":
