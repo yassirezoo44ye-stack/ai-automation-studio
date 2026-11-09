@@ -56,11 +56,11 @@
   "chatTab": {
     "sidebar": {
       "demoProject": "مشروع تجريبي",
-      "defaultAgent": "🤖 Claude (افتراضي)",
+      "defaultAgent": "◈ Flow (افتراضي)",
       "newChat": "+ محادثة جديدة",
       "exportTitle": "تصدير كملف Markdown",
       "extractTasksTitle": "استخراج المهام",
-      "searchPlaceholder": "ابحث…",
+      "searchPlaceholder": "ابحث في المحادثات…",
       "deleting": "جارٍ الحذف…",
       "deleteConversation": "حذف المحادثة",
       "loading": "جارٍ تحميل المحادثات…",
@@ -68,27 +68,49 @@
       "emptyTitle": "لا توجد محادثات بعد",
       "emptyDesc": "ابدأ محادثة جديدة لتظهر هنا.",
       "noMatchesTitle": "لا توجد نتائج",
-      "noMatchesDesc": "لم يتم العثور على شيء لـ \"{{query}}\"."
+      "noMatchesDesc": "لم يتم العثور على شيء لـ \"{{query}}\".",
+      "railLabel": "المحادثات",
+      "searchLabel": "ابحث في عناوين المحادثات ومحتواها",
+      "rename": "إعادة تسمية",
+      "renameNamed": "إعادة تسمية «{{title}}»",
+      "renameLabel": "اسم المحادثة الجديد",
+      "archive": "أرشفة",
+      "archiveNamed": "أرشفة «{{title}}»",
+      "unarchive": "إلغاء الأرشفة",
+      "unarchiveNamed": "إلغاء أرشفة «{{title}}»",
+      "deleteNamed": "حذف «{{title}}»",
+      "confirmDelete": "حذف «{{title}}» نهائيًا؟ لا يمكن التراجع عن الحذف.",
+      "showArchived": "عرض المؤرشفة",
+      "showActive": "عرض المحادثات النشطة",
+      "archivedEmptyTitle": "لا توجد محادثات مؤرشفة",
+      "archivedEmptyDesc": "المحادثات التي تؤرشفها تظهر هنا.",
+      "openRail": "عرض المحادثات",
+      "closeRail": "إغلاق قائمة المحادثات"
     },
     "tasksBar": {
       "label": "المهام",
-      "loadError": "فشل تحميل المهام."
+      "loadError": "فشل تحميل المهام.",
+      "markDone": "تعليم «{{title}}» كمنجزة",
+      "markPending": "إرجاع «{{title}}» إلى قيد الانتظار",
+      "close": "إغلاق شريط المهام"
     },
     "messages": {
       "loading": "جارٍ تحميل المحادثة…",
       "loadError": "فشل تحميل هذه المحادثة.",
       "emptyAgentName": "Flow AI",
-      "emptyDescription": "ابدأ محادثة أو اختر واحدة من الشريط الجانبي.",
+      "emptyDescription": "ابدأ محادثة أو اختر واحدة من قائمة المحادثات.",
       "suggestion1": "اكتب رسالة متابعة لعميل جديد",
       "suggestion2": "خطط لأولويات مبيعاتي هذا الأسبوع",
       "suggestion3": "اكتب منشور LinkedIn عن خدماتنا",
       "suggestion4": "حوّل ملاحظاتي إلى عرض للعميل",
       "you": "أنت",
-      "assistantFallback": "Claude",
+      "assistantFallback": "Flow",
       "now": "الآن",
       "streamErrorPrefix": "⚠️ {{message}}",
       "copyCode": "نسخ",
-      "copied": "تم النسخ!"
+      "copied": "تم النسخ!",
+      "copyMessage": "نسخ الرسالة",
+      "copyShort": "نسخ"
     },
     "convGroups": {
       "today": "اليوم",
@@ -98,7 +120,7 @@
     "contextPanel": {
       "title": "السياق",
       "activeAgent": "الوكيل النشط",
-      "defaultAgent": "Claude (افتراضي)",
+      "defaultAgent": "Flow (افتراضي)",
       "project": "المشروع",
       "actions": "إجراءات",
       "export": "تصدير كـ Markdown",
@@ -109,7 +131,12 @@
     "input": {
       "placeholder": "رسالة… (Enter للإرسال، Shift+Enter لسطر جديد)",
       "send": "إرسال",
-      "stop": "إيقاف"
+      "stop": "إيقاف",
+      "label": "اكتب رسالتك",
+      "counter": "{{count}} / {{limit}}",
+      "counterLabel": "{{count}} من {{limit}} حرفًا",
+      "nearLimit": "اقتربت من الحد — متبقٍ {{remaining}} حرفًا.",
+      "overLimit": "الرسالة {{count}} حرفًا والحد {{limit}}. لم يُرسل شيء ونصك محفوظ هنا — قسّم الرسالة إلى أجزاء أو اختصر المحتوى المرجعي الملصق."
     },
     "toast": {
       "extractedTasks_zero": "لم يتم استخراج أي مهام",
@@ -124,7 +151,26 @@
       "deleteConversationFailed": "فشل حذف المحادثة",
       "exportedMarkdown": "تم التصدير كملف Markdown",
       "exportFailed": "فشل التصدير",
-      "backendOffline": "⚠️ الخادم غير متصل"
+      "backendOffline": "⚠️ الخادم غير متصل",
+      "renameFailed": "تعذّرت إعادة التسمية",
+      "archiveFailed": "تعذّر تحديث الأرشفة",
+      "archived": "أُرشفت المحادثة",
+      "unarchived": "أُعيدت المحادثة إلى القائمة"
+    },
+    "toolbarLabel": "أدوات المحادثة",
+    "status": {
+      "sending": "جارٍ الإرسال…",
+      "saved": "حُفظت",
+      "sendFailed": "فشل الإرسال",
+      "thinking": "Flow يكتب الرد",
+      "replyDone": "اكتمل الرد",
+      "replyFailed": "فشل الرد",
+      "replyPartial": "الرد غير مكتمل",
+      "connectionLost": "انقطع الاتصال قبل اكتمال الرد",
+      "stopped": "أوقفت الرد",
+      "noReply": "لم يصل رد على هذه الرسالة",
+      "retry": "إعادة المحاولة",
+      "edit": "تعديل"
     }
   }
 }
