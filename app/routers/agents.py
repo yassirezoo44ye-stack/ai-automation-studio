@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.context.manager import budget_history
 from app.core.ai.inference.engine import InferenceEngine
+from app.core.chat_limits import validate_prompt
 from app.core.auth import owner_user_id
 from app.core.db import get_pool, ensure_agents_table
 from app.core.helpers import resolve_project_id
@@ -39,7 +40,8 @@ class AgentUpdate(BaseModel):
 
 class AgentChatRequest(BaseModel):
     agent_id: str
-    prompt: str = Field(..., min_length=1, max_length=4000)
+    # Limit enforced by app.core.chat_limits.validate_prompt (structured 413).
+    prompt: str
     conversation_id: str | None = None
     project_id: str | None = "demo"
 
@@ -120,6 +122,7 @@ async def delete_agent(agent_id: str, request: Request):
 
 @router.post("/api/agents/{agent_id}/chat/stream")
 async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Request):
+    validate_prompt(req.prompt)
     from app.core.reliability import get_bulkhead
     bulkhead = get_bulkhead("agents", 16)
     ai_rate_limit(request)

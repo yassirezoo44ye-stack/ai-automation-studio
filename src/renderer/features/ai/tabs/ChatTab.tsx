@@ -6,15 +6,29 @@
  *   2. Main Chat (flex: 1) — toolbar, messages, composer
  *   3. Context Panel (280px, collapsible)
  *
- * All streaming, conversation management, and task logic is unchanged
- * from the original implementation. RTL is handled via CSS logical
- * properties in chat.css and `marginInlineStart` etc. in inline styles.
+ * Phase A reliability guarantees (see tests/test_chat_persistence_phase_a.py
+ * and features/ai/chat/chatSession.ts):
+ *   - The open project/conversation is restored after a reload (per user).
+ *   - The composer draft is stored separately from messages and is cleared
+ *     only after the server confirms the message was saved, so a failed send
+ *     never loses text.
+ *   - Every logical send carries a stable client_request_id; Retry reuses it,
+ *     so the server never stores a duplicate message or re-runs a finished reply.
+ *   - A stream belongs to the conversation it was started in. Switching
+ *     conversations/projects detaches it (it keeps running and is saved
+ *     server-side) instead of writing tokens into the newly opened chat, and
+ *     a history load never overwrites a reply that is still streaming.
+ *   - Prompt length uses the same limit as the server, shown before sending.
+ *
+ * RTL is handled via CSS logical properties in chat.css and
+ * `marginInlineStart` etc. in inline styles.
  */
 import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
-import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
+import { useAuth } from "../../../contexts/AuthContext";
+import { apiFetch, apiJSON, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
@@ -24,8 +38,12 @@ import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { ErrorState, EmptyState } from "../../../shared/ui/StateViews";
 import { GoldButton } from "../../../shared/ui/gold";
 import AxonLogo from "../../../AxonLogo";
-import type { Message, Conv, Project, Agent, Task } from "../../../types";
+import type { Message, MessageStatus, Conv, Project, Agent, Task } from "../../../types";
 import { PRIORITY_COLOR } from "../../../constants";
+import {
+  DEFAULT_LIMITS, carryOverErrors, clearDraft, countChars, describeSendFailure, getDraft, limitState,
+  loadSession, parseLimits, parseSseBuffer, saveSession, setDraft, type ChatLimits,
+} from "../chat/chatSession";
 import "../chat.css";
 
 /** Extracts a user-readable message from any caught error, preferring APIError's diagnostics. */
@@ -53,6 +71,28 @@ function groupConvsByDate(convs: Conv[]): { label: "today" | "thisWeek" | "older
   return groups.filter(g => g.items.length > 0);
 }
 
+function isNarrow(px: number): boolean {
+  try { return window.matchMedia(`(max-width: ${px}px)`).matches; } catch { return false; }
+}
+
+/** Map a stored message row to the UI shape, carrying its delivery status. */
+function fromServer(m: { id: string; role: string; content: string; status?: string; client_request_id?: string | null }): Message {
+  const role = m.role === "assistant" ? "assistant" : "user";
+  let status: MessageStatus;
+  if (m.status === "partial") status = "partial";
+  else if (m.status === "failed") status = "failed";
+  else status = role === "user" ? "saved" : "complete";
+  return { id: m.id, role, content: m.content, status, requestId: m.client_request_id ?? null };
+}
+
+/** A stream in flight. `attached` is false once the user navigated away from it. */
+interface LiveStream {
+  requestId: string;
+  convId: string | null;
+  ctrl: AbortController;
+  attached: boolean;
+}
+
 interface ChatTabProps {
   agents:          Agent[];
   projects:        Project[];
@@ -60,62 +100,133 @@ interface ChatTabProps {
 }
 
 export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
-  const { t } = useTranslation("ai");
+  const { t, i18n } = useTranslation("ai");
   const toast = useToast();
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
 
-  // ── Core state (unchanged) ────────────────────────────────────────
-  const [projectId, setProjectId] = useState("demo");
+  // ── Core state ────────────────────────────────────────────────────
+  // Restored from the last session for this user; the server re-validates.
+  const [projectId, setProjectId] = useState(() => loadSession(userId).projectId);
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
 
-  // Layout state
-  const [contextPanelOpen, setContextPanelOpen] = useState(true);
+  // Layout state. On narrow screens the context panel is an overlay, so it
+  // starts closed there; the conversation rail is a drawer on phones.
+  const [contextPanelOpen, setContextPanelOpen] = useState(() => !isNarrow(1100));
+  const [railOpen, setRailOpen]                 = useState(false);
+  const railToggleRef = useRef<HTMLButtonElement>(null);
+  const railRef       = useRef<HTMLElement>(null);
+
+  // Rail: server-side search (title + message content) and archive view.
+  const [searchQ, setSearchQ]           = useState("");
+  const [debouncedQ, setDebouncedQ]     = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQ(searchQ.trim()), 250);
+    return () => clearTimeout(id);
+  }, [searchQ]);
 
   const {
     data: convs = [], status: convsStatus, error: convsError, suggestedFix: convsFix, refetch: loadConvs,
-  } = useAsyncData(() => apiJSON<Conv[]>(`/api/conversations?project_id=${projectId}`), [projectId]);
+  } = useAsyncData(
+    () => {
+      const qs = new URLSearchParams({ project_id: projectId });
+      if (debouncedQ) qs.set("q", debouncedQ);
+      if (showArchived) qs.set("archived", "true");
+      return apiJSON<Conv[]>(`/api/conversations?${qs.toString()}`);
+    },
+    [projectId, debouncedQ, showArchived],
+  );
 
-  const [activeConv, setActiveConv]         = useState<string | null>(null);
-  // Local, mutable copy of the active conversation's messages. Backed by
-  // useAsyncData below for the *load* — but sendMessage() must keep
-  // appending/streaming tokens into this directly, which a hook whose only
-  // externally-owned value is `data` can't support, so loaded history is
-  // synced in via effect rather than read straight from the hook.
+  const [activeConv, setActiveConv]         = useState<string | null>(() => loadSession(userId).convId);
+  // Local, mutable copy of the active conversation's messages (streaming
+  // tokens are appended here); loaded history is synced in via effect.
   const [messages, setMessages]             = useState<Message[]>([]);
-  // Which conversation `messages` actually holds content for. Lets the UI
-  // tell "switching to a different, not-yet-loaded past conversation"
-  // (messagesConvId out of sync with activeConv -> show a spinner, don't
-  // flash the old conversation's messages) apart from "sendMessage() just
-  // created a brand-new conversation mid-stream" (messagesConvId is set to
-  // the new id immediately, in the same handler that flips activeConv, so
-  // the in-progress streamed reply is never hidden behind a loading state).
+  // Which conversation `messages` actually holds content for — lets the UI
+  // show a spinner while a different conversation loads, but never over a
+  // reply that is streaming into a just-created conversation.
   const [messagesConvId, setMessagesConvId] = useState<string | null>(null);
-  // A question handed over from another page (Home's "Ask Flow") prefills the input once.
-  const [prompt, setPrompt]                 = useState(peekAssistantHandoff);
+
+  // Draft: a question handed over from another page (Home's "Ask Flow")
+  // wins once; otherwise the saved draft for this conversation.
+  const [prompt, setPromptState] = useState(() => peekAssistantHandoff() || getDraft(userId, loadSession(userId).projectId, loadSession(userId).convId));
   useEffect(() => { clearAssistantHandoff(); }, []);
+  /** User typing — updates the composer and the stored draft. */
+  function editPrompt(v: string) {
+    setPromptState(v);
+    setDraft(userId, projectId, activeConv, v);
+    if (sendError) setSendError(null);
+  }
+
   const [streaming, setStreaming]           = useState(false);
-  const [searchQ, setSearchQ]               = useState("");
+  const [sendError, setSendError]           = useState<string | null>(null);
+  // Polite screen-reader announcements for state changes (never per token).
+  const [announcement, setAnnouncement]     = useState("");
+  const [limits, setLimits]                 = useState<ChatLimits>(DEFAULT_LIMITS);
   // Same local-copy-synced-from-hook pattern as messages: setTaskStatus
   // optimistically mutates this list, which a hook-owned `data` can't allow.
   const [inlineTasks, setInlineTasks]       = useState<Task[]>([]);
   const [extracting, setExtracting]         = useState(false);
   const [showTasks, setShowTasks]           = useState(false);
   const [exporting, setExporting]           = useState(false);
-  // Track *which* conversation/task is in flight so only that row's control
-  // disables — an unrelated conversation's delete button, or a different
-  // task's checkbox, must stay clickable while another one is in flight.
+  // Per-row in-flight tracking so only that row's control disables.
   const [deletingIds, setDeletingIds]       = useState<Set<string>>(new Set());
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
+  const [busyConvIds, setBusyConvIds]       = useState<Set<string>>(new Set());
+  const [renamingId, setRenamingId]         = useState<string | null>(null);
+  const [renameValue, setRenameValue]       = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
-  const abortRef  = useRef<AbortController | null>(null);
+  const liveRef   = useRef<LiveStream | null>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // Reset conversation state when the project changes — during render,
-  // per React's "adjusting state when a prop changes" pattern.
-  const [prevProjectId, setPrevProjectId] = useState(projectId);
-  if (prevProjectId !== projectId) {
-    setPrevProjectId(projectId); setActiveConv(null); setMessages([]); setMessagesConvId(null);
-  }
+  // Lets global CSS keep the floating copilot button off the Send button.
+  useEffect(() => {
+    document.body.classList.add("flow-chat-open");
+    return () => document.body.classList.remove("flow-chat-open");
+  }, []);
+
+  // Escape closes whichever overlay is open (drawer first).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (railOpen) { setRailOpen(false); railToggleRef.current?.focus(); }
+      else if (contextPanelOpen && isNarrow(1100)) setContextPanelOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [railOpen, contextPanelOpen]);
+
+  // Move focus into the drawer when it opens on a phone.
+  useEffect(() => {
+    if (railOpen) railRef.current?.querySelector<HTMLElement>("button, input, select")?.focus();
+  }, [railOpen]);
+
+  // Shared limit with the server — fetched once; defaults until it answers.
+  useEffect(() => {
+    let cancelled = false;
+    apiJSON<unknown>("/api/chat/limits")
+      .then(raw => { if (!cancelled) setLimits(parseLimits(raw)); })
+      .catch(() => { /* keep defaults — the server still enforces its own limit */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Remember the open project/conversation for the next visit.
+  useEffect(() => {
+    saveSession(userId, { projectId, convId: activeConv });
+  }, [userId, projectId, activeConv]);
+
+  // A restored conversation that no longer exists (deleted, or belongs to a
+  // different account on this browser) is dropped instead of showing an error.
+  const [restoredConvId] = useState(activeConv);
+  useEffect(() => {
+    if (!restoredConvId) return;
+    apiJSON<Conv>(`/api/conversations/${restoredConvId}`).catch(err => {
+      if (err instanceof APIError && err.details.status === 404) {
+        setActiveConv(cur => (cur === restoredConvId ? null : cur));
+      }
+    });
+  }, [restoredConvId]);
 
   const {
     data: loadedTasks, status: inlineTasksStatus, error: inlineTasksError,
@@ -135,23 +246,61 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   } = useAsyncData<Message[]>(
     async () => {
       const path = `/api/conversations/${activeConv}/messages`;
-      const msgs = await apiJSON<{ id: string; role: string; content: string }[]>(path);
-      return msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
+      const msgs = await apiJSON<{ id: string; role: string; content: string; status?: string; client_request_id?: string | null }[]>(path);
+      return msgs.map(fromServer);
     },
     [activeConv],
     { enabled: !!activeConv, isEmpty: () => false },
   );
-  // Sync loaded history into the local, streaming-mutable copy.
+  // Sync loaded history into the local copy — except while a reply is
+  // streaming into this same conversation: the DB doesn't have the reply
+  // yet, and replacing local state would erase the bubble mid-stream.
   useEffect(() => {
     if (!loadedMessages) return;
+    const conv = activeConv;
     void Promise.resolve().then(() => {
-      setMessages(loadedMessages);
-      setMessagesConvId(activeConv);
+      const live = liveRef.current;
+      if (live && live.attached && live.convId === conv) return;
+      // Keep failure reasons the client already showed for these messages.
+      setMessages(prev => carryOverErrors(loadedMessages, prev));
+      setMessagesConvId(conv);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedMessages]);
 
-  // ── Actions (unchanged logic) ─────────────────────────────────────
+  // ── Navigation (always detaches a running stream first) ───────────
+
+  function detachStream() {
+    const live = liveRef.current;
+    if (live) { live.attached = false; liveRef.current = null; }
+    setStreaming(false);
+  }
+
+  function openConversation(convId: string | null) {
+    setRailOpen(false);
+    if (convId === activeConv && convId !== null) return;
+    detachStream();
+    setActiveConv(convId);
+    setMessages([]);
+    setMessagesConvId(null);
+    setShowTasks(false);
+    setSendError(null);
+    setPromptState(getDraft(userId, projectId, convId));
+  }
+
+  function openProject(pid: string) {
+    if (pid === projectId) return;
+    detachStream();
+    setProjectId(pid);
+    setActiveConv(null);
+    setMessages([]);
+    setMessagesConvId(null);
+    setShowTasks(false);
+    setSendError(null);
+    setPromptState(getDraft(userId, pid, null));
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────
 
   async function extractTasks() {
     if (!activeConv || extracting) return;
@@ -187,20 +336,59 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     }
   }
 
-  async function deleteConv(e: React.SyntheticEvent, cid: string) {
-    e.stopPropagation();
+  async function deleteConv(cid: string, title: string) {
     if (deletingIds.has(cid)) return;
+    if (!window.confirm(t("chatTab.sidebar.confirmDelete", { title }))) return;
     setDeletingIds(prev => new Set(prev).add(cid));
     try {
       const r = await apiFetch(`/api/conversations/${cid}`, { method: "DELETE" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      if (activeConv === cid) { setActiveConv(null); setMessages([]); }
+      clearDraft(userId, projectId, cid);
+      if (activeConv === cid) openConversation(null);
       loadConvs();
     } catch (err) {
       toast(describeError(err, t("chatTab.toast.deleteConversationFailed")), "err");
     } finally {
       setDeletingIds(prev => { const next = new Set(prev); next.delete(cid); return next; });
     }
+  }
+
+  async function patchConv(cid: string, body: { title?: string; archived?: boolean }, failKey: string): Promise<boolean> {
+    if (busyConvIds.has(cid)) return false;
+    setBusyConvIds(prev => new Set(prev).add(cid));
+    try {
+      await apiJSON<Conv>(`/api/conversations/${cid}`, { method: "PATCH", body: JSON.stringify(body) });
+      loadConvs();
+      return true;
+    } catch (err) {
+      toast(describeError(err, t(failKey)), "err");
+      return false;
+    } finally {
+      setBusyConvIds(prev => { const next = new Set(prev); next.delete(cid); return next; });
+    }
+  }
+
+  function startRename(c: Conv) {
+    setRenamingId(c.id);
+    setRenameValue(c.title);
+  }
+
+  async function commitRename() {
+    const cid = renamingId;
+    if (!cid) return;
+    const title = renameValue.trim();
+    const original = convs.find(c => c.id === cid)?.title;
+    setRenamingId(null);
+    if (!title || title === original) return;
+    await patchConv(cid, { title }, "chatTab.toast.renameFailed");
+  }
+
+  async function toggleArchive(c: Conv) {
+    const archive = !c.archived;
+    const ok = await patchConv(c.id, { archived: archive }, "chatTab.toast.archiveFailed");
+    if (!ok) return;
+    toast(t(archive ? "chatTab.toast.archived" : "chatTab.toast.unarchived"), "ok");
+    if (archive && activeConv === c.id) openConversation(null);
   }
 
   async function exportConv() {
@@ -220,76 +408,182 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     }
   }
 
-  async function sendMessage() {
-    const text = prompt.trim();
-    if (!text || streaming) return;
-    setPrompt("");
-    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: text };
-    setMessages(prev => [...prev, userMsg]);
-    setStreaming(true);
-    const assistantId = crypto.randomUUID();
-    setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "" }]);
+  /**
+   * Send the composer text, or retry an earlier send with the SAME request id.
+   * The server dedupes on that id, so retrying is always safe.
+   */
+  async function sendMessage(retryOf?: { requestId: string; text: string }) {
+    if (streaming) return;
+    const text = retryOf ? retryOf.text : prompt;
+    if (!text.trim()) return;
+    const length = countChars(text);
+    if (length > limits.maxPromptChars) {
+      setSendError(t("chatTab.input.overLimit", { count: length.toLocaleString(i18n.language), limit: limits.maxPromptChars.toLocaleString(i18n.language) }));
+      return;
+    }
+    setSendError(null);
 
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
+    const requestId     = retryOf?.requestId ?? crypto.randomUUID();
+    const convAtSend    = activeConv;
+    const projectAtSend = projectId;
+    const ctrl          = new AbortController();
+    const live: LiveStream = { requestId, convId: convAtSend, ctrl, attached: true };
+    liveRef.current = live;
+    setStreaming(true);
+
+    const update = (role: Message["role"], fn: (m: Message) => Message) => {
+      if (!live.attached) return;
+      setMessages(prev => prev.map(m => (m.requestId === requestId && m.role === role ? fn(m) : m)));
+    };
+    const removeReply = () => {
+      if (!live.attached) return;
+      setMessages(prev => prev.filter(m => !(m.requestId === requestId && m.role === "assistant")));
+    };
+
+    setMessages(prev => {
+      const base = retryOf
+        ? prev
+            .filter(m => !(m.requestId === requestId && m.role === "assistant"))
+            .map(m => (m.requestId === requestId && m.role === "user" ? { ...m, status: "sending" as const, error: null } : m))
+        : [...prev, { id: `${requestId}:user`, role: "user" as const, content: text, status: "sending" as const, requestId }];
+      return [...base, { id: `${requestId}:reply`, role: "assistant" as const, content: "", status: "streaming" as const, requestId }];
+    });
+    // The composer empties now, but the stored draft stays until the server
+    // confirms the message was saved (the `conv_id` ack below).
+    if (!retryOf) setPromptState("");
+    setAnnouncement(t("chatTab.status.sending"));
+
     const useAgent = agentId !== "default";
-    const url = useAgent ? `${API}/api/agents/${agentId}/chat/stream` : `${API}/api/run/stream`;
+    const path = useAgent ? `/api/agents/${agentId}/chat/stream` : "/api/run/stream";
+    let acked = false;
+    let replyText = "";
 
     try {
-      const res = await fetch(url, {
-        method: "POST", headers: authH(),
-        body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId }),
+      const res = await apiFetch(path, {
+        method: "POST",
+        body: JSON.stringify({
+          project_id: projectAtSend, prompt: text, conversation_id: convAtSend,
+          agent_id: agentId, client_request_id: requestId,
+        }),
         signal: ctrl.signal,
       });
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
-      const reader = res.body.getReader();
+      if (!res.ok || !res.body) {
+        const body = await res.json().catch(() => null);
+        const info = describeSendFailure(res.status, body, i18n.language, t("chatTab.status.sendFailed"));
+        if (live.attached) {
+          removeReply();
+          if (info.rejectedBeforeSave && !retryOf) {
+            // Nothing was stored: take the bubble back and return the full
+            // text to the composer with the reason.
+            setMessages(prev => prev.filter(m => !(m.requestId === requestId && m.role === "user")));
+            setPromptState(cur => (cur.trim() ? cur : text));
+            setSendError(info.message);
+          } else {
+            update("user", m => ({ ...m, status: "failed", error: info.message }));
+          }
+          setAnnouncement(info.message);
+        }
+        return;
+      }
+
+      const reader  = res.body.getReader();
       const decoder = new TextDecoder();
-      let buf = "", closed = false;
+      let buf = "";
+      let terminal = false;
 
-      while (true) {
+      read: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === "conv_id" && !activeConv) {
-            // Claim this id for the messages already in local state *before*
-            // flipping activeConv, so the messages-loading effect (keyed on
-            // activeConv) sees them as already in sync and never shows a
-            // loading state over the reply that's actively streaming in.
-            setMessagesConvId(ev.conv_id);
-            setActiveConv(ev.conv_id);
+        const { events, rest } = parseSseBuffer(buf);
+        buf = rest;
+        for (const ev of events) {
+          if (ev.type === "conv_id") {
+            acked = true;
+            const cid = String(ev.conv_id);
+            live.convId = cid;
+            clearDraft(userId, projectAtSend, convAtSend);
+            if (live.attached) {
+              update("user", m => ({ ...m, status: "saved", error: null }));
+              if (!convAtSend) {
+                // Claim the id for the local messages before flipping
+                // activeConv so the history load doesn't replace them.
+                setMessagesConvId(cid);
+                setActiveConv(cid);
+              }
+              setAnnouncement(t("chatTab.status.saved"));
+            }
             loadConvs();
+          } else if (ev.type === "delta") {
+            replyText += String(ev.text ?? "");
+            const snapshot = replyText;
+            update("assistant", m => ({ ...m, content: snapshot }));
+          } else if (ev.type === "error") {
+            terminal = true;
+            const msg = String(ev.message ?? t("chatTab.status.replyFailed"));
+            update("assistant", m => ({ ...m, status: replyText ? "partial" : "failed", error: msg }));
+            if (live.attached) setAnnouncement(t("chatTab.status.replyFailed"));
+            break read;
+          } else if (ev.type === "done") {
+            terminal = true;
+            update("assistant", m => ({ ...m, status: "complete", error: null }));
+            if (live.attached) setAnnouncement(t("chatTab.status.replyDone"));
+            loadConvs();
+            break read;
           }
-          else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
-          else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
-          else if (ev.type === "done")   { loadConvs(); closed = true; }
         }
-        if (closed) break;
+      }
+      if (!terminal) {
+        // The connection closed without `done`/`error`: say so plainly.
+        update("assistant", m => ({ ...m, status: replyText ? "partial" : "failed", error: t("chatTab.status.connectionLost") }));
+        if (live.attached) setAnnouncement(t("chatTab.status.connectionLost"));
       }
     } catch (err: unknown) {
-      if ((err as Error).name !== "AbortError") {
-        const msg = (err as Error).message ?? "";
-        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg }) } : m));
+      const aborted = (err as Error)?.name === "AbortError";
+      const reason = aborted ? t("chatTab.status.stopped") : t("chatTab.status.connectionLost");
+      if (!acked && !aborted) {
+        // Never reached the server (or no ack): the draft is still stored;
+        // offer Retry (same request id — safe even if it did arrive).
+        removeReply();
+        update("user", m => ({ ...m, status: "failed", error: reason }));
+      } else {
+        update("assistant", m => ({ ...m, status: replyText ? "partial" : "failed", error: reason }));
+        if (!acked) update("user", m => ({ ...m, status: "failed", error: reason }));
       }
-    } finally { setStreaming(false); abortRef.current = null; }
+      if (live.attached) setAnnouncement(reason);
+    } finally {
+      if (liveRef.current === live) { liveRef.current = null; setStreaming(false); }
+      if (!live.attached) loadConvs();
+    }
+  }
+
+  function retryMessage(m: Message) {
+    if (streaming || !m.requestId) return;
+    const userMsg = m.role === "user" ? m : messages.find(x => x.role === "user" && x.requestId === m.requestId);
+    if (!userMsg) return;
+    void sendMessage({ requestId: m.requestId, text: userMsg.content });
+  }
+
+  /** Move a failed, unconfirmed message back into the composer for editing. */
+  function editFailed(m: Message) {
+    setMessages(prev => prev.filter(x => x.requestId !== m.requestId));
+    setPromptState(m.content);
+    setDraft(userId, projectId, activeConv, m.content);
   }
 
   // ── Derived state ─────────────────────────────────────────────────
-  const filteredConvs = useMemo(
-    () => searchQ ? convs.filter(c => c.title.toLowerCase().includes(searchQ.toLowerCase())) : convs,
-    [convs, searchQ],
-  );
-  const groupedConvs = useMemo(() => groupConvsByDate(filteredConvs), [filteredConvs]);
+  const groupedConvs = useMemo(() => groupConvsByDate(convs), [convs]);
   const activeAgent  = useMemo(() => agents.find(a => a.id === agentId), [agents, agentId]);
+  const userInitial  = (user?.name || user?.email || "?").trim().charAt(0).toUpperCase() || "?";
 
   // True only while `messages` genuinely doesn't reflect activeConv yet.
   const messagesOutOfSync  = !!activeConv && messagesConvId !== activeConv;
   const showMessagesLoading = messagesOutOfSync && messagesStatus === "loading";
   const showMessagesError   = messagesOutOfSync && messagesStatus === "error";
+
+  const charCount = countChars(prompt);
+  const limit     = limitState(charCount, limits);
 
   // Active project label
   const activeProjectName = projectId === "demo"
@@ -298,34 +592,43 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
   // ── Render ────────────────────────────────────────────────────────
   return (
-    <div className="chat-layout">
+    <div className={`chat-layout${railOpen ? " chat-layout--rail-open" : ""}`}>
+      {/* Polite status announcements — state changes only, never tokens. */}
+      <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
+
+      {/* Tap-outside to close an overlay (drawer or narrow-screen context panel). */}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        className={`chat-overlay-backdrop${railOpen || contextPanelOpen ? " is-open" : ""}`}
+        onClick={() => { setRailOpen(false); if (isNarrow(1100)) setContextPanelOpen(false); }}
+      />
 
       {/* ═══════════════════════════════════════════════════════════
           COLUMN 1 — Conversation Rail
           ════════════════════════════════════════════════════════ */}
-      <aside className="chat-rail" aria-label={t("chatTab.sidebar.loading")}>
+      <aside className="chat-rail" id="chat-rail" ref={railRef} aria-label={t("chatTab.sidebar.railLabel")}>
 
         {/* Top controls */}
         <div className="chat-rail__top">
-          <GoldButton
-            onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
-            style={{ fontSize: 12 }}
-          >
+          <GoldButton onClick={() => openConversation(null)} style={{ fontSize: 12 }}>
             {t("chatTab.sidebar.newChat")}
           </GoldButton>
 
           <input
+            type="search"
             value={searchQ}
             onChange={e => setSearchQ(e.target.value)}
             placeholder={t("chatTab.sidebar.searchPlaceholder")}
             className="g-input"
-            aria-label={t("chatTab.sidebar.searchPlaceholder")}
+            aria-label={t("chatTab.sidebar.searchLabel")}
             style={{ fontSize: 12, padding: "6px 10px" }}
           />
 
           <select
             value={projectId}
-            onChange={e => setProjectId(e.target.value)}
+            onChange={e => openProject(e.target.value)}
             className="g-input"
             aria-label={t("chatTab.contextPanel.project")}
             style={{ fontSize: 12, padding: "6px 10px" }}
@@ -346,6 +649,15 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             <option value="default">{t("chatTab.sidebar.defaultAgent")}</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>)}
           </select>
+
+          <button
+            type="button"
+            className="chat-rail__toggle"
+            aria-pressed={showArchived}
+            onClick={() => setShowArchived(v => !v)}
+          >
+            {showArchived ? t("chatTab.sidebar.showActive") : t("chatTab.sidebar.showArchived")}
+          </button>
         </div>
 
         {/* Conversation list */}
@@ -354,44 +666,84 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           {convsStatus === "error" && (
             <ErrorState compact message={convsError ?? t("chatTab.sidebar.loadError")} suggestedFix={convsFix} onRetry={loadConvs} />
           )}
-          {convsStatus === "empty" && (
-            <EmptyState compact title={t("chatTab.sidebar.emptyTitle")} description={t("chatTab.sidebar.emptyDesc")} />
+          {convsStatus === "empty" && !debouncedQ && (
+            showArchived
+              ? <EmptyState compact title={t("chatTab.sidebar.archivedEmptyTitle")} description={t("chatTab.sidebar.archivedEmptyDesc")} />
+              : <EmptyState compact title={t("chatTab.sidebar.emptyTitle")} description={t("chatTab.sidebar.emptyDesc")} />
           )}
-          {(convsStatus === "success" || convsStatus === "refreshing") && filteredConvs.length === 0 && searchQ && (
-            <EmptyState compact title={t("chatTab.sidebar.noMatchesTitle")} description={t("chatTab.sidebar.noMatchesDesc", { query: searchQ })} />
+          {convsStatus === "empty" && debouncedQ && (
+            <EmptyState compact title={t("chatTab.sidebar.noMatchesTitle")} description={t("chatTab.sidebar.noMatchesDesc", { query: debouncedQ })} />
           )}
 
           {groupedConvs.map(({ label, items }) => (
-            <div key={label}>
-              <div className="conv-group-label">{t(`chatTab.convGroups.${label}`)}</div>
+            <div key={label} role="group" aria-label={t(`chatTab.convGroups.${label}`)}>
+              <div className="conv-group-label" aria-hidden="true">{t(`chatTab.convGroups.${label}`)}</div>
               {items.map(c => {
                 const isDeleting = deletingIds.has(c.id);
+                const isBusy     = busyConvIds.has(c.id) || isDeleting;
+                const isActive   = c.id === activeConv;
+                if (renamingId === c.id) {
+                  return (
+                    <div key={c.id} className={`conv-item${isActive ? " active" : ""}`}>
+                      <input
+                        className="g-input"
+                        value={renameValue}
+                        maxLength={200}
+                        aria-label={t("chatTab.sidebar.renameLabel")}
+                        autoFocus
+                        onChange={e => setRenameValue(e.target.value)}
+                        onBlur={() => void commitRename()}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") { e.preventDefault(); void commitRename(); }
+                          if (e.key === "Escape") { e.preventDefault(); setRenamingId(null); }
+                        }}
+                        style={{ fontSize: 12, padding: "4px 8px", width: "100%" }}
+                      />
+                    </div>
+                  );
+                }
                 return (
                   <div
                     key={c.id}
-                    role="button"
-                    className={`conv-item${c.id === activeConv ? " active" : ""}`}
-                    tabIndex={0}
-                    aria-label={c.title}
-                    aria-current={c.id === activeConv ? "page" : undefined}
-                    onClick={() => { if (!isDeleting) setActiveConv(c.id); }}
-                    onKeyDown={e => {
-                      if (!isDeleting && (e.key === "Enter" || e.key === " ")) {
-                        e.preventDefault(); setActiveConv(c.id);
-                      }
-                    }}
-                    style={isDeleting ? { opacity: 0.5, pointerEvents: "none" } : undefined}
+                    className={`conv-item${isActive ? " active" : ""}`}
+                    style={isBusy ? { opacity: 0.5 } : undefined}
                   >
-                    <div className="conv-item__title">{c.title}</div>
-                    <span className="conv-item__time">{relTime(c.updated_at)}</span>
                     <button
-                      className="conv-item__del"
-                      onClick={e => { if (!isDeleting) void deleteConv(e, c.id); }}
-                      aria-label={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
-                      title={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
+                      type="button"
+                      className="conv-item__main"
+                      aria-current={isActive ? "page" : undefined}
+                      disabled={isBusy}
+                      onClick={() => openConversation(c.id)}
                     >
-                      {isDeleting ? "…" : "✕"}
+                      <span className="conv-item__title">{c.title}</span>
+                      <span className="conv-item__time">{relTime(c.updated_at)}</span>
                     </button>
+                    <div className="conv-item__actions">
+                      <button
+                        type="button"
+                        className="conv-item__action"
+                        disabled={isBusy}
+                        onClick={() => startRename(c)}
+                        aria-label={t("chatTab.sidebar.renameNamed", { title: c.title })}
+                        title={t("chatTab.sidebar.rename")}
+                      >✎</button>
+                      <button
+                        type="button"
+                        className="conv-item__action"
+                        disabled={isBusy}
+                        onClick={() => void toggleArchive(c)}
+                        aria-label={t(c.archived ? "chatTab.sidebar.unarchiveNamed" : "chatTab.sidebar.archiveNamed", { title: c.title })}
+                        title={t(c.archived ? "chatTab.sidebar.unarchive" : "chatTab.sidebar.archive")}
+                      >{c.archived ? "↺" : "⤓"}</button>
+                      <button
+                        type="button"
+                        className="conv-item__action conv-item__action--danger"
+                        disabled={isBusy}
+                        onClick={() => void deleteConv(c.id, c.title)}
+                        aria-label={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteNamed", { title: c.title })}
+                        title={isDeleting ? t("chatTab.sidebar.deleting") : t("chatTab.sidebar.deleteConversation")}
+                      >{isDeleting ? "…" : "✕"}</button>
+                    </div>
                   </div>
                 );
               })}
@@ -412,8 +764,22 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       <div className="chat-main">
 
         {/* Toolbar */}
-        <div className="chat-toolbar" role="toolbar" aria-label="Chat controls">
-          <span style={{ fontSize: 16 }}>{activeAgent?.avatar ?? "🤖"}</span>
+        <div className="chat-toolbar" role="toolbar" aria-label={t("chatTab.toolbarLabel")}>
+          <button
+            type="button"
+            ref={railToggleRef}
+            className="chat-icon-btn chat-rail-toggle"
+            aria-expanded={railOpen}
+            aria-controls="chat-rail"
+            onClick={() => setRailOpen(v => !v)}
+            aria-label={railOpen ? t("chatTab.sidebar.closeRail") : t("chatTab.sidebar.openRail")}
+            title={railOpen ? t("chatTab.sidebar.closeRail") : t("chatTab.sidebar.openRail")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/>
+            </svg>
+          </button>
+          <span style={{ fontSize: 16 }} aria-hidden="true">{activeAgent?.avatar ?? "◈"}</span>
           <span style={{ fontSize: 12, fontWeight: 500, color: "var(--t2)" }}>
             {activeAgent?.name ?? t("chatTab.contextPanel.defaultAgent")}
           </span>
@@ -430,13 +796,13 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
           {/* Context panel toggle */}
           <button
+            type="button"
             className={`chat-icon-btn${contextPanelOpen ? " active" : ""}`}
             onClick={() => setContextPanelOpen(p => !p)}
             aria-label={contextPanelOpen ? t("chatTab.contextPanel.hidePanel") : t("chatTab.contextPanel.showPanel")}
             title={contextPanelOpen ? t("chatTab.contextPanel.hidePanel") : t("chatTab.contextPanel.showPanel")}
             aria-pressed={contextPanelOpen}
           >
-            {/* Side-panel icon */}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="3" y="3" width="18" height="18" rx="2"/>
               <line x1="15" y1="3" x2="15" y2="21"/>
@@ -457,9 +823,10 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               return (
                 <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "var(--bg-hover)", border: "1px solid var(--border)", fontSize: 12, opacity: isPending ? 0.6 : 1 }}>
                   <button
+                    type="button"
                     onClick={() => void setTaskStatus(task, task.status === "done" ? "pending" : "done")}
                     disabled={isPending}
-                    aria-label={task.status === "done" ? "Mark pending" : "Mark done"}
+                    aria-label={task.status === "done" ? t("chatTab.tasksBar.markPending", { title: task.title }) : t("chatTab.tasksBar.markDone", { title: task.title })}
                     style={{ background: "none", border: "none", cursor: isPending ? "default" : "pointer", padding: 0, color: task.status === "done" ? "var(--green)" : "var(--t5)", display: "flex" }}
                   >
                     {task.status === "done"
@@ -472,15 +839,19 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               );
             })}
             <button
+              type="button"
               onClick={() => setShowTasks(false)}
-              aria-label="Close tasks"
+              aria-label={t("chatTab.tasksBar.close")}
               style={{ background: "none", border: "none", color: "var(--t5)", cursor: "pointer", marginInlineStart: "auto", fontSize: 16 }}
             >×</button>
           </div>
         )}
 
         {/* Messages area */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 0", display: "flex", flexDirection: "column", gap: 0, position: "relative" }}>
+        <div
+          style={{ flex: 1, overflowY: "auto", padding: "32px 0", display: "flex", flexDirection: "column", gap: 0, position: "relative" }}
+          aria-busy={streaming}
+        >
           {showMessagesLoading && <LoadingSpinner fullPage label={t("chatTab.messages.loading")} />}
           {showMessagesError && (
             <ErrorState message={messagesError ?? t("chatTab.messages.loadError")} suggestedFix={messagesFix} onRetry={reloadMessages} />
@@ -505,7 +876,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                   t("chatTab.messages.suggestion3"),
                   t("chatTab.messages.suggestion4"),
                 ].map(s => (
-                  <GoldButton key={s} variant="ghost" onClick={() => setPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
+                  <GoldButton key={s} variant="ghost" onClick={() => editPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
                 ))}
               </div>
             </div>
@@ -518,8 +889,13 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               key={m.id}
               msg={m}
               isLast={idx === messages.length - 1}
+              awaitingReply={!streaming && m.role === "user" && idx === messages.length - 1 && m.status === "saved"}
+              canRetry={!streaming && !!m.requestId}
               agentName={activeAgent?.name ?? null}
               agentAvatar={activeAgent?.avatar ?? null}
+              userInitial={userInitial}
+              onRetry={retryMessage}
+              onEdit={editFailed}
             />
           ))}
           <div ref={bottomRef} />
@@ -529,32 +905,54 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         <div style={{ padding: "10px 16px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0 }}>
           <textarea
             value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
+            onChange={e => editPrompt(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void sendMessage(); }
+            }}
             placeholder={t("chatTab.input.placeholder")}
             className="g-input"
             rows={2}
-            aria-label={t("chatTab.input.placeholder")}
-            style={{ width: "100%", maxHeight: 160, resize: "none", marginBottom: 8 }}
+            dir="auto"
+            aria-label={t("chatTab.input.label")}
+            aria-describedby="chat-composer-meta"
+            aria-invalid={limit === "over" || !!sendError}
+            style={{ width: "100%", maxHeight: 160, resize: "none", marginBottom: 8, unicodeBidi: "plaintext" }}
           />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div id="chat-composer-meta" style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.5 }}>
+              {sendError ? (
+                <span role="alert" style={{ color: "var(--red)" }}>{sendError}</span>
+              ) : limit === "over" ? (
+                <span style={{ color: "var(--red)" }}>
+                  {t("chatTab.input.overLimit", { count: charCount.toLocaleString(i18n.language), limit: limits.maxPromptChars.toLocaleString(i18n.language) })}
+                </span>
+              ) : limit === "warn" ? (
+                <span style={{ color: "var(--amber, var(--ta))" }}>
+                  {t("chatTab.input.nearLimit", { remaining: (limits.maxPromptChars - charCount).toLocaleString(i18n.language) })}
+                </span>
+              ) : null}
+            </div>
+            <span
+              style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: limit === "over" ? "var(--red)" : "var(--t5)" }}
+              aria-label={t("chatTab.input.counterLabel", { count: charCount, limit: limits.maxPromptChars })}
+            >
+              {t("chatTab.input.counter", { count: charCount.toLocaleString(i18n.language), limit: limits.maxPromptChars.toLocaleString(i18n.language) })}
+            </span>
             {streaming ? (
               <GoldButton
                 variant="danger"
-                onClick={() => abortRef.current?.abort()}
-                aria-label={t("chatTab.input.stop")}
+                onClick={() => liveRef.current?.ctrl.abort()}
                 style={{ height: 36, paddingInline: 16, fontSize: 13 }}
               >
-                ■ {t("chatTab.input.stop")}
+                <span aria-hidden="true">■ </span>{t("chatTab.input.stop")}
               </GoldButton>
             ) : (
               <GoldButton
                 onClick={() => void sendMessage()}
-                disabled={!prompt.trim()}
-                aria-label={t("chatTab.input.send")}
+                disabled={!prompt.trim() || limit === "over"}
                 style={{ height: 36, paddingInline: 16, fontSize: 13 }}
               >
-                {t("chatTab.input.send")} ↑
+                {t("chatTab.input.send")} <span aria-hidden="true">↑</span>
               </GoldButton>
             )}
           </div>
@@ -569,6 +967,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           <div className="chat-context__header">
             <span className="chat-context__title">{t("chatTab.contextPanel.title")}</span>
             <button
+              type="button"
               className="chat-icon-btn"
               onClick={() => setContextPanelOpen(false)}
               aria-label={t("chatTab.contextPanel.hidePanel")}
@@ -582,8 +981,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             <div>
               <div className="chat-context__section-label">{t("chatTab.contextPanel.activeAgent")}</div>
               <div className="chat-context__agent-card">
-                <div className="chat-context__agent-avatar">
-                  {activeAgent?.avatar ?? "🤖"}
+                <div className="chat-context__agent-avatar" aria-hidden="true">
+                  {activeAgent?.avatar ?? "◈"}
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div className="chat-context__agent-name">
@@ -615,12 +1014,12 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                 <div className="chat-context__section-label">{t("chatTab.contextPanel.actions")}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <button
+                    type="button"
                     className="chat-context__action-btn"
                     onClick={() => void exportConv()}
                     disabled={exporting}
                     title={t("chatTab.sidebar.exportTitle")}
                   >
-                    {/* Download icon */}
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                       <polyline points="7 10 12 15 17 10"/>
@@ -629,12 +1028,12 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     {exporting ? "…" : t("chatTab.contextPanel.export")}
                   </button>
                   <button
+                    type="button"
                     className="chat-context__action-btn"
                     onClick={() => void extractTasks()}
                     disabled={extracting}
                     title={t("chatTab.sidebar.extractTasksTitle")}
                   >
-                    {/* Check icon */}
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
@@ -655,21 +1054,26 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 // memo stops React re-rendering (and re-parsing markdown for) every earlier
 // message on each streamed token.
 const MessageRow = memo(function MessageRow({
-  msg, isLast, agentName, agentAvatar,
+  msg, isLast, awaitingReply, canRetry, agentName, agentAvatar, userInitial, onRetry, onEdit,
 }: {
-  msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
+  msg: Message; isLast: boolean; awaitingReply: boolean; canRetry: boolean;
+  agentName: string | null; agentAvatar: string | null; userInitial: string;
+  onRetry: (m: Message) => void; onEdit: (m: Message) => void;
 }) {
   const { t } = useTranslation("ai");
   const toast = useToast();
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    if (!copied) return;
+    const id = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(id);
+  }, [copied]);
+
   function handleCopy() {
-    void copyText(msg.content).then(() => {
-      setCopied(true);
-      // Reset the "Copied!" indicator after 2 s so it's ready for re-use.
-      const id = setTimeout(() => setCopied(false), 2000);
-      return () => clearTimeout(id);
-    }).catch(() => toast(t("common:actions.copyFailed"), "err"));
+    void copyText(msg.content)
+      .then(() => setCopied(true))
+      .catch(() => toast(t("common:actions.copyFailed"), "err"));
   }
 
   const isUser = msg.role === "user";
@@ -684,11 +1088,36 @@ const MessageRow = memo(function MessageRow({
     ...(isUser ? { flexDirection: "row-reverse", alignSelf: "flex-end" } : {}),
   };
 
+  // Status line under the message — text plus color, never color alone.
+  // The reason (often an English provider message) sits in its own element
+  // with its own direction so it doesn't scramble an Arabic label.
+  let statusText: string | null = null;
+  let statusReason: string | null = null;
+  let statusTone: "muted" | "warn" | "error" = "muted";
+  let showRetry = false;
+  let showEdit = false;
+  if (isUser) {
+    if (msg.status === "sending") statusText = t("chatTab.status.sending");
+    else if (msg.status === "failed") {
+      statusText = t("chatTab.status.sendFailed"); statusReason = msg.error ?? null;
+      statusTone = "error"; showRetry = canRetry; showEdit = true;
+    } else if (awaitingReply) {
+      statusText = t("chatTab.status.noReply"); statusTone = "warn"; showRetry = canRetry;
+    } else if (msg.status === "saved" && isLast) statusText = t("chatTab.status.saved");
+  } else if (msg.status === "partial") {
+    statusText = t("chatTab.status.replyPartial"); statusReason = msg.error ?? null;
+    statusTone = "warn"; showRetry = canRetry;
+  } else if (msg.status === "failed") {
+    statusText = t("chatTab.status.replyFailed"); statusReason = msg.error ?? null;
+    statusTone = "error"; showRetry = canRetry;
+  }
+  const toneColor = statusTone === "error" ? "var(--red)" : statusTone === "warn" ? "var(--amber, var(--ta))" : "var(--t5)";
+
   return (
     <div style={rowStyle} className="msg-row">
       {/* Assistant avatar */}
       {!isUser && (
-        <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+        <div aria-hidden="true" style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
           <span style={{ fontSize: 18 }}>{agentAvatar ?? "◈"}</span>
         </div>
       )}
@@ -703,47 +1132,69 @@ const MessageRow = memo(function MessageRow({
           justifyContent: isUser ? "flex-end" : "flex-start",
         }}>
           {isUser ? t("chatTab.messages.you") : (agentName ?? t("chatTab.messages.assistantFallback"))}
-          <span style={{ fontSize: 10, color: "var(--t5)", fontWeight: 400 }}>
-            {isLast ? t("chatTab.messages.now") : ""}
-          </span>
-          {/* Copy button — shown on .msg-row hover via chat.css */}
           {msg.content && (
             <button
+              type="button"
               className={`msg-copy-btn${copied ? " copied" : ""}`}
               onClick={handleCopy}
-              aria-label={copied ? t("chatTab.messages.copied") : t("chatTab.messages.copyCode")}
+              aria-label={copied ? t("chatTab.messages.copied") : t("chatTab.messages.copyMessage")}
             >
-              {copied ? t("chatTab.messages.copied") : t("chatTab.messages.copyCode")}
+              {copied ? t("chatTab.messages.copied") : t("chatTab.messages.copyShort")}
             </button>
           )}
         </div>
 
         {/* Content */}
         {isUser ? (
-          <div style={{
+          <div dir="auto" style={{
             fontSize: 15, lineHeight: 1.75, color: "var(--t1)",
             background: "linear-gradient(135deg, var(--accent-dim), var(--accent-glow))",
             border: "1px solid var(--accent-border)",
-            borderRadius: 16, borderTopRightRadius: 4, padding: "12px 18px",
+            borderRadius: 16, borderStartEndRadius: 4, padding: "12px 18px",
             boxShadow: "0 2px 16px var(--accent-dim)", display: "inline-block",
+            // Keep the user's text exactly as typed: newlines, indentation, code.
+            // `plaintext` gives each line its own direction, so Arabic lines
+            // read RTL and code lines read LTR instead of being bidi-flipped.
+            whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxWidth: "100%",
+            unicodeBidi: "plaintext", textAlign: "start",
           }}>{msg.content}</div>
-        ) : msg.content === "" ? (
-          <div style={{ padding: "8px 0" }} className="typing"><span /><span /><span /></div>
-        ) : (
-          <div style={{ fontSize: 15, color: "var(--t2)", lineHeight: 1.8 }} className="md-body">
+        ) : msg.content === "" && msg.status === "streaming" ? (
+          <div style={{ padding: "8px 0" }} className="typing" role="img" aria-label={t("chatTab.status.thinking")}><span /><span /><span /></div>
+        ) : msg.content === "" ? null : (
+          <div dir="auto" style={{ fontSize: 15, color: "var(--t2)", lineHeight: 1.8 }} className="md-body">
             <ReactMarkdown components={MD_COMPONENTS}>{msg.content}</ReactMarkdown>
+          </div>
+        )}
+
+        {statusText && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6,
+            fontSize: 12, color: toneColor, justifyContent: isUser ? "flex-end" : "flex-start",
+          }}>
+            <span>{statusText}</span>
+            {statusReason && <span dir="auto" style={{ flexBasis: "100%", color: "var(--t4)" }}>{statusReason}</span>}
+            {showRetry && (
+              <button type="button" className="msg-status-btn" onClick={() => onRetry(msg)}>
+                {t("chatTab.status.retry")}
+              </button>
+            )}
+            {showEdit && (
+              <button type="button" className="msg-status-btn" onClick={() => onEdit(msg)}>
+                {t("chatTab.status.edit")}
+              </button>
+            )}
           </div>
         )}
       </div>
 
       {/* User avatar */}
       {isUser && (
-        <div style={{
+        <div aria-hidden="true" style={{
           width: 34, height: 34, borderRadius: 9, flexShrink: 0,
           background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 13, fontWeight: 700, color: "#121008", marginTop: 2,
-        }}>Y</div>
+        }}>{userInitial}</div>
       )}
     </div>
   );

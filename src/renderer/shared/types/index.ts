@@ -1,7 +1,20 @@
 export type Page = "study-library" | "careers" | "home" | "ai" | "dev" | "design" | "automation" | "social" | "settings" | "agentos" | "marketplace" | "organizations" | "teams" | "billing" | "plugins" | "sandbox" | "ai-routing" | "observability" | "app-builder" | "runs" | "integrations" | "training" | "business-lab" | "devices" | "discover" | "feed" | "leads" | "saas-factory" | "new-project";
 
-export type Message = { id: string; role: "user" | "assistant"; content: string };
-export type Conv    = { id: string; title: string; updated_at: string };
+/**
+ * Delivery state of a chat message (all optional — older callers ignore them).
+ *   user:      sending → saved | failed
+ *   assistant: streaming → complete | partial (cut off) | failed (no text)
+ */
+export type MessageStatus = "sending" | "saved" | "failed" | "streaming" | "complete" | "partial";
+export type Message = {
+  id: string; role: "user" | "assistant"; content: string;
+  status?: MessageStatus;
+  /** Stable client request id shared by a user message and its reply; reused on retry. */
+  requestId?: string | null;
+  /** Human-readable reason shown under a failed/partial message. */
+  error?: string | null;
+};
+export type Conv    = { id: string; title: string; updated_at: string; project_id?: string; archived?: boolean };
 export type Project = { id: string; name: string; description: string; status: string; created_at: string };
 export type Task = {
   id: string; title: string; notes: string | null; status: "pending" | "in_progress" | "done";

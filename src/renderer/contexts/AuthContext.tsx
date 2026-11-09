@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { parseJSON } from "../utils/api";
+import { clearAllChatStorage } from "../features/ai/chat/chatSession";
 
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 const REFRESH_KEY = "axon_refresh_token";
@@ -369,6 +370,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }).catch(() => {});
     }
     localStorage.removeItem(REFRESH_KEY);
+    // Unsent chat drafts and the last-open conversation are per-user and may
+    // hold sensitive text — never leave them behind on a shared browser.
+    clearAllChatStorage();
     // Previously left untouched: a stale, still-cryptographically-valid
     // sub_token (30-day TTL, independent of this JWT logout entirely)
     // remained fully usable by anything sending X-Sub-Token until it

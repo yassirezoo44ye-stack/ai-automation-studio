@@ -56,11 +56,11 @@
   "chatTab": {
     "sidebar": {
       "demoProject": "Demo Project",
-      "defaultAgent": "🤖 Claude (default)",
+      "defaultAgent": "◈ Flow (default)",
       "newChat": "+ New Chat",
       "exportTitle": "Export as Markdown",
       "extractTasksTitle": "Extract tasks",
-      "searchPlaceholder": "Search…",
+      "searchPlaceholder": "Search conversations…",
       "deleting": "Deleting…",
       "deleteConversation": "Delete conversation",
       "loading": "Loading conversations…",
@@ -68,27 +68,49 @@
       "emptyTitle": "No conversations yet",
       "emptyDesc": "Start a new chat to see it here.",
       "noMatchesTitle": "No matches",
-      "noMatchesDesc": "Nothing found for \"{{query}}\"."
+      "noMatchesDesc": "Nothing found for \"{{query}}\".",
+      "railLabel": "Conversations",
+      "searchLabel": "Search conversation titles and content",
+      "rename": "Rename",
+      "renameNamed": "Rename “{{title}}”",
+      "renameLabel": "New conversation name",
+      "archive": "Archive",
+      "archiveNamed": "Archive “{{title}}”",
+      "unarchive": "Unarchive",
+      "unarchiveNamed": "Unarchive “{{title}}”",
+      "deleteNamed": "Delete “{{title}}”",
+      "confirmDelete": "Permanently delete “{{title}}”? This can’t be undone.",
+      "showArchived": "Show archived",
+      "showActive": "Show active conversations",
+      "archivedEmptyTitle": "No archived conversations",
+      "archivedEmptyDesc": "Conversations you archive appear here.",
+      "openRail": "Show conversations",
+      "closeRail": "Close conversations list"
     },
     "tasksBar": {
       "label": "TASKS",
-      "loadError": "Failed to load tasks."
+      "loadError": "Failed to load tasks.",
+      "markDone": "Mark “{{title}}” done",
+      "markPending": "Mark “{{title}}” pending",
+      "close": "Close tasks bar"
     },
     "messages": {
       "loading": "Loading conversation…",
       "loadError": "Failed to load this conversation.",
       "emptyAgentName": "Flow AI",
-      "emptyDescription": "Start a conversation or pick one from the sidebar.",
+      "emptyDescription": "Start a conversation or pick one from the conversations list.",
       "suggestion1": "Write a follow-up email for a new lead",
       "suggestion2": "Plan my sales priorities this week",
       "suggestion3": "Draft a LinkedIn post about our services",
       "suggestion4": "Turn my notes into a client proposal",
       "you": "You",
-      "assistantFallback": "Claude",
+      "assistantFallback": "Flow",
       "now": "now",
       "streamErrorPrefix": "⚠️ {{message}}",
       "copyCode": "Copy",
-      "copied": "Copied!"
+      "copied": "Copied!",
+      "copyMessage": "Copy message",
+      "copyShort": "Copy"
     },
     "convGroups": {
       "today": "Today",
@@ -98,7 +120,7 @@
     "contextPanel": {
       "title": "Context",
       "activeAgent": "Active Agent",
-      "defaultAgent": "Claude (default)",
+      "defaultAgent": "Flow (default)",
       "project": "Project",
       "actions": "Actions",
       "export": "Export as Markdown",
@@ -109,7 +131,12 @@
     "input": {
       "placeholder": "Message… (Enter to send, Shift+Enter for new line)",
       "send": "Send",
-      "stop": "Stop"
+      "stop": "Stop",
+      "label": "Write your message",
+      "counter": "{{count}} / {{limit}}",
+      "counterLabel": "{{count}} of {{limit}} characters",
+      "nearLimit": "Close to the limit — {{remaining}} characters left.",
+      "overLimit": "The message is {{count}} characters; the limit is {{limit}}. Nothing was sent and your text is kept here — split it into parts or shorten the pasted reference."
     },
     "toast": {
       "extractedTasks_one": "Extracted {{count}} task",
@@ -120,7 +147,26 @@
       "deleteConversationFailed": "Failed to delete conversation",
       "exportedMarkdown": "Exported as Markdown",
       "exportFailed": "Export failed",
-      "backendOffline": "⚠️ Backend offline"
+      "backendOffline": "⚠️ Backend offline",
+      "renameFailed": "Couldn’t rename",
+      "archiveFailed": "Couldn’t update archive",
+      "archived": "Conversation archived",
+      "unarchived": "Conversation restored to the list"
+    },
+    "toolbarLabel": "Chat controls",
+    "status": {
+      "sending": "Sending…",
+      "saved": "Saved",
+      "sendFailed": "Failed to send",
+      "thinking": "Flow is writing a reply",
+      "replyDone": "Reply complete",
+      "replyFailed": "Reply failed",
+      "replyPartial": "Reply incomplete",
+      "connectionLost": "Connection lost before the reply finished",
+      "stopped": "You stopped the reply",
+      "noReply": "No reply arrived for this message",
+      "retry": "Retry",
+      "edit": "Edit"
     }
   }
 }

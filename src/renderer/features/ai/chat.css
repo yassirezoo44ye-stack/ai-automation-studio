@@ -196,26 +196,96 @@
   font-size: 10px;
   color: var(--t5);
 }
-.conv-item__del {
+/* Row = one primary button (open) + separate action buttons. No nested
+   interactive elements, so keyboard and screen-reader users reach each one. */
+.conv-item__main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  padding-inline-end: 72px; /* room for the action buttons */
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.conv-item__main .conv-item__title { max-width: 100%; }
+.conv-item__main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+.conv-item__actions {
   position: absolute;
   inset-inline-end: var(--sp-1);
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
+}
+.conv-item:hover .conv-item__actions,
+.conv-item:focus-within .conv-item__actions,
+.conv-item.active .conv-item__actions { opacity: 1; }
+/* Touch screens have no hover: keep actions visible and finger-sized. */
+@media (hover: none) {
+  .conv-item__actions { opacity: 1; }
+  .conv-item__action { min-width: 32px; min-height: 32px; }
+}
+.conv-item__action {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 3px 5px;
   background: none;
   border: none;
-  padding: 3px 5px;
   border-radius: var(--r-xs);
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1;
   color: var(--t5);
   cursor: pointer;
-  line-height: 1;
   font-family: inherit;
 }
-.conv-item:hover .conv-item__del,
-.conv-item:focus-within .conv-item__del { opacity: 1; }
-.conv-item__del:hover { color: var(--red); background: var(--red-dim); }
+.conv-item__action:hover { color: var(--t1); background: var(--bg-hover); }
+.conv-item__action--danger:hover { color: var(--red); background: var(--red-dim); }
+.conv-item__action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+.conv-item__action:disabled,
+.conv-item__main:disabled { cursor: default; }
+
+.chat-rail__toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--t4);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.chat-rail__toggle[aria-pressed="true"] { color: var(--ta); }
+.chat-rail__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Retry / Edit under a failed or incomplete message. */
+.msg-status-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 2px 10px;
+  min-height: 24px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--t1);
+  cursor: pointer;
+}
+.msg-status-btn:hover { border-color: var(--accent-border); background: var(--accent-dim); }
+.msg-status-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Message copy button (reveal on row hover) ───────────────────── */
 .msg-copy-btn {
@@ -233,7 +303,10 @@
   font-family: inherit;
   line-height: 1.6;
 }
-.msg-row:hover .msg-copy-btn { opacity: 1; }
+.msg-row:hover .msg-copy-btn,
+.msg-row:focus-within .msg-copy-btn,
+.msg-copy-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .msg-copy-btn { opacity: 1; } }
 .msg-copy-btn:hover { color: var(--t2); border-color: var(--ba); }
 .msg-copy-btn.copied { color: var(--green); border-color: var(--green); opacity: 1; }
 
@@ -260,12 +333,52 @@
 }
 
 /* ── Responsive breakpoints ─────────────────────────────────────── */
-/* Tablet (≤ 1100px): hide context panel */
+/* The rail toggle and backdrop only exist on phones. */
+.chat-rail-toggle { display: none; }
+.chat-overlay-backdrop { display: none; }
+
+/* Tablet (≤ 1100px): the context panel becomes an overlay instead of
+   disappearing — its toolbar toggle must still do what it says. */
 @media (max-width: 1100px) {
-  .chat-context { display: none; }
+  .chat-layout { position: relative; }
   .chat-rail { width: 220px; }
+  .chat-context {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: min(300px, 88%);
+    z-index: 30;
+    box-shadow: var(--shadow-lg);
+  }
+  .chat-overlay-backdrop.is-open {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    border: none;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+  }
+  /* Keep the global copilot button clear of the composer's Send button. */
+  body.flow-chat-open .g-copilot-fab-wrap {
+    bottom: calc(176px + env(safe-area-inset-bottom));
+  }
 }
-/* Mobile (≤ 720px): single column */
+/* Mobile (≤ 720px): single column; the conversation list opens as a drawer. */
 @media (max-width: 720px) {
   .chat-rail { display: none; }
+  .chat-layout--rail-open .chat-rail {
+    display: flex;
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: min(300px, 86%);
+    z-index: 30;
+    box-shadow: var(--shadow-lg);
+  }
+  .chat-rail-toggle { display: inline-flex; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-context, .chat-rail { transition: none; }
 }
