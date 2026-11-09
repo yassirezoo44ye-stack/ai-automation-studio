@@ -1,0 +1,38 @@
+# Review-only stack. Apply through a create_new Blueprint plan, never adopt production.
+previews:
+  generation: "off"
+services:
+  - type: web
+    name: flow-chat-review-api
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: copilot/flow-conversation-reliability
+    autoDeployTrigger: "off"
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: staging
+      - key: PORT
+        value: "8000"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: flow-chat-review-db
+          property: connectionString
+      - key: APP_URL
+        fromService:
+          name: flow-chat-review-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: FRONTEND_URL
+        value: https://ai-automation-studio-git-88987d-yassirezoo44ye-stacks-projects.vercel.app
+databases:
+  - name: flow-chat-review-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "18"
+    databaseName: flow_chat_review
+    ipAllowList: []
