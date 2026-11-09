@@ -72,7 +72,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     const requestId = ++historyRequestRef.current;
     const interactionAtStart = interactionRef.current;
     void Promise.resolve().then(() => { if (mounted) setLoadingHistory(true); });
-    void refreshConversations().then(async items => {
+    void Promise.resolve().then(refreshConversations).then(async items => {
       if (!mounted || requestId !== historyRequestRef.current || interactionRef.current !== interactionAtStart || !items.length) return;
       const first = items[0];
       const response = await fetch(`${API}/api/conversations/${encodeURIComponent(first.id)}/messages`, {
@@ -228,6 +228,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     conversationIdRef.current = null;
     setConversationId(null);
     setMessages([]);
+    setLoadingHistory(false);
     setError(null);
     setSuggestedAction(null);
     setStreaming(false);
