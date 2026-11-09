@@ -34,6 +34,13 @@ async function jsonOrThrow<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function loadCopilotConversations(): Promise<CopilotConversation[]> {
+  const response = await fetch(`${API}/api/conversations?project_id=${encodeURIComponent(COPILOT_PROJECT)}`, {
+    headers: authH(),
+  });
+  return jsonOrThrow<CopilotConversation[]>(response);
+}
+
 export function CopilotProvider({ children }: { children: ReactNode }) {
   const { page } = useAppContext();
   const { currentOrg } = useOrg();
@@ -56,10 +63,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
   const interactionRef = useRef(0);
 
   const refreshConversations = useCallback(async () => {
-    const response = await fetch(`${API}/api/conversations?project_id=${encodeURIComponent(COPILOT_PROJECT)}`, {
-      headers: authH(),
-    });
-    const items = await jsonOrThrow<CopilotConversation[]>(response);
+    const items = await loadCopilotConversations();
     setConversations(items);
     return items;
   }, []);
@@ -72,7 +76,9 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     const requestId = ++historyRequestRef.current;
     const interactionAtStart = interactionRef.current;
     void Promise.resolve().then(() => { if (mounted) setLoadingHistory(true); });
-    void Promise.resolve().then(refreshConversations).then(async items => {
+    void loadCopilotConversations().then(async items => {
+      if (!mounted) return;
+      setConversations(items);
       if (!mounted || requestId !== historyRequestRef.current || interactionRef.current !== interactionAtStart || !items.length) return;
       const first = items[0];
       const response = await fetch(`${API}/api/conversations/${encodeURIComponent(first.id)}/messages`, {
@@ -90,7 +96,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
       if (mounted && requestId === historyRequestRef.current) setLoadingHistory(false);
     });
     return () => { mounted = false; };
-  }, [refreshConversations]);
+  }, []);
 
   const openConversation = useCallback(async (id: string) => {
     interactionRef.current += 1;
