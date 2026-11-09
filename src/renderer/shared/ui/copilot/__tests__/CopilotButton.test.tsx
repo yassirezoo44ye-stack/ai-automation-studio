@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { CopilotButton } from "../CopilotButton";
 import { CopilotContext, type CopilotContextType } from "../../../../contexts/copilot";
@@ -59,5 +59,42 @@ describe("CopilotButton", () => {
   it("surfaces a stream error as an alert", () => {
     renderButton(baseCtx({ open: true, error: "Backend offline." }));
     expect(screen.getByRole("alert")).toHaveTextContent("Backend offline.");
+  });
+});
+
+describe("Copilot composer recovery", () => {
+  it("keeps the exact long draft when sending is rejected", async () => {
+    const send = vi.fn().mockResolvedValue(false);
+    renderButton(baseCtx({ open: true, send, error: "Server limit: 4000 characters" }));
+    const draft = "  العربية\r\n  CREATE TABLE example (id INT);\n" + "x".repeat(4100);
+    const input = screen.getByRole("textbox", { name: "Ask the copilot" });
+    fireEvent.change(input, { target: { value: draft } });
+    fireEvent.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith(draft));
+    expect(input).toHaveValue(draft);
+    expect(screen.getByRole("alert")).toHaveTextContent("4000");
+  });
+
+  it("clears the submitted draft only after successful completion", async () => {
+    const send = vi.fn().mockResolvedValue(true);
+    renderButton(baseCtx({ open: true, send }));
+    const input = screen.getByRole("textbox", { name: "Ask the copilot" });
+    fireEvent.change(input, { target: { value: "build a page" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send", exact: true }));
+    await waitFor(() => expect(input).toHaveValue(""));
+    expect(send).toHaveBeenCalledWith("build a page");
+  });
+
+  it("does not erase a newer draft when an older send resolves", async () => {
+    let finish!: (value: boolean) => void;
+    const send = vi.fn().mockImplementation(() => new Promise<boolean>(resolve => { finish = resolve; }));
+    renderButton(baseCtx({ open: true, send }));
+    const input = screen.getByRole("textbox", { name: "Ask the copilot" });
+    fireEvent.change(input, { target: { value: "first request" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send", exact: true }));
+    fireEvent.change(input, { target: { value: "next request" } });
+    await act(async () => { finish(true); });
+    expect(input).toHaveValue("next request");
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });
