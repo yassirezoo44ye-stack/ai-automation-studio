@@ -14,7 +14,7 @@ import { CopilotContext, type CopilotConversation, type CopilotMessage, type Cop
 import { matchCopilotAction } from "../shared/ui/copilot/copilotActions";
 import type { Page } from "../shared/types";
 
-const MAX_REQUEST_CHARACTERS = 4000;
+import { validatePrompt } from "../shared/utils/chatReliability";
 const COPILOT_PROJECT = "copilot";
 
 const PAGE_LABELS: Record<Page, string> = {
@@ -121,21 +121,25 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const send = useCallback(async (text: string): Promise<boolean> => {
-    const trimmed = text.trim();
-    if (!trimmed || requestInFlightRef.current) return false;
+    const trimmed = text; // Preserve whitespace, code indentation and original line endings.
+    if (!text.trim() || requestInFlightRef.current) return false;
 
     const pageLabel = PAGE_LABELS[page] ?? page;
     const contextLine = `[Context: the user is currently on the "${pageLabel}" page` +
       (currentOrg ? ` of the "${currentOrg.name}" organization` : "") +
-      ` inside Axon AI Automation Studio. Answer helpfully and concisely; you may suggest which page to visit but cannot take actions yourself.]`;
+      ` inside Flow. Answer helpfully and concisely; you may suggest which page to visit but cannot take actions yourself.]`;
     const promptWithContext = `${contextLine}\n\n${trimmed}`;
-    if (promptWithContext.length > MAX_REQUEST_CHARACTERS) {
-      setError(`This message is too long (${promptWithContext.length} characters; limit ${MAX_REQUEST_CHARACTERS}). Shorten it and try again.`);
+    const validation = validatePrompt(promptWithContext);
+    if (validation) {
+      setError(validation);
       return false;
     }
 
     interactionRef.current += 1;
+    historyRequestRef.current += 1;
+    setLoadingHistory(false);
     requestInFlightRef.current = true;
+    setStreaming(true);
     const generation = ++generationRef.current;
     const userMsg: CopilotMessage = { id: crypto.randomUUID(), role: "user", content: trimmed, status: "complete" };
     const assistantId = crypto.randomUUID();

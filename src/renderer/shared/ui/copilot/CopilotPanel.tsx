@@ -4,6 +4,7 @@ import { useCopilot } from "../../../contexts/copilot";
 import { useAppContext } from "../../../contexts/app";
 import { MD_COMPONENTS } from "../md-components";
 import { GoldButton } from "../gold";
+import { promptCharacters, MAX_PROMPT_CHARACTERS } from "../../utils/chatReliability";
 import type { Page } from "../../types";
 
 export function CopilotPanel() {
@@ -97,8 +98,9 @@ export function CopilotPanel() {
         </div>
       )}
 
+      <div role="status" style={{ fontSize: 12 }}>{promptCharacters(input)} / {MAX_PROMPT_CHARACTERS} · يشمل حد الطلب سياق الصفحة / Request limit includes page context</div>
       <form onSubmit={onSubmit} className="g-copilot-panel__input-row">
-        <input value={input} onChange={e => setInput(e.target.value)} placeholder="Ask the copilot…" aria-label="Ask the copilot" disabled={streaming} className="g-input" />
+        <textarea rows={3} value={input} onChange={e => setInput(e.target.value)} placeholder="Ask the copilot…" aria-label="Ask the copilot" disabled={streaming} className="g-input" />
         <GoldButton type="submit" disabled={streaming || !input.trim()}>{streaming ? "…" : "Send"}</GoldButton>
       </form>
     </div>
