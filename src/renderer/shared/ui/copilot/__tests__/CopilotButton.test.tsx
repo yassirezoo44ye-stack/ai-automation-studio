@@ -66,7 +66,7 @@ describe("Copilot composer recovery", () => {
   it("keeps the exact long draft when sending is rejected", async () => {
     const send = vi.fn().mockResolvedValue(false);
     renderButton(baseCtx({ open: true, send, error: "Server limit: 4000 characters" }));
-    const draft = "  العربية\r\n  CREATE TABLE example (id INT);\n" + "x".repeat(4100);
+    const draft = "  العربية\n  CREATE TABLE example (id INT);\n" + "x".repeat(4100);
     const input = screen.getByRole("textbox", { name: "Ask the copilot" });
     fireEvent.change(input, { target: { value: draft } });
     fireEvent.click(screen.getByRole("button", { name: "Send", exact: true }));
