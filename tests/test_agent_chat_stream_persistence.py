@@ -1,6 +1,6 @@
-"""Regression tests for the persisted-message / agent-stream acknowledgment contract.
+"""Regression tests for agent-stream save acknowledgments and ownership.
 
-All database and inference behavior is faked; these tests never touch production
+All database and inference behavior is faked; the tests never access production
 storage or invoke an AI provider.
 """
 import json
@@ -27,17 +27,19 @@ class _Bulkhead:
         return slot()
 
 
-def _test_client(*, fail_assistant_save=False, bulkhead_fail=False, timeline=None):
+def _test_client(*, fail_assistant_save=False, bulkhead_fail=False, owns_conversation=True, timeline=None):
     uid, agent_id, conv_id, project_id = (uuid.uuid4() for _ in range(4))
     timeline = timeline if timeline is not None else []
     conn = AsyncMock()
     conn.fetchrow = AsyncMock(return_value={
         "id": agent_id, "model": "claude-sonnet-4-6", "system_prompt": "test system",
     })
-    conn.fetchval = AsyncMock(return_value=conv_id)
+    conn.fetchval = AsyncMock(return_value=1 if owns_conversation else None)
     conn.fetch = AsyncMock(return_value=[])
 
     async def execute(query, *args):
+        if "INSERT INTO messages" in query and "'user'" in query:
+            timeline.append("user_saved")
         if "INSERT INTO messages" in query and "'assistant'" in query:
             timeline.append("assistant_saved")
             if fail_assistant_save:
@@ -71,7 +73,15 @@ def _test_client(*, fail_assistant_save=False, bulkhead_fail=False, timeline=Non
     client._cleanup_patches = patches
     client._timeline = timeline
     client._agent_id = agent_id
+    client._conversation_id = conv_id
+    client._conn = conn
     return client
+
+
+def _close(client):
+    client.close()
+    for item in client._cleanup_patches:
+        item.stop()
 
 
 def _events(response_text):
@@ -85,34 +95,31 @@ def test_agent_stream_acknowledges_saved_user_message_before_capacity_rejection(
             f"/api/agents/{client._agent_id}/chat/stream",
             json={"agent_id": str(client._agent_id), "project_id": "demo", "prompt": "keep this"},
         )
+        events = _events(response.text)
     finally:
-        client.close()
-        for item in client._cleanup_patches:
-            item.stop()
+        _close(client)
 
-    events = _events(response.text)
     assert response.status_code == 200
     assert events[0]["type"] == "conv_id"
     assert events[1]["type"] == "error"
+    assert "user_saved" in client._timeline
+    assert "provider_started" not in client._timeline
     assert all(event["type"] != "done" for event in events)
 
 
-def test_agent_stream_saves_assistant_reply_before_done():
-    timeline = []
-    client = _test_client(timeline=timeline)
+def test_agent_stream_persists_assistant_reply_before_done():
+    client = _test_client()
     try:
         response = client.post(
             f"/api/agents/{client._agent_id}/chat/stream",
             json={"agent_id": str(client._agent_id), "project_id": "demo", "prompt": "test"},
         )
+        events = _events(response.text)
     finally:
-        client.close()
-        for item in client._cleanup_patches:
-            item.stop()
+        _close(client)
 
-    events = _events(response.text)
     assert response.status_code == 200
-    assert timeline.index("assistant_saved") < len(timeline)
+    assert client._timeline.index("provider_started") < client._timeline.index("assistant_saved")
     assert [event["type"] for event in events] == ["conv_id", "delta", "done"]
 
 
@@ -123,13 +130,30 @@ def test_failed_assistant_persistence_never_emits_done():
             f"/api/agents/{client._agent_id}/chat/stream",
             json={"agent_id": str(client._agent_id), "project_id": "demo", "prompt": "test"},
         )
+        events = _events(response.text)
     finally:
-        client.close()
-        for item in client._cleanup_patches:
-            item.stop()
+        _close(client)
 
-    events = _events(response.text)
     assert response.status_code == 200
     assert events[-1]["type"] == "error"
     assert "Failed to save reply" in events[-1]["message"]
     assert all(event["type"] != "done" for event in events)
+
+
+def test_agent_stream_does_not_read_or_write_foreign_conversation():
+    client = _test_client(owns_conversation=False)
+    try:
+        response = client.post(
+            f"/api/agents/{client._agent_id}/chat/stream",
+            json={
+                "agent_id": str(client._agent_id), "project_id": "demo", "prompt": "private",
+                "conversation_id": str(client._conversation_id),
+            },
+        )
+    finally:
+        _close(client)
+
+    assert response.status_code == 404
+    client._conn.fetch.assert_not_called()
+    client._conn.execute.assert_not_called()
+    assert "provider_started" not in client._timeline

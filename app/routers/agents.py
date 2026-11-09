@@ -245,9 +245,9 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 return
 
             yield f"data: {json.dumps({'type':'done'})}\n\n"
-        except Exception as e:
+        except Exception:
             log.exception("agent_chat_stream failed")
-            yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
+            yield f"data: {json.dumps({'type':'error','message':'The assistant could not complete this reply.'})}\n\n"
         finally:
             await bulkhead_cm.__aexit__(None, None, None)
 
