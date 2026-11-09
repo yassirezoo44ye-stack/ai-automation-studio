@@ -9,8 +9,8 @@ vi.mock("../../../../contexts/app", () => ({
 
 function baseCtx(overrides: Partial<CopilotContextType> = {}): CopilotContextType {
   return {
-    open: false, setOpen: vi.fn(), messages: [], streaming: false, error: null,
-    suggestedAction: null, send: vi.fn(), dismissAction: vi.fn(), reset: vi.fn(),
+    open: false, setOpen: vi.fn(), messages: [], conversations: [], conversationId: null,\n    loadingHistory: false, openConversation: vi.fn().mockResolvedValue(undefined),\n    streaming: false, error: null,
+    suggestedAction: null, send: vi.fn().mockResolvedValue(false), dismissAction: vi.fn(), reset: vi.fn(),
     ...overrides,
   };
 }
