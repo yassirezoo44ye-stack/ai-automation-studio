@@ -57,18 +57,21 @@ describe("Copilot conversation reliability", () => {
     let releaseStream!: (value: unknown) => void;
     fetchMock.mockReturnValueOnce(new Promise(resolve => { releaseList = resolve; }));
     fetchMock.mockReturnValueOnce(new Promise(resolve => { releaseStream = resolve; }));
-    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [{ id: "old-u", role: "user", content: "old history" }] });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => [] });
     render(<CopilotProvider><Harness /></CopilotProvider>);
 
     fireEvent.click(screen.getByText("send"));
     await act(async () => releaseList({ ok: true, json: async () => [{ id: "old", title: "Old", updated_at: "earlier" }] }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/old/messages"))).toBe(false);
+    expect(screen.getByTestId("messages")).toHaveTextContent("user:hello");
     expect(screen.getByTestId("messages")).not.toHaveTextContent("old history");
     await act(async () => releaseStream(stream([
       { type: "conv_id", conv_id: "new" }, { type: "delta", text: "fresh answer" }, { type: "done" },
     ])));
     await waitFor(() => expect(screen.getByTestId("messages")).toHaveTextContent("assistant:fresh answer"));
     expect(screen.getByTestId("messages")).not.toHaveTextContent("old history");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/old/messages"))).toBe(false);
   });
 
   it("does not mix a switched conversation with the previous stream", async () => {
