@@ -130,7 +130,6 @@ describe("CopilotProvider", () => {
   });
 
   it("surfaces a stream error instead of leaving the UI silently stuck", async () => {
-    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     mockChatResponse([
       sseFrame({ type: "error", message: "Server is at capacity — please retry shortly." }),
     ]);
@@ -143,7 +142,6 @@ describe("CopilotProvider", () => {
   });
 
   it("suggests a safe navigation action for an explicit open command, without auto-navigating", async () => {
-    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     mockChatResponse([
       sseFrame({ type: "conv_id", conv_id: "c1" }),
       sseFrame({ type: "delta", text: "Sure, heading there." }),

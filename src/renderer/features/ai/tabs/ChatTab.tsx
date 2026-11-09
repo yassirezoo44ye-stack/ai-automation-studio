@@ -112,8 +112,13 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const initialHistoryRef = useRef(false);
   useEffect(() => {
     if (initialHistoryRef.current || projectId !== "demo" || streaming || convsStatus === "loading" || convsStatus === "error") return;
-    initialHistoryRef.current = true;
-    if (!activeConv && convs.length) setActiveConv(convs[0].id);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      initialHistoryRef.current = true;
+      if (!activeConv && convs.length) setActiveConv(convs[0].id);
+    });
+    return () => { cancelled = true; };
   }, [convs, convsStatus, projectId, streaming, activeConv]);
   useEffect(() => () => { abortRef.current?.abort(); }, []);
 
@@ -153,8 +158,11 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   // Tag history with its source. Never replace a live reply with an older GET.
   useEffect(() => {
     if (!loadedMessages || streaming || loadedMessages.conversationId !== activeConv) return;
-    setMessages(loadedMessages.messages);
-    setMessagesConvId(activeConv);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) { setMessages(loadedMessages.messages); setMessagesConvId(activeConv); }
+    });
+    return () => { cancelled = true; };
   }, [loadedMessages, activeConv, streaming]);
 
   // ── Actions (unchanged logic) ─────────────────────────────────────

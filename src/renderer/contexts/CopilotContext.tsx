@@ -38,6 +38,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
   const { page } = useAppContext();
   const { currentOrg } = useOrg();
   const [open, setOpen] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [conversations, setConversations] = useState<CopilotConversation[]>([]);
   const [streaming, setStreaming] = useState(false);
@@ -70,7 +71,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     const requestId = ++historyRequestRef.current;
     const interactionAtStart = interactionRef.current;
-    setLoadingHistory(true);
+    void Promise.resolve().then(() => { if (mounted) setLoadingHistory(true); });
     void refreshConversations().then(async items => {
       if (!mounted || requestId !== historyRequestRef.current || interactionRef.current !== interactionAtStart || !items.length) return;
       const first = items[0];
@@ -80,6 +81,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
       const rows = await jsonOrThrow<{ id: string; role: string; content: string }[]>(response);
       if (!mounted || requestId !== historyRequestRef.current || interactionRef.current !== interactionAtStart || conversationIdRef.current) return;
       conversationIdRef.current = first.id;
+      setConversationId(first.id);
       setMessages(rows.filter(m => m.role === "user" || m.role === "assistant")
         .map(m => ({ id: m.id, role: m.role as CopilotMessage["role"], content: m.content, status: "complete" })));
     }).catch(() => {
@@ -103,6 +105,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     setLoadingHistory(true);
     setError(null);
     conversationIdRef.current = null;
+    setConversationId(null);
     setMessages([]);
     try {
       const response = await fetch(`${API}/api/conversations/${encodeURIComponent(id)}/messages`, {
@@ -111,6 +114,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
       const rows = await jsonOrThrow<{ id: string; role: string; content: string }[]>(response);
       if (requestId !== historyRequestRef.current) return;
       conversationIdRef.current = id;
+      setConversationId(id);
       setMessages(rows.filter(m => m.role === "user" || m.role === "assistant")
         .map(m => ({ id: m.id, role: m.role as CopilotMessage["role"], content: m.content, status: "complete" })));
     } catch (err) {
@@ -177,6 +181,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
           const ev = JSON.parse(line.slice(6)) as { type: string; conv_id?: string; text?: string; message?: string };
           if (ev.type === "conv_id" && ev.conv_id) {
             conversationIdRef.current = ev.conv_id;
+            setConversationId(ev.conv_id);
           } else if (ev.type === "delta" && ev.text) {
             setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m));
           } else if (ev.type === "error") {
@@ -221,6 +226,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     abortRef.current = null;
     requestInFlightRef.current = false;
     conversationIdRef.current = null;
+    setConversationId(null);
     setMessages([]);
     setError(null);
     setSuggestedAction(null);
@@ -228,10 +234,10 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({
-    open, setOpen, messages, conversations, conversationId: conversationIdRef.current,
+    open, setOpen, messages, conversations, conversationId,
     loadingHistory, streaming, error, suggestedAction, send, openConversation,
     dismissAction, reset,
-  }), [open, messages, conversations, loadingHistory, streaming, error, suggestedAction, send, openConversation, dismissAction, reset]);
+  }), [open, messages, conversations, conversationId, loadingHistory, streaming, error, suggestedAction, send, openConversation, dismissAction, reset]);
 
   return <CopilotContext.Provider value={value}>{children}</CopilotContext.Provider>;
 }
