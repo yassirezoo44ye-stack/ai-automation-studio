@@ -35,6 +35,7 @@ from app.routers import (
     runtime, social, stats, subscriptions, tasks, youtube,
 )
 from app.routers import auth_users
+from app.routers import axon_auth as axon_auth_router
 from app.routers import orchestrator as orchestrator_router
 from app.routers import runtime_api as runtime_api_router
 from app.routers import commands_api as commands_api_router
@@ -713,6 +714,7 @@ def create_app() -> FastAPI:
 
     # ── API Routers (must be registered BEFORE the SPA catch-all) ───────────
     app.include_router(auth_users.router)
+    app.include_router(axon_auth_router.router)
     app.include_router(orchestrator_router.router)
     app.include_router(runtime_api_router.router)
     app.include_router(commands_api_router.router)

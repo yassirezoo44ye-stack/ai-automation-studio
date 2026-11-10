@@ -316,6 +316,20 @@ class AxonSettings(BaseSettings):
     db_rls_role: str = Field("axon_app", validation_alias=AliasChoices("AXON_DB_RLS_ROLE"))
     db_echo: bool = Field(False, validation_alias=AliasChoices("DB_ECHO", "AXON_DB_ECHO"))
 
+    # ── Authentication (app/core/axon_auth.py) ───────────────────────────────
+    auth_access_ttl_s: int = Field(
+        600, ge=60, le=3600, validation_alias=AliasChoices("AXON_AUTH_ACCESS_TTL_S"),
+    )
+    auth_refresh_ttl_s: int = Field(
+        14 * 86400, ge=3600, le=90 * 86400, validation_alias=AliasChoices("AXON_AUTH_REFRESH_TTL_S"),
+    )
+    auth_session_max_age_s: int = Field(
+        30 * 86400, ge=3600, le=365 * 86400, validation_alias=AliasChoices("AXON_AUTH_SESSION_MAX_AGE_S"),
+    )
+    auth_jwt_issuer: str = Field("axon", validation_alias=AliasChoices("AXON_AUTH_JWT_ISSUER"))
+    auth_jwt_audience: str = Field("axon-api", validation_alias=AliasChoices("AXON_AUTH_JWT_AUDIENCE"))
+    auth_allow_signup: bool = Field(True, validation_alias=AliasChoices("AXON_AUTH_ALLOW_SIGNUP"))
+
     # ── URLs / CORS ──────────────────────────────────────────────────────────
     app_url: str = Field("http://localhost:8000", validation_alias=AliasChoices("APP_URL"))
     frontend_url: str | None = Field(None, validation_alias=AliasChoices("FRONTEND_URL"))
@@ -403,6 +417,10 @@ class AxonSettings(BaseSettings):
             secret_bytes = secret.encode()
             if any(hmac.compare_digest(key, secret_bytes[:32]) for key in ring.values()):
                 raise ValueError("token encryption keys must not reuse SESSION_SECRET")
+        if self.auth_refresh_ttl_s > self.auth_session_max_age_s:
+            raise ValueError("AXON_AUTH_REFRESH_TTL_S cannot exceed AXON_AUTH_SESSION_MAX_AGE_S")
+        if self.auth_access_ttl_s >= self.auth_refresh_ttl_s:
+            raise ValueError("AXON_AUTH_ACCESS_TTL_S must be shorter than AXON_AUTH_REFRESH_TTL_S")
         if self.environment == "production" and not self.db_rls_role:
             raise ValueError("AXON_DB_RLS_ROLE cannot be empty in production")
         return self
@@ -537,6 +555,7 @@ PUBLIC_PREFIXES: tuple = (
     "/api/discover",          # public creation feed — endpoint-level auth still guards /mine
     "/api/business/stream/",  # SSE plan stream — ticket-validated inside the handler
     "/api/webhooks/auto/",    # automation webhooks — HMAC-verified inside the handler
+    "/api/axon/",             # Axon core — every route authenticates itself (app/core/axon_auth.py)
 )
 
 # ── Platform admins ───────────────────────────────────────────────────────────
