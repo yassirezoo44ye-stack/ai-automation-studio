@@ -15,6 +15,8 @@ services:
     environment:
       DATABASE_URL: postgresql://axon:axon@db:5432/axon
       SESSION_SECRET: dev-secret-not-for-production-use-change-me
+      # Development rules: the placeholder secret above is refused in production.
+      ENVIRONMENT: development
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
@@ -46,6 +48,8 @@ services:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+      # Axon core schema (tenancy, RBAC, RLS). Runs once, on a fresh volume.
+      - ./init_db.sql:/docker-entrypoint-initdb.d/10_axon_core.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U axon -d axon"]
       interval: 5s

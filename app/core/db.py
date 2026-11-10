@@ -1,24 +1,397 @@
 """
-Database pool management and schema initialisation.
+Axon Automation Studio — database access.
 
-The pool is stored as a module-level variable so routers can call
-get_pool() without needing a FastAPI Depends chain. set_pool() is
-called once from the lifespan context manager in main.py.
+Two access paths live here:
+
+1. SQLAlchemy async engine + tenant-scoped sessions (the Axon core, schema
+   ``axon`` created by init_db.sql). Every session is bound to exactly one
+   ``TenantContext``. At the start of *every* transaction the session switches
+   to the non-privileged role ``axon_app`` (``SET LOCAL ROLE``) and sets the
+   ``app.current_tenant_id`` / ``app.current_user_id`` / ``app.current_scopes``
+   GUCs with ``is_local => true``. PostgreSQL row level security then confines
+   every statement to that tenant. Because the settings are transaction-local
+   they are discarded on commit/rollback, so a pooled connection never carries
+   one tenant's identity into another request; the ``after_begin`` hook
+   re-applies them if a caller commits and keeps working. A session without a
+   tenant refuses to open a transaction at all (fail closed).
+
+2. The legacy asyncpg pool (``get_pool`` / ``acquire_scoped`` / ``init_db``)
+   used by the existing routers on the ``public`` schema. Its API is
+   unchanged so the current call sites keep working while modules move to
+   the tenant-scoped sessions.
 """
+from __future__ import annotations
+
+import logging
 import os
+import re
+import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from typing import Annotated, Any
 
 import asyncpg
+from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import MetaData, event, text
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase, Session, SessionTransaction
 
-from app.core.config import USER_ID, DEMO_PROJECT_ID
+from app.core.config import (
+    DEMO_PROJECT_ID,
+    USER_ID,
+    AxonSettings,
+    build_async_url,
+    settings,
+)
 from app.core.observability.tracer import get_tracer
+
+log = logging.getLogger(__name__)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Tenant context
+# ═════════════════════════════════════════════════════════════════════════════
+
+_SCOPE_RE = re.compile(r"^(?:\*|[a-z][a-z_]*:(?:[a-z][a-z_]*|\*))$")
+
+
+class TenantContextError(PermissionError):
+    """A database session was used without a valid tenant context."""
+
+
+class ScopeError(PermissionError):
+    """The current principal lacks a required scope."""
+
+
+def scope_covers(held: frozenset[str] | set[str], required: str) -> bool:
+    """Python twin of ``axon.scope_covers()`` in init_db.sql — keep them identical."""
+    if required in held or "*" in held:
+        return True
+    resource = required.split(":", 1)[0]
+    return f"{resource}:*" in held
+
+
+@dataclass(frozen=True, slots=True)
+class TenantContext:
+    """Who is acting, on behalf of which tenant, with which scopes.
+
+    Built by the authentication layer from a verified session or API key —
+    never from client-supplied headers or body fields.
+    """
+
+    tenant_id: uuid.UUID  # the organization id
+    user_id: uuid.UUID | None = None
+    scopes: frozenset[str] = field(default_factory=frozenset)
+    api_key_id: uuid.UUID | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.tenant_id, uuid.UUID):
+            raise TenantContextError("tenant_id must be a uuid.UUID")
+        for name in ("user_id", "api_key_id"):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, uuid.UUID):
+                raise TenantContextError(f"{name} must be a uuid.UUID or None")
+        if not isinstance(self.scopes, frozenset):
+            object.__setattr__(self, "scopes", frozenset(self.scopes))
+        bad = sorted(s for s in self.scopes if not isinstance(s, str) or not _SCOPE_RE.match(s))
+        if bad:
+            raise TenantContextError(f"invalid scope(s): {bad!r}")
+
+    def has_scope(self, required: str) -> bool:
+        return scope_covers(self.scopes, required)
+
+    def require_scope(self, *required: str) -> None:
+        missing = [s for s in required if not self.has_scope(s)]
+        if missing:
+            raise ScopeError(f"missing scope(s): {', '.join(missing)}")
+
+
+_current_tenant: ContextVar[TenantContext | None] = ContextVar("axon_current_tenant", default=None)
+
+
+def current_tenant() -> TenantContext | None:
+    """The tenant bound to the running task, if a tenant session is open."""
+    return _current_tenant.get()
+
+
+def require_tenant() -> TenantContext:
+    ctx = _current_tenant.get()
+    if ctx is None:
+        raise TenantContextError("no tenant context is active")
+    return ctx
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Engine and sessions (SQLAlchemy async)
+# ═════════════════════════════════════════════════════════════════════════════
+
+_TENANT_KEY = "axon.tenant"
+_SYSTEM_KEY = "axon.system_reason"
+
+class Base(DeclarativeBase):
+    """Declarative base for every Axon ORM model; tables live in the ``axon`` schema."""
+
+    metadata = MetaData(
+        schema="axon",
+        naming_convention={
+            "ix": "idx_%(table_name)s_%(column_0_N_name)s",
+            "uq": "uniq_%(table_name)s_%(column_0_N_name)s",
+            "ck": "ck_%(table_name)s_%(constraint_name)s",
+            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+            "pk": "pk_%(table_name)s",
+        },
+    )
+
+
+class AxonSyncSession(Session):
+    """Session class whose transactions always carry the tenant context."""
+
+
+@event.listens_for(AxonSyncSession, "after_begin")
+def _apply_tenant_context(session: Session, transaction: SessionTransaction, connection: Connection) -> None:
+    ctx: TenantContext | None = session.info.get(_TENANT_KEY)
+    if ctx is None:
+        if session.info.get(_SYSTEM_KEY):
+            # Trusted maintenance work: make sure no tenant identity lingers.
+            connection.execute(text("SELECT set_config('app.current_tenant_id', '', true)"))
+            return
+        raise TenantContextError("refusing to open a transaction without a tenant context")
+
+    role = session.info.get("axon.rls_role")
+    if role:
+        # Identifier validated by AxonSettings (lowercase PostgreSQL identifier).
+        connection.exec_driver_sql(f'SET LOCAL ROLE "{role}"')
+    connection.execute(
+        text(
+            "SELECT set_config('app.current_tenant_id', :tenant_id, true), "
+            "set_config('app.current_user_id', :user_id, true), "
+            "set_config('app.current_scopes', :scopes, true)"
+        ),
+        {
+            "tenant_id": str(ctx.tenant_id),
+            "user_id": str(ctx.user_id) if ctx.user_id else "",
+            "scopes": " ".join(sorted(ctx.scopes)),
+        },
+    )
+
+
+class Database:
+    """Owns one async engine and its session factory."""
+
+    def __init__(self, cfg: AxonSettings, *, url: str | None = None) -> None:
+        self._cfg = cfg
+        async_url, connect_args = build_async_url(url or cfg.database_url.get_secret_value())
+        server_settings = {"application_name": "axon-api"}
+        if cfg.db_statement_timeout_ms:
+            server_settings["statement_timeout"] = str(cfg.db_statement_timeout_ms)
+        connect_args["server_settings"] = server_settings
+        self.engine: AsyncEngine = create_async_engine(
+            async_url,
+            pool_size=cfg.db_pool_size,
+            max_overflow=cfg.db_max_overflow,
+            pool_timeout=cfg.db_pool_timeout_s,
+            pool_recycle=cfg.db_pool_recycle_s,
+            pool_pre_ping=True,
+            echo=cfg.db_echo,
+            connect_args=connect_args,
+        )
+        self.session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
+            self.engine,
+            class_=AsyncSession,
+            sync_session_class=AxonSyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
+
+    @property
+    def rls_role(self) -> str:
+        return self._cfg.db_rls_role
+
+    @asynccontextmanager
+    async def tenant_session(self, ctx: TenantContext) -> AsyncIterator[AsyncSession]:
+        """Session confined to ``ctx.tenant_id``. Commits on success, rolls back on error."""
+        if not isinstance(ctx, TenantContext):
+            raise TenantContextError("tenant_session() needs a TenantContext")
+        session = self.session_factory()
+        session.info[_TENANT_KEY] = ctx
+        session.info["axon.rls_role"] = self.rls_role
+        token = _current_tenant.set(ctx)
+        tracer = get_tracer()
+        try:
+            with tracer.start_span("db.tenant_session", service="database") as span:
+                span.set_tag("tenant_id", str(ctx.tenant_id))
+                try:
+                    yield session
+                    await session.commit()
+                except BaseException as exc:
+                    await session.rollback()
+                    if not isinstance(exc, (HTTPException, GeneratorExit)):
+                        log.error(
+                            "axon db: transaction rolled back for tenant %s (%s)",
+                            ctx.tenant_id, type(exc).__name__,
+                        )
+                    raise
+        finally:
+            _current_tenant.reset(token)
+            await session.close()
+
+    @asynccontextmanager
+    async def system_session(self, reason: str) -> AsyncIterator[AsyncSession]:
+        """Session WITHOUT tenant scoping, for bootstrap, migrations and provisioning.
+
+        Runs as the login role with the tenant GUC cleared. ``reason`` is
+        required and logged so every unscoped access is attributable.
+        """
+        if not reason or not reason.strip():
+            raise ValueError("system_session() requires a reason")
+        if _current_tenant.get() is not None:
+            raise TenantContextError("system_session() cannot be opened inside a tenant session")
+        log.info("axon db: system session opened (%s)", reason)
+        session = self.session_factory()
+        session.info[_SYSTEM_KEY] = reason
+        try:
+            yield session
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+    async def ping(self) -> bool:
+        async with self.engine.connect() as conn:
+            return (await conn.scalar(text("SELECT 1"))) == 1
+
+    async def dispose(self) -> None:
+        await self.engine.dispose()
+
+
+_database: Database | None = None
+
+
+def get_database() -> Database:
+    """Process-wide Database, created lazily on first use."""
+    global _database
+    if _database is None:
+        _database = Database(settings)
+    return _database
+
+
+def set_database(db: Database | None) -> None:
+    """Replace the process-wide Database (tests, alternate URLs)."""
+    global _database
+    _database = db
+
+
+def get_engine() -> AsyncEngine:
+    return get_database().engine
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy module attributes ``async_engine`` and ``async_session_factory``.
+
+    The engine is only built on first access, so importing this module never
+    needs a reachable database. Sessions from ``async_session_factory`` still
+    refuse to run without a tenant context; use ``tenant_session()`` or
+    ``get_db_session``.
+    """
+    if name == "async_engine":
+        return get_database().engine
+    if name == "async_session_factory":
+        return get_database().session_factory
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def tenant_session(ctx: TenantContext):
+    """Shortcut for ``get_database().tenant_session(ctx)``."""
+    return get_database().tenant_session(ctx)
+
+
+def system_session(reason: str):
+    """Shortcut for ``get_database().system_session(reason)``."""
+    return get_database().system_session(reason)
+
+
+async def dispose_engine() -> None:
+    """Close the SQLAlchemy pool (called from the app lifespan on shutdown)."""
+    global _database
+    if _database is not None:
+        await _database.dispose()
+        _database = None
+
+
+async def check_database_health() -> bool:
+    try:
+        return await get_database().ping()
+    except Exception:
+        log.warning("axon db: health check failed", exc_info=True)
+        return False
+
+
+# ── FastAPI dependencies ─────────────────────────────────────────────────────
+
+REQUEST_TENANT_ATTR = "axon_tenant"
+
+
+def tenant_from_request(request: Request) -> TenantContext:
+    """The TenantContext the auth layer stored on ``request.state``; 401 if absent."""
+    ctx = getattr(request.state, REQUEST_TENANT_ATTR, None)
+    if not isinstance(ctx, TenantContext):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return ctx
+
+
+TenantDep = Annotated[TenantContext, Depends(tenant_from_request)]
+
+
+async def get_db_session(ctx: TenantDep) -> AsyncIterator[AsyncSession]:
+    """``Depends(get_db_session)`` → a session confined to the caller's organization.
+
+    The organization comes from the authenticated principal the auth layer put
+    on ``request.state`` — never from a header, path or body field. Commits when
+    the endpoint returns, rolls back (and logs) when it raises.
+    """
+    async with tenant_session(ctx) as session:
+        yield session
+
+
+get_tenant_db = get_db_session
+
+
+def require_scopes(*scopes: str):
+    """``Depends(require_scopes("workflows:execute"))`` → 403 unless every scope is held."""
+    for s in scopes:
+        if not _SCOPE_RE.match(s):
+            raise ValueError(f"invalid scope {s!r}")
+
+    def _check(ctx: TenantDep) -> TenantContext:
+        try:
+            ctx.require_scope(*scopes)
+        except ScopeError:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient scope") from None
+        return ctx
+
+    return _check
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Legacy asyncpg pool (public schema)
+# ═════════════════════════════════════════════════════════════════════════════
 
 _pool: asyncpg.Pool | None = None
 
 # When the pool is saturated, waiting forever turns one slow spot into a
 # platform-wide stall — fail fast instead so callers surface a clear error
 # (and the request-level bulkheads shed load upstream).
-_ACQUIRE_TIMEOUT_S = float(os.getenv("DB_ACQUIRE_TIMEOUT_S", "10"))
+_ACQUIRE_TIMEOUT_S = settings.db_pool_timeout_s
 
 
 def get_pool() -> asyncpg.Pool:
@@ -166,8 +539,7 @@ async def init_db(conn: asyncpg.Connection) -> None:
     # Seed demo user only when explicitly requested (e.g. local dev / CI).
     # Never seed in production — the demo UUID is a known value and represents
     # a data isolation risk in a multi-user environment.
-    import os as _os
-    if _os.environ.get("SEED_DEMO_USER", "").lower() == "true":
+    if os.environ.get("SEED_DEMO_USER", "").lower() == "true":
         await conn.execute(
             "INSERT INTO users (id, email, name) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
             USER_ID, "test@example.com", "Test User",
@@ -317,4 +689,5 @@ async def write_audit(
                 json.dumps(details) if details else None, ip_address,
             )
     except Exception:
-        pass
+        # Never break the request path, but never lose an audit write silently.
+        log.warning("audit write failed for action %s", action, exc_info=True)

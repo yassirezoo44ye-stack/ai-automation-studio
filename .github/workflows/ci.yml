@@ -27,6 +27,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
       STUDY_TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
+      # Axon core RLS tests (tests/test_axon_db.py) create and drop their own database.
+      AXON_TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
       SESSION_SECRET: ci-test-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
     services:

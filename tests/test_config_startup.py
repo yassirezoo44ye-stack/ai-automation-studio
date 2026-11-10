@@ -57,7 +57,7 @@ class TestSessionSecretRequired:
         """When SESSION_SECRET is set, config loads without calling sys.exit."""
         env = {
             "DATABASE_URL": "postgresql://u:p@localhost/db",
-            "SESSION_SECRET": "a" * 64,
+            "SESSION_SECRET": "3f9c1e7a5b2d48c6a0e9f7b1d3c5a7e9" * 2,
         }
         for mod in list(sys.modules):
             if "app.core.config" in mod:
@@ -81,7 +81,7 @@ class TestSessionSecretRequired:
         """SESSION_SECRET must be the env var value, not a random fallback."""
         import os
         os.environ.setdefault("DATABASE_URL", "postgresql://u:p@localhost/db")
-        os.environ.setdefault("SESSION_SECRET", "known-stable-secret-value")
+        os.environ.setdefault("SESSION_SECRET", "known-stable-secret-value-7f3a9c1e5b")
 
         for mod in list(sys.modules):
             if "app.core.config" in mod:
@@ -89,8 +89,8 @@ class TestSessionSecretRequired:
 
         with patch.dict(os.environ, {
             "DATABASE_URL": "postgresql://u:p@localhost/db",
-            "SESSION_SECRET": "known-stable-secret-value",
+            "SESSION_SECRET": "known-stable-secret-value-7f3a9c1e5b",
         }, clear=True), patch("stripe.api_key", "", create=True):
             import app.core.config
             importlib.reload(app.core.config)
-            assert app.core.config.SESSION_SECRET == "known-stable-secret-value"
+            assert app.core.config.SESSION_SECRET == "known-stable-secret-value-7f3a9c1e5b"
