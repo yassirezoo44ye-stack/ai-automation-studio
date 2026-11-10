@@ -34,17 +34,23 @@ from typing import Annotated, Any
 
 import asyncpg
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import event, text
-from sqlalchemy.engine import URL, Connection, make_url
+from sqlalchemy import MetaData, event, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import Session, SessionTransaction
+from sqlalchemy.orm import DeclarativeBase, Session, SessionTransaction
 
-from app.core.config import DEMO_PROJECT_ID, USER_ID, AxonSettings, settings
+from app.core.config import (
+    DEMO_PROJECT_ID,
+    USER_ID,
+    AxonSettings,
+    build_async_url,
+    settings,
+)
 from app.core.observability.tracer import get_tracer
 
 log = logging.getLogger(__name__)
@@ -81,7 +87,7 @@ class TenantContext:
     never from client-supplied headers or body fields.
     """
 
-    tenant_id: uuid.UUID
+    tenant_id: uuid.UUID  # the organization id
     user_id: uuid.UUID | None = None
     scopes: frozenset[str] = field(default_factory=frozenset)
     api_key_id: uuid.UUID | None = None
@@ -130,35 +136,19 @@ def require_tenant() -> TenantContext:
 _TENANT_KEY = "axon.tenant"
 _SYSTEM_KEY = "axon.system_reason"
 
-_SSLMODE_TO_ASYNCPG: dict[str, Any] = {
-    "disable": False,
-    "allow": "allow",
-    "prefer": "prefer",
-    "require": "require",
-    "verify-ca": "verify-ca",
-    "verify-full": "verify-full",
-}
+class Base(DeclarativeBase):
+    """Declarative base for every Axon ORM model; tables live in the ``axon`` schema."""
 
-
-def build_async_url(raw_url: str) -> tuple[URL, dict[str, Any]]:
-    """Turn a libpq-style DATABASE_URL into an asyncpg SQLAlchemy URL + connect args.
-
-    ``sslmode`` is a libpq option asyncpg does not accept as a query parameter,
-    so it is moved into ``connect_args["ssl"]``.
-    """
-    url = make_url(raw_url)
-    if url.get_backend_name() not in {"postgresql", "postgres"}:
-        raise ValueError("only PostgreSQL is supported")
-    query = dict(url.query)
-    connect_args: dict[str, Any] = {}
-    sslmode = query.pop("sslmode", None) or query.pop("ssl", None)
-    if sslmode is not None:
-        mode = str(sslmode if isinstance(sslmode, str) else sslmode[0]).lower()
-        if mode not in _SSLMODE_TO_ASYNCPG:
-            raise ValueError(f"unsupported sslmode {mode!r}")
-        connect_args["ssl"] = _SSLMODE_TO_ASYNCPG[mode]
-    url = url.set(drivername="postgresql+asyncpg", query=query)
-    return url, connect_args
+    metadata = MetaData(
+        schema="axon",
+        naming_convention={
+            "ix": "idx_%(table_name)s_%(column_0_N_name)s",
+            "uq": "uniq_%(table_name)s_%(column_0_N_name)s",
+            "ck": "ck_%(table_name)s_%(constraint_name)s",
+            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+            "pk": "pk_%(table_name)s",
+        },
+    )
 
 
 class AxonSyncSession(Session):
@@ -213,7 +203,7 @@ class Database:
             echo=cfg.db_echo,
             connect_args=connect_args,
         )
-        self._factory = async_sessionmaker(
+        self.session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
             self.engine,
             class_=AsyncSession,
             sync_session_class=AxonSyncSession,
@@ -230,7 +220,7 @@ class Database:
         """Session confined to ``ctx.tenant_id``. Commits on success, rolls back on error."""
         if not isinstance(ctx, TenantContext):
             raise TenantContextError("tenant_session() needs a TenantContext")
-        session = self._factory()
+        session = self.session_factory()
         session.info[_TENANT_KEY] = ctx
         session.info["axon.rls_role"] = self.rls_role
         token = _current_tenant.set(ctx)
@@ -241,8 +231,13 @@ class Database:
                 try:
                     yield session
                     await session.commit()
-                except BaseException:
+                except BaseException as exc:
                     await session.rollback()
+                    if not isinstance(exc, (HTTPException, GeneratorExit)):
+                        log.error(
+                            "axon db: transaction rolled back for tenant %s (%s)",
+                            ctx.tenant_id, type(exc).__name__,
+                        )
                     raise
         finally:
             _current_tenant.reset(token)
@@ -260,7 +255,7 @@ class Database:
         if _current_tenant.get() is not None:
             raise TenantContextError("system_session() cannot be opened inside a tenant session")
         log.info("axon db: system session opened (%s)", reason)
-        session = self._factory()
+        session = self.session_factory()
         session.info[_SYSTEM_KEY] = reason
         try:
             yield session
@@ -298,6 +293,21 @@ def set_database(db: Database | None) -> None:
 
 def get_engine() -> AsyncEngine:
     return get_database().engine
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy module attributes ``async_engine`` and ``async_session_factory``.
+
+    The engine is only built on first access, so importing this module never
+    needs a reachable database. Sessions from ``async_session_factory`` still
+    refuse to run without a tenant context; use ``tenant_session()`` or
+    ``get_db_session``.
+    """
+    if name == "async_engine":
+        return get_database().engine
+    if name == "async_session_factory":
+        return get_database().session_factory
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def tenant_session(ctx: TenantContext):
@@ -342,10 +352,18 @@ def tenant_from_request(request: Request) -> TenantContext:
 TenantDep = Annotated[TenantContext, Depends(tenant_from_request)]
 
 
-async def get_tenant_db(ctx: TenantDep) -> AsyncIterator[AsyncSession]:
-    """``Depends(get_tenant_db)`` → a session scoped to the caller's tenant."""
+async def get_db_session(ctx: TenantDep) -> AsyncIterator[AsyncSession]:
+    """``Depends(get_db_session)`` → a session confined to the caller's organization.
+
+    The organization comes from the authenticated principal the auth layer put
+    on ``request.state`` — never from a header, path or body field. Commits when
+    the endpoint returns, rolls back (and logs) when it raises.
+    """
     async with tenant_session(ctx) as session:
         yield session
+
+
+get_tenant_db = get_db_session
 
 
 def require_scopes(*scopes: str):

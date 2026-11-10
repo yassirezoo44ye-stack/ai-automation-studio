@@ -54,6 +54,7 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL, make_url
 
 log = logging.getLogger(__name__)
 
@@ -244,6 +245,36 @@ class TokenCipher:
         return self.encrypt(plaintext, tenant_id=tenant_id, purpose=purpose)
 
 
+_SSLMODE_TO_ASYNCPG: dict[str, Any] = {
+    "disable": False,
+    "allow": "allow",
+    "prefer": "prefer",
+    "require": "require",
+    "verify-ca": "verify-ca",
+    "verify-full": "verify-full",
+}
+
+
+def build_async_url(raw_url: str) -> tuple[URL, dict[str, Any]]:
+    """Turn a libpq-style DATABASE_URL into an asyncpg SQLAlchemy URL + connect args.
+
+    ``sslmode`` is a libpq option asyncpg does not accept as a query parameter,
+    so it is moved into ``connect_args["ssl"]``.
+    """
+    url = make_url(raw_url)
+    if url.get_backend_name() not in {"postgresql", "postgres"}:
+        raise ValueError("only PostgreSQL is supported")
+    query = dict(url.query)
+    connect_args: dict[str, Any] = {}
+    sslmode = query.pop("sslmode", None) or query.pop("ssl", None)
+    if sslmode is not None:
+        mode = str(sslmode if isinstance(sslmode, str) else sslmode[0]).lower()
+        if mode not in _SSLMODE_TO_ASYNCPG:
+            raise ValueError(f"unsupported sslmode {mode!r}")
+        connect_args["ssl"] = _SSLMODE_TO_ASYNCPG[mode]
+    return url.set(drivername="postgresql+asyncpg", query=query), connect_args
+
+
 def _env(name: str, *aliases: str) -> Any:
     return Field(validation_alias=AliasChoices(name, *aliases))
 
@@ -269,8 +300,12 @@ class AxonSettings(BaseSettings):
     )
 
     # ── Database pool (SQLAlchemy engine in app/core/db.py) ──────────────────
-    db_pool_size: int = Field(10, ge=1, le=200, validation_alias=AliasChoices("AXON_DB_POOL_SIZE"))
-    db_max_overflow: int = Field(10, ge=0, le=200, validation_alias=AliasChoices("AXON_DB_MAX_OVERFLOW"))
+    db_pool_size: int = Field(
+        10, ge=1, le=200, validation_alias=AliasChoices("DB_POOL_SIZE", "AXON_DB_POOL_SIZE"),
+    )
+    db_max_overflow: int = Field(
+        10, ge=0, le=200, validation_alias=AliasChoices("DB_MAX_OVERFLOW", "AXON_DB_MAX_OVERFLOW"),
+    )
     db_pool_timeout_s: float = Field(
         10.0, gt=0, le=120, validation_alias=AliasChoices("AXON_DB_POOL_TIMEOUT_S", "DB_ACQUIRE_TIMEOUT_S"),
     )
@@ -279,7 +314,7 @@ class AxonSettings(BaseSettings):
         30000, ge=0, le=3_600_000, validation_alias=AliasChoices("AXON_DB_STATEMENT_TIMEOUT_MS"),
     )
     db_rls_role: str = Field("axon_app", validation_alias=AliasChoices("AXON_DB_RLS_ROLE"))
-    db_echo: bool = Field(False, validation_alias=AliasChoices("AXON_DB_ECHO"))
+    db_echo: bool = Field(False, validation_alias=AliasChoices("DB_ECHO", "AXON_DB_ECHO"))
 
     # ── URLs / CORS ──────────────────────────────────────────────────────────
     app_url: str = Field("http://localhost:8000", validation_alias=AliasChoices("APP_URL"))
@@ -373,6 +408,23 @@ class AxonSettings(BaseSettings):
         return self
 
     # ── Derived values ───────────────────────────────────────────────────────
+    @property
+    def ASYNC_DATABASE_URL(self) -> str:
+        """DATABASE_URL rewritten for SQLAlchemy + asyncpg (``postgresql+asyncpg://``, no ``sslmode``)."""
+        return build_async_url(self.database_url.get_secret_value())[0].render_as_string(hide_password=False)
+
+    @property
+    def DB_ECHO(self) -> bool:
+        return self.db_echo
+
+    @property
+    def DB_POOL_SIZE(self) -> int:
+        return self.db_pool_size
+
+    @property
+    def DB_MAX_OVERFLOW(self) -> int:
+        return self.db_max_overflow
+
     @property
     def is_production_like(self) -> bool:
         return self.environment in {"production", "staging"}
