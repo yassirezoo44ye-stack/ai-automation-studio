@@ -481,6 +481,8 @@ async def lifespan(app: FastAPI):
         pass
     maintenance_task.cancel()
     cleanup_task.cancel()
+    from app.core.db import dispose_engine
+    await dispose_engine()
     await pool.close()
 
 
