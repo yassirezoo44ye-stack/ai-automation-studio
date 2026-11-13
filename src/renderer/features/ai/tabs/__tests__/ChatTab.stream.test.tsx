@@ -36,6 +36,8 @@ function sse(...events: unknown[]) {
 let resolveLoad: (v: unknown) => void = () => {};
 
 beforeEach(async () => {
+  // jsdom has no layout, so it doesn't implement scrollIntoView.
+  Element.prototype.scrollIntoView = vi.fn();
   await i18n.changeLanguage("en");
   sessionStorage.clear();
   apiJSON.mockReset();
