@@ -28,22 +28,9 @@ import contextlib
 
 log = logging.getLogger(__name__)
 
-# ── Dev / owner account ───────────────────────────────────────────────────────
-#
-# The dev account bypasses Anthropic credits by routing to DevMockProvider,
-# a free in-process provider.  This is NOT a billing bypass — it is a
-# legitimate alternative provider, identical in principle to LocalProvider.
-#
-# Security properties:
-#   • The email is resolved from the HMAC-verified auth token (owner_email()),
-#     not from the request body or any header the caller controls.
-#   • Routing to dev_mock does NOT escalate permissions — tenancy, RLS,
-#     project ownership, rate limits, and org quota all apply unchanged.
-#   • Normal users are NEVER routed to dev_mock; this code path is only
-#     reached when the authenticated identity exactly matches _DEV_ACCOUNT.
-#
-# Keep this in sync with tests/test_dev_mode.py's _DEV_ACCOUNT constant.
-_DEV_ACCOUNT: str = _os.getenv("DEV_ACCOUNT_EMAIL", "yassirezoo44.ye@gmail.com")
+# Mock templates are restricted to explicitly configured local development.
+# Production always follows real provider selection, quotas and ownership checks.
+_DEV_ACCOUNT: str = _os.getenv("DEV_ACCOUNT_EMAIL", "")
 
 
 def _is_dev_account(request: Request) -> bool:
@@ -53,10 +40,15 @@ def _is_dev_account(request: Request) -> bool:
     request param.  Returns False on any error (auth exceptions, missing
     credentials) so the function is always safe to call.
     """
+    # A real account must never silently receive keyword templates in production.
+    # Mock builds are an explicit local-development choice, not an email feature.
+    if (_os.getenv("ENVIRONMENT", "production") != "development"
+            or _os.getenv("DEV_MOCK_BUILDS", "").lower() != "true"
+            or not _DEV_ACCOUNT):
+        return False
     try:
         email = owner_email(request)
         is_dev = email == _DEV_ACCOUNT
-        log.info("_is_dev_account: email=%r is_dev=%s", email, is_dev)
         return is_dev
     except Exception as exc:
         log.info("_is_dev_account: raised %s — %s", type(exc).__name__, exc)
@@ -392,7 +384,7 @@ async def build_stream(req: BuildRequest, request: Request):
             return
         try:
             if dev_mode:
-                yield _sse("status", message="✨ جارٍ إنشاء تطبيقك…")
+                yield _sse("status", message="محاكاة تطوير: سيتم إنشاء قالب تجريبي، وليس تنفيذًا كاملًا للطلب.")
             else:
                 yield _sse("status", message="🤖 جارٍ الاتصال بـ Claude…")
 

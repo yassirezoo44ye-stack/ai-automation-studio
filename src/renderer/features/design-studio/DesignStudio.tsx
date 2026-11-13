@@ -16,7 +16,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { DesignProvider, useDesign } from "./stores/designStore";
-import { apiFetch } from "../../utils/api";
+import { loadLatestCanvas, saveCanvasSnapshot } from "./services/canvasPersistence";
 import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
 import { getTemplate } from "./services/templateService";
@@ -55,7 +55,7 @@ function DesignStudioInner() {
   const { t } = useTranslation("designStudio");
   const toast = useToast();
   const { state, dispatch, setTool, setSelectedIds, setPanel } = useDesign();
-  const { feedIntent, setFeedIntent } = useAppContext();
+  const { feedIntent, setFeedIntent, activeProjectId } = useAppContext();
   // Capture feedIntent at mount time to avoid re-running the effect on context changes
   const mountFeedIntentRef = useRef(feedIntent);
 
@@ -79,12 +79,15 @@ function DesignStudioInner() {
     useCallback((ids: string[]) => {
       setSelectedIds(ids);
     }, [setSelectedIds]),
+    useCallback((viewport: { zoom: number; panX: number; panY: number }) => {
+      dispatch({ type: "SET_VIEWPORT", viewport });
+    }, [dispatch]),
   );
 
   const { getCanvas, addShape, addText, addImage, deleteSelected, copySelected,
           pasteClipboard, selectAll, clearSelection, setActiveTool,
           bringForward, sendBackward,
-          zoomIn, zoomOut, zoomReset, getThumbnail } = fabricCanvas;
+          zoomIn, zoomOut, zoomReset, getThumbnail, getJSON } = fabricCanvas;
 
   // Resume last design on mount
   const hasLoadedSavedDesignRef = useRef(false);
@@ -93,23 +96,16 @@ function DesignStudioInner() {
     hasLoadedSavedDesignRef.current = true;
     void (async () => {
       try {
-        const listRes = await apiFetch("/api/design/canvases?limit=1");
-        if (!listRes.ok) return;
-        const list = await listRes.json() as { id: string }[];
-        if (!list.length) return;
-        const detailRes = await apiFetch(`/api/design/canvases/${list[0].id}`);
-        if (!detailRes.ok) return;
-        const d = await detailRes.json() as {
-          id: string; canvas_json: object; width: number; height: number;
-        };
+        const d = await loadLatestCanvas(activeProjectId);
+        if (!d) return;
         const fc = getCanvas();
         if (!fc) return;
         fc.set({ width: d.width, height: d.height });
         await loadJSONToCanvas(fc, d.canvas_json ?? {});
         designIdRef.current = d.id;
-      } catch { /* network unavailable — start blank */ }
+      } catch { toast(t("loadFailed"), "err"); }
     })();
-  }, [getCanvas]);
+  }, [getCanvas, activeProjectId, toast, t]);
 
   // History
   const { saveSnapshot, undo, redo, canUndo, canRedo } = useHistory(
@@ -134,26 +130,16 @@ function DesignStudioInner() {
     onSave:  useCallback(async (proj) => {
       const page = proj.pages.find(p => p.id === proj.currentPageId);
       if (!page) return;
-      try {
-        const r = await apiFetch("/api/design/canvases", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            design_id:   designIdRef.current,
-            name:        proj.name,
-            canvas_json: page.json ?? {},
-            thumbnail:   getThumbnail(),
-            width:       page.width,
-            height:      page.height,
-          }),
-        });
-        if (r.ok) {
-          const data = await r.json() as { id: string };
-          designIdRef.current = data.id;
-        }
-      } catch { /* non-fatal */ }
-    }, [getThumbnail]),
+      const fc = getCanvas();
+      if (!fc) throw new Error(t("saveFailed"));
+      designIdRef.current = await saveCanvasSnapshot({
+        project_id: activeProjectId, design_id: designIdRef.current,
+        name: proj.name, canvas_json: getJSON(), thumbnail: getThumbnail(),
+        width: fc.width, height: fc.height,
+      });
+    }, [getThumbnail, getCanvas, getJSON, t, activeProjectId]),
     onSaved: () => dispatch({ type: "MARK_SAVED" }),
+    onError: () => toast(t("saveFailed"), "err"),
     enabled: true,
   });
 
@@ -250,26 +236,17 @@ function DesignStudioInner() {
     const page = state.project.pages.find(p => p.id === state.project.currentPageId);
     if (page) {
       try {
-        const r = await apiFetch("/api/design/canvases", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            design_id:   designIdRef.current,
-            name:        state.project.name,
-            canvas_json: page.json ?? {},
-            thumbnail:   thumb,
-            width:       page.width,
-            height:      page.height,
-          }),
+        const fc = getCanvas();
+        if (!fc) throw new Error("Canvas not ready");
+        designIdRef.current = await saveCanvasSnapshot({
+          project_id: activeProjectId, design_id: designIdRef.current,
+          name: state.project.name, canvas_json: getJSON(), thumbnail: thumb,
+          width: fc.width, height: fc.height,
         });
-        if (r.ok) {
-          const data = await r.json() as { id: string };
-          designIdRef.current = data.id;
-        }
-      } catch { /* non-fatal */ }
+        dispatch({ type: "MARK_SAVED" });
+      } catch { toast(t("saveFailed"), "err"); }
     }
-    dispatch({ type: "MARK_SAVED" });
-  }, [dispatch, getThumbnail, state.project]);
+  }, [dispatch, getThumbnail, getCanvas, getJSON, state.project, t, toast, activeProjectId]);
 
   // AI app ready: store the canvas_id so we can open it
   const handleAppReady = useCallback((_appId: string, canvasId: string | null) => {
@@ -468,8 +445,9 @@ function DesignStudioInner() {
 }
 
 export function DesignStudio() {
+  const { activeProjectId } = useAppContext();
   return (
-    <DesignProvider>
+    <DesignProvider key={activeProjectId ?? "legacy-design"}>
       <DesignStudioInner />
     </DesignProvider>
   );

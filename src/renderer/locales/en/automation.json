@@ -8,6 +8,10 @@
     "workflows": "Workflows"
   },
   "taskCard": {
+    "edit": "Edit task",
+    "editTitle": "Task title",
+    "details": "Problem, evidence, proposed improvements and acceptance criteria",
+    "save": "Save task",
     "markDone": "Mark done",
     "markPending": "Mark pending",
     "due": "Due {{date}}",

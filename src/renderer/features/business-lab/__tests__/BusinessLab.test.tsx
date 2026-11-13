@@ -2,8 +2,8 @@
  * Business Lab — frontend smoke tests.
  * Tests the page renders and the service mock integration.
  */
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { BusinessLabPage } from "../BusinessLabPage";
 
 // Mock the service
@@ -58,6 +58,23 @@ vi.mock("../services/businessService", () => ({
 }));
 
 describe("BusinessLabPage", () => {
+  afterEach(() => { vi.useRealTimers(); });
+  it("refreshes full results even when the live stream never delivers updates", async () => {
+    const { businessService } = await import("../services/businessService");
+    const completed = await businessService.getPlan("plan-1");
+    const running = { ...completed, plan: { ...completed.plan, status: "GENERATING", readiness_score: null }, sections: [] , score: null };
+    vi.mocked(businessService.listPlans).mockResolvedValue([running.plan]);
+    vi.mocked(businessService.getPlan).mockResolvedValueOnce(running).mockResolvedValue(completed);
+    render(<BusinessLabPage />);
+    const item = await screen.findByText("Test Plan");
+    vi.useFakeTimers();
+    await act(async () => { fireEvent.click(item); });
+    expect(businessService.streamStatus).toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(screen.getByText("72")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "📄 الأقسام" }));
+    expect(screen.getByText("محتوى القسم")).toBeInTheDocument();
+  });
   it("shows a retry control instead of a misleading empty state on list failure", async () => {
     const { businessService } = await import("../services/businessService");
     vi.mocked(businessService.listPlans).mockRejectedValueOnce(new Error("تعذر تحميل الخطط"));

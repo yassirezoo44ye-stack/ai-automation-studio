@@ -29,12 +29,23 @@ const PRIORITY_DOT: Record<TaskPriority, string> = {
   high:   C.red,
 };
 
-function TaskCard({ task, onStatusChange, onDelete }: {
+function TaskCard({ task, onStatusChange, onDelete, onEdit }: {
   task: Task;
   onStatusChange: (id: string, status: TaskStatus) => void;
   onDelete: (id: string) => void;
+  onEdit: (id: string, title: string, notes: string) => Promise<boolean>;
 }) {
   const { t } = useTranslation("automation");
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(task.title);
+  const [notes, setNotes] = useState(task.notes ?? "");
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (saving || !title.trim()) return;
+    setSaving(true);
+    try { if (await onEdit(task.id, title.trim(), notes)) setEditing(false); }
+    finally { setSaving(false); }
+  };
   const STATUS_LABEL: Record<TaskStatus, string> = {
     pending:     t("status.pending"),
     in_progress: t("status.in_progress"),
@@ -53,14 +64,22 @@ function TaskCard({ task, onStatusChange, onDelete }: {
       </button>
 
       <div style={{ flex: 1, minWidth: 0 }}>
+        {editing ? <div style={{ display: "grid", gap: 8 }}>
+          <input aria-label={t("taskCard.editTitle")} maxLength={300} value={title} onChange={e => setTitle(e.target.value)} style={S.textInput} />
+          <textarea aria-label={t("taskCard.details")} maxLength={5000} value={notes} onChange={e => setNotes(e.target.value)} rows={6} style={S.textInput} />
+          <div>
+            <button disabled={saving || !title.trim()} onClick={() => void save()}>{t("taskCard.save")}</button>
+            <button disabled={saving} onClick={() => setEditing(false)}>{t("common:actions.cancel")}</button>
+          </div>
+        </div> : <>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: task.status === "done" ? "var(--t4)" : "var(--t1)", textDecoration: task.status === "done" ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span dir="auto" style={{ fontSize: 13, fontWeight: 500, color: task.status === "done" ? "var(--t4)" : "var(--t1)", textDecoration: task.status === "done" ? "line-through" : "none", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
             {task.title}
           </span>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: PRIORITY_DOT[task.priority], flexShrink: 0 }} title={task.priority} />
         </div>
         {task.notes && (
-          <p style={{ fontSize: 12, color: "var(--t4)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.notes}</p>
+          <p dir="auto" style={{ fontSize: 12, color: "var(--t4)", margin: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{task.notes}</p>
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 6, alignItems: "center" }}>
           <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: STATUS_COLOR[task.status] + "1a", color: STATUS_COLOR[task.status], border: `1px solid ${STATUS_COLOR[task.status]}33` }}>
@@ -73,9 +92,11 @@ function TaskCard({ task, onStatusChange, onDelete }: {
             <span style={{ fontSize: 11, color: "var(--accent-2)", background: "var(--accent-dim)", padding: "1px 7px", borderRadius: 99 }}>{task.category}</span>
           )}
         </div>
+        </>}
       </div>
 
       <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+        <button disabled={editing} onClick={() => { setTitle(task.title); setNotes(task.notes ?? ""); setEditing(true); }} className="btn-icon" aria-label={t("taskCard.edit")}>✎</button>
         {task.status !== "in_progress" && task.status !== "done" && (
           <button
             onClick={() => onStatusChange(task.id, "in_progress")}
@@ -103,6 +124,7 @@ export function AutomationPage() {
   const [search, setSearch]   = useState("");
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle]   = useState("");
+  const [newNotes, setNewNotes] = useState("");
   const [newPriority, setNewPriority] = useState<TaskPriority>("medium");
   const [saving, setSaving]   = useState(false);
 
@@ -156,17 +178,26 @@ export function AutomationPage() {
   }, [loadTasks, loadWorkflows]);
 
   async function createTask() {
-    if (!newTitle.trim()) return;
+    if (saving || !newTitle.trim()) return;
     setSaving(true);
     try {
       const r = await apiFetch("/api/tasks", {
         method: "POST", headers: authH(),
-        body: JSON.stringify({ title: newTitle.trim(), priority: newPriority }),
+        body: JSON.stringify({ title: newTitle.trim(), notes: newNotes, priority: newPriority }),
       });
       if (!r.ok) throw new Error();
-      setNewTitle(""); setCreating(false); loadTasks(); toast(t("toast.taskCreated"));
+      setNewTitle(""); setNewNotes(""); setCreating(false); loadTasks(); toast(t("toast.taskCreated"));
     } catch { toast(t("toast.createTaskFailed"), "err"); }
     finally { setSaving(false); }
+  }
+
+  async function editTask(id: string, title: string, notes: string): Promise<boolean> {
+    try {
+      const response = await apiFetch(`/api/tasks/${id}`, { method: "PUT", body: JSON.stringify({ title, notes }) });
+      if (!response.ok) throw new Error("Task update rejected");
+      setTasks(previous => previous.map(task => task.id === id ? { ...task, title, notes } : task));
+      return true;
+    } catch { toast(t("toast.updateTaskFailed"), "err"); return false; }
   }
 
   async function updateStatus(id: string, status: TaskStatus) {
@@ -187,7 +218,7 @@ export function AutomationPage() {
 
   const filtered = tasks
     .filter(t => filter === "all" || t.status === filter)
-    .filter(t => !search || t.title.toLowerCase().includes(search.toLowerCase()));
+    .filter(t => !search || `${t.title}\n${t.notes ?? ""}`.toLowerCase().includes(search.toLowerCase()));
 
   const counts: Record<string, number> = {
     all:         tasks.length,
@@ -235,7 +266,7 @@ export function AutomationPage() {
               <div style={{ ...S.cardTitle, marginBottom: 12 }}>{t("newTaskForm.title")}</div>
               <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
                 <input
-                  value={newTitle} onChange={e => setNewTitle(e.target.value)}
+                  maxLength={300} value={newTitle} onChange={e => setNewTitle(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && void createTask()}
                   placeholder={t("newTaskForm.titlePlaceholder")} style={{ ...S.textInput, flex: 1 }} autoFocus
                 />
@@ -245,9 +276,10 @@ export function AutomationPage() {
                   <option value="high">{t("newTaskForm.priorityHigh")}</option>
                 </select>
               </div>
+              <textarea aria-label={t("taskCard.details")} placeholder={t("taskCard.details")} maxLength={5000} rows={5} value={newNotes} onChange={e => setNewNotes(e.target.value)} style={{ ...S.textInput, width: "100%", marginBottom: 10 }} />
               <div style={{ display: "flex", gap: 8 }}>
                 <GoldButton onClick={() => void createTask()} disabled={saving || !newTitle.trim()}>{saving ? t("newTaskForm.creating") : t("newTaskForm.create")}</GoldButton>
-                <GoldButton variant="ghost" onClick={() => { setCreating(false); setNewTitle(""); }}>{t("common:actions.cancel")}</GoldButton>
+                <GoldButton variant="ghost" disabled={saving} onClick={() => { setCreating(false); setNewTitle(""); setNewNotes(""); }}>{t("common:actions.cancel")}</GoldButton>
               </div>
             </GlassCard>
           )}
@@ -292,7 +324,7 @@ export function AutomationPage() {
             >
               {filtered.map(t => (
                 <motion.div key={t.id} variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}>
-                  <TaskCard task={t} onStatusChange={updateStatus} onDelete={deleteTask} />
+                  <TaskCard task={t} onStatusChange={updateStatus} onDelete={deleteTask} onEdit={editTask} />
                 </motion.div>
               ))}
             </motion.div>

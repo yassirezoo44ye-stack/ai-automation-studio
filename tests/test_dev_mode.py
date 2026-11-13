@@ -8,12 +8,34 @@ Dev-mode routing tests — three required cases:
 from __future__ import annotations
 
 import asyncio
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ── Constant shared with build.py (keep in sync) ──────────────────────────────
 _DEV_ACCOUNT = "yassirezoo44.ye@gmail.com"
 _OTHER_ACCOUNT = "other-user@example.com"
+
+
+@pytest.fixture(autouse=True)
+def explicit_mock_configuration(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("DEV_MOCK_BUILDS", "true")
+    monkeypatch.setattr("app.routers.build._DEV_ACCOUNT", _DEV_ACCOUNT)
+
+
+def test_production_never_silently_routes_owner_to_templates(monkeypatch):
+    from app.routers.build import _is_dev_account
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with patch("app.routers.build.owner_email", return_value=_DEV_ACCOUNT):
+        assert _is_dev_account(MagicMock()) is False
+
+
+def test_development_also_requires_explicit_mock_opt_in(monkeypatch):
+    from app.routers.build import _is_dev_account
+    monkeypatch.delenv("DEV_MOCK_BUILDS")
+    with patch("app.routers.build.owner_email", return_value=_DEV_ACCOUNT):
+        assert _is_dev_account(MagicMock()) is False
 
 
 # ── DevMockProvider unit tests ────────────────────────────────────────────────

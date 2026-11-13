@@ -3,6 +3,7 @@ import {
   Canvas as FabricCanvas,
   Rect, Circle, Triangle, Line, IText, FabricImage,
   PencilBrush, ActiveSelection,
+  Point,
   type FabricObject,
 } from "fabric";
 import type { Tool, CanvasPage } from "../types/canvas.types";
@@ -41,10 +42,16 @@ export interface UseFabricCanvasReturn {
 export function useFabricCanvas(
   onObjectsChange: (json: object) => void,
   onSelectionChange: (ids: string[]) => void,
+  onViewportChange?: (viewport: { zoom: number; panX: number; panY: number }) => void,
 ): UseFabricCanvasReturn {
   const canvasRef      = useRef<HTMLCanvasElement | null>(null);
   const fabricRef      = useRef<FabricCanvas | null>(null);
   const clipboardRef   = useRef<FabricObject[]>([]);
+  const viewportChangeRef = useRef(onViewportChange);
+  useEffect(() => { viewportChangeRef.current = onViewportChange; }, [onViewportChange]);
+  const notifyViewport = useCallback((fc: FabricCanvas) => {
+    viewportChangeRef.current?.({ zoom: fc.getZoom(), panX: fc.viewportTransform[4], panY: fc.viewportTransform[5] });
+  }, []);
 
   // Init/destroy below only ever runs once ([] deps — the Fabric canvas
   // instance must not be recreated on every render), so its event
@@ -254,35 +261,41 @@ export function useFabricCanvas(
     const fc = fabricRef.current;
     if (!fc) return;
     const z = clamp(fc.getZoom() * 1.2, ZOOM_MIN, ZOOM_MAX);
-    fc.setZoom(z);
-  }, []);
+    fc.zoomToPoint(new Point(fc.width / 2, fc.height / 2), z);
+    notifyViewport(fc);
+  }, [notifyViewport]);
 
   const zoomOut = useCallback(() => {
     const fc = fabricRef.current;
     if (!fc) return;
     const z = clamp(fc.getZoom() / 1.2, ZOOM_MIN, ZOOM_MAX);
-    fc.setZoom(z);
-  }, []);
+    fc.zoomToPoint(new Point(fc.width / 2, fc.height / 2), z);
+    notifyViewport(fc);
+  }, [notifyViewport]);
 
   const zoomReset = useCallback(() => {
     const fc = fabricRef.current;
     if (!fc) return;
     fc.setZoom(1);
     fc.setViewportTransform([1, 0, 0, 1, 0, 0]);
-  }, []);
+    notifyViewport(fc);
+  }, [notifyViewport]);
 
   const zoomToFitCanvas = useCallback(() => {
     const fc = fabricRef.current;
     if (!fc || !canvasRef.current) return;
-    const container = canvasRef.current.parentElement;
+    const container = canvasRef.current.closest<HTMLElement>("[data-grid]");
     if (!container) return;
     const { clientWidth: vw, clientHeight: vh } = container;
     const z = zoomToFit(fc.width ?? 1280, fc.height ?? 720, vw, vh);
     fc.setZoom(z);
-    const panX = (vw - (fc.width  ?? 1280) * z) / 2;
-    const panY = (vh - (fc.height ?? 720)  * z) / 2;
+    // The canvas element is centered by the container's flex layout. Center
+    // document coordinates within that element, not within the clipped panel.
+    const panX = ((fc.width  ?? 1280) * (1 - z)) / 2;
+    const panY = ((fc.height ?? 720) * (1 - z)) / 2;
     fc.setViewportTransform([z, 0, 0, z, panX, panY]);
-  }, []);
+    notifyViewport(fc);
+  }, [notifyViewport]);
 
   // ── Page load/save ──────────────────────────────────────────────────────────
   const loadPage = useCallback(async (page: CanvasPage) => {

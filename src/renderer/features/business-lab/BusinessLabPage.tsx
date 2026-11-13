@@ -250,6 +250,7 @@ export function BusinessLabPage() {
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const actionPending = useRef(false);
   const selectionVersion = useRef(0);
   const stopStream                = useRef<(() => void) | null>(null);
@@ -268,6 +269,7 @@ export function BusinessLabPage() {
   const selectPlan = useCallback(async (id: string) => {
     const version = ++selectionVersion.current;
     setDetailError(null);
+    setRefreshError(null);
     setSelected(id); setTab("overview"); setDetail(null);
     stopStream.current?.(); stopStream.current = null;
     setLoading(true);
@@ -279,9 +281,17 @@ export function BusinessLabPage() {
       // Stream live updates for in-progress plans
       if (d.plan.status === "GENERATING" || d.plan.status === "DRAFT") {
         const stop = businessService.streamStatus(id, (data) => {
+          const evt = data as Record<string, unknown>;
+          if (evt.done) {
+            void loadPlans();
+            void businessService.getPlan(id).then(next => {
+              if (version === selectionVersion.current) setDetail(next);
+            }).catch(() => {
+              if (version === selectionVersion.current) setRefreshError("تعذر تحميل النتيجة النهائية؛ أعد تحديث الحالة.");
+            });
+          }
           setDetail(prev => {
             if (!prev || prev.plan.id !== id || version !== selectionVersion.current) return prev;
-            const evt = data as Record<string, unknown>;
             const secs = (evt.sections ?? {}) as Record<string, { status: string; tokens_used: number; error_msg: string | null }>;
             const updatedSections = prev.sections.map(s =>
               secs[s.section_key]
@@ -292,7 +302,6 @@ export function BusinessLabPage() {
               status:          (evt.plan_status as string) ?? prev.plan.status,
               readiness_score: (evt.readiness_score as number | null) ?? prev.plan.readiness_score,
             };
-            if (evt.done) { void loadPlans(); }
             return { ...prev, plan: { ...prev.plan, ...planPatch }, sections: updatedSections };
           });
         });
@@ -304,6 +313,35 @@ export function BusinessLabPage() {
       if (version === selectionVersion.current) setLoading(false);
     }
   }, [loadPlans]);
+
+  // A dropped EventSource/ticket must not leave a completed plan looking stuck.
+  // Poll full details so content, new sections and scores also reach the page.
+  const planStatus = detail?.plan.status;
+  useEffect(() => {
+    if (!selected || !planStatus || !["GENERATING", "DRAFT"].includes(planStatus)) return;
+    const id = selected;
+    const version = selectionVersion.current;
+    let cancelled = false;
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const next = await businessService.getPlan(id);
+        if (cancelled || version !== selectionVersion.current) return;
+        setDetail(next);
+        setRefreshError(null);
+        if (!["GENERATING", "DRAFT"].includes(next.plan.status)) {
+          stopStream.current?.(); stopStream.current = null;
+          void loadPlans();
+        }
+      } catch {
+        if (!cancelled && version === selectionVersion.current) setRefreshError("تعذر تحديث الحالة. بيانات الخطة الحالية محفوظة؛ يمكنك إعادة التحديث.");
+      } finally { pending = false; }
+    };
+    const timer = setInterval(() => void refresh(), 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [selected, planStatus, loadPlans]);
 
   // Cleanup on unmount
   useEffect(() => () => { ++selectionVersion.current; stopStream.current?.(); }, []);
@@ -417,6 +455,7 @@ export function BusinessLabPage() {
 
       {/* ── Main content ── */}
       <div className="business-lab-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        {refreshError && <p role="status" style={{ padding: 12 }}>{refreshError}</p>}
         {actionError && <div role="alert" style={{ padding: 20 }}>{actionError}</div>}
         {detailError && <div role="alert" style={{ padding: 20 }}><p>{detailError}</p><button onClick={() => selected && void selectPlan(selected)}>إعادة تحميل الخطة</button></div>}
         {!selected && (
@@ -458,6 +497,7 @@ export function BusinessLabPage() {
               ))}
 
               <div style={{ marginLeft: "auto", display: "flex", gap: 6, paddingBottom: 4 }}>
+                <button disabled={loading} onClick={() => selected && void selectPlan(selected)}>تحديث الحالة</button>
                 {detail?.plan.status === "GENERATING" && (
                   <button onClick={handleCancel} style={{
                     padding: "4px 10px", borderRadius: 6, border: "1px solid var(--b2,#e5e7eb)",
