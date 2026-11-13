@@ -46,12 +46,31 @@ def load_skill(skill_id: str) -> Skill:
     if path.stat().st_size > 24_000:
         raise ValueError("Skill exceeds size limit")
     text = path.read_text(encoding="utf-8")
-    _, header, body = text.split("---", 2)
-    metadata = dict(line.split(": ", 1) for line in header.strip().splitlines())
+    # Parse only a leading frontmatter block. A '---' inside instructions
+    # must not be interpreted as metadata.
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("Invalid skill frontmatter")
+    try:
+        end = next(i for i, line in enumerate(lines[1:], 1) if line.strip() == "---")
+    except StopIteration as exc:
+        raise ValueError("Unterminated skill frontmatter") from exc
+    metadata: dict[str, str] = {}
+    for line in lines[1:end]:
+        if ": " not in line:
+            raise ValueError("Invalid skill metadata")
+        key, value = line.split(": ", 1)
+        if not key or key in metadata:
+            raise ValueError("Invalid skill metadata")
+        metadata[key] = value
     if metadata.get("name") != skill_id or not metadata.get("description"):
         raise ValueError("Invalid skill metadata")
-    title = next(line[2:] for line in body.splitlines() if line.startswith("# "))
-    return Skill(skill_id, title, metadata["description"], body.strip())
+    body = "\n".join(lines[end + 1:]).strip()
+    title = next((line[2:].strip() for line in body.splitlines()
+                  if line.startswith("# ") and line[2:].strip()), None)
+    if not title:
+        raise ValueError("Skill title missing")
+    return Skill(skill_id, title, metadata["description"], body)
 
 
 def skill_catalog() -> list[dict[str, str]]:
