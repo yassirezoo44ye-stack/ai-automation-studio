@@ -22,26 +22,43 @@ export function useAutoSave({
 }: UseAutoSaveOptions): void {
   const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef  = useRef(false);
+  const mountedRef = useRef(false);
+  const latestRef = useRef({ project, unsaved, onSave, onSaved, onError, enabled });
+  useEffect(() => { latestRef.current = { project, unsaved, onSave, onSaved, onError, enabled }; });
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
-  const save = useCallback(async (proj: DesignProject) => {
-    if (savingRef.current) return;
+  const save = useCallback(async function saveLatest() {
+    const snapshot = latestRef.current;
+    if (savingRef.current || !mountedRef.current || !snapshot.enabled || !snapshot.unsaved) return;
     savingRef.current = true;
     try {
-      await onSave(proj);
-      onSaved();
+      await snapshot.onSave(snapshot.project);
+      const current = latestRef.current;
+      // A response for revision A cannot mark newer revision B as saved.
+      if (mountedRef.current && current.enabled && current.project === snapshot.project) current.onSaved();
     } catch (err) {
-      onError?.(err instanceof Error ? err : new Error(String(err)));
+      if (mountedRef.current) latestRef.current.onError?.(err instanceof Error ? err : new Error(String(err)));
     } finally {
       savingRef.current = false;
+      const current = latestRef.current;
+      // An edit can arrive while the request is in flight and its debounce can
+      // fire before that request finishes. Queue the latest revision explicitly.
+      if (mountedRef.current && current.enabled && current.unsaved && current.project !== snapshot.project) {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => { void saveLatest(); }, DEBOUNCE_MS);
+      }
     }
-  }, [onSave, onSaved, onError]);
+  }, []);
 
   useEffect(() => {
     if (!enabled || !unsaved) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      void save(project);
+      void save();
     }, DEBOUNCE_MS);
 
     return () => {

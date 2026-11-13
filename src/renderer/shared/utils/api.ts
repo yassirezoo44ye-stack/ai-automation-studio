@@ -35,12 +35,20 @@ function getRefreshFn(): RefreshFn | undefined {
 function buildHeaders(path: string, init?: RequestInit): Record<string, string> {
   const jwt = getJwt();
   const orgId = getOrgId();
+  const extra: Record<string, string> = {};
+  new Headers(init?.headers).forEach((value, key) => {
+    // authH() may have been evaluated before token refresh or org switching.
+    // Session identity must always come from the current session bridge.
+    if (["authorization", "x-sub-token", "x-organization-id"].includes(key)) return;
+    if (key === "content-type" && init?.body instanceof FormData) return;
+    extra[key === "content-type" ? "Content-Type" : key] = value;
+  });
   return {
     "X-Sub-Token": getToken(),
     ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     ...(orgId ? { "X-Organization-Id": orgId } : {}),
     ...(init?.body != null && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
-    ...(init?.headers as Record<string, string> ?? {}),
+    ...extra,
   };
 }
 
@@ -59,6 +67,7 @@ function buildHeaders(path: string, init?: RequestInit): Record<string, string> 
  * the retried request also comes back 401.
  */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const originalOrg = getOrgId();
   const res = await fetch(`${API}${path}`, { ...init, headers: buildHeaders(path, init) });
 
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
@@ -70,8 +79,11 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     }
     if (expired) {
       const refresh = getRefreshFn();
-      const { token } = (await refresh?.()) ?? { token: null };
-      if (token) {
+      let token: string | null = null;
+      try { token = (await refresh?.())?.token ?? null; }
+      catch { return res; }
+      // Never replay a write in a different tenant after awaiting refresh.
+      if (token && getOrgId() === originalOrg && getRefreshFn() === refresh && !init?.signal?.aborted) {
         return fetch(`${API}${path}`, { ...init, headers: buildHeaders(path, init) });
       }
     }
