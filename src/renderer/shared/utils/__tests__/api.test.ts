@@ -50,6 +50,37 @@ describe("apiFetch — 401 token_expired refresh-and-retry", () => {
     expect(secondCallHeaders["Authorization"]).toBe("Bearer fresh-jwt");
   });
 
+  it("also refreshes on get_current_user's expiry shape (organization routes past a valid subscription token)", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { detail: "Token expired" }))
+      .mockResolvedValueOnce(jsonResponse(200, []));
+    (window as unknown as Record<string, unknown>).__axon_access_token = "stale-jwt";
+    (window as unknown as Record<string, () => Promise<{ token: string | null }>>).__axon_refresh_fn =
+      vi.fn(async () => {
+        (window as unknown as Record<string, string>).__axon_access_token = "fresh-jwt";
+        return { token: "fresh-jwt" };
+      });
+
+    const res = await apiFetch("/api/devices/");
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[1][1].headers as Record<string, string>)["Authorization"]).toBe("Bearer fresh-jwt");
+  });
+
+  it("does not refresh for an invalid (not expired) token", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(jsonResponse(401, { detail: "Invalid token" }));
+    const refreshFn = vi.fn();
+    (window as unknown as Record<string, unknown>).__axon_refresh_fn = refreshFn;
+
+    const res = await apiFetch("/api/devices/");
+
+    expect(res.status).toBe(401);
+    expect(refreshFn).not.toHaveBeenCalled();
+  });
+
   it("does not retry and returns the original 401 when refresh itself fails", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValueOnce(jsonResponse(401, { detail: "Token expired", error: "token_expired" }));
