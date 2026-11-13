@@ -117,9 +117,26 @@ def _require_auth(request: Request) -> None:
 
 
 def _require_user_id(request: Request) -> str:
-    """Extract user_id from JWT or raise 401."""
+    """Extract user_id from JWT or raise 401.
+
+    An expired access token is reported as "Token expired" (the shape
+    get_current_user uses) so the client refreshes the session and retries.
+    A still-valid subscription token lets the request past the auth
+    middleware, so without this the user just saw "Authentication required".
+    """
     user_id = _get_user_id(request)
     if not user_id:
+        _, bearer = extract_auth_credentials(request)
+        if bearer:
+            import jwt
+
+            from app.core.jwt_utils import decode_access_token
+            try:
+                decode_access_token(bearer)
+            except jwt.ExpiredSignatureError:
+                raise HTTPException(status_code=401, detail="Token expired") from None
+            except jwt.PyJWTError:
+                pass
         raise HTTPException(status_code=401, detail="Authentication required")
     return user_id
 

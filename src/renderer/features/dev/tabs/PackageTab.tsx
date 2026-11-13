@@ -5,7 +5,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { apiFetch, parseJSON, authH, API } from "../../../shared/utils/api";
+import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { GoldButton } from "../../../shared/ui/gold";
 import type { Project } from "../../../shared/types";
 
@@ -103,7 +103,7 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
     try {
       const fd = new FormData();
       picked.forEach(f => fd.append("files", f));
-      const r = await fetch(`${API}/api/projects/${projectId}/upload`, { method: "POST", body: fd });
+      const r = await apiFetch(`/api/projects/${projectId}/upload`, { method: "POST", body: fd });
       const data = await parseJSON<{ count: number }>(r, `/api/projects/${projectId}/upload`);
       onToast(t("packageTab.uploadedToast", { count: data.count }), "ok");
       const path = `/api/projects/${projectId}/files`;
@@ -129,9 +129,8 @@ export function PackageTab({ projects, projectId: defaultProjectId, onToast }: P
     abortRef.current = ctrl;
 
     try {
-      const res = await fetch(`${API}/api/package/stream`, {
+      const res = await apiFetch("/api/package/stream", {
         method: "POST",
-        headers: authH(),
         body: JSON.stringify({ project_id: projectId, target, lang, app_name: appName, version: appVersion, one_file: oneFile }),
         signal: ctrl.signal,
       });

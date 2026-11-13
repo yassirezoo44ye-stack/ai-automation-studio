@@ -14,7 +14,7 @@ import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
-import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
+import { apiFetch, apiJSON, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
@@ -141,9 +141,15 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     [activeConv],
     { enabled: !!activeConv, isEmpty: () => false },
   );
-  // Sync loaded history into the local, streaming-mutable copy.
+  // Sync loaded history into the local, streaming-mutable copy — unless the
+  // local copy already belongs to this conversation. sendMessage() claims a
+  // brand-new conversation's id mid-stream (messagesConvId === activeConv);
+  // the load that id switch triggers returns only the user message (the
+  // reply is saved when the stream ends) and would otherwise replace the
+  // streaming reply bubble, hiding the reply until the conversation is
+  // reopened.
   useEffect(() => {
-    if (!loadedMessages) return;
+    if (!loadedMessages || messagesConvId === activeConv) return;
     void Promise.resolve().then(() => {
       setMessages(loadedMessages);
       setMessagesConvId(activeConv);
@@ -233,11 +239,11 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const useAgent = agentId !== "default";
-    const url = useAgent ? `${API}/api/agents/${agentId}/chat/stream` : `${API}/api/run/stream`;
+    const url = useAgent ? `/api/agents/${agentId}/chat/stream` : "/api/run/stream";
 
     try {
-      const res = await fetch(url, {
-        method: "POST", headers: authH(),
+      const res = await apiFetch(url, {
+        method: "POST",
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId }),
         signal: ctrl.signal,
       });

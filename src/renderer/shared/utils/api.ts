@@ -64,7 +64,12 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
     let expired = false;
     try {
-      expired = (await res.clone().json())?.error === "token_expired";
+      // Two backend shapes mean "access token expired": the auth middleware's
+      // {"error": "token_expired"}, and get_current_user's {"detail":
+      // "Token expired"} — the latter reaches organization routes when a
+      // still-valid subscription token lets the request past the middleware.
+      const body = await res.clone().json();
+      expired = body?.error === "token_expired" || body?.detail === "Token expired";
     } catch {
       // Non-JSON or empty 401 body — not our refreshable shape.
     }
@@ -72,7 +77,13 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
       const refresh = getRefreshFn();
       const { token } = (await refresh?.()) ?? { token: null };
       if (token) {
-        return fetch(`${API}${path}`, { ...init, headers: buildHeaders(path, init) });
+        // Callers that pass headers: authH() captured the stale token in
+        // init.headers, which buildHeaders spreads last — put the fresh
+        // credentials back on top so the retry doesn't repeat the 401.
+        const headers = buildHeaders(path, init);
+        headers["Authorization"] = `Bearer ${getJwt() || token}`;
+        headers["X-Sub-Token"] = getToken();
+        return fetch(`${API}${path}`, { ...init, headers });
       }
     }
   }

@@ -197,7 +197,12 @@
     "analyzing": "Analyzing…",
     "analyzeCanvas": "Analyze Canvas",
     "thinking": "Thinking…",
-    "requestFailed": "Request failed"
+    "requestFailed": "Request failed",
+    "imageNotConfigured": "Image generation isn't set up on this server yet. An administrator needs to add the OpenAI API key.",
+    "imageRejected": "This description can't be turned into an image. Try rewording it.",
+    "imageUnavailable": "Image generation is unavailable right now. Please retry.",
+    "saveImage": "Save image",
+    "saveImageAriaLabel": "Save generated image {{num}}"
   },
   "appTreePanel": {
     "ariaLabel": "App structure",
@@ -207,31 +212,31 @@
     "insertTools": "Insert & Design Tools",
     "insertToolsTitle": "Switch to drawing and layer tools",
     "groups": {
-      "app":        "APP",
-      "data":       "DATA",
-      "ai":         "AI",
+      "app": "APP",
+      "data": "DATA",
+      "ai": "AI",
       "automation": "AUTOMATION",
-      "deploy":     "DEPLOY"
+      "deploy": "DEPLOY"
     },
     "items": {
-      "pages":          "Pages",
-      "components":     "Components",
-      "navigation":     "Navigation",
-      "theme":          "Theme",
-      "tables":         "Tables",
-      "forms":          "Forms",
-      "api-data":       "API",
-      "agents":         "Agents",
-      "ai-actions":     "AI Actions",
-      "knowledge":      "Knowledge",
-      "models":         "Models",
-      "workflows":      "Workflows",
-      "triggers":       "Triggers",
-      "events":         "Events",
-      "jobs":           "Jobs",
+      "pages": "Pages",
+      "components": "Components",
+      "navigation": "Navigation",
+      "theme": "Theme",
+      "tables": "Tables",
+      "forms": "Forms",
+      "api-data": "API",
+      "agents": "Agents",
+      "ai-actions": "AI Actions",
+      "knowledge": "Knowledge",
+      "models": "Models",
+      "workflows": "Workflows",
+      "triggers": "Triggers",
+      "events": "Events",
+      "jobs": "Jobs",
       "deploy-preview": "Preview",
-      "production":     "Production",
-      "domains":        "Domains"
+      "production": "Production",
+      "domains": "Domains"
     }
   },
   "leftToolbar": {
@@ -272,10 +277,18 @@
     "closeAriaLabel": "Close",
     "format": "Format",
     "formats": {
-      "png": { "desc": "High quality, transparent background" },
-      "jpg": { "desc": "Smaller file, no transparency" },
-      "svg": { "desc": "Scalable vector, web-ready" },
-      "json": { "desc": "Editable design file" }
+      "png": {
+        "desc": "High quality, transparent background"
+      },
+      "jpg": {
+        "desc": "Smaller file, no transparency"
+      },
+      "svg": {
+        "desc": "Scalable vector, web-ready"
+      },
+      "json": {
+        "desc": "Editable design file"
+      }
     },
     "scale": "Scale",
     "quality": "Quality: {{quality}}%",

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../contexts/toast";
-import { apiFetch, parseJSON, authH, API } from "../../utils/api";
+import { apiFetch, parseJSON } from "../../utils/api";
 import { MD_COMPONENTS } from "../../shared/ui/md-components";
 import { S } from "../../styles/theme";
 import { GoldButton, GlassCard } from "../../shared/ui/gold";
@@ -60,7 +60,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     if (!url.trim()) return;
     setLoading(true); setInfo(null); setTranscript(""); setAnswer("");
     try {
-      const r = await apiFetch("/api/youtube/info", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
+      const r = await apiFetch("/api/youtube/info", { method: "POST", body: JSON.stringify({ url }) });
       setInfo(await parseJSON<YTInfo>(r, "/api/youtube/info")); toast(t("youtube.infoLoaded"));
     } catch (e) { toast((e as Error).message, "err"); }
     finally { setLoading(false); }
@@ -70,7 +70,7 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     if (!url.trim()) return;
     setTL(true); setTranscript("");
     try {
-      const r = await apiFetch("/api/youtube/transcript", { method: "POST", headers: authH(), body: JSON.stringify({ url }) });
+      const r = await apiFetch("/api/youtube/transcript", { method: "POST", body: JSON.stringify({ url }) });
       const d = await parseJSON<{ transcript: string; language: string }>(r, "/api/youtube/transcript");
       setTranscript(d.transcript); toast(t("youtube.transcriptLoadedWithLang", { language: d.language }));
     } catch (e) { toast((e as Error).message, "err"); }
@@ -83,8 +83,8 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
     setQuestion(finalQ); setAnswer(""); setAnswering(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
     try {
-      const res = await fetch(`${API}/api/youtube/analyze/stream`, {
-        method: "POST", headers: authH(),
+      const res = await apiFetch("/api/youtube/analyze/stream", {
+        method: "POST",
         body: JSON.stringify({ url, question: finalQ, transcript }),
         signal: ctrl.signal,
       });
@@ -240,8 +240,8 @@ function FacebookPage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => 
     if (!topic.trim()) return;
     setGen(true); setVars([]); setStatus(t("facebook.connecting"));
     try {
-      const res = await fetch(`${API}/api/social/generate/stream`, {
-        method: "POST", headers: authH(),
+      const res = await apiFetch("/api/social/generate/stream", {
+        method: "POST",
         body: JSON.stringify({ topic, platform, content_type: contentType, tone, language, include_hashtags: hashtags, include_emoji: emoji, variations: 3 }),
       });
       if (!res.ok || !res.body) { toast(t("facebook.errorStatus", { status: res.status }), "err"); return; }

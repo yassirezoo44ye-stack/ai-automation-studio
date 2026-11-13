@@ -5,7 +5,7 @@
  */
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { authH, API, parseJSON } from "../../../shared/utils/api";
+import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import { GoldButton } from "../../../shared/ui/gold";
 import { BUILD_TEMPLATES } from "../../../constants";
@@ -52,9 +52,8 @@ export function BuildTab({
     abortRef.current = controller;
 
     try {
-      const res = await fetch(`${API}/api/build/stream`, {
+      const res = await apiFetch("/api/build/stream", {
         method: "POST",
-        headers: authH(),
         body: JSON.stringify({ project_id: projectId, prompt: buildPrompt }),
         signal: controller.signal,
       });

@@ -1,9 +1,13 @@
 import contextlib
 import json
+import logging
+import os
 import uuid
+from typing import Literal
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.inference.engine import InferenceEngine
@@ -15,6 +19,7 @@ from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 
 router = APIRouter(tags=["design"])
+log = logging.getLogger(__name__)
 
 DESIGN_SIZES = {
     "Instagram Post":  (1080, 1080),
@@ -291,6 +296,65 @@ async def _call_claude(
     if raw.startswith("```"):
         raw = "\n".join(raw.split("\n")[1:]).rstrip("`").strip()
     return raw
+
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=3, max_length=1000)
+    width:  int | None = None
+    height: int | None = None
+    style:  Literal["natural", "vivid"] = "vivid"
+
+
+_IMAGES_URL = "https://api.openai.com/v1/images/generations"
+
+
+def _image_size(width: int | None, height: int | None) -> str:
+    """Closest size dall-e-3 supports for the requested aspect ratio."""
+    if width and height:
+        if width / height >= 1.3:
+            return "1792x1024"
+        if height / width >= 1.3:
+            return "1024x1792"
+    return "1024x1024"
+
+
+async def _request_image(api_key: str, payload: dict) -> httpx.Response:
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        return await client.post(
+            _IMAGES_URL, headers={"Authorization": f"Bearer {api_key}"}, json=payload,
+        )
+
+
+@router.post("/api/ai/image/generate")
+async def ai_image_generate(req: ImageGenerateRequest, request: Request):
+    """Text-to-image for the Design Studio Image tab (OpenAI Images, the
+    same provider and key the Image agent uses). Returns data URLs so the
+    image can be added to the canvas or saved without another request."""
+    ai_rate_limit(request)
+    await check_org_quota(request)
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        raise HTTPException(503, "Image generation isn't configured on this server (OPENAI_API_KEY).")
+    try:
+        resp = await _request_image(api_key, {
+            "model": "dall-e-3", "prompt": req.prompt, "n": 1,
+            "size": _image_size(req.width, req.height),
+            "style": req.style, "response_format": "b64_json",
+        })
+    except httpx.HTTPError:
+        log.warning("image generation request failed", exc_info=True)
+        raise HTTPException(502, "Image generation is unavailable right now. Please retry.") from None
+    if resp.status_code == 400:
+        # Usually the provider's content policy refusing the prompt.
+        raise HTTPException(422, "This prompt can't be turned into an image. Try rewording it.")
+    if resp.status_code != 200:
+        log.warning("image generation HTTP %s", resp.status_code)
+        raise HTTPException(502, "Image generation is unavailable right now. Please retry.")
+    try:
+        images = [f"data:image/png;base64,{item['b64_json']}" for item in resp.json()["data"]]
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(502, "Image generation returned an unexpected response.") from None
+    return {"images": images}
 
 
 @router.post("/api/ai/design/palette")

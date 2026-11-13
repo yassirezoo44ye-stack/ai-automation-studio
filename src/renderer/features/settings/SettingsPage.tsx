@@ -496,10 +496,13 @@ export function SettingsPage() {
                       {Object.entries(runtimes).map(([name, info]) => (
                         <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
                           <span style={{ color: "var(--t3)", fontFamily: "var(--font-mono)", fontSize: 12 }}>{name}</span>
-                          <span className={`badge badge-${info?.available ? "green" : "muted"}`}>{info?.available ? (info.version ?? "available") : "not found"}</span>
+                          <span className={`badge badge-${info?.available ? "green" : "muted"}`}>{info?.available ? (info.version ?? t("system.runtimeAvailable")) : t("system.runtimeNotOnServer")}</span>
                         </div>
                       ))}
                     </div>
+                    {Object.values(runtimes).some(info => !info?.available) && (
+                      <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--t3)" }}>{t("system.runtimesHint")}</p>
+                    )}
                   </GlassCard>
                 </div>
               )}
