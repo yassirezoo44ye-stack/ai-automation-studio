@@ -11,6 +11,8 @@
  * properties in chat.css and `marginInlineStart` etc. in inline styles.
  */
 import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "react";
+import { useFlowSkill } from "../../../shared/hooks/useFlowSkill";
+import { FlowSkillSelect } from "../../../shared/ui/FlowSkillSelect";
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
@@ -65,6 +67,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
   // ── Core state (unchanged) ────────────────────────────────────────
   const [projectId, setProjectId] = useState("demo");
+  const skillSelection = useFlowSkill();
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
 
   // Layout state
@@ -238,7 +241,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     try {
       const res = await fetch(url, {
         method: "POST", headers: authH(),
-        body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId }),
+        body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
+          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [] } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -346,6 +350,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             <option value="default">{t("chatTab.sidebar.defaultAgent")}</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>)}
           </select>
+          {agentId === "default" && <FlowSkillSelect selection={skillSelection} />}
         </div>
 
         {/* Conversation list */}

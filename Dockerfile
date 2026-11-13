@@ -30,6 +30,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY main.py .
 COPY app_main.py .
 COPY app ./app
+COPY .agents/skills ./.agents/skills
 COPY migrations ./migrations
 
 # ── Build-time assertion: fail immediately if migrations package is missing ────

@@ -14,6 +14,7 @@ import os
 import shlex
 from pathlib import Path
 
+from app.core.ai.skills import compose_skill_system
 from app.agents.base import AgentContext, AgentResult, EvolvableAgent
 
 log = logging.getLogger(__name__)
@@ -134,6 +135,10 @@ class AnalyzeAgent(EvolvableAgent):
             msg = await client.messages.create(
                 model=model,
                 max_tokens=1024,
+                system=compose_skill_system(
+                    "Review the supplied code only; do not claim to have modified it or run checks.",
+                    ["flow-app-building"],
+                ),
                 messages=[{
                     "role": "user",
                     "content": (

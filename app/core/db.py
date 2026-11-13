@@ -197,6 +197,9 @@ async def ensure_agents_table() -> None:
             )
         ''')
 
+        await conn.execute("ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS "
+                           "skill_ids TEXT[] NOT NULL DEFAULT '{}'")
+
 
 async def ensure_tasks_table() -> None:
     async with get_pool().acquire() as conn:

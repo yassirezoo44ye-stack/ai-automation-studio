@@ -24,7 +24,10 @@
       "temperatureLabel": "Temperature",
       "saving": "Saving…",
       "save": "Save Agent",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "skillsLabel": "Agent skills",
+      "skillsHint": "Select up to three skills.",
+      "skillsFailed": "Could not load skills. Reload the page."
     },
     "toast": {
       "updated": "Agent updated",
@@ -122,5 +125,11 @@
       "exportFailed": "Export failed",
       "backendOffline": "⚠️ Backend offline"
     }
+  },
+  "skills": {
+    "selectionLabel": "Active skill",
+    "none": "No additional skill",
+    "persistenceHint": "Your choice is remembered for future sessions in this browser.",
+    "loadFailed": "Could not load skills. Reload the page."
   }
 }

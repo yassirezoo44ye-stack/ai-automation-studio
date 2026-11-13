@@ -34,9 +34,10 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.routers.auth_users import get_current_user
+from app.core.ai.skills import skill_catalog, validate_skill_ids
 
 log    = logging.getLogger(__name__)
 router = APIRouter(tags=["agentos"])
@@ -50,6 +51,15 @@ class RunRequest(BaseModel):
     project_id : str | None = None
     caller     : str = "api"
     deliberate : bool = False
+    skill_id: str | None = None
+
+    @field_validator("skill_id")
+    @classmethod
+    def valid_skill_id(cls, value: str | None) -> str | None:
+        if value is not None:
+            validate_skill_ids([value])
+        return value
+
     # Client-generated, so a "live computer" viewer can start listening for
     # this run's narrated steps (see app/agents/liveness.py's publish_step)
     # before firing this request — the id has to be known ahead of time,
@@ -105,6 +115,9 @@ async def agentos_run(req: RunRequest, request: Request):
     user_id = await optional_user_id(request)
     org_id  = await optional_org_id(request)
 
+    if req.skill_id and not user_id:
+        raise HTTPException(401, "Authentication required for Flow skills")
+
     async def _run() -> dict:
         result = await kernel.run(
             req.input,
@@ -117,6 +130,7 @@ async def agentos_run(req: RunRequest, request: Request):
             workspace  = req.workspace,
             project_id = req.project_id,
             deliberate = req.deliberate,
+            **({"forced_intent": req.skill_id} if req.skill_id else {}),
             organization_id = org_id,
             run_id     = req.run_id,
         )
@@ -262,6 +276,11 @@ async def agentos_download_deliverable(
 
 
 # ── System state ──────────────────────────────────────────────────────────────
+
+@router.get("/api/agentos/skills")
+async def agentos_skills(user: dict = Depends(get_current_user)):
+    return {"skills": skill_catalog(), "mode": "advisory", "tools_enabled": False}
+
 
 @router.get("/api/agentos/status")
 async def agentos_status(request: Request):
