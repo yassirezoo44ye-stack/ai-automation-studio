@@ -141,9 +141,15 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     [activeConv],
     { enabled: !!activeConv, isEmpty: () => false },
   );
-  // Sync loaded history into the local, streaming-mutable copy.
+  // Sync loaded history into the local, streaming-mutable copy — unless the
+  // local copy already belongs to this conversation. sendMessage() claims a
+  // brand-new conversation's id mid-stream (messagesConvId === activeConv);
+  // the load that id switch triggers returns only the user message (the
+  // reply is saved when the stream ends) and would otherwise replace the
+  // streaming reply bubble, hiding the reply until the conversation is
+  // reopened.
   useEffect(() => {
-    if (!loadedMessages) return;
+    if (!loadedMessages || messagesConvId === activeConv) return;
     void Promise.resolve().then(() => {
       setMessages(loadedMessages);
       setMessagesConvId(activeConv);
