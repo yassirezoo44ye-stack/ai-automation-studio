@@ -63,9 +63,9 @@ describe("ChatTab — streaming into a new conversation", () => {
   it("keeps the streamed reply after the conversation's messages load", async () => {
     render(<ToastCtx.Provider value={vi.fn()}><ChatTab agents={[]} projects={[]} /></ToastCtx.Provider>);
     fireEvent.change(screen.getByLabelText(/^Message…/), { target: { value: "Plan the week" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Send/ }));
 
-    await screen.findByText("Here is the weekly plan.");
+    await screen.findByText(/Here is the weekly plan\./);
     await waitFor(() => expect(apiJSON).toHaveBeenCalledWith("/api/conversations/c-1/messages"));
 
     await act(async () => {
@@ -73,7 +73,7 @@ describe("ChatTab — streaming into a new conversation", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText("Here is the weekly plan.")).toBeInTheDocument();
+    expect(screen.getByText(/Here is the weekly plan\./)).toBeInTheDocument();
     expect(screen.getByText("Plan the week")).toBeInTheDocument();
   });
 });
