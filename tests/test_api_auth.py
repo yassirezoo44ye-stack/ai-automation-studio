@@ -7,6 +7,7 @@ rate-limit headers, and input validation.
 """
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import uuid
@@ -300,6 +301,8 @@ class TestUnverifiedRefresh:
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(return_value=session)
         conn.execute = AsyncMock(return_value=None)
+        # conn.transaction() is a sync call returning an async context manager.
+        conn.transaction = MagicMock()
         conn.transaction.return_value.__aenter__ = AsyncMock(return_value=None)
         conn.transaction.return_value.__aexit__ = AsyncMock(return_value=False)
 
