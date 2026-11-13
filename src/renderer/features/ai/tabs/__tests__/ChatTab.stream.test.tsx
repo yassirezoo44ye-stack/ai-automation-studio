@@ -15,7 +15,8 @@ import { ToastCtx } from "../../../../contexts/toast";
 const apiJSON = vi.fn();
 vi.mock("../../../../utils/api", () => ({
   apiJSON: (...args: unknown[]) => apiJSON(...args),
-  apiFetch: vi.fn(),
+  // The stream request goes through apiFetch; hand it to the stubbed fetch.
+  apiFetch: (path: string, init?: RequestInit) => fetch(path, init),
   authH: () => ({ "Content-Type": "application/json" }),
   API: "",
   APIError: class extends Error {},

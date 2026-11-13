@@ -16,7 +16,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAppContext } from "./app";
 import { useOrg } from "./OrgContext";
-import { API, authH } from "../shared/utils/api";
+import { apiFetch } from "../shared/utils/api";
 import { CopilotContext, type CopilotMessage, type CopilotAction } from "./copilot";
 import { matchCopilotAction } from "../shared/ui/copilot/copilotActions";
 import type { Page } from "../shared/types";
@@ -77,9 +77,8 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        const res = await fetch(`${API}/api/run/stream`, {
+        const res = await apiFetch("/api/run/stream", {
           method: "POST",
-          headers: authH(),
           body: JSON.stringify({
             project_id: "copilot",
             prompt: promptWithContext,

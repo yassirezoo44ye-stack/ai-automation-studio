@@ -69,6 +69,24 @@ describe("apiFetch — 401 token_expired refresh-and-retry", () => {
     expect((fetchMock.mock.calls[1][1].headers as Record<string, string>)["Authorization"]).toBe("Bearer fresh-jwt");
   });
 
+  it("retries with the fresh token even when the caller passed headers: authH() (captured before the refresh)", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { detail: "Token expired" }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    (window as unknown as Record<string, unknown>).__axon_access_token = "stale-jwt";
+    (window as unknown as Record<string, () => Promise<{ token: string | null }>>).__axon_refresh_fn =
+      vi.fn(async () => {
+        (window as unknown as Record<string, string>).__axon_access_token = "fresh-jwt";
+        return { token: "fresh-jwt" };
+      });
+
+    const res = await apiFetch("/api/automations", { method: "POST", headers: authH(), body: "{}" });
+
+    expect(res.status).toBe(200);
+    expect((fetchMock.mock.calls[1][1].headers as Record<string, string>)["Authorization"]).toBe("Bearer fresh-jwt");
+  });
+
   it("does not refresh for an invalid (not expired) token", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValueOnce(jsonResponse(401, { detail: "Invalid token" }));

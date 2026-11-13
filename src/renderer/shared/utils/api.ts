@@ -77,7 +77,13 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
       const refresh = getRefreshFn();
       const { token } = (await refresh?.()) ?? { token: null };
       if (token) {
-        return fetch(`${API}${path}`, { ...init, headers: buildHeaders(path, init) });
+        // Callers that pass headers: authH() captured the stale token in
+        // init.headers, which buildHeaders spreads last — put the fresh
+        // credentials back on top so the retry doesn't repeat the 401.
+        const headers = buildHeaders(path, init);
+        headers["Authorization"] = `Bearer ${getJwt() || token}`;
+        headers["X-Sub-Token"] = getToken();
+        return fetch(`${API}${path}`, { ...init, headers });
       }
     }
   }

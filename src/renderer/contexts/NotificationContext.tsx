@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "./AuthContext";
-import { apiJSON, apiFetch, API, authH } from "../shared/utils/api";
+import { apiJSON, apiFetch, API } from "../shared/utils/api";
 import {
   NotificationContext,
   type Notification, type NotificationCategory, type NotificationFilters,
@@ -259,7 +259,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const n = notifications.find(x => x.id === id);
       return n && !n.read_status ? Math.max(0, c - 1) : c;
     });
-    void fetch(`${API}/api/notifications/${id}`, { method: "DELETE", headers: authH() }).catch(() => {});
+    void apiFetch(`/api/notifications/${id}`, { method: "DELETE" }).catch(() => {});
   }, [notifications]);
 
   const setMuted = useCallback((category: NotificationCategory, muted: boolean) => {
