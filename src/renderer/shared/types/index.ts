@@ -12,7 +12,7 @@ export type Task = {
 export type Agent = {
   id: string; name: string; avatar: string; description: string;
   system_prompt: string; model: string; temperature: number;
-  message_count: number; created_at: string;
+  message_count: number; created_at: string; skill_ids?: string[];
 };
 export type BuildFile  = { path: string; content: string };
 export type BuildState = "idle" | "building" | "done" | "error";

@@ -357,3 +357,20 @@ GET /api/usage-logs       — Detailed usage logs
 ## License
 
 MIT
+
+## Flow agent skills
+
+Nine repository-local skill definitions cover planning, app building, automation,
+leads, content/design, business analysis, careers, Arabic visual learning, and
+device management. See the [skill catalog](.agents/skills/README.md) and
+[development skill guide](docs/FLOW_DEVELOPMENT_SKILLS.md).
+Select up to three skills in the agent form. Agent chat loads their instructions
+and includes them in context budgeting; built-in AgentRuntime roles use mapped
+defaults. Skills do not grant tools or permissions. AgentOS also registers all nine skills
+as advisory agents; authenticated callers can select one with `skill_id` in
+`POST /api/agentos/run` or list them through `GET /api/agentos/skills`.
+
+Skill choices in general chat and AgentOS are remembered in the same browser.
+Repository `AGENTS.md` guides future development sessions; run
+`python scripts/install_flow_skills.py` to install the nine skills for the current
+Codex user on another machine (see the catalog for scope and persistence limits).
