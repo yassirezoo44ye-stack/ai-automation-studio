@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAppContext } from "./app";
 import { useOrg } from "./OrgContext";
-import { API, authH } from "../shared/utils/api";
+import { apiFetch } from "../shared/utils/api";
 import { CopilotContext, type CopilotConversation, type CopilotMessage, type CopilotAction } from "./copilot";
 import { matchCopilotAction } from "../shared/ui/copilot/copilotActions";
 import type { Page } from "../shared/types";
@@ -35,9 +35,7 @@ async function jsonOrThrow<T>(response: Response): Promise<T> {
 }
 
 async function loadCopilotConversations(): Promise<CopilotConversation[]> {
-  const response = await fetch(`${API}/api/conversations?project_id=${encodeURIComponent(COPILOT_PROJECT)}`, {
-    headers: authH(),
-  });
+  const response = await apiFetch(`/api/conversations?project_id=${encodeURIComponent(COPILOT_PROJECT)}`);
   return jsonOrThrow<CopilotConversation[]>(response);
 }
 
@@ -81,9 +79,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
       setConversations(items);
       if (!mounted || requestId !== historyRequestRef.current || interactionRef.current !== interactionAtStart || !items.length) return;
       const first = items[0];
-      const response = await fetch(`${API}/api/conversations/${encodeURIComponent(first.id)}/messages`, {
-        headers: authH(),
-      });
+      const response = await apiFetch(`/api/conversations/${encodeURIComponent(first.id)}/messages`);
       const rows = await jsonOrThrow<{ id: string; role: string; content: string }[]>(response);
       if (!mounted || requestId !== historyRequestRef.current || interactionRef.current !== interactionAtStart || conversationIdRef.current) return;
       conversationIdRef.current = first.id;
@@ -114,9 +110,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     setConversationId(null);
     setMessages([]);
     try {
-      const response = await fetch(`${API}/api/conversations/${encodeURIComponent(id)}/messages`, {
-        headers: authH(),
-      });
+      const response = await apiFetch(`/api/conversations/${encodeURIComponent(id)}/messages`);
       const rows = await jsonOrThrow<{ id: string; role: string; content: string }[]>(response);
       if (requestId !== historyRequestRef.current) return;
       conversationIdRef.current = id;
@@ -161,9 +155,8 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     abortRef.current = ctrl;
     let completed = false;
     try {
-      const res = await fetch(`${API}/api/run/stream`, {
+      const res = await apiFetch(`/api/run/stream`, {
         method: "POST",
-        headers: authH(),
         body: JSON.stringify({
           project_id: COPILOT_PROJECT,
           prompt: promptWithContext,
