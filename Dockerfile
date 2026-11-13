@@ -10,8 +10,12 @@ WORKDIR /app
 # Copy Node.js binaries from the pinned node:20-slim image used in stage 1.
 # This avoids the supply-chain risk of curl | bash (NodeSource setup script).
 COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
-COPY --from=frontend /usr/local/bin/npm  /usr/local/bin/npm
 COPY --from=frontend /usr/local/lib/node_modules /usr/local/lib/node_modules
+# Recreate launchers against the copied package. Copying only npm's entry file
+# can break its relative ../lib/cli.js import; npx was previously absent.
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+ && node --version && npm --version && npx --version
 
 # Install system deps in a single layer:
 #   - gcc / libpq-dev: needed to build asyncpg (C extension)
@@ -24,7 +28,7 @@ RUN apt-get update \
 # Install Python dependencies (own layer — cached unless requirements change)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-    && apt-get purge -y --auto-remove gcc libpq-dev 2>/dev/null || true
+    && (apt-get purge -y --auto-remove gcc libpq-dev 2>/dev/null || true)
 
 # Copy application code
 COPY main.py .

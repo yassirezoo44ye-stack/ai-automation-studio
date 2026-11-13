@@ -31,13 +31,24 @@ export function exportCanvas(
   }
 
   const mime = format === "jpg" ? "image/jpeg" : "image/png";
-  const dataUrl = canvas.toDataURL({
+  // Export the document, not the editor's current pan/zoom.
+  const viewport = [...canvas.viewportTransform] as typeof canvas.viewportTransform;
+  let dataUrl: string;
+  try {
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    dataUrl = canvas.toDataURL({
     format:     format === "jpg" ? "jpeg" : "png",
     quality,
     multiplier,
-  });
-
-  downloadDataUrl(dataUrl, `design.${format}`, mime);
+    });
+  } finally {
+    canvas.setViewportTransform(viewport);
+    canvas.requestRenderAll();
+  }
+  const encoded = dataUrl.split(",")[1];
+  if (!encoded) throw new Error("Canvas export returned no image data");
+  const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
+  downloadBlob(new Blob([bytes], { type: mime }), `design.${format}`);
 }
 
 // ── Project export ─────────────────────────────────────────────────────────────
@@ -55,7 +66,8 @@ export function exportProjectJSON(project: DesignProject): void {
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   downloadDataUrl(url, filename);
-  URL.revokeObjectURL(url);
+  // The browser consumes the URL asynchronously after the click.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 function downloadDataUrl(url: string, filename: string, _mime?: string): void {

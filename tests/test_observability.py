@@ -29,6 +29,9 @@ def run(coro):
 
 class TestTracerBridge(unittest.TestCase):
     def setUp(self):
+        sampler = patch.dict("os.environ", {"OTEL_TRACES_SAMPLER": "always_on"})
+        sampler.start()
+        self.addCleanup(sampler.stop)
         from app.core.observability.tracer import Tracer
         self.tracer = Tracer()
 

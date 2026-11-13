@@ -109,6 +109,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
+  const historyVersionRef = useRef(0);
   const initialHistoryRef = useRef(false);
   useEffect(() => {
     if (initialHistoryRef.current || projectId !== "demo" || streaming || convsStatus === "loading" || convsStatus === "error") return;
@@ -146,21 +147,25 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const {
     data: loadedMessages, status: messagesStatus, error: messagesError,
     suggestedFix: messagesFix, refetch: reloadMessages,
-  } = useAsyncData<{ conversationId: string | null; messages: Message[] }>(
+  } = useAsyncData<{ conversationId: string | null; version: number; messages: Message[] }>(
     async () => {
+      const version = historyVersionRef.current;
       const path = `/api/conversations/${activeConv}/messages`;
       const msgs = await apiJSON<{ id: string; role: string; content: string }[]>(path);
-      return { conversationId: activeConv, messages: msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content })) };
+      return { conversationId: activeConv, version, messages: msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content })) };
     },
     [activeConv],
-    { enabled: !!activeConv && !streaming, isEmpty: () => false },
+    // Once local messages belong to this conversation, keep them authoritative
+    // for the live turn. Re-enabling history after every stream used to replace
+    // the answer (or partial output) with an older GET response.
+    { enabled: !!activeConv && !streaming && messagesConvId !== activeConv, isEmpty: () => false },
   );
   // Tag history with its source. Never replace a live reply with an older GET.
   useEffect(() => {
-    if (!loadedMessages || streaming || loadedMessages.conversationId !== activeConv) return;
+    if (!loadedMessages || streaming || loadedMessages.conversationId !== activeConv || loadedMessages.version !== historyVersionRef.current) return;
     let cancelled = false;
     void Promise.resolve().then(() => {
-      if (!cancelled) { setMessages(loadedMessages.messages); setMessagesConvId(activeConv); }
+      if (!cancelled && loadedMessages.version === historyVersionRef.current) { setMessages(loadedMessages.messages); setMessagesConvId(activeConv); }
     });
     return () => { cancelled = true; };
   }, [loadedMessages, activeConv, streaming]);
@@ -241,6 +246,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     if (validation) { toast(validation, "err"); return; }
     if (activeConv && (messagesConvId !== activeConv || messagesStatus === "loading" || messagesStatus === "error")) return;
     sendingRef.current = true;
+    ++historyVersionRef.current;
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
@@ -263,6 +269,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       if (!res.body) throw new Error("No response stream was received. Your draft is unchanged.");
 
       for await (const ev of readChatEvents(res.body)) {
+        if (ctrl.signal.aborted || abortRef.current !== ctrl) break;
         if (ev.type === "conv_id" && ev.conv_id) {
           acknowledged = true;
           // The server has acknowledged saving the user message.
@@ -284,7 +291,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       if ((err as Error).name !== "AbortError") {
         const msg = (err as Error).message ?? "";
         toast(msg || t("chatTab.toast.backendOffline"), "err");
-        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg }) } : m));
+        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: [m.content, msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg })].filter(Boolean).join("\n\n") } : m));
       }
     } finally {
       if (!acknowledged) setMessages(previous => previous.filter(message => message.id !== userMsg.id && message.id !== assistantId));

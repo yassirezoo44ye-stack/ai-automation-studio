@@ -17,6 +17,7 @@ export function ExportModal({ getCanvas, onClose }: Props) {
   const [quality,    setQuality]    = useState(92);
   const [scale,      setScale]      = useState(2);
   const [exporting,  setExporting]  = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -26,13 +27,16 @@ export function ExportModal({ getCanvas, onClose }: Props) {
 
   const handleExport = async () => {
     const fc = getCanvas();
-    if (!fc) return;
+    if (!fc) { setError(t("exportModal.notReady")); return; }
+    setError(null);
     setExporting(true);
     try {
-      exportCanvas(fc, { format, quality: quality / 100, multiplier: scale });
+      await exportCanvas(fc, { format, quality: quality / 100, multiplier: scale });
+      onClose();
+    } catch {
+      setError(t("exportModal.failed"));
     } finally {
       setExporting(false);
-      onClose();
     }
   };
 
@@ -48,6 +52,7 @@ export function ExportModal({ getCanvas, onClose }: Props) {
         </div>
 
         <div className={styles.body}>
+          {error && <p role="alert">{error}</p>}
           <div className={styles.group}>
             <div className={styles.label}>{t("exportModal.format")}</div>
             <div className={styles.formatGrid}>

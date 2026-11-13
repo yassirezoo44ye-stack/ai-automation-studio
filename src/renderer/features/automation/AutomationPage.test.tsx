@@ -33,3 +33,25 @@ it("updates a task after the server accepts it", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
   await screen.findByRole("button", { name: "Mark pending" });
 });
+
+it("retains editable problem details when the server rejects the save", async () => {
+  render(<AutomationPage />); await screen.findByText("Keep this task");
+  fireEvent.click(screen.getByRole("button", { name: "Edit task" }));
+  const details = screen.getByRole("textbox", { name: "Problem, evidence, proposed improvements and acceptance criteria" });
+  fireEvent.change(details, { target: { value: "Problem: missing reply\nImprovement: retry and restore\nAcceptance: reply survives reload" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save task" }));
+  await waitFor(() => expect(toast).toHaveBeenCalledWith("Task update failed. Your task was kept.", "err"));
+  expect(details).toHaveValue("Problem: missing reply\nImprovement: retry and restore\nAcceptance: reply survives reload");
+});
+
+it("saves full task details without losing line breaks", async () => {
+  failMutation = false;
+  render(<AutomationPage />); await screen.findByText("Keep this task");
+  fireEvent.click(screen.getByRole("button", { name: "Edit task" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Problem, evidence, proposed improvements and acceptance criteria" }), { target: { value: "المشكلة: تعذر التنزيل\nالتطوير: إعادة المحاولة" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save task" }));
+  await screen.findByText(/المشكلة: تعذر التنزيل/);
+  expect(screen.queryByRole("button", { name: "Save task" })).not.toBeInTheDocument();
+  const mutation = vi.mocked(apiFetch).mock.calls.find(([, options]) => options?.method === "PUT");
+  expect(JSON.parse(mutation![1]!.body as string)).toEqual({ title: "Keep this task", notes: "المشكلة: تعذر التنزيل\nالتطوير: إعادة المحاولة" });
+});

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CopilotProvider } from "../CopilotContext";
 import { useCopilot } from "../copilot";
 
@@ -28,8 +28,30 @@ function Harness() {
 }
 
 beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
+afterEach(() => {
+  delete (window as unknown as Record<string, unknown>).__axon_refresh_fn;
+  delete (window as unknown as Record<string, unknown>).__axon_access_token;
+  vi.unstubAllGlobals();
+});
 
 describe("Copilot conversation reliability", () => {
+  it("refreshes an expired session before streaming a floating copilot reply", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response("[]"));
+    fetchMock.mockResolvedValueOnce(new Response('{"error":"token_expired"}', { status: 401 }));
+    fetchMock.mockResolvedValueOnce(stream([{ type: "conv_id", conv_id: "new" }, { type: "delta", text: "Renewed reply" }, { type: "done" }]) as Response);
+    fetchMock.mockResolvedValue(new Response("[]"));
+    const bridge = window as unknown as Record<string, unknown>;
+    bridge.__axon_access_token = "expired-session";
+    const refresh = vi.fn(async () => { bridge.__axon_access_token = "renewed-session"; return { token: "renewed-session" }; });
+    bridge.__axon_refresh_fn = refresh;
+    render(<CopilotProvider><Harness /></CopilotProvider>);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByText("send"));
+    await waitFor(() => expect(screen.getByTestId("messages")).toHaveTextContent("Renewed reply"));
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(new Headers(fetchMock.mock.calls[2][1]!.headers).get("authorization")).toBe("Bearer renewed-session");
+  });
   it("restores the latest server conversation and its messages on provider mount", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [{ id: "saved-1", title: "Saved", updated_at: "now" }] });

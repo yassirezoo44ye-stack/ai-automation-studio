@@ -29,6 +29,44 @@ afterEach(() => {
 });
 
 describe("apiFetch — 401 token_expired refresh-and-retry", () => {
+  it("replaces captured authH credentials after refresh instead of replaying expired headers", async () => {
+    const bridge = window as unknown as Record<string, unknown>;
+    bridge.__axon_access_token = "expired-session";
+    bridge.__axon_org_id = "org-1";
+    localStorage.setItem("sub_token", "old-sub");
+    const headers = authH({ "X-Request-Id": "request-1" });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse(401, { error: "token_expired" })).mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    bridge.__axon_refresh_fn = vi.fn(async () => {
+      bridge.__axon_access_token = "renewed-session";
+      localStorage.setItem("sub_token", "renewed-sub");
+      return { token: "renewed-session" };
+    });
+    expect((await apiFetch("/api/tasks", { method: "POST", headers, body: '{"title":"Draft"}' })).status).toBe(200);
+    const retryHeaders = new Headers(fetchMock.mock.calls[1][1]!.headers);
+    expect(retryHeaders.get("authorization")).toBe("Bearer renewed-session");
+    expect(retryHeaders.get("x-sub-token")).toBe("renewed-sub");
+    expect(retryHeaders.get("x-request-id")).toBe("request-1");
+  });
+
+  it("does not replay a write into a different organization after refresh", async () => {
+    const bridge = window as unknown as Record<string, unknown>;
+    bridge.__axon_org_id = "org-1";
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(401, { error: "token_expired" }));
+    bridge.__axon_refresh_fn = vi.fn(async () => {
+      bridge.__axon_org_id = "org-2";
+      return { token: "renewed-session" };
+    });
+    expect((await apiFetch("/api/tasks", { method: "POST", body: '{"title":"Draft"}' })).status).toBe(401);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the original response if the refresh bridge throws", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(401, { error: "token_expired" }));
+    (window as unknown as Record<string, unknown>).__axon_refresh_fn = vi.fn(async () => { throw new Error("offline"); });
+    expect((await apiFetch("/api/tasks")).status).toBe(401);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
   it("retries once with the fresh token when the backend flags token_expired and refresh succeeds", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock
@@ -114,6 +152,16 @@ describe("apiFetch — 401 token_expired refresh-and-retry", () => {
 });
 
 describe("authH — always sends both credential headers when available", () => {
+  it("supports Headers inputs and removes a stale JSON content type for multipart uploads", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse(200, { ok: true }));
+    (window as unknown as Record<string, string>).__axon_access_token = "current-session";
+    const data = new FormData(); data.set("title", "Lesson");
+    await apiFetch("/api/study-library/lessons", { method: "POST", body: data, headers: new Headers({ authorization: "Bearer old-session", "content-type": "application/json", "x-custom": "keep" }) });
+    const headers = new Headers(vi.mocked(fetch).mock.calls[0][1]!.headers);
+    expect(headers.get("authorization")).toBe("Bearer current-session");
+    expect(headers.has("content-type")).toBe(false);
+    expect(headers.get("x-custom")).toBe("keep");
+  });
   it("lets the browser set the multipart boundary while preserving bearer authentication", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { created: true }));

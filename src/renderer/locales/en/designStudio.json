@@ -1,4 +1,6 @@
 {
+  "loadFailed": "The saved design could not be restored. Reopen this project to retry.",
+  "saveFailed": "The design was not saved. Your edits are still in the editor; try Save again.",
   "shell": {
     "panelTabsAriaLabel": "Design panels",
     "designSectionLabel": "Design",
@@ -267,6 +269,8 @@
     "importFailed": "Import failed — file isn't a valid design JSON"
   },
   "exportModal": {
+    "notReady": "The canvas is not ready. Wait for it to load and try again.",
+    "failed": "The design could not be exported. Your options were kept; retry or choose another format.",
     "dialogAriaLabel": "Export design",
     "title": "Export Design",
     "closeAriaLabel": "Close",
