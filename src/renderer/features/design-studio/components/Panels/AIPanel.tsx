@@ -8,6 +8,7 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { Canvas as FabricCanvas } from "fabric";
+import { APIError } from "../../../../shared/utils/api";
 import { aiDesignEngine } from "../../features/ai/AIDesignEngine";
 import type { DesignSuggestion, FontPairingResult, ColorPaletteResult } from "../../features/ai/AIDesignEngine";
 
@@ -96,7 +97,7 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
   const [genPrompt,   setGenPrompt]   = useState("");
   const [genTemplate, setGenTemplate] = useState(DESIGN_TEMPLATES[0].key);
 
-  // Text-to-Image — kept dormant, button disabled
+  // Text-to-Image (POST /api/ai/image/generate)
   const [imgPrompt, setImgPrompt] = useState("");
   const [images,    setImages]    = useState<string[]>([]);
 
@@ -120,8 +121,8 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
         const res = await aiDesignEngine.generateDesign({ prompt: genPrompt, template: tpl.key });
         onApplyDesign(res.canvas_json, tpl.width, tpl.height);
       } else if (tool === "image") {
-        const res = await aiDesignEngine.textToImage({ prompt: imgPrompt, width: 512, height: 512 });
-        setImages(res.images);
+        const res = await aiDesignEngine.textToImage({ prompt: imgPrompt, width: 1024, height: 1024 });
+        setImages(prev => [...res.images, ...prev].slice(0, 8));
       } else if (tool === "palette") {
         const res = await aiDesignEngine.generateColorPalette({ prompt: palPrompt, count: 5, mode: "complementary" });
         setPalette(res.colors);
@@ -135,7 +136,12 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
         setSuggestions(res);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("aiPanel.requestFailed"));
+      // The generic API message hides why image generation failed.
+      const status = e instanceof APIError ? e.details.status : 0;
+      if (tool === "image" && status === 503) setError(t("aiPanel.imageNotConfigured"));
+      else if (tool === "image" && status === 422) setError(t("aiPanel.imageRejected"));
+      else if (tool === "image" && status >= 500) setError(t("aiPanel.imageUnavailable"));
+      else setError(e instanceof Error ? e.message : t("aiPanel.requestFailed"));
     } finally {
       setBusy(false);
     }
@@ -216,7 +222,7 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
           </>
         )}
 
-        {/* Text-to-Image (Coming Soon) */}
+        {/* Text-to-Image */}
         {tool === "image" && (
           <>
             <SectionLabel label={t("aiPanel.describeImage")}>
@@ -228,29 +234,40 @@ export function AIPanel({ getCanvas, onApplyDesign }: Props) {
                 aria-label={t("aiPanel.imagePromptAriaLabel")}
               />
             </SectionLabel>
-            <button style={btnDisabled} disabled title={t("aiPanel.comingSoon")}>
-              {t("aiPanel.generateImage")}
+            <button
+              style={busy || imgPrompt.trim().length < 3 ? btnDisabled : btnStyle}
+              onClick={run}
+              disabled={busy || imgPrompt.trim().length < 3}
+            >
+              {busy ? t("aiPanel.generating") : t("aiPanel.generateImage")}
             </button>
-            <div style={{ color: "var(--t4)", fontSize: "11px", marginTop: "6px", textAlign: "center" }}>
-              {t("aiPanel.comingSoon")}
-            </div>
+            {error && <div role="alert" style={{ color: "var(--text-danger)", fontSize: "11px", marginTop: "6px" }}>{error}</div>}
             {images.length > 0 && (
               <div style={imgGrid}>
                 {images.map((src, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    style={{ padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: "var(--r-xs, 4px)", overflow: "hidden" }}
-                    onClick={() => void insertImage(src)}
-                    title={t("aiPanel.addToCanvasTitle")}
-                    aria-label={t("aiPanel.addGeneratedImageAriaLabel", { num: i + 1 })}
-                  >
-                    <img
-                      src={src}
-                      alt={t("aiPanel.generatedImageAlt", { num: i + 1 })}
-                      style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }}
-                    />
-                  </button>
+                  <div key={src.slice(-32)} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <button
+                      type="button"
+                      style={{ padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: "var(--r-xs, 4px)", overflow: "hidden" }}
+                      onClick={() => void insertImage(src)}
+                      title={t("aiPanel.addToCanvasTitle")}
+                      aria-label={t("aiPanel.addGeneratedImageAriaLabel", { num: i + 1 })}
+                    >
+                      <img
+                        src={src}
+                        alt={t("aiPanel.generatedImageAlt", { num: i + 1 })}
+                        style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }}
+                      />
+                    </button>
+                    <a
+                      href={src}
+                      download={`flow-image-${i + 1}.png`}
+                      style={{ fontSize: "11px", textAlign: "center", color: "var(--fill-accent)" }}
+                      aria-label={t("aiPanel.saveImageAriaLabel", { num: i + 1 })}
+                    >
+                      {t("aiPanel.saveImage")}
+                    </a>
+                  </div>
                 ))}
               </div>
             )}
