@@ -155,7 +155,8 @@ class ExecutionSandbox:
             raise RuntimeError("Sandbox not created — call create() first")
         cache_dir = str(self.paths.cache)
         tmp_dir   = str(self.paths.tmp)
-        env = dict(os.environ)
+        from app.core.child_env import child_env
+        env = child_env()
         env["npm_config_cache"]    = cache_dir
         env["npm_config_logs_dir"] = str(self.paths.logs)
         env["NPM_CONFIG_CACHE"]    = cache_dir

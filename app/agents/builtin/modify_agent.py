@@ -33,6 +33,12 @@ class ModifyAgent(EvolvableAgent):
 
         sub = parts[0].lower() if parts else ""
 
+        # Writes go into the server's own source tree (the policy allows
+        # app/), which the agent loader and hot-reload then execute — only a
+        # platform administrator may do that. Read-only views stay open.
+        if sub in {"patch", "append", "replace", "create", "rollback"} and not await _is_platform_admin(ctx.user_id):
+            return AgentResult.fail(self.name, "Platform administrator access required.")
+
         modifier = ctx.kernel._modifier
         if modifier is None:
             return AgentResult.fail(self.name, "SelfModifyingEngine not initialized")
@@ -92,3 +98,19 @@ class ModifyAgent(EvolvableAgent):
 
 
 agent = ModifyAgent()
+
+
+async def _is_platform_admin(user_id: str | None) -> bool:
+    """True when the verified caller's account email is in ADMIN_EMAILS."""
+    import uuid
+
+    from app.core.config import ADMIN_EMAILS
+    if not user_id or not ADMIN_EMAILS:
+        return False
+    try:
+        uid = uuid.UUID(str(user_id))
+    except ValueError:
+        return False
+    from app.core.db import get_pool
+    email = await get_pool().fetchval("SELECT email FROM users WHERE id=$1", uid)
+    return bool(email) and email.strip().lower() in ADMIN_EMAILS

@@ -81,7 +81,11 @@ def register_run_owner(run_id: str, user_id: str | None) -> None:
     unguessable run_id is what makes that race safe in practice, not a
     guarantee this function closes."""
     if run_id:
-        _run_owners[run_id] = user_id
+        # First verified owner wins: run_id comes from the client, and
+        # /api/agentos/* accept a caller-chosen id, so a later run with the
+        # same id must not be able to take over someone else's run topic.
+        if _run_owners.get(run_id) is None:
+            _run_owners[run_id] = user_id
 
 
 def get_run_owner(run_id: str) -> str | None:
@@ -128,14 +132,16 @@ async def _on_agent_event(event) -> None:
 
     if event.type == "agent.started":
         _running.setdefault(agent_name, {})[run_id] = time.time()
-        frame: dict[str, Any] = {"agent": agent_name, "status": "running", "run_id": run_id}
+        # No run_id on the shared "system" topic: every signed-in user
+        # receives these frames, and a run's id is what grants its
+        # step-by-step stream on /ws/system/{run_id}.
+        frame: dict[str, Any] = {"agent": agent_name, "status": "running"}
     elif event.type == "agent.finished":
         _running.get(agent_name, {}).pop(run_id, None)
         if agent_name in _running and not _running[agent_name]:
             del _running[agent_name]
         frame = {
             "agent": agent_name, "status": "idle" if not is_running(agent_name) else "running",
-            "run_id": run_id,
             "success": event.data.get("success"), "duration_ms": event.data.get("duration_ms"),
         }
     else:

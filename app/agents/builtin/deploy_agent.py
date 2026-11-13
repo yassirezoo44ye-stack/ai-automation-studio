@@ -6,6 +6,7 @@ import shlex
 from pathlib import Path
 
 from app.agents.base import AgentContext, AgentResult, EvolvableAgent
+from app.agents.builtin._owned_workspace import owned_workspace
 from app.core.config import WORKSPACES
 
 log = logging.getLogger(__name__)
@@ -17,20 +18,16 @@ class DeployAgent(EvolvableAgent):
     group       = "deployment"
 
     async def execute(self, ctx: AgentContext) -> AgentResult:
-        parts     = shlex.split(ctx.args) if ctx.args else []
-        workspace = parts[0] if parts else ctx.workspace
-        target    = parts[1] if len(parts) > 1 else "auto"
+        # The workspace comes only from a project the caller owns — never
+        # from ctx.args/ctx.workspace (see _owned_workspace.py).
+        parts  = shlex.split(ctx.args) if ctx.args else []
+        target = next((p for p in parts if p in ("render", "docker", "zip", "auto")), "auto")
 
-        if not workspace:
-            return AgentResult.fail(
-                self.name,
-                "No workspace specified. Usage: deploy <path> [target]",
-                data={"targets": ["render", "docker", "zip", "auto"]},
-            )
-
-        ws = Path(workspace).expanduser().resolve()
-        if not ws.exists():
-            return AgentResult.fail(self.name, f"Workspace not found: {workspace}")
+        resolved = await owned_workspace(ctx, self.name)
+        if isinstance(resolved, AgentResult):
+            resolved.data = {**(resolved.data or {}), "targets": ["render", "docker", "zip", "auto"]}
+            return resolved
+        ws = resolved
 
         # Detect deploy target
         if target == "auto":

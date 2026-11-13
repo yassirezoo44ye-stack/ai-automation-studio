@@ -36,6 +36,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.core.auth import require_platform_admin
 from app.routers.auth_users import get_current_user
 
 log    = logging.getLogger(__name__)
@@ -332,7 +333,7 @@ async def agentos_performance(request: Request):
 
 # ── Self-evolution ────────────────────────────────────────────────────────────
 
-@router.post("/api/agentos/evolve")
+@router.post("/api/agentos/evolve", dependencies=[Depends(require_platform_admin)])
 async def agentos_evolve(req: EvolveRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id
@@ -363,7 +364,7 @@ async def agentos_reflections(request: Request, n: int = 20):
 
 # ── Autonomous development ─────────────────────────────────────────────────────
 
-@router.post("/api/agentos/generate")
+@router.post("/api/agentos/generate", dependencies=[Depends(require_platform_admin)])
 async def agentos_generate(req: GenerateRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id
@@ -383,7 +384,7 @@ async def agentos_suggest(req: SuggestRequest, request: Request):
     return {"count": len(suggestions), "suggestions": suggestions}
 
 
-@router.post("/api/agentos/implement")
+@router.post("/api/agentos/implement", dependencies=[Depends(require_platform_admin)])
 async def agentos_implement(req: ImplementRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id
@@ -392,7 +393,7 @@ async def agentos_implement(req: ImplementRequest, request: Request):
     )
 
 
-@router.post("/api/agentos/loop")
+@router.post("/api/agentos/loop", dependencies=[Depends(require_platform_admin)])
 async def agentos_loop(req: LoopRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id

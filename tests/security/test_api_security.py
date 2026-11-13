@@ -1678,8 +1678,12 @@ class TestCommandsRegisterPluginDisabled(unittest.TestCase):
     def _app(self):
         from fastapi import FastAPI
         from app.routers.commands_api import router
+        from app.core.auth import require_platform_admin
         app = FastAPI()
         app.include_router(router)
+        # The router is platform-admin only; these tests exercise the
+        # handlers behind that gate (see tests/test_platform_admin_gate.py).
+        app.dependency_overrides[require_platform_admin] = lambda: "admin@example.com"
         return app
 
     def test_register_403s_for_any_path_and_never_loads_the_file(self):
@@ -1734,8 +1738,12 @@ class TestModifyRegisterCommandDisabled(unittest.TestCase):
     def _app(self):
         from fastapi import FastAPI
         from app.routers.commands_api import router
+        from app.core.auth import require_platform_admin
         app = FastAPI()
         app.include_router(router)
+        # The router is platform-admin only; these tests exercise the
+        # handlers behind that gate (see tests/test_platform_admin_gate.py).
+        app.dependency_overrides[require_platform_admin] = lambda: "admin@example.com"
         return app
 
     def _mock_pool(self):

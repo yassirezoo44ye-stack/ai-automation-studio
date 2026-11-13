@@ -98,7 +98,7 @@ async def package_stream(req: PackageRequest, request: Request):
     async with get_pool().acquire() as conn:
         user_id      = await owner_user_id(conn, request)
         project_uuid = await resolve_project_id(conn, req.project_id, user_id)
-    ws        = workspace(req.project_id)
+    ws        = workspace(str(project_uuid))  # resolved id, never the shared "demo" alias
     safe_name = sanitize_name(req.app_name)
 
     async def record_artifact(path: Path) -> str:

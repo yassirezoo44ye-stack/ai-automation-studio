@@ -91,9 +91,27 @@ async def init_flow_creations_schema(conn: asyncpg.Connection) -> None:
 # ── Auth helpers ───────────────────────────────────────────────────────────────
 
 def _get_org_id(request: Request) -> str:
-    org_id = request.headers.get("X-Organization-Id")
+    org_id = request.headers.get("X-Organization-Id", "")
     if not org_id:
         raise HTTPException(status_code=400, detail="X-Organization-Id header required")
+    return org_id
+
+
+async def _verified_org_id(request: Request) -> str:
+    """The X-Organization-Id the caller is a verified member of.
+
+    The header alone used to be trusted, so any signed-in account could act
+    on another organization's private creations by naming its id (ids are
+    visible in the public feed). Resolve the caller from their token and
+    require membership, answering 404 for non-members like org_context."""
+    org_id = await _verified_org_id(request)
+    from app.core.auth import owner_email
+    from app.tenancy.service import get_tenancy_service
+    email = owner_email(request)
+    uid = await get_pool().fetchval("SELECT id FROM users WHERE email=$1", email)
+    role = await get_tenancy_service().get_member_role(org_id, str(uid)) if uid else None
+    if role is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
     return org_id
 
 
@@ -267,7 +285,7 @@ async def my_creations(
 ):
     """List my org's creations (private + public). Auth required."""
     _require_auth(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
     limit = min(limit, 100)
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -294,7 +312,7 @@ async def my_creations(
 async def create_creation(request: Request, body: CreateCreationRequest):
     """Publish a new creation card. Auth required."""
     _require_auth(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
     user_id = _get_user_id(request)
 
     source_id = None
@@ -350,7 +368,7 @@ async def get_creation(request: Request, creation_id: str):
 
     # Private — require auth + org membership
     _require_auth(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
     if d["organization_id"] != org_id:
         raise HTTPException(status_code=404, detail="Creation not found")
     return d
@@ -362,7 +380,7 @@ async def get_creation(request: Request, creation_id: str):
 async def update_creation(request: Request, creation_id: str, body: UpdateCreationRequest):
     """Update metadata. Owner org only."""
     _require_auth(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -404,7 +422,7 @@ async def update_creation(request: Request, creation_id: str, body: UpdateCreati
 async def delete_creation(request: Request, creation_id: str):
     """Delete. Owner org only."""
     _require_auth(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -424,7 +442,7 @@ async def delete_creation(request: Request, creation_id: str):
 async def publish_creation(request: Request, creation_id: str):
     """Make a creation publicly discoverable. Owner org only."""
     _require_auth(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -447,7 +465,7 @@ async def publish_creation(request: Request, creation_id: str):
 async def unpublish_creation(request: Request, creation_id: str):
     """Make a creation private again. Owner org only."""
     _require_auth(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -484,7 +502,7 @@ async def clone_creation(request: Request, creation_id: str):
     Returns the new creation card in the caller's org.
     """
     _require_auth(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
 
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -575,7 +593,7 @@ async def _toggle_interaction(
 ) -> dict:
     _require_auth(request)
     user_id = _require_user_id(request)
-    org_id = _get_org_id(request)
+    org_id = await _verified_org_id(request)
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

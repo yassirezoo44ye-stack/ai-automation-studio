@@ -595,15 +595,15 @@ def create_app() -> FastAPI:
         t0       = _time.perf_counter()
         response = await call_next(request)
         duration = _time.perf_counter() - t0
-        # Collapse dynamic path segments so cardinality stays low
         path = request.url.path
-        for seg in path.split("/"):
-            if seg and (len(seg) > 20 or (seg.count("-") > 2)):
-                path = path.replace(seg, "{id}")
-                break
+        # Label by the matched route template, not the raw path: anonymous
+        # requests to arbitrary unique paths used to add a permanent metrics
+        # key each, growing memory without bound.
+        route = request.scope.get("route")
+        label = getattr(route, "path", None) or "unmatched"
         try:
             from app.routers.metrics import record_http
-            record_http(request.method, path, response.status_code, duration)
+            record_http(request.method, label, response.status_code, duration)
         except Exception:
             pass
         # Best-effort org-scoped API request metering — fire-and-forget so a
@@ -650,12 +650,14 @@ def create_app() -> FastAPI:
                 request.headers.get("Authorization", "").startswith("ApiKey ")
                 or request.headers.get("X-API-Key", "")
             ):
-                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...)
-                # — defer to the require_api_key() FastAPI dependency on the specific
-                # route. The middleware's job is subscription/JWT gating; actual key
-                # validation and scope enforcement happen in the dependency so they
-                # stay co-located with the endpoint rather than spread across layers.
-                pass
+                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...).
+                # The key must be real, active and unexpired before the request
+                # reaches any route: most routers rely on this middleware alone,
+                # so merely *presenting* the header used to unlock them all
+                # anonymously. Scope enforcement stays in require_api_key().
+                from app.core.api_keys import validate_presented_key
+                if not await validate_presented_key(request):
+                    return JSONResponse(status_code=401, content={"detail": "Valid API key required"})
             else:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.

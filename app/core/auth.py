@@ -127,3 +127,18 @@ async def owner_user_id(conn, request: Request) -> uuid.UUID:
     if not uid:
         raise HTTPException(401, "No account found for this subscription — please register.")
     return uid
+
+
+def require_platform_admin(request: Request) -> str:
+    """FastAPI dependency: the caller must be a platform operator.
+
+    Platform operators are the addresses in ADMIN_EMAILS (empty by default,
+    so this fails closed). Used for routers that act on the whole server —
+    the self-modifying kernel, the command runner, background-service control,
+    platform-wide alert rules and request traces — which previously only had
+    the generic /api authentication in front of them."""
+    from app.core.config import ADMIN_EMAILS
+    email = owner_email(request)
+    if email.strip().lower() not in ADMIN_EMAILS:
+        raise HTTPException(403, "Platform administrator access required")
+    return email

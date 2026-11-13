@@ -58,7 +58,7 @@ class TestAgentLivenessBridge:
 
         assert liveness.is_running("analyze") is True
         fake_ws.broadcast.assert_awaited_once_with(
-            "system", {"agent": "analyze", "status": "running", "run_id": "r1"},
+            "system", {"agent": "analyze", "status": "running"},
         )
 
     def test_agent_finished_clears_running_and_broadcasts_result(self):
@@ -75,7 +75,7 @@ class TestAgentLivenessBridge:
         assert liveness.is_running("analyze") is False
         frame = fake_ws.broadcast.call_args.args[1]
         assert frame == {
-            "agent": "analyze", "status": "idle", "run_id": "r1",
+            "agent": "analyze", "status": "idle",
             "success": True, "duration_ms": 42,
         }
 
@@ -266,6 +266,29 @@ class TestRunOwnerRegistry:
         import app.agents.liveness as liveness
         liveness.register_run_owner("r1", None)
         assert liveness.get_run_owner("r1") is None
+
+    def test_a_later_run_cannot_take_over_an_owned_run_id(self):
+        """run_id is client-chosen; a second run reusing it must not replace
+        the verified owner (that used to hand over the victim's step stream)."""
+        import app.agents.liveness as liveness
+        liveness.register_run_owner("r1", "user-a")
+        liveness.register_run_owner("r1", "user-b")
+        liveness.register_run_owner("r1", None)
+        assert liveness.get_run_owner("r1") == "user-a"
+
+    def test_shared_system_frames_do_not_carry_run_ids(self):
+        """Every signed-in user receives the shared "system" topic; a run's
+        id is what grants its private step stream, so it stays off it."""
+        import app.agents.liveness as liveness
+        fake_ws = MagicMock()
+        fake_ws.broadcast = AsyncMock()
+        with patch("app.routers.ws.manager", fake_ws):
+            run(liveness._on_agent_event(_FakeEvent("agent.started", {"agent": "a", "run_id": "secret-run"})))
+            run(liveness._on_agent_event(_FakeEvent(
+                "agent.finished", {"agent": "a", "run_id": "secret-run", "success": True, "duration_ms": 1},
+            )))
+        for call in fake_ws.broadcast.call_args_list:
+            assert "secret-run" not in str(call.args[1])
 
     def test_empty_run_id_is_not_registered(self):
         import app.agents.liveness as liveness

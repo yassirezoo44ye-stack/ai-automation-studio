@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 from pathlib import Path
 from collections.abc import AsyncIterator
@@ -73,10 +72,10 @@ def _validate_exe(cmd: list[str]) -> None:
 
 
 def _build_env(extra: dict | None = None) -> dict:
-    env = {**os.environ}
-    if extra:
-        env.update(extra)
-    return env
+    # Project/user code runs in these children — never hand it the server's
+    # secrets (see app/core/child_env.py).
+    from app.core.child_env import child_env
+    return child_env(extra)
 
 
 async def stream_process(
@@ -95,7 +94,8 @@ async def stream_process(
     Args:
         cmd:          Command and arguments (executable must be in allow-list).
         cwd:          Working directory.
-        env:          Extra environment variables merged over os.environ.
+        env:          Extra environment variables merged over the allowlisted
+                      child environment (app/core/child_env.py).
         merge_stderr: When True, stderr is combined with stdout (default).
                       When False, stderr lines are prefixed with "[stderr] ".
     """

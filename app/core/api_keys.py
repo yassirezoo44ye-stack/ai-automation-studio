@@ -237,8 +237,37 @@ async def list_api_keys(
     return [_row_to_record(r) for r in rows]
 
 
+def _dev_key_enabled() -> bool:
+    # The env dev key carries the admin scope; never honour it outside
+    # development, so a stray AXON_DEV_API_KEY in production can't mint admin.
+    from app.core.config import is_development
+    return bool(_DEV_KEY_RAW) and is_development()
+
+
+def _presented_key(request: Request) -> str:
+    auth = request.headers.get("Authorization", "")
+    return (auth.removeprefix("ApiKey ").strip() if auth.startswith("ApiKey ") else "") \
+        or request.headers.get("X-API-Key", "").strip()
+
+
+async def validate_presented_key(request: Request) -> bool:
+    """True when the request carries a real, active, unexpired API key.
+
+    Used by api_auth_middleware so the API-key branch authenticates instead of
+    only checking that a header is present."""
+    raw = _presented_key(request)
+    if not raw.startswith(_PREFIX):
+        return False
+    try:
+        rec = await lookup_key(raw)
+    except Exception:
+        log.warning("api key lookup failed", exc_info=True)
+        return False
+    return bool(rec and rec.active and not rec.is_expired())
+
+
 async def lookup_key(raw_key: str) -> ApiKeyRecord | None:
-    if _DEV_KEY_RAW and secrets.compare_digest(raw_key, _DEV_KEY_RAW):
+    if _dev_key_enabled() and secrets.compare_digest(raw_key, _DEV_KEY_RAW):
         return _dev_key_record()
     from app.core.db import get_pool
     row = await get_pool().fetchrow(
@@ -276,11 +305,7 @@ def require_api_key(scopes: list[str] | None = None):
 
     async def _dep(request: Request) -> ApiKeyRecord:
         # Extract token
-        auth   = request.headers.get("Authorization", "")
-        raw    = (
-            auth.removeprefix("ApiKey ").strip()
-            or request.headers.get("X-API-Key", "").strip()
-        )
+        raw    = _presented_key(request)
         if not raw or not raw.startswith(_PREFIX):
             raise HTTPException(401, "Valid API key required (Authorization: ApiKey axon_...)")
 

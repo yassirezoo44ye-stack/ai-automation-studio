@@ -218,8 +218,15 @@ class TenancyService:
             raise TenancyError("not a member of this organization", 403)
         if ROLE_RANK[actor_role] > ROLE_RANK["admin"]:
             raise TenancyError("insufficient permissions to manage members", 403)
-        if ROLE_RANK[new_role] < ROLE_RANK[actor_role]:
-            raise TenancyError("cannot assign a role above your own", 403)
+        if actor_role != "owner":
+            # Non-owners manage only members strictly below them, and only
+            # into roles strictly below their own — otherwise an admin could
+            # demote the owner (then remove them) or mint peer admins.
+            if ROLE_RANK[new_role] <= ROLE_RANK[actor_role]:
+                raise TenancyError("you can only assign roles below your own", 403)
+            target_role = await self.get_member_role(org_id, member_user_id)
+            if target_role is not None and ROLE_RANK[target_role] <= ROLE_RANK[actor_role]:
+                raise TenancyError("you cannot change the role of a member at or above your level", 403)
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             result = await conn.execute(
@@ -243,6 +250,9 @@ class TenancyService:
         target_role = await self.get_member_role(org_id, member_user_id)
         if target_role == "owner":
             raise TenancyError("the owner cannot be removed", 403)
+        if actor_role != "owner" and target_role is not None \
+                and ROLE_RANK[target_role] <= ROLE_RANK[actor_role]:
+            raise TenancyError("you cannot remove a member at or above your level", 403)
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             await conn.execute(
@@ -299,6 +309,11 @@ class TenancyService:
         actor_role = await self.get_member_role(org_id, actor_id)
         if actor_role not in ("owner", "admin", "manager"):
             raise TenancyError("insufficient permissions to invite", 403)
+        if actor_role != "owner" and ROLE_RANK[role] <= ROLE_RANK[actor_role]:
+            # Accepting an invitation sets the member's role, so an invite at
+            # or above the inviter's own rank (e.g. a manager inviting their
+            # own address as admin) would be a self-promotion.
+            raise TenancyError("you can only invite with a role below your own", 403)
         await self._check_seat_capacity(org_id)
         token = secrets.token_urlsafe(32)
         async with self._pool.acquire() as conn:

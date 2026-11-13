@@ -250,7 +250,7 @@ async def build_program(req: BuildRequest, request: Request):
     # user's workspace before the (still-correct) 404 was ever evaluated.
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
-        await resolve_project_id(conn, req.project_id, uid)
+        pid = await resolve_project_id(conn, req.project_id, uid)
 
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
@@ -284,7 +284,7 @@ async def build_program(req: BuildRequest, request: Request):
     except json.JSONDecodeError:
         raise HTTPException(502, f"Claude returned non-JSON: {raw[:200]}") from None
 
-    ws = workspace(req.project_id)
+    ws = workspace(str(pid))
     written = []
     for f in result.get("files", []):
         dest = safe_path(ws, f["path"])
@@ -380,7 +380,7 @@ async def build_stream(req: BuildRequest, request: Request):
     # workspace(req.project_id) and the file writes below.
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
-        await resolve_project_id(conn, req.project_id, uid)
+        pid = await resolve_project_id(conn, req.project_id, uid)
 
     async def event_stream():
         # Slot held for the whole stream (handler returns before tokens flow).
@@ -478,7 +478,7 @@ async def build_stream(req: BuildRequest, request: Request):
                 )
 
             parser = _BuildParser()
-            ws = workspace(req.project_id)
+            ws = workspace(str(pid))
             buf = ""
             last_heartbeat = time.time()
             stream_error: str | None = None
@@ -648,7 +648,7 @@ async def build_plan(req: PlanRequest, request: Request):
     return {"plan": plan}
 
 
-async def _require_project_owner(project_id: str, request: Request) -> None:
+async def _require_project_owner(project_id: str, request: Request) -> str:
     """Every /api/projects/{project_id}/* endpoint below operates on a
     filesystem workspace and/or a spawned process keyed purely by
     project_id — workspace() only guards against path traversal, it has
@@ -660,12 +660,16 @@ async def _require_project_owner(project_id: str, request: Request) -> None:
     caller doesn't own this project."""
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
-        await resolve_project_id(conn, project_id, uid)
+        pid = await resolve_project_id(conn, project_id, uid)
+    # Return the *resolved* id. The aliases "demo"/"copilot" resolve to the
+    # caller's own project, but workspace("demo") is one directory shared by
+    # every user — callers must key the workspace and process by this value.
+    return str(pid)
 
 
 @router.get("/api/projects/{project_id}/files")
 async def list_files(project_id: str, request: Request):
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     files = []
     for p in sorted(ws.rglob("*")):
@@ -677,7 +681,7 @@ async def list_files(project_id: str, request: Request):
 
 @router.get("/api/projects/{project_id}/files/{file_path:path}")
 async def read_file(project_id: str, file_path: str, request: Request):
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     dest = safe_path(ws, file_path)
     if not dest.exists():
@@ -691,7 +695,7 @@ async def read_file(project_id: str, file_path: str, request: Request):
 
 @router.post("/api/projects/{project_id}/sync")
 async def sync_files(project_id: str, body: FileSyncRequest, request: Request):
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     written = []
     for f in body.files:
@@ -708,7 +712,7 @@ _UPLOAD_MAX_TOTAL_BYTES = 200 * 1024 * 1024  # 200 MB per request
 
 @router.post("/api/projects/{project_id}/upload")
 async def upload_files(project_id: str, files: list[UploadFile], request: Request):
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     saved = []
     total_bytes = 0
@@ -732,7 +736,7 @@ async def upload_files(project_id: str, files: list[UploadFile], request: Reques
 
 @router.delete("/api/projects/{project_id}/files")
 async def clear_workspace(project_id: str, request: Request):
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     if ws.exists():
         shutil.rmtree(ws)
@@ -742,7 +746,7 @@ async def clear_workspace(project_id: str, request: Request):
 
 @router.get("/api/projects/{project_id}/download")
 async def download_workspace(project_id: str, request: Request):
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     if not ws.exists() or not any(ws.rglob("*")):
         raise HTTPException(404, "No files to download")
@@ -776,7 +780,7 @@ async def run_project_stream(project_id: str, body: RunRequest2, request: Reques
       done          — script finished  {exit_code, duration, stdout, stderr}
       error         — fatal error
     """
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     ws = workspace(project_id)
 
     # Sync any in-memory files that arrived via the request body
@@ -798,7 +802,7 @@ async def run_project(project_id: str, body: RunRequest2, request: Request):
     Sync fallback — collects the stream and returns a single JSON response.
     Used by older clients or if SSE is unavailable.
     """
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     result = await run_sync(project_id, ws, body.command or None)
     # Map SSE event to HTTP status
@@ -814,7 +818,7 @@ async def run_project(project_id: str, body: RunRequest2, request: Request):
 @router.delete("/api/projects/{project_id}/process")
 async def stop_project(project_id: str, request: Request):
     """Kill any running server process for this project."""
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     await process_mgr.kill(project_id)
     return {"stopped": project_id}
 
@@ -822,7 +826,7 @@ async def stop_project(project_id: str, request: Request):
 @router.get("/api/projects/{project_id}/process")
 async def project_process_status(project_id: str, request: Request):
     """Check whether a server process is currently running for this project."""
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     rp = process_mgr.get_running(project_id)
     if rp:
         return {
@@ -845,7 +849,7 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
     Reverse proxy: forwards every request to the running server for this project.
     The server listens on an internal port; this route exposes it to the browser.
     """
-    await _require_project_owner(project_id, request)
+    project_id = await _require_project_owner(project_id, request)
     rp = process_mgr.get_running(project_id)
     if rp is None:
         raise HTTPException(503, detail={
