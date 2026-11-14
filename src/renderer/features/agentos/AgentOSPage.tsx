@@ -1,5 +1,8 @@
+import { useFlowSkill } from "../../shared/hooks/useFlowSkill";
+import { FlowSkillSelect } from "../../shared/ui/FlowSkillSelect";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppContext } from "../../contexts/app";
 import { agentOsApi } from "./api";
 import { apiFetch } from "../../utils/api";
 import { useToast } from "../../contexts/toast";
@@ -222,6 +225,9 @@ const STEP_ICONS: Record<string, string> = {
 
 function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const { t } = useTranslation("agentos");
+  // URL-based identity (set when user navigates to /project/:id/:workspace)
+  const { activeProjectId: urlProjectId } = useAppContext();
+  const skillSelection = useFlowSkill();
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [mode, setMode]             = useState<"run" | "deliberate" | "plan">("run");
@@ -231,16 +237,16 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const { steps } = useAgentRunSteps(activeRunId);
   const stepsEndRef = useRef<HTMLDivElement>(null);
 
-  // Active project — resolved from sessionStorage (set by AppBuilderPage on
-  // project create). Passed to every /api/agentos/run call so that agents
-  // like run_agent.py that require a verified project context receive it.
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+  // Active project — URL identity takes precedence; fall back to sessionStorage
+  // (written by AppBuilderPage on project create) for legacy paths.
+  const [ssProjectId, setSsProjectId] = useState<string | null>(
     () => sessionStorage.getItem("flow_active_project"),
   );
+  const activeProjectId = urlProjectId ?? ssProjectId;
 
-  // Keep the displayed project ID in sync if another tab updates it
+  // Keep the sessionStorage mirror in sync if another tab updates it
   useEffect(() => {
-    const sync = () => setActiveProjectId(sessionStorage.getItem("flow_active_project"));
+    const sync = () => setSsProjectId(sessionStorage.getItem("flow_active_project"));
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, []);
@@ -256,7 +262,8 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
     setDelib(null);
     // Always pass the currently active project so that the `run` agent
     // (and any other project-scoped agent) has the project context it needs.
-    const projectId = sessionStorage.getItem("flow_active_project") ?? undefined;
+    // URL-based identity takes precedence; fall back to sessionStorage for legacy paths.
+    const projectId = activeProjectId ?? sessionStorage.getItem("flow_active_project") ?? undefined;
     try {
       if (mode === "deliberate") {
         const runId = crypto.randomUUID();
@@ -275,7 +282,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
       } else {
         const runId = crypto.randomUUID();
         setActiveRunId(runId);
-        const res = await agentOsApi.run(val, undefined, runId, projectId);
+        const res = await agentOsApi.run(val, undefined, runId, projectId, skillSelection.skillId || undefined);
         onResult(res);
       }
     } catch (e: unknown) {
@@ -283,7 +290,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
     }
     setLoading(false);
     setInput("");
-  }, [input, mode, loading, onResult]);
+  }, [input, mode, loading, onResult, activeProjectId, skillSelection.skillId]);
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
@@ -312,6 +319,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           ))}
         </div>
       </div>
+      {mode === "run" && <FlowSkillSelect selection={skillSelection} />}
       <div style={S.row}>
         <textarea
           ref={inputRef}
@@ -661,6 +669,7 @@ type Tab = "terminal" | "agents" | "memory" | "evolution" | "performance" | "job
 
 export function AgentOSPage() {
   const { t } = useTranslation("agentos");
+  const { activeProjectId: _activeProjectId } = useAppContext();
   const toast = useToast();
   const [tab, setTab]               = useState<Tab>("terminal");
   const [results, setResults]       = useState<AgentResult[]>([]);
@@ -805,6 +814,7 @@ function JobsMonitor() {
   // is a nested per-status map, not a flat Record<string, number>.
   type JobStats = { total: number; active: number; dead: number; counts: Record<string, number> };
   const { t } = useTranslation("agentos");
+  const toast = useToast();
   const [jobs, setJobs]       = useState<Job[]>([]);
   const [stats, setStats]     = useState<JobStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -830,8 +840,11 @@ function JobsMonitor() {
   useEffect(() => { void Promise.resolve().then(load); }, [load]);
 
   const cancel = async (job_id: string) => {
-    await apiFetch(`/api/jobs/${job_id}`, { method: "DELETE" }).catch(() => {});
-    load();
+    try {
+      const response = await apiFetch(`/api/jobs/${job_id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Job cancellation rejected");
+      await load();
+    } catch { toast(t("common:actions.failed"), "err"); }
   };
 
   const STATUS_KIND: Record<string, string> = {

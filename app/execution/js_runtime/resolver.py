@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 from .errors import PackageJsonMissing, ScriptNotFound
 
@@ -46,7 +45,7 @@ class ScriptResolver:
         log.debug("resolved script %r in %s", script, ws.name)
         return script
 
-    def resolve_start(self, ws: Path) -> Optional[str]:
+    def resolve_start(self, ws: Path) -> str | None:
         """
         Find the best script to start the project server.
 
@@ -64,7 +63,7 @@ class ScriptResolver:
                 return candidate
         return None
 
-    def resolve_build(self, ws: Path) -> Optional[str]:
+    def resolve_build(self, ws: Path) -> str | None:
         """Return the build script name, or None if not defined."""
         try:
             scripts = self._load_scripts(ws)

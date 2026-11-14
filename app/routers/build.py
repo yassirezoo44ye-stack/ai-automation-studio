@@ -2,11 +2,11 @@ import asyncio
 import io
 import json
 import logging
+import os as _os
 import shutil
 import time
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 import anthropic
 import httpx
@@ -24,6 +24,7 @@ from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
 from app.execution import process_mgr
 from app.execution.runner import run_stream, run_sync
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ log = logging.getLogger(__name__)
 #     reached when the authenticated identity exactly matches _DEV_ACCOUNT.
 #
 # Keep this in sync with tests/test_dev_mode.py's _DEV_ACCOUNT constant.
-_DEV_ACCOUNT: str = "yassirezoo44.ye@gmail.com"
+_DEV_ACCOUNT: str = _os.getenv("DEV_ACCOUNT_EMAIL", "yassirezoo44.ye@gmail.com")
 
 
 def _is_dev_account(request: Request) -> bool:
@@ -103,7 +104,8 @@ Rules:
 - Write clean, secure code: validate inputs, parameterise SQL, escape output.
 - For simple projects: one index.html with inline CSS/JS is fine.
 - For Python: include requirements.txt when 3rd-party packages are needed.
-- For Node: include package.json with all dependencies listed.
+- For Node: place package.json at the WORKSPACE ROOT (never inside backend/ or server/). Always include a "start" script, e.g. {"scripts": {"start": "node src/server.js"}}. Only create backend/ or frontend/ subdirectories when the user explicitly requests a split frontend+backend architecture.
+- For Node entry points: use src/server.js or server.js (not backend/src/server.js).
 
 After ALL files, append metadata on its own line (no extra text):
 <<<META>>>
@@ -222,11 +224,11 @@ class BuildRequest(BaseModel):
     # produces files that match the pages, DB tables, and API routes the user
     # reviewed and approved — rather than free-form interpretation of the prompt.
     # Not a security-sensitive field: it only steers output style, not auth/quota.
-    plan: Optional[dict] = None
+    plan: dict | None = None
 
 
 class RunRequest2(BaseModel):
-    command: Optional[str] = None
+    command: str | None = None
 
 
 class FileWrite(BaseModel):
@@ -269,18 +271,18 @@ async def build_program(req: BuildRequest, request: Request):
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,
             )
         except anthropic.BadRequestError as e:
-            raise HTTPException(402, anthropic_error_message(e))
+            raise HTTPException(402, anthropic_error_message(e)) from None
         except RuntimeError as e:
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, str(e)) from None
         except Exception as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from None
 
     await record_org_tokens(org_id, resp.usage.total_tokens, req.project_id)
     raw = strip_fences(resp.content)
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(502, f"Claude returned non-JSON: {raw[:200]}")
+        raise HTTPException(502, f"Claude returned non-JSON: {raw[:200]}") from None
 
     ws = workspace(req.project_id)
     written = []
@@ -326,7 +328,7 @@ def _build_prompt_with_spec(prompt: str, spec_context: str) -> str:
     )
 
 
-def _build_prompt_with_plan(prompt: str, plan: Optional[dict]) -> str:
+def _build_prompt_with_plan(prompt: str, plan: dict | None) -> str:
     """
     Inject an approved BuildPlan JSON into the code-generation prompt.
 
@@ -479,7 +481,7 @@ async def build_stream(req: BuildRequest, request: Request):
             ws = workspace(req.project_id)
             buf = ""
             last_heartbeat = time.time()
-            stream_error: Optional[str] = None
+            stream_error: str | None = None
             total_tokens = 0
 
             async for chunk in chunk_source:
@@ -523,10 +525,8 @@ async def build_stream(req: BuildRequest, request: Request):
                 return
 
             if total_tokens and not dev_mode:
-                try:
+                with contextlib.suppress(Exception):
                     await record_org_tokens(org_id, total_tokens, req.project_id)
-                except Exception:
-                    pass  # metering must never turn a successful build into an error
 
             # Flush remaining buffer (last line without trailing newline)
             if buf.strip():
@@ -545,10 +545,8 @@ async def build_stream(req: BuildRequest, request: Request):
 
             meta: dict = {}
             if parser.meta_lines:
-                try:
+                with contextlib.suppress(Exception):
                     meta = json.loads("\n".join(parser.meta_lines))
-                except Exception:
-                    pass
 
             yield _sse("done",
                        description=meta.get("description", ""),
@@ -630,17 +628,17 @@ async def build_plan(req: PlanRequest, request: Request):
             request_obj, user_id=str(uid), org_id=org_id, auto_tools=False,
         )
     except anthropic.BadRequestError as e:
-        raise HTTPException(402, anthropic_error_message(e))
+        raise HTTPException(402, anthropic_error_message(e)) from None
     except RuntimeError as e:
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, str(e)) from None
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, str(e)) from None
 
     raw = strip_fences(resp.content)
     try:
         plan = json.loads(raw)
     except json.JSONDecodeError:
-        raise HTTPException(502, f"Plan generation failed: {raw[:200]}")
+        raise HTTPException(502, f"Plan generation failed: {raw[:200]}") from None
 
     # Guarantee required array fields are present (defensive normalisation)
     for field in ("pages", "database_tables", "api_routes", "agents", "workflows", "integrations"):
@@ -704,15 +702,29 @@ async def sync_files(project_id: str, body: FileSyncRequest, request: Request):
     return {"synced": written}
 
 
+_UPLOAD_MAX_FILE_BYTES  = 50 * 1024 * 1024   # 50 MB per file
+_UPLOAD_MAX_TOTAL_BYTES = 200 * 1024 * 1024  # 200 MB per request
+
+
 @router.post("/api/projects/{project_id}/upload")
 async def upload_files(project_id: str, files: list[UploadFile], request: Request):
     await _require_project_owner(project_id, request)
     ws = workspace(project_id)
     saved = []
+    total_bytes = 0
     for uf in files:
         safe_name = Path(uf.filename).name
+        if not safe_name:
+            raise HTTPException(400, "Filename must not be empty")
         dest = safe_path(ws, safe_name)
         content = await uf.read()
+        if len(content) > _UPLOAD_MAX_FILE_BYTES:
+            raise HTTPException(
+                413, f"File '{safe_name}' exceeds the 50 MB per-file limit"
+            )
+        total_bytes += len(content)
+        if total_bytes > _UPLOAD_MAX_TOTAL_BYTES:
+            raise HTTPException(413, "Upload batch exceeds the 200 MB total limit")
         dest.write_bytes(content)
         saved.append({"path": safe_name, "size": len(content)})
     return {"saved": saved, "count": len(saved)}
@@ -879,7 +891,7 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
     except httpx.ConnectError:
         rp_check = process_mgr.get_running(project_id)
         if rp_check is None:
-            raise HTTPException(503, detail={"error": "Server has exited"})
-        raise HTTPException(502, detail={"error": "Could not connect to server"})
+            raise HTTPException(503, detail={"error": "Server has exited"}) from None
+        raise HTTPException(502, detail={"error": "Could not connect to server"}) from None
     except httpx.TimeoutException:
-        raise HTTPException(504, detail={"error": "Server request timed out"})
+        raise HTTPException(504, detail={"error": "Server request timed out"}) from None

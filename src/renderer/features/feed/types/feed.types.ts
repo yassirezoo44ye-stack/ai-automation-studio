@@ -7,6 +7,7 @@ export type FeedContentType =
   | "AGENT"
   | "WORKFLOW"
   | "TEMPLATE"
+  | "STUDY"
   | "DESIGN"
   | "DEVICE_WORKFLOW";
 

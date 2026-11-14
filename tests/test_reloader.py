@@ -154,9 +154,8 @@ class TestReloadBuiltinTryExcept(unittest.TestCase):
         with unittest.mock.patch(
             "app.kernel.reloader.importlib.import_module",
             side_effect=ImportError("boom"),
-        ):
-            with self.assertRaises(ReloadError):
-                self.reloader.reload_builtin("fake.builtin.does_not_exist")
+        ), self.assertRaises(ReloadError):
+            self.reloader.reload_builtin("fake.builtin.does_not_exist")
         self.assertNotIn("fake.builtin.does_not_exist", sys.modules)
 
     def test_register_failure_does_not_leave_half_broken_module(self):
@@ -177,9 +176,8 @@ class TestReloadBuiltinTryExcept(unittest.TestCase):
 
         with unittest.mock.patch(
             "app.kernel.reloader.importlib.import_module", side_effect=fake_import,
-        ):
-            with self.assertRaises(ReloadError):
-                self.reloader.reload_builtin(module_path)
+        ), self.assertRaises(ReloadError):
+            self.reloader.reload_builtin(module_path)
 
         self.assertNotIn(module_path, sys.modules)
 
@@ -193,9 +191,8 @@ class TestReloadBuiltinTryExcept(unittest.TestCase):
 
         with unittest.mock.patch(
             "app.kernel.reloader.importlib.import_module", side_effect=fake_import,
-        ):
-            with self.assertRaises(ReloadError):
-                self.reloader.reload_builtin(module_path)
+        ), self.assertRaises(ReloadError):
+            self.reloader.reload_builtin(module_path)
 
         self.assertNotIn(module_path, sys.modules)
 

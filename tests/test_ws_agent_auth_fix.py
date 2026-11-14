@@ -42,9 +42,9 @@ def _token() -> str:
 
 class TestAgentWsAuth:
     def test_unauthenticated_connection_is_rejected(self, ws_client):
-        with pytest.raises(Exception):  # noqa: B017 - starlette raises on the 4401 close
-            with ws_client.websocket_connect("/ws/agent/sess-1") as ws:
-                ws.receive_json()
+        with pytest.raises(Exception), \
+             ws_client.websocket_connect("/ws/agent/sess-1") as ws:  # noqa: B017 - starlette raises on the 4401 close
+            ws.receive_json()
 
     def test_authenticated_connection_succeeds(self, ws_client):
         with ws_client.websocket_connect(f"/ws/agent/sess-1?token={_token()}") as ws:

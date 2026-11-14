@@ -16,7 +16,6 @@ import logging
 import re
 import shlex
 from dataclasses import dataclass, field
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -157,7 +156,7 @@ class IntentParser:
         )
 
     async def parse_with_llm(self, raw: str, known_agents: list[str], *,
-                             org_id: Optional[str] = None) -> IntentResult:
+                             org_id: str | None = None) -> IntentResult:
         """LLM fallback — only called when confidence < 0.5."""
         from app.core.org_quota import check_org_quota_id, record_org_tokens
         if not await check_org_quota_id(org_id):

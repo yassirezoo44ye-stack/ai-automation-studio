@@ -1,6 +1,5 @@
 import json
 import re
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -25,10 +24,10 @@ class YoutubeRequest(BaseModel):
 class YoutubeAskRequest(BaseModel):
     url: str
     question: str
-    transcript: Optional[str] = None
+    transcript: str | None = None
 
 
-def _extract_video_id(url: str) -> Optional[str]:
+def _extract_video_id(url: str) -> str | None:
     patterns = [r"(?:v=|youtu\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})"]
     for p in patterns:
         m = re.search(p, url)
@@ -60,7 +59,7 @@ async def youtube_info(req: YoutubeRequest, _rl: None = _yt_rl):
             "tags":       (info.get("tags") or [])[:10],
         }
     except Exception as e:
-        raise HTTPException(502, f"Could not fetch video info: {e}")
+        raise HTTPException(502, f"Could not fetch video info: {e}") from None
 
 
 @router.post("/api/youtube/transcript")
@@ -83,11 +82,11 @@ async def youtube_transcript(req: YoutubeRequest, _rl: None = _yt_rl):
             text = " ".join(e.text for e in entries)
             return {"video_id": vid, "language": t.language_code, "transcript": text, "length": len(text)}
         except (NoTranscriptFound, TranscriptsDisabled):
-            raise HTTPException(404, "No transcript available for this video.")
+            raise HTTPException(404, "No transcript available for this video.") from None
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, str(e)) from None
 
 
 @router.post("/api/youtube/analyze/stream")

@@ -29,3 +29,14 @@ export async function resumeProject(id: string): Promise<{ project_id: string; r
 export async function deleteProject(id: string): Promise<void> {
   await apiJSON(`${BASE}/projects/${id}`, { method: "DELETE" });
 }
+
+export async function approveSecurityReview(id: string): Promise<{ project_id: string; resumed_from: string }> {
+  return apiJSON(`${BASE}/projects/${id}/approve-security`, { method: "POST" });
+}
+
+export async function rejectSecurityReview(id: string, reason: string): Promise<{ project_id: string; status: string }> {
+  return apiJSON(`${BASE}/projects/${id}/reject-security`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}

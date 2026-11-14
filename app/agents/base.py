@@ -20,7 +20,8 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
+import contextlib
 
 if TYPE_CHECKING:
     from app.agents.memory import AgentMemory
@@ -91,8 +92,8 @@ class AgentPermissions:
     # Cumulative $/token ceiling for one run, enforced between successive
     # LLM calls (see RunBudget below) — None means unlimited, so every
     # existing agent is unaffected by default.
-    max_cost_usd           : Optional[float] = None
-    max_tokens             : Optional[int]   = None
+    max_cost_usd           : float | None = None
+    max_tokens             : int | None   = None
     allowed_paths          : list[str] = field(default_factory=list)
     denied_paths           : list[str] = field(default_factory=lambda: [
         ".git", "migrations", "alembic", ".env", ".pem", ".key"
@@ -126,8 +127,8 @@ class RunBudget:
     achievable today. `max_cost_usd`/`max_tokens` of None means that
     dimension is unlimited.
     """
-    max_cost_usd : Optional[float] = None
-    max_tokens   : Optional[int]   = None
+    max_cost_usd : float | None = None
+    max_tokens   : int | None   = None
     spent_usd    : float = 0.0
     spent_tokens : int   = 0
     _exceeded    : asyncio.Event = field(default_factory=asyncio.Event, repr=False, compare=False)
@@ -155,13 +156,13 @@ class AgentContext:
     """Shared execution environment passed to every agent."""
     input      : str
     args       : str
-    kernel     : "AgentKernel"
-    memory     : "AgentMemory"
+    kernel     : AgentKernel
+    memory     : AgentMemory
     caller     : str  = "system"
-    user_id    : Optional[str] = None
-    workspace  : Optional[str] = None
-    project_id : Optional[str] = None
-    organization_id: Optional[str] = None
+    user_id    : str | None = None
+    workspace  : str | None = None
+    project_id : str | None = None
+    organization_id: str | None = None
     extra      : dict = field(default_factory=dict)
     # Correlates this specific invocation's live step narration (see
     # step() below) — distinct from trace_id, which is for OTel spans,
@@ -169,8 +170,8 @@ class AgentContext:
     # execute() is ever called; agents never generate their own.
     run_id     : str = ""
     # Tracing / observability
-    trace_id   : Optional[str] = None
-    span_id    : Optional[str] = None
+    trace_id   : str | None = None
+    span_id    : str | None = None
 
     # Set by EvolvableAgent.run() right before execute() so step() can
     # report which agent it's narrating for without every call site
@@ -181,7 +182,7 @@ class AgentContext:
     # self.permissions.max_cost_usd/max_tokens — never None during a real
     # run, but Optional here since a hand-constructed AgentContext (tests,
     # ad hoc callers) may not set one.
-    budget: Optional["RunBudget"] = None
+    budget: RunBudget | None = None
 
     async def report_usage(self, cost_usd: float, tokens: int) -> None:
         """Best-effort cost/token accounting — call after every LLM call
@@ -219,20 +220,20 @@ class AgentResult:
     success    : bool
     output     : str
     data       : dict = field(default_factory=dict)
-    error      : Optional[str] = None
+    error      : str | None = None
     duration_ms: float = 0.0
     # Tracing
-    trace_id   : Optional[str] = None
+    trace_id   : str | None = None
 
     @classmethod
     def ok(cls, agent: str, output: str, data: dict | None = None,
-           duration_ms: float = 0.0) -> "AgentResult":
+           duration_ms: float = 0.0) -> AgentResult:
         return cls(agent=agent, success=True, output=output,
                    data=data or {}, duration_ms=duration_ms)
 
     @classmethod
     def fail(cls, agent: str, error: str, data: dict | None = None,
-             duration_ms: float = 0.0) -> "AgentResult":
+             duration_ms: float = 0.0) -> AgentResult:
         return cls(agent=agent, success=False, output=f"Error: {error}",
                    error=error, data=data or {}, duration_ms=duration_ms)
 
@@ -256,11 +257,11 @@ class ValidationResult:
     warnings: list[str] = field(default_factory=list)
 
     @classmethod
-    def ok(cls) -> "ValidationResult":
+    def ok(cls) -> ValidationResult:
         return cls(valid=True)
 
     @classmethod
-    def fail(cls, *errors: str) -> "ValidationResult":
+    def fail(cls, *errors: str) -> ValidationResult:
         return cls(valid=False, errors=list(errors))
 
     def to_dict(self) -> dict:
@@ -452,10 +453,8 @@ class EvolvableAgent(ABC):
         if exec_task in done:
             if budget_task is not None and not budget_task.done():
                 budget_task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await budget_task
-                except asyncio.CancelledError:
-                    pass
             try:
                 result = exec_task.result()
             except asyncio.CancelledError:
@@ -496,10 +495,8 @@ class EvolvableAgent(ABC):
             except Exception:
                 pass
             if budget_task is not None:
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await budget_task
-                except asyncio.CancelledError:
-                    pass
             ms = (time.perf_counter() - t0) * 1000
             result = AgentResult.fail(
                 self.name, f"execution exceeded max_execution_seconds={self.permissions.max_execution_seconds}",

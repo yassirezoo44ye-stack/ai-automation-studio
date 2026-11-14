@@ -30,12 +30,13 @@ import logging
 import secrets
 import shlex
 from pathlib import Path
-from typing import AsyncIterator, AsyncGenerator, Optional
+from collections.abc import AsyncIterator, AsyncGenerator
 
 from app.execution import detector as det
 from app.execution.drivers import fallback, node, python_script, python_server, static
 from app.runtime.errors import sse_error
 from app.runtime.preflight import run_preflight_for_strategy, preflight_error_events
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -56,8 +57,8 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 async def run_stream(
     project_id: str,
     ws: Path,
-    command_override: Optional[str],
-    request_id: Optional[str] = None,
+    command_override: str | None,
+    request_id: str | None = None,
 ) -> AsyncIterator[str]:
     rid = request_id or secrets.token_hex(8)
     async for chunk in _with_heartbeat(_run(project_id, ws, command_override, rid)):
@@ -67,8 +68,8 @@ async def run_stream(
 async def run_sync(
     project_id: str,
     ws: Path,
-    command_override: Optional[str],
-    request_id: Optional[str] = None,
+    command_override: str | None,
+    request_id: str | None = None,
 ) -> dict:
     rid = request_id or secrets.token_hex(8)
     last: dict = {"type": "error", "category": "execution",
@@ -87,7 +88,7 @@ async def run_sync(
 
 # ── Core ──────────────────────────────────────────────────────────────────────
 
-async def _run(project_id: str, ws: Path, command_override: Optional[str], request_id: str = ""):
+async def _run(project_id: str, ws: Path, command_override: str | None, request_id: str = ""):
     # runtime_id is stable for this run's lifetime; request_id comes from the HTTP layer.
     runtime_id = secrets.token_hex(8)
 
@@ -114,8 +115,18 @@ async def _run(project_id: str, ws: Path, command_override: Optional[str], reque
         return
 
     info = det.detect(ws)
-    log.info("run project=%s type=%s strategy=%s entry=%s request_id=%s runtime_id=%s",
-             project_id, info.project_type, info.run_strategy, info.entry_point, request_id, runtime_id)
+
+    # Use the effective root when the project lives in a subdirectory (e.g. backend/).
+    run_ws = info.effective_root if info.effective_root is not None else ws
+
+    log.info("run project=%s type=%s strategy=%s entry=%s run_ws=%s request_id=%s runtime_id=%s",
+             project_id, info.project_type, info.run_strategy, info.entry_point,
+             run_ws, request_id, runtime_id)
+
+    if run_ws != ws:
+        yield _ev_r("status",
+                    message=f"📂 Project found in '{run_ws.name}/' subdirectory — running from there",
+                    subdir=run_ws.name)
 
     yield _ev_r("status",
                 message=f"🔍 Detected: {info.project_type} ({info.confidence} confidence)",
@@ -134,7 +145,7 @@ async def _run(project_id: str, ws: Path, command_override: Optional[str], reque
     # ── Phase 3: driver dispatch ──────────────────────────────────────────────
     for driver in _DRIVER_CHAIN:
         if driver.can_handle(info):
-            async for chunk in driver.stream(project_id, ws, info, command_override):
+            async for chunk in driver.stream(project_id, run_ws, info, command_override):
                 yield chunk
             return
 
@@ -182,10 +193,8 @@ async def _with_heartbeat(
                 yield _hb           # emit heartbeat; pending task still running
     finally:
         pending.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
             await pending
-        except (asyncio.CancelledError, StopAsyncIteration):
-            pass
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -194,7 +203,7 @@ def _ev(type_: str, **kw) -> str:
     return f"data: {json.dumps({'type': type_, **kw})}\n\n"
 
 
-def _validate_command(raw: str) -> Optional[list[str]]:
+def _validate_command(raw: str) -> list[str] | None:
     """Validate a user-supplied command. Returns arg list or None if unsafe."""
     if any(c in raw for c in _SHELL_CHARS):
         return None

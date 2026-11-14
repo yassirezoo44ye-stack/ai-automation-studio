@@ -21,6 +21,8 @@ import type { LayoutEntry } from "./types/devices.types";
 
 // ── Responsive + animation styles (injected once) ────────────────────────────
 
+const MAX_ENROLLED = 5;
+
 const PAGE_STYLES = `
   .mdc-grid {
     display: grid;
@@ -58,16 +60,22 @@ const PAGE_STYLES = `
     animation: mdc-fadein 0.22s ease both;
   }
   .mdc-icon-btn:hover {
-    background: var(--b1) !important;
+    background: var(--bg-input) !important;
     color: var(--t2) !important;
   }
   .mdc-icon-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
+  .mdc-primary-btn:hover {
+    opacity: 0.88;
+  }
   .mdc-primary-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+  .mdc-slots-bar-fill {
+    transition: width 0.5s var(--ease, cubic-bezier(.4,0,.2,1));
   }
 `;
 
@@ -106,7 +114,11 @@ export function DevicesPage() {
     });
   }
 
-  const onlineCount = devices.filter(d => d.status === "online" || d.status === "control_active").length;
+  const onlineCount   = devices.filter(d => d.status === "online" || d.status === "control_active").length;
+  const enrolledCount = devices.filter(d => d.status !== "revoked").length;
+  const slotsUsed     = Math.min(enrolledCount, MAX_ENROLLED);
+  const slotsPercent  = (slotsUsed / MAX_ENROLLED) * 100;
+  const atLimit       = slotsUsed >= MAX_ENROLLED;
 
   return (
     <div style={{ padding: "24px 28px", height: "100%", overflowY: "auto", overflowX: "hidden" }}>
@@ -122,7 +134,7 @@ export function DevicesPage() {
             {onlineCount > 0 && !loading && (
               <span style={{
                 fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
-                background: "rgba(46,204,113,0.15)", color: "#2ecc71",
+                background: "rgba(46,204,113,0.15)", color: "var(--green, #16a34a)",
                 letterSpacing: "0.03em",
               }}>
                 {onlineCount} online
@@ -133,7 +145,34 @@ export function DevicesPage() {
             {t("page.subtitle")}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
+          {/* Slot counter */}
+          {!loading && (
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "flex-end",
+              gap: 3, padding: "6px 12px",
+              background: "var(--bg-input)", border: "1px solid var(--b1)",
+              borderRadius: 9, minWidth: 88,
+            }}>
+              <span style={{ fontSize: 11, color: atLimit ? "var(--red, #dc2626)" : "var(--t3)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                {slotsUsed}/{MAX_ENROLLED} {t("page.slots")}
+              </span>
+              <div style={{ width: "100%", height: 3, background: "var(--b1)", borderRadius: 2, overflow: "hidden" }}>
+                <div
+                  className="mdc-slots-bar-fill"
+                  style={{
+                    height: "100%", width: `${slotsPercent}%`,
+                    borderRadius: 2,
+                    background: atLimit
+                      ? "var(--red, #dc2626)"
+                      : slotsPercent >= 80
+                      ? "var(--yellow, #a16207)"
+                      : "var(--accent)",
+                  }}
+                />
+              </div>
+            </div>
+          )}
           <button
             type="button"
             onClick={refetch}
@@ -150,7 +189,9 @@ export function DevicesPage() {
             type="button"
             onClick={() => setShowEnrollModal(true)}
             className="mdc-primary-btn"
-            style={primaryBtnStyle}
+            style={atLimit ? { ...primaryBtnStyle, opacity: 0.45, cursor: "not-allowed" } : primaryBtnStyle}
+            disabled={atLimit}
+            title={atLimit ? t("page.slotsExhausted") : undefined}
           >
             + {t("page.enrollDevice")}
           </button>
@@ -247,7 +288,7 @@ export function DevicesPage() {
 
         {/* Right: Session control panel */}
         <div className="mdc-panel-right" style={{
-          background:   "var(--card, #161622)",
+          background:   "var(--bg-elevated)",
           border:       "1px solid var(--b1)",
           borderRadius: 14,
           padding:      "18px 20px",
@@ -308,7 +349,7 @@ function TopologyStrip({ activeCount, total, hint }: { activeCount: number; tota
     <div style={{
       marginBottom: 22,
       padding: "14px 18px",
-      background: "var(--card)",
+      background: "var(--bg-elevated)",
       border: "1px solid var(--b1)",
       borderRadius: 12,
       display: "flex",
@@ -372,7 +413,7 @@ function MonitorIcon() {
   return (
     <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ margin: "0 auto", display: "block" }}>
       <rect x="4" y="6" width="44" height="30" rx="4" stroke="var(--b1)" strokeWidth="2" fill="var(--bg-input)"/>
-      <rect x="8" y="10" width="36" height="22" rx="2" fill="var(--card)" stroke="var(--b1)" strokeWidth="1"/>
+      <rect x="8" y="10" width="36" height="22" rx="2" fill="var(--bg-elevated)" stroke="var(--b1)" strokeWidth="1"/>
       {/* Screen lines */}
       <line x1="14" y1="16" x2="38" y2="16" stroke="var(--b1)" strokeWidth="1.5" strokeLinecap="round"/>
       <line x1="14" y1="21" x2="30" y2="21" stroke="var(--b1)" strokeWidth="1.5" strokeLinecap="round"/>
@@ -381,7 +422,7 @@ function MonitorIcon() {
       <line x1="26" y1="36" x2="26" y2="44" stroke="var(--b1)" strokeWidth="2" strokeLinecap="round"/>
       <line x1="18" y1="44" x2="34" y2="44" stroke="var(--b1)" strokeWidth="2" strokeLinecap="round"/>
       {/* Plus badge */}
-      <circle cx="40" cy="40" r="10" fill="var(--card)" stroke="var(--b1)" strokeWidth="1.5"/>
+      <circle cx="40" cy="40" r="10" fill="var(--bg-elevated)" stroke="var(--b1)" strokeWidth="1.5"/>
       <line x1="40" y1="35" x2="40" y2="45" stroke="var(--t4)" strokeWidth="2" strokeLinecap="round"/>
       <line x1="35" y1="40" x2="45" y2="40" stroke="var(--t4)" strokeWidth="2" strokeLinecap="round"/>
     </svg>
@@ -413,7 +454,7 @@ function ConfirmDialog({
       aria-modal="true"
     >
       <div style={{
-        background: "var(--card)", border: "1px solid var(--b1)",
+        background: "var(--bg-elevated)", border: "1px solid var(--b1)",
         borderRadius: 14, padding: "24px 26px",
         width: 360, boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
       }}>

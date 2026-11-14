@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from ..events.bus    import EventBus
 from ..events.events import DocumentIngested, KnowledgeSearched
@@ -51,7 +51,7 @@ class KnowledgeEngine:
 
     def __init__(
         self,
-        embeddings: "EmbeddingsService",
+        embeddings: EmbeddingsService,
         bus:        EventBus,
         chunk_size:    int = _DEFAULT_CHUNK_SIZE,
         chunk_overlap: int = _DEFAULT_CHUNK_OVERLAP,
@@ -66,8 +66,8 @@ class KnowledgeEngine:
         self,
         content:  str,
         source:   str = "",
-        metadata: Optional[dict[str, Any]] = None,
-        doc_id:   Optional[str] = None,
+        metadata: dict[str, Any] | None = None,
+        doc_id:   str | None = None,
     ) -> Document:
         chunks = self._chunk(content)
         embeddings: list[list[float]] = []

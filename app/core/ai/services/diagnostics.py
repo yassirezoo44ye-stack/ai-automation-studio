@@ -17,14 +17,14 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
 class ProviderStatus:
     provider_id:   str
     available:     bool
-    default_model: Optional[str]
+    default_model: str | None
     models:        list[str]
     supports_tools: bool
     supports_vision: bool

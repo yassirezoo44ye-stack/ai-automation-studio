@@ -7,7 +7,9 @@
     "downloadZip": "⬇ ZIP",
     "clearWorkspace": "🗑 Clear",
     "confirmClear": "Clear all files in this workspace?",
-    "toastCleared": "Workspace cleared"
+    "toastCleared": "Workspace cleared",
+    "clearFailed": "Could not clear the workspace. Your files were kept.",
+    "downloadFailed": "Could not download the project. Please try again."
   },
   "tabsAriaLabel": "Dev workspace tabs",
   "tabs": {

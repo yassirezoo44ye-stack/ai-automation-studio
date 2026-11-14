@@ -63,7 +63,7 @@ export function DeviceControlPanel({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onlineDevices = devices.filter(d => d.status === "online" || d.status === "offline");
+  const onlineDevices = devices.filter(d => d.status === "online" || d.status === "control_active");
 
   const toggleDevice = useCallback((id: string) => {
     setSelectedIds(prev => {

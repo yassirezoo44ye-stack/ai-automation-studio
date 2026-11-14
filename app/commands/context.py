@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -29,13 +29,13 @@ class CommandContext:
     raw_input: str = ""
 
     # Resolved helpers
-    workspace: Optional[Path] = None        # --workspace or first positional arg
+    workspace: Path | None = None        # --workspace or first positional arg
     project_id: str = ""                    # --project or inferred from workspace
-    execution_id: Optional[str] = None      # --execution (for status/report queries)
+    execution_id: str | None = None      # --execution (for status/report queries)
 
     # Caller identity (REST API enriches this)
     caller: str = "cli"                     # "cli" | "api" | "plugin"
-    user_id: Optional[str] = None
+    user_id: str | None = None
 
     # Runtime state passthrough (for chained commands)
     runtime_state: dict[str, Any] = field(default_factory=dict)
@@ -52,7 +52,7 @@ class CommandContext:
         v = self.flag(key)
         return v.lower() not in ("", "false", "0", "no") if v else key in self.flags
 
-    def resolved_workspace(self) -> Optional[Path]:
+    def resolved_workspace(self) -> Path | None:
         """Return the workspace path, resolved from --workspace, first arg, or CWD."""
         if self.workspace:
             return self.workspace

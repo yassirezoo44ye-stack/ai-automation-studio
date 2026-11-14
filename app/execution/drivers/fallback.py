@@ -5,7 +5,6 @@ Shows a helpful unsupported message with runtime context.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from app.runtime import registry
 from app.runtime.errors import sse_error
@@ -15,7 +14,7 @@ def can_handle(info) -> bool:
     return True  # always matches — must be last in the chain
 
 
-async def stream(project_id: str, ws: Path, info, command_override: Optional[str] = None):
+async def stream(project_id: str, ws: Path, info, command_override: str | None = None):
     pt = info.project_type
     reason = info.unsupported_reason or f"{pt} is not supported in this sandbox."
     hint = info.local_run_hint or "Run this project in a local terminal."

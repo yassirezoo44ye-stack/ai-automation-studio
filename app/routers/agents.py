@@ -1,12 +1,13 @@
+import contextlib
 import json
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.ai.models import CompletionRequest, Message
+from app.core.ai.skills import compose_skill_system, skill_catalog, validate_skill_ids
 from app.core.ai.context.manager import budget_history
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
@@ -18,30 +19,46 @@ from app.core.security import ai_rate_limit
 router = APIRouter(tags=["agents"])
 
 
-class AgentCreate(BaseModel):
+class AgentSkills(BaseModel):
+    skill_ids: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("skill_ids")
+    @classmethod
+    def valid_skills(cls, value: list[str]) -> list[str]:
+        return validate_skill_ids(value)
+
+
+class AgentCreate(AgentSkills):
     name: str = Field(..., min_length=1, max_length=100)
-    avatar: Optional[str] = "🤖"
+    avatar: str | None = "🤖"
     system_prompt: str = Field(..., min_length=1, max_length=8000)
-    model: Optional[str] = "claude-sonnet-4-6"
-    temperature: Optional[float] = 1.0
-    description: Optional[str] = None
-    project_id: Optional[str] = None
+    model: str | None = "claude-sonnet-4-6"
+    temperature: float | None = 1.0
+    description: str | None = None
+    project_id: str | None = None
 
 
-class AgentUpdate(BaseModel):
-    name: Optional[str] = None
-    avatar: Optional[str] = None
-    system_prompt: Optional[str] = None
-    model: Optional[str] = None
-    temperature: Optional[float] = None
-    description: Optional[str] = None
+class AgentUpdate(AgentSkills):
+    name: str | None = None
+    avatar: str | None = None
+    system_prompt: str | None = None
+    model: str | None = None
+    temperature: float | None = None
+    description: str | None = None
 
 
 class AgentChatRequest(BaseModel):
     agent_id: str
     prompt: str = Field(..., min_length=1, max_length=4000)
-    conversation_id: Optional[str] = None
-    project_id: Optional[str] = "demo"
+    conversation_id: str | None = None
+    project_id: str | None = "demo"
+
+
+@router.get("/api/agents/skills")
+async def list_agent_skills(request: Request):
+    async with get_pool().acquire() as conn:
+        await owner_user_id(conn, request)
+    return {"skills": skill_catalog(), "max_selected": 3}
 
 
 @router.post("/api/agents")
@@ -53,10 +70,10 @@ async def create_agent(body: AgentCreate, request: Request):
         if body.project_id and body.project_id != "demo":
             pid = await resolve_project_id(conn, body.project_id, uid)
         aid = await conn.fetchval(
-            "INSERT INTO ai_agents (user_id,project_id,name,avatar,description,system_prompt,model,temperature) "
-            "VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
+            "INSERT INTO ai_agents (user_id,project_id,name,avatar,description,system_prompt,model,temperature,skill_ids) "
+            "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
             uid, pid, body.name, body.avatar or "🤖",
-            body.description, body.system_prompt, body.model or "claude-sonnet-4-6", body.temperature or 1.0,
+            body.description, body.system_prompt, body.model or "claude-sonnet-4-6", body.temperature or 1.0, body.skill_ids,
         )
     return {"id": str(aid), "message": "Agent created"}
 
@@ -67,14 +84,14 @@ async def list_agents(request: Request):
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         rows = await conn.fetch(
-            "SELECT id,name,avatar,description,system_prompt,model,temperature,message_count,created_at "
+            "SELECT id,name,avatar,description,system_prompt,model,temperature,skill_ids,message_count,created_at "
             "FROM ai_agents WHERE user_id=$1 ORDER BY created_at DESC",
             uid,
         )
     return [{"id": str(r["id"]), "name": r["name"], "avatar": r["avatar"],
              "description": r["description"], "system_prompt": r["system_prompt"],
              "model": r["model"], "temperature": r["temperature"],
-             "message_count": r["message_count"],
+             "skill_ids": r["skill_ids"], "message_count": r["message_count"],
              "created_at": r["created_at"].isoformat()} for r in rows]
 
 
@@ -97,10 +114,11 @@ async def update_agent(agent_id: str, body: AgentUpdate, request: Request):
         result = await conn.execute(
             "UPDATE ai_agents SET name=COALESCE($1,name), avatar=COALESCE($2,avatar), "
             "description=COALESCE($3,description), system_prompt=COALESCE($4,system_prompt), "
-            "model=COALESCE($5,model), temperature=COALESCE($6,temperature), updated_at=NOW() "
+            "model=COALESCE($5,model), temperature=COALESCE($6,temperature), skill_ids=COALESCE($9,skill_ids), updated_at=NOW() "
             "WHERE id=$7 AND user_id=$8",
             body.name, body.avatar, body.description, body.system_prompt,
             body.model, body.temperature, uuid.UUID(agent_id), uid,
+            body.skill_ids if "skill_ids" in body.model_fields_set else None,
         )
     if result == "UPDATE 0":
         raise HTTPException(404, "Agent not found")
@@ -128,7 +146,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
     await ensure_agents_table()
 
     history: list[dict] = []
-    conv_id: Optional[uuid.UUID] = None
+    conv_id: uuid.UUID | None = None
 
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
@@ -138,11 +156,13 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
         if not agent:
             raise HTTPException(404, "Agent not found")
 
+        system = compose_skill_system(agent["system_prompt"], agent.get("skill_ids") or [])
+
         if req.conversation_id:
             try:
                 conv_id = uuid.UUID(req.conversation_id)
             except ValueError:
-                raise HTTPException(400, "Invalid conversation_id")
+                raise HTTPException(400, "Invalid conversation_id") from None
             owned = await conn.fetchval(
                 "SELECT 1 FROM conversations c JOIN projects p ON c.project_id=p.id "
                 "WHERE c.id=$1 AND p.user_id=$2",
@@ -185,7 +205,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
             # SSE error channel already used for provider errors.
             budgeted_history = budget_history(
                 history, model=agent["model"] or "claude-sonnet-4-6",
-                max_tokens=2048, system=agent["system_prompt"],
+                max_tokens=2048, system=system,
             )
 
             request_obj = CompletionRequest(
@@ -193,7 +213,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 model=agent["model"] or "claude-sonnet-4-6",
                 max_tokens=2048,
                 temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
-                system=agent["system_prompt"],
+                system=system,
                 conversation_id=None,  # agents.py reuses chat.py's own conversations/messages
                 prompt_id=None,        # tables, distinct from AIGateway's ai_conversations/
                 memory_enabled=False,  # ai_messages — same isolation as chat.py's migration.
@@ -202,7 +222,7 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
             )
             engine = InferenceEngine(pool=get_pool())
             total_tokens = 0
-            stream_error: Optional[str] = None
+            stream_error: str | None = None
 
             async for chunk in engine.stream(
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,
@@ -224,10 +244,8 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 return
 
             if total_tokens:
-                try:
+                with contextlib.suppress(Exception):
                     await record_org_tokens(org_id, total_tokens, str(conv_id), ref_type="agents")
-                except Exception:
-                    pass  # metering must never turn a successful reply into an error
 
             yield f"data: {json.dumps({'type':'done'})}\n\n"
 

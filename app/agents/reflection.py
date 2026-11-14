@@ -20,7 +20,6 @@ import time
 import tempfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional
 
 from app.agents.base   import AgentResult
 from app.agents.memory import AgentMemory
@@ -61,7 +60,7 @@ class SelfReflector:
     # ── Public ────────────────────────────────────────────────────────────────
 
     def reflect(self, result: AgentResult, memory: AgentMemory,
-                evolution_engine=None, *, org_id: Optional[str] = None) -> None:
+                evolution_engine=None, *, org_id: str | None = None) -> None:
         """Fire-and-forget: schedule reflection without blocking."""
         self._count += 1
         if self._count % _REFLECT_EVERY != 0:
@@ -76,7 +75,7 @@ class SelfReflector:
             pass   # no event loop — skip async reflection
 
     async def reflect_async(self, result: AgentResult, memory: AgentMemory,
-                            evolution_engine=None, *, org_id: Optional[str] = None) -> ReflectionRecord:
+                            evolution_engine=None, *, org_id: str | None = None) -> ReflectionRecord:
         """Awaitable version — use when you want the reflection result."""
         return await self._reflect_async(result, memory, evolution_engine, org_id=org_id)
 
@@ -89,7 +88,7 @@ class SelfReflector:
     # ── Internal ─────────────────────────────────────────────────────────────
 
     async def _reflect_async(self, result: AgentResult, memory: AgentMemory,
-                             evolution_engine=None, *, org_id: Optional[str] = None) -> ReflectionRecord:
+                             evolution_engine=None, *, org_id: str | None = None) -> ReflectionRecord:
         stats      = memory.global_stats()
         total      = memory.total_count()
         errors     = sum(s.fail_count for s in stats)
@@ -129,7 +128,7 @@ class SelfReflector:
         return rec
 
     async def _llm_insight(self, result: AgentResult, error_rate: float,
-                           flagged: list[str], *, org_id: Optional[str] = None) -> str:
+                           flagged: list[str], *, org_id: str | None = None) -> str:
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not api_key:
             return ""

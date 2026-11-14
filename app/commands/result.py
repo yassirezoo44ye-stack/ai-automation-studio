@@ -34,7 +34,7 @@ class CommandResult:
     # ── Factories ─────────────────────────────────────────────────────────────
 
     @classmethod
-    def ok(cls, command: str, output: str = "", data: dict | None = None) -> "CommandResult":
+    def ok(cls, command: str, output: str = "", data: dict | None = None) -> CommandResult:
         return cls(success=True, command=command, output=output, data=data or {})
 
     @classmethod
@@ -44,14 +44,14 @@ class CommandResult:
         error: str,
         error_code: str = "COMMAND_FAILED",
         suggestions: list[str] | None = None,
-    ) -> "CommandResult":
+    ) -> CommandResult:
         return cls(
             success=False, command=command, error=error,
             error_code=error_code, suggestions=suggestions or [],
         )
 
     @classmethod
-    def unknown(cls, name: str, available: list[str]) -> "CommandResult":
+    def unknown(cls, name: str, available: list[str]) -> CommandResult:
         close = _closest(name, available)
         suggestions = [f"Did you mean: {c}?" for c in close[:3]] if close else []
         suggestions.append(f"Run 'help' to see all {len(available)} available commands.")

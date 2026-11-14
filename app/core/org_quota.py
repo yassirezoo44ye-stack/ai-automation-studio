@@ -12,14 +12,13 @@ before — this is purely additive.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import HTTPException, Request
 
 log = logging.getLogger(__name__)
 
 
-async def check_org_quota(request: Request) -> Optional[str]:
+async def check_org_quota(request: Request) -> str | None:
     """Quota-check up front, before spending money on a provider call.
     Returns the caller's org_id if present *and verified* (they're actually
     a member — see app.tenancy.context.optional_org_id), or None to skip
@@ -38,11 +37,11 @@ async def check_org_quota(request: Request) -> Optional[str]:
     try:
         await get_usage_service().check_quota(org_id, "tokens", 1)
     except QuotaExceeded as e:
-        raise HTTPException(429, str(e))
+        raise HTTPException(429, str(e)) from None
     return org_id
 
 
-async def check_org_quota_id(org_id: Optional[str]) -> bool:
+async def check_org_quota_id(org_id: str | None) -> bool:
     """Non-HTTP variant of check_org_quota — for internal callers (the agent
     kernel, background self-reflection, evolution) that already hold an
     org_id value rather than a Request to read the X-Organization-Id header
@@ -63,7 +62,7 @@ async def check_org_quota_id(org_id: Optional[str]) -> bool:
 
 
 async def record_org_tokens(
-    org_id: Optional[str], total_tokens: int, ref_id: str | None, *, ref_type: str = "chat",
+    org_id: str | None, total_tokens: int, ref_id: str | None, *, ref_type: str = "chat",
 ) -> None:
     """Best-effort — never breaks the response path."""
     if not org_id or total_tokens <= 0:

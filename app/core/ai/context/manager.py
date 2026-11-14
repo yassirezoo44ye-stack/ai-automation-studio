@@ -7,7 +7,7 @@ Merges: conversation history, user memories, project/workspace metadata,
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from app.core.ai.models.catalog import catalog
 from app.core.ai.utils.tokens import estimate_messages_tokens, estimate_tokens, fits_context
@@ -56,17 +56,17 @@ class ContextManager:
     Pool is optional — falls back to empty context if unavailable.
     """
 
-    def __init__(self, pool: Optional["asyncpg.Pool"] = None) -> None:
+    def __init__(self, pool: asyncpg.Pool | None = None) -> None:
         self._pool = pool
 
-    def init(self, pool: "asyncpg.Pool") -> None:
+    def init(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
     async def build(
         self,
-        user_id:         Optional[str] = None,
-        conversation_id: Optional[str] = None,
-        project_id:      Optional[str] = None,
+        user_id:         str | None = None,
+        conversation_id: str | None = None,
+        project_id:      str | None = None,
         token_budget:    int           = _TOKEN_BUDGET,
     ) -> ContextBundle:
         bundle = ContextBundle()
@@ -211,7 +211,7 @@ class ContextBudgetError(Exception):
         self.context_window = context_window
 
 
-def _summarize_dropped_turns(dropped: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+def _summarize_dropped_turns(dropped: list[dict[str, Any]]) -> dict[str, Any] | None:
     """One extractive bullet-point summary message standing in for a run
     of older turns — same style as ContextManager.compress_history()
     above, not a new summarization approach."""
@@ -224,9 +224,9 @@ def _summarize_dropped_turns(dropped: list[dict[str, Any]]) -> Optional[dict[str
 def budget_history(
     messages: list[dict[str, Any]],
     *,
-    model: Optional[str] = None,
+    model: str | None = None,
     max_tokens: int = 2048,
-    system: Optional[str] = None,
+    system: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Ensure `messages` (role/content dicts; the *last* element is always the

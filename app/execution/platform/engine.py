@@ -30,7 +30,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import AsyncIterator, Callable, Optional
+from collections.abc import AsyncIterator, Callable
 from uuid import uuid4
 
 from app.execution.platform.artifacts import ArtifactSystem
@@ -50,6 +50,7 @@ from app.execution.platform.report import ExecutionReport
 from app.execution.platform.runtimes.abstract import ExecutionContext
 from app.execution.platform.runtimes.registry import RuntimeRegistry, get_registry
 from app.execution.platform.sandbox import ExecutionSandbox
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -74,14 +75,14 @@ class UnifiedExecutionEngine:
         await engine.run_with_callback(workspace, on_event)
     """
 
-    def __init__(self, registry: Optional[RuntimeRegistry] = None) -> None:
+    def __init__(self, registry: RuntimeRegistry | None = None) -> None:
         self._registry = registry or get_registry()
 
     async def run(
         self,
         workspace: Path,
         project_id: str = "",
-        execution_id: Optional[str] = None,
+        execution_id: str | None = None,
         options: dict | None = None,
     ) -> AsyncIterator[TypedEvent]:
         """
@@ -224,7 +225,7 @@ class UnifiedExecutionEngine:
         )
 
         # ── Run lifecycle phases ─────────────────────────────────────────────
-        phase_error: Optional[PlatformError] = None
+        phase_error: PlatformError | None = None
         try:
             pm = metrics.start_phase("probe")
             await runtime.probe(ctx)
@@ -267,10 +268,8 @@ class UnifiedExecutionEngine:
 
         # ── Cleanup (always) ─────────────────────────────────────────────────
         emit(CleanupStarted(execution_id=execution_id))
-        try:
+        with contextlib.suppress(Exception):
             await runtime.cleanup(ctx)
-        except Exception:
-            pass
         freed = sandbox.cleanup()
         emit(CleanupFinished(execution_id=execution_id, freed_bytes=freed))
 
@@ -294,11 +293,9 @@ class UnifiedExecutionEngine:
             report.finish(success=True)
 
         # Write report artifact
-        try:
+        with contextlib.suppress(Exception):
             artifacts.add_bytes("report", "report.json",
                                 json.dumps(report.to_dict(), indent=2).encode())
-        except Exception:
-            pass
         artifacts.save_index()
 
         total = round(time.time() - started_at, 2)

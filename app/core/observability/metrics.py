@@ -12,7 +12,6 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -115,21 +114,21 @@ class MetricsRegistry:
     # ── Factory methods ───────────────────────────────────────────────────────
 
     def counter(self, name: str, help: str = "",
-                labels: Optional[dict] = None) -> Counter:
+                labels: dict | None = None) -> Counter:
         with self._lock:
             if name not in self._counters:
                 self._counters[name] = Counter(name=name, help=help, labels=labels or {})
             return self._counters[name]
 
     def gauge(self, name: str, help: str = "",
-              labels: Optional[dict] = None) -> Gauge:
+              labels: dict | None = None) -> Gauge:
         with self._lock:
             if name not in self._gauges:
                 self._gauges[name] = Gauge(name=name, help=help, labels=labels or {})
             return self._gauges[name]
 
     def histogram(self, name: str, help: str = "",
-                  labels: Optional[dict] = None) -> Histogram:
+                  labels: dict | None = None) -> Histogram:
         with self._lock:
             if name not in self._histograms:
                 self._histograms[name] = Histogram(name=name, help=help, labels=labels or {})
@@ -167,7 +166,8 @@ class MetricsRegistry:
 
     def reset(self) -> None:
         with self._lock:
-            for c in self._counters.values():  c.reset()
+            for c in self._counters.values():
+                c.reset()
 
 
 # ── Pre-wired OS-level metrics ─────────────────────────────────────────────────
@@ -238,3 +238,7 @@ def _wire_defaults(m: MetricsRegistry) -> None:
     m.gauge    ("sandbox_execution_failures",  "Sandbox workers in crashed state")
     m.gauge    ("sandbox_cpu_seconds",         "Total CPU seconds used by running sandbox workers")
     m.gauge    ("sandbox_memory_mb",           "Total memory MB used by running sandbox workers")
+
+    # ── SaaS Factory ──────────────────────────────────────────────────────────
+    m.gauge  ("saas_factory_active_pipelines", "Currently executing SaaS Factory pipelines")
+    m.counter("saas_factory_pipelines_total",  "Total SaaS Factory pipeline runs started")

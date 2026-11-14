@@ -282,8 +282,6 @@ class TestSagaCompensation(unittest.TestCase):
 
 class TestApprovalGate(unittest.TestCase):
     def test_approved_step_completes(self):
-        registry = ApprovalRegistry()
-
         async def go():
             wf = (WorkflowBuilder("approval")
                   .step("a", "A", _noop, requires_approval=True, timeout_s=2.0)

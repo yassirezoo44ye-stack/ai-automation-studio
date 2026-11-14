@@ -17,7 +17,6 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -63,8 +62,8 @@ class LLMRouter:
         return bool(self._api_key)
 
     async def route(
-        self, raw_input: str, known_agents: list[str], *, org_id: Optional[str] = None,
-    ) -> Optional[RoutedIntent]:
+        self, raw_input: str, known_agents: list[str], *, org_id: str | None = None,
+    ) -> RoutedIntent | None:
         """
         Route raw_input to an agent via Claude.
         Returns None if unavailable or if the call fails.
@@ -121,7 +120,7 @@ class LLMRouter:
             return None
 
     async def understand(self, raw_input: str, known_agents: list[str],
-                         context: str = "", *, org_id: Optional[str] = None) -> RoutedIntent:
+                         context: str = "", *, org_id: str | None = None) -> RoutedIntent:
         """
         Full understanding: route + validate.
         Always returns a RoutedIntent (never raises).

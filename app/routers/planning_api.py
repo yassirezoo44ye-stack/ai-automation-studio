@@ -21,7 +21,6 @@ from a verified project_id.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -35,7 +34,7 @@ _plan_cache: dict[str, dict] = {}   # plan_id → serialised plan
 class PlanRequest(BaseModel):
     goal      : str
     caller    : str = "api"
-    project_id: Optional[str] = None
+    project_id: str | None = None
     execute   : bool = False          # if True, run the plan after building it
 
 

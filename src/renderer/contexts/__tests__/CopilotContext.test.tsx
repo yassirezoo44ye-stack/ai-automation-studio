@@ -76,6 +76,48 @@ describe("CopilotProvider", () => {
     expect(body.prompt).toContain("Explain this page");
   });
 
+  it("sends display_text as the raw user text and prompt with context annotation", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(mockStreamResponse([
+      sseFrame({ type: "conv_id", conv_id: "c2" }),
+      sseFrame({ type: "done" }),
+    ]));
+
+    render(<CopilotProvider><Consumer /></CopilotProvider>);
+    fireEvent.click(screen.getByText("ask"));
+
+    await waitFor(() => expect(screen.getByTestId("streaming")).toHaveTextContent("false"));
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    // display_text must be the raw user text — no [Context: ...] prefix
+    expect(body.display_text).toBe("Explain this page");
+    expect(body.display_text).not.toContain("[Context:");
+    // prompt must include the context annotation for the model
+    expect(body.prompt).toContain("[Context:");
+    expect(body.prompt).toContain("Explain this page");
+    // UI user bubble shows the clean text, not the annotated prompt
+    expect(screen.getByTestId("msg-user")).toHaveTextContent("Explain this page");
+    expect(screen.getByTestId("msg-user")).not.toHaveTextContent("[Context:");
+  });
+
+  it("routes copilot messages to the dedicated copilot project, not the demo project", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(mockStreamResponse([
+      sseFrame({ type: "conv_id", conv_id: "c3" }),
+      sseFrame({ type: "done" }),
+    ]));
+
+    render(<CopilotProvider><Consumer /></CopilotProvider>);
+    fireEvent.click(screen.getByText("ask"));
+
+    await waitFor(() => expect(screen.getByTestId("streaming")).toHaveTextContent("false"));
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.project_id).toBe("copilot");
+  });
+
   it("surfaces a stream error instead of leaving the UI silently stuck", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(mockStreamResponse([

@@ -19,7 +19,6 @@ POST /api/diagnostics/codegen/{run_id}/reject
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -108,14 +107,14 @@ class AlertRuleCreate(BaseModel):
     name: str
     rule_type: str            # gauge_above | counter_rate_above | health_unhealthy
     target: str
-    threshold: Optional[float] = None
-    notify_email: Optional[str] = None
-    notify_webhook_url: Optional[str] = None
+    threshold: float | None = None
+    notify_email: str | None = None
+    notify_webhook_url: str | None = None
     enabled: bool = True
 
     @field_validator("notify_webhook_url")
     @classmethod
-    def _webhook_must_be_public(cls, v: Optional[str]) -> Optional[str]:
+    def _webhook_must_be_public(cls, v: str | None) -> str | None:
         # Blocks SSRF via a rule whose webhook points at an internal
         # service or the cloud metadata endpoint (169.254.169.254) — the
         # tick loop (app/services/alerting.py) would otherwise POST to
@@ -179,7 +178,7 @@ async def alert_history(limit: int = 100, open_only: bool = False):
 # ── Layered memory ────────────────────────────────────────────────────────────
 
 @router.get("/memory")
-async def diagnostics_memory(request: Request, n: int = 50, kind: Optional[str] = None):
+async def diagnostics_memory(request: Request, n: int = 50, kind: str | None = None):
     """LayeredMemory is a single, process-wide store shared by every
     tenant — always scope to the caller's own verified org (or the
     no-org bucket if they aren't in one), never the cross-tenant view."""
@@ -197,7 +196,7 @@ async def diagnostics_memory(request: Request, n: int = 50, kind: Optional[str] 
 class MemorySearchRequest(BaseModel):
     query: str
     limit: int = 20
-    kind : Optional[str] = None
+    kind : str | None = None
 
 
 @router.post("/memory/search")

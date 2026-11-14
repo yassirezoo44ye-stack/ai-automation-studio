@@ -21,7 +21,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
-from typing import Callable, Awaitable, Type, TypeVar
+from typing import TypeVar
+from collections.abc import Callable, Awaitable
 
 from .events import AIEvent
 from app.core.observability.context import current_tags
@@ -45,7 +46,7 @@ class EventBus:
 
     # ── Subscription ──────────────────────────────────────────────────────────
 
-    def on(self, event_class: Type[T]) -> Callable[[Handler], Handler]:
+    def on(self, event_class: type[T]) -> Callable[[Handler], Handler]:
         """Decorator: subscribe a handler to an event type."""
         def decorator(fn: Handler) -> Handler:
             self._handlers[event_class.__name__].append(fn)
@@ -53,11 +54,11 @@ class EventBus:
             return fn
         return decorator
 
-    def subscribe(self, event_class: Type[T], handler: Handler) -> None:
+    def subscribe(self, event_class: type[T], handler: Handler) -> None:
         """Imperative subscription (alternative to @on decorator)."""
         self._handlers[event_class.__name__].append(handler)
 
-    def unsubscribe(self, event_class: Type[T], handler: Handler) -> None:
+    def unsubscribe(self, event_class: type[T], handler: Handler) -> None:
         handlers = self._handlers.get(event_class.__name__, [])
         if handler in handlers:
             handlers.remove(handler)
@@ -88,7 +89,7 @@ class EventBus:
                 return_exceptions=True,
             )
             errors = []
-            for h, result in zip(handlers, results):
+            for h, result in zip(handlers, results, strict=False):
                 if isinstance(result, Exception):
                     errors.append(f"{h.__qualname__}: {result}")
                     log.error(
@@ -112,7 +113,7 @@ class EventBus:
 
     # ── Introspection ─────────────────────────────────────────────────────────
 
-    def handler_count(self, event_class: Type[T]) -> int:
+    def handler_count(self, event_class: type[T]) -> int:
         return len(self._handlers.get(event_class.__name__, []))
 
     def all_handlers(self) -> dict[str, list[str]]:

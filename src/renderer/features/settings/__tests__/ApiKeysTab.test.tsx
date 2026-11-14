@@ -237,6 +237,15 @@ describe("ApiKeysTab — create key", () => {
 });
 
 describe("ApiKeysTab — revoke key", () => {
+  it("keeps a key visible when the server rejects revocation", async () => {
+    setupExistingKeys([makeKey({ name: "Still active key" })]);
+    await openApiKeysTab(); await screen.findByText("Still active key");
+    mockedApiFetch.mockResolvedValueOnce(fakeRes(403));
+    fireEvent.click(screen.getByRole("button", { name: /revoke/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirm/i }));
+    await screen.findByText(/Failed to revoke|Could not revoke/i);
+    expect(screen.getByText("Still active key")).toBeInTheDocument();
+  });
   it("revokes key via DELETE /api/orgs/{org_id}/api-keys/{key_id}", async () => {
     setupExistingKeys([makeKey({ key_id: "key-99" })]);
     await openApiKeysTab();
@@ -244,7 +253,12 @@ describe("ApiKeysTab — revoke key", () => {
 
     mockedApiFetch.mockResolvedValueOnce(fakeRes(204));
 
+    // Step 1: click Revoke to open inline confirmation
     fireEvent.click(screen.getByRole("button", { name: /revoke/i }));
+
+    // Step 2: confirm dialog appears — click Confirm
+    await waitFor(() => screen.getByRole("button", { name: /confirm/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => {
       const deleteCall = mockedApiFetch.mock.calls.find(
@@ -254,6 +268,28 @@ describe("ApiKeysTab — revoke key", () => {
       );
       expect(deleteCall).toBeDefined();
     });
+  });
+
+  it("cancels revoke when Cancel is clicked", async () => {
+    setupExistingKeys([makeKey({ key_id: "key-77" })]);
+    await openApiKeysTab();
+    await waitFor(() => screen.getByRole("button", { name: /revoke/i }));
+
+    // Open confirmation
+    fireEvent.click(screen.getByRole("button", { name: /revoke/i }));
+    await waitFor(() => screen.getByRole("button", { name: /cancel/i }));
+
+    // Cancel — no DELETE should fire
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    // Revoke button reappears, no DELETE call made
+    await waitFor(() => screen.getByRole("button", { name: /revoke/i }));
+    const deleteCall = mockedApiFetch.mock.calls.find(
+      ([path, init]) =>
+        (path as string).includes("/api/orgs/org-1/api-keys/key-77") &&
+        (init as RequestInit)?.method === "DELETE",
+    );
+    expect(deleteCall).toBeUndefined();
   });
 });
 

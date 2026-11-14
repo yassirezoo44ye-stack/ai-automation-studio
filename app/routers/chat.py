@@ -1,15 +1,16 @@
+import contextlib
 import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Optional
 
 import anthropic
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.ai.models import CompletionRequest, Message
+from app.core.ai.skills import compose_skill_system, validate_skill_ids
 from app.core.ai.context.manager import ContextBudgetError, budget_history
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
@@ -23,14 +24,26 @@ router = APIRouter(tags=["chat"])
 
 
 class RunRequest(BaseModel):
+    skill_ids: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("skill_ids")
+    @classmethod
+    def valid_skills(cls, value: list[str]) -> list[str]:
+        return validate_skill_ids(value)
+
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=4000)
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
+    # Text to store/display in place of `prompt` when the caller injects
+    # invisible context into `prompt` (e.g. "[Context: …]\n\nuser message").
+    # Storage (title, message content, usage log) uses this value when set;
+    # the model always receives the full `prompt`.
+    display_text: str | None = Field(None, max_length=4000)
 
 
 class ConversationCreate(BaseModel):
     project_id: str
-    title: Optional[str] = "New conversation"
+    title: str | None = "New conversation"
 
 
 @router.post("/api/run/stream")
@@ -41,7 +54,21 @@ async def run_stream(req: RunRequest, request: Request):
     org_id = await check_org_quota(request)
 
     history: list[dict] = []
-    conv_id: Optional[uuid.UUID] = None
+    conv_id: uuid.UUID | None = None
+
+    # Text for storage and display — stripped of any invisible context the
+    # caller injects into `prompt`.  The model always receives the full
+    # `prompt` (with its context annotation); only the DB rows and the
+    # conversation title use this cleaner value so they never show
+    # "[Context: …]" prefixes in the chat UI.
+    _user_text = req.display_text or req.prompt
+
+    # Text for storage and display — stripped of any invisible context the
+    # caller injects into `prompt`.  The model always receives the full
+    # `prompt` (with its context annotation); only the DB rows and the
+    # conversation title use this cleaner value so they never show
+    # "[Context: …]" prefixes in the chat UI.
+    _user_text = req.display_text or req.prompt
 
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
@@ -49,7 +76,7 @@ async def run_stream(req: RunRequest, request: Request):
             try:
                 conv_id = uuid.UUID(req.conversation_id)
             except ValueError:
-                raise HTTPException(400, "Invalid conversation_id")
+                raise HTTPException(400, "Invalid conversation_id") from None
             owned = await conn.fetchval(
                 "SELECT 1 FROM conversations c JOIN projects p ON c.project_id=p.id "
                 "WHERE c.id=$1 AND p.user_id=$2",
@@ -66,12 +93,12 @@ async def run_stream(req: RunRequest, request: Request):
             pid = await resolve_project_id(conn, req.project_id, uid)
             conv_id = await conn.fetchval(
                 "INSERT INTO conversations (project_id, title) VALUES ($1, $2) RETURNING id",
-                pid, req.prompt[:60] + ("…" if len(req.prompt) > 60 else ""),
+                pid, _user_text[:60] + ("…" if len(_user_text) > 60 else ""),
             )
 
         await conn.execute(
             "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
-            conv_id, req.prompt,
+            conv_id, _user_text,
         )
         await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
         # Logged here (message saved) rather than only on AI success below —
@@ -81,7 +108,7 @@ async def run_stream(req: RunRequest, request: Request):
         # Recent Activity, which reads only from usage_logs.
         await conn.execute(
             "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'message_sent',$2)",
-            uid, json.dumps({"conversation_id": str(conv_id), "prompt_preview": req.prompt[:80]}),
+            uid, json.dumps({"conversation_id": str(conv_id), "prompt_preview": _user_text[:80]}),
         )
 
     history.append({"role": "user", "content": req.prompt})
@@ -108,12 +135,16 @@ async def run_stream(req: RunRequest, request: Request):
             # A ContextBudgetError here is caught by this function's own
             # except Exception below, same SSE error channel already used
             # for provider errors — no new HTTP/SSE behavior.
-            budgeted_history = budget_history(history, model="claude-sonnet-4-6", max_tokens=2048)
+            system = compose_skill_system(None, req.skill_ids)
+            budgeted_history = budget_history(
+                history, model="claude-sonnet-4-6", max_tokens=2048, system=system,
+            )
 
             request_obj = CompletionRequest(
                 messages=[Message(role=h["role"], content=h["content"]) for h in budgeted_history],
                 model="claude-sonnet-4-6",
                 max_tokens=2048,
+                system=system,
                 temperature=1.0,        # CompletionRequest defaults to 0.7 and _build_kwargs
                                         # always forwards a non-None temperature — the original
                                         # ai.messages.create() call never set one, which means
@@ -128,7 +159,7 @@ async def run_stream(req: RunRequest, request: Request):
             )
             engine = InferenceEngine(pool=get_pool())
             total_tokens = 0
-            stream_error: Optional[str] = None
+            stream_error: str | None = None
 
             async for chunk in engine.stream(
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,
@@ -151,13 +182,12 @@ async def run_stream(req: RunRequest, request: Request):
                 return
 
             if total_tokens:
-                try:
+                with contextlib.suppress(Exception):  # metering must never turn a successful reply into an error
                     await record_org_tokens(org_id, total_tokens, str(conv_id))
-                except Exception:
-                    pass  # metering must never turn a successful reply into an error
 
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
+            # Save assistant reply BEFORE sending `done` — the client stops
+            # reading the stream on `done`, so a disconnect can race the save
+            # if we yield `done` first.
             try:
                 async with get_pool().acquire() as conn:
                     await conn.execute(
@@ -165,6 +195,16 @@ async def run_stream(req: RunRequest, request: Request):
                         conv_id, full_text,
                     )
                     await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
+            except Exception as e:
+                log.exception("run_stream: failed to save assistant message")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Failed to save reply: ' + str(e)})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+            # Best-effort telemetry after `done` — failures are silent.
+            try:
+                async with get_pool().acquire() as conn:
                     pid2 = await resolve_project_id(conn, req.project_id, uid)
                     run_id = await conn.fetchval(
                         "INSERT INTO agent_runs (project_id, agent_type, input_data, output_data, status, completed_at) "
@@ -173,7 +213,7 @@ async def run_stream(req: RunRequest, request: Request):
                     )
                     await conn.execute(
                         "INSERT INTO usage_logs (user_id, action, details) VALUES ($1,'agent_run',$2)",
-                        uid, json.dumps({"run_id": str(run_id), "prompt_preview": req.prompt[:80]}),
+                        uid, json.dumps({"run_id": str(run_id), "prompt_preview": _user_text[:80]}),
                     )
             except Exception:
                 pass
@@ -206,6 +246,7 @@ async def run_agent(req: RunRequest, request: Request):
         messages=[Message(role="user", content=req.prompt)],
         model="claude-sonnet-4-6",
         max_tokens=1024,
+        system=compose_skill_system(None, req.skill_ids),
         temperature=1.0,  # match Anthropic's own API default — see run_stream's comment above
         conversation_id=None,
         prompt_id=None,
@@ -220,13 +261,13 @@ async def run_agent(req: RunRequest, request: Request):
                 request_obj, user_id=str(uid), org_id=None, auto_tools=False,
             )
         except anthropic.AuthenticationError:
-            raise HTTPException(401, "Invalid Anthropic API key.")
+            raise HTTPException(401, "Invalid Anthropic API key.") from None
         except anthropic.BadRequestError as e:
-            raise HTTPException(402, anthropic_error_message(e))
+            raise HTTPException(402, anthropic_error_message(e)) from None
         except RuntimeError as e:
-            raise HTTPException(503, str(e))
+            raise HTTPException(503, str(e)) from None
         except Exception as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from None
 
     await record_org_tokens(org_id, resp.usage.total_tokens, req.project_id)
     summary = resp.content
@@ -261,7 +302,7 @@ async def create_conversation(body: ConversationCreate, request: Request):
 
 
 @router.get("/api/conversations")
-async def list_conversations(request: Request, project_id: Optional[str] = None):
+async def list_conversations(request: Request, project_id: str | None = None):
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         if project_id:
@@ -316,7 +357,7 @@ async def delete_conversation(conv_id: str, request: Request):
 
 
 @router.get("/api/search")
-async def search(q: str, request: Request, project_id: Optional[str] = None):
+async def search(q: str, request: Request, project_id: str | None = None):
     if not q or len(q) < 2:
         return {"conversations": [], "messages": []}
     async with get_pool().acquire() as conn:

@@ -155,7 +155,7 @@ class DependencyService:
         # Kahn's algorithm, adapted from app/core/workflow/engine.py's
         # _topo_sort: in-degree = number of unresolved dependencies, peel
         # zero-in-degree nodes (nodes whose deps are already resolved).
-        in_degree: dict[str, int] = {n: 0 for n in graph}
+        in_degree: dict[str, int] = dict.fromkeys(graph, 0)
         children: dict[str, list[str]] = {n: [] for n in graph}
         for node, deps in graph.items():
             for dep in deps:

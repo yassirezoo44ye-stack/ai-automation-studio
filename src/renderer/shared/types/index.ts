@@ -1,4 +1,4 @@
-export type Page = "home" | "ai" | "dev" | "design" | "automation" | "social" | "settings" | "agentos" | "marketplace" | "organizations" | "teams" | "billing" | "plugins" | "sandbox" | "ai-routing" | "observability" | "app-builder" | "runs" | "integrations" | "training" | "business-lab" | "devices" | "discover" | "feed" | "leads" | "saas-factory";
+export type Page = "study-library" | "careers" | "home" | "ai" | "dev" | "design" | "automation" | "social" | "settings" | "agentos" | "marketplace" | "organizations" | "teams" | "billing" | "plugins" | "sandbox" | "ai-routing" | "observability" | "app-builder" | "runs" | "integrations" | "training" | "business-lab" | "devices" | "discover" | "feed" | "leads" | "saas-factory" | "new-project";
 
 export type Message = { id: string; role: "user" | "assistant"; content: string };
 export type Conv    = { id: string; title: string; updated_at: string };
@@ -12,7 +12,7 @@ export type Task = {
 export type Agent = {
   id: string; name: string; avatar: string; description: string;
   system_prompt: string; model: string; temperature: number;
-  message_count: number; created_at: string;
+  message_count: number; created_at: string; skill_ids?: string[];
 };
 export type BuildFile  = { path: string; content: string };
 export type BuildState = "idle" | "building" | "done" | "error";

@@ -10,12 +10,12 @@ import os
 import socket
 import time
 from pathlib import Path
-from typing import Optional
 
 from app.execution import process_mgr
 from app.runtime import registry
 from app.runtime import process as rt_process
 from app.runtime.errors import sse_error
+import contextlib
 
 _HANDLED_TYPES = {"fastapi", "flask", "aiohttp", "tornado"}
 _HANDLED_STRATEGIES = {"server", "flask"}
@@ -25,7 +25,7 @@ def can_handle(info) -> bool:
     return info.project_type in _HANDLED_TYPES or info.run_strategy in _HANDLED_STRATEGIES
 
 
-async def stream(project_id: str, ws: Path, info, command_override: Optional[str] = None):
+async def stream(project_id: str, ws: Path, info, command_override: str | None = None):
     python = registry.best_python()
 
     # Auto-install requirements if they exist
@@ -115,10 +115,8 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
             _, err_bytes = await asyncio.wait_for(rp.process.communicate(), timeout=2.0)
             stderr_text = (err_bytes or b"").decode("utf-8", errors="replace")
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 rp.process.kill()
-            except Exception:
-                pass
         process_mgr._release(project_id)
         yield sse_error(
             category="execution",
@@ -144,7 +142,7 @@ async def stream(project_id: str, ws: Path, info, command_override: Optional[str
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _default_args(info, python: str, port: int) -> Optional[list]:
+def _default_args(info, python: str, port: int) -> list | None:
     entry = info.entry_point or "main.py"
     pt = info.project_type
     if pt == "fastapi":

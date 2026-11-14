@@ -47,8 +47,9 @@ from __future__ import annotations
 
 import json
 import logging
-from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from contextlib import asynccontextmanager, suppress
+from typing import Any
+from collections.abc import AsyncIterator
 
 import asyncpg
 
@@ -154,10 +155,8 @@ async def idempotent(
         if existing is not None and existing["status"] == "completed":
             cached_result = existing["result"]
             if isinstance(cached_result, str):
-                try:
+                with suppress(Exception):
                     cached_result = json.loads(cached_result)
-                except Exception:
-                    pass
             try:
                 r = await get_redis()
                 await r.set_json(ck, cached_result, ttl=ttl_s)

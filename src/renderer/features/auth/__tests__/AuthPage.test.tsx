@@ -1,12 +1,53 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AuthPage } from "../AuthPage";
+import { MfaRequiredError } from "../../../contexts/AuthContext";
+import { oauthStartUrl } from "../oauth";
+vi.mock("../oauth", () => ({ oauthStartUrl: vi.fn() }));
 
 const login = vi.fn();
 const register = vi.fn();
+const completeMfa = vi.fn();
+const clearMfaChallenge = vi.fn();
 vi.mock("../../../contexts/AuthContext", () => ({
-  useAuth: () => ({ login, register }),
+  useAuth: () => ({
+    login,
+    register,
+    completeMfa,
+    clearMfaChallenge,
+    pendingMfaChallenge: null,
+  }),
+  // Re-export the class so AuthPage's instanceof check works in tests
+  MfaRequiredError: class MfaRequiredError extends Error {
+    challengeToken: string;
+    remember: boolean;
+    constructor(challengeToken: string, remember: boolean) {
+      super("mfa_required");
+      this.name = "MfaRequiredError";
+      this.challengeToken = challengeToken;
+      this.remember = remember;
+    }
+  },
 }));
+
+describe("OAuth start recovery", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("blocks competing starts while the first request is pending", () => {
+    vi.mocked(oauthStartUrl).mockImplementationOnce(() => new Promise(() => {}));
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Google" }));
+    fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
+    expect(oauthStartUrl).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Microsoft" })).toBeDisabled();
+  });
+  it("re-enables sign-in choices after configuration failure", async () => {
+    vi.mocked(oauthStartUrl).mockRejectedValueOnce(new Error("تعذر الاتصال بخدمة تسجيل الدخول"));
+    render(<AuthPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Google" }));
+    expect(await screen.findByText("تعذر الاتصال بخدمة تسجيل الدخول")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Google" })).toBeEnabled();
+  });
+});
 
 // ── Reset-password tab (URL-driven) ─────────────────────────────────────────
 
@@ -150,5 +191,53 @@ describe("AuthPage — login form (framework flagship migration)", () => {
     fireEvent.click(screen.getByRole("button", { name: /create account$/i }));
     expect(screen.getByText("Passwords do not match")).toBeInTheDocument();
     expect(register).not.toHaveBeenCalled();
+  });
+});
+
+// ── MFA challenge flow ────────────────────────────────────────────────────────
+
+describe("AuthPage — MFA challenge flow", () => {
+  beforeEach(() => {
+    login.mockReset();
+    completeMfa.mockReset();
+    clearMfaChallenge.mockReset();
+  });
+
+  it("shows MFA form and hides tabs after login() throws MfaRequiredError", async () => {
+    login.mockRejectedValueOnce(new MfaRequiredError("tok123", false));
+    render(<AuthPage />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: "secret123" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in$/i }));
+    await waitFor(() => expect(screen.getByLabelText(/verification code/i)).toBeInTheDocument());
+    expect(screen.queryByRole("tab", { name: /sign in/i })).not.toBeInTheDocument();
+  });
+
+  it("calls completeMfa with trimmed code, challenge token, and remember flag", async () => {
+    login.mockRejectedValueOnce(new MfaRequiredError("challenge-abc", true));
+    completeMfa.mockResolvedValueOnce(undefined);
+    render(<AuthPage />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: "secret123" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in$/i }));
+    await waitFor(() => expect(screen.getByLabelText(/verification code/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/verification code/i), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /^verify$/i }));
+    await waitFor(() =>
+      expect(completeMfa).toHaveBeenCalledWith("123456", "challenge-abc", true),
+    );
+  });
+
+  it("clicking cancel clears the MFA challenge and returns to sign-in tab", async () => {
+    login.mockRejectedValueOnce(new MfaRequiredError("tok-xyz", false));
+    render(<AuthPage />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^password/i), { target: { value: "secret123" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in$/i }));
+    await waitFor(() => expect(screen.getByLabelText(/verification code/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /back to sign in/i }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: /sign in/i })).toBeInTheDocument());
+    expect(screen.queryByLabelText(/verification code/i)).not.toBeInTheDocument();
+    expect(clearMfaChallenge).toHaveBeenCalled();
   });
 });

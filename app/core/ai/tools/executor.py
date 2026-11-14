@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional, Set
+from typing import Any
 
 from app.ai.models import ToolSchema
 from app.core.ai.events.bus import bus
@@ -28,7 +28,7 @@ class ToolResult:
     call_id:     str
     success:     bool
     output:      str           # JSON string for structured results, plain text for errors
-    error:       Optional[str] = None
+    error:       str | None = None
     duration_ms: float         = 0.0
     timed_out:   bool          = False
     truncated:   bool          = False
@@ -56,10 +56,10 @@ class ToolExecutor:
         arguments:    dict[str, Any],
         *,
         call_id:      str         = "",
-        user_id:      Optional[str] = None,
+        user_id:      str | None = None,
         permissions:  ToolPermissions | None = None,
         max_retries:  int         = 0,
-        allowed_tools: Optional[Set[str]] = None,
+        allowed_tools: set[str] | None = None,
     ) -> ToolResult:
         """
         Execute a registered tool and return a ToolResult.
@@ -162,7 +162,7 @@ class ToolExecutor:
         self,
         calls: list[dict],  # list of {tool_name, arguments, call_id}
         *,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> list[ToolResult]:
         """Execute multiple tool calls concurrently."""
         import asyncio
@@ -180,7 +180,7 @@ class ToolExecutor:
         from app.ai import tools as _registry
         return _registry.list_schemas()
 
-    def get_schema(self, tool_name: str) -> Optional[ToolSchema]:
+    def get_schema(self, tool_name: str) -> ToolSchema | None:
         from app.ai import tools as _registry
         return _registry.get_schema(tool_name)
 

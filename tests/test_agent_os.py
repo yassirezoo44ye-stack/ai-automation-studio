@@ -63,7 +63,7 @@ def _make_memory() -> AgentMemory:
     return mem
 
 
-def _make_kernel() -> "AgentKernel":
+def _make_kernel() -> "AgentKernel":  # noqa: F821
     from app.agents.kernel import AgentKernel
     from app.plugins.registry_guard import OwnershipTracker
     k = AgentKernel.__new__(AgentKernel)
@@ -284,7 +284,7 @@ class TestEvolvableAgent:
         agent = EchoAgent()
         assert isinstance(agent.performance_hint(), dict)
 
-    def test_to_dict(self):
+    def test_agent_to_dict(self):
         agent = EchoAgent()
         d = agent.to_dict()
         assert d["name"] == "echo"

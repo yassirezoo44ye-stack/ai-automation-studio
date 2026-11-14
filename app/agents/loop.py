@@ -23,7 +23,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.agents.kernel import AgentKernel
@@ -62,7 +62,7 @@ class ImprovementLoop:
 
     def __init__(
         self,
-        kernel    : "AgentKernel",
+        kernel    : AgentKernel,
         interval_s: float = _DEFAULT_INTERVAL,
     ) -> None:
         self._kernel     = kernel
@@ -70,7 +70,7 @@ class ImprovementLoop:
         self._running    = False
         self._tick       = 0
         self._history    : list[LoopTick] = []
-        self._task       : Optional[asyncio.Task] = None
+        self._task       : asyncio.Task | None = None
         self._evolution_count = 0
 
     # ── Public ────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ class ImprovementLoop:
         self._task = asyncio.ensure_future(self.start())
         return self._task
 
-    def last_tick(self) -> Optional[LoopTick]:
+    def last_tick(self) -> LoopTick | None:
         return self._history[-1] if self._history else None
 
     def history(self, n: int = 10) -> list[dict]:

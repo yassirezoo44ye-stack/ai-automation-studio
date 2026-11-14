@@ -1,11 +1,14 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { FeedTopBar } from "./components/FeedTopBar";
+import { StudyFeedCard } from "./components/StudyFeedCard";
 import { FeedCard } from "./components/FeedCard";
 import { useFeedNavigation } from "./hooks/useFeedNavigation";
 import { loadFeedItems, toggleLike as toggleLikeAPI, toggleSave as toggleSaveAPI } from "./services/feedService";
+import { loadStudyItems } from "./services/studyFeedService";
 import type { FeedTab, FeedItem, FeedItemState } from "./types/feed.types";
 import "./FeedPage.css";
+import { useAppContext } from "../../contexts/app";
 
 /** Build the initial local interaction state from an item array */
 function initStates(items: FeedItem[]): Record<string, FeedItemState> {
@@ -24,7 +27,19 @@ function initStates(items: FeedItem[]): Record<string, FeedItemState> {
 
 export function FeedPage() {
   const { t } = useTranslation("feed");
-  const [activeTab, setActiveTab] = useState<FeedTab>("for-you");
+  const { setPage } = useAppContext();
+  const [contentFilter, setContentFilter] = useState<"all" | "study">("all");
+  const [search, setSearch] = useState("");
+  const [subject, setSubject] = useState("");
+  const [studyOffset, setStudyOffset] = useState(0);
+  const [hasMoreStudy, setHasMoreStudy] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState(false);
+  const pagingRequest = useRef(false);
+  const generation = useRef(0);
+  const [refresh, setRefresh] = useState(0);
+  const activeTab: FeedTab = "for-you";
+  const [sharedUnavailable, setSharedUnavailable] = useState(false);
   const [items, setItems]       = useState<FeedItem[]>([]);
   const [isMock, setIsMock]     = useState(false);
   const [loading, setLoading]   = useState(true);
@@ -32,22 +47,57 @@ export function FeedPage() {
   const [states, setStates]     = useState<Record<string, FeedItemState>>({});
 
   useEffect(() => {
+    const currentGeneration = ++generation.current;
     let cancelled = false;
-    loadFeedItems()
-      .then(({ items: loaded, isMock: mock, error: err }) => {
+    const sharedId = /^\/feed\/([^/]+)\/?$/.exec(window.location.pathname)?.[1];
+    loadFeedItems(sharedId)
+      .then(({ items: loaded, isMock: mock, error: err, sharedUnavailable: missing }) => {
         if (cancelled) return;
         setItems(loaded);
+        const count = loaded.filter(item => item.type === "STUDY").length;
+        setStudyOffset(count);
+        setHasMoreStudy(count === 30);
+        setMoreError(false);
         setStates(initStates(loaded));
         setIsMock(mock);
         setFeedError(err);
+        setSharedUnavailable(Boolean(missing));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
-  }, []);
+    return () => { cancelled = true; generation.current = currentGeneration + 1; };
+  }, [refresh]);
 
-  const { activeIndex, containerRef } = useFeedNavigation({ total: items.length });
+  const needle = search.trim().toLocaleLowerCase();
+  const visibleItems = items.filter(item =>
+    (contentFilter !== "study" || item.type === "STUDY") &&
+    (!subject || (item.type === "STUDY" && item.tags.includes(subject))) &&
+    (!needle || `${item.title} ${item.description}`.toLocaleLowerCase().includes(needle))
+  );
+  const { activeIndex, containerRef, scrollToIndex } = useFeedNavigation({ total: visibleItems.length });
+
+  async function loadMoreStudy() {
+    if (pagingRequest.current || loading || !hasMoreStudy) return;
+    pagingRequest.current = true;
+    const currentGeneration = generation.current;
+    setLoadingMore(true); setMoreError(false);
+    try {
+      const next = await loadStudyItems(studyOffset);
+      if (generation.current !== currentGeneration) return;
+      setItems(current => {
+        const ids = new Set(current.map(item => item.id));
+        return [...current, ...next.filter(item => !ids.has(item.id))];
+      });
+      setStudyOffset(offset => offset + next.length);
+      setHasMoreStudy(next.length === 30);
+    } catch {
+      if (generation.current === currentGeneration) setMoreError(true);
+    } finally {
+      pagingRequest.current = false;
+      if (generation.current === currentGeneration) setLoadingMore(false);
+    }
+  }
 
   /* ── Interaction handlers ──────────────────────────────────── */
   const toggleLike = useCallback((id: string) => {
@@ -75,13 +125,29 @@ export function FeedPage() {
   }, []);
 
   /* ── Navigation indicator ──────────────────────────────────── */
-  const total = items.length;
+  const total = visibleItems.length;
   const progressPct = total > 1 ? (activeIndex / (total - 1)) * 100 : 0;
 
   return (
     <div className="feed-page" role="main" aria-label={t("page.ariaLabel")}>
       {/* Top bar overlays the first card */}
-      <FeedTopBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <FeedTopBar activeTab={activeTab} onTabChange={tab => {
+        if (tab === "explore") setPage("discover");
+        if (tab === "for-you") { setContentFilter("all"); setSearch(""); setSubject(""); scrollToIndex(0); }
+      }} />
+      {!loading && sharedUnavailable && <p role="alert">{t("error.sharedUnavailable")}</p>}
+      <div className="feed-content-filters" role="group" aria-label={t("study.filterLabel")}>
+        {(["all", "study"] as const).map(filter => <button key={filter} aria-pressed={contentFilter === filter} onClick={() => { scrollToIndex(0); setContentFilter(filter); setSubject(""); }}>{t(`study.${filter}`)}</button>)}
+        <label className="feed-search-label"><span>{t("study.search")}</span><input type="search" value={search} maxLength={120} placeholder={t("study.searchPlaceholder")} onChange={event => { scrollToIndex(0); setSearch(event.target.value); }} /></label>
+        {contentFilter === "study" && <label><span className="feed-control-label">{t("study.subject")}</span><select aria-label={t("study.subject")} value={subject} onChange={event => { scrollToIndex(0); setSubject(event.target.value); }}>
+          {["", "math", "physics", "chemistry", "biology", "english", "computing"].map(value => <option key={value} value={value}>{t(`study.subjects.${value || "all"}`)}</option>)}
+        </select></label>}
+      </div>
+
+      {!loading && (hasMoreStudy || moreError) && <div className="feed-study-pagination">
+        <button disabled={loadingMore} onClick={() => void loadMoreStudy()}>{t(loadingMore ? "study.loadingMore" : moreError ? "study.retryMore" : "study.loadMore")}</button>
+        {moreError && <span role="alert">{t("study.moreError")}</span>}
+      </div>}
 
       {/* Thin progress bar */}
       <div className="feed-progress" aria-hidden>
@@ -95,27 +161,31 @@ export function FeedPage() {
 
       {/* Error state */}
       {!loading && feedError && (
-        <div className="feed-state feed-state--error" role="alert">
-          <p className="feed-state__title">{t("error.title")}</p>
+        <div className={items.length ? "feed-partial-error" : "feed-state feed-state--error"} role="alert">
+          <p className="feed-state__title">{t(items.length ? "error.partial" : "error.title")}</p>
+          <button onClick={() => { setLoading(true); setLoadingMore(false); setRefresh(value => value + 1); }}>{t("error.retry")}</button>
         </div>
       )}
 
       {/* Empty real feed */}
-      {!loading && !feedError && items.length === 0 && (
+      {!loading && visibleItems.length === 0 && (!feedError || items.length > 0) && (
         <div className="feed-state feed-state--empty" role="status">
-          <p className="feed-state__title">{t("empty.title")}</p>
-          <p className="feed-state__subtitle">{t("empty.subtitle")}</p>
+          <p className="feed-state__title">{t(search || subject ? "study.noMatches" : contentFilter === "study" ? "study.empty" : "empty.title")}</p>
+          <p className="feed-state__subtitle">{t(search || subject ? "study.adjustFilters" : "empty.subtitle")}</p>
+          {(search || subject) && <button onClick={() => { setSearch(""); setSubject(""); }}>{t("study.clear")}</button>}
         </div>
       )}
 
       {/* Scrollable card stack — only when there are items */}
-      {items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div
           ref={containerRef}
           className="feed-scroll"
           aria-label={t("page.feedLabel")}
         >
-          {items.map((item, idx) => (
+          {visibleItems.map((item, idx) => item.type === "STUDY" ? (
+            <StudyFeedCard key={item.id} item={item} isActive={idx === activeIndex} />
+          ) : (
             <FeedCard
               key={item.id}
               item={item}
@@ -130,9 +200,9 @@ export function FeedPage() {
       )}
 
       {/* Dot indicator */}
-      {items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div className="feed-dots" aria-hidden>
-          {items.map((item, idx) => (
+          {visibleItems.map((item, idx) => (
             <span
               key={item.id}
               className={`feed-dot${idx === activeIndex ? " feed-dot--active" : ""}`}

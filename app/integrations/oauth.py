@@ -62,7 +62,7 @@ class OAuthToken:
         # why the existing log scrubber can't be relied on to catch this
         # shape if it ever reaches a log call.
         redacted_refresh = "***REDACTED***" if self.refresh_token else None
-        redacted_raw = {k: "***REDACTED***" for k in self.raw}
+        redacted_raw = dict.fromkeys(self.raw, "***REDACTED***")
         return (f"OAuthToken(access_token='***REDACTED***', "
                 f"refresh_token={redacted_refresh!r}, "
                 f"expires_at={self.expires_at!r}, token_type={self.token_type!r}, "

@@ -13,6 +13,7 @@ DO NOT reference alembic — this is the production migration mechanism here.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 
 import asyncpg
@@ -193,10 +194,8 @@ async def init_device_control_schema(conn: asyncpg.Connection) -> None:
     """Create device-control tables and seed RBAC permissions. Idempotent."""
     await conn.execute(DEVICE_CONTROL_SCHEMA)
     for stmt in _MIGRATIONS:
-        try:
+        with contextlib.suppress(Exception):
             await conn.execute(stmt)
-        except Exception:
-            pass  # Column may already exist on older boots
     for role, resource, action in DEVICE_PERMISSIONS:
         await conn.execute(
             "INSERT INTO role_permissions (role, resource, action) VALUES ($1,$2,$3) "

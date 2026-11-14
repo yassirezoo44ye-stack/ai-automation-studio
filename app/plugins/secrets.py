@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import uuid
 from functools import lru_cache
-from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -26,7 +25,7 @@ def _fernet() -> Fernet:
     return Fernet(derive_fernet_key())
 
 
-async def get_plugin_secret(installation_id: str, key: str) -> Optional[str]:
+async def get_plugin_secret(installation_id: str, key: str) -> str | None:
     from app.core.db import get_pool
     async with get_pool().acquire() as conn:
         row = await conn.fetchrow(

@@ -31,6 +31,11 @@ vi.mock("../../../contexts/lang", () => ({
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("Sidebar — navigation routes", () => {
+  it("opens the career assistant from the sidebar", () => {
+    render(<Sidebar />);
+    fireEvent.click(screen.getByTitle("Career Assistant"));
+    expect(mockSetPage).toHaveBeenCalledWith("careers");
+  });
   it("renders Teams nav item", () => {
     render(<Sidebar />);
     expect(screen.getByTitle("Teams")).toBeInTheDocument();

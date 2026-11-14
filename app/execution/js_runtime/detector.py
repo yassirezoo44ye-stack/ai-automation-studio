@@ -26,7 +26,6 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from .adapters import (
     ADAPTER_REGISTRY,
@@ -191,7 +190,7 @@ class PackageManagerDetector:
         )
 
 
-def _read_package_manager_field(pkg_json: Path) -> Optional[str]:
+def _read_package_manager_field(pkg_json: Path) -> str | None:
     """Extract the PM name from package.json `packageManager` field, or None."""
     try:
         data = json.loads(pkg_json.read_text(encoding="utf-8"))

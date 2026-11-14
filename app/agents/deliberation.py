@@ -24,7 +24,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.agents.base   import EvolvableAgent
@@ -115,10 +115,10 @@ class Deliberation:
     async def vote(
         self,
         raw_input     : str,
-        kernel        : "AgentKernel",
+        kernel        : AgentKernel,
         heuristic_intent: str = "",
         *,
-        org_id        : Optional[str] = None,
+        org_id        : str | None = None,
     ) -> DeliberationResult:
         """
         Run deliberation and return the winner agent name + full vote record.
@@ -173,7 +173,7 @@ class Deliberation:
 
     async def _solicit_bid(
         self,
-        agent           : "EvolvableAgent",
+        agent           : EvolvableAgent,
         raw_input       : str,
         heuristic_intent: str,
     ) -> AgentBid:
@@ -204,9 +204,9 @@ class Deliberation:
         raw_input: str,
         top      : AgentBid,
         second   : AgentBid,
-        kernel   : "AgentKernel",
+        kernel   : AgentKernel,
         *,
-        org_id   : Optional[str] = None,
+        org_id   : str | None = None,
     ) -> tuple[str, str]:
         from app.core.org_quota import check_org_quota_id, record_org_tokens
         if not await check_org_quota_id(org_id):

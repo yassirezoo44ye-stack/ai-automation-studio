@@ -9,7 +9,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class ProviderType(str, Enum):
@@ -71,7 +71,7 @@ class IntegrationCredential:
     provider_type: ProviderType
     secrets: dict[str, str] = field(default_factory=dict)   # e.g. {"access_token": "..."}
     metadata: dict[str, Any] = field(default_factory=dict)  # e.g. {"account_email": "..."}
-    expires_at: Optional[float] = None
+    expires_at: float | None = None
 
     @property
     def is_expired(self) -> bool:
@@ -82,7 +82,7 @@ class IntegrationCredential:
         # (Python's dict repr isn't caught by SensitiveDataFilter's
         # key=value-shaped regexes — see app/core/logging.py), so this
         # object must never fall back to that default if it's ever logged.
-        redacted = {k: "***REDACTED***" for k in self.secrets}
+        redacted = dict.fromkeys(self.secrets, "***REDACTED***")
         return (f"IntegrationCredential(provider_id={self.provider_id!r}, "
                 f"organization_id={self.organization_id!r}, provider_type={self.provider_type!r}, "
                 f"secrets={redacted!r}, metadata={self.metadata!r}, expires_at={self.expires_at!r})")
@@ -103,7 +103,7 @@ class SyncResult:
     status: SyncStatus
     items_synced: int = 0
     message: str = ""
-    cursor: Optional[str] = None   # opaque provider-defined position for incremental sync
+    cursor: str | None = None   # opaque provider-defined position for incremental sync
 
 
 def new_id() -> str:

@@ -8,7 +8,8 @@ HTTP-status decisions without parsing opaque exception messages.
 """
 from __future__ import annotations
 
-from typing import AsyncGenerator, Any
+from typing import Any
+from collections.abc import AsyncGenerator
 
 import anthropic as sdk
 

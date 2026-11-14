@@ -48,7 +48,6 @@ from __future__ import annotations
 import time
 import uuid
 from enum import Enum
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -67,6 +66,7 @@ from app.marketplace.dependencies import (
 )
 from app.routers.auth_users import get_current_user
 from app.tenancy import OrgContext, org_context, require_permission, optional_org_id
+import contextlib
 
 router = APIRouter(prefix="/marketplace", tags=["marketplace"])
 
@@ -111,9 +111,9 @@ class DependencySpec(BaseModel):
 
 
 class AssetSpec(BaseModel):
-    content         : Optional[str] = None
-    external_url    : Optional[str] = None
-    checksum_sha256 : Optional[str] = None
+    content         : str | None = None
+    external_url    : str | None = None
+    checksum_sha256 : str | None = None
 
 
 class ChangelogEntrySpec(BaseModel):
@@ -139,7 +139,7 @@ class PublishRequest(BaseModel):
 class ReviewRequest(BaseModel):
     listing_id : str
     rating     : float = Field(..., ge=1, le=5)
-    comment    : Optional[str] = None
+    comment    : str | None = None
 
 
 class RollbackRequest(BaseModel):
@@ -219,11 +219,11 @@ def _raise_install_error(exc: Exception) -> None:
 async def list_listings(
     page     : int = Query(1, ge=1),
     per_page : int = Query(20, ge=1, le=100),
-    type     : Optional[str] = None,
-    pricing  : Optional[str] = None,
+    type     : str | None = None,
+    pricing  : str | None = None,
     sort     : str = Query("installs", pattern="^(installs|rating|created_at|price_usd)$"),
     order    : str = Query("desc", pattern="^(asc|desc)$"),
-    viewer_org_id: Optional[str] = Depends(optional_org_id),
+    viewer_org_id: str | None = Depends(optional_org_id),
 ):
     store = get_marketplace_store()
     items = await store.list_items(viewer_org_id=viewer_org_id)
@@ -246,7 +246,7 @@ async def list_listings(
 
 
 @router.get("/listings/{listing_id}")
-async def get_listing(listing_id: str, viewer_org_id: Optional[str] = Depends(optional_org_id)):
+async def get_listing(listing_id: str, viewer_org_id: str | None = Depends(optional_org_id)):
     store = get_marketplace_store()
     item = await store.get_item(listing_id, viewer_org_id=viewer_org_id)
     if not item:
@@ -391,7 +391,7 @@ async def rollback_listing(
 
 
 @router.get("/listings/{listing_id}/versions")
-async def get_versions(listing_id: str, viewer_org_id: Optional[str] = Depends(optional_org_id)):
+async def get_versions(listing_id: str, viewer_org_id: str | None = Depends(optional_org_id)):
     store = get_marketplace_store()
     if await store.get_item(listing_id, viewer_org_id=viewer_org_id) is None:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -400,7 +400,7 @@ async def get_versions(listing_id: str, viewer_org_id: Optional[str] = Depends(o
 
 @router.get("/listings/{listing_id}/versions/{version}/changelog")
 async def get_version_changelog(
-    listing_id: str, version: str, viewer_org_id: Optional[str] = Depends(optional_org_id),
+    listing_id: str, version: str, viewer_org_id: str | None = Depends(optional_org_id),
 ):
     store = get_marketplace_store()
     # get_version() itself has no visibility check (it queries
@@ -416,7 +416,7 @@ async def get_version_changelog(
 
 
 @router.get("/listings/{listing_id}/dependencies")
-async def get_dependencies(listing_id: str, viewer_org_id: Optional[str] = Depends(optional_org_id)):
+async def get_dependencies(listing_id: str, viewer_org_id: str | None = Depends(optional_org_id)):
     store = get_marketplace_store()
     if await store.get_item(listing_id, viewer_org_id=viewer_org_id) is None:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -425,17 +425,15 @@ async def get_dependencies(listing_id: str, viewer_org_id: Optional[str] = Depen
 
 @router.get("/listings/{listing_id}/assets")
 async def get_assets(
-    listing_id: str, version: Optional[str] = None,
-    viewer_org_id: Optional[str] = Depends(optional_org_id),
+    listing_id: str, version: str | None = None,
+    viewer_org_id: str | None = Depends(optional_org_id),
 ):
     store = get_marketplace_store()
     if await store.get_item(listing_id) is None:
         raise HTTPException(status_code=404, detail="Listing not found")
     assets = await get_asset_service().get_assets(listing_id, version)
-    try:
+    with contextlib.suppress(Exception):
         await get_download_service().record_download(listing_id, version, org_id=viewer_org_id)
-    except Exception:
-        pass
     # Metadata only — raw content/external_url is not exposed here; the
     # actual payload is delivered through the install pipeline.
     return [
@@ -467,7 +465,7 @@ async def search_listings(
     q        : str = Query(..., min_length=1),
     page     : int = Query(1, ge=1),
     per_page : int = Query(20, ge=1, le=100),
-    viewer_org_id: Optional[str] = Depends(optional_org_id),
+    viewer_org_id: str | None = Depends(optional_org_id),
 ):
     store = get_marketplace_store()
     q_lower = q.lower()

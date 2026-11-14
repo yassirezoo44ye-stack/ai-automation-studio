@@ -26,7 +26,6 @@ POST /api/kernel/middleware
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -38,7 +37,7 @@ router = APIRouter(tags=["kernel"])
 class KernelExecuteRequest(BaseModel):
     input  : str
     caller : str = "api"
-    user_id: Optional[str] = None
+    user_id: str | None = None
 
 
 @router.post("/api/kernel/execute")
@@ -78,7 +77,7 @@ async def kernel_rollback(index: int):
         result = get_kernel().modifier.rollback(index)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.get("/api/kernel/agents")

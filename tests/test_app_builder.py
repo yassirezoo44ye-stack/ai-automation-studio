@@ -40,6 +40,8 @@ from app.services.app_builder import (
     _SUPPORTED_ACTION_TYPES,
     STEP_LABELS,
     _TOTAL_STEPS,
+    _try_extract_json,
+    _looks_truncated,
 )
 
 
@@ -1327,3 +1329,61 @@ class TestAIProviderBillingErrorContract:
             assert "False" in src and "retryable" in src, (
                 f"{fn} must set retryable=False in the billing 402 response"
             )
+
+
+# ── JSON helpers ──────────────────────────────────────────────────────────────
+
+class TestTryExtractJson:
+    """Unit tests for _try_extract_json."""
+
+    def test_bare_json_returned_as_is(self):
+        obj = '{"name": "app", "count": 3}'
+        assert _try_extract_json(obj) == obj
+
+    def test_fenced_json_block(self):
+        text = '```json\n{"name": "app"}\n```'
+        assert _try_extract_json(text) == '{"name": "app"}'
+
+    def test_fenced_block_no_language_tag(self):
+        text = '```\n{"x": 1}\n```'
+        assert _try_extract_json(text) == '{"x": 1}'
+
+    def test_prose_before_and_after_json(self):
+        text = 'Here is the spec:\n{"name": "app"}\nEnd.'
+        result = _try_extract_json(text)
+        assert result == '{"name": "app"}'
+
+    def test_open_fence_stripped(self):
+        text = '```json\n{"key": "val"}'
+        result = _try_extract_json(text)
+        assert result.startswith("{")
+
+    def test_whitespace_trimmed(self):
+        text = '   {"a": 1}   '
+        assert _try_extract_json(text) == '{"a": 1}'
+
+    def test_no_json_returns_original_stripped(self):
+        text = "  no json here  "
+        assert _try_extract_json(text) == "no json here"
+
+
+class TestLooksTruncated:
+    """Unit tests for _looks_truncated."""
+
+    def test_complete_object_not_truncated(self):
+        assert _looks_truncated('{"a": 1}') is False
+
+    def test_complete_array_not_truncated(self):
+        assert _looks_truncated('[1, 2, 3]') is False
+
+    def test_empty_string_is_truncated(self):
+        assert _looks_truncated("") is True
+
+    def test_trailing_comma_is_truncated(self):
+        assert _looks_truncated('{"a": 1,') is True
+
+    def test_unmatched_braces_is_truncated(self):
+        assert _looks_truncated('{"a": {"b": 1}') is True
+
+    def test_balanced_nested_not_truncated(self):
+        assert _looks_truncated('{"a": {"b": 1}}') is False

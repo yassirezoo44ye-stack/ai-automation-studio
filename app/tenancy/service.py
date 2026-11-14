@@ -13,7 +13,7 @@ import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -56,25 +56,24 @@ class TenancyService:
         if kind not in ("personal", "organization", "enterprise"):
             raise TenancyError(f"invalid kind {kind!r}")
         slug = _slugify(name)
-        async with self._pool.acquire() as conn:
-            async with conn.transaction():
-                # Ensure slug uniqueness with a numeric suffix on collision.
-                base, n = slug, 1
-                while await conn.fetchval(
-                    "SELECT 1 FROM organizations WHERE slug=$1 AND deleted_at IS NULL", slug
-                ):
-                    n += 1
-                    slug = f"{base}-{n}"
-                row = await conn.fetchrow(
-                    "INSERT INTO organizations (name, slug, kind, created_by, updated_by) "
-                    "VALUES ($1,$2,$3,$4,$4) RETURNING *",
-                    name, slug, kind, uuid.UUID(creator_id),
-                )
-                await conn.execute(
-                    "INSERT INTO organization_members (organization_id, user_id, role, created_by) "
-                    "VALUES ($1,$2,'owner',$2)",
-                    row["id"], uuid.UUID(creator_id),
-                )
+        async with self._pool.acquire() as conn, conn.transaction():
+            # Ensure slug uniqueness with a numeric suffix on collision.
+            base, n = slug, 1
+            while await conn.fetchval(
+                "SELECT 1 FROM organizations WHERE slug=$1 AND deleted_at IS NULL", slug
+            ):
+                n += 1
+                slug = f"{base}-{n}"
+            row = await conn.fetchrow(
+                "INSERT INTO organizations (name, slug, kind, created_by, updated_by) "
+                "VALUES ($1,$2,$3,$4,$4) RETURNING *",
+                name, slug, kind, uuid.UUID(creator_id),
+            )
+            await conn.execute(
+                "INSERT INTO organization_members (organization_id, user_id, role, created_by) "
+                "VALUES ($1,$2,'owner',$2)",
+                row["id"], uuid.UUID(creator_id),
+            )
         await self._log(str(row["id"]), creator_id, "organization.created",
                         resource="organization", resource_id=str(row["id"]), ip_address=ip_address)
         try:
@@ -87,7 +86,7 @@ class TenancyService:
             log.warning("event publish failed for organization.created org=%s", row["id"], exc_info=True)
         return dict(row)
 
-    async def get_organization(self, org_id: str) -> Optional[dict[str, Any]]:
+    async def get_organization(self, org_id: str) -> dict[str, Any] | None:
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             row = await conn.fetchrow(
@@ -185,7 +184,7 @@ class TenancyService:
 
     # ── Membership ────────────────────────────────────────────────────────────
 
-    async def get_member_role(self, org_id: str, user_id: str) -> Optional[str]:
+    async def get_member_role(self, org_id: str, user_id: str) -> str | None:
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             return await conn.fetchval(
@@ -426,7 +425,7 @@ class TenancyService:
                     uuid.UUID(org_id), name, description, uuid.UUID(actor_id),
                 )
             except asyncpg.UniqueViolationError:
-                raise TenancyError(f"team {name!r} already exists", 409)
+                raise TenancyError(f"team {name!r} already exists", 409) from None
         await self._log(org_id, actor_id, "team.created",
                         resource="team", resource_id=str(row["id"]), details={"name": name})
         return dict(row)
@@ -441,7 +440,7 @@ class TenancyService:
             )
         return [dict(r) for r in rows]
 
-    async def get_team(self, org_id: str, team_id: str) -> Optional[dict[str, Any]]:
+    async def get_team(self, org_id: str, team_id: str) -> dict[str, Any] | None:
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             row = await conn.fetchrow(
@@ -616,7 +615,7 @@ class TenancyService:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[TenancyService] = None
+_service: TenancyService | None = None
 
 
 def get_tenancy_service(pool: asyncpg.Pool | None = None) -> TenancyService:

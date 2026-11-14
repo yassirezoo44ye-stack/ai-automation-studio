@@ -42,6 +42,9 @@ _stripe.api_key          = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_ID: str       = os.getenv("STRIPE_PRICE_ID", "")  # legacy flat $/mo trial gate
 APP_URL: str               = os.getenv("APP_URL", "http://localhost:8000")
+# Where the browser-facing frontend lives (e.g. a Vercel deployment).
+# Falls back to APP_URL for single-host setups and local dev.
+FRONTEND_URL: str          = os.getenv("FRONTEND_URL", APP_URL)
 # Comma-separated additional CORS origins (e.g. a Vercel-hosted frontend)
 # beyond the single primary APP_URL — the backend itself is served from a
 # different host than the browser origin in a split frontend/backend setup.
@@ -78,6 +81,7 @@ PUBLIC_PREFIXES: tuple = (
     "/api/track",             # anonymous attribution — no auth, rate-limited inside the handler
     "/api/discover",          # public creation feed — no auth needed (endpoint-level auth still guards /mine)
     "/api/business/stream/",  # SSE plan stream — ticket-validated inside the handler (EventSource can't send headers)
+    "/api/webhooks/auto/",    # automation webhooks — HMAC-verified inside the handler (external senders have no session)
 )
 
 # ── Platform admins ───────────────────────────────────────────────────────────
@@ -110,3 +114,8 @@ def get_environment() -> str:
 
 def is_development() -> bool:
     return get_environment() == "development"
+
+# Career assistant: separate read-only mailbox consent from Google sign-in.
+CAREER_GOOGLE_CLIENT_ID: str = os.getenv("CAREER_GOOGLE_CLIENT_ID", "")
+CAREER_GOOGLE_CLIENT_SECRET: str = os.getenv("CAREER_GOOGLE_CLIENT_SECRET", "")
+CAREER_GOOGLE_REDIRECT_URI: str = os.getenv("CAREER_GOOGLE_REDIRECT_URI", "")

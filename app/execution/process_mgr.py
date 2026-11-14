@@ -20,7 +20,6 @@ import socket
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from app.runtime import process as rt_process
 
@@ -59,7 +58,7 @@ _used_ports: set[int] = set()
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def get_running(project_id: str) -> Optional[RunningProcess]:
+def get_running(project_id: str) -> RunningProcess | None:
     rp = _processes.get(project_id)
     if rp is None:
         return None
@@ -70,7 +69,7 @@ def get_running(project_id: str) -> Optional[RunningProcess]:
     return rp
 
 
-def allocate_port() -> Optional[int]:
+def allocate_port() -> int | None:
     """Reserve a port from the pool. Returns None if pool exhausted."""
     for p in range(_PORT_MIN, _PORT_MAX):
         if p not in _used_ports:

@@ -32,13 +32,14 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.core.auth import owner_user_id
+from app.tenancy import OrgContext, require_permission
 from app.core.db import get_pool
 from app.core.filesystem import workspace as resolve_workspace
 from app.core.helpers import resolve_project_id
@@ -48,7 +49,6 @@ from app.execution.platform import (
     get_cache,
     get_registry,
 )
-from app.execution.platform.artifacts import ArtifactSystem
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["runtime"])
@@ -101,8 +101,7 @@ async def execute(req: ExecuteRequest, request: Request):
 
     async def _stream() -> AsyncIterator[str]:
         nonlocal execution_id
-        report    = None
-        artifacts = None
+        report = None
 
         async for event in engine.run(ws, project_id=req.project_id, options=req.options):
             d = event.to_sse_dict()
@@ -207,12 +206,12 @@ async def cancel_execution(execution_id: str, request: Request):
 # ── Cache ─────────────────────────────────────────────────────────────────────
 
 @router.get("/api/runtime/cache/stats")
-async def cache_stats():
+async def cache_stats(ctx: OrgContext = Depends(require_permission("runtime", "manage"))):
     return get_cache().stats()
 
 
 @router.delete("/api/runtime/cache")
-async def evict_cache():
+async def evict_cache(ctx: OrgContext = Depends(require_permission("runtime", "manage"))):
     evicted = get_cache().evict_expired()
     return {"evicted": evicted}
 

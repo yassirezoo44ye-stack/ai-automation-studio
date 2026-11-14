@@ -17,7 +17,7 @@ Frame ordering:
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from typing import Optional
 
 PROTOCOL_VERSION = 1
@@ -201,6 +201,4 @@ def validate_incoming(msg: dict) -> bool:
         return False
     if msg.get("version") != PROTOCOL_VERSION:
         return False
-    if msg.get("type") not in _VALID_INCOMING_TYPES:
-        return False
-    return True
+    return msg.get("type") in _VALID_INCOMING_TYPES

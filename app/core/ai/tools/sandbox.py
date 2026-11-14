@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Set
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ class ToolPermissions:
     """
     timeout_s:       float = _DEFAULT_TIMEOUT_S
     max_result_chars: int   = _DEFAULT_MAX_RESULT_CHARS
-    allowed_for:     Set[str] = field(default_factory=lambda: {"*"})  # user IDs or "*"
+    allowed_for:     set[str] = field(default_factory=lambda: {"*"})  # user IDs or "*"
     requires_auth:   bool  = False  # If True, user_id must be provided
     network_policy:  str   = "full"     # "none" | "internal" | "allowlist" | "full" — see app.sandbox.permissions
     capabilities:    frozenset = field(default_factory=frozenset)  # subset of app.marketplace.security.ALL_KNOWN_CAPABILITIES

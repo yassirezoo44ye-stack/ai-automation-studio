@@ -7,7 +7,6 @@ just three of them instead of one, since these are unrelated concerns.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from app.plugins.provider_types import AuthProviderBase, MemoryProviderBase, StorageProviderBase
 from app.plugins.registry_guard import OwnershipTracker
@@ -25,7 +24,7 @@ _storage_owners = OwnershipTracker("storage provider")
 _auth_owners    = OwnershipTracker("auth provider")
 
 
-def register_memory_provider(provider_id: str, provider: MemoryProviderBase, *, owner: Optional[str] = None) -> None:
+def register_memory_provider(provider_id: str, provider: MemoryProviderBase, *, owner: str | None = None) -> None:
     _memory_owners.claim(provider_id, owner)
     _MEMORY_PROVIDERS[provider_id] = provider
     log.info("registered memory provider: %s (owner=%s)", provider_id, owner)
@@ -40,7 +39,7 @@ def get_memory_provider(provider_id: str) -> MemoryProviderBase | None:
     return _MEMORY_PROVIDERS.get(provider_id)
 
 
-def register_storage_provider(provider_id: str, provider: StorageProviderBase, *, owner: Optional[str] = None) -> None:
+def register_storage_provider(provider_id: str, provider: StorageProviderBase, *, owner: str | None = None) -> None:
     _storage_owners.claim(provider_id, owner)
     _STORAGE_PROVIDERS[provider_id] = provider
     log.info("registered storage provider: %s (owner=%s)", provider_id, owner)
@@ -55,7 +54,7 @@ def get_storage_provider(provider_id: str) -> StorageProviderBase | None:
     return _STORAGE_PROVIDERS.get(provider_id)
 
 
-def register_auth_provider(provider_id: str, provider: AuthProviderBase, *, owner: Optional[str] = None) -> None:
+def register_auth_provider(provider_id: str, provider: AuthProviderBase, *, owner: str | None = None) -> None:
     _auth_owners.claim(provider_id, owner)
     _AUTH_PROVIDERS[provider_id] = provider
     log.info("registered auth provider: %s (owner=%s)", provider_id, owner)

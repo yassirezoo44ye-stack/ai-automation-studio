@@ -11,7 +11,6 @@ import { CommandPalette } from "./CommandPalette";
 import { CopilotButton } from "../../shared/ui/copilot";
 import { NotificationBell } from "../../shared/ui/notifications";
 import type { Page } from "../../types";
-import { _isStaleChunkError } from "./staleChunk";
 
 // When a deploy replaces a lazy chunk the old in-memory bundle references the
 // old hash, which 404s.  Catch only genuine stale-chunk TypeErrors (identified
@@ -19,6 +18,23 @@ import { _isStaleChunkError } from "./staleChunk";
 // the correct chunk.  sessionStorage guards against an infinite reload loop if
 // the chunk is genuinely missing rather than just stale.
 const _CHUNK_RELOAD_KEY = "__flow_chunk_reload__";
+
+// Substrings emitted by each browser when a dynamic import 404s after a deploy.
+// Deliberately NOT matching every TypeError — only these browser-native messages
+// confirm the error is a failed network fetch, not a runtime error inside the
+// imported module (e.g. "Cannot read properties of undefined").
+const _STALE_CHUNK_MSGS = [
+  "Failed to fetch dynamically imported module", // Chrome / Edge
+  "Importing a module script failed",            // Safari
+  "error loading dynamically imported module",   // Firefox
+];
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function _isStaleChunkError(err: unknown): boolean {
+  if (!(err instanceof TypeError)) return false;
+  const msg = (err as TypeError).message;
+  return _STALE_CHUNK_MSGS.some(p => msg.includes(p));
+}
 
 function chunkFallback(err: unknown): never {
   if (_isStaleChunkError(err)) {
@@ -56,8 +72,11 @@ const DevicesPage         = lazy(() => import("../../features/devices").then(m =
 const BusinessLabPage     = lazy(() => import("../../features/business-lab").then(m => ({ default: m.BusinessLabPage })).catch(chunkFallback));
 const DiscoverPage        = lazy(() => import("../../features/discover").then(m => ({ default: m.DiscoverPage })).catch(chunkFallback));
 const FeedPage            = lazy(() => import("../../features/feed").then(m => ({ default: m.FeedPage })).catch(chunkFallback));
+const CareersPage = lazy(() => import("../../features/careers/CareersPage").then(m => ({ default: m.CareersPage })).catch(chunkFallback));
+const StudyLibraryPage = lazy(() => import("../../features/study-library/StudyLibraryPage").then(m => ({ default: m.StudyLibraryPage })).catch(chunkFallback));
 const LeadsPage           = lazy(() => import("../../features/leads").then(m => ({ default: m.LeadsPage })).catch(chunkFallback));
 const SaasFactoryPage     = lazy(() => import("../../features/saas-factory").then(m => ({ default: m.SaasFactoryPage })).catch(chunkFallback));
+const NewProjectPage      = lazy(() => import("../../features/new-project/NewProjectPage").then(m => ({ default: m.NewProjectPage })).catch(chunkFallback));
 
 /** Map page keys → sidebar nav translation keys */
 const PAGE_NAV_KEY: Record<string, string> = {
@@ -85,8 +104,11 @@ const PAGE_NAV_KEY: Record<string, string> = {
   "business-lab":   "businessLab",
   "discover":       "discover",
   "feed":           "feed",
+  "careers":        "careers",
+  "study-library":  "studyLibrary",
   "leads":          "leads",
   "saas-factory":   "saasFactory",
+  "new-project":    "newProject",
 };
 
 function SunIcon() {
@@ -245,8 +267,11 @@ function WorkspaceContent() {
           {page === "business-lab"  && <BusinessLabPage />}
           {page === "discover"      && <DiscoverPage />}
           {page === "feed"          && <FeedPage />}
+          {page === "careers"       && <CareersPage />}
+          {page === "study-library" && <div className="study-library-workspace"><StudyLibraryPage /></div>}
           {page === "leads"         && <LeadsPage />}
           {page === "saas-factory"  && <SaasFactoryPage />}
+          {page === "new-project"   && <NewProjectPage />}
         </Suspense>
       </ErrorBoundary>
     </PageTransition>

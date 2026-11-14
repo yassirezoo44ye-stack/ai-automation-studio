@@ -28,7 +28,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 if TYPE_CHECKING:
     from app.execution.platform.artifacts import ArtifactSystem
@@ -52,11 +53,11 @@ class ExecutionContext:
         execution_id: str,
         project_id: str,
         workspace: Path,
-        sandbox: "ExecutionSandbox",
-        metrics: "ExecutionMetrics",
-        report: "ExecutionReport",
-        artifacts: "ArtifactSystem",
-        emit: Callable[["TypedEvent"], None],
+        sandbox: ExecutionSandbox,
+        metrics: ExecutionMetrics,
+        report: ExecutionReport,
+        artifacts: ArtifactSystem,
+        emit: Callable[[TypedEvent], None],
         options: dict | None = None,
     ) -> None:
         self.execution_id = execution_id

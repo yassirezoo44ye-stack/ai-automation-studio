@@ -17,7 +17,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+import contextlib
 
 
 # ── Result type ───────────────────────────────────────────────────────────────
@@ -26,12 +26,15 @@ from typing import Optional
 class ProjectInfo:
     project_type: str           # e.g. "html", "python_script", "fastapi"
     run_strategy: str           # "static" | "script" | "server" | "unsupported"
-    entry_point: Optional[str]  # relative path, e.g. "main.py" or "index.html"
+    entry_point: str | None  # relative path, e.g. "main.py" or "index.html"
     confidence: str             # "high" | "medium" | "low"
     detected_by: list[str]      # files / patterns that triggered detection
     notes: list[str] = field(default_factory=list)  # human-readable messages
     unsupported_reason: str = ""
     local_run_hint: str = ""    # how to run locally when unsupported
+    # Set when the project lives inside a subdirectory of the workspace root.
+    # Drivers and runner should use this as the working directory instead of ws.
+    effective_root: "Path | None" = None
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -51,6 +54,54 @@ def detect(ws: Path) -> ProjectInfo:
         )
 
 
+# Common subdirectory names where AI builders place project files.
+_SUBDIR_CANDIDATES = (
+    "backend", "server", "api", "app", "src",
+    "frontend", "client", "web",
+)
+
+# Indicator files whose presence at a directory root means "this is the project".
+_ROOT_INDICATORS = frozenset({
+    "package.json", "requirements.txt", "manage.py",
+    "main.py", "app.py", "server.py", "run.py", "api.py",
+    "index.html", "Cargo.toml", "pom.xml", "build.gradle",
+    "docker-compose.yml", "docker-compose.yaml", "Dockerfile",
+})
+
+
+def _find_subdir_project(ws: Path, fset: set) -> "Path | None":
+    """
+    If the workspace root has no recognisable entry point but a single common
+    subdirectory does, return that subdirectory so detection can re-run there.
+
+    Handles the common case where AI builders generate all files under
+    ``backend/``, ``server/``, ``src/``, etc. instead of the workspace root.
+    Returns None when root already has indicators or no matching subdir is found.
+    """
+    # Root already looks like a project — don't redirect.
+    if any(ind in fset for ind in _ROOT_INDICATORS):
+        return None
+
+    # Also stop if there are Python source or JS files at the root level
+    # (bare .py or .js at root without a named indicator still counts).
+    root_files = [f for f in fset if "/" not in f]
+    if any(f.endswith((".py", ".js", ".ts", ".html")) for f in root_files):
+        return None
+
+    for subdir_name in _SUBDIR_CANDIDATES:
+        subdir = ws / subdir_name
+        if not subdir.is_dir():
+            continue
+        sub_fset: set[str] = {
+            str(p.relative_to(subdir)).replace("\\", "/")
+            for p in subdir.rglob("*") if p.is_file()
+        }
+        if any(ind in sub_fset for ind in _ROOT_INDICATORS):
+            return subdir
+
+    return None
+
+
 # ── Internal detection logic ──────────────────────────────────────────────────
 
 def _detect(ws: Path) -> ProjectInfo:
@@ -59,6 +110,16 @@ def _detect(ws: Path) -> ProjectInfo:
         for p in ws.rglob("*") if p.is_file()
     }
     fset = set(files)
+
+    # ── Subdir normalisation ───────────────────────────────────────────────
+    # If all indicator files are inside a single subdirectory (e.g. backend/),
+    # re-detect from there so drivers receive the correct working directory.
+    subdir = _find_subdir_project(ws, fset)
+    if subdir is not None:
+        info = _detect(subdir)
+        info.effective_root = subdir
+        info.notes.insert(0, f"📂 Project found in '{subdir.name}/' — running from subdirectory.")
+        return info
 
     # ── Highest-confidence manifest files ─────────────────────────────────
 
@@ -132,10 +193,8 @@ def _detect(ws: Path) -> ProjectInfo:
     # Read requirements.txt once for all framework checks
     reqs_lower = ""
     if "requirements.txt" in fset:
-        try:
+        with contextlib.suppress(Exception):
             reqs_lower = files["requirements.txt"].read_text(encoding="utf-8").lower()
-        except Exception:
-            pass
 
     # Flask — return run_strategy="flask" so python_server driver can handle it
     if _has_flask(reqs_lower, fset, files):
@@ -211,6 +270,8 @@ def _detect(ws: Path) -> ProjectInfo:
         )
 
     # ── Node.js — route to node driver; it will check registry availability ───
+    # Note: bare JS files with an accompanying index.html are caught by the HTML
+    # static path below; only pure JS/TS projects without HTML land here.
 
     if "package.json" in fset:
         pkg_type = _node_type(files, fset)
@@ -235,6 +296,21 @@ def _detect(ws: Path) -> ProjectInfo:
             notes=["Node.js script — handled by Node driver if runtime available."],
         )
 
+    # Any remaining .js file (e.g. standalone scripts without a named entry)
+    any_js = sorted(
+        f for f in fset
+        if f.endswith(".js")
+        and not any(s in f for s in ("test", "spec", ".min.", "config", "jest", "babel", "eslint", "prettier"))
+        and not f.startswith("node_modules/")
+    )
+    if any_js and "index.html" not in fset:
+        return ProjectInfo(
+            project_type="node", run_strategy="node",
+            entry_point=any_js[0], confidence="low",
+            detected_by=[any_js[0]],
+            notes=["JavaScript file found — attempting Node driver. Add package.json for full support."],
+        )
+
     # ── HTML static ────────────────────────────────────────────────────────
 
     html_files = sorted(f for f in fset if f.endswith(".html"))
@@ -248,13 +324,16 @@ def _detect(ws: Path) -> ProjectInfo:
 
     # ── Unknown ────────────────────────────────────────────────────────────
 
+    found_exts = sorted({f.rsplit(".", 1)[-1] for f in fset if "." in f})[:8]
+    ext_hint = (f"Found file types: {', '.join(found_exts)}. " if found_exts else "Workspace appears empty. ")
     return ProjectInfo(
         project_type="unknown", run_strategy="unsupported",
         entry_point=None, confidence="low",
         detected_by=list(fset)[:10],
         unsupported_reason=(
-            "Could not determine project type. "
-            "Add main.py, index.html, or package.json."
+            ext_hint
+            + "Could not determine a runnable entry point. "
+            + "Add main.py / app.py (Python), index.html (static), or package.json (Node.js)."
         ),
     )
 
@@ -277,7 +356,7 @@ def _triggers_prefix(fset: set, prefix: str) -> list[str]:
     return [f for f in fset if f.startswith(prefix)]
 
 
-def _find_py_entry(fset: set) -> Optional[str]:
+def _find_py_entry(fset: set) -> str | None:
     priority = ("main.py", "app.py", "server.py", "run.py", "api.py",
                 "cli.py", "solution.py", "wsgi.py", "asgi.py", "index.py")
     for f in priority:
@@ -327,12 +406,18 @@ def _node_type(files: dict, fset: set) -> str:
     try:
         pkg = json.loads(files["package.json"].read_text(encoding="utf-8"))
         deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
-        if "react" in deps:      return "react"
-        if "vue" in deps:        return "vue"
-        if "svelte" in deps:     return "svelte"
-        if "express" in deps:    return "express"
-        if "koa" in deps:        return "koa"
-        if "@nestjs/core" in deps: return "nestjs"
+        if "react" in deps:
+            return "react"
+        if "vue" in deps:
+            return "vue"
+        if "svelte" in deps:
+            return "svelte"
+        if "express" in deps:
+            return "express"
+        if "koa" in deps:
+            return "koa"
+        if "@nestjs/core" in deps:
+            return "nestjs"
     except Exception:
         pass
     return "node"
@@ -343,7 +428,7 @@ def _unsupported(
     fset: set,
     reason: str,
     local_hint: str,
-    entry: Optional[str] = None,
+    entry: str | None = None,
 ) -> ProjectInfo:
     detected_by = [f for f in fset if not f.endswith((".png", ".jpg", ".ico", ".svg"))][:6]
     return ProjectInfo(
@@ -355,7 +440,7 @@ def _unsupported(
     )
 
 
-def _detect_inner_for_docker(ws: Path, fset: set) -> Optional[ProjectInfo]:
+def _detect_inner_for_docker(ws: Path, fset: set) -> ProjectInfo | None:
     """
     When Docker/Compose is detected, look for a runnable inner component
     (Next.js, Vite, Node.js, Python) and return its ProjectInfo so we can

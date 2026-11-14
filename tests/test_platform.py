@@ -323,9 +323,9 @@ class TestExecutionSandbox:
         sb = ExecutionSandbox(ws, "exec-sandbox-4")
         sb._base_dir = tmp_path / "executions"
         sb._root     = sb._base_dir / "exec-sandbox-4"
-        paths = sb.create()
+        sb.create()
 
-        freed = sb.cleanup()
+        sb.cleanup()
         assert not sb._root.exists()
         # freed should be positive (some data was in the sandbox)
 

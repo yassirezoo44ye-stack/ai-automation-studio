@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import uuid
 from functools import lru_cache
-from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -33,7 +32,7 @@ class CredentialStore:
     async def save(self, credential: IntegrationCredential) -> None:
         raise NotImplementedError
 
-    async def load(self, provider_id: str, organization_id: str) -> Optional[IntegrationCredential]:
+    async def load(self, provider_id: str, organization_id: str) -> IntegrationCredential | None:
         raise NotImplementedError
 
     async def delete(self, provider_id: str, organization_id: str) -> bool:
@@ -65,7 +64,7 @@ class PostgresCredentialStore(CredentialStore):
                 encrypted, json.dumps(credential.metadata), credential.expires_at,
             )
 
-    async def load(self, provider_id: str, organization_id: str) -> Optional[IntegrationCredential]:
+    async def load(self, provider_id: str, organization_id: str) -> IntegrationCredential | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """SELECT provider_id, organization_id, provider_type, secrets_encrypted, metadata,
@@ -117,7 +116,7 @@ class PostgresCredentialStore(CredentialStore):
         return out
 
 
-_store: Optional[CredentialStore] = None
+_store: CredentialStore | None = None
 
 
 def get_credential_store(pool=None) -> CredentialStore:

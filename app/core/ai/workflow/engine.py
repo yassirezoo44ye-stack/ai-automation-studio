@@ -11,7 +11,8 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any
+from collections.abc import Callable, Coroutine
 
 from ..events.bus import EventBus
 from ..events.events import (
@@ -44,7 +45,7 @@ class WorkflowDefinition:
     metadata:      dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def simple_sequence(cls, steps: list[dict[str, Any]]) -> "WorkflowDefinition":
+    def simple_sequence(cls, steps: list[dict[str, Any]]) -> WorkflowDefinition:
         """Factory: build a linear workflow from a list of step configs."""
         wf_id = str(uuid.uuid4())
         nodes: dict[str, WorkflowNode] = {}
@@ -74,10 +75,10 @@ class WorkflowExecution:
     context:        dict[str, Any]        = field(default_factory=dict)
     checkpoints:    dict[str, Any]        = field(default_factory=dict)   # node_id → state snapshot
     completed_nodes: list[str]            = field(default_factory=list)
-    current_node:   Optional[str]         = None
-    error:          Optional[str]         = None
+    current_node:   str | None         = None
+    error:          str | None         = None
     started_at:     float                 = field(default_factory=time.time)
-    finished_at:    Optional[float]       = None
+    finished_at:    float | None       = None
 
 
 class WorkflowEngine:
@@ -97,7 +98,7 @@ class WorkflowEngine:
         self,
         definition: WorkflowDefinition,
         runner:     NodeRunner,
-        context:    Optional[dict[str, Any]] = None,
+        context:    dict[str, Any] | None = None,
     ) -> WorkflowExecution:
         execution = WorkflowExecution(
             workflow_id=definition.id,
@@ -141,7 +142,7 @@ class WorkflowEngine:
         execution_id: str,
         definition:   WorkflowDefinition,
         runner:       NodeRunner,
-        from_node_id: Optional[str] = None,
+        from_node_id: str | None = None,
     ) -> WorkflowExecution:
         execution = self._executions.get(execution_id)
         if execution is None:
@@ -161,7 +162,7 @@ class WorkflowEngine:
         execution.finished_at = time.time()
         return execution
 
-    def get_execution(self, execution_id: str) -> Optional[WorkflowExecution]:
+    def get_execution(self, execution_id: str) -> WorkflowExecution | None:
         return self._executions.get(execution_id)
 
     # ── Node dispatch ──────────────────────────────────────────────────────────
@@ -243,7 +244,7 @@ class WorkflowEngine:
         runner:  NodeRunner,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(node.retry + 1):
             try:
                 return await asyncio.wait_for(

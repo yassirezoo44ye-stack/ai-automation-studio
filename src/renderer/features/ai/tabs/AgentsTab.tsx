@@ -2,7 +2,7 @@
  * AgentsTab — agent list, creation, and management.
  * CRUD operations against /api/agents. Uses shared S styles.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, authH } from "../../../utils/api";
@@ -30,6 +30,21 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
   const [saving, setSaving]       = useState(false);
   const [publishTarget, setPublishTarget] = useState<{ id: string; name: string; description?: string } | null>(null);
 
+  const [skills, setSkills] = useState<{ id: string; title: string; description: string }[]>([]);
+  const [skillsFailed, setSkillsFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiFetch("/api/agents/skills", { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("Skill catalog unavailable");
+        const data = await response.json() as { skills: typeof skills };
+        if (!controller.signal.aborted) setSkills(data.skills);
+      })
+      .catch(() => { if (!controller.signal.aborted) setSkillsFailed(true); });
+    return () => controller.abort();
+  }, []);
+
   async function saveAgent() {
     if (!editing?.name?.trim() || !editing?.system_prompt?.trim()) return;
     setSaving(true);
@@ -48,8 +63,11 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
 
   async function deleteAgent(id: string, name: string) {
     if (!confirm(t("agentsTab.deleteConfirm", { name }))) return;
-    await apiFetch(`/api/agents/${id}`, { method: "DELETE" });
-    toast(t("agentsTab.toast.deleted", { name })); onRefresh();
+    try {
+      const response = await apiFetch(`/api/agents/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Agent deletion rejected");
+      toast(t("agentsTab.toast.deleted", { name })); onRefresh();
+    } catch { toast(t("agentsTab.toast.deleteFailed"), "err"); }
   }
 
   function openForm(template?: Partial<Agent>) {
@@ -62,6 +80,23 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
     return (
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
         <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 }}>
+          <fieldset className="g-input">
+            <legend>{t("agentsTab.form.skillsLabel")}</legend>
+            <p>{t("agentsTab.form.skillsHint")}</p>
+            {skillsFailed && <p role="alert">{t("agentsTab.form.skillsFailed")}</p>}
+            {skills.map(skill => {
+              const selected = editing?.skill_ids ?? [];
+              const checked = selected.includes(skill.id);
+              return (
+                <label key={skill.id} style={{ display: "block", marginBottom: 8 }}>
+                  <input type="checkbox" checked={checked} disabled={!checked && selected.length >= 3}
+                    onChange={() => setEditing(previous => ({ ...previous, skill_ids: checked
+                      ? selected.filter(id => id !== skill.id) : [...selected, skill.id] }))} />
+                  {" "}{skill.title}
+                </label>
+              );
+            })}
+          </fieldset>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ width: 70 }}>
               <label className="g-label" htmlFor="agent-avatar">{t("agentsTab.form.avatarLabel")}</label>

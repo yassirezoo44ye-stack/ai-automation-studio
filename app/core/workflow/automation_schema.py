@@ -225,3 +225,41 @@ async def mark_interrupted_runs() -> None:
             log.debug("automation recovery: no orphaned runs found")
     except Exception:
         log.exception("automation recovery: failed — non-fatal, continuing startup")
+
+
+async def mark_lost_pending_runs() -> None:
+    """
+    Mark 'pending' runs whose queued job no longer exists as 'interrupted'.
+
+    Only for the in-memory job queue (no REDIS_URL): its jobs die with the
+    process, so a run still 'pending' from before this start can never
+    begin. A Redis-backed queue keeps its jobs, so the caller skips this.
+
+    The age guard leaves alone runs a previous instance created moments
+    ago during a zero-downtime deploy (its jobs dispatch within seconds).
+    """
+    from app.core.db import get_pool
+
+    pool = get_pool()
+    if pool is None:
+        log.warning("automation recovery: pool not ready, skipping")
+        return
+
+    try:
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE automation_runs
+                SET
+                    status      = 'interrupted',
+                    finished_at = now(),
+                    error       = 'Run interrupted — server restarted before it started'
+                WHERE status = 'pending'
+                  AND created_at < now() - interval '2 minutes'
+                """
+            )
+        count = int(result.split()[-1]) if result else 0
+        if count:
+            log.warning("automation recovery: marked %d lost pending run(s) as interrupted", count)
+    except Exception:
+        log.exception("automation recovery: pending sweep failed — non-fatal, continuing startup")

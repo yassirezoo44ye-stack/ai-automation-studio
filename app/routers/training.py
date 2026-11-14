@@ -25,23 +25,20 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.params import Depends
 
 from app.core.db import get_pool
-from app.tenancy.context import OrgContext, org_context, require_permission
+from app.tenancy.context import OrgContext, org_context
 from app.training.models import (
-    CourseCreate, CourseOut, CourseUpdate,
-    LearnerCreate, LearnerOut,
-    LessonCreate, LessonOut, LessonUpdate,
-    JobOut,
-    QuizCreate, QuizOut,
+    CourseCreate, CourseUpdate,
+    LearnerCreate,
+    LessonCreate, LessonUpdate,
+    QuizCreate,
     QuestionCreate,
-    ScriptCreate, ScriptOut,
-    VideoCreate, VideoOut,
-    CourseGenerateRequest,
+    ScriptCreate,
+    VideoCreate,
 )
 from app.integrations.video import get_video_registry
 
@@ -63,8 +60,8 @@ def _not_found(resource: str) -> HTTPException:
 
 @router.get("/courses")
 async def list_courses(
-    status:   Optional[str] = None,
-    language: Optional[str] = None,
+    status:   str | None = None,
+    language: str | None = None,
     limit:    int           = 50,
     offset:   int           = 0,
     ctx: OrgContext = Depends(org_context),
@@ -586,7 +583,7 @@ async def create_learner(
 
 @router.get("/jobs")
 async def list_jobs(
-    status: Optional[str] = None,
+    status: str | None = None,
     limit:  int           = 50,
     ctx: OrgContext = Depends(org_context),
 ):

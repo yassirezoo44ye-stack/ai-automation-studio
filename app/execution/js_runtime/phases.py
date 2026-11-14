@@ -43,7 +43,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 
 from app.execution import process_mgr
 from app.runtime import process as rt_process
@@ -66,6 +66,7 @@ from .report import (
     RuntimeReport,
 )
 from .resolver import ScriptResolver
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ class PhaseRunner:
         self._detector   = PackageManagerDetector()
         self._resolver   = ScriptResolver()
         self._sys_probe  = SystemProbe()
-        self._build_plan: Optional[BuildPlan] = None
+        self._build_plan: BuildPlan | None = None
         self._report     = RuntimeReport(project_id=project_id, workspace=str(ws))
 
     async def run(self) -> AsyncIterator[tuple[str, dict]]:
@@ -291,7 +292,14 @@ class PhaseRunner:
                 if script in ("dev", "preview"):
                     plan.run_cmd += ["--", "--host", "0.0.0.0", "--port", str(port)]
             else:
-                entry = _find_entry(ws)
+                # Prefer the entry point the detector already resolved (relative
+                # to ws) over the hardcoded scan — avoids "node index.js" when
+                # the actual entry is e.g. src/server.js.
+                ep = self.info.entry_point
+                if ep and ep.endswith((".js", ".mjs", ".cjs")) and (ws / ep).exists():
+                    entry = ep
+                else:
+                    entry = _find_entry(ws)
                 plan.script_name = entry
                 plan.run_cmd     = ["node", entry]
                 plan.warnings.append(
@@ -564,10 +572,8 @@ class PhaseRunner:
             await asyncio.sleep(0.1)
 
         if not ready:
-            try:
+            with contextlib.suppress(Exception):
                 rp.process.kill()
-            except Exception:
-                pass
             process_mgr._release(self.project_id)
 
             err_code = (
@@ -802,10 +808,8 @@ def _dep_checksum(ws: Path, pkg_data: dict) -> str:
     for lf in ("pnpm-lock.yaml", "yarn.lock", "package-lock.json", "bun.lockb"):
         p = ws / lf
         if p.exists():
-            try:
+            with contextlib.suppress(Exception):
                 h.update(p.read_bytes())
-            except Exception:
-                pass
             break
     return h.hexdigest()
 
@@ -837,7 +841,8 @@ def _check_external_services(ws: Path) -> list[str]:
 
 _ENTRY_CANDIDATES = (
     "index.js", "server.js", "app.js", "main.js",
-    "src/index.js", "src/server.js",
+    "src/index.js", "src/server.js", "src/app.js", "src/main.js",
+    "lib/index.js", "lib/server.js",
 )
 
 

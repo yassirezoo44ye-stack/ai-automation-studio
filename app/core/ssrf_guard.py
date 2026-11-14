@@ -62,7 +62,7 @@ def assert_public_url(url: str) -> None:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror as exc:
         raise UnsafeUrlError(f"could not resolve host {host!r}: {exc}") from exc
-    for family, _, _, _, sockaddr in infos:
+    for _family, _, _, _, sockaddr in infos:
         ip_str = sockaddr[0]
         if _is_blocked_ip(ip_str):
             raise UnsafeUrlError(f"URL host {host!r} resolves to a non-public address: {ip_str!r}")

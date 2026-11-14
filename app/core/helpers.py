@@ -3,7 +3,6 @@ Cross-cutting helpers used by multiple routers.
 """
 import uuid
 from datetime import datetime
-from typing import Optional
 
 import anthropic
 from fastapi import HTTPException
@@ -62,7 +61,7 @@ def ai_circuit_report(success: bool, target_id: str = "anthropic") -> None:
 
 # ── Project ID resolution ─────────────────────────────────────────────────────
 
-async def resolve_project_id(conn, project_id: Optional[str], user_id: uuid.UUID) -> uuid.UUID:
+async def resolve_project_id(conn, project_id: str | None, user_id: uuid.UUID) -> uuid.UUID:
     """Resolve a frontend project_id to a UUID the caller actually owns.
 
     "demo"/None resolves to the caller's own personal demo project
@@ -82,6 +81,19 @@ async def resolve_project_id(conn, project_id: Optional[str], user_id: uuid.UUID
         return await conn.fetchval(
             "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) RETURNING id",
             user_id, "Demo Project", "Default project for the chat UI",
+        )
+    if project_id == "copilot":
+        # AI Copilot conversations live in a dedicated per-user project so
+        # they don't mix with regular Chat / AgentOS conversations.
+        pid = await conn.fetchval(
+            "SELECT id FROM projects WHERE user_id=$1 AND name=$2 ORDER BY created_at LIMIT 1",
+            user_id, "AI Copilot",
+        )
+        if pid:
+            return pid
+        return await conn.fetchval(
+            "INSERT INTO projects (user_id, name, description) VALUES ($1,$2,$3) RETURNING id",
+            user_id, "AI Copilot", "Conversations from the floating AI Copilot assistant",
         )
     pid = uuid.UUID(project_id)
     owned = await conn.fetchval("SELECT 1 FROM projects WHERE id=$1 AND user_id=$2", pid, user_id)
@@ -112,7 +124,7 @@ def strip_fences(text: str) -> str:
 
 # ── App-name sanitiser ────────────────────────────────────────────────────────
 
-import re as _re
+import re as _re  # noqa: E402
 
 def sanitize_name(name: str) -> str:
     """Replace characters that are unsafe in filenames/directory names with underscores."""
@@ -121,7 +133,7 @@ def sanitize_name(name: str) -> str:
 
 # ── Task scheduling ───────────────────────────────────────────────────────────
 
-def next_due_date(due: Optional[datetime], recurrence: str) -> Optional[datetime]:
+def next_due_date(due: datetime | None, recurrence: str) -> datetime | None:
     """Return the next due date for a recurring task, or None if non-recurring."""
     if not due or recurrence == "none":
         return None

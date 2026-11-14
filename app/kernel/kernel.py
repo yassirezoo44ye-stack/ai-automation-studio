@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from app.commands.context import CommandContext
 from app.commands.registry import CommandRegistry
@@ -124,7 +124,7 @@ class AIKernel:
         raw: str,
         *,
         caller: str = "cli",
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> CommandResult:
         """
         Full kernel execution path:
@@ -162,7 +162,7 @@ class AIKernel:
         # ── Build CommandContext ───────────────────────────────────────────────
         from pathlib import Path
         ws_raw = flags.get("workspace") or flags.get("w") or (args[0] if args else "")
-        workspace: Optional[Path] = None
+        workspace: Path | None = None
         if ws_raw:
             p = Path(ws_raw).expanduser().resolve()
             workspace = p if p.exists() else Path(ws_raw)

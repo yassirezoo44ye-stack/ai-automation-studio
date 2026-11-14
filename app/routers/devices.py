@@ -15,7 +15,6 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -42,11 +41,11 @@ class EnrollmentTokenResponse(BaseModel):
     token_prefix: str
     expires_in: int
     expires_at: str
-    workspace_id: Optional[str] = None
+    workspace_id: str | None = None
 
 
 class CreateEnrollmentTokenRequest(BaseModel):
-    workspace_id: Optional[str] = None
+    workspace_id: str | None = None
 
 
 class EnrollRequest(BaseModel):
@@ -54,11 +53,11 @@ class EnrollRequest(BaseModel):
     token: str = Field(..., min_length=10)
     device_name: str = Field(..., min_length=1, max_length=120)
     platform: str = Field("windows")
-    hostname: Optional[str] = Field(None, max_length=255)
-    agent_version: Optional[str] = Field(None, max_length=40)
-    screen_width: Optional[int] = None
-    screen_height: Optional[int] = None
-    device_fingerprint: Optional[str] = Field(None, max_length=128)
+    hostname: str | None = Field(None, max_length=255)
+    agent_version: str | None = Field(None, max_length=40)
+    screen_width: int | None = None
+    screen_height: int | None = None
+    device_fingerprint: str | None = Field(None, max_length=128)
 
     @field_validator("platform")
     @classmethod
@@ -72,7 +71,7 @@ class EnrollRequest(BaseModel):
 class CreateSessionRequest(BaseModel):
     primary_device_id: str
     device_ids: list[str] = Field(..., min_length=1, max_length=5)
-    workspace_id: Optional[str] = None
+    workspace_id: str | None = None
 
     @field_validator("device_ids")
     @classmethod
@@ -81,7 +80,7 @@ class CreateSessionRequest(BaseModel):
             try:
                 uuid.UUID(d)
             except ValueError:
-                raise ValueError(f"Invalid UUID: {d}")
+                raise ValueError(f"Invalid UUID: {d}") from None
         return v
 
     @field_validator("primary_device_id")
@@ -90,7 +89,7 @@ class CreateSessionRequest(BaseModel):
         try:
             uuid.UUID(v)
         except ValueError:
-            raise ValueError("primary_device_id must be a valid UUID")
+            raise ValueError("primary_device_id must be a valid UUID") from None
         return v
 
 
@@ -176,7 +175,7 @@ async def enroll_device(body: EnrollRequest):
             device_fingerprint=body.device_fingerprint,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return result
 
 
@@ -195,7 +194,7 @@ async def revoke_device(
     try:
         await svc.revoke_device(ctx.org_id, device_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from None
     return {"status": "revoked"}
 
 
@@ -210,7 +209,7 @@ async def delete_device(
     try:
         await svc.revoke_device(ctx.org_id, device_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from None
     return {"status": "deleted"}
 
 
@@ -228,7 +227,7 @@ async def rotate_device_credential(
     try:
         result = await svc.rotate_credential(ctx.org_id, device_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from None
     return result
 
 
@@ -273,7 +272,7 @@ async def get_device_session_token(
         decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
         basic_device_id, raw_credential = decoded.split(":", 1)
     except Exception:
-        raise HTTPException(401, "Malformed Basic auth header")
+        raise HTTPException(401, "Malformed Basic auth header") from None
 
     # Enforce that the URL device_id matches the credential's owner
     if basic_device_id != device_id:
@@ -330,7 +329,7 @@ async def create_session(
             workspace_id=body.workspace_id,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return session
 
 
@@ -357,7 +356,7 @@ async def start_session(
     try:
         session = await svc.start_session(ctx.org_id, session_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return session
 
 
@@ -371,7 +370,7 @@ async def stop_session(
     try:
         await svc.stop_session(ctx.org_id, session_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return {"status": "stopped"}
 
 
@@ -389,5 +388,5 @@ async def update_layout(
             [item.model_dump() for item in body.layout],
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return {"status": "updated"}

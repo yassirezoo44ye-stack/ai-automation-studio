@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -38,7 +38,7 @@ class CreditService:
         self._pool = pool
 
     async def grant(
-        self, org_id: str, amount_cents: int, reason: str, *, actor_id: Optional[str] = None,
+        self, org_id: str, amount_cents: int, reason: str, *, actor_id: str | None = None,
     ) -> dict[str, Any]:
         """Grant (positive) or consume (negative) credit. Applies to the
         org's Stripe customer balance (negative Stripe balance = credit
@@ -100,7 +100,7 @@ class CreditService:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[CreditService] = None
+_service: CreditService | None = None
 
 
 def get_credit_service(pool: asyncpg.Pool | None = None) -> CreditService:

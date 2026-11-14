@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -191,7 +191,7 @@ class UsageService:
                 "AND project_id=$3 AND workflow_id=$4 AND agent_id=$5",
                 uuid.UUID(org_id), period, project_id, workflow_id, agent_id,
             )
-        usage = {m: 0 for m in METRICS}
+        usage = dict.fromkeys(METRICS, 0)
         usage.update({r["metric"]: int(r["amount"]) for r in rows})
         return usage
 
@@ -302,7 +302,7 @@ class UsageService:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[UsageService] = None
+_service: UsageService | None = None
 
 
 def get_usage_service(pool: asyncpg.Pool | None = None) -> UsageService:

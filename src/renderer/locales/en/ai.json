@@ -1,7 +1,10 @@
 {
   "workspace": {
     "title": "AI Workspace",
-    "tabs": { "chat": "Chat", "agents": "Agents" },
+    "tabs": {
+      "chat": "Chat",
+      "agents": "Agents"
+    },
     "newAgent": "+ New Agent",
     "loadAgentsError": "Could not load agents"
   },
@@ -21,13 +24,17 @@
       "temperatureLabel": "Temperature",
       "saving": "Saving…",
       "save": "Save Agent",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "skillsLabel": "Agent skills",
+      "skillsHint": "Select up to three skills.",
+      "skillsFailed": "Could not load skills. Reload the page."
     },
     "toast": {
       "updated": "Agent updated",
       "created": "Agent created",
       "saveFailed": "Failed to save",
-      "deleted": "Deleted {{name}}"
+      "deleted": "Deleted {{name}}",
+      "deleteFailed": "Could not delete the agent."
     },
     "deleteConfirm": "Delete agent \"{{name}}\"?",
     "empty": {
@@ -75,10 +82,10 @@
       "loadError": "Failed to load this conversation.",
       "emptyAgentName": "Flow AI",
       "emptyDescription": "Start a conversation or pick one from the sidebar.",
-      "suggestion1": "Write Python code",
-      "suggestion2": "Explain a concept",
-      "suggestion3": "Debug my script",
-      "suggestion4": "Build a web app",
+      "suggestion1": "Write a follow-up email for a new lead",
+      "suggestion2": "Plan my sales priorities this week",
+      "suggestion3": "Draft a LinkedIn post about our services",
+      "suggestion4": "Turn my notes into a client proposal",
       "you": "You",
       "assistantFallback": "Claude",
       "now": "now",
@@ -118,5 +125,11 @@
       "exportFailed": "Export failed",
       "backendOffline": "⚠️ Backend offline"
     }
+  },
+  "skills": {
+    "selectionLabel": "Active skill",
+    "none": "No additional skill",
+    "persistenceHint": "Your choice is remembered for future sessions in this browser.",
+    "loadFailed": "Could not load skills. Reload the page."
   }
 }

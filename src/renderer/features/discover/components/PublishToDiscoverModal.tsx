@@ -39,7 +39,6 @@ export function PublishToDiscoverModal({
   useEffect(() => {
     if (!currentOrgId || !sourceId) return;
     let cancelled = false;
-    // Show the spinner while the async check runs; it settles in .finally().
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCheckingDup(true);
     fetchMyCreations(currentOrgId, { limit: 100 })
@@ -107,13 +106,13 @@ export function PublishToDiscoverModal({
   };
 
   return (
-    // Escape is handled on the dialog container (keyboard events bubble from
-    // its inputs); the dialog role itself is non-interactive, hence the disable.
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+    <>
+    {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
     <div
       role="dialog"
       aria-modal="true"
       aria-label={t("publish.modal.title")}
+      tabIndex={-1}
       style={{
         position: "fixed", inset: 0, zIndex: 600,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -122,10 +121,11 @@ export function PublishToDiscoverModal({
       onKeyDown={onKey}
     >
       {/* Backdrop */}
-      <button
-        type="button"
-        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", border: "none", padding: 0, cursor: "default" }}
+      <div
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }}
         onClick={onClose}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onClose(); }}
+        role="button"
         tabIndex={-1}
         aria-label={t("publish.modal.close")}
       />
@@ -262,12 +262,17 @@ export function PublishToDiscoverModal({
         </div>
 
         {/* Publish immediately checkbox */}
-        <label aria-label={t("publish.modal.publishNowLabel")} style={{
-          display: "flex", alignItems: "flex-start", gap: 10,
-          cursor: submitting ? "not-allowed" : "pointer",
-          userSelect: "none",
-        }}>
+        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+        <label
+          htmlFor="publish-immediately-checkbox"
+          style={{
+            display: "flex", alignItems: "flex-start", gap: 10,
+            cursor: submitting ? "not-allowed" : "pointer",
+            userSelect: "none",
+          }}
+        >
           <input
+            id="publish-immediately-checkbox"
             type="checkbox"
             checked={publishImmediately}
             onChange={e => setPublishImmediately(e.target.checked)}
@@ -359,5 +364,6 @@ export function PublishToDiscoverModal({
         </div>
       </div>
     </div>
+    </>
   );
 }

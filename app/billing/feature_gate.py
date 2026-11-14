@@ -44,7 +44,6 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
 from app.billing.plans import FEATURES, Plan
 
@@ -155,7 +154,7 @@ def _join_or(names: list[str]) -> str:
 @dataclass(frozen=True)
 class FeatureCheckResult:
     allowed: bool
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 # ── Service ──────────────────────────────────────────────────────────────────
@@ -234,7 +233,7 @@ def _as_aware_utc(dt: datetime) -> datetime:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
-_service: Optional[FeatureGateService] = None
+_service: FeatureGateService | None = None
 
 
 def get_feature_gate_service() -> FeatureGateService:

@@ -20,7 +20,6 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 
 # ── SystemProbe (Phase 1 full diagnostic) ─────────────────────────────────────
@@ -45,7 +44,7 @@ class SystemProbeResult:
     tmpdir: str             # "/tmp"
 
     # Runtimes
-    node_version: Optional[str]   # "v20.11.0" | None
+    node_version: str | None   # "v20.11.0" | None
     python_version: str           # "3.11.2"
 
     # Package managers (all that responded to --version)
@@ -59,7 +58,7 @@ class SystemProbeResult:
 
     # Resources
     disk_free_mb: int           # -1 if unavailable
-    memory_free_mb: Optional[int]   # None if platform doesn't expose it
+    memory_free_mb: int | None   # None if platform doesn't expose it
 
     warnings: list[str] = field(default_factory=list)
 
@@ -224,18 +223,18 @@ class ProbeResult:
     cwd: str
     tmp_writable: bool
     home_npm_exists: bool
-    home_npm_writable: Optional[bool]
+    home_npm_writable: bool | None
     # npm config
     npm_config_cache: str
     npm_config_logs_dir: str
-    cache_dir_writable: Optional[bool]
+    cache_dir_writable: bool | None
     # Workspace
     pkg_json_exists: bool
-    lockfile_found: Optional[str]
+    lockfile_found: str | None
     node_modules_exists: bool
     # Node binary
-    node_version: Optional[str]
-    npm_version: Optional[str]
+    node_version: str | None
+    npm_version: str | None
     # Environment variables relevant to npm
     env_vars: dict[str, str]
     # Any warnings detected
@@ -303,7 +302,7 @@ class EnvironmentProbe:
 
         # Writability checks
         tmp_writable = _is_writable(tmpdir)
-        home_npm_writable: Optional[bool] = None
+        home_npm_writable: bool | None = None
         if home_npm.exists():
             home_npm_writable = _is_writable(str(home_npm))
             if not home_npm_writable:
@@ -317,7 +316,7 @@ class EnvironmentProbe:
                 "npm cannot create .npm directory"
             )
 
-        cache_dir_writable: Optional[bool] = None
+        cache_dir_writable: bool | None = None
         cache_path = Path(npm_cache)
         if cache_path.exists():
             cache_dir_writable = _is_writable(npm_cache)
@@ -332,7 +331,7 @@ class EnvironmentProbe:
             warnings.append(f"{tmpdir} is NOT writable — cannot use as fallback cache")
 
         # Lockfile detection
-        lockfile_found: Optional[str] = None
+        lockfile_found: str | None = None
         for lf in _LOCKFILE_PRIORITY:
             if (ws / lf).exists():
                 lockfile_found = lf
@@ -373,7 +372,7 @@ def _is_writable(path: str) -> bool:
         return False
 
 
-def _run_ver(cmd: list[str]) -> Optional[str]:
+def _run_ver(cmd: list[str]) -> str | None:
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=5)
         if r.returncode == 0:
@@ -383,14 +382,14 @@ def _run_ver(cmd: list[str]) -> Optional[str]:
     return None
 
 
-def _safe_getlogin() -> Optional[str]:
+def _safe_getlogin() -> str | None:
     try:
         return os.getlogin()
     except Exception:
         return None
 
 
-def _run_npm_version() -> Optional[str]:
+def _run_npm_version() -> str | None:
     """Try npm --version, then npm-cli.js paths."""
     v = _run_ver(["npm", "--version"])
     if v:
@@ -406,7 +405,7 @@ def _run_npm_version() -> Optional[str]:
     return None
 
 
-def _read_memory_free_mb() -> Optional[int]:
+def _read_memory_free_mb() -> int | None:
     """Return free memory in MB.  None if the platform doesn't expose it."""
     # Linux
     try:

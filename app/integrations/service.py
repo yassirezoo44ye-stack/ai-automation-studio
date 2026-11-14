@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from app.integrations.types import IntegrationCredential, IntegrationStatus
 
@@ -25,8 +25,8 @@ class IntegrationService:
 
     async def connect(
         self, *, provider_id: str, organization_id: str, user_id: str,
-        secrets: dict[str, str], metadata: Optional[dict[str, Any]] = None,
-        granted_scopes: Optional[list[str]] = None,
+        secrets: dict[str, str], metadata: dict[str, Any] | None = None,
+        granted_scopes: list[str] | None = None,
     ) -> dict[str, Any]:
         from app.integrations.registry import get_integration_registry
         from app.integrations.credential_store import get_credential_store
@@ -159,7 +159,7 @@ class IntegrationService:
         record_webhook_received()
 
 
-_service: Optional[IntegrationService] = None
+_service: IntegrationService | None = None
 
 
 def get_integration_service(pool=None) -> IntegrationService:

@@ -20,7 +20,7 @@ Security:
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -302,7 +302,7 @@ async def get_app(
             app_id,
         )
 
-    def _ts(v: Any) -> Optional[str]:
+    def _ts(v: Any) -> str | None:
         return v.isoformat() if v is not None else None
 
     return {

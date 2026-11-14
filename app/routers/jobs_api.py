@@ -26,7 +26,6 @@ org_id= kwarg), never trusting whatever the request body claims.
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -57,8 +56,8 @@ async def job_stats(ctx: OrgContext = Depends(org_context)):
 
 @router.get("")
 async def list_jobs(
-    status: Optional[str] = None,
-    kind  : Optional[str] = None,
+    status: str | None = None,
+    kind  : str | None = None,
     limit : int = Query(50, ge=1, le=200),
     ctx: OrgContext = Depends(org_context),
 ):

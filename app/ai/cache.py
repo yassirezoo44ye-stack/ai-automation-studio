@@ -10,7 +10,6 @@ import hashlib
 import json
 import logging
 import time
-from typing import Optional
 
 from app.ai.models import CompletionRequest, CompletionResponse
 
@@ -34,7 +33,7 @@ class ResponseCache:
 
     # ── Public interface ──────────────────────────────────────────────────────
 
-    def get(self, key: str) -> Optional[CompletionResponse]:
+    def get(self, key: str) -> CompletionResponse | None:
         entry = self._store.get(key)
         if not entry:
             return None
@@ -72,7 +71,7 @@ class ResponseCache:
     # ── Key generation ────────────────────────────────────────────────────────
 
     @staticmethod
-    def make_key(request: CompletionRequest, *, org_id: Optional[str] = None) -> str:
+    def make_key(request: CompletionRequest, *, org_id: str | None = None) -> str:
         """Deterministic cache key based on all request fields that affect the
         response, PLUS org_id. Two organizations issuing content-identical
         requests (a shared demo-workflow template, an agent's static system

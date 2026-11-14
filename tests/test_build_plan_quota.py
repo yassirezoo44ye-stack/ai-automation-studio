@@ -86,6 +86,7 @@ def _run(coro):
 # ── Import under test after env is set ────────────────────────────────────────
 
 from app.routers.build import build_plan  # noqa: E402
+import contextlib  # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -205,10 +206,8 @@ class TestBuildPlanOverQuota(unittest.TestCase):
                   new=AsyncMock(side_effect=HTTPException(429, "Token quota exceeded"))),
             patch("app.routers.build.InferenceEngine", return_value=engine_mock),
         ):
-            try:
+            with contextlib.suppress(HTTPException):
                 _run(build_plan(_plan_request(), _fake_request()))
-            except HTTPException:
-                pass
 
         # Core invariant: quota guard fires BEFORE the AI call
         engine_mock.complete.assert_not_called()
@@ -312,7 +311,8 @@ class TestBuildEndpointUnaffected(unittest.TestCase):
     and that the fix to build_plan did not disturb it."""
 
     def test_build_still_calls_check_org_quota(self):
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         from app.routers.build import build_program
 
         pool, conn = _fake_pool()
@@ -366,7 +366,8 @@ class TestBuildEndpointUnaffected(unittest.TestCase):
 
     # Case I — Execution order on /api/build: quota must come before AI call
     def test_build_quota_before_ai(self):
-        import tempfile, pathlib
+        import tempfile
+        import pathlib
         from app.routers.build import build_program
 
         pool, conn = _fake_pool()

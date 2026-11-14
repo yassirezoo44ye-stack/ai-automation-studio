@@ -15,7 +15,6 @@ authenticated flows can be added by passing --token.
 """
 import argparse
 import asyncio
-import statistics
 import sys
 import time
 

@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import AsyncGenerator, Any, Optional
+from typing import Any
+from collections.abc import AsyncGenerator
 
 import httpx
 
@@ -84,7 +85,7 @@ class GroqProvider(BaseProvider):
     def _build_body(self, request: CompletionRequest, *, stream: bool = False) -> dict[str, Any]:
         model = self.resolve_model(request.model)
 
-        system: Optional[str] = request.system
+        system: str | None = request.system
         messages = _to_messages(request.messages)
         if system:
             messages = [{"role": "system", "content": system}] + messages

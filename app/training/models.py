@@ -6,7 +6,7 @@ that uses them, with no ORM layer (queries are raw asyncpg).
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -14,28 +14,28 @@ from pydantic import BaseModel, Field
 
 class CourseCreate(BaseModel):
     title:              str
-    description:        Optional[str] = None
-    project_id:         Optional[str] = None
+    description:        str | None = None
+    project_id:         str | None = None
     language:           str           = "en"
     source_type:        str           = "manual"
-    source_document_id: Optional[str] = None
+    source_document_id: str | None = None
 
 
 class CourseUpdate(BaseModel):
-    title:       Optional[str] = None
-    description: Optional[str] = None
-    status:      Optional[str] = None
-    language:    Optional[str] = None
+    title:       str | None = None
+    description: str | None = None
+    status:      str | None = None
+    language:    str | None = None
 
 
 class CourseOut(BaseModel):
     id:                 str
     organization_id:    str
-    project_id:         Optional[str]
+    project_id:         str | None
     title:              str
-    description:        Optional[str]
+    description:        str | None
     status:             str
-    source_type:        Optional[str]
+    source_type:        str | None
     language:           str
     created_at:         str
     updated_at:         str
@@ -45,15 +45,15 @@ class CourseOut(BaseModel):
 
 class LessonCreate(BaseModel):
     title:       str
-    description: Optional[str] = None
+    description: str | None = None
     position:    int           = 0
 
 
 class LessonUpdate(BaseModel):
-    title:       Optional[str] = None
-    description: Optional[str] = None
-    position:    Optional[int] = None
-    status:      Optional[str] = None
+    title:       str | None = None
+    description: str | None = None
+    position:    int | None = None
+    status:      str | None = None
 
 
 class LessonOut(BaseModel):
@@ -61,10 +61,10 @@ class LessonOut(BaseModel):
     course_id:       str
     organization_id: str
     title:           str
-    description:     Optional[str]
+    description:     str | None
     position:        int
     status:          str
-    duration_seconds: Optional[int]
+    duration_seconds: int | None
     created_at:      str
     updated_at:      str
 
@@ -79,12 +79,12 @@ class ScriptCreate(BaseModel):
 
 class ScriptOut(BaseModel):
     id:              str
-    lesson_id:       Optional[str]
+    lesson_id:       str | None
     organization_id: str
     content:         str
     language:        str
     generated_by:    str
-    model_used:      Optional[str]
+    model_used:      str | None
     created_at:      str
     updated_at:      str
 
@@ -92,22 +92,22 @@ class ScriptOut(BaseModel):
 # ── Videos ────────────────────────────────────────────────────────────────────
 
 class VideoCreate(BaseModel):
-    title:    Optional[str] = None
+    title:    str | None = None
     language: str           = "en"
     provider: str           = "mock"
 
 
 class VideoOut(BaseModel):
     id:               str
-    lesson_id:        Optional[str]
+    lesson_id:        str | None
     organization_id:  str
-    title:            Optional[str]
+    title:            str | None
     provider:         str
-    provider_video_id: Optional[str]
+    provider_video_id: str | None
     status:           str
-    url:              Optional[str]
-    thumbnail_url:    Optional[str]
-    duration_seconds: Optional[int]
+    url:              str | None
+    thumbnail_url:    str | None
+    duration_seconds: int | None
     language:         str
     created_at:       str
     updated_at:       str
@@ -124,14 +124,14 @@ class QuestionCreate(BaseModel):
     question_text:  str
     question_type:  str           = "multiple_choice"
     options:        list[Any]     = []
-    correct_answer: Optional[int] = None
-    explanation:    Optional[str] = None
+    correct_answer: int | None = None
+    explanation:    str | None = None
     position:       int           = 0
 
 
 class QuizOut(BaseModel):
     id:              str
-    lesson_id:       Optional[str]
+    lesson_id:       str | None
     organization_id: str
     title:           str
     pass_score:      int
@@ -143,14 +143,14 @@ class QuizOut(BaseModel):
 
 class LearnerCreate(BaseModel):
     email: str
-    name:  Optional[str] = None
+    name:  str | None = None
 
 
 class LearnerOut(BaseModel):
     id:              str
     organization_id: str
     email:           str
-    name:            Optional[str]
+    name:            str | None
     created_at:      str
 
 
@@ -160,20 +160,20 @@ class JobOut(BaseModel):
     id:              str
     organization_id: str
     job_type:        str
-    reference_id:    Optional[str]
-    reference_type:  Optional[str]
+    reference_id:    str | None
+    reference_type:  str | None
     status:          str
-    error_message:   Optional[str]
+    error_message:   str | None
     created_at:      str
-    started_at:      Optional[str]
-    completed_at:    Optional[str]
+    started_at:      str | None
+    completed_at:    str | None
 
 
 # ── Course Generation ─────────────────────────────────────────────────────────
 
 class CourseGenerateRequest(BaseModel):
     title:              str
-    source_document_id: Optional[str] = None
+    source_document_id: str | None = None
     language:           str           = "en"
     target_lessons:     int           = Field(5, ge=1, le=20)
-    project_id:         Optional[str] = None
+    project_id:         str | None = None

@@ -11,13 +11,17 @@
  * properties in chat.css and `marginInlineStart` etc. in inline styles.
  */
 import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "react";
+import { useFlowSkill } from "../../../shared/hooks/useFlowSkill";
+import { FlowSkillSelect } from "../../../shared/ui/FlowSkillSelect";
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
+import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
 import { useAsyncData } from "../../../shared/hooks/useAsyncData";
+import { clearAssistantHandoff, peekAssistantHandoff } from "../../../shared/utils/assistantHandoff";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { ErrorState, EmptyState } from "../../../shared/ui/StateViews";
 import { GoldButton } from "../../../shared/ui/gold";
@@ -63,6 +67,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
   // ── Core state (unchanged) ────────────────────────────────────────
   const [projectId, setProjectId] = useState("demo");
+  const skillSelection = useFlowSkill();
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
 
   // Layout state
@@ -87,7 +92,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   // the new id immediately, in the same handler that flips activeConv, so
   // the in-progress streamed reply is never hidden behind a loading state).
   const [messagesConvId, setMessagesConvId] = useState<string | null>(null);
-  const [prompt, setPrompt]                 = useState("");
+  // A question handed over from another page (Home's "Ask Flow") prefills the input once.
+  const [prompt, setPrompt]                 = useState(peekAssistantHandoff);
+  useEffect(() => { clearAssistantHandoff(); }, []);
   const [streaming, setStreaming]           = useState(false);
   const [searchQ, setSearchQ]               = useState("");
   // Same local-copy-synced-from-hook pattern as messages: setTaskStatus
@@ -117,7 +124,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     data: loadedTasks, status: inlineTasksStatus, error: inlineTasksError,
     suggestedFix: inlineTasksFix, refetch: loadInlineTasks,
   } = useAsyncData(
-    () => apiJSON<{ tasks?: Task[] }>("/api/tasks?sort=created_at").then(d => (d.tasks ?? []).slice(0, 6)),
+    () => apiJSON<{ tasks?: Task[] }>(`/api/tasks?conversation_id=${activeConv}&sort=created_at`).then(d => (d.tasks ?? []).slice(0, 6)),
     [activeConv, showTasks],
     { enabled: !!activeConv && showTasks },
   );
@@ -170,10 +177,11 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     setPendingTaskIds(prev => new Set(prev).add(task.id));
     setInlineTasks(prev => prev.map(x => x.id === task.id ? { ...x, status: status as Task["status"] } : x));
     try {
-      await apiFetch(`/api/tasks/${task.id}`, {
+      const response = await apiFetch(`/api/tasks/${task.id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
+      if (!response.ok) throw new Error(t("chatTab.toast.updateTaskFailed"));
     } catch (err) {
       toast(describeError(err, t("chatTab.toast.updateTaskFailed")), "err");
       loadInlineTasks();
@@ -233,7 +241,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     try {
       const res = await fetch(url, {
         method: "POST", headers: authH(),
-        body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId }),
+        body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
+          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [] } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -341,6 +350,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             <option value="default">{t("chatTab.sidebar.defaultAgent")}</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>)}
           </select>
+          {agentId === "default" && <FlowSkillSelect selection={skillSelection} />}
         </div>
 
         {/* Conversation list */}
@@ -655,15 +665,16 @@ const MessageRow = memo(function MessageRow({
   msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
 }) {
   const { t } = useTranslation("ai");
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    void navigator.clipboard.writeText(msg.content).then(() => {
+    void copyText(msg.content).then(() => {
       setCopied(true);
       // Reset the "Copied!" indicator after 2 s so it's ready for re-use.
       const id = setTimeout(() => setCopied(false), 2000);
       return () => clearTimeout(id);
-    });
+    }).catch(() => toast(t("common:actions.copyFailed"), "err"));
   }
 
   const isUser = msg.role === "user";

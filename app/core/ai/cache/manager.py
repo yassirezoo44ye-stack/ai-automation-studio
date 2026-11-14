@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import time
-from typing import Any, Optional
+from typing import Any
 
 
 class _TTLStore:
@@ -20,7 +20,7 @@ class _TTLStore:
     def __init__(self) -> None:
         self._data: dict[str, tuple[Any, float]] = {}  # key → (value, expires_at)
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         entry = self._data.get(key)
         if not entry:
             return None
@@ -65,7 +65,7 @@ class CacheManager:
 
     # ── Model list ────────────────────────────────────────────────────────────
 
-    def get_model_list(self, provider_id: str) -> Optional[list]:
+    def get_model_list(self, provider_id: str) -> list | None:
         return self._store.get(f"models:{provider_id}")
 
     def set_model_list(self, provider_id: str, models: list) -> None:
@@ -73,7 +73,7 @@ class CacheManager:
 
     # ── Provider health ───────────────────────────────────────────────────────
 
-    def get_health(self) -> Optional[dict]:
+    def get_health(self) -> dict | None:
         return self._store.get("health")
 
     def set_health(self, health: dict) -> None:
@@ -81,7 +81,7 @@ class CacheManager:
 
     # ── Tool schemas ──────────────────────────────────────────────────────────
 
-    def get_tool_schemas(self) -> Optional[list]:
+    def get_tool_schemas(self) -> list | None:
         return self._store.get("tool_schemas")
 
     def set_tool_schemas(self, schemas: list) -> None:
@@ -93,7 +93,7 @@ class CacheManager:
 
     # ── Prompt versions ───────────────────────────────────────────────────────
 
-    def get_prompt(self, prompt_id: str) -> Optional[Any]:
+    def get_prompt(self, prompt_id: str) -> Any | None:
         return self._store.get(f"prompt:{prompt_id}")
 
     def set_prompt(self, prompt_id: str, version) -> None:
@@ -104,7 +104,7 @@ class CacheManager:
 
     # ── Generic ───────────────────────────────────────────────────────────────
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         return self._store.get(key)
 
     def set(self, key: str, value: Any, ttl: int) -> None:

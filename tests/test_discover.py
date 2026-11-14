@@ -396,7 +396,6 @@ def test_D38_feed_mapper_uses_server_counts_not_hardcoded_zero():
         "creationToFeedItem must use c.saves_count, not hardcoded 0"
     )
     # Ensure the old hardcoded zeros are gone from the likes/saves lines
-    import re
     lines = _FEED_SVC_SRC.splitlines()
     for line in lines:
         stripped = line.strip()

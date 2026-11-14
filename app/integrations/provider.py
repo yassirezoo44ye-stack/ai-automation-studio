@@ -11,7 +11,6 @@ isolation (see examples/webhook_relay_provider.py).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from app.integrations.types import (
     IntegrationCredential, ProviderCapabilities, ProviderScope, ProviderType,
@@ -66,7 +65,7 @@ class IntegrationProvider(ABC):
 
     # ── Sync (only called if capabilities().sync is True) ──────────────────
 
-    async def sync(self, credential: IntegrationCredential, *, cursor: Optional[str] = None) -> SyncResult:
+    async def sync(self, credential: IntegrationCredential, *, cursor: str | None = None) -> SyncResult:
         raise NotImplementedError(f"{self.provider_id} declared sync capability but did not implement sync()")
 
     # ── Webhooks (only called if capabilities().webhooks is True) ──────────

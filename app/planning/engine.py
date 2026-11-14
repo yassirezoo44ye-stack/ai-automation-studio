@@ -20,7 +20,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -38,17 +38,17 @@ class PlanTask:
     id              : str
     description     : str
     task_type       : str
-    agent_name      : Optional[str]    = None
+    agent_name      : str | None    = None
     depends_on      : list[str]        = field(default_factory=list)
     estimated_tokens: int              = 0
     estimated_cost  : float            = 0.0
     estimated_ms    : float            = 200.0
     risk_level      : RiskLevel        = RiskLevel.LOW
-    rollback_action : Optional[str]    = None
+    rollback_action : str | None    = None
     metadata        : dict[str, Any]   = field(default_factory=dict)
     # Execution state (filled in by execution engine)
     status          : str              = "pending"   # pending|running|done|failed|skipped
-    result          : Optional[dict]   = None
+    result          : dict | None   = None
 
     def to_dict(self) -> dict:
         return {
@@ -164,8 +164,8 @@ class PlanningEngine:
         goal     : str,
         *,
         caller   : str = "system",
-        agents   : Optional[dict] = None,   # name → EvolvableAgent
-        context  : Optional[dict] = None,
+        agents   : dict | None = None,   # name → EvolvableAgent
+        context  : dict | None = None,
     ) -> RichPlan:
         """
         Build a complete execution plan for `goal`.
@@ -239,7 +239,7 @@ class PlanningEngine:
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _assign_agent(self, task_type: str, description: str,
-                      agents: Optional[dict]) -> Optional[str]:
+                      agents: dict | None) -> str | None:
         # 1. Direct match on task_type
         candidate = _TASK_AGENT_MAP.get(task_type)
         if candidate and (agents is None or candidate in agents):
@@ -254,8 +254,8 @@ class PlanningEngine:
             return next(iter(agents), None)
         return None
 
-    def _estimate(self, agent_name: Optional[str], goal: str,
-                  agents: Optional[dict]) -> tuple[int, float, float]:
+    def _estimate(self, agent_name: str | None, goal: str,
+                  agents: dict | None) -> tuple[int, float, float]:
         if agents and agent_name and agent_name in agents:
             # Minimal context for estimation
             try:
@@ -288,7 +288,7 @@ class PlanningEngine:
         return levels[max_idx]
 
     @staticmethod
-    def _rollback_action(description: str, agent_name: Optional[str]) -> Optional[str]:
+    def _rollback_action(description: str, agent_name: str | None) -> str | None:
         lower = description.lower()
         if "deploy" in lower:
             return "Rollback deployment to previous version"
@@ -302,7 +302,7 @@ class PlanningEngine:
 
     @staticmethod
     def _validate_permissions(tasks: list[PlanTask],
-                               agents: Optional[dict]) -> list[str]:
+                               agents: dict | None) -> list[str]:
         if not agents:
             return []
         errors: list[str] = []
@@ -321,7 +321,7 @@ class PlanningEngine:
 
     @staticmethod
     def _build_warnings(tasks: list[PlanTask],
-                        agents: Optional[dict]) -> list[str]:
+                        agents: dict | None) -> list[str]:
         warnings: list[str] = []
         unassigned = [t for t in tasks if not t.agent_name]
         if unassigned:
@@ -340,7 +340,7 @@ class PlanningEngine:
 
     @staticmethod
     def match_capabilities(tasks: list[PlanTask],
-                           agents: Optional[dict]) -> dict[str, list[str]]:
+                           agents: dict | None) -> dict[str, list[str]]:
         """
         Returns {task_id: [capable_agent_names]} — agents that could handle each task.
         Used by the scheduler to pick the least-loaded capable agent.
@@ -355,12 +355,10 @@ class PlanningEngine:
                 perm  = getattr(agent, "permissions", None)
                 lower = task.description.lower()
                 # Quick capability filter
-                if "file" in lower or "write" in lower:
-                    if perm and not perm.can_write_filesystem:
-                        continue
-                if "exec" in lower or "run" in lower:
-                    if perm and not perm.can_execute_subprocess:
-                        continue
+                if ("file" in lower or "write" in lower) and perm and not perm.can_write_filesystem:
+                    continue
+                if ("exec" in lower or "run" in lower) and perm and not perm.can_execute_subprocess:
+                    continue
                 capable.append(name)
             result[task.id] = capable
         return result
@@ -397,7 +395,7 @@ class PlanningEngine:
     # ── Stage 10: Plan Validator ──────────────────────────────────────────────
 
     @staticmethod
-    def validate_plan(plan: "RichPlan") -> list[str]:
+    def validate_plan(plan: RichPlan) -> list[str]:
         """
         Final pre-execution validation.
         Returns list of blocking issues (empty = safe to execute).

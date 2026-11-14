@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 
 # ── Base ─────────────────────────────────────────────────────────────────────
@@ -83,11 +83,11 @@ class ProbeCompleted(TypedEvent):
     event_type: ClassVar[str] = "probe_completed"
     os_name: str = ""
     architecture: str = ""
-    node_version: Optional[str] = None
+    node_version: str | None = None
     python_version: str = ""
     available_runtimes: list[str] = field(default_factory=list)
     disk_free_mb: int = 0
-    memory_free_mb: Optional[int] = None
+    memory_free_mb: int | None = None
     warnings: list[str] = field(default_factory=list)
 
     def _extra(self) -> dict:
@@ -237,7 +237,7 @@ class ServerStarting(TypedEvent):
     event_type: ClassVar[str] = "server_starting"
     command: str = ""
     port: int = 0
-    pid: Optional[int] = None
+    pid: int | None = None
 
     def _extra(self) -> dict:
         return {"command": self.command, "port": self.port, "pid": self.pid}

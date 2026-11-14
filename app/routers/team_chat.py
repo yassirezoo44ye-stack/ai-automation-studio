@@ -16,7 +16,6 @@ post.
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -39,7 +38,7 @@ async def _require_team_in_org(org_id: str, team_id: str) -> None:
 
 @router.get("/{org_id}/chat/messages")
 async def list_general_messages(
-    before: Optional[str] = Query(None),
+    before: str | None = Query(None),
     limit: int = Query(50, ge=1, le=100),
     ctx: OrgContext = Depends(require_permission("chat", "read")),
 ):
@@ -68,7 +67,7 @@ async def post_general_message(
 @router.get("/{org_id}/teams/{team_id}/chat/messages")
 async def list_team_messages(
     team_id: str,
-    before: Optional[str] = Query(None),
+    before: str | None = Query(None),
     limit: int = Query(50, ge=1, le=100),
     ctx: OrgContext = Depends(require_permission("chat", "read")),
 ):

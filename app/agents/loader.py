@@ -19,7 +19,7 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from app.agents.base import EvolvableAgent
 
@@ -32,7 +32,7 @@ _BUILTIN_DIR = Path(__file__).parent / "builtin"
 _USER_DIR    = Path(__file__).parent.parent.parent / "agents"
 
 
-def load_all(kernel: "AgentKernel") -> int:
+def load_all(kernel: AgentKernel) -> int:
     """
     Discover and register all agents.
     Returns count of successfully loaded agents.
@@ -44,7 +44,7 @@ def load_all(kernel: "AgentKernel") -> int:
     return count
 
 
-def load_file(path: Path, kernel: "AgentKernel", *, owner: Optional[str] = None) -> bool:
+def load_file(path: Path, kernel: AgentKernel, *, owner: str | None = None) -> bool:
     """Dynamically load a single agent file at runtime. `owner` should be
     the requesting org's id when this is reachable from an API call (e.g.
     AutonomyEngine.generate_agent) — the loaded agent is then scoped to
@@ -56,7 +56,7 @@ def load_file(path: Path, kernel: "AgentKernel", *, owner: Optional[str] = None)
 
 # ── Internal ──────────────────────────────────────────────────────────────────
 
-def _load_dir(directory: Path, kernel: "AgentKernel", package: str) -> int:
+def _load_dir(directory: Path, kernel: AgentKernel, package: str) -> int:
     if not directory.exists():
         return 0
     count = 0
@@ -68,7 +68,7 @@ def _load_dir(directory: Path, kernel: "AgentKernel", package: str) -> int:
     return count
 
 
-def _load_file(file: Path, kernel: "AgentKernel", package: str, *, owner: Optional[str] = None) -> bool:
+def _load_file(file: Path, kernel: AgentKernel, package: str, *, owner: str | None = None) -> bool:
     module_name = f"{package}.{file.stem}"
     try:
         if module_name in sys.modules:

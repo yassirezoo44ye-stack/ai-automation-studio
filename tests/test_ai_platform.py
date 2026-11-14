@@ -353,7 +353,7 @@ class TestPlatformProviderRegistry:
 # ║  PHASE 3: Enterprise AI Orchestration & Multi-Agent Runtime     ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
-from dataclasses import dataclass
+from dataclasses import dataclass  # noqa: E402
 
 
 def _run(coro):

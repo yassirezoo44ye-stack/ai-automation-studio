@@ -6,7 +6,7 @@ Transport layer only: validates inputs, delegates to platform, returns results.
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -24,16 +24,16 @@ router = APIRouter(prefix="/api/ai", tags=["orchestrator"])
 class OrchestrateIn(BaseModel):
     prompt:          str
     mode:            str                     = "auto"
-    conversation_id: Optional[str]           = None
-    project_id:      Optional[str]           = None
-    max_cost_usd:    Optional[float]         = None
+    conversation_id: str | None           = None
+    project_id:      str | None           = None
+    max_cost_usd:    float | None         = None
     context:         dict[str, Any]          = Field(default_factory=dict)
 
 
 class AgentRunIn(BaseModel):
     agent_name: str
     prompt:     str
-    user_id:    Optional[str] = None
+    user_id:    str | None = None
 
 
 class WorkflowRunIn(BaseModel):
@@ -42,7 +42,7 @@ class WorkflowRunIn(BaseModel):
 
 
 class WorkflowResumeIn(BaseModel):
-    from_node_id: Optional[str] = None
+    from_node_id: str | None = None
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────
@@ -64,9 +64,9 @@ async def orchestrate(body: OrchestrateIn, request: Request):
         result = await platform.orchestrate(req)
         return result.__dict__
     except PolicyViolationError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from None
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from None
 
 
 @router.post("/orchestrate/stream")
@@ -117,7 +117,7 @@ async def run_builtin_agent(body: AgentRunIn):
             "error":      result.error,
         }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from None
 
 
 @router.post("/agents/builtin/stream")
@@ -185,7 +185,7 @@ async def run_workflow(body: WorkflowRunIn, request: Request):
             "context":         execution.context,
         }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from None
 
 
 @router.post("/workflows/{execution_id}/resume")
@@ -239,6 +239,6 @@ async def cost_summary(request: Request):
         "by_provider":  by_provider,
         "by_agent":     {},   # ai_usage_log has no per-agent breakdown yet
         "limits":       [
-            {"scope": l.scope, "limit_usd": l.limit_usd} for l in platform.cost.list_limits()
+            {"scope": lim.scope, "limit_usd": lim.limit_usd} for lim in platform.cost.list_limits()
         ],
     }

@@ -33,7 +33,6 @@ import secrets
 import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
-from typing import Optional
 
 import asyncpg
 from fastapi import HTTPException, Request
@@ -55,10 +54,10 @@ class ApiKeyRecord:
     name           : str
     scopes         : list[str]
     owner_id       : str                    = "system"
-    organization_id: Optional[str]          = None
+    organization_id: str | None          = None
     created_at     : float                  = field(default_factory=time.time)
-    expires_at     : Optional[float]        = None
-    last_used      : Optional[float]        = None
+    expires_at     : float | None        = None
+    last_used      : float | None        = None
     request_count  : int                    = 0
     active         : bool                   = True
 
@@ -112,11 +111,11 @@ def _hash(raw_key: str) -> str:
     return hashlib.sha256(raw_key.encode()).hexdigest()
 
 
-def _dt(ts: Optional[float]) -> Optional[datetime]:
+def _dt(ts: float | None) -> datetime | None:
     return datetime.fromtimestamp(ts, tz=timezone.utc) if ts is not None else None
 
 
-def _epoch(dt: Optional[datetime]) -> Optional[float]:
+def _epoch(dt: datetime | None) -> float | None:
     return dt.timestamp() if dt is not None else None
 
 
@@ -149,10 +148,10 @@ async def create_api_key(
     name: str,
     scopes: list[str],
     owner_id: str = "system",
-    expires_in_days: Optional[int] = None,
+    expires_in_days: int | None = None,
     *,
-    organization_id: Optional[str] = None,
-    actor_id: Optional[str] = None,
+    organization_id: str | None = None,
+    actor_id: str | None = None,
 ) -> tuple[str, ApiKeyRecord]:
     """
     Generate a new API key.
@@ -183,7 +182,7 @@ async def create_api_key(
 
 
 async def revoke_api_key(
-    key_id: str, *, organization_id: Optional[str] = None, owner_id: Optional[str] = None,
+    key_id: str, *, organization_id: str | None = None, owner_id: str | None = None,
 ) -> bool:
     """Revoke by key_id. If organization_id/owner_id are given, the key must
     match — prevents revoking a key you don't own via a shared endpoint."""
@@ -210,7 +209,7 @@ async def revoke_api_key(
 
 
 async def list_api_keys(
-    owner_id: Optional[str] = None, *, organization_id: Optional[str] = None,
+    owner_id: str | None = None, *, organization_id: str | None = None,
 ) -> list[ApiKeyRecord]:
     from app.core.db import get_pool, acquire_scoped
     import uuid as _uuid
@@ -238,7 +237,7 @@ async def list_api_keys(
     return [_row_to_record(r) for r in rows]
 
 
-async def lookup_key(raw_key: str) -> Optional[ApiKeyRecord]:
+async def lookup_key(raw_key: str) -> ApiKeyRecord | None:
     if _DEV_KEY_RAW and secrets.compare_digest(raw_key, _DEV_KEY_RAW):
         return _dev_key_record()
     from app.core.db import get_pool

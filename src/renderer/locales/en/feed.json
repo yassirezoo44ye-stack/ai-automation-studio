@@ -4,6 +4,7 @@
     "feedLabel": "Content feed"
   },
   "topBar": {
+    "followingUnavailable": "Following creators is not available yet.",
     "ariaLabel": "Feed navigation",
     "forYou": "For You",
     "following": "Following",
@@ -42,6 +43,37 @@
     "subtitle": "Be the first to publish something on Flow"
   },
   "error": {
-    "title": "Could not load the feed"
+    "sharedUnavailable": "The shared item could not be opened. It may be unavailable or require access.",
+    "title": "Could not load the feed",
+    "partial": "Some content could not load. Available items are shown.",
+    "retry": "Retry"
+  },
+  "study": {
+    "label": "Visual Study Library",
+    "access": "Downloading requires library access.",
+    "open": "Open summary",
+    "filterLabel": "Content type",
+    "all": "All",
+    "study": "Visual learning",
+    "empty": "No study summaries have been published yet.",
+    "search": "Search loaded content",
+    "searchPlaceholder": "Search loaded items…",
+    "subject": "Study subject",
+    "noMatches": "No matching items",
+    "adjustFilters": "Try another term or clear filters.",
+    "clear": "Clear filters",
+    "subjects": {
+      "all": "All subjects",
+      "math": "Mathematics",
+      "physics": "Physics",
+      "chemistry": "Chemistry",
+      "biology": "Biology",
+      "english": "English",
+      "computing": "Computing"
+    },
+    "loadMore": "Load older summaries",
+    "loadingMore": "Loading more…",
+    "retryMore": "Retry older summaries",
+    "moreError": "Could not load more. Existing items are still available."
   }
 }

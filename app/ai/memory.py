@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from app.ai.models import Message
 
@@ -21,7 +20,7 @@ MAX_HISTORY_MESSAGES = 40
 
 # ── Ownership ─────────────────────────────────────────────────────────────────
 
-async def is_owned_by(pool, conversation_id: Optional[str], user_id: Optional[str]) -> bool:
+async def is_owned_by(pool, conversation_id: str | None, user_id: str | None) -> bool:
     """True only if conversation_id is a real conversation owned by
     user_id. AIGateway._enrich()/_post_complete() pass a client-supplied
     conversation_id (InferenceRequest.conversation_id) straight to
@@ -53,7 +52,7 @@ async def is_owned_by(pool, conversation_id: Optional[str], user_id: Optional[st
 # ── Short-term: conversation history ─────────────────────────────────────────
 
 async def load_history(
-    pool, conversation_id: str, *, user_id: Optional[str] = None,
+    pool, conversation_id: str, *, user_id: str | None = None,
 ) -> list[Message]:
     """Return recent messages for a conversation owned by user_id, oldest
     first. Ownership is checked HERE (via is_owned_by, the single source
@@ -86,9 +85,9 @@ async def append_message(
     conversation_id: str,
     role: str,
     content: str,
-    tool_call_id: Optional[str] = None,
+    tool_call_id: str | None = None,
     *,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
 ) -> bool:
     """Persist one message to a conversation owned by user_id. Ownership
     is checked HERE, same reasoning as load_history above. Returns False
@@ -119,10 +118,10 @@ async def append_message(
 async def create_conversation(
     pool,
     *,
-    user_id: Optional[str],
+    user_id: str | None,
     title: str = "New conversation",
-    project_id: Optional[str] = None,
-    agent_id: Optional[str] = None,
+    project_id: str | None = None,
+    agent_id: str | None = None,
 ) -> str:
     """Create a new conversation and return its ID."""
     uid = uuid.UUID(user_id)  if user_id    else None
@@ -144,9 +143,9 @@ async def create_conversation(
 async def store_memory(
     pool,
     *,
-    user_id: Optional[str],
+    user_id: str | None,
     content: str,
-    conversation_id: Optional[str] = None,
+    conversation_id: str | None = None,
     importance: float = 1.0,
 ) -> str:
     """Store a long-term memory item. Returns its ID."""
@@ -167,7 +166,7 @@ async def store_memory(
 async def recall(
     pool,
     *,
-    user_id: Optional[str],
+    user_id: str | None,
     limit: int = 8,
 ) -> list[str]:
     """Retrieve the most important long-term memory items for a user."""
@@ -189,7 +188,7 @@ async def recall(
         return []
 
 
-async def build_memory_context(pool, *, user_id: Optional[str]) -> str:
+async def build_memory_context(pool, *, user_id: str | None) -> str:
     """Build a system context string from long-term memory items.
 
     Memory items come from POST /memory (app/routers/inference.py) — a

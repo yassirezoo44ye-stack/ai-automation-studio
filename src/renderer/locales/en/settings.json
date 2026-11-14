@@ -10,6 +10,8 @@
     "about": "About"
   },
   "system": {
+    "refresh": "Refresh",
+    "checking": "Checking…",
     "backend": "Backend",
     "backendOnline": "Backend online",
     "backendOffline": "Backend offline — run",
@@ -49,6 +51,9 @@
     }
   },
   "ai": {
+    "modelRecommended": "Recommended",
+    "modelMostCapable": "Most Capable",
+    "modelFastest": "Fastest",
     "anthropicApi": "Anthropic API",
     "apiKeyHint": "Set {{key}} in your {{envFile}} file and restart the backend. Keys are never stored in the browser.",
     "manageBilling": "Manage billing at console.anthropic.com",
@@ -90,7 +95,18 @@
     "errorCreate": "Could not create API key.",
     "errorRevoke": "Could not revoke key.",
     "errorForbidden": "Only organization owners can manage API keys.",
-    "errorUnauthorized": "Session expired — please sign in again."
+    "errorUnauthorized": "Session expired — please sign in again.",
+    "scopes": "Scopes",
+    "scope_read": "Read (GET)",
+    "scope_write": "Write (POST/PUT/PATCH)",
+    "scope_agents": "Agents",
+    "scope_marketplace": "Marketplace",
+    "scopeNoneWarning": "Select at least one scope.",
+    "revokeConfirmPrompt": "Sure?",
+    "revokeConfirmYes": "Confirm",
+    "revokeConfirmNo": "Cancel",
+    "copyFallback": "Copy failed — select the key above and press Ctrl+C.",
+    "keyId": "Key ID"
   },
   "about": {
     "tagline": "AI Automation Studio · v3.0.0",

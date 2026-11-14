@@ -11,7 +11,6 @@ verification instead (same pattern as /api/stripe/webhook).
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -47,7 +46,7 @@ async def list_connections(ctx: OrgContext = Depends(require_permission("integra
 
 class ConnectRequest(BaseModel):
     secrets: dict[str, str]
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
     granted_scopes: list[str] = []
 
 
@@ -62,9 +61,9 @@ async def connect(
             secrets=body.secrets, metadata=body.metadata, granted_scopes=body.granted_scopes,
         )
     except KeyError:
-        raise HTTPException(404, f"Unknown provider: {provider_id!r}")
+        raise HTTPException(404, f"Unknown provider: {provider_id!r}") from None
     except IntegrationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
 
 
 @router.delete("/{provider_id}", status_code=204)
@@ -85,9 +84,9 @@ async def trigger_sync(
     try:
         run_id = await get_integration_service().trigger_sync(provider_id=provider_id, organization_id=ctx.org_id)
     except KeyError:
-        raise HTTPException(404, f"Unknown provider: {provider_id!r}")
+        raise HTTPException(404, f"Unknown provider: {provider_id!r}") from None
     except IntegrationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return {"run_id": run_id}
 
 
@@ -104,17 +103,31 @@ async def sync_history(
 @router.post("/{provider_id}/webhook")
 async def receive_webhook(provider_id: str, org_id: str, request: Request):
     body = await request.body()
+    svc = get_integration_service()
+    # Verify the org has an active connection for this provider before processing.
+    # This prevents cross-org webhook injection when a provider uses shared signing keys.
     try:
-        await get_integration_service().receive_webhook(
+        connections = await svc.list_connections(organization_id=org_id)
+        connected_ids = {c["provider_id"] for c in (connections or []) if c.get("provider_id")}
+        if provider_id not in connected_ids:
+            raise HTTPException(404, f"No active integration for provider {provider_id!r} in this organization")
+    except HTTPException:
+        raise
+    except Exception:
+        # Connection lookup failed (e.g. org not found); fall through so
+        # provider-level signature verification still rejects forged payloads.
+        pass
+    try:
+        await svc.receive_webhook(
             provider_id=provider_id, organization_id=org_id,
             headers={k.lower(): v for k, v in request.headers.items()}, body=body,
         )
     except KeyError:
-        raise HTTPException(404, f"Unknown provider: {provider_id!r}")
+        raise HTTPException(404, f"Unknown provider: {provider_id!r}") from None
     except WebhookVerificationError:
-        raise HTTPException(401, "Signature verification failed")
+        raise HTTPException(401, "Signature verification failed") from None
     except WebhookDuplicateError:
         return {"status": "duplicate, already processed"}
     except IntegrationError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return {"status": "received"}

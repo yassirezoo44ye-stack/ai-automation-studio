@@ -17,7 +17,7 @@ if _env_path.exists():
             _k, _v = _line.split("=", 1)
             os.environ.setdefault(_k.strip(), _v.strip())
 
-from app.factory import create_app
+from app.factory import create_app  # noqa: E402
 
 app = create_app()
 

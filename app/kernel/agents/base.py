@@ -16,8 +16,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 import time
+import contextlib
 
 
 @dataclass
@@ -25,14 +26,14 @@ class AgentState:
     """Per-agent mutable state, isolated from other agents."""
     agent_id  : str
     started_at: float = field(default_factory=time.time)
-    ended_at  : Optional[float] = None
+    ended_at  : float | None = None
     status    : str = "idle"       # idle | running | done | failed | cancelled
     output    : list[str] = field(default_factory=list)
     error     : str = ""
     data      : dict[str, Any] = field(default_factory=dict)
 
     @property
-    def duration_s(self) -> Optional[float]:
+    def duration_s(self) -> float | None:
         if self.ended_at is None:
             return None
         return round(self.ended_at - self.started_at, 3)
@@ -71,7 +72,7 @@ class BaseAgent(ABC):
 
     name: str = "agent"
 
-    async def initialize(self, state: AgentState) -> None:
+    async def initialize(self, state: AgentState) -> None:  # noqa: B027
         """Called before execute(). Override for setup."""
         pass
 
@@ -79,7 +80,7 @@ class BaseAgent(ABC):
     async def execute(self, state: AgentState) -> None:
         """Main agent work. Write output to state.emit()."""
 
-    async def finalize(self, state: AgentState) -> None:
+    async def finalize(self, state: AgentState) -> None:  # noqa: B027
         """Called after execute(), even on failure. Override for cleanup."""
         pass
 
@@ -100,8 +101,6 @@ class BaseAgent(ABC):
             state.error  = str(exc)
         finally:
             state.ended_at = time.time()
-            try:
+            with contextlib.suppress(Exception):
                 await self.finalize(state)
-            except Exception:
-                pass
         return state

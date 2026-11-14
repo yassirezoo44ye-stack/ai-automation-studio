@@ -4,14 +4,13 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Optional
 
 
 def can_handle(info) -> bool:
     return info.run_strategy == "static" or info.project_type == "html"
 
 
-async def stream(project_id: str, ws: Path, info, command_override: Optional[str] = None):
+async def stream(project_id: str, ws: Path, info, command_override: str | None = None):
     entry = info.entry_point
     if not entry:
         html_files = sorted(p for p in ws.rglob("*.html") if p.is_file())
@@ -47,7 +46,7 @@ def _inline_assets(html: str, ws: Path, entry: str) -> str:
     base_dir = (ws / entry).parent.resolve()
     ws_resolved = ws.resolve()
 
-    def _safe_read(src: str) -> Optional[str]:
+    def _safe_read(src: str) -> str | None:
         if not src or src.startswith(("http://", "https://", "//", "data:", "#", "javascript:")):
             return None
         try:

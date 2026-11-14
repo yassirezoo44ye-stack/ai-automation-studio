@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 from app.ai.models import CompletionRequest
 from app.core.ai.models.catalog import ModelInfo, catalog
@@ -38,7 +37,7 @@ class ModelSelection:
     model_id:    str
     provider_id: str
     reason:      str
-    info:        Optional[ModelInfo]
+    info:        ModelInfo | None
 
 
 class ModelRouter:
@@ -160,11 +159,11 @@ class ModelRouter:
     def _balanced(
         self,
         *,
-        provider_id:   Optional[str],
+        provider_id:   str | None,
         needs_context: int,
         needs_tools:   bool,
-        available_providers: Optional[set[str]] = None,
-    ) -> Optional[ModelInfo]:
+        available_providers: set[str] | None = None,
+    ) -> ModelInfo | None:
         """
         Balanced selection:
           1. Must fit context

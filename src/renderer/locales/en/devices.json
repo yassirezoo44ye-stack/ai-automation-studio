@@ -3,7 +3,9 @@
     "title": "Multi-Device Control",
     "subtitle": "Control up to 5 computers from one keyboard and mouse",
     "refresh": "Refresh",
-    "enrollDevice": "Enroll Device"
+    "enrollDevice": "Enroll Device",
+    "slots": "slots used",
+    "slotsExhausted": "Maximum of 5 devices reached — revoke a device to enroll a new one"
   },
   "status": {
     "online": "Online",

@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from app.sandbox.backends import Worker, WorkerCrashedError, get_sandbox_backend
 from app.sandbox.permissions import limits_from_granted_capabilities
@@ -47,8 +47,8 @@ class SandboxManager:
 
     async def spawn_worker(
         self, *, installation_id: str, org_id: str, plugin_id: str,
-        entry_point: str, code: str, config: Optional[dict] = None,
-        network_domains: Optional[list[str]] = None,
+        entry_point: str, code: str, config: dict | None = None,
+        network_domains: list[str] | None = None,
     ) -> Worker:
         existing = self._workers.get(installation_id)
         if existing is not None and existing.is_alive:
@@ -115,12 +115,12 @@ class SandboxManager:
         if workspace is not None:
             workspace.cleanup()
 
-    def get_worker(self, installation_id: str) -> Optional[Worker]:
+    def get_worker(self, installation_id: str) -> Worker | None:
         return self._workers.get(installation_id)
 
     async def call_worker(
-        self, installation_id: str, call: str, *, method: Optional[str] = None,
-        args: Optional[list] = None, kwargs: Optional[dict] = None, timeout: Optional[float] = None,
+        self, installation_id: str, call: str, *, method: str | None = None,
+        args: list | None = None, kwargs: dict | None = None, timeout: float | None = None,
     ) -> Any:
         """Plugin Crash Recovery: dispatches to installation_id's current
         worker, transparently respawning and retrying exactly once if the
@@ -138,7 +138,7 @@ class SandboxManager:
             worker = await self._respawn(installation_id, stale=worker)
             return await worker.call(call, method=method, args=args, kwargs=kwargs, timeout=timeout)
 
-    async def _respawn(self, installation_id: str, *, stale: Optional[Worker] = None) -> Worker:
+    async def _respawn(self, installation_id: str, *, stale: Worker | None = None) -> Worker:
         lock = self._respawn_locks.setdefault(installation_id, asyncio.Lock())
         async with lock:
             existing = self._workers.get(installation_id)
@@ -238,7 +238,7 @@ class SandboxManager:
         return str(row["id"])
 
     async def _set_worker_status(
-        self, row_id: str, status: str, *, pid_or_container_id: Optional[str] = None, stopped: bool = False,
+        self, row_id: str, status: str, *, pid_or_container_id: str | None = None, stopped: bool = False,
     ) -> None:
         from app.core.db import get_pool
         async with get_pool().acquire() as conn:
@@ -256,7 +256,7 @@ class SandboxManager:
 
     async def _log_event(
         self, worker_row_id: str, org_id: str, event_type: str, severity: str,
-        message: str, details: Optional[dict] = None,
+        message: str, details: dict | None = None,
     ) -> None:
         try:
             from app.core.db import get_pool
@@ -272,7 +272,7 @@ class SandboxManager:
             log.warning("sandbox event log write failed", exc_info=True)
 
 
-_manager: Optional[SandboxManager] = None
+_manager: SandboxManager | None = None
 
 
 def get_sandbox_manager() -> SandboxManager:

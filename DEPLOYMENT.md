@@ -120,6 +120,29 @@ Local (docker-compose) and Production (Render) only — no staging/preview
 environment tier exists. Render Preview Environments were considered and
 explicitly deferred (adds paid infrastructure) rather than silently built.
 
+## Deploy-hook target validation
+
+The `Deploy to Render` job validates its secret hook before making a request.
+Its public target is `srv-d6705koboq4c7384n0cg` (Flow); the key stays in the
+`RENDER_DEPLOY_HOOK_URL` repository secret. The checked-out script is pinned to
+the same commit as the validated CI run. It replaces old `ref` parameters with
+that commit, refuses redirects, and does not log hook URLs or response bodies.
+
+If CI reports a different `srv-...` target, open the intended service's Settings
+in Render and replace the GitHub Actions secret with that service's deploy hook.
+Enter the value directly in GitHub's secret form, never in chat or the repository.
+An HTTP 409 for a matching target still fails the job: check the service/workspace
+in Render. It is not evidence that a deploy is queued. A 202 is an accepted queue
+request; the existing post-deploy health check must still verify the exact SHA.
+
+The repository intends `autoDeploy: false`. Dashboard settings can drift from
+`render.yaml`; changing the file alone does not prove the live setting changed.
+Render documents that a successful hook deploy with `ref` disables automatic
+deploys. Direct API deploys do not necessarily do that. Keep the runtime and
+repository settings aligned; do not remove tests or health gates to hide failures.
+
+References: https://render.com/docs/deploy-hooks and https://render.com/docs/deploys
+
 ## Not implemented (documented gaps, not oversights)
 
 - **Automatic rollback** on a failed post-deploy health check — needs

@@ -17,7 +17,7 @@ import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 log = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ class NpmCliJsFallbackAdapter(AbstractRuntimeAdapter):
         self._cli_path = cli_path
 
     @classmethod
-    def find(cls) -> Optional["NpmCliJsFallbackAdapter"]:
+    def find(cls) -> NpmCliJsFallbackAdapter | None:
         """Return an instance if npm-cli.js is present, else None."""
         for p in cls._SEARCH_PATHS:
             if os.path.isfile(p):

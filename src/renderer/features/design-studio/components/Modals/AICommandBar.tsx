@@ -125,9 +125,18 @@ export function AICommandBar({ onClose, onAppReady }: Props) {
       startPolling(resp.id);
     } catch (err) {
       const status = err instanceof APIError ? err.details.status : 0;
+      const serverDetail = err instanceof APIError
+        ? (err.details as Record<string, unknown>)?.detail as string | undefined
+        : undefined;
       setPhase("error");
       if (status === 402) {
         setErrorMsg("Build limit reached. Upgrade your plan to continue building apps.");
+      } else if (status === 401) {
+        setErrorMsg("Session expired — please refresh and sign in again.");
+      } else if (status === 403) {
+        setErrorMsg("Permission denied. You don't have access to create apps in this organization.");
+      } else if (status >= 500) {
+        setErrorMsg(serverDetail ? `Server error: ${serverDetail}` : "Server error — please try again in a moment.");
       } else {
         setErrorMsg("Could not start build. Check your connection and try again.");
       }

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
@@ -53,7 +53,7 @@ class PlanFeatureNotEnabledError(MarketplaceInstallError):
 
 
 class IntegrityError(MarketplaceInstallError):
-    def __init__(self, item_id: str, asset_id: Optional[str], reason: str):
+    def __init__(self, item_id: str, asset_id: str | None, reason: str):
         super().__init__(f"integrity check failed for {item_id} (asset {asset_id}): {reason}")
         self.item_id, self.asset_id, self.reason = item_id, asset_id, reason
 
@@ -73,7 +73,7 @@ class VersionNotFoundError(MarketplaceInstallError):
 class InstallationPipeline:
     async def install(
         self, item_id: str, *, org_id: str, actor_id: str,
-        actor_email: Optional[str] = None, requested_version: Optional[str] = None,
+        actor_email: str | None = None, requested_version: str | None = None,
     ) -> dict[str, Any]:
         tracer = get_tracer()
         with tracer.start_span("marketplace.install", service="marketplace") as span:
@@ -102,7 +102,7 @@ class InstallationPipeline:
 
     async def _install_inner(
         self, item_id: str, *, org_id: str, actor_id: str,
-        actor_email: Optional[str], requested_version: Optional[str],
+        actor_email: str | None, requested_version: str | None,
     ) -> dict[str, Any]:
         from app.marketplace.store import get_marketplace_store
         from app.marketplace.dependencies import (
@@ -271,7 +271,7 @@ class InstallationPipeline:
 
     async def rollback_version(
         self, item_id: str, *, org_id: str, actor_id: str,
-        actor_email: Optional[str] = None, target_version: str,
+        actor_email: str | None = None, target_version: str,
     ) -> dict[str, Any]:
         from app.core.db import get_pool
         async with get_pool().acquire() as conn:

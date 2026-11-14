@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
@@ -28,6 +28,7 @@ from app.core.business.models import (
 from app.core.business.scoring import compute_score
 from app.core.business.export import export_plan
 from app.core.business.workflow import start_business_plan, retry_sections
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -42,15 +43,15 @@ async def _resolve_user(request: Request) -> str:
         try:
             return await owner_user_id(conn, request)
         except Exception:
-            raise HTTPException(status_code=401, detail="Unauthorized")
+            raise HTTPException(status_code=401, detail="Unauthorized") from None
 
 
-async def _resolve_org(user_id: str) -> Optional[str]:
-    """Return the user's primary org_id (first org they belong to)."""
+async def _resolve_org(user_id: str) -> str | None:
+    """Return the user's primary org_id (oldest membership, for determinism)."""
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT organization_id FROM organization_members WHERE user_id=$1 LIMIT 1",
+            "SELECT organization_id FROM organization_members WHERE user_id=$1 AND deleted_at IS NULL ORDER BY created_at, organization_id LIMIT 1",
             user_id,
         )
     return str(row["organization_id"]) if row else None
@@ -106,10 +107,8 @@ def _section_out(row: dict) -> dict:
 def _fact_out(row: dict) -> dict:
     val = row.get("value")
     if isinstance(val, str):
-        try:
+        with contextlib.suppress(Exception):
             val = json.loads(val)
-        except Exception:
-            pass
     return {
         "id":          str(row["id"]),
         "plan_id":     str(row["plan_id"]),
@@ -215,13 +214,30 @@ async def create_plan(
 
 async def _run_workflow_bg(
     plan_id: str, org_id: str, user_id: str,
-    idea_raw: str, industry: Optional[str], stage: str,
+    idea_raw: str, industry: str | None, stage: str,
 ) -> None:
     """Background task: run the full BUSINESS_PLAN_ENGINE workflow."""
     try:
         await start_business_plan(plan_id, org_id, user_id, idea_raw, industry, stage)
     except Exception as exc:
         log.exception("business_plan workflow failed for plan %s: %s", plan_id, exc)
+        async with acquire_scoped(org_id) as conn:
+            await conn.execute(
+                "UPDATE bp_plans SET status='FAILED', updated_at=NOW() WHERE id=$1",
+                plan_id,
+            )
+
+
+async def _run_retry_bg(
+    plan_id: str, org_id: str, user_id: str,
+    idea_raw: str, industry: str | None, stage: str,
+    section_keys: list[str],
+) -> None:
+    """Background task: wrap retry_sections; fall back to FAILED on unexpected error."""
+    try:
+        await retry_sections(plan_id, org_id, user_id, idea_raw, industry, stage, section_keys)
+    except Exception as exc:
+        log.exception("retry_sections failed for plan %s: %s", plan_id, exc)
         async with acquire_scoped(org_id) as conn:
             await conn.execute(
                 "UPDATE bp_plans SET status='FAILED', updated_at=NOW() WHERE id=$1",
@@ -309,7 +325,7 @@ async def create_sse_ticket(plan_id: UUID, request: Request) -> dict:
     try:
         ticket = issue_ticket(user_id)
     except RuntimeError:
-        raise HTTPException(status_code=503, detail="service busy — retry")
+        raise HTTPException(status_code=503, detail="service busy — retry") from None
     return {"ticket": ticket, "expires_in": 30}
 
 
@@ -344,12 +360,13 @@ async def stream_plan_status_v2(plan_id: UUID, request: Request) -> StreamingRes
     await _assert_plan_owner(plan_id, user_id, org_id)
 
     async def _generator():
-        pool = get_pool()
         seen_statuses: dict[str, str] = {}
         terminal = {"COMPLETED", "FAILED", "PAUSED"}
 
         for _ in range(120):  # max 2 min polling
-            async with pool.acquire() as conn:
+            if await request.is_disconnected():
+                break
+            async with acquire_scoped(org_id) as conn:
                 plan_row = await conn.fetchrow(
                     "SELECT status, readiness_score FROM bp_plans WHERE id=$1", plan_id,
                 )
@@ -357,6 +374,10 @@ async def stream_plan_status_v2(plan_id: UUID, request: Request) -> StreamingRes
                     "SELECT section_key, status, tokens_used, error_msg FROM bp_sections WHERE plan_id=$1",
                     plan_id,
                 )
+
+            if not plan_row:
+                yield 'data: {"done": true, "error": "Plan no longer available"}\n\n'
+                break
 
             payload: dict[str, Any] = {}
             for s in sections:
@@ -471,8 +492,16 @@ async def retry_plan_sections(
 
     plan = await _assert_plan_owner(plan_id, user_id, org_id)
 
+    # Transition to GENERATING before the background task starts so the
+    # frontend can open an SSE stream immediately after this response.
+    async with acquire_scoped(org_id) as conn:
+        await conn.execute(
+            "UPDATE bp_plans SET status='GENERATING', updated_at=NOW() WHERE id=$1",
+            plan_id,
+        )
+
     background.add_task(
-        retry_sections,
+        _run_retry_bg,
         plan_id=plan_id, org_id=org_id, user_id=user_id,
         idea_raw=plan.get("idea_raw", ""),
         industry=plan.get("industry"),
@@ -493,8 +522,7 @@ async def cancel_plan(plan_id: UUID, request: Request) -> dict:
 
     await _assert_plan_owner(plan_id, user_id, org_id)
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
+    async with acquire_scoped(org_id) as conn:
         await conn.execute(
             "UPDATE bp_plans SET status='PAUSED', updated_at=NOW() WHERE id=$1",
             plan_id,
@@ -539,7 +567,7 @@ async def export_plan_endpoint(
                 conn, plan_id, body.format, body.variant,
             )
         except NotImplementedError as exc:
-            raise HTTPException(status_code=501, detail=str(exc))
+            raise HTTPException(status_code=501, detail=str(exc)) from None
 
     return Response(
         content=content.encode("utf-8"),
@@ -559,6 +587,8 @@ async def delete_plan(plan_id: UUID, request: Request) -> None:
 
     await _assert_plan_owner(plan_id, user_id, org_id)
 
-    pool = get_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM bp_plans WHERE id=$1", plan_id)
+    async with acquire_scoped(org_id) as conn:
+        await conn.execute(
+            "DELETE FROM bp_plans WHERE id=$1 AND organization_id=$2",
+            plan_id, org_id,
+        )

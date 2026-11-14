@@ -23,7 +23,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Optional
+from collections.abc import Callable
 
 log = logging.getLogger(__name__)
 
@@ -111,12 +111,12 @@ class CodeGenResult:
     description: str
     agent_name : str
     status     : CodeGenStatus
-    code       : Optional[str]           = None
+    code       : str | None           = None
     stages     : list[StageResult]       = field(default_factory=list)
-    error      : Optional[str]           = None
+    error      : str | None           = None
     created_at : float                   = field(default_factory=time.time)
-    approved_by: Optional[str]           = None
-    approved_at: Optional[float]         = None
+    approved_by: str | None           = None
+    approved_at: float | None         = None
 
     def to_dict(self) -> dict:
         return {
@@ -149,7 +149,7 @@ class CodeGenPipeline:
 
     def __init__(self) -> None:
         self._runs        : dict[str, CodeGenResult] = {}
-        self._test_runner : Optional[Callable]       = None
+        self._test_runner : Callable | None       = None
 
     def register_test_runner(self, fn: Callable) -> None:
         """Plug in a real test runner (receives code str, returns (bool, str))."""
@@ -229,7 +229,7 @@ class CodeGenPipeline:
 
     # ── Approval flow ─────────────────────────────────────────────────────────
 
-    def approve(self, run_id: str, approver: str = "system") -> Optional[CodeGenResult]:
+    def approve(self, run_id: str, approver: str = "system") -> CodeGenResult | None:
         result = self._runs.get(run_id)
         if not result or result.status != CodeGenStatus.AWAITING:
             return None
@@ -241,7 +241,7 @@ class CodeGenPipeline:
         log.info("CodeGen run %s APPROVED by %s", run_id, approver)
         return result
 
-    def reject(self, run_id: str, reason: str = "") -> Optional[CodeGenResult]:
+    def reject(self, run_id: str, reason: str = "") -> CodeGenResult | None:
         result = self._runs.get(run_id)
         if not result or result.status not in (CodeGenStatus.AWAITING, CodeGenStatus.APPROVED):
             return None
@@ -252,7 +252,7 @@ class CodeGenPipeline:
         log.info("CodeGen run %s REJECTED: %s", run_id, reason)
         return result
 
-    def get(self, run_id: str) -> Optional[CodeGenResult]:
+    def get(self, run_id: str) -> CodeGenResult | None:
         return self._runs.get(run_id)
 
     def list_pending(self) -> list[CodeGenResult]:

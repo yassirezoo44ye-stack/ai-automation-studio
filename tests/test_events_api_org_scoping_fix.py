@@ -89,9 +89,9 @@ class TestEventsApiRequiresOrgContext(unittest.TestCase):
 
         app = self._app()
         with patch("app.routers.auth_users.get_current_user",
-                   new=AsyncMock(return_value={"id": "u1", "email": "a@b.com"})):
-            with TestClient(app, raise_server_exceptions=False) as c:
-                res = c.get("/api/events/replay")
+                   new=AsyncMock(return_value={"id": "u1", "email": "a@b.com"})), \
+             TestClient(app, raise_server_exceptions=False) as c:
+            res = c.get("/api/events/replay")
         self.assertEqual(res.status_code, 400)
 
     def test_dlq_without_org_header_is_rejected(self):

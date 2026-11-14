@@ -32,12 +32,12 @@ Monitoring:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.routers.auth_users import get_current_user
+from app.core.ai.skills import skill_catalog, validate_skill_ids
 
 log    = logging.getLogger(__name__)
 router = APIRouter(tags=["agentos"])
@@ -47,32 +47,41 @@ router = APIRouter(tags=["agentos"])
 
 class RunRequest(BaseModel):
     input      : str
-    workspace  : Optional[str] = None
-    project_id : Optional[str] = None
+    workspace  : str | None = None
+    project_id : str | None = None
     caller     : str = "api"
     deliberate : bool = False
+    skill_id: str | None = None
+
+    @field_validator("skill_id")
+    @classmethod
+    def valid_skill_id(cls, value: str | None) -> str | None:
+        if value is not None:
+            validate_skill_ids([value])
+        return value
+
     # Client-generated, so a "live computer" viewer can start listening for
     # this run's narrated steps (see app/agents/liveness.py's publish_step)
     # before firing this request — the id has to be known ahead of time,
     # since this call blocks until the agent finishes. Left unset by
     # callers that don't need live progress; one is generated for them.
-    run_id     : Optional[str] = None
+    run_id     : str | None = None
 
 
 class CollaborateRequest(BaseModel):
     tasks    : list[str] = Field(..., min_length=1)
     parallel : bool      = False
-    workspace: Optional[str] = None
+    workspace: str | None = None
     caller   : str = "api"
-    run_id   : Optional[str] = None
+    run_id   : str | None = None
 
 
 class PlanRequest(BaseModel):
     goal      : str
-    workspace : Optional[str] = None
+    workspace : str | None = None
     caller    : str = "api"
-    run_id    : Optional[str] = None
-    project_id: Optional[str] = None
+    run_id    : str | None = None
+    project_id: str | None = None
 
 
 class EvolveRequest(BaseModel):
@@ -81,7 +90,7 @@ class EvolveRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     description: str
-    agent_name : Optional[str] = None
+    agent_name : str | None = None
 
 
 class SuggestRequest(BaseModel):
@@ -106,6 +115,9 @@ async def agentos_run(req: RunRequest, request: Request):
     user_id = await optional_user_id(request)
     org_id  = await optional_org_id(request)
 
+    if req.skill_id and not user_id:
+        raise HTTPException(401, "Authentication required for Flow skills")
+
     async def _run() -> dict:
         result = await kernel.run(
             req.input,
@@ -118,6 +130,7 @@ async def agentos_run(req: RunRequest, request: Request):
             workspace  = req.workspace,
             project_id = req.project_id,
             deliberate = req.deliberate,
+            **({"forced_intent": req.skill_id} if req.skill_id else {}),
             organization_id = org_id,
             run_id     = req.run_id,
         )
@@ -151,7 +164,7 @@ async def agentos_run(req: RunRequest, request: Request):
         # A genuine concurrent duplicate (e.g. a double-click) — the
         # first call for this exact run_id is still in flight. 409, not
         # 503: the mechanism worked correctly, this isn't an outage.
-        raise HTTPException(409, str(exc))
+        raise HTTPException(409, str(exc)) from None
     except Exception:
         if entered:
             # A real failure inside _run() (or committing the guard) — the
@@ -160,7 +173,7 @@ async def agentos_run(req: RunRequest, request: Request):
             # masking it as a dedup problem.
             raise
         log.exception("agent_run idempotency check failed for run_id=%s", req.run_id)
-        raise HTTPException(503, "Could not verify request de-duplication — please retry.")
+        raise HTTPException(503, "Could not verify request de-duplication — please retry.") from None
 
 
 @router.post("/api/agentos/collaborate")
@@ -263,6 +276,11 @@ async def agentos_download_deliverable(
 
 
 # ── System state ──────────────────────────────────────────────────────────────
+
+@router.get("/api/agentos/skills")
+async def agentos_skills(user: dict = Depends(get_current_user)):
+    return {"skills": skill_catalog(), "mode": "advisory", "tools_enabled": False}
+
 
 @router.get("/api/agentos/status")
 async def agentos_status(request: Request):

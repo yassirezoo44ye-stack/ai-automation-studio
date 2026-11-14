@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { BuildFile } from "../../../shared/types";
+import { copyText } from "../../../shared/utils/clipboard";
 
 // ── Project-type detection ────────────────────────────────────────────────────
 
@@ -81,15 +82,18 @@ function commandsFor(t: TFunction<"dev">, project: DetectedProject, pm: PM, entr
 function CopyBtn({ text }: { text: string }) {
   const { t } = useTranslation("dev");
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
   return (
     <button
       onClick={() => {
-        navigator.clipboard.writeText(text).then(() => {
+        setFailed(false); setCopied(false);
+        copyText(text).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1600);
-        });
+        }).catch(() => setFailed(true));
       }}
-      aria-label={t("installationPanel.copyAriaLabel")}
+      aria-label={failed ? t("common:actions.copyFailed") : t("installationPanel.copyAriaLabel")}
+      title={failed ? t("common:actions.copyFailed") : undefined}
       style={{
         display: "inline-flex", alignItems: "center", gap: 6,
         padding: "6px 14px", borderRadius: 8, cursor: "pointer",
@@ -109,7 +113,7 @@ function CopyBtn({ text }: { text: string }) {
       ) : (
         <>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          {t("installationPanel.copyButton")}
+          {failed ? t("common:actions.copyFailed") : t("installationPanel.copyButton")}
         </>
       )}
     </button>

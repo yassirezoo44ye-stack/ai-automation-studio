@@ -15,7 +15,6 @@ Payload rules (enforced by convention, not code — keep them):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from app.core.ai.events.events import AIEvent  # reuse helpers
 
@@ -35,7 +34,7 @@ class DeviceControlSessionProposed(AIEvent):
     primary_device_id:  str           = ""
     device_count:       int           = 0
     proposed_by_agent:  str           = ""      # agent name, never a user credential
-    session_name:       Optional[str] = None
+    session_name:       str | None = None
 
 
 # ── Session approved (human approved via UI) ──────────────────────────────────
@@ -69,7 +68,7 @@ class DeviceControlSessionStopped(AIEvent):
     event_type:      str           = "device_control.session.stopped"
     session_id:      str           = ""
     organization_id: str           = ""
-    stop_reason:     Optional[str] = None
+    stop_reason:     str | None = None
 
 
 # ── Session failed ────────────────────────────────────────────────────────────

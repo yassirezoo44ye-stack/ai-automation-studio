@@ -33,8 +33,11 @@ const PAGE_LABELS: Record<Page, string> = {
   devices: "Devices",
   discover: "Discover",
   feed: "Flow Feed",
+  careers: "Career Assistant",
+  "study-library": "Visual Study Library",
   leads: "Leads",
   "saas-factory": "SaaS Factory",
+  "new-project": "New Project",
 };
 
 export function CopilotProvider({ children }: { children: ReactNode }) {
@@ -78,8 +81,9 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
           method: "POST",
           headers: authH(),
           body: JSON.stringify({
-            project_id: "demo",
+            project_id: "copilot",
             prompt: promptWithContext,
+            display_text: trimmed,
             conversation_id: conversationIdRef.current,
           }),
           signal: ctrl.signal,

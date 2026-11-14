@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Optional
 
 from app.runtime import registry
 from app.runtime import process as rt_process
@@ -14,7 +13,7 @@ def can_handle(info) -> bool:
     return info.run_strategy == "script"
 
 
-async def stream(project_id: str, ws: Path, info, command_override: Optional[str] = None):
+async def stream(project_id: str, ws: Path, info, command_override: str | None = None):
     python = registry.best_python()
 
     if command_override:

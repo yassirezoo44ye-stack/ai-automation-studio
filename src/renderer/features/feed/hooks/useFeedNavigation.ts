@@ -32,6 +32,9 @@ export function useFeedNavigation({ total }: UseFeedNavigationOptions) {
   /* ── Keyboard navigation ───────────────────────────────────── */
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const target = e.target;
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey ||
+        (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, button, a")))) return;
       if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
         goNext();

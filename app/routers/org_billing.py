@@ -41,6 +41,7 @@ from app.billing.subscriptions import ACTIVE_STATUSES, get_org_subscription_serv
 from app.core.config import APP_URL
 from app.core.rate_limit import check_rate_limit
 from app.tenancy import OrgContext, get_tenancy_service, org_context, require_permission
+import contextlib
 
 router = APIRouter(prefix="/api/orgs/{org_id}/billing", tags=["billing"])
 
@@ -98,7 +99,7 @@ async def create_org_checkout(
             cancel_url=f"{APP_URL}/?org_upgrade_canceled=1",
         )
     except Exception as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
 
     if session.customer:
         await sub_svc.upsert_customer(ctx.org_id, session.customer)
@@ -133,9 +134,9 @@ async def create_billing_portal_session(
     try:
         url = await create_portal_session(ctx.org_id, return_url=f"{APP_URL}/?org_billing=1")
     except NoStripeCustomer:
-        raise HTTPException(404, "This organization has no billing account yet — subscribe first.")
+        raise HTTPException(404, "This organization has no billing account yet — subscribe first.") from None
     except Exception as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from None
     return {"url": url}
 
 
@@ -244,12 +245,10 @@ async def grant_credit(
     row = await get_credit_service().grant(
         ctx.org_id, round(body.amount_usd * 100), body.reason, actor_id=ctx.user_id,
     )
-    try:
+    with contextlib.suppress(Exception):
         await get_tenancy_service().log_activity(
             ctx.org_id, ctx.user_id, "billing.credit_granted",
             resource="credit", resource_id=str(row["id"]),
             details={"amount_usd": body.amount_usd, "reason": body.reason},
         )
-    except Exception:
-        pass
     return {"id": str(row["id"]), "amount_usd": row["amount_cents"] / 100, "reason": row["reason"]}

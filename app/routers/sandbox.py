@@ -38,7 +38,7 @@ async def _get_owned_worker(worker_id: str, org_id: str) -> dict[str, Any]:
     try:
         worker_uuid = uuid.UUID(worker_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Sandbox worker not found")
+        raise HTTPException(status_code=404, detail="Sandbox worker not found") from None
     from app.core.db import get_pool
     async with get_pool().acquire() as conn:
         row = await conn.fetchrow(
@@ -156,7 +156,7 @@ async def approve_permission_request(
     try:
         installation_uuid = uuid.UUID(installation_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Plugin installation not found")
+        raise HTTPException(status_code=404, detail="Plugin installation not found") from None
     from app.core.db import get_pool
     async with get_pool().acquire() as conn:
         row = await conn.fetchrow(

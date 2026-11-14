@@ -39,7 +39,7 @@ function buildHeaders(path: string, init?: RequestInit): Record<string, string> 
     "X-Sub-Token": getToken(),
     ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     ...(orgId ? { "X-Organization-Id": orgId } : {}),
-    ...(init?.body != null ? { "Content-Type": "application/json" } : {}),
+    ...(init?.body != null && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(init?.headers as Record<string, string> ?? {}),
   };
 }

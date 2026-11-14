@@ -62,12 +62,12 @@ class TestProjectsUsesSubToken:
         mock_pool_ctx, conn = _mock_pool_with_user(OWNER_A_UID)
 
         with mock_pool_ctx, \
-             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
-            with TestClient(app, raise_server_exceptions=False) as c:
-                res = c.get(
-                    "/api/projects",
-                    headers={"X-Sub-Token": ALICE_TOKEN},  # no Authorization: Bearer
-                )
+             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL), \
+             TestClient(app, raise_server_exceptions=False) as c:
+            res = c.get(
+                "/api/projects",
+                headers={"X-Sub-Token": ALICE_TOKEN},  # no Authorization: Bearer
+            )
 
         # 200 = accepted; any 4xx (especially 401) means JWT was required — regression
         assert res.status_code == 200, (
@@ -82,9 +82,9 @@ class TestProjectsUsesSubToken:
         mock_pool_ctx, conn = _mock_pool_with_user(OWNER_A_UID)
 
         with mock_pool_ctx, \
-             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL):
-            with TestClient(app, raise_server_exceptions=False) as c:
-                res = c.get("/api/projects")
+             patch("app.core.auth.owner_email", return_value=OWNER_A_EMAIL), \
+             TestClient(app, raise_server_exceptions=False) as c:
+            res = c.get("/api/projects")
 
         # In the real app the subscription middleware would have rejected the request
         # before reaching the handler.  In this isolated test, owner_email is mocked

@@ -7,7 +7,7 @@ is never reimplemented locally; Stripe applies it at checkout when a
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -38,7 +38,7 @@ class CouponService:
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
 
-    async def get_by_code(self, code: str) -> Optional[dict[str, Any]]:
+    async def get_by_code(self, code: str) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
             "SELECT * FROM coupons WHERE code=$1 AND active=true "
             "AND (valid_until IS NULL OR valid_until > NOW())",
@@ -54,9 +54,9 @@ class CouponService:
         return [dict(r) for r in rows]
 
     async def record_stripe_coupon(
-        self, *, code: str, stripe_promotion_code_id: Optional[str] = None,
-        percent_off: Optional[float] = None, amount_off_cents: Optional[int] = None,
-        valid_until=None, created_by: Optional[str] = None,
+        self, *, code: str, stripe_promotion_code_id: str | None = None,
+        percent_off: float | None = None, amount_off_cents: int | None = None,
+        valid_until=None, created_by: str | None = None,
     ) -> dict[str, Any]:
         if percent_off is None and amount_off_cents is None:
             raise ValueError("coupon needs percent_off or amount_off_cents")
@@ -81,7 +81,7 @@ class CouponService:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[CouponService] = None
+_service: CouponService | None = None
 
 
 def get_coupon_service(pool: asyncpg.Pool | None = None) -> CouponService:

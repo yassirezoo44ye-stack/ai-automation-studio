@@ -1,7 +1,10 @@
 {
   "workspace": {
     "title": "مساحة عمل الذكاء الاصطناعي",
-    "tabs": { "chat": "محادثة", "agents": "الوكلاء" },
+    "tabs": {
+      "chat": "محادثة",
+      "agents": "الوكلاء"
+    },
     "newAgent": "+ وكيل جديد",
     "loadAgentsError": "تعذر تحميل الوكلاء"
   },
@@ -21,13 +24,17 @@
       "temperatureLabel": "درجة الحرارة",
       "saving": "جارٍ الحفظ…",
       "save": "حفظ الوكيل",
-      "cancel": "إلغاء"
+      "cancel": "إلغاء",
+      "skillsLabel": "مهارات الوكيل",
+      "skillsHint": "اختر حتى ثلاث مهارات.",
+      "skillsFailed": "تعذر تحميل المهارات. أعد تحميل الصفحة."
     },
     "toast": {
       "updated": "تم تحديث الوكيل",
       "created": "تم إنشاء الوكيل",
       "saveFailed": "فشل الحفظ",
-      "deleted": "تم حذف {{name}}"
+      "deleted": "تم حذف {{name}}",
+      "deleteFailed": "تعذّر حذف الوكيل."
     },
     "deleteConfirm": "حذف الوكيل \"{{name}}\"؟",
     "empty": {
@@ -75,10 +82,10 @@
       "loadError": "فشل تحميل هذه المحادثة.",
       "emptyAgentName": "Flow AI",
       "emptyDescription": "ابدأ محادثة أو اختر واحدة من الشريط الجانبي.",
-      "suggestion1": "اكتب كود Python",
-      "suggestion2": "اشرح مفهومًا",
-      "suggestion3": "أصلح الخطأ في الكود",
-      "suggestion4": "أنشئ تطبيق ويب",
+      "suggestion1": "اكتب رسالة متابعة لعميل جديد",
+      "suggestion2": "خطط لأولويات مبيعاتي هذا الأسبوع",
+      "suggestion3": "اكتب منشور LinkedIn عن خدماتنا",
+      "suggestion4": "حوّل ملاحظاتي إلى عرض للعميل",
       "you": "أنت",
       "assistantFallback": "Claude",
       "now": "الآن",
@@ -122,5 +129,11 @@
       "exportFailed": "فشل التصدير",
       "backendOffline": "⚠️ الخادم غير متصل"
     }
+  },
+  "skills": {
+    "selectionLabel": "المهارة النشطة",
+    "none": "بدون مهارة إضافية",
+    "persistenceHint": "يُحفظ اختيارك للجلسات القادمة في هذا المتصفح.",
+    "loadFailed": "تعذر تحميل المهارات. أعد تحميل الصفحة."
   }
 }

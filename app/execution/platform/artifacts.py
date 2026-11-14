@@ -29,8 +29,8 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from uuid import uuid4
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class ArtifactSystem:
         arts.cleanup()
     """
 
-    def __init__(self, execution_id: str, root: Optional[Path] = None) -> None:
+    def __init__(self, execution_id: str, root: Path | None = None) -> None:
         self.execution_id = execution_id
         self._root = (root or _ARTIFACT_ROOT) / execution_id
         self._artifacts: dict[str, Artifact] = {}
@@ -103,7 +103,7 @@ class ArtifactSystem:
 
     # ── Adding artifacts ──────────────────────────────────────────────────────
 
-    def add_file(self, kind: str, name: str, source: Path) -> Optional[Artifact]:
+    def add_file(self, kind: str, name: str, source: Path) -> Artifact | None:
         """
         Copy source file into the artifact store.
         Returns the Artifact on success, None on failure.
@@ -125,7 +125,7 @@ class ArtifactSystem:
             log.warning("artifact add_file failed: %s", exc)
             return None
 
-    def add_bytes(self, kind: str, name: str, data: bytes) -> Optional[Artifact]:
+    def add_bytes(self, kind: str, name: str, data: bytes) -> Artifact | None:
         """Write raw bytes into the artifact store."""
         self._ensure_init()
         try:
@@ -139,10 +139,10 @@ class ArtifactSystem:
             log.warning("artifact add_bytes failed: %s", exc)
             return None
 
-    def add_text(self, kind: str, name: str, text: str) -> Optional[Artifact]:
+    def add_text(self, kind: str, name: str, text: str) -> Artifact | None:
         return self.add_bytes(kind, name, text.encode("utf-8", errors="replace"))
 
-    def add_directory(self, kind: str, name: str, source: Path) -> Optional[Artifact]:
+    def add_directory(self, kind: str, name: str, source: Path) -> Artifact | None:
         """
         Zip a directory and store the archive as an artifact.
         Returns the Artifact, or None on failure.
@@ -167,7 +167,7 @@ class ArtifactSystem:
 
     # ── Lookup ────────────────────────────────────────────────────────────────
 
-    def get(self, artifact_id: str) -> Optional[Artifact]:
+    def get(self, artifact_id: str) -> Artifact | None:
         return self._artifacts.get(artifact_id)
 
     def all(self) -> list[Artifact]:
@@ -197,7 +197,7 @@ class ArtifactSystem:
             log.warning("artifact index save failed: %s", exc)
 
     @classmethod
-    def load(cls, execution_id: str, root: Optional[Path] = None) -> "ArtifactSystem":
+    def load(cls, execution_id: str, root: Path | None = None) -> ArtifactSystem:
         """Load an existing artifact collection from disk."""
         system = cls(execution_id, root)
         system._root.mkdir(parents=True, exist_ok=True)
@@ -239,10 +239,8 @@ class ArtifactSystem:
                     p.unlink(missing_ok=True)
             except Exception:
                 pass
-        try:
+        with contextlib.suppress(Exception):
             shutil.rmtree(self._root, ignore_errors=True)
-        except Exception:
-            pass
         self._artifacts.clear()
         return freed
 

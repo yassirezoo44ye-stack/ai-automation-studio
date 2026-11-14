@@ -7,24 +7,24 @@ import asyncio
 import os
 import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import asyncpg
 import stripe
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
+from app.integrations.social.oauth_handoff import is_public_social_oauth_request
 from app.core.config import (
-    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, PUBLIC_PREFIXES, WORKSPACES,
+    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
 )
 from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
-from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware
+from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware, UploadBodySizeLimitMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
 from app.core.rate_limit import _real_ip, check_rate_limit
 from app.billing import QuotaExceeded
@@ -62,6 +62,9 @@ from app.routers import integrations     as integrations_router
 from app.routers import app_builder      as app_builder_router
 from app.routers import ws_ticket        as ws_ticket_router
 from app.routers import training         as training_router
+from app.routers import library          as library_router
+from app.routers import study_library    as study_library_router
+from app.routers import study_workflows  as study_workflows_router
 # Business Lab — Plan & Validation Engine
 from app.routers import business_plans   as business_plans_router
 # Automation — Phase 5 Gate 3
@@ -73,9 +76,12 @@ from app.routers import ws_device        as ws_device_router
 # Flow Next — Discover (Phase 1)
 from app.routers import discover         as discover_router
 # Lead Engine
+from app.routers import careers          as careers_router
 from app.routers import leads            as leads_router
 # SaaS Factory
 from app.routers import saas_factory     as saas_factory_router
+# Social Publisher — Phase 1
+from app.routers import social_publisher as social_publisher_router
 # Attribution
 from app.routers import attribution      as attribution_router
 
@@ -218,7 +224,6 @@ async def lifespan(app: FastAPI):
     # ── AI Business App Builder — tables + async columns + role permissions ──
     from migrations.versions.app_builder_schema import upgrade as init_app_builder_schema
     from migrations.versions.app_builder_async_schema import upgrade as init_app_builder_async_schema
-    from app.tenancy.schema import DEFAULT_PERMISSIONS
     async with pool.acquire() as conn:
         await init_app_builder_schema(conn)
         # Migration 010 — adds async build columns, fixes CHECK constraint,
@@ -250,14 +255,26 @@ async def lifespan(app: FastAPI):
     await mark_interrupted_runs()
 
     # ── Business Lab — Plan & Validation Engine ─────────────────────────────────
-    from app.core.business.schema import ensure_business_plans_schema
+    from app.core.business.schema import (
+        ensure_business_plans_schema, mark_interrupted_business_plans,
+    )
     async with pool.acquire() as conn:
         await ensure_business_plans_schema(conn)
+    await mark_interrupted_business_plans()
 
     # ── Training Studio — references organizations/projects/users ────────────
     from app.training import init_training_schema
     async with pool.acquire() as conn:
         await init_training_schema(conn)
+
+    # ── Flow Library — references organizations/users ─────────────────────────
+    from app.library import init_library_schema
+    async with pool.acquire() as conn:
+        await init_library_schema(conn)
+
+    from app.study.schema import init_study_schema
+    async with pool.acquire() as conn:
+        await init_study_schema(conn)
 
     # ── Multi-Device Control schema ──────────────────────────────────────────
     from app.services.device_control_schema import init_device_control_schema
@@ -268,6 +285,20 @@ async def lifespan(app: FastAPI):
     from app.routers.discover import init_flow_creations_schema
     async with pool.acquire() as conn:
         await init_flow_creations_schema(conn)
+
+    # ── Social Publisher — Phase 1 schema (migration 014) ────────────────────
+    from app.routers.social_publisher import init_social_publisher_schema
+    async with pool.acquire() as conn:
+        await init_social_publisher_schema(conn)
+    from app.study.workflows import init_study_workflow_schema
+    async with pool.acquire() as conn:
+        await init_study_workflow_schema(conn)
+
+    # Private career assistant: schema only; Gmail sync is opt-in per user.
+    from app.core.careers.schema import init_careers_schema
+    from app.core.careers.service import scheduler as career_scheduler
+    async with pool.acquire() as conn:
+        await init_careers_schema(conn)
 
     # ── Lead Engine ─────────────────────────────────────────────────────────
     from app.core.leads.schema import init_leads_schema
@@ -332,6 +363,10 @@ async def lifespan(app: FastAPI):
     # ── Background job queue (Redis-backed when available) ──────────────────
     from app.core.jobs import get_job_queue
     get_job_queue(cache=cache)
+    if not get_job_queue().durable:
+        # In-memory queue: jobs queued before this start are gone.
+        from app.core.workflow.automation_schema import mark_lost_pending_runs
+        await mark_lost_pending_runs()
 
     # ── Register App Builder background job handler ────────────────────────
     # Must run AFTER the job queue is initialised with get_job_queue(cache=cache)
@@ -431,6 +466,7 @@ async def lifespan(app: FastAPI):
                                message=str(exc))
     get_health_registry().register("database", probe_db, critical=True, timeout_s=5.0)
 
+    career_task = asyncio.create_task(career_scheduler(pool))
     health.startup_complete = True
     yield
 
@@ -438,6 +474,11 @@ async def lifespan(app: FastAPI):
     from app.core.workflow.automation_scheduler import stop_scheduler
     await stop_scheduler()
     svc_registry.stop_all()
+    career_task.cancel()
+    try:
+        await career_task
+    except asyncio.CancelledError:
+        pass
     maintenance_task.cancel()
     cleanup_task.cancel()
     await pool.close()
@@ -461,11 +502,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://js.stripe.com; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: https:; "
             "connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
             "frame-src https://checkout.stripe.com https://js.stripe.com blob:; "
-            "font-src 'self' data:;"
+            "font-src 'self' data: https://fonts.gstatic.com;"
         )
         return response
 
@@ -494,7 +535,7 @@ def create_app() -> FastAPI:
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         errors = exc.errors()
         detail = "; ".join(
-            f"{' -> '.join(str(l) for l in e['loc'])}: {e['msg']}" for e in errors
+            f"{' -> '.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in errors
         )
         # Pydantic puts the raw exception object (e.g. the ValueError a
         # field_validator raised) in ctx, which json.dumps can't serialize.
@@ -571,7 +612,7 @@ def create_app() -> FastAPI:
         # hasn't run yet on this request (Starlette middleware order isn't
         # load-bearing here — both paths read the same header).
         org_id = getattr(request.state, "org_id", None) or request.headers.get("X-Organization-Id")
-        if org_id and path.startswith("/api/"):
+        if org_id and path.startswith("/api/") and response.status_code < 400:
             async def _meter():
                 try:
                     from app.billing import get_usage_service
@@ -584,20 +625,23 @@ def create_app() -> FastAPI:
     # ── Global rate limiting (before auth, protects public endpoints too) ──
     @app.middleware("http")
     async def global_rate_limit_middleware(request: Request, call_next):
-        if request.url.path.startswith("/api/"):
-            if not check_rate_limit(f"global:{_real_ip(request)}", max_calls=300, window=60):
-                return JSONResponse(
-                    status_code=429,
-                    content={"detail": "Too many requests — please slow down."},
-                    headers={"Retry-After": "60"},
-                )
+        if request.url.path.startswith("/api/") and not check_rate_limit(f"global:{_real_ip(request)}", max_calls=300, window=60):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests — please slow down."},
+                headers={"Retry-After": "60"},
+            )
         return await call_next(request)
 
     # ── Auth middleware (pure ASGI — doesn't buffer SSE) ───────────────────
     @app.middleware("http")
     async def api_auth_middleware(request: Request, call_next):
         path = request.url.path
-        if path.startswith("/api/") and not any(path.startswith(p) for p in PUBLIC_PREFIXES):
+        if (path.startswith("/api/")
+                and not any(path.startswith(p) for p in PUBLIC_PREFIXES)
+                and not is_public_social_oauth_request(request.method, path)
+                and not study_library_router.is_public_study_request(request.method, path)
+                and not study_library_router.is_study_publish_request(request)):
             sub_token, bearer = extract_auth_credentials(request)
 
             if (sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer)):
@@ -644,6 +688,10 @@ def create_app() -> FastAPI:
         [APP_URL] if APP_URL and APP_URL != "http://localhost:8000"
         else ["http://localhost:5173", "http://localhost:8000", "http://127.0.0.1:8000"]
     )
+    # In a Vercel+Render split deployment FRONTEND_URL is the Vercel origin and
+    # must be allowed so browser preflight requests don't get blocked by CORS.
+    if FRONTEND_URL and FRONTEND_URL not in _cors_origins:
+        _cors_origins = _cors_origins + [FRONTEND_URL]
     _cors_origins = _cors_origins + [o for o in EXTRA_CORS_ORIGINS if o not in _cors_origins]
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)
@@ -655,45 +703,11 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Sub-Token", "X-Request-Id", "X-Organization-Id", "X-API-Key"],
     )
-
-    # ── Static frontend (non-catch-all assets first) ────────────────────────
-    DIST = Path(__file__).parent.parent / "dist"
-    if DIST.exists() and (DIST / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=str(DIST / "assets")), name="assets")
-
-    @app.get("/", response_class=HTMLResponse)
-    async def root():
-        index = DIST / "index.html"
-        content = index.read_text(encoding="utf-8") if index.exists() else (
-            "<h1>◈ Axon — Backend Running</h1><p><a href='/docs'>API Docs</a></p>"
-        )
-        return HTMLResponse(content, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-    @app.get("/manifest.json")
-    async def serve_manifest():
-        for f in (DIST / "manifest.json", Path(__file__).parent.parent / "public" / "manifest.json"):
-            if f.exists():
-                return Response(f.read_text(encoding="utf-8"), media_type="application/manifest+json")
-        from fastapi import HTTPException
-        raise HTTPException(404)
-
-    @app.get("/sw.js")
-    async def serve_sw():
-        for f in (DIST / "sw.js", Path(__file__).parent.parent / "public" / "sw.js"):
-            if f.exists():
-                return Response(f.read_text(encoding="utf-8"), media_type="application/javascript")
-        from fastapi import HTTPException
-        raise HTTPException(404)
-
-    @app.get("/icon-{size}.png")
-    async def serve_icon(size: str):
-        from fastapi import HTTPException
-        if size not in ("192", "512"):
-            raise HTTPException(404)
-        for f in (DIST / f"icon-{size}.png", Path(__file__).parent.parent / "public" / f"icon-{size}.png"):
-            if f.exists():
-                return Response(f.read_bytes(), media_type="image/png")
-        raise HTTPException(404)
+    # Outermost middleware: enforces upload body limit at the ASGI receive level
+    # so chunked bodies without Content-Length are rejected before full buffering.
+    app.add_middleware(UploadBodySizeLimitMiddleware)
+    # Compress responses ≥1KB — runs outermost so it sees the full response.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     # ── API Routers (must be registered BEFORE the SPA catch-all) ───────────
     app.include_router(auth_users.router)
@@ -725,6 +739,9 @@ def create_app() -> FastAPI:
     app.include_router(app_builder_router.router)
     app.include_router(ws_ticket_router.router)
     app.include_router(training_router.router)
+    app.include_router(library_router.router)
+    app.include_router(study_library_router.router)
+    app.include_router(study_workflows_router.router)
     # Business Lab — Plan & Validation Engine
     app.include_router(business_plans_router.router)
     # Automation — Phase 5 Gate 3
@@ -738,22 +755,30 @@ def create_app() -> FastAPI:
     # Flow Next — Discover (Phase 1)
     app.include_router(discover_router.router)
     # Lead Engine
+    app.include_router(careers_router.router)
     app.include_router(leads_router.router)
     app.include_router(saas_factory_router.router)
+    # Social Publisher — Phase 1
+    app.include_router(social_publisher_router.router)
     app.include_router(attribution_router.router)
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
 
+    # ── API-only mode: redirect browser navigation to the Vercel frontend ─────
+    _frontend = FRONTEND_URL.rstrip("/") if FRONTEND_URL else None
+
+    @app.get("/", include_in_schema=False)
+    async def root():
+        if _frontend:
+            return RedirectResponse(url=_frontend, status_code=302)
+        return JSONResponse({"status": "ok", "service": "Flow API"})
+
     # ── SPA catch-all (MUST be last — only reached if no API route matched) ─
-    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
-        index = DIST / "index.html"
-        if index.exists():
-            return HTMLResponse(
-                index.read_text(encoding="utf-8"),
-                headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
-            )
-        return HTMLResponse("Not found", status_code=404)
+        if _frontend:
+            return RedirectResponse(url=f"{_frontend}/{full_path}", status_code=302)
+        return JSONResponse({"status": "not_found", "path": full_path}, status_code=404)
 
     return app

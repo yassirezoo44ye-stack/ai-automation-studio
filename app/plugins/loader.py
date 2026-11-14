@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from app.core.observability.context import current_tags
 from app.core.observability.tracer import get_tracer
@@ -87,7 +87,7 @@ class PluginLoader:
         # installation_id -> live sandbox Worker handle, for enable/disable/unload
         self._instances: dict[str, Any] = {}
 
-    async def load(self, marketplace_item_id: str, *, org_id: str, actor_id: Optional[str] = None) -> dict[str, Any]:
+    async def load(self, marketplace_item_id: str, *, org_id: str, actor_id: str | None = None) -> dict[str, Any]:
         """Fetch, validate, resolve, and activate a plugin for one org.
         Best-effort by design (see installer.py's stage 7 call site) — never
         raises into the marketplace install transaction; callers that need
@@ -284,7 +284,7 @@ class PluginLoader:
         await self._set_status(installation_id, "uninstalled")
         await self._log_health(installation_id, "unload", "unloaded")
 
-    async def find_installation(self, org_id: str, marketplace_item_id: str) -> Optional[dict[str, Any]]:
+    async def find_installation(self, org_id: str, marketplace_item_id: str) -> dict[str, Any] | None:
         return await self._find_installation(org_id, marketplace_item_id)
 
     async def disable(self, installation_id: str) -> None:
@@ -364,7 +364,7 @@ class PluginLoader:
             except Exception as exc:
                 log.warning("plugin %s raised during on_config_change: %s", installation_id, exc)
 
-    async def _persist_config(self, installation_id: str, new_config: dict[str, Any]) -> Optional[dict[str, Any]]:
+    async def _persist_config(self, installation_id: str, new_config: dict[str, Any]) -> dict[str, Any] | None:
         """Raw config UPDATE shared by update_config() (admin-initiated,
         additionally fires on_config_change) and load()'s migrate() step
         (upgrade-initiated — on_config_change is deliberately NOT fired
@@ -410,7 +410,7 @@ class PluginLoader:
     # ── Internal ──────────────────────────────────────────────────────────
 
     @staticmethod
-    def _extract_bundle(assets: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    def _extract_bundle(assets: list[dict[str, Any]]) -> dict[str, Any] | None:
         """Single-file inline plugins only this phase (see plan's deferred
         scope) — external_url bundles are not fetched/extracted yet."""
         for asset in assets:
@@ -425,7 +425,7 @@ class PluginLoader:
         return None
 
     async def _upsert_installation(
-        self, *, org_id: str, marketplace_item_id: str, manifest, actor_id: Optional[str],
+        self, *, org_id: str, marketplace_item_id: str, manifest, actor_id: str | None,
         signature_verified: bool = False, trusted_publisher: bool = False,
     ) -> dict[str, Any]:
         from app.core.db import get_pool
@@ -451,13 +451,13 @@ class PluginLoader:
             )
         return normalize_installation_row(dict(row))
 
-    async def _get_installation(self, installation_id: str) -> Optional[dict[str, Any]]:
+    async def _get_installation(self, installation_id: str) -> dict[str, Any] | None:
         from app.core.db import get_pool
         async with get_pool().acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM plugin_installations WHERE id=$1", uuid.UUID(installation_id))
         return normalize_installation_row(dict(row)) if row else None
 
-    async def _find_installation(self, org_id: str, marketplace_item_id: str) -> Optional[dict[str, Any]]:
+    async def _find_installation(self, org_id: str, marketplace_item_id: str) -> dict[str, Any] | None:
         from app.core.db import get_pool
         async with get_pool().acquire() as conn:
             row = await conn.fetchrow(
@@ -466,7 +466,7 @@ class PluginLoader:
             )
         return normalize_installation_row(dict(row)) if row else None
 
-    async def _find_installation_by_plugin_id(self, org_id: str, plugin_id: str) -> Optional[dict[str, Any]]:
+    async def _find_installation_by_plugin_id(self, org_id: str, plugin_id: str) -> dict[str, Any] | None:
         """Looked up by plugin_id (the manifest's own stable identifier),
         not marketplace_item_id — for checking a declared plugin-to-plugin
         dependency, which names the other plugin this way."""

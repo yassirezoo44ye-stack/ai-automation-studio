@@ -561,9 +561,8 @@ class TestRequireProjectOwner(unittest.IsolatedAsyncioTestCase):
         ), unittest.mock.patch.object(
             build_mod, "resolve_project_id",
             AsyncMock(side_effect=HTTPException(404, "Project not found")),
-        ):
-            with self.assertRaises(HTTPException) as ctx:
-                await build_mod._require_project_owner("stolen-project", request)
+        ), self.assertRaises(HTTPException) as ctx:
+            await build_mod._require_project_owner("stolen-project", request)
 
         self.assertEqual(ctx.exception.status_code, 404)
 

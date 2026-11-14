@@ -13,6 +13,7 @@ on startup every boot even when the columns already exist.
 from __future__ import annotations
 
 import asyncpg
+import contextlib
 
 
 async def upgrade(conn: asyncpg.Connection) -> None:
@@ -48,30 +49,24 @@ async def upgrade(conn: asyncpg.Connection) -> None:
         "ALTER TABLE app_builder_apps ADD COLUMN IF NOT EXISTS "
         "job_id TEXT",
     ):
-        try:
+        with contextlib.suppress(Exception):  # column may already exist on a fresh install
             await conn.execute(sql)
-        except Exception:
-            pass  # column may already exist on a fresh install that ran this migration
 
     # ── Fix build_status CHECK to include 'partial' ────────────────────────
     # The original 009 migration omitted 'partial' from the CHECK constraint
     # even though the service uses it — this corrects that silently.
-    try:
+    with contextlib.suppress(Exception):
         await conn.execute(
             "ALTER TABLE app_builder_apps "
             "DROP CONSTRAINT IF EXISTS app_builder_apps_build_status_check"
         )
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):  # constraint already recreated by a previous run
         await conn.execute("""
             ALTER TABLE app_builder_apps
             ADD CONSTRAINT app_builder_apps_build_status_check
             CHECK (build_status IN
                    ('pending', 'planning', 'building', 'ready', 'partial', 'failed'))
         """)
-    except Exception:
-        pass  # constraint already recreated by a previous run
 
     # ── Row Level Security on App Builder tables ───────────────────────────
     # Mirrors the pattern in app/tenancy/rls.py — the GUC
@@ -124,9 +119,7 @@ async def downgrade(conn: asyncpg.Connection) -> None:
         "error", "started_at", "completed_at", "last_heartbeat_at",
         "retry_count", "job_id",
     ):
-        try:
+        with contextlib.suppress(Exception):
             await conn.execute(
                 f"ALTER TABLE app_builder_apps DROP COLUMN IF EXISTS {col}"
             )
-        except Exception:
-            pass

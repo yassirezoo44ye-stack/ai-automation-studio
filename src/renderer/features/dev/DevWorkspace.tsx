@@ -7,6 +7,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppContext } from "../../contexts/app";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -30,15 +31,23 @@ function isHtml(fs: { path: string }[]) {
 export function DevWorkspace() {
   const { t } = useTranslation("dev");
   const toast = useToast();
+  const { activeProjectId: urlProjectId } = useAppContext();
   const [tab, setTab] = useState<DevTab>("generate");
 
   // ── Project ───────────────────────────────────────────────────────────────
   const [projects, setProjects]   = useState<Project[]>([]);
-  // Prefer the last project used by AppBuilderPage (stored on project create).
-  // Fall back to "demo" so the workspace still mounts when no project exists yet.
+  // URL-based identity takes precedence; fall back to sessionStorage (written
+  // by AppBuilderPage on project create) and finally to "demo".
   const [projectId, setProjectId] = useState(
-    () => sessionStorage.getItem("flow_active_project") ?? "demo",
+    () => urlProjectId ?? sessionStorage.getItem("flow_active_project") ?? "demo",
   );
+
+  // Keep projectId in sync when URL-based identity changes (e.g. deep-link
+  // navigation to DevWorkspace with a different projectId in the URL).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (urlProjectId) setProjectId(urlProjectId);
+  }, [urlProjectId]);
 
   // ── Build ─────────────────────────────────────────────────────────────────
   const [buildPrompt, setBuildPrompt]  = useState("");
@@ -88,21 +97,27 @@ export function DevWorkspace() {
 
   const clearWorkspace = async () => {
     if (!confirm(t("header.confirmClear"))) return;
-    await apiFetch(`/api/projects/${projectId}/files`, { method: "DELETE" });
+    try {
+    const response = await apiFetch(`/api/projects/${projectId}/files`, { method: "DELETE" });
+    if (!response.ok) throw new Error("Workspace clear rejected");
     setFiles([]); setExistingFiles([]); setActiveFile(null);
     setRunOutput(""); setRunCmd(""); setRunError(null);
     if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); }
     toast(t("header.toastCleared"));
+    } catch { toast(t("header.clearFailed"), "err"); }
   };
 
   const downloadZip = async () => {
+    try {
     const r = await apiFetch(`/api/projects/${projectId}/download`);
-    if (!r.ok) return;
+    if (!r.ok) throw new Error("Download rejected");
     const blob = await r.blob();
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob); a.href = url;
     a.download = "project.zip";
-    a.click();
+    document.body.appendChild(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch { toast(t("header.downloadFailed"), "err"); }
   };
 
   const openHtmlPreview = useCallback((fs: BuildFile[]) => {
@@ -127,7 +142,7 @@ export function DevWorkspace() {
       const d = await parseJSON<{ path: string; content: string }>(r, ep);
       setActiveFile({ path: d.path, content: d.content });
       setTab("files");
-    } catch {}
+    } catch { toast(t("common:actions.failed"), "err"); }
   };
 
   const allFiles = buildState === "done"

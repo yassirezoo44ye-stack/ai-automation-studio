@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from app.ai.models import UsageStats
 
@@ -19,11 +18,11 @@ log = logging.getLogger(__name__)
 async def record(
     *,
     pool,
-    user_id: Optional[str],
-    conversation_id: Optional[str],
+    user_id: str | None,
+    conversation_id: str | None,
     stats: UsageStats,
     cached: bool = False,
-    org_id: Optional[str] = None,
+    org_id: str | None = None,
 ) -> None:
     """Insert one row into ai_usage_log. Fails silently to never break AI calls."""
     try:
@@ -53,9 +52,9 @@ async def record(
 async def totals(
     *,
     pool,
-    user_id: Optional[str] = None,
-    org_id: Optional[str] = None,
-    since: Optional[datetime] = None,
+    user_id: str | None = None,
+    org_id: str | None = None,
+    since: datetime | None = None,
 ) -> dict:
     """Return aggregate stats for a user (or all users if user_id is None)."""
     try:
@@ -97,9 +96,9 @@ async def totals(
 async def by_provider(
     *,
     pool,
-    user_id: Optional[str] = None,
-    org_id: Optional[str] = None,
-    since: Optional[datetime] = None,
+    user_id: str | None = None,
+    org_id: str | None = None,
+    since: datetime | None = None,
 ) -> list[dict]:
     """Breakdown by provider."""
     try:
@@ -140,9 +139,9 @@ async def by_provider(
 async def by_month(
     *,
     pool,
-    user_id: Optional[str] = None,
-    org_id: Optional[str] = None,
-    since: Optional[datetime] = None,
+    user_id: str | None = None,
+    org_id: str | None = None,
+    since: datetime | None = None,
 ) -> list[dict]:
     """Monthly rollup ordered newest-first."""
     try:

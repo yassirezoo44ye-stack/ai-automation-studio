@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from ..events.bus    import EventBus
 from ..events.events import PolicyViolation
@@ -35,13 +35,13 @@ class PolicyRule:
 
 @dataclass
 class PolicyConfig:
-    max_cost_per_request_usd: Optional[float]  = None
-    max_runtime_seconds:      Optional[float]  = None
-    allowed_providers:        Optional[list[str]] = None   # None = all allowed
+    max_cost_per_request_usd: float | None  = None
+    max_runtime_seconds:      float | None  = None
+    allowed_providers:        list[str] | None = None   # None = all allowed
     blocked_tools:            list[str]         = field(default_factory=list)
     blocked_patterns:         list[str]         = field(default_factory=list)
     require_user_id:          bool              = False
-    max_prompt_chars:         Optional[int]     = None     # prompt length limit
+    max_prompt_chars:         int | None     = None     # prompt length limit
     content_safety:           bool              = False    # reserved for future content moderation integration
 
 
@@ -50,7 +50,7 @@ class PolicyEngine:
     Stateless policy checker.  All rules run synchronously before execution starts.
     """
 
-    def __init__(self, bus: EventBus, config: Optional[PolicyConfig] = None) -> None:
+    def __init__(self, bus: EventBus, config: PolicyConfig | None = None) -> None:
         self._bus    = bus
         self._config = config or PolicyConfig()
 

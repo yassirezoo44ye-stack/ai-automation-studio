@@ -12,7 +12,6 @@ import hmac
 import json
 import time as _time
 import uuid
-from typing import Optional
 
 from fastapi import HTTPException, Request
 
@@ -46,7 +45,7 @@ def make_token(email: str, trial: bool, days_remaining: int) -> str:
     return f"{data}.{sig}"
 
 
-def verify_token(token: str) -> Optional[dict]:
+def verify_token(token: str) -> dict | None:
     try:
         data, sig = token.rsplit(".", 1)
         expected  = hmac.new(SESSION_SECRET.encode(), data.encode(), hashlib.sha256).hexdigest()

@@ -20,7 +20,9 @@ import asyncio
 import json
 import logging
 import time
-from typing import Callable, Optional
+import contextlib
+from typing import Optional
+from collections.abc import Callable
 
 log = logging.getLogger(__name__)
 
@@ -61,11 +63,8 @@ class DeviceWebSocketClient:
 
     async def send(self, frame: dict) -> None:
         """Queue a frame for sending. Drops if queue is full (backpressure)."""
-        try:
+        with contextlib.suppress(asyncio.QueueFull):  # high-frequency frames may be dropped under pressure
             self._send_queue.put_nowait(frame)
-        except asyncio.QueueFull:
-            # High-frequency frames (mouse_move) may be dropped under pressure
-            pass
 
     async def send_now(self, frame: dict) -> bool:
         """Send a frame immediately — for auth, heartbeat, keyboard events."""

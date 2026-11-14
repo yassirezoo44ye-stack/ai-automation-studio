@@ -23,7 +23,7 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -31,10 +31,10 @@ log = logging.getLogger(__name__)
 
 class CacheBackend(ABC):
     @abstractmethod
-    async def get(self, key: str) -> Optional[str]: ...
+    async def get(self, key: str) -> str | None: ...
 
     @abstractmethod
-    async def set(self, key: str, value: str, ttl: Optional[int] = None) -> None: ...
+    async def set(self, key: str, value: str, ttl: int | None = None) -> None: ...
 
     @abstractmethod
     async def delete(self, key: str) -> None: ...
@@ -49,13 +49,13 @@ class CacheBackend(ABC):
     async def keys(self, pattern: str) -> list[str]: ...
 
     @abstractmethod
-    async def mget(self, *keys: str) -> list[Optional[str]]: ...
+    async def mget(self, *keys: str) -> list[str | None]: ...
 
     @abstractmethod
     async def hset(self, name: str, mapping: dict) -> None: ...
 
     @abstractmethod
-    async def hget(self, name: str, field: str) -> Optional[str]: ...
+    async def hget(self, name: str, field: str) -> str | None: ...
 
     @abstractmethod
     async def hgetall(self, name: str) -> dict[str, str]: ...
@@ -72,6 +72,20 @@ class CacheBackend(ABC):
     @abstractmethod
     async def subscribe(self, channel: str, callback) -> None: ...
 
+    @abstractmethod
+    async def get_and_delete(self, key: str) -> str | None: ...
+
+    @abstractmethod
+    async def get_and_delete_if_matches(self, key: str, expected: str) -> bool | None:
+        """Atomically delete *key* only when its value equals *expected*.
+
+        Returns:
+            True   — value matched; key deleted (consumed).
+            False  — value did not match; key left intact.
+            None   — key absent or expired; nothing changed.
+        """
+        ...
+
     @property
     @abstractmethod
     def backend_name(self) -> str: ...
@@ -82,7 +96,7 @@ class CacheBackend(ABC):
 class _Entry:
     __slots__ = ("value", "expires_at")
 
-    def __init__(self, value: str, ttl: Optional[int]) -> None:
+    def __init__(self, value: str, ttl: int | None) -> None:
         self.value      = value
         self.expires_at = (time.monotonic() + ttl) if ttl else None
 
@@ -100,18 +114,18 @@ class LocalCacheBackend(CacheBackend):
         self._counters: dict[str, int]         = {}
         self._pubsub : dict[str, list]         = {}   # channel → [callbacks]
 
-    def _get_raw(self, key: str) -> Optional[_Entry]:
+    def _get_raw(self, key: str) -> _Entry | None:
         e = self._store.get(key)
         if e and not e.is_alive():
             del self._store[key]
             return None
         return e
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         e = self._get_raw(key)
         return e.value if e else None
 
-    async def set(self, key: str, value: str, ttl: Optional[int] = None) -> None:
+    async def set(self, key: str, value: str, ttl: int | None = None) -> None:
         self._store[key] = _Entry(str(value), ttl)
 
     async def delete(self, key: str) -> None:
@@ -119,6 +133,30 @@ class LocalCacheBackend(CacheBackend):
         self._hashes.pop(key, None)
         self._lists.pop(key, None)
         self._counters.pop(key, None)
+
+    async def get_and_delete(self, key: str) -> str | None:
+        # dict.pop is atomic within a single asyncio turn — no await between read and delete
+        entry = self._store.pop(key, None)
+        if entry is None:
+            return None
+        if not entry.is_alive():
+            return None
+        return entry.value
+
+    async def get_and_delete_if_matches(self, key: str, expected: str) -> bool | None:
+        import hmac as _hmac
+        # No await inside — the entire read+compare+conditional-delete executes in
+        # a single asyncio turn, so no other coroutine can interleave.
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        if not entry.is_alive():
+            del self._store[key]
+            return None
+        if not _hmac.compare_digest(entry.value, expected):
+            return False  # mismatch — entry left intact for the legitimate browser
+        del self._store[key]
+        return True
 
     async def incr(self, key: str) -> int:
         self._counters[key] = self._counters.get(key, 0) + 1
@@ -130,11 +168,15 @@ class LocalCacheBackend(CacheBackend):
             e.expires_at = time.monotonic() + ttl
 
     async def keys(self, pattern: str) -> list[str]:
+        # Redis KEYS matches every key type, hashes included (the job queue
+        # lists its jobs this way).
         import fnmatch
-        return [k for k in self._store if fnmatch.fnmatch(k, pattern)
-                and self._get_raw(k) is not None]
+        found = [k for k in list(self._store) if fnmatch.fnmatch(k, pattern)
+                 and self._get_raw(k) is not None]
+        found += [k for k in self._hashes if fnmatch.fnmatch(k, pattern)]
+        return found
 
-    async def mget(self, *keys: str) -> list[Optional[str]]:
+    async def mget(self, *keys: str) -> list[str | None]:
         return [await self.get(k) for k in keys]
 
     async def hset(self, name: str, mapping: dict) -> None:
@@ -142,7 +184,7 @@ class LocalCacheBackend(CacheBackend):
             self._hashes[name] = {}
         self._hashes[name].update({str(k): str(v) for k, v in mapping.items()})
 
-    async def hget(self, name: str, field: str) -> Optional[str]:
+    async def hget(self, name: str, field: str) -> str | None:
         return self._hashes.get(name, {}).get(field)
 
     async def hgetall(self, name: str) -> dict[str, str]:
@@ -188,13 +230,13 @@ class RedisCacheBackend(CacheBackend):
         self._r = client
         self._subs: dict[str, list] = {}       # channel → [callbacks]
         self._pubsub_conn = None               # created lazily on first subscribe
-        self._listener_task: Optional[asyncio.Task] = None
+        self._listener_task: asyncio.Task | None = None
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         val = await self._r.get(key)
         return val.decode() if isinstance(val, bytes) else val
 
-    async def set(self, key: str, value: str, ttl: Optional[int] = None) -> None:
+    async def set(self, key: str, value: str, ttl: int | None = None) -> None:
         if ttl:
             await self._r.setex(key, ttl, value)
         else:
@@ -202,6 +244,26 @@ class RedisCacheBackend(CacheBackend):
 
     async def delete(self, key: str) -> None:
         await self._r.delete(key)
+
+    async def get_and_delete(self, key: str) -> str | None:
+        # GETDEL is atomic (Redis 6.2+); returns None if key absent
+        val = await self._r.getdel(key)
+        return val.decode() if isinstance(val, bytes) else val
+
+    # Lua script: GET + compare + conditional DEL in one atomic Redis operation.
+    # Returns: 0 = key absent, 1 = matched+deleted, -1 = mismatch (key intact).
+    _LUA_GET_DEL_IF_MATCHES = """
+local v = redis.call('GET', KEYS[1])
+if v == false then return 0 end
+if v == ARGV[1] then redis.call('DEL', KEYS[1]) return 1 end
+return -1
+"""
+
+    async def get_and_delete_if_matches(self, key: str, expected: str) -> bool | None:
+        result = await self._r.eval(self._LUA_GET_DEL_IF_MATCHES, 1, key, expected)
+        if result == 0:
+            return None   # key absent or expired
+        return result == 1  # True if matched and deleted, False if mismatch
 
     async def incr(self, key: str) -> int:
         return await self._r.incr(key)
@@ -213,14 +275,14 @@ class RedisCacheBackend(CacheBackend):
         raw = await self._r.keys(pattern)
         return [k.decode() if isinstance(k, bytes) else k for k in raw]
 
-    async def mget(self, *keys: str) -> list[Optional[str]]:
+    async def mget(self, *keys: str) -> list[str | None]:
         vals = await self._r.mget(*keys)
         return [v.decode() if isinstance(v, bytes) else v for v in vals]
 
     async def hset(self, name: str, mapping: dict) -> None:
         await self._r.hset(name, mapping=mapping)
 
-    async def hget(self, name: str, field: str) -> Optional[str]:
+    async def hget(self, name: str, field: str) -> str | None:
         val = await self._r.hget(name, field)
         return val.decode() if isinstance(val, bytes) else val
 
@@ -296,10 +358,10 @@ class RedisAdapter:
     def _k(self, key: str) -> str:
         return f"{self._ns}:{key}"
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         return await self._b.get(self._k(key))
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         await self._b.set(self._k(key), str(value), ttl=ttl)
 
     async def delete(self, key: str) -> None:
@@ -312,7 +374,18 @@ class RedisAdapter:
             await self._b.delete(k)
         return len(keys)
 
-    async def incr(self, key: str, ttl: Optional[int] = None) -> int:
+    async def get_and_delete(self, key: str) -> str | None:
+        """Atomically read and remove a key. Returns None if absent or expired."""
+        return await self._b.get_and_delete(self._k(key))
+
+    async def get_and_delete_if_matches(self, key: str, expected: str) -> bool | None:
+        """Atomically delete key only when its stored value equals expected.
+
+        Returns True (matched+deleted), False (mismatch, key intact), None (absent).
+        """
+        return await self._b.get_and_delete_if_matches(self._k(key), expected)
+
+    async def incr(self, key: str, ttl: int | None = None) -> int:
         n = await self._b.incr(self._k(key))
         if ttl and n == 1:          # set TTL on first increment only
             await self._b.expire(self._k(key), ttl)
@@ -322,13 +395,13 @@ class RedisAdapter:
         val = await self.get(key)
         return int(val) if val is not None else default
 
-    async def mget(self, *keys: str) -> list[Optional[str]]:
+    async def mget(self, *keys: str) -> list[str | None]:
         return await self._b.mget(*[self._k(k) for k in keys])
 
     async def hset(self, name: str, mapping: dict) -> None:
         await self._b.hset(self._k(name), mapping)
 
-    async def hget(self, name: str, field: str) -> Optional[str]:
+    async def hget(self, name: str, field: str) -> str | None:
         return await self._b.hget(self._k(name), field)
 
     async def hgetall(self, name: str) -> dict[str, str]:
@@ -357,7 +430,7 @@ class RedisAdapter:
 
     # ── Convenience helpers ───────────────────────────────────────────────────
 
-    async def get_json(self, key: str) -> Optional[Any]:
+    async def get_json(self, key: str) -> Any | None:
         import json
         val = await self.get(key)
         if val is None:
@@ -367,14 +440,30 @@ class RedisAdapter:
         except Exception:
             return val
 
-    async def set_json(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+    async def get_json_and_delete(self, key: str) -> Any | None:
+        """Atomically read and delete *key*, returning its JSON-decoded value.
+
+        Uses the underlying get_and_delete (GETDEL on real Redis, dict.pop on
+        LocalCacheBackend) so two concurrent callers can never both receive the
+        same value — the first one wins, the second gets None.
+        """
+        import json
+        val = await self.get_and_delete(key)
+        if val is None:
+            return None
+        try:
+            return json.loads(val)
+        except Exception:
+            return val
+
+    async def set_json(self, key: str, value: Any, ttl: int | None = None) -> None:
         import json
         await self.set(key, json.dumps(value), ttl=ttl)
 
 
 # ── Singleton factory ─────────────────────────────────────────────────────────
 
-_instance: Optional[RedisAdapter] = None
+_instance: RedisAdapter | None = None
 
 
 async def get_redis(namespace: str = "axon") -> RedisAdapter:

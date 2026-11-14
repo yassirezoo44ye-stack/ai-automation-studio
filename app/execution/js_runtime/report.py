@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .error_codes import RuntimeErrorCode, fixes_for, js_code_for, message_for
 
@@ -47,7 +46,7 @@ class EnvironmentReport:
     tmpdir: str = ""
     python_version: str = ""
     disk_free_mb: int = -1
-    memory_free_mb: Optional[int] = None
+    memory_free_mb: int | None = None
     available_pms: dict = field(default_factory=dict)   # pm_name → version
 
     # Package manager
@@ -63,7 +62,7 @@ class EnvironmentReport:
     workspace_readable: bool = False
 
     # Failure
-    error_code: Optional[RuntimeErrorCode] = None
+    error_code: RuntimeErrorCode | None = None
     message: str = ""
     technical_details: dict = field(default_factory=dict)
     suggested_fix: list[str] = field(default_factory=list)
@@ -75,7 +74,7 @@ class EnvironmentReport:
         *,
         technical_details: dict | None = None,
         **kwargs,
-    ) -> "EnvironmentReport":
+    ) -> EnvironmentReport:
         return cls(
             passed=False,
             error_code=code,
@@ -110,13 +109,13 @@ class BuildPlanReport:
     warnings: list[str] = field(default_factory=list)
 
     # Failure
-    error_code: Optional[RuntimeErrorCode] = None
+    error_code: RuntimeErrorCode | None = None
     message: str = ""
     technical_details: dict = field(default_factory=dict)
     suggested_fix: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_plan(cls, plan) -> "BuildPlanReport":
+    def from_plan(cls, plan) -> BuildPlanReport:
         """Construct from a BuildPlan instance."""
         return cls(
             passed=True,
@@ -144,7 +143,7 @@ class BuildPlanReport:
         *,
         technical_details: dict | None = None,
         **kwargs,
-    ) -> "BuildPlanReport":
+    ) -> BuildPlanReport:
         return cls(
             passed=False,
             error_code=code,
@@ -175,7 +174,7 @@ class DependencyReport:
     install_duration_s: float = 0.0
 
     # Failure
-    error_code: Optional[RuntimeErrorCode] = None
+    error_code: RuntimeErrorCode | None = None
     message: str = ""
     technical_details: dict = field(default_factory=dict)
     suggested_fix: list[str] = field(default_factory=list)
@@ -185,7 +184,7 @@ class DependencyReport:
         return self.install_stdout + self.install_stderr
 
     @classmethod
-    def skipped(cls, reason: str) -> "DependencyReport":
+    def skipped(cls, reason: str) -> DependencyReport:
         return cls(passed=True, node_modules_existed=True,
                    install_skipped_reason=reason)
 
@@ -196,7 +195,7 @@ class DependencyReport:
         *,
         technical_details: dict | None = None,
         **kwargs,
-    ) -> "DependencyReport":
+    ) -> DependencyReport:
         return cls(
             passed=False,
             error_code=code,
@@ -219,7 +218,7 @@ class LaunchReport:
     startup_duration_s: float = 0.0
 
     # Failure
-    error_code: Optional[RuntimeErrorCode] = None
+    error_code: RuntimeErrorCode | None = None
     message: str = ""
     technical_details: dict = field(default_factory=dict)
     suggested_fix: list[str] = field(default_factory=list)
@@ -235,7 +234,7 @@ class LaunchReport:
         *,
         technical_details: dict | None = None,
         **kwargs,
-    ) -> "LaunchReport":
+    ) -> LaunchReport:
         return cls(
             passed=False,
             error_code=code,
@@ -259,10 +258,10 @@ class RuntimeReport:
     project_id: str
     workspace: str
 
-    environment: Optional[EnvironmentReport] = None
-    build_plan: Optional[BuildPlanReport] = None
-    dependencies: Optional[DependencyReport] = None
-    launch: Optional[LaunchReport] = None
+    environment: EnvironmentReport | None = None
+    build_plan: BuildPlanReport | None = None
+    dependencies: DependencyReport | None = None
+    launch: LaunchReport | None = None
 
     # Timing
     started_at: float = field(default_factory=time.time)
@@ -281,7 +280,7 @@ class RuntimeReport:
         )
 
     @property
-    def failure_reason(self) -> Optional[RuntimeErrorCode]:
+    def failure_reason(self) -> RuntimeErrorCode | None:
         for phase in (self.environment, self.build_plan, self.dependencies, self.launch):
             if phase and not phase.passed and phase.error_code:
                 return phase.error_code
@@ -330,7 +329,7 @@ class RuntimeReport:
         }
 
 
-def _build_plan_dict(bp: Optional[BuildPlanReport]) -> dict | None:
+def _build_plan_dict(bp: BuildPlanReport | None) -> dict | None:
     if bp is None:
         return None
     return {

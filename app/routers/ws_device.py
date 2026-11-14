@@ -45,7 +45,6 @@ import asyncio
 import json
 import logging
 import time
-from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -57,6 +56,7 @@ from app.services.device_control import (
     WS_TIMEOUT_S,
 )
 from app.core.db import write_audit
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -235,13 +235,13 @@ async def device_agent_ws(ws: WebSocket, device_id: str):
     # Step 1: Accept
     await ws.accept()
 
-    device_info: Optional[dict] = None
-    session_id: Optional[str] = None
-    conn_obj: Optional[_DeviceConn] = None
+    device_info: dict | None = None
+    session_id: str | None = None
+    conn_obj: _DeviceConn | None = None
     is_primary: bool = False
-    org_id: Optional[str] = None
+    org_id: str | None = None
 
-    hb_task: Optional[asyncio.Task] = None
+    hb_task: asyncio.Task | None = None
 
     try:
         # ── Step 2: Auth handshake ─────────────────────────────────────────
@@ -392,9 +392,8 @@ async def device_agent_ws(ws: WebSocket, device_id: str):
                 continue
 
             # ── Key-event replay protection ────────────────────────────────
-            if mtype in ("key_down", "key_up"):
-                if not key_seq.check_and_advance(msg.get("seq")):
-                    continue   # duplicate or out-of-order — drop silently
+            if mtype in ("key_down", "key_up") and not key_seq.check_and_advance(msg.get("seq")):
+                continue   # duplicate or out-of-order — drop silently
 
             if mtype == "heartbeat":
                 conn_obj.last_heartbeat = time.monotonic()
@@ -505,10 +504,8 @@ async def _route_frame_to_target(
     for conn in conns:
         if conn.device_id == source_device_id:
             continue
-        try:
+        with contextlib.suppress(Exception):
             await conn.ws.send_text(json.dumps(frame))
-        except Exception:
-            pass
 
 
 async def _handle_device_switch(
@@ -541,10 +538,8 @@ async def _handle_device_switch(
     }
 
     for conn in conns:
-        try:
+        with contextlib.suppress(Exception):
             await conn.ws.send_text(json.dumps(switch_frame))
-        except Exception:
-            pass
 
     # Audit switch: metadata only — no cursor coordinates, no key state
     asyncio.create_task(write_audit(

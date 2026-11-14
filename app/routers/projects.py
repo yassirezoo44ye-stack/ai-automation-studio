@@ -1,6 +1,5 @@
 import json
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -20,7 +19,7 @@ def _validate_project_name(v: str) -> str:
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    description: str | None = Field(None, max_length=500)
 
     @field_validator("name")
     @classmethod
@@ -29,12 +28,12 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
 
     @field_validator("name")
     @classmethod
-    def name_min_length(cls, v: Optional[str]) -> Optional[str]:
+    def name_min_length(cls, v: str | None) -> str | None:
         return _validate_project_name(v) if v is not None else v
 
 

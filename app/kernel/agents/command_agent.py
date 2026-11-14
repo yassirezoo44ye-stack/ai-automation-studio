@@ -32,14 +32,14 @@ class CommandAgent(BaseAgent):
 
     def __init__(
         self,
-        meta: "CommandMeta",
-        ctx: "CommandContext",
+        meta: CommandMeta,
+        ctx: CommandContext,
         timeout_s: float = 300.0,
     ) -> None:
         self.meta      = meta
         self.ctx       = ctx
         self.timeout_s = timeout_s
-        self.result: "CommandResult | None" = None
+        self.result: CommandResult | None = None
         self.name = f"agent:{meta.name}"
 
     async def execute(self, state: AgentState) -> None:

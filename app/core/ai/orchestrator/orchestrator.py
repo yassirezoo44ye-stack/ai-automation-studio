@@ -9,7 +9,8 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
+from collections.abc import AsyncGenerator
 
 from ..events.bus import EventBus
 from ..events.events import OrchestratorStarted, OrchestratorCompleted, OrchestratorFailed
@@ -28,13 +29,13 @@ if TYPE_CHECKING:
 @dataclass
 class OrchestratorRequest:
     prompt:          str
-    user_id:         Optional[str]       = None
-    organization_id: Optional[str]       = None    # AI Routing consolidation: quota/usage attribution
-    conversation_id: Optional[str]       = None
-    project_id:      Optional[str]       = None
-    workspace_id:    Optional[str]       = None
+    user_id:         str | None       = None
+    organization_id: str | None       = None    # AI Routing consolidation: quota/usage attribution
+    conversation_id: str | None       = None
+    project_id:      str | None       = None
+    workspace_id:    str | None       = None
     mode:            str                 = "auto"    # "auto" | "single" | "multi-agent"
-    max_cost_usd:    Optional[float]     = None
+    max_cost_usd:    float | None     = None
     context:         dict[str, Any]      = field(default_factory=dict)
 
 
@@ -48,11 +49,11 @@ class AIOrchestrator:
 
     def __init__(
         self,
-        platform:     "AIPlatform",
+        platform:     AIPlatform,
         bus:          EventBus,
-        policy:       Optional["PolicyEngine"]     = None,
-        cost_manager: Optional["CostManager"]      = None,
-        ctx_manager:  Optional["ContextManager"]   = None,
+        policy:       PolicyEngine | None     = None,
+        cost_manager: CostManager | None      = None,
+        ctx_manager:  ContextManager | None   = None,
         max_concurrent: int = 4,
     ) -> None:
         self._platform    = platform

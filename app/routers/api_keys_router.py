@@ -10,7 +10,6 @@ Org-scoped keys (organization_id set, managed by org admins) live under
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -27,7 +26,7 @@ router = APIRouter(prefix="/api/keys", tags=["api-keys"])
 class CreateKeyRequest(BaseModel):
     name            : str
     scopes          : list[str] = ["read"]
-    expires_in_days : Optional[int] = None
+    expires_in_days : int | None = None
 
 
 @router.post("", status_code=201)

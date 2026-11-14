@@ -44,7 +44,7 @@ class HotReloader:
     unregistered before re-registration.
     """
 
-    def __init__(self, registry: "CommandRegistry", state: "KernelState") -> None:
+    def __init__(self, registry: CommandRegistry, state: KernelState) -> None:
         self._registry = registry
         self._state    = state
         # module_name → list of command names it registered

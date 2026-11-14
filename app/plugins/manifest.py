@@ -9,7 +9,7 @@ invented here.
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -49,7 +49,7 @@ class PluginManifest(BaseModel):
     network_domains     : list[str] = Field(default_factory=list)
 
     min_platform_version: str
-    max_platform_version: Optional[str] = None
+    max_platform_version: str | None = None
 
     entry_point: str = Field(..., description="'module_path:ClassName' resolved after import")
     configuration_schema: dict[str, Any] = Field(default_factory=dict)
@@ -73,7 +73,7 @@ class PluginManifest(BaseModel):
 
     @field_validator("max_platform_version")
     @classmethod
-    def _validate_max_version(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_max_version(cls, v: str | None) -> str | None:
         if v is not None and not _VERSION_RE.match(v):
             raise ValueError(f"not a MAJOR.MINOR.PATCH version: {v!r}")
         return v
@@ -86,7 +86,7 @@ class PluginManifest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _validate_dependencies_not_self(self) -> "PluginManifest":
+    def _validate_dependencies_not_self(self) -> PluginManifest:
         for dep in self.dependencies:
             if dep.plugin_id == self.id:
                 raise ValueError(f"plugin {self.id!r} cannot depend on itself")

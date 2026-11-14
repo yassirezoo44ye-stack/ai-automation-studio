@@ -28,7 +28,6 @@ request body at all.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -45,8 +44,8 @@ router = APIRouter(tags=["commands"])
 
 class ExecuteRequest(BaseModel):
     # raw string OR structured
-    input  : Optional[str] = None
-    command: Optional[str] = None
+    input  : str | None = None
+    command: str | None = None
     args   : list[str]     = []
     flags  : dict[str, str]= {}
     caller : str           = "api"

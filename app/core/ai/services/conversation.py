@@ -17,7 +17,6 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
 from app.ai import memory as mem
 from app.core.ai.events.bus import bus
@@ -41,7 +40,7 @@ class MessageRecord:
     id:           str
     role:         str
     content:      str
-    tool_call_id: Optional[str]
+    tool_call_id: str | None
     created_at:   str
 
 
@@ -64,10 +63,10 @@ class ConversationService:
     async def create(
         self,
         *,
-        user_id:    Optional[str] = None,
+        user_id:    str | None = None,
         title:      str           = "New conversation",
-        project_id: Optional[str] = None,
-        agent_id:   Optional[str] = None,
+        project_id: str | None = None,
+        agent_id:   str | None = None,
     ) -> str:
         uid = uuid.UUID(user_id)    if user_id    else None
         pid = uuid.UUID(project_id) if project_id else None
@@ -98,7 +97,7 @@ class ConversationService:
     async def list(
         self,
         *,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         limit:   int           = 50,
         offset:  int           = 0,
         archived: bool         = False,
@@ -142,7 +141,7 @@ class ConversationService:
         user_id:   str,
         page:      int = 1,
         page_size: int = 50,
-    ) -> Optional[list[MessageRecord]]:
+    ) -> list[MessageRecord] | None:
         """Returns None if conversation_id isn't a valid id, doesn't exist,
         or isn't owned by user_id — the router turns that into 404. Returns
         [] (not None) for an owned conversation with zero messages.
@@ -208,7 +207,7 @@ class ConversationService:
         *,
         user_id: str,
         first_user_message: str,
-        provider_id: Optional[str] = None,
+        provider_id: str | None = None,
     ) -> str:
         """
         Generate a short title via AI. Falls back to truncated message on error.

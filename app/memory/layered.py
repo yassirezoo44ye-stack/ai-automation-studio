@@ -20,7 +20,7 @@ import time
 from collections import deque
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 _TMPDIR = Path(os.getenv("TMPDIR", "/tmp") if os.name != "nt" else os.getenv("TEMP", "C:\\Temp"))
 _LT_PATH  = _TMPDIR / "axon-longterm-memory.json"
@@ -46,9 +46,9 @@ class MemoryItem:
     data      : dict = field(default_factory=dict)
     tags      : list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
-    agent     : Optional[str] = None
-    success   : Optional[bool] = None
-    organization_id: Optional[str] = None
+    agent     : str | None = None
+    success   : bool | None = None
+    organization_id: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -127,7 +127,7 @@ class LongTermMemory:
             self._save()
 
     def search(self, query: str, limit: int = 10,
-               kind: Optional[str] = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
+               kind: str | None = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
         with self._lock:
             items = self._items if not kind else [i for i in self._items if i.kind == kind]
             if org_id is not _UNSCOPED:
@@ -137,7 +137,7 @@ class LongTermMemory:
         return [i for i, s in scored[:limit] if s > 0]
 
     def recent(self, n: int = 50,
-               kind: Optional[str] = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
+               kind: str | None = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
         with self._lock:
             items = self._items if not kind else [i for i in self._items if i.kind == kind]
             if org_id is not _UNSCOPED:
@@ -203,7 +203,7 @@ class LayeredMemory:
         self.long.add(lt_item)
 
     def search(self, query: str, limit: int = 20,
-               kind: Optional[str] = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
+               kind: str | None = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
         seen  : set[str] = set()
         results: list[MemoryItem] = []
         for item in self.short.search(query, limit, org_id=org_id):
@@ -216,7 +216,7 @@ class LayeredMemory:
                 results.append(item)
         return results[:limit]
 
-    def recent(self, n: int = 50, kind: Optional[str] = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
+    def recent(self, n: int = 50, kind: str | None = None, *, org_id: Any = _UNSCOPED) -> list[MemoryItem]:
         return self.long.recent(n, kind=kind, org_id=org_id)
 
     @property

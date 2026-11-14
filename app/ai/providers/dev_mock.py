@@ -21,7 +21,7 @@ import json
 import logging
 import re
 import unicodedata
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from app.ai.models import (
     CompletionRequest,
@@ -645,7 +645,7 @@ def _parse_landing_vars(prompt: str) -> dict:
     # ── Ad headline (line after "العنوان:") ───────────────────────────────────
     m = re.search(r'العنوان[^:\n]*:\s*\n?((?:[^\n]+\n?){1,3})', prompt)
     if m:
-        lines = [l.strip() for l in m.group(1).splitlines() if l.strip()]
+        lines = [ln.strip() for ln in m.group(1).splitlines() if ln.strip()]
         if lines:
             v["headline"]  = lines[0][:80]
         if len(lines) > 1:
@@ -1257,6 +1257,16 @@ def _select_template(prompt: str) -> str:
             if key == "landing":
                 return _build_landing(prompt)
             return _STATIC_TEMPLATES[key]
+    # ── 3. Short / ambiguous prompts ────────────────────────────────────────────
+    # Prompts under 10 chars with no recognisable word content (pure noise /
+    # accidental input like "Hgg") must not produce a misleading landing page
+    # that implies a real product was described.  Use a neutral analytics demo
+    # instead so the user sees meaningful output without false personalisation.
+    stripped = prompt.strip()
+    if len(stripped) < 10 and not re.search(r"[a-zA-Z؀-ۿ]{3,}", stripped):
+        log.info("DevMockProvider: short/ambiguous prompt (%r) — using analytics template", stripped)
+        return _STATIC_TEMPLATES["analytics"]
+
     log.info("DevMockProvider: no keyword match — building landing from prompt")
     return _build_landing(prompt)   # best generic default for any product description
 

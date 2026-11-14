@@ -10,7 +10,8 @@ All AI calls go through AIGateway.complete() or AIGateway.stream().
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
+from collections.abc import AsyncGenerator
 
 from app.ai import memory as mem
 from app.ai import cost_tracker
@@ -69,8 +70,8 @@ class AIGateway:
         self,
         request: CompletionRequest,
         *,
-        user_id: Optional[str] = None,
-        org_id: Optional[str] = None,
+        user_id: str | None = None,
+        org_id: str | None = None,
     ) -> CompletionResponse:
         if org_id:
             await self._check_quota(org_id)
@@ -116,8 +117,8 @@ class AIGateway:
         self,
         request: CompletionRequest,
         *,
-        user_id: Optional[str] = None,
-        org_id: Optional[str] = None,
+        user_id: str | None = None,
+        org_id: str | None = None,
     ) -> AsyncGenerator[StreamChunk, None]:
         if org_id:
             await self._check_quota(org_id)
@@ -154,7 +155,7 @@ class AIGateway:
         self,
         request: CompletionRequest,
         *,
-        user_id: Optional[str],
+        user_id: str | None,
     ) -> CompletionRequest:
         """
         1. Load versioned prompt template and render variables.
@@ -237,8 +238,8 @@ class AIGateway:
         request: CompletionRequest,
         response: CompletionResponse,
         *,
-        user_id: Optional[str],
-        org_id: Optional[str] = None,
+        user_id: str | None,
+        org_id: str | None = None,
     ) -> None:
         """Persist history, track cost, meter org usage. All failures are non-fatal."""
 

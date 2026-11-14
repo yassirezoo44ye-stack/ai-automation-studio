@@ -20,7 +20,7 @@ app/routers/auth_users.py, etc. without changing this interface.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 
 class MemoryProviderBase(ABC):
@@ -44,7 +44,7 @@ class StorageProviderBase(ABC):
         """Returns a reference (URL or opaque id) to the stored object."""
 
     @abstractmethod
-    async def get(self, ref: str) -> Optional[bytes]: ...
+    async def get(self, ref: str) -> bytes | None: ...
 
     @abstractmethod
     async def delete(self, ref: str) -> bool: ...

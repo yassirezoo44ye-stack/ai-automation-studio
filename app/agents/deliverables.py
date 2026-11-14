@@ -15,7 +15,7 @@ import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 from app.core.config import WORKSPACES
 
@@ -27,7 +27,7 @@ class Deliverable(TypedDict):
     run_id: str
     agent: str
     label: str
-    organization_id: Optional[str]
+    organization_id: str | None
     # The verified caller identity that produced this deliverable (see
     # app.tenancy.context.optional_user_id) — None only when the run that
     # created it had no authenticated caller at all. This is the primary
@@ -35,7 +35,7 @@ class Deliverable(TypedDict):
     # for org-shared access. Never populate this from a client-supplied
     # value (e.g. a request-body field) — it must come from a verified
     # bearer token, or it isn't an authorization boundary at all.
-    user_id: Optional[str]
+    user_id: str | None
     created_at: float
 
 
@@ -44,8 +44,8 @@ _deliverables: dict[str, Deliverable] = {}
 
 def register(
     path: Path, *, run_id: str, agent: str, label: str,
-    organization_id: Optional[str] = None, user_id: Optional[str] = None,
-) -> Optional[str]:
+    organization_id: str | None = None, user_id: str | None = None,
+) -> str | None:
     """
     Registers `path` for download and returns a deliverable_id, or None
     (logged, not raised) if the path isn't under WORKSPACES — an agent's
@@ -72,5 +72,5 @@ def register(
     return deliverable_id
 
 
-def get(deliverable_id: str) -> Optional[Deliverable]:
+def get(deliverable_id: str) -> Deliverable | None:
     return _deliverables.get(deliverable_id)

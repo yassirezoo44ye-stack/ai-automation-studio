@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from ..events.bus    import EventBus
 from ..events.events import CostRecorded, BudgetExceeded
@@ -19,10 +19,10 @@ class CostRecord:
     amount_usd:      float
     provider_id:     str
     model:           str
-    user_id:         Optional[str]  = None
-    conversation_id: Optional[str]  = None
-    project_id:      Optional[str]  = None
-    agent_name:      Optional[str]  = None
+    user_id:         str | None  = None
+    conversation_id: str | None  = None
+    project_id:      str | None  = None
+    agent_name:      str | None  = None
     timestamp:       float          = field(default_factory=time.time)
 
 
@@ -54,7 +54,7 @@ class CostManager:
     def __init__(
         self,
         bus:          EventBus,
-        global_limit: Optional[float]          = None,
+        global_limit: float | None          = None,
     ) -> None:
         self._bus      = bus
         self._records: list[CostRecord] = []
@@ -70,8 +70,8 @@ class CostManager:
 
     async def check_budget(
         self,
-        user_id:        Optional[str],
-        project_id:     Optional[str],
+        user_id:        str | None,
+        project_id:     str | None,
         estimated_cost: float,
         limit_usd:      float,
     ) -> None:
@@ -88,13 +88,13 @@ class CostManager:
 
     async def record(
         self,
-        user_id:         Optional[str],
-        project_id:      Optional[str],
-        conversation_id: Optional[str],
+        user_id:         str | None,
+        project_id:      str | None,
+        conversation_id: str | None,
         amount_usd:      float,
         provider_id:     str,
         model:           str,
-        agent_name:      Optional[str] = None,
+        agent_name:      str | None = None,
     ) -> None:
         record = CostRecord(
             amount_usd=amount_usd,
@@ -127,7 +127,7 @@ class CostManager:
                     actual_usd=actual,
                 ))
 
-    def total_for_user(self, user_id: Optional[str]) -> float:
+    def total_for_user(self, user_id: str | None) -> float:
         if user_id is None:
             return 0.0
         return sum(r.amount_usd for r in self._records if r.user_id == user_id)
@@ -135,7 +135,7 @@ class CostManager:
     def total_for_project(self, project_id: str) -> float:
         return sum(r.amount_usd for r in self._records if r.project_id == project_id)
 
-    def by_provider(self, user_id: Optional[str] = None) -> dict[str, float]:
+    def by_provider(self, user_id: str | None = None) -> dict[str, float]:
         out: dict[str, float] = {}
         for r in self._records:
             if user_id and r.user_id != user_id:
@@ -157,7 +157,7 @@ class CostManager:
             "record_count":  len(self._records),
             "by_provider":   self.by_provider(),
             "by_agent":      self.by_agent(),
-            "limits":        [{"scope": l.scope, "limit_usd": l.limit_usd} for l in self._limits],
+            "limits":        [{"scope": lim.scope, "limit_usd": lim.limit_usd} for lim in self._limits],
         }
 
     # ── Internal ──────────────────────────────────────────────────────────────

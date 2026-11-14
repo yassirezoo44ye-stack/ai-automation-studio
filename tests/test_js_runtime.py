@@ -449,17 +449,15 @@ class TestRuntimeManager:
         _pkg(tmp_path, scripts={"build": "tsc"})
         _lockfile(tmp_path, "package-lock.json")
         m = RuntimeManager()
-        with _mock_probe({"npm"}):
-            with pytest.raises(ScriptNotFound):
-                await m.run_script(tmp_path, "nonexistent")
+        with _mock_probe({"npm"}), pytest.raises(ScriptNotFound):
+            await m.run_script(tmp_path, "nonexistent")
 
     @pytest.mark.asyncio
     async def test_run_script_raises_when_no_pm(self, tmp_path):
         _pkg(tmp_path, scripts={"build": "tsc"})
         m = RuntimeManager()
-        with _mock_probe(set()):
-            with pytest.raises(PackageManagerNotFound):
-                await m.run_script(tmp_path, "build")
+        with _mock_probe(set()), pytest.raises(PackageManagerNotFound):
+            await m.run_script(tmp_path, "build")
 
     @pytest.mark.asyncio
     async def test_install_emits_result_sentinel_when_no_pm(self, tmp_path):
@@ -524,8 +522,8 @@ class TestRuntimeManager:
                     stderr_seen.append(line)
                 elif stream_name == "stdout" and line.strip():
                     stdout_seen.append(line)
-        assert any("EACCES" in l for l in stderr_seen)
-        assert any("progress" in l for l in stdout_seen)
+        assert any("EACCES" in ln for ln in stderr_seen)
+        assert any("progress" in ln for ln in stdout_seen)
 
 
 # ── EnvironmentProbe tests ────────────────────────────────────────────────────
@@ -557,8 +555,8 @@ class TestEnvironmentProbe:
             result = EnvironmentProbe().probe(tmp_path)
         lines = result.as_log_lines()
         assert len(lines) > 5
-        assert any("HOME" in l for l in lines)
-        assert any("npm cache" in l for l in lines)
+        assert any("HOME" in ln for ln in lines)
+        assert any("npm cache" in ln for ln in lines)
 
     def test_probe_warns_when_home_npm_unwritable(self, tmp_path):
         from app.execution.js_runtime.probe import EnvironmentProbe

@@ -22,7 +22,8 @@ with the invalidation made explicit.
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable
+from typing import Any
+from collections.abc import Awaitable, Callable
 
 from app.core.cache.redis_adapter import get_redis
 

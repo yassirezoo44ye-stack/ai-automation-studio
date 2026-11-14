@@ -26,7 +26,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+import contextlib
 
 log = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class ExecutionSandbox:
         self.execution_id   = execution_id
         self._base_dir      = Path(tempfile.gettempdir()) / "executions"
         self._root          = self._base_dir / execution_id
-        self.paths: Optional[SandboxPaths] = None
+        self.paths: SandboxPaths | None = None
         self._created       = False
 
     def create(self) -> SandboxPaths:
@@ -215,10 +215,8 @@ def _dir_size(path: Path) -> int:
     try:
         for p in path.rglob("*"):
             if p.is_file():
-                try:
+                with contextlib.suppress(Exception):
                     total += p.stat().st_size
-                except Exception:
-                    pass
     except Exception:
         pass
     return total

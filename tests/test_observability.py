@@ -47,7 +47,7 @@ class TestTracerBridge(unittest.TestCase):
 
     def test_error_status_recorded(self):
         try:
-            with self.tracer.start_span("failing") as span:
+            with self.tracer.start_span("failing"):
                 raise RuntimeError("boom")
         except RuntimeError:
             pass
@@ -77,11 +77,11 @@ class TestCorrelationId(unittest.TestCase):
         # No ambient span — falls back to "" so callers mint their own uuid4.
         self.assertEqual(_active_trace_id(), "")
 
-        with tracer.start_span("http_request") as span:
+        with tracer.start_span("http_request") as span, \
+             otel_trace.use_span(span._span):
             # use_span makes this the "current" span exactly like
             # FastAPIInstrumentor does for a real HTTP request.
-            with otel_trace.use_span(span._span):
-                self.assertEqual(_active_trace_id(), span.trace_id)
+            self.assertEqual(_active_trace_id(), span.trace_id)
 
     def test_inference_engine_prefers_request_id_from_context(self):
         """InferenceEngine.complete()/.stream() must read the ambient

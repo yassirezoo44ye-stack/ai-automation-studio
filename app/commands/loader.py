@@ -57,7 +57,7 @@ def _default_plugin_dirs() -> list[Path]:
     ]
 
 
-def load_plugins(registry: "CommandRegistry", extra_dirs: list[Path] | None = None) -> int:
+def load_plugins(registry: CommandRegistry, extra_dirs: list[Path] | None = None) -> int:
     """
     Scan all plugin directories and call register(registry) in each module found.
     Returns the count of successfully loaded plugins.
@@ -69,7 +69,7 @@ def load_plugins(registry: "CommandRegistry", extra_dirs: list[Path] | None = No
     return loaded
 
 
-def _load_dir(registry: "CommandRegistry", directory: Path) -> int:
+def _load_dir(registry: CommandRegistry, directory: Path) -> int:
     if not directory.is_dir():
         return 0
     count = 0
@@ -81,7 +81,7 @@ def _load_dir(registry: "CommandRegistry", directory: Path) -> int:
     return count
 
 
-def _load_file(registry: "CommandRegistry", path: Path) -> bool:
+def _load_file(registry: CommandRegistry, path: Path) -> bool:
     module_name = f"_plugin_{path.stem}_{id(path)}"
     try:
         spec = importlib.util.spec_from_file_location(module_name, path)

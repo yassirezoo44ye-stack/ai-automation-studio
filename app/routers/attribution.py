@@ -12,7 +12,6 @@ Rate-limited 120/60s per IP to deter abuse without blocking legit page views.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
@@ -32,10 +31,10 @@ _rl = Depends(make_rate_limit_dep("attribution_track", max_calls=120, window=60)
 class TrackRequest(BaseModel):
     event:        str            = Field(..., max_length=40)
     session_id:   str            = Field(..., min_length=1, max_length=64)
-    utm_source:   Optional[str]  = Field(default=None, max_length=200)
-    utm_medium:   Optional[str]  = Field(default=None, max_length=200)
-    utm_campaign: Optional[str]  = Field(default=None, max_length=200)
-    utm_content:  Optional[str]  = Field(default=None, max_length=200)
+    utm_source:   str | None  = Field(default=None, max_length=200)
+    utm_medium:   str | None  = Field(default=None, max_length=200)
+    utm_campaign: str | None  = Field(default=None, max_length=200)
+    utm_content:  str | None  = Field(default=None, max_length=200)
 
     @field_validator("event")
     @classmethod

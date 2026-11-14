@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable, TypeVar, Awaitable
+from typing import TypeVar
+from collections.abc import Callable, Awaitable
 
 from app.core.reliability import compute_backoff_delay
 

@@ -270,7 +270,7 @@ def cmd_startup(args: argparse.Namespace) -> int:
         log.error("could not write autostart registry key: %s", e)
         return 1
 
-    print(f"✅ Flow Agent will start on login.")
+    print("✅ Flow Agent will start on login.")
     print(f"   Registry: HKCU\\...\\Run\\{_AUTOSTART_REG_KEY}")
     print(f"   Value:    {reg_value}")
     return 0

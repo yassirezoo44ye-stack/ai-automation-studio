@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
@@ -75,7 +75,7 @@ _STATUS_TO_PAYMENT_STATUS = {
 }
 
 
-def _ts(epoch: Optional[int]) -> Optional[datetime]:
+def _ts(epoch: int | None) -> datetime | None:
     return datetime.fromtimestamp(epoch, tz=timezone.utc) if epoch else None
 
 
@@ -89,9 +89,9 @@ class InvoiceService:
         self._pool = pool
 
     async def upsert_from_stripe_invoice(
-        self, invoice_obj: dict[str, Any], *, organization_id: Optional[str] = None,
-        failure_message: Optional[str] = None,
-    ) -> Optional[dict[str, Any]]:
+        self, invoice_obj: dict[str, Any], *, organization_id: str | None = None,
+        failure_message: str | None = None,
+    ) -> dict[str, Any] | None:
         """Upsert an `invoices` row (+ replace its line items, + derive a
         `payments` row) from a Stripe Invoice API object. `organization_id`
         is resolved by the caller (via subscription/customer metadata) since
@@ -187,7 +187,7 @@ class InvoiceService:
             )
         return [dict(r) for r in rows]
 
-    async def get(self, org_id: str, invoice_id: str) -> Optional[dict[str, Any]]:
+    async def get(self, org_id: str, invoice_id: str) -> dict[str, Any] | None:
         from app.core.db import acquire_scoped
         async with acquire_scoped(org_id) as conn:
             row = await conn.fetchrow(
@@ -225,7 +225,7 @@ class InvoiceService:
 
 # ── Singleton wiring ──────────────────────────────────────────────────────────
 
-_service: Optional[InvoiceService] = None
+_service: InvoiceService | None = None
 
 
 def get_invoice_service(pool: asyncpg.Pool | None = None) -> InvoiceService:

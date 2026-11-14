@@ -7,14 +7,13 @@ called once from the lifespan context manager in main.py.
 """
 import os
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import asyncpg
 
 from app.core.config import USER_ID, DEMO_PROJECT_ID
 from app.core.observability.tracer import get_tracer
 
-_pool: Optional[asyncpg.Pool] = None
+_pool: asyncpg.Pool | None = None
 
 # When the pool is saturated, waiting forever turns one slow spot into a
 # platform-wide stall — fail fast instead so callers surface a clear error
@@ -48,16 +47,17 @@ async def acquire_scoped(org_id: str):
     tracer = get_tracer()
     with tracer.start_span("db.acquire_scoped", service="database") as span:
         span.set_tag("organization_id", org_id)
-        async with get_pool().acquire(timeout=_ACQUIRE_TIMEOUT_S) as conn:
-            async with conn.transaction():
-                await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
-                yield conn
+        async with get_pool().acquire(timeout=_ACQUIRE_TIMEOUT_S) as conn, conn.transaction():
+            await conn.execute("SELECT set_config('app.current_org_id', $1, true)", org_id)
+            yield conn
 
 
 # ── Schema initialisation ─────────────────────────────────────────────────────
 
 async def init_db(conn: asyncpg.Connection) -> None:
     """Create all core tables and seed the demo user/project if absent."""
+    from app.core.oauth_store import DDL as oauth_slots_ddl
+    await conn.execute(oauth_slots_ddl)
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -196,6 +196,9 @@ async def ensure_agents_table() -> None:
                 updated_at     TIMESTAMPTZ DEFAULT NOW()
             )
         ''')
+
+        await conn.execute("ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS "
+                           "skill_ids TEXT[] NOT NULL DEFAULT '{}'")
 
 
 async def ensure_tasks_table() -> None:

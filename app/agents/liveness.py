@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -64,14 +64,14 @@ _wired = False
 # share one run_id across several underlying run() calls, so clearing on
 # the first sub-task's finish would drop ownership before the run is
 # actually over.
-_run_owners: dict[str, Optional[str]] = {}
+_run_owners: dict[str, str | None] = {}
 
 
 def is_running(agent_name: str) -> bool:
     return bool(_running.get(agent_name))
 
 
-def register_run_owner(run_id: str, user_id: Optional[str]) -> None:
+def register_run_owner(run_id: str, user_id: str | None) -> None:
     """Called by AgentKernel.run() as early as possible (before any
     await), so the ownership record exists before this run's first step
     narration could plausibly go out. A WS client racing ahead of this —
@@ -84,7 +84,7 @@ def register_run_owner(run_id: str, user_id: Optional[str]) -> None:
         _run_owners[run_id] = user_id
 
 
-def get_run_owner(run_id: str) -> Optional[str]:
+def get_run_owner(run_id: str) -> str | None:
     """None means "no verified owner on record for this run_id" — treat
     that as no ownership restriction (not as proof the run doesn't
     exist)."""
