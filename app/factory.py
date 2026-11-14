@@ -470,8 +470,20 @@ async def lifespan(app: FastAPI):
     get_health_registry().register("database", probe_db, critical=True, timeout_s=5.0)
 
     career_task = asyncio.create_task(career_scheduler(pool))
+    from app.core.project_runs import ProjectRunWorker
+    project_run_worker = ProjectRunWorker(pool)
+    await project_run_worker.start()
+    async def probe_project_runs() -> ProbeResult:
+        alive = (project_run_worker.loop_task is not None and not project_run_worker.loop_task.done()
+                 and project_run_worker.last_error is None)
+        return ProbeResult(name="project_plan_runs", status=HealthStatus.HEALTHY if alive else HealthStatus.UNHEALTHY,
+                           message="PostgreSQL task-run worker active" if alive else "Task-run worker stopped")
+    get_health_registry().register("project_plan_runs", probe_project_runs, critical=False, timeout_s=5.0)
     health.startup_complete = True
-    yield
+    try:
+        yield
+    finally:
+        await project_run_worker.stop()
 
     # ── Shutdown ────────────────────────────────────────────────────────────
     from app.core.workflow.automation_scheduler import stop_scheduler
@@ -768,8 +780,9 @@ def create_app() -> FastAPI:
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
 
-    from app.routers import project_plans
+    from app.routers import project_plans, project_runs
     app.include_router(project_plans.router)
+    app.include_router(project_runs.router)
 
     # ── API-only mode: redirect browser navigation to the Vercel frontend ─────
     _frontend = FRONTEND_URL.rstrip("/") if FRONTEND_URL else None

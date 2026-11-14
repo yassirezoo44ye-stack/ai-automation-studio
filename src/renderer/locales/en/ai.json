@@ -147,7 +147,7 @@
     "save": "Create project and tasks",
     "discard": "Discard draft",
     "progress": "{{completed}} of {{total}} tasks completed",
-    "manual": "Progress is updated manually; these statuses do not indicate agent execution.",
+    "manual": "Review agent results and acceptance criteria before marking a task done.",
     "blocked": "Complete prerequisites first.",
     "status": "Task status",
     "saved": "Saved projects and plans",
@@ -160,6 +160,43 @@
       "in_progress": "In progress",
       "done": "Done",
       "deleted": "Deleted"
+    }
+  },
+  "runs": {
+    "title": "Task agent runs",
+    "scope": "Generate a text deliverable with a skill, or inspect owned project files without running code.",
+    "task": "Task to run",
+    "runner": "Execution mode",
+    "skill": "Skill deliverable",
+    "inspect": "Read-only project inspection",
+    "skillLabel": "Skill for this run",
+    "chooseSkill": "Choose a skill",
+    "approve": "I approve this run and any model usage. I will review its result before marking the task done.",
+    "start": "Start approved run",
+    "activeTask": "An active run already exists for this task.",
+    "history": "Saved run history",
+    "cancel": "Cancel run",
+    "result": "Run result and log",
+    "review": "A completed run is not proof that task acceptance criteria were met. Review the result before marking the task done.",
+    "download": "Download result",
+    "loadFailed": "Could not load run history. Reopen the plan to retry.",
+    "downloadFailed": "Could not download the result.",
+    "states": {
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Result ready",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted — review before retrying"
+    },
+    "events": {
+      "queued_after_approval": "Queued after your approval.",
+      "started": "The agent started working.",
+      "result_ready": "Result ready for your review.",
+      "cancelled_may_be_billed": "Cancelled; model usage already started may still be billed.",
+      "interrupted_not_replayed": "Interrupted; work was not replayed automatically.",
+      "stopped_failed": "Run stopped after an error.",
+      "stopped_interrupted": "Run interrupted; review before retrying."
     }
   }
 }

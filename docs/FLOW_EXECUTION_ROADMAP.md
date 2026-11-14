@@ -7,6 +7,7 @@ router or skill is not evidence that a component is production-ready.
 
 - Nine instruction-based skills integrated into chat and AgentOS (previous release).
 - Durable idea → reviewed plan → project → linked tasks → restored progress.
+- Durable approved skill/inspection runs with PostgreSQL dispatch, cancellation, result artifacts and interruption recovery.
 - Ownership-scoped plan access, atomic saves, replay protection, dependency guards,
   and correction of the legacy planning/execution boundary.
 
@@ -14,7 +15,7 @@ router or skill is not evidence that a component is production-ready.
 
 | Priority | Deliverable | Acceptance evidence |
 | --- | --- | --- |
-| 1 | Connect approved plan tasks to real execution runs | Verified user/org/project; exact saved task version; explicit execution authorization; persisted run ID; success/failure/cancellation and tool-result evidence survive restart |
+| 1 | Extend approved task runs to sandboxed build/test execution | Keep persisted approvals, isolation, leases and artifacts; execute only in a verified sandbox; capture build/test evidence and cancellation without host execution |
 | 2 | Complete app-builder delivery | Idea → generated files → isolated build/test → working preview → reviewed export; failed builds expose actionable logs and never report ready |
 | 3 | Automation and lead follow-up | Authorized source import → reviewed classification → configured trigger → queued action; bounded retries, idempotent external effects, opt-outs and audited outcomes |
 | 4 | Commercial readiness | Measured tenant quotas, billing/webhook tests, recoverable failures and end-to-end subscription access; no new paid infrastructure without authorization |

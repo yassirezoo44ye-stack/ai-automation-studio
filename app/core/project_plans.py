@@ -43,6 +43,8 @@ async def init_schema(conn):
         )
     ''')
     await conn.execute('CREATE INDEX IF NOT EXISTS project_plans_owner ON project_plans(user_id, organization_id, created_at DESC)')
+    from app.core.project_runs import init_schema as init_runs
+    await init_runs(conn)
 
 
 def decode(value):
@@ -84,6 +86,9 @@ async def validate_task_transition(conn, task_id, owner_email, org_id, status):
         return
     if plan['organization_id'] != org_id:
         raise HTTPException(404, 'Task not found')
+    active = await conn.fetchval("SELECT 1 FROM project_task_runs WHERE task_id=$1 AND status IN ('queued','running')", task_id)
+    if active:
+        raise HTTPException(409, 'Cancel or finish the active run before modifying this task')
     if status is None:
         return
     nodes = decode(plan['body'])['tasks']

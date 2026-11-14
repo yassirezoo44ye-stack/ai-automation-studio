@@ -5,6 +5,7 @@ import { apiFetch } from "../../../utils/api";
 import type * as ApiModule from "../../../utils/api";
 import i18n from "../../../i18n";
 
+vi.mock("./PlanRunsPanel", () => ({ PlanRunsPanel: () => null }));
 let org: string | null = null;
 vi.mock("../../../contexts/OrgContext", () => ({ useOrg: () => ({ currentOrgId: org }) }));
 vi.mock("../../../utils/api", async original => ({ ...await original<typeof ApiModule>(), apiFetch: vi.fn() }));

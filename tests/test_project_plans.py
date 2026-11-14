@@ -16,6 +16,7 @@ from app.core import db
 from app.core.project_plans import init_schema
 from app.routers import project_plans as api
 from app.routers import tasks
+from app.routers import project_runs as runs_api
 
 
 DRAFT = {'title': 'Launch Flow CRM', 'goal': 'Build a CRM for a small team', 'tasks': [
@@ -54,6 +55,7 @@ async def harness(monkeypatch):
     monkeypatch.setattr(db, 'get_pool', lambda: pool)
     monkeypatch.setattr(api, 'get_pool', lambda: pool)
     monkeypatch.setattr(tasks, 'get_pool', lambda: pool)
+    monkeypatch.setattr(runs_api, 'get_pool', lambda: pool)
     async with pool.acquire() as conn:
         await db.init_db(conn)
     await db.ensure_tasks_table()
@@ -74,10 +76,13 @@ async def harness(monkeypatch):
     monkeypatch.setattr(api, 'owner_user_id', user)
     monkeypatch.setattr(api, 'owner_email', email)
     monkeypatch.setattr(tasks, 'owner_email', email)
+    monkeypatch.setattr(runs_api, 'owner_email', email)
+    monkeypatch.setattr(runs_api, 'ai_rate_limit', lambda request: None)
     monkeypatch.setattr(tasks, 'owner_user_id', user)
     monkeypatch.setattr('app.tenancy.context.optional_org_id', org)
     application = FastAPI()
     application.include_router(api.router)
+    application.include_router(runs_api.router)
     application.include_router(tasks.router)
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url='http://test', headers={'x-test-user': 'a'})
     try:
