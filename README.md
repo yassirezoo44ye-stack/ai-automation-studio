@@ -374,3 +374,12 @@ Skill choices in general chat and AgentOS are remembered in the same browser.
 Repository `AGENTS.md` guides future development sessions; run
 `python scripts/install_flow_skills.py` to install the nine skills for the current
 Codex user on another machine (see the catalog for scope and persistence limits).
+
+## Durable project plans
+
+The AI workspace's **Projects & plans** tab turns an idea into an AI draft for
+review, then atomically saves a private project, plan and linked tasks. Saved
+progress survives new sessions and prerequisite checks apply to both plan and
+Tasks API updates. See [behavior and API](docs/PROJECT_PLANS.md) and the
+[implementation roadmap](docs/FLOW_EXECUTION_ROADMAP.md). Task progress is manual;
+this feature does not execute arbitrary plan tasks automatically.

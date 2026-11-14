@@ -131,5 +131,35 @@
     "none": "No additional skill",
     "persistenceHint": "Your choice is remembered for future sessions in this browser.",
     "loadFailed": "Could not load skills. Reload the page."
+  },
+  "plans": {
+    "tab": "Projects & plans",
+    "heading": "From idea to tracked project",
+    "intro": "Generate a draft, review it, then save a project and its tasks. Nothing runs automatically.",
+    "goal": "Describe your idea",
+    "generate": "Generate draft",
+    "review": "Review before saving",
+    "title": "Project title",
+    "task": "Task {{number}}",
+    "taskTitle": "Task title",
+    "acceptance": "Acceptance criteria (one per line)",
+    "dependencies": "Prerequisites",
+    "save": "Create project and tasks",
+    "discard": "Discard draft",
+    "progress": "{{completed}} of {{total}} tasks completed",
+    "manual": "Progress is updated manually; these statuses do not indicate agent execution.",
+    "blocked": "Complete prerequisites first.",
+    "status": "Task status",
+    "saved": "Saved projects and plans",
+    "empty": "No saved plans yet.",
+    "working": "Working…",
+    "loadFailed": "Could not load plans. Please retry.",
+    "failed": "Operation failed. Please retry.",
+    "states": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "done": "Done",
+      "deleted": "Deleted"
+    }
   }
 }

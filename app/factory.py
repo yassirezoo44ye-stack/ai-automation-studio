@@ -110,6 +110,9 @@ async def lifespan(app: FastAPI):
     await ensure_agents_table()
     await ensure_tasks_table()
     await ensure_audit_table()
+    from app.core.project_plans import init_schema as init_project_plans_schema
+    async with pool.acquire() as conn:
+        await init_project_plans_schema(conn)
     WORKSPACES.mkdir(exist_ok=True)
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
@@ -764,6 +767,9 @@ def create_app() -> FastAPI:
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
+
+    from app.routers import project_plans
+    app.include_router(project_plans.router)
 
     # ── API-only mode: redirect browser navigation to the Vercel frontend ─────
     _frontend = FRONTEND_URL.rstrip("/") if FRONTEND_URL else None
