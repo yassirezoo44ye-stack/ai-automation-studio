@@ -196,7 +196,11 @@ async def update_task(task_id: str, body: TaskUpdate, request: Request):
     fields.append("updated_at = NOW()")
     params.extend([tid, owner])
 
-    async with get_pool().acquire() as conn:
+    from app.core.project_plans import validate_task_transition, plan_organization
+    org_id = await plan_organization(request)
+    async with get_pool().acquire() as conn, conn.transaction():
+        if body.status is not None:
+            await validate_task_transition(conn, tid, owner, org_id, body.status)
         row = await conn.fetchrow(
             f"UPDATE tasks SET {', '.join(fields)} WHERE id = ${len(params)-1} AND owner_email = ${len(params)} RETURNING *",
             *params,

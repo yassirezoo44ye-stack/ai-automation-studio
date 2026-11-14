@@ -11,9 +11,10 @@ import { S } from "../../styles/theme";
 import { GoldButton } from "../../shared/ui/gold";
 import type { Project, Agent } from "../../types";
 import { ChatTab }   from "./tabs/ChatTab";
+import { PlansTab } from "./tabs/PlansTab";
 import { AgentsTab } from "./tabs/AgentsTab";
 
-type AITab = "chat" | "agents";
+type AITab = "chat" | "agents" | "plans";
 
 export function AIWorkspace() {
   const { t } = useTranslation("ai");
@@ -25,6 +26,11 @@ export function AIWorkspace() {
   const [loadingAgents, setLoadingAgents] = useState(true);
   // chatAgentId is set when the user clicks "Chat" on an agent card
   const [chatAgentId, setChatAgentId] = useState<string | null>(null);
+
+  const loadProjects = useCallback(async () => {
+    const response = await apiFetch("/api/projects");
+    setProjects(await parseJSON<Project[]>(response, "/api/projects"));
+  }, []);
 
   const loadAgents = useCallback(async () => {
     setLoadingAgents(true);
@@ -48,7 +54,7 @@ export function AIWorkspace() {
     setTab("chat");
   };
 
-  const TABS: [AITab, string][] = [["chat", t("workspace.tabs.chat")], ["agents", t("workspace.tabs.agents")]];
+  const TABS: [AITab, string][] = [["chat", t("workspace.tabs.chat")], ["agents", t("workspace.tabs.agents")], ["plans", t("plans.tab")]];
 
   return (
     <>
@@ -81,6 +87,7 @@ export function AIWorkspace() {
           initialAgentId={chatAgentId}
         />
       )}
+      {tab === "plans" && <PlansTab onProjectsChanged={() => { void loadProjects().catch(() => toast(t("plans.loadFailed"), "err")); }} />}
       {tab === "agents" && (
         <AgentsTab
           agents={agents}
