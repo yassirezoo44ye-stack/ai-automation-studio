@@ -49,6 +49,12 @@ from PostgreSQL. The browser is not the source of truth.
 Use the existing authentication and organization headers. User and organization
 IDs are never accepted as authoritative request-body fields.
 
+## Approved agent runs
+
+Saved plans now support explicit task runs with persistent results, cancellation
+and private artifact downloads. See [run modes and recovery](PROJECT_RUNS.md).
+Task completion remains user-reviewed; a completed run does not verify acceptance.
+
 ## Existing planning API
 
 The older `/api/plan` endpoint family remains available for execution estimates.

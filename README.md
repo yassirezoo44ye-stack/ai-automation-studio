@@ -383,3 +383,8 @@ progress survives new sessions and prerequisite checks apply to both plan and
 Tasks API updates. See [behavior and API](docs/PROJECT_PLANS.md) and the
 [implementation roadmap](docs/FLOW_EXECUTION_ROADMAP.md). Task progress is manual;
 this feature does not execute arbitrary plan tasks automatically.
+
+Approved plan tasks can now run skill agents or the read-only project inspector,
+with PostgreSQL-backed dispatch, cancellation, saved results and private downloads.
+See [task run modes and recovery](docs/PROJECT_RUNS.md). Model output and file
+inspection do not automatically mark a task done.

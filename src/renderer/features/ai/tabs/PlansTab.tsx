@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON } from "../../../utils/api";
+import { PlanRunsPanel } from "./PlanRunsPanel";
 import { useOrg } from "../../../contexts/OrgContext";
 
 type Node = { key: string; title: string; acceptance: string[]; depends_on: string[]; priority: "low" | "medium" | "high" };
@@ -150,6 +151,7 @@ function PlansContent({ onProjectsChanged }: Props) {
           </select>
         </fieldset>;
       })}
+      <PlanRunsPanel key={active.id} planId={active.id} tasks={active.tasks} onStarted={() => { void open(active.id); }} />
     </article>}
     <h3>{t("plans.saved")}</h3>
     {loadingPlans && <p role="status">{t("plans.working")}</p>}
