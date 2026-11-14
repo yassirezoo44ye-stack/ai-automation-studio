@@ -74,6 +74,7 @@ async def harness(monkeypatch):
     monkeypatch.setattr(api, 'owner_user_id', user)
     monkeypatch.setattr(api, 'owner_email', email)
     monkeypatch.setattr(tasks, 'owner_email', email)
+    monkeypatch.setattr(tasks, 'owner_user_id', user)
     monkeypatch.setattr('app.tenancy.context.optional_org_id', org)
     application = FastAPI()
     application.include_router(api.router)
@@ -193,3 +194,20 @@ async def test_deleted_prerequisite_stays_visible_and_blocks_dependents(harness)
     assert detail['tasks'][0]['status'] == 'deleted'
     assert detail['total'] == (await client.get('/api/project-plans')).json()['plans'][0]['total'] == 2
     assert (await client.put('/api/project-plans/' + saved['id'] + '/tasks/build', json={'status': 'done'})).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_legacy_task_read_edit_delete_respect_plan_org(harness):
+    client, _ = harness
+    client.headers['x-test-org'] = str(ORG_A)
+    saved = (await client.post('/api/project-plans', json=payload())).json()
+    tid = saved['tasks'][0]['task_id']
+    assert len((await client.get('/api/tasks')).json()['tasks']) == 2
+    client.headers['x-test-org'] = str(ORG_B)
+    assert (await client.get('/api/tasks')).json()['tasks'] == []
+    assert (await client.put('/api/tasks/' + tid, json={'notes': 'wrong context'})).status_code == 404
+    assert (await client.delete('/api/tasks/' + tid)).status_code == 404
+    client.headers['x-test-org'] = str(ORG_A)
+    assert (await client.put('/api/tasks/' + tid, json={'notes': 'reviewed context'})).status_code == 200
+    other = (await client.post('/api/project-plans', json=payload())).json()
+    assert (await client.put('/api/tasks/' + tid, json={'project_id': other['project_id']})).status_code == 409

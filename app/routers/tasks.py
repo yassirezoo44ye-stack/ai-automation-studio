@@ -13,6 +13,8 @@ from app.core.auth import owner_email, owner_user_id
 from app.core.db import get_pool, ensure_tasks_table
 from app.core.helpers import anthropic_error_message
 from app.core.reliability import get_bulkhead
+from app.core.project_plans import validate_task_transition, plan_organization
+from app.core.helpers import resolve_project_id
 from app.core.org_quota import check_org_quota, record_org_tokens
 
 router = APIRouter(tags=["tasks"])
@@ -108,8 +110,13 @@ async def list_tasks(
 ):
     await ensure_tasks_table()
     owner = owner_email(request)
-    clauses = ["owner_email = $1"]
-    params: list = [owner]
+    org_id = await plan_organization(request)
+    clauses = ["owner_email = $1", """(
+        NOT EXISTS (SELECT 1 FROM project_plan_tasks link WHERE link.task_id=tasks.id)
+        OR EXISTS (SELECT 1 FROM project_plan_tasks link JOIN project_plans p ON p.id=link.plan_id
+                   WHERE link.task_id=tasks.id AND p.organization_id IS NOT DISTINCT FROM $2::uuid)
+    )"""]
+    params: list = [owner, org_id]
 
     def add(clause: str, value):
         params.append(value)
@@ -152,6 +159,9 @@ async def create_task(body: TaskCreate, request: Request):
     pid = _parse_uuid(body.project_id, "project_id")
     due = _parse_due_date(body.due_date)
     async with get_pool().acquire() as conn:
+        if pid is not None:
+            uid = await owner_user_id(conn, request)
+            await resolve_project_id(conn, str(pid), uid)
         row = await conn.fetchrow('''
             INSERT INTO tasks (owner_email, project_id, title, notes, priority, category, tags, due_date, recurrence)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
@@ -196,11 +206,16 @@ async def update_task(task_id: str, body: TaskUpdate, request: Request):
     fields.append("updated_at = NOW()")
     params.extend([tid, owner])
 
-    from app.core.project_plans import validate_task_transition, plan_organization
     org_id = await plan_organization(request)
     async with get_pool().acquire() as conn, conn.transaction():
-        if body.status is not None:
-            await validate_task_transition(conn, tid, owner, org_id, body.status)
+        await validate_task_transition(conn, tid, owner, org_id, body.status)
+        if body.project_id is not None:
+            uid = await owner_user_id(conn, request)
+            target = await resolve_project_id(conn, body.project_id, uid)
+            linked_project = await conn.fetchval(
+                "SELECT p.project_id FROM project_plan_tasks link JOIN project_plans p ON p.id=link.plan_id WHERE link.task_id=$1", tid)
+            if linked_project is not None and linked_project != target:
+                raise HTTPException(409, "Plan tasks cannot move to another project")
         row = await conn.fetchrow(
             f"UPDATE tasks SET {', '.join(fields)} WHERE id = ${len(params)-1} AND owner_email = ${len(params)} RETURNING *",
             *params,
@@ -225,7 +240,9 @@ async def delete_task(task_id: str, request: Request):
     await ensure_tasks_table()
     owner = owner_email(request)
     tid = _parse_uuid(task_id, "task_id")
-    async with get_pool().acquire() as conn:
+    org_id = await plan_organization(request)
+    async with get_pool().acquire() as conn, conn.transaction():
+        await validate_task_transition(conn, tid, owner, org_id, None)
         deleted = await conn.fetchval(
             "WITH d AS (DELETE FROM tasks WHERE id=$1 AND owner_email=$2 RETURNING 1) SELECT COUNT(*) FROM d",
             tid, owner,

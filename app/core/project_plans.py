@@ -84,6 +84,8 @@ async def validate_task_transition(conn, task_id, owner_email, org_id, status):
         return
     if plan['organization_id'] != org_id:
         raise HTTPException(404, 'Task not found')
+    if status is None:
+        return
     nodes = decode(plan['body'])['tasks']
     states = await conn.fetch('''
         SELECT link.node_id, t.status FROM project_plan_tasks link

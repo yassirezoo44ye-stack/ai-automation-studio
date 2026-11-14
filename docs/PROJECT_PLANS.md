@@ -25,7 +25,10 @@ from PostgreSQL. The browser is not the source of truth.
 - Starting/completing a task requires its prerequisites to be done. Reopening a
   completed prerequisite requires resetting active/completed dependents first.
   The same checks apply through the existing Tasks update API, under a parent
-  plan row lock to serialize concurrent progress changes.
+  plan row lock to serialize concurrent progress changes. The existing Tasks list,
+  edit and delete paths also enforce the linked plan organization; linked tasks
+  cannot be moved to another project. Unlinked tasks retain their existing
+  per-user scope.
 - Task status is manually reported progress, not evidence that an agent ran code,
   deployed a resource, or verified an acceptance criterion. Criteria remain a
   human-reviewed checklist.
