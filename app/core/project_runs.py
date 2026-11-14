@@ -39,6 +39,8 @@ async def init_schema(conn):
         UNIQUE(user_id, request_id)
     )''')
     await conn.execute("CREATE INDEX IF NOT EXISTS project_runs_pending ON project_task_runs(created_at) WHERE status='queued'")
+    await conn.execute("CREATE INDEX IF NOT EXISTS project_runs_plan_history ON project_task_runs(plan_id,created_at DESC)")
+    await conn.execute("CREATE INDEX IF NOT EXISTS project_runs_user_active ON project_task_runs(user_id) WHERE status IN ('queued','running')")
     await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS project_runs_active_task ON project_task_runs(task_id) WHERE status IN ('queued','running')")
 
 

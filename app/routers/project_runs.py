@@ -76,17 +76,25 @@ async def start_run(plan_id: uuid.UUID, node_id: str, body: StartRun, request: R
         return serialize_run(row)
 
 
+async def require_owned_plan(conn, plan_id, uid, org):
+    valid = await conn.fetchval('''SELECT 1 FROM project_plans p JOIN projects project ON project.id=p.project_id
+        WHERE p.id=$1 AND p.user_id=$2 AND project.user_id=$2
+        AND p.organization_id IS NOT DISTINCT FROM $3::uuid''', plan_id, uid, org)
+    if not valid:
+        raise HTTPException(404, 'Plan not found')
+
+
 @router.get('/{plan_id}/runs')
 async def list_runs(plan_id: uuid.UUID, request: Request):
     uid, org = await identity(request)
     async with get_pool().acquire() as conn:
-        await plan_detail(conn, plan_id, uid, org)
-        rows = await conn.fetch("SELECT * FROM project_task_runs WHERE plan_id=$1 AND user_id=$2 ORDER BY (status IN ('queued','running')) DESC, created_at DESC LIMIT 50", plan_id, uid)
+        await require_owned_plan(conn, plan_id, uid, org)
+        rows = await conn.fetch("SELECT id,plan_id,node_id,runner,skill_id,status,created_at,started_at,finished_at FROM project_task_runs WHERE plan_id=$1 AND user_id=$2 ORDER BY (status IN ('queued','running')) DESC, created_at DESC LIMIT 50", plan_id, uid)
         return {'runs': [serialize_run(row) for row in rows]}
 
 
 async def owned_run(conn, plan_id, run_id, uid, org):
-    await plan_detail(conn, plan_id, uid, org)
+    await require_owned_plan(conn, plan_id, uid, org)
     row = await conn.fetchrow('SELECT * FROM project_task_runs WHERE id=$1 AND plan_id=$2 AND user_id=$3', run_id, plan_id, uid)
     if row is None:
         raise HTTPException(404, 'Run not found')
