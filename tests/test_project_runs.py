@@ -195,3 +195,22 @@ async def test_start_does_not_reopen_task_completed_while_waiting_for_lock(harne
         await transaction.commit()
     assert (await starting).status_code == 409
     assert (await client.get('/api/project-plans/' + plan['id'])).json()['tasks'][0]['status'] == 'done'
+
+
+@pytest.mark.asyncio
+async def test_expired_claim_cannot_invoke_agent_before_expiry_sweep(harness):
+    client, pool = harness
+    plan = await make_plan(client)
+    root = '/api/project-plans/' + plan['id']
+    run = (await client.post(root + '/tasks/scope/runs', json=request_body())).json()
+    execute = AsyncMock(return_value=AgentResult.ok('test', 'late output'))
+    worker = ProjectRunWorker(pool, execute=execute)
+    row = await worker.claim()
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE project_task_runs SET lease_until=NOW()-INTERVAL '1 second' WHERE id=$1", row['id'])
+    await worker.perform(row)
+    execute.assert_not_called()
+    async with pool.acquire() as conn:
+        await expire_leases(conn)
+    detail = (await client.get(root + '/runs/' + run['id'])).json()
+    assert detail['status'] == 'interrupted' and detail['output'] is None

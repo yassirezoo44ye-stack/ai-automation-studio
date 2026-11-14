@@ -169,7 +169,7 @@ class ProjectRunWorker:
                 return
             # A run cancelled before starting must not invoke the model.
             async with self.pool.acquire() as conn:
-                state = await conn.fetchval('SELECT status FROM project_task_runs WHERE id=$1', row['id'])
+                state = await conn.fetchval('SELECT status FROM project_task_runs WHERE id=$1 AND lease_id=$2 AND lease_until>NOW()', row['id'], row['lease_id'])
             if state != 'running':
                 return
             operation = asyncio.create_task(self.execute(row))
@@ -186,7 +186,7 @@ class ProjectRunWorker:
                         error = 'Project inspection failed. Check that source files and manifests are present and safe.'
                     break
                 async with self.pool.acquire() as conn:
-                    state = await conn.fetchval('SELECT status FROM project_task_runs WHERE id=$1', row['id'])
+                    state = await conn.fetchval('SELECT status FROM project_task_runs WHERE id=$1 AND lease_id=$2 AND lease_until>NOW()', row['id'], row['lease_id'])
                 if state != 'running':
                     return
             else:
@@ -203,7 +203,7 @@ class ProjectRunWorker:
             try:
                 async with self.pool.acquire() as conn:
                     await conn.execute("""UPDATE project_task_runs SET status=$3,output=$4,error=$5,finished_at=NOW(),
-                        log=log || $6::jsonb WHERE id=$1 AND lease_id=$2 AND status='running'""",
+                        log=log || $6::jsonb WHERE id=$1 AND lease_id=$2 AND status='running' AND lease_until>NOW()""",
                         row['id'], row['lease_id'], status, output, error,
                         json.dumps(['result_ready' if status == 'completed' else 'stopped_' + status]))
             except Exception as exc:
