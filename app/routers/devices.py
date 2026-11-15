@@ -17,7 +17,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.tenancy.context import OrgContext, require_permission
 from app.services.device_control import get_device_control_service, DEVICE_CONTROL_ENABLED
@@ -48,9 +48,22 @@ class CreateEnrollmentTokenRequest(BaseModel):
     workspace_id: str | None = None
 
 
+def is_public_device_enroll_request(method: str, path: str) -> bool:
+    """POST /api/devices/enroll is called by the Device Agent before it has
+    any session: the single-use, org-bound enrollment token in the body is
+    its only credential and is verified by consume_enrollment_token(). The
+    API auth middleware must let exactly this request through (and nothing
+    else under /api/devices/, e.g. /enroll-token stays authenticated)."""
+    return method == "POST" and path == "/api/devices/enroll"
+
+
 class EnrollRequest(BaseModel):
     """Sent by the Flow Device Agent to consume an enrollment token."""
-    token: str = Field(..., min_length=10)
+    # The shipped agent (agent/__main__.py) sends "enrollment_token"; accept
+    # both spellings so existing agents can enroll.
+    model_config = ConfigDict(populate_by_name=True)
+    token: str = Field(..., min_length=10,
+                       validation_alias=AliasChoices("token", "enrollment_token"))
     device_name: str = Field(..., min_length=1, max_length=120)
     platform: str = Field("windows")
     hostname: str | None = Field(None, max_length=255)

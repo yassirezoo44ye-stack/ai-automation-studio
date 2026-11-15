@@ -19,6 +19,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
 from app.integrations.social.oauth_handoff import is_public_social_oauth_request
+from app.routers.devices import is_public_device_enroll_request
 from app.core.config import (
     APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
 )
@@ -660,6 +661,7 @@ def create_app() -> FastAPI:
         if (path.startswith("/api/")
                 and not any(path.startswith(p) for p in PUBLIC_PREFIXES)
                 and not is_public_social_oauth_request(request.method, path)
+                and not is_public_device_enroll_request(request.method, path)
                 and not study_library_router.is_public_study_request(request.method, path)
                 and not study_library_router.is_study_publish_request(request)):
             sub_token, bearer = extract_auth_credentials(request)
