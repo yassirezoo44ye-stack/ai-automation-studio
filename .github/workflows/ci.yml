@@ -31,7 +31,10 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # pgvector/pgvector:pg16 is postgres:16 plus the pgvector extension, so
+        # CI exercises semantic memory's real pgvector path instead of only
+        # its in-process TF-IDF fallback ("extension vector is not available").
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
