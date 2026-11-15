@@ -18,6 +18,28 @@ Offer: AI lead capture, qualification, human-approved follow-up drafts, and team
 - [ ] **End-to-end:** With synthetic records, demonstrate capture → qualify → approve → notify → follow-up status → export/delete, with tests and screenshots/logs.
 - [ ] **Go/no-go:** Record evidence, remaining risks and explicit owner approval before merging or production deployment.
 
+
+## Jurisdiction decision — 2026-11-15 (research, not approval)
+**Provisional candidate:** Creative City Fujairah, advertised Media package AED 3,500 starting price, not a confirmed software/SaaS quote. Confirm software activity codes, package eligibility, total first-year/renewal charges, eligibility of shareholders/managers, visa needs, banking/payment-provider acceptance, and invoicing in writing.
+
+**CRITICAL mainland-sales gate:** Do not assume a Fujairah or UAQ free-zone licence alone authorises selling or providing Flow services directly to Dubai/Sharjah mainland companies. The UAE government says mainland access for free-zone companies is regulated and may require a mainland branch, distributor or relevant permits. Dubai's 2025 Free Zone Mainland Operating Permit is a specific framework with eligibility criteria; do not assume it applies to a Fujairah entity. Obtain written advice from the competent licensing authorities on cross-emirate B2B SaaS and service delivery before charging UAE mainland customers.
+
+**Alternative:** Compare Dubai mainland professional/software activity licence on a full-year cost and lawful domestic-market access basis, even if its headline fee is higher. Do not choose purely on advertised package price.
+
+**Official evidence:**
+- https://creativecity.gov.ae/ (Media package starting AED 3,500)
+- https://creativecity.gov.ae/faqs/ (activity/operating FAQ; not a mainland permit)
+- https://u.ae/en/information-and-services/business/doing-business-in-free-zones/running-a-business-in-a-free-zone- (mainland restrictions)
+- https://www.dubaidet.gov.ae/en/newsroom/press-releases/new-growth-for-investors (Dubai-specific permit)
+- https://uaqftz.gov.ae/service-license (UAQ service licence limitations)
+
+**Next verification questions to send through official licensing channels:**
+1. Which exact activity codes authorise SaaS subscriptions, AI-powered lead management and business-process automation? Are they available in the advertised package?
+2. Can the entity invoice and provide remote SaaS to Dubai and Sharjah mainland companies directly? If not, what permit/branch/agent arrangement and costs apply?
+3. What are total year-one, year-two renewal, cancellation, visa/no-visa and administrative costs (including VAT)?
+4. What shareholder/manager eligibility, age, identity, residency and beneficial-owner documentation is required?
+5. Will a locally licensed company of this form qualify for the intended payment provider's onboarding, subject to that provider's own checks?
+
 ## Initial execution backlog (separate PRs)
 1. Audit existing Leads/Automate/Billing endpoints and permissions; produce evidence-based gap list.
 2. Add automated tenant-isolation and workflow-idempotency regression tests.
