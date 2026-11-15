@@ -61,3 +61,31 @@ def test_capture_uses_credential_org_not_request_data():
     svc.qualify.assert_awaited_once_with(lead_id=result["id"], org_id=org_id)
     enqueue.assert_awaited_once_with(org_id=org_id, lead_id=result["id"], triggered_by="lead_capture", user_id=None)
     assert "organization_id" not in result
+
+
+def test_capture_keeps_two_api_key_organizations_separate():
+    """Handler-level regression: org scope comes from each credential."""
+    import asyncio
+    from app.routers.leads import capture_lead, CaptureLeadRequest
+
+    org_a = "00000000-0000-4000-8000-000000000011"
+    org_b = "00000000-0000-4000-8000-000000000022"
+    svc = AsyncMock()
+    svc.create.side_effect = [
+        {"id": "00000000-0000-4000-8000-000000000031"},
+        {"id": "00000000-0000-4000-8000-000000000032"},
+    ]
+    svc.qualify.side_effect = [
+        {"id": "00000000-0000-4000-8000-000000000031", "status": "new"},
+        {"id": "00000000-0000-4000-8000-000000000032", "status": "new"},
+    ]
+    with patch("app.routers.leads.get_lead_service", return_value=svc), patch(
+        "app.routers.leads._enqueue_lead_followup", new_callable=AsyncMock, return_value="no_definition"
+    ) as enqueue:
+        for org in (org_a, org_b):
+            key = ApiKeyRecord(key_id="test", key_hash="test", name="test", scopes=["write"], organization_id=org)
+            asyncio.run(capture_lead(CaptureLeadRequest(name="Example"), request=None, key=key, _rl=None))
+
+    assert [call.kwargs["org_id"] for call in svc.create.await_args_list] == [org_a, org_b]
+    assert [call.kwargs["org_id"] for call in svc.qualify.await_args_list] == [org_a, org_b]
+    assert [call.kwargs["org_id"] for call in enqueue.await_args_list] == [org_a, org_b]
