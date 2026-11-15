@@ -144,3 +144,34 @@ Residual risks / decisions for the owner:
 - Without a header, the same person submitting the same details again within 24 h gets the first lead back (no new lead). After 24 h a new lead is created; merging repeat leads is a product decision, not done here.
 - If the database fails *after* the lead row is written (qualification is already failure-tolerant), the claim is marked failed and a retry can create a second lead. Low likelihood; would need lead creation and the claim in one transaction.
 - Other create endpoints (`POST /api/leads` from the dashboard) are not deduplicated; they are user actions, not external re-sends.
+
+## M6 — FE-01 chunk loading, FE-02 chat stability (2026-11-15)
+Method: the real production build (`npm run build`) served like `vercel.json` (existing files, `/api` proxied, every other path → `index.html`) with the real backend on PostgreSQL, driven by Playwright/Chromium with a synthetic signed-in user. A deploy is emulated by giving every built asset a new hashed name while the tab stays open.
+
+**FE-01 — reproduced, then fixed (`d9a6b3dd`):**
+| Scenario | Before | After |
+|---|---|---|
+| Tab open across 1 deploy, open Leads | recovered by one reload | recovered by one reload |
+| Same tab, 2nd deploy, open Automate | stuck on "Failed to fetch dynamically imported module"; Retry does nothing | recovered by one reload |
+| Two deploys within 10 s | — | "A new version of Flow is available" + Reload (no loop) |
+| All 29 routes, fresh load | 29/29 | 29/29 |
+| All 29 routes, tab open across a deploy | — | 29/29, one reload, 0 uncaught errors |
+
+Causes: the reload guard was a sessionStorage flag never cleared (only the first deploy per tab was recovered); `React.lazy` keeps a failed import, so the error screen's Retry could never work; the public study-library page had no recovery at all. Fix: `shared/lib/staleChunk.ts` (`lazyPage()` for all lazy pages, 10 s cooldown guard), ErrorBoundary shows Reload for stale chunks. Note: Vercel's catch-all rewrite answers a missing `/assets/*.js` with `index.html` (200, text/html); the browser reports the same import error, so detection works, but excluding `/assets/` from the rewrite (true 404) is cleaner — left for M8 as it changes deploy config.
+
+Also fixed `5110d891`: `AutomationPage.test.tsx` "does not issue overlapping workflow refresh requests" (added on the base branch in 29c41868) failed from its own commit: it counted the approvals panel's `/api/automation-runs/pending-approvals` as a refresh and clicked a button that is disabled while loading. It now tests the 5 s poll; passes with the in-flight guard, fails without it.
+
+**FE-02 — chat (`7c22da27`):** 7 new `ChatTab` tests, all failing before the change:
+| Check | Before | After |
+|---|---|---|
+| Conversation history restore | history loaded only when clicked | reopened after refresh (per tab) |
+| Drafts | lost on refresh / when switching chat | kept per conversation (localStorage) |
+| Concurrent sends | double Enter in one tick sent twice | one request |
+| Network down before sending | typed text cleared | text given back + "Backend offline" |
+| Connection lost mid-reply | partial reply looked complete | kept and marked as interrupted (en/ar) |
+| Leaving the chat mid-reply | request kept running | aborted |
+
+Real browser on the built app + backend: draft survived a refresh; a message created a server conversation and the refresh reopened it with its history; offline send kept the text and showed the notice.
+
+Frontend checks: typecheck, `lint:strict`, vitest 538/538, build OK.
+Not covered yet: Safari/Firefox (only Chromium was driven), team chat, WebSocket reconnect.
