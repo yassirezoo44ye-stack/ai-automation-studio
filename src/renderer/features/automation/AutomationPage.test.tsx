@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AutomationPage } from "./AutomationPage";
 import { apiFetch } from "../../utils/api";
 import type * as ApiModule from "../../utils/api";
@@ -55,17 +55,27 @@ it("does not issue overlapping workflow refresh requests", async () => {
   let resolveRuns!: (response: Response) => void;
   let requests = 0;
   vi.mocked(apiFetch).mockImplementation(async (path) => {
-    if (path.startsWith("/api/automation-runs")) {
+    // Count only the workflow-runs list. The approvals panel on the same tab
+    // calls /api/automation-runs/pending-approvals, which is not a refresh.
+    if (path.startsWith("/api/automation-runs?")) {
       requests += 1;
       return new Promise<Response>(resolve => { resolveRuns = resolve; });
     }
     return new Response(JSON.stringify(path.startsWith("/api/tasks") ? { tasks: [] } : []), { status: 200 });
   });
-  render(<AutomationPage />);
-  fireEvent.click(screen.getByRole("tab", { name: "Workflows" }));
-  await waitFor(() => expect(requests).toBe(1));
-  fireEvent.click(screen.getByRole("button", { name: /Refresh/i }));
-  expect(requests).toBe(1);
-  resolveRuns(new Response(JSON.stringify({ items: [] }), { status: 200 }));
-  await waitFor(() => expect(screen.queryByText("…")).not.toBeInTheDocument());
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    render(<AutomationPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Workflows" }));
+    await waitFor(() => expect(requests).toBe(1));
+    // The Refresh button is disabled while loading; the 5-second status poll
+    // is what could overlap a slow request, so let two poll ticks pass.
+    expect(screen.getByRole("button", { name: "…" })).toBeDisabled();
+    await act(async () => { vi.advanceTimersByTime(10_500); });
+    expect(requests).toBe(1);
+    resolveRuns(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    await waitFor(() => expect(screen.queryByText("…")).not.toBeInTheDocument());
+  } finally {
+    vi.useRealTimers();
+  }
 });
