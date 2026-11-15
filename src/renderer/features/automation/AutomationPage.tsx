@@ -125,7 +125,7 @@ export function AutomationPage() {
   const loadWorkflows = useCallback(async () => {
     setWfLoading(true);
     try {
-      const r = await apiFetch("/api/automation-runs?status=running&limit=20");
+      const r = await apiFetch("/api/automation-runs?limit=20");
       const d = await parseJSON<{ items?: WfRun[] }>(r, "/api/automation-runs"); setWfRuns(d.items ?? []);
     } catch { toast(t("toast.loadWorkflowsFailed"), "err"); }
     finally { setWfLoading(false); }
@@ -141,10 +141,16 @@ export function AutomationPage() {
       if (!r.ok) throw new Error();
       const d = await r.json();
       toast(t("toast.workflowStarted", { runId: d.run_id }), "ok");
-      setTimeout(loadWorkflows, 800);
+      await loadWorkflows();
     } catch { toast(t("toast.workflowStartFailed"), "err"); }
     finally { setRunningDemo(null); }
   };
+
+  useEffect(() => {
+    if (tab !== "workflows") return;
+    const timer = window.setInterval(() => { void loadWorkflows(); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [tab, loadWorkflows]);
 
   useEffect(() => {
     void Promise.resolve().then(loadTasks);
@@ -346,7 +352,7 @@ export function AutomationPage() {
           {/* Active runs */}
           <GlassCard lift={false}>
             <div style={{ ...S.cardTitle, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span>{t("workflows.activeRuns")}</span>
+              <span>{t("workflows.recentRuns", { defaultValue: "Recent Workflow Runs" })}</span>
               <GoldButton variant="ghost" onClick={loadWorkflows} disabled={wfLoading}>
                 {wfLoading ? "…" : t("workflows.refresh")}
               </GoldButton>
@@ -355,9 +361,9 @@ export function AutomationPage() {
               {wfLoading ? (
                 <div style={{ padding: "16px 18px" }}><div className="skeleton" style={{ height: 40, borderRadius: 8 }} /></div>
               ) : wfRuns.length === 0 ? (
-                <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>{t("workflows.empty")}</div>
+                <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>{t("workflows.emptyRecent", { defaultValue: "No workflow runs yet." })}</div>
               ) : wfRuns.map(run => {
-                const running = run.status === "running";
+                const running = run.status === "running" || run.status === "pending";
                 const statusColor: Record<string, string> = { running: "var(--accent-2)", completed: C.green, failed: C.red, pending: C.amber };
                 const color = statusColor[run.status] ?? "var(--t4)";
                 const statusLabel = t(`workflows.status.${run.status}`, { defaultValue: run.status });
@@ -365,7 +371,7 @@ export function AutomationPage() {
                   <div key={run.run_id} style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {run.name}
+                        {run.name} · {run.run_id}
                       </span>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "2px 8px", borderRadius: 99 }}>
                         {running && (
