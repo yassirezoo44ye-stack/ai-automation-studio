@@ -41,3 +41,22 @@ def test_capture_rejects_unscoped_key():
         assert exc.status_code == 403
     else:
         raise AssertionError("Unscoped API keys must not capture leads")
+
+
+def test_capture_uses_credential_org_not_request_data():
+    from app.routers.leads import capture_lead, CaptureLeadRequest
+    import asyncio
+
+    org_id = "00000000-0000-4000-8000-000000000002"
+    key = ApiKeyRecord(key_id="test", key_hash="test", name="test", scopes=["write"], organization_id=org_id)
+    svc = AsyncMock()
+    svc.create.return_value = {"id": "00000000-0000-4000-8000-000000000003"}
+    svc.qualify.return_value = {"id": "00000000-0000-4000-8000-000000000003", "status": "new", "ai_tier": None}
+    with patch("app.routers.leads.get_lead_service", return_value=svc), patch(
+        "app.routers.leads._enqueue_lead_followup", new_callable=AsyncMock, return_value="no_definition"
+    ) as enqueue:
+        result = asyncio.run(capture_lead(CaptureLeadRequest(name="Test Lead", source="web"), request=None, key=key, _rl=None))
+    svc.create.assert_awaited_once_with(org_id=org_id, name="Test Lead", email=None, phone=None, source="web")
+    svc.qualify.assert_awaited_once_with(lead_id=result["id"], org_id=org_id)
+    enqueue.assert_awaited_once_with(org_id=org_id, lead_id=result["id"], triggered_by="lead_capture", user_id=None)
+    assert "organization_id" not in result
