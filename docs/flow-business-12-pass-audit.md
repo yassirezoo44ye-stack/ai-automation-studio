@@ -36,3 +36,10 @@ Render web/worker/scheduler services and logs; Vercel deployments, routes, front
 6. Licensing, payment-provider eligibility and privacy operational requirements not closed.
 
 No production deployment or merge to main is authorized by this audit.
+
+## Evidence update — CI #379 (2026-11-15)
+- Head commit `06db9935837d0ee70ee0d394be65b74b149a41e4` adds a **separate full-tree npm audit**, informational only; production dependency audit remains a blocking step.
+- Frontend job completed successfully: 520/520 Vitest tests (61 files), TypeScript, lint and build passed.
+- Full dependency audit **confirmed 20 advisories: 11 moderate and 9 high**; `npm audit --omit=dev --audit-level=high` found 0 production dependency advisories. This explains the previously contradictory output: the advisories are outside the production-only dependency set. **Not fixed.** Remediation and retesting required.
+- At time of inspection CI #379 Backend was still in progress; Docker and complete workflow result were not yet available. CodeQL #33 succeeded.
+- This is evidence for the existing partial pass, **not a second independent full-platform pass**.
