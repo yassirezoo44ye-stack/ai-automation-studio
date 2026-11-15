@@ -73,3 +73,21 @@ Environment: local container, Python 3.11, PostgreSQL 16 (synthetic `test_axon` 
 - **BE-02 (35 DeprecationWarnings, `ab12cf9`)** — per-request `cookies=` replaced by `tests/cookie_client.request_with_cookies` (sets cookies on the client for one request, then removes them) and, for the async case, cookies on the `AsyncClient` constructor.
 - **Regression guard (`ab12cf9`)** — `pytest.ini` turns both warning classes (plus `PytestUnraisableExceptionWarning`) into errors. Verified: the pre-fix test files fail under the guard.
 - Observation, not changed: `change_password` / `logout_all` schedule `write_audit` with a bare `asyncio.create_task` and keep no reference, so an audit write can in principle be garbage-collected before it runs. Tracked for the audit-log reliability review.
+
+## M3 — BE-03 / BE-04 schema and migrations (2026-11-15)
+Environment: local PostgreSQL 16 (fresh `schema_check` DB per run), `scripts/ci_schema_check.py` (runs the real `lifespan()`), Python 3.11.
+
+**BE-03 — root causes (both reproduced, both fixed):**
+| CI Postgres log line | Cause | Fix |
+|---|---|---|
+| `relation "organizations" does not exist` / `relation "org_subscriptions" does not exist` | Init-order bug: `lifespan()` created `maintenance_loop()` before `init_tenancy_schema()` / `init_org_subscriptions_schema()`. Its first cycle runs immediately; on a fresh DB the active-user and Stripe seat reconciliation failed and were swallowed by `record_error()`. Not a schema defect. | `729141d1`: start maintenance after the tenancy/billing schema block. Guard: `tests/test_lifespan_maintenance_order.py` (fails on old order). Fresh DB now logs no error; first cycle `errors={}`. |
+| `extension "vector" is not available` | Test-environment gap: CI used plain `postgres:16`. `app/memory/semantic.py` falls back to an in-process TF-IDF store by design, so CI never exercised the pgvector path. | `1c4644eb`: CI service image `pgvector/pgvector:pg16`. With pgvector, fresh-DB startup logs zero errors and reports "using pgvector backend"; full suite 3267 passed, 4 skipped. |
+
+Open item for M8: whether the **production** database has pgvector. Without it, semantic memory is per-process (lost on restart, not shared between instances). `docker-compose.yml` (local dev) still uses `postgres:16-alpine` without pgvector.
+
+**BE-04 — Alembic chain (diagnosed; no migration or database changed):**
+- `alembic history` fails: `Could not determine revision id from filename 003_ai_gateway.py`. 002's `down_revision="001_initial_schema"` does not match 001's `revision="001"`; 003–014 use `up(conn)/down(conn)` or async `upgrade(conn)` shapes with no revision metadata; 009/010 are `_`-prefixed.
+- Nothing in production runs Alembic: `Dockerfile` CMD is `uvicorn app_main:app`; `render.yaml` / `railway.toml` have no migrate step. The schema is created by `lifespan()`'s idempotent `init_*` calls.
+- Parity: all 66 tables declared across `migrations/versions/*.py` exist after a fresh `lifespan()`, except 001's `agents`, superseded by `ai_agents`; no query references `agents`.
+- Guard `3e00eb76`: the CI schema check now fails if any table declared in a migration file is not created by `lifespan()`.
+- Decision needed (user): retire Alembic formally (archive `alembic.ini`/`env.py`, keep files as SQL references) vs. rebuild a linear chain. Rebuilding risks double-applying DDL that `lifespan()` already runs; no live-DB action without a backup and explicit approval. Also to check in M8 (read-only): whether the production DB has an `alembic_version` table.
