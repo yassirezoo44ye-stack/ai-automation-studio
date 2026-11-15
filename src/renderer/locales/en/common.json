@@ -88,6 +88,7 @@
       "new-project": { "label": "New Project", "sub": "Start a new build" }
     },
     "actions": {
+    "more": "More",
       "newChat": { "label": "New Chat", "sub": "Start a conversation" },
       "newBuild": { "label": "New Build", "sub": "Open code builder" },
       "newAgent": { "label": "New Agent", "sub": "Create an AI agent" },

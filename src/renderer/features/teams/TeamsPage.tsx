@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 /**
  * TeamsPage — teams, members, and invitations for the current organization.
  * Data: GET/PATCH/DELETE /api/orgs/{id}/members*, POST .../invitations,
@@ -260,8 +261,11 @@ export function TeamsPage() {
       <header style={S.header}>
         <span style={S.headerTitle}>{t("header.title", { orgName: currentOrg?.name ?? "…" })}</span>
         <div style={{ display: "flex", gap: 8 }}>
-          <GoldButton variant="ghost" onClick={() => setShowGeneralChat(v => !v)}>{t("header.generalChat")}</GoldButton>
-          <GoldButton variant="ghost" onClick={() => setCreatingTeam(v => !v)}>{t("header.newTeam")}</GoldButton>
+          <SecondaryActions>
+<GoldButton variant="ghost" onClick={() => setShowGeneralChat(v => !v)}>{t("header.generalChat")}</GoldButton>
+<GoldButton variant="ghost" onClick={() => setCreatingTeam(v => !v)}>{t("header.newTeam")}</GoldButton>
+</SecondaryActions>
+
           <GoldButton onClick={() => setInviting(v => !v)}>{t("header.inviteMember")}</GoldButton>
         </div>
       </header>
@@ -335,14 +339,17 @@ export function TeamsPage() {
                       variant="ghost" onClick={() => void toggleTeam(team.id)}
                       style={{ padding: "5px 12px", fontSize: 11 }}
                     >{isOpen ? t("teamsList.hideButton") : t("teamsList.membersButton")}</GoldButton>
-                    <GoldButton
+                    <SecondaryActions>
+<GoldButton
                       variant="ghost" onClick={() => setChatTeam(prev => prev === team.id ? null : team.id)}
                       style={{ padding: "5px 12px", fontSize: 11 }}
                     >{t("chat.chatButton")}</GoldButton>
-                    <GoldButton
+<GoldButton
                       variant="danger" onClick={() => void deleteTeam(team.id)} disabled={teamBusy === team.id}
                       style={{ padding: "5px 12px", fontSize: 11 }}
                     >{t("teamsList.delete")}</GoldButton>
+</SecondaryActions>
+
                   </div>
 
                   {chatTeam === team.id && (

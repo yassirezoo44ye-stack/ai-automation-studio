@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 /**
  * FLOW Command Center — home page
  *
@@ -548,13 +549,15 @@ export function HomePage() {
           </span>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button
+          <SecondaryActions>
+<button
             onClick={() => setCreating(true)}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 7, border: "1px solid var(--b2)", background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 500, cursor: "pointer" }}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             {t("cc.newProject")}
           </button>
+</SecondaryActions>
           <button
             onClick={handleBuildApp}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 14px", borderRadius: 7, border: "none", background: "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)", color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 8px rgba(110,50,224,0.28)" }}
@@ -655,7 +658,8 @@ export function HomePage() {
             </button>
           </div>
 
-          {/* Idea chips */}
+          {/* Optional examples stay out of the primary action path. */}
+          <SecondaryActions>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
             {(Array.isArray(ideaChips) ? ideaChips : []).map(idea => (
               <button
@@ -669,6 +673,7 @@ export function HomePage() {
               </button>
             ))}
           </div>
+          </SecondaryActions>
         </div>
 
         {/* ── KPI Strip — 8 metrics ──────────────────────────────── */}

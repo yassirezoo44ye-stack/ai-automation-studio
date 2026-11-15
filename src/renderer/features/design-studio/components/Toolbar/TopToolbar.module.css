@@ -2,8 +2,10 @@
   display:         flex;
   align-items:     center;
   justify-content: space-between;
-  padding:         0 10px;
-  height:          48px;
+  padding:         6px 10px;
+  min-height:      48px;
+  height:          auto;
+  flex-wrap:       wrap;
   background:      var(--surface-1);
   box-shadow:      var(--shadow-xs);
   flex-shrink:     0;
@@ -195,4 +197,9 @@
 .btnAI:hover {
   background: var(--fill-accent);
   color:      #fff;
+}
+
+@media (max-width: 700px) {
+  .left, .center, .right { flex-wrap: wrap; }
+  .center { order: 3; flex-basis: 100%; justify-content: center; }
 }

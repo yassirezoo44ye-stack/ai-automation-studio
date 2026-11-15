@@ -70,14 +70,6 @@ function HeartIcon({ filled }: { filled: boolean }) {
   );
 }
 
-function CommentIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-    </svg>
-  );
-}
-
 function ShareIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -129,7 +121,7 @@ function CreatorAvatar({ creator }: { creator: FeedItem["creator"] }) {
 }
 
 /* ── Main component ───────────────────────────────────────────────── */
-export function FeedActionPanel({ item, state, isMock = false, onLike, onSave, onShare, onComment, onBuild }: FeedActionPanelProps) {
+export function FeedActionPanel({ item, state, isMock = false, onLike, onSave, onShare, onBuild }: FeedActionPanelProps) {
   const { t } = useTranslation("feed");
   const [shareFlash, setShareFlash] = useState(false);
 
@@ -155,15 +147,6 @@ export function FeedActionPanel({ item, state, isMock = false, onLike, onSave, o
         onClick={onLike}
         disabled={isMock}
         title={isMock ? "Sample content" : undefined}
-      />
-
-      <ActionBtn
-        icon={<CommentIcon />}
-        label={t("actions.comment")}
-        count={item.comments}
-        onClick={onComment}
-        disabled
-        title="Coming Soon"
       />
 
       <ActionBtn

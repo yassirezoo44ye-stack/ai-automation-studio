@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../../../shared/ui/SecondaryActions";
 /**
  * PagesPanel — full multi-page document manager.
  * Supports page selection, rename, duplicate, reorder (up/down), and delete.
@@ -110,33 +111,38 @@ export function PagesPanel() {
               {/* Actions — pure click-propagation shield around real buttons below, not itself interactive */}
               {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
               <div style={s.actions} onClick={e => e.stopPropagation()}>
-                <button
+                <SecondaryActions>
+<button
                   style={s.btn}
                   title={t("pagesPanel.moveUp")}
                   disabled={idx === 0}
                   onClick={() => reorderPage(idx, idx - 1)}
                   aria-label={t("pagesPanel.movePageUpAriaLabel")}
                 >↑</button>
-                <button
+<button
                   style={s.btn}
                   title={t("pagesPanel.moveDown")}
                   disabled={idx === pages.length - 1}
                   onClick={() => reorderPage(idx, idx + 1)}
                   aria-label={t("pagesPanel.movePageDownAriaLabel")}
                 >↓</button>
-                <button
+<button
                   style={s.btn}
                   title={t("pagesPanel.duplicate")}
                   onClick={() => duplicatePage(page.id)}
                   aria-label={t("pagesPanel.duplicatePageAriaLabel")}
                 >⧉</button>
-                <button
+<button
                   style={{ ...s.btn, color: pages.length <= 1 ? "#374151" : "#ef4444" }}
                   title={t("pagesPanel.delete")}
                   disabled={pages.length <= 1}
                   onClick={() => removePage(page.id)}
                   aria-label={t("pagesPanel.deletePageAriaLabel")}
                 >✕</button>
+</SecondaryActions>
+
+
+
               </div>
             </div>
           );

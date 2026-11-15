@@ -129,6 +129,19 @@ describe("navigation", () => {
    * Label → page content invariant: the content shown must always match
    * the button that's marked aria-current="page".
    */
+  it("keeps daily navigation visible and reveals specialist destinations on demand", async () => {
+    renderApp();
+    await screen.findByText("HOME_PAGE_CONTENT");
+    expect(screen.getByRole("button", { name: "New Project" })).toBeVisible();
+    expect(screen.getByTitle("Flow Feed").closest("details")).not.toHaveAttribute("open");
+    const more = screen.getByTitle("More");
+    fireEvent.click(more);
+    expect(screen.getByRole("button", { name: "Flow Feed" })).toBeVisible();
+    fireEvent.click(screen.getByTitle("Flow Feed"));
+    await screen.findByText("FEED_PAGE_CONTENT");
+    expect(screen.getByTitle("Flow Feed").closest("details")).toHaveAttribute("open");
+  });
+
   it("clicking each sidebar item renders that page and marks it active — never disagreeing", async () => {
     renderApp();
     // Default page is home (path "/home" → home in PATH_TO_PAGE).
@@ -153,12 +166,14 @@ describe("navigation", () => {
 
     for (const [label, expectedContent] of cases) {
       const navButton = screen.getByTitle(label);
+      const disclosure = navButton.closest("details");
+      if (disclosure && !disclosure.open) fireEvent.click(disclosure.querySelector("summary")!);
       fireEvent.click(navButton);
 
       // The content that actually appears must match the button that's
       // marked active — this is the exact invariant that broke before.
       await waitFor(() => expect(screen.getByText(expectedContent)).toBeInTheDocument(), { timeout: 8000 });
-      expect(navButton).toHaveAttribute("aria-current", "page");
+      expect(screen.getByTitle(label)).toHaveAttribute("aria-current", "page");
     }
   }, 60000);
 
