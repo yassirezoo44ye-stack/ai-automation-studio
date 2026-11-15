@@ -129,6 +129,18 @@ jobs:
           fi
           exit "$rc"
 
+      - name: End-to-end tenant isolation (real HTTP + auth + Postgres)
+        # Boots the real app (lifespan) against a separate empty database,
+        # signs up two synthetic tenants through the public auth API and
+        # proves neither can read, change or delete the other's leads,
+        # projects, files, conversations, automations, devices,
+        # notifications or invoices. See tests_e2e/conftest.py.
+        env:
+          FLOW_E2E_DATABASE_URL: postgresql://test:test@localhost:5432/flow_e2e
+        run: |
+          PGPASSWORD=test psql -h localhost -U test -d test_axon -c "CREATE DATABASE flow_e2e"
+          python -m pytest tests_e2e -v --tb=short
+
       - name: Dependency vulnerability scan (pip-audit)
         # Informational for now: this is the first time it's run in CI at
         # all, so today's run establishes the real baseline rather than
