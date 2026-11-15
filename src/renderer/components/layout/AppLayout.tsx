@@ -27,12 +27,13 @@ const _STALE_CHUNK_MSGS = [
   "Failed to fetch dynamically imported module", // Chrome / Edge
   "Importing a module script failed",            // Safari
   "error loading dynamically imported module",   // Firefox
+  "Unable to preload CSS for",                    // Vite CSS dependency preload failure
 ];
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function _isStaleChunkError(err: unknown): boolean {
-  if (!(err instanceof TypeError)) return false;
-  const msg = (err as TypeError).message;
+  if (!(err instanceof Error)) return false;
+  const msg = err.message;
   return _STALE_CHUNK_MSGS.some(p => msg.includes(p));
 }
 
