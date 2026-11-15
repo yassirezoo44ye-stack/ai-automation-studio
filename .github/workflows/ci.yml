@@ -151,6 +151,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Report development dependency advisories
+        # npm ci audits the entire dependency tree, while the blocking scan
+        # below excludes dev dependencies. Show the full advisory inventory
+        # explicitly rather than mistaking the production-only result for
+        # a clean complete dependency tree. Keep this informational until
+        # advisories have been reviewed and assigned remediation owners.
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
       - name: Dependency vulnerability scan (npm audit)
         # --audit-level=high: gate only on high/critical advisories. An
         # advisory database is a moving target — without a threshold, any
