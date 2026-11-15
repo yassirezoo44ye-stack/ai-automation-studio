@@ -263,7 +263,7 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
         <section id="career-add" className="career-panel" aria-labelledby="career-add-title">
           <h2 id="career-add-title"><span className="career-step-num" aria-hidden="true">2</span>{t("addJobs")}</h2>
           <form onSubmit={e => { e.preventDefault(); void act("import", async () => {
-            const result = await request<{ inserted: number; warning: string | null; method?: string }>("/import", "POST", { text, source: "manual", use_ai: true });
+            const result = await request<{ found: number; inserted: number; duplicates: number; warning: string | null; method?: string }>("/import", "POST", { text, source: "manual", use_ai: true });
             await load();
             setNotice(result.inserted > 0 ? t(result.method === "ai" ? "importedAi" : "imported", { count: result.inserted }) : result.found > 0 ? t("importDuplicates") : t("importNoJobs"));
           }, true); }}>
