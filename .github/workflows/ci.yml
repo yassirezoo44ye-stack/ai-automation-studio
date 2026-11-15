@@ -151,6 +151,32 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Export full dependency audit evidence
+        # Preserve machine-readable evidence even when advisories are present.
+        # npm audit returns nonzero on findings, so capture the result without
+        # masking JSON generation errors or treating findings as a clean pass.
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > npm-audit-full.json
+          rc=$?
+          set -e
+          if ! node -e 'const a=require("./npm-audit-full.json"); if (!a.metadata || !a.metadata.vulnerabilities) process.exit(1)'; then
+            echo "::error::npm audit did not produce a valid vulnerability summary"
+            exit 1
+          fi
+          node -e 'const v=require("./npm-audit-full.json").metadata.vulnerabilities; console.log("Full dependency audit:",JSON.stringify(v))'
+          echo "npm audit exit status: $rc (advisories are recorded, not ignored)"
+
+      - name: Upload full dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-full
+          path: npm-audit-full.json
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Full-tree dependency scan incl. dev tooling (npm audit)
         # The production-only scan below excludes dev dependencies, but dev
         # tooling (vite dev server, vitest, undici via jsdom) runs on
