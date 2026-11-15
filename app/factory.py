@@ -121,9 +121,6 @@ async def lifespan(app: FastAPI):
     # Initialize AI Platform with DB pool
     from app.core.ai.platform import platform as ai_platform
     ai_platform.init(pool)
-    maintenance_task = asyncio.create_task(maintenance_loop())
-    cleanup_task     = asyncio.create_task(process_cleanup_loop())
-
     # ── Enterprise multi-tenancy + usage + org-billing schemas ─────────────
     from app.tenancy import init_tenancy_schema
     from app.billing import (
@@ -145,6 +142,14 @@ async def lifespan(app: FastAPI):
         await init_coupons_schema(conn)
         await init_credits_schema(conn)
     await get_plan_service(pool).refresh_cache()
+
+    # Start background maintenance only now: its first cycle runs
+    # immediately and queries organizations / organization_members /
+    # org_subscriptions / usage tables, which the schema block above
+    # creates. Starting it earlier raced schema init on a fresh database
+    # and the reconciliation steps failed silently (BE-03).
+    maintenance_task = asyncio.create_task(maintenance_loop())
+    cleanup_task     = asyncio.create_task(process_cleanup_loop())
 
     # Cross-instance cache coherence: when any instance edits the plan
     # catalog (PlanService.update_plan publishes "plans:catalog"), every
