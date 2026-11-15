@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 /**
  * Runs — execution monitoring page.
  *
@@ -385,7 +386,8 @@ export function RunsPage() {
           )}
 
           {/* Stats row */}
-          <div style={{ padding: "20px 24px 14px", display: "flex", gap: 12, flexWrap: "wrap", flexShrink: 0 }}>
+          <WorkspaceDetails kind="summary">
+<div style={{ padding: "20px 24px 14px", display: "flex", gap: 12, flexWrap: "wrap", flexShrink: 0 }}>
             <StatCard label={t("stats.total")} value={stats?.total ?? runs.length} color="var(--accent)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
             <StatCard label={t("stats.running")} value={stats?.running ?? runs.filter(r => r.status === "running").length} color="var(--blue)"
@@ -395,6 +397,7 @@ export function RunsPage() {
             <StatCard label={t("stats.failed")} value={stats?.failed ?? runs.filter(r => r.status === "failed").length} color="var(--red)"
               icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>} />
           </div>
+</WorkspaceDetails>
 
           {/* Filter tabs */}
           <div style={{ padding: "0 24px 12px", display: "flex", gap: 4, flexShrink: 0, flexWrap: "wrap" }}>

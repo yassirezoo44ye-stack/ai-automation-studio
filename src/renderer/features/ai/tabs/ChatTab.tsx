@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
  * ChatTab — 3-column AI command center.
@@ -504,7 +505,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               <div style={{ fontSize: 14, color: "var(--t4)", maxWidth: 320, lineHeight: 1.65, marginTop: 6 }}>
                 {activeAgent?.description ?? t("chatTab.messages.emptyDescription")}
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
+              <WorkspaceDetails kind="examples">
+<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
                 {[
                   t("chatTab.messages.suggestion1"),
                   t("chatTab.messages.suggestion2"),
@@ -514,6 +516,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                   <GoldButton key={s} variant="ghost" onClick={() => setPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
                 ))}
               </div>
+</WorkspaceDetails>
             </div>
           )}
 

@@ -426,9 +426,7 @@ export function DiscoverPage() {
         <h1 style={{ fontSize: 20, fontWeight: 800, color: "var(--t1)", margin: 0 }}>
           {t("title")}
         </h1>
-        <p style={{ fontSize: 12, color: "var(--t4)", margin: "4px 0 0" }}>
-          {t("subtitle")}
-        </p>
+
       </div>
 
       {/* Tabs */}

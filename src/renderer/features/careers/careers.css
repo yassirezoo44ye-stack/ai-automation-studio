@@ -4,8 +4,8 @@
 .career-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* Hero + steps */
-.career-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding:clamp(20px,3vw,32px);margin-bottom:18px;border:1px solid var(--b1);border-radius:20px;background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--career-ai) 22%,transparent),transparent 60%),radial-gradient(90% 120% at 100% 100%,color-mix(in srgb,var(--teal) 16%,transparent),transparent 55%),var(--bg-surface);box-shadow:var(--shadow-md,none)}
-.career-hero h1{font-size:clamp(26px,4vw,38px);margin:10px 0 6px;letter-spacing:-.02em}
+.career-hero{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:0;margin-bottom:16px;background:transparent;border:0;box-shadow:none}
+.career-hero h1{font-size:22px;margin:0;letter-spacing:0}
 .career-hero p{color:var(--t2);line-height:1.7;max-width:62ch;margin:0}
 .career-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;letter-spacing:2px;color:var(--teal)}
 .career-ai-badge{display:inline-flex;align-items:center;justify-content:center;padding:2px 7px;margin-inline-end:7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,var(--career-ai),var(--teal));vertical-align:middle}
@@ -120,3 +120,8 @@
 
 @media(max-width:900px){.career-setup,.career-skeleton{grid-template-columns:1fr}.career-fields{grid-template-columns:1fr 1fr}}
 @media(max-width:640px){.career-hero{flex-direction:column;align-items:flex-start}.career-stats{justify-content:flex-start}.career-steps{grid-template-columns:1fr}.career-fields{grid-template-columns:1fr}.career-panel{padding:16px}.career-actions>*{flex:1 1 auto}.career-toolbar{gap:10px}.career-toolbar h2{width:100%;margin-bottom:0}.career-toolbar label,.career-search{flex:1 1 100%}.career-drawer{padding:16px}}
+
+/* Workflow navigation should not compete with the opportunity list. */
+.career-steps{display:flex;flex-wrap:wrap;gap:8px;margin-block:12px}
+.career-steps button{flex:0 1 auto;padding:6px 10px;min-height:32px;border:0;box-shadow:none;background:transparent;font-size:12px}
+.career-steps .career-step-num{width:20px;height:20px;font-size:11px}

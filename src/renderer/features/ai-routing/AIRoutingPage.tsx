@@ -36,7 +36,7 @@ export function AIRoutingPage() {
     <>
       <header style={S.header}>
         <span style={S.headerTitle}>{t("page.title")}</span>
-        <span style={S.headerSub}>{t("page.subtitle")}</span>
+
       </header>
 
       <div style={{ display: "flex", gap: 6, padding: "12px 24px 0" }}>

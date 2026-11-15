@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 /**
  * Training Studio — Phase 1 Production UI
  *
@@ -63,7 +64,7 @@ const SECTIONS: { id: Section; icon: ReactNode }[] = [
 
 export function TrainingStudioPage() {
   const { t } = useTranslation("trainingStudio");
-  const [section, setSection] = useState<Section>("overview");
+  const [section, setSection] = useState<Section>("courses");
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden", background: "var(--bg-base)" }}>
@@ -83,9 +84,7 @@ export function TrainingStudioPage() {
           <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--t1)", letterSpacing: "-0.2px" }}>
             {t("title")}
           </div>
-          <div style={{ fontSize: 10.5, color: "var(--t5)", marginTop: 3, lineHeight: 1.4 }}>
-            {t("subtitle")}
-          </div>
+
         </div>
 
         {/* Nav */}
@@ -183,12 +182,14 @@ function OverviewSection({ onNavigate }: { onNavigate: (s: Section) => void }) {
       ) : (
         <>
           {/* KPI row */}
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28 }}>
+          <WorkspaceDetails kind="summary">
+<div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28 }}>
             <KpiCard label={t("overview.totalCourses")}  value={courses.length}  icon={<BookIcon />} />
             <KpiCard label={t("overview.published")}     value={published}       icon={<CheckCircleIcon />} accent />
             <KpiCard label={t("overview.totalLearners")} value={learners.length} icon={<UsersIcon />} />
             <KpiCard label={t("overview.activeJobs")}    value={activeJobs.length} icon={<SpinnerIcon />} />
           </div>
+</WorkspaceDetails>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             {/* Recent courses */}

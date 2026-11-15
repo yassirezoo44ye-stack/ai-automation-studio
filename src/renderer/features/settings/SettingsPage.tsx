@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, parseJSON, APIError, API } from "../../utils/api";
@@ -342,7 +343,7 @@ export function SettingsPage() {
   const { theme, setTheme, setSidebarCollapsed } = useAppContext();
   const { lang, setLang } = useLangContext();
   const { currentOrgId } = useOrg();
-  const [tab, setTab]           = useState<SettingsTab>("system");
+  const [tab, setTab]           = useState<SettingsTab>("appearance");
   const [health, setHealth]     = useState<Record<string, string> | null>(null);
   const [healthErr, setHealthErr] = useState(false);
   const [stats, setStats]       = useState<Record<string, number> | null>(null);
@@ -370,7 +371,7 @@ export function SettingsPage() {
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { loadSystemInfo(); }, [loadSystemInfo]);
+  useEffect(() => { if (tab === "system") loadSystemInfo(); }, [loadSystemInfo, tab]);
 
   function updatePref<K extends keyof UserPrefs>(key: K, val: UserPrefs[K]) {
     const next = { ...prefs, [key]: val };
@@ -504,7 +505,8 @@ export function SettingsPage() {
                 </div>
               )}
 
-              {stats && (
+              <WorkspaceDetails kind="summary">
+{stats && (
                 <div>
                   <div className="section-label" style={{ marginBottom: 12 }}>{t("system.usage")}</div>
                   <GlassCard lift={false}>
@@ -518,6 +520,7 @@ export function SettingsPage() {
                   </GlassCard>
                 </div>
               )}
+</WorkspaceDetails>
 
               <div>
                 <div className="section-label" style={{ marginBottom: 12 }}>{t("system.shortcuts")}</div>

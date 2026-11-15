@@ -26,7 +26,7 @@ export function SaasFactoryPage() {
       {/* Top bar */}
       <div className="sf-page__topbar">
         <h2 className="sf-page__heading">{t("page.heading")}</h2>
-        <p className="sf-page__sub">{t("page.sub")}</p>
+
       </div>
 
       {/* Error banner */}

@@ -33,3 +33,9 @@ empty status panels, duplicate launchers or general KPI walls to Home. Reducing
 buttons alone is insufficient; reduce visible sections and repeated information.
 Keep specialist tools in their own workspace and preserve discoverability through
 navigation/search. See docs/ESSENTIAL_ACTIONS.md for the action hierarchy.
+
+Apply the work-only content rule across every workspace, not just Home. Collapse
+optional examples/setup/summaries under descriptive headings; retain form drafts
+when a section closes. Preserve primary tasks, permissions, costs, approvals,
+cancellation and error recovery. Keep analytical metrics where analysis is the
+actual task. Consult docs/WORKSPACE_CONTENT_AUDIT.md before reintroducing content.
