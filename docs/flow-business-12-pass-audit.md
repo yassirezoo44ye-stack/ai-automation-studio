@@ -61,3 +61,15 @@ Remaining (accepted, documented): **minimatch 10.2.5** — GHSA-g3hv-75wg-m249 (
 Regression guard: the full-tree `npm audit --audit-level=high` CI step is now blocking (was `continue-on-error`).
 
 Note: npm 10.9.9 crashes (`Cannot read properties of null (reading 'edgesOut')`) when changing the vite/vitest peer set; the lockfile was regenerated with npm 11 and verified with `npm ci` on npm 10.9.9.
+
+## M2 — BE-01 / BE-02 backend test warnings (2026-11-15)
+Environment: local container, Python 3.11, PostgreSQL 16 (synthetic `test_axon` DB), same env vars as CI.
+
+| Measure | CI #380 (`e3f8390`) | After M2 |
+|---|---|---|
+| pytest | 3266 passed, 4 skipped, **42 warnings** | 3266 passed, 4 skipped, **0 warnings** |
+
+- **BE-01 (7 RuntimeWarnings, `ab12cf9`)** — test-side only. (a) Register tests mocked `conn.transaction` as AsyncMock, but asyncpg's `Connection.transaction()` is synchronous; now a MagicMock. (b) Security-patch tests replaced `asyncio.create_task` with a MagicMock, dropping the `write_audit` coroutine; now closed via `_discard_coro`. The warning attributed to `test_team_chat` was the same leaked coroutine collected later.
+- **BE-02 (35 DeprecationWarnings, `ab12cf9`)** — per-request `cookies=` replaced by `tests/cookie_client.request_with_cookies` (sets cookies on the client for one request, then removes them) and, for the async case, cookies on the `AsyncClient` constructor.
+- **Regression guard (`ab12cf9`)** — `pytest.ini` turns both warning classes (plus `PytestUnraisableExceptionWarning`) into errors. Verified: the pre-fix test files fail under the guard.
+- Observation, not changed: `change_password` / `logout_all` schedule `write_audit` with a bare `asyncio.create_task` and keep no reference, so an audit write can in principle be garbage-collected before it runs. Tracked for the audit-log reliability review.
