@@ -306,11 +306,13 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
           <label className="career-search">{t("search")}<input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={t("searchHint")} /></label>
           <label>{t("sort")}<select value={sort} onChange={e => setSort(e.target.value)}><option value="match">{t("match")}</option><option value="salary">{t("salarySort")}</option></select></label>
         </div>
-        <div className="career-tabs" role="group" aria-label={t("filter")}>
-          {["all", ...states, "expired"].map(s => <button type="button" key={s} aria-pressed={filter === s} onClick={() => setFilter(s)}>
-            {s === "all" ? t("all") : t(`status.${s}`)}<span>{jobs.filter(j => inView(j, s)).length}</span>
-          </button>)}
-        </div>
+        <label className="career-tabs">{t("filter")}
+          <select value={filter} onChange={e => setFilter(e.target.value)}>
+            {["all", ...states, "expired"].map(s => <option key={s} value={s}>
+              {s === "all" ? t("all") : t(`status.${s}`)} ({jobs.filter(j => inView(j, s)).length})
+            </option>)}
+          </select>
+        </label>
         <p className="career-muted">{t("rankingNote")}</p>
         {jobs.length >= 500 && <p role="status">{t("limitNote")}</p>}
         {!visible.length && <div className="career-panel career-empty">

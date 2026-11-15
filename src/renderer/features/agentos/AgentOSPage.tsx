@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 import { useFlowSkill } from "../../shared/hooks/useFlowSkill";
 import { FlowSkillSelect } from "../../shared/ui/FlowSkillSelect";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -535,9 +536,11 @@ function EvolutionPanel({
           <GoldButton onClick={() => run("evolve", onEvolve)} disabled={loading === "evolve"}>
             {loading === "evolve" ? t("evolutionPanel.evolving") : t("evolutionPanel.evolveButton")}
           </GoldButton>
-          <GoldButton variant="ghost" onClick={() => run("suggest", onSuggest)} disabled={loading === "suggest"}>
+          <SecondaryActions>
+<GoldButton variant="ghost" onClick={() => run("suggest", onSuggest)} disabled={loading === "suggest"}>
             {loading === "suggest" ? t("evolutionPanel.suggesting") : t("evolutionPanel.suggestButton")}
           </GoldButton>
+</SecondaryActions>
         </div>
       </div>
       {/* Stats row */}

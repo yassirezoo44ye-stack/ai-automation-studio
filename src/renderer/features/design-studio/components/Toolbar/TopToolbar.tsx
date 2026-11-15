@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../../../shared/ui/SecondaryActions";
 /**
  * TopToolbar — header bar for Flow App Builder / Design Studio.
  *
@@ -8,6 +9,7 @@
  * Existing functionality (undo/redo, zoom, import, save, export) is
  * preserved exactly — no existing props or behaviour are changed.
  */
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import styles from "./TopToolbar.module.css";
 
@@ -52,6 +54,7 @@ export function TopToolbar({
   mode, onModeChange, onBuildWithAI,
 }: Props) {
   const { t } = useTranslation("designStudio");
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -116,7 +119,8 @@ export function TopToolbar({
 
       {/* ── Right: AI build + import/save/export ──────────────────────────── */}
       <div className={styles.right}>
-        <button
+        <SecondaryActions>
+<button
           className={styles.btnAI}
           onClick={onBuildWithAI}
           title="Generate an app with AI"
@@ -124,24 +128,28 @@ export function TopToolbar({
         >
           ✦ Build with AI
         </button>
-
-        <div className={styles.divider} />
-
-        <label className={styles.btnSecondary} title={t("topToolbar.importTitle")}>
+<button type="button" className={styles.btnSecondary} title={t("topToolbar.importTitle")} onClick={() => fileInput.current?.click()}>
           {t("topToolbar.import")}
+        </button>
           <input
+            ref={fileInput}
             type="file"
             accept="application/json,.json"
             style={{ display: "none" }}
             onChange={handleFileChange}
           />
-        </label>
+<button className={styles.btnPrimary} onClick={onExport} title={t("topToolbar.export")}>
+          {t("topToolbar.export")}
+        </button>
+</SecondaryActions>
+
+        <div className={styles.divider} />
+
+
         <button className={styles.btnSecondary} onClick={onSave} title={t("topToolbar.save")}>
           {t("topToolbar.save")}
         </button>
-        <button className={styles.btnPrimary} onClick={onExport} title={t("topToolbar.export")}>
-          {t("topToolbar.export")}
-        </button>
+
       </div>
     </header>
   );

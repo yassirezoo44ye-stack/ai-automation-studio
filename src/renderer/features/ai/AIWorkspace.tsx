@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "../../contexts/toast";
 import { apiFetch, parseJSON } from "../../utils/api";
 import { S } from "../../styles/theme";
-import { GoldButton } from "../../shared/ui/gold";
 import type { Project, Agent } from "../../types";
 import { ChatTab }   from "./tabs/ChatTab";
 import { PlansTab } from "./tabs/PlansTab";
@@ -73,11 +72,7 @@ export function AIWorkspace() {
             ))}
           </div>
         </div>
-        {tab === "agents" && (
-          <GoldButton onClick={() => { setChatAgentId(null); setTab("agents"); }}>
-            {t("workspace.newAgent")}
-          </GoldButton>
-        )}
+
       </header>
 
       {tab === "chat" && (

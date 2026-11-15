@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
  * ChatTab — 3-column AI command center.
  *
@@ -619,7 +620,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               <div>
                 <div className="chat-context__section-label">{t("chatTab.contextPanel.actions")}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button
+                  <SecondaryActions>
+<button
                     className="chat-context__action-btn"
                     onClick={() => void exportConv()}
                     disabled={exporting}
@@ -633,7 +635,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     </svg>
                     {exporting ? "…" : t("chatTab.contextPanel.export")}
                   </button>
-                  <button
+<button
                     className="chat-context__action-btn"
                     onClick={() => void extractTasks()}
                     disabled={extracting}
@@ -645,6 +647,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     </svg>
                     {extracting ? "…" : t("chatTab.contextPanel.extractTasks")}
                   </button>
+</SecondaryActions>
+
                 </div>
               </div>
             )}

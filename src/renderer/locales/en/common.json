@@ -106,6 +106,7 @@
     }
   },
   "actions": {
+    "more": "More",
     "cancel": "Cancel",
     "delete": "Delete",
     "save": "Save",

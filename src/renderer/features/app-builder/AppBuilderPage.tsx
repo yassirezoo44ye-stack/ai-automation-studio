@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 /**
  * App Builder — 3-panel workspace for building apps with AI.
  *
@@ -135,7 +136,8 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
 
       {/* Export / download button — downloads workspace as ZIP. */}
       <div style={{ padding: 12, borderTop: "1px solid var(--b1)", display: "flex", flexDirection: "column", gap: 8 }}>
-        <button
+        <SecondaryActions>
+<button
           data-testid="sidebar-export-btn"
           onClick={onDownload}
           disabled={isDownloading}
@@ -153,7 +155,7 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
         >
           {isDownloading ? t("export.buttonBusy") : t("export.button")}
         </button>
-        <button
+<button
           data-testid="sidebar-publish-btn"
           onClick={onPublishToDiscover}
           disabled={!hasActiveProject}
@@ -171,6 +173,8 @@ function AppSidebar({ section, setSection, projectName, onDownload, isDownloadin
         >
           ↑ {t("publish.button", { ns: "discover", defaultValue: "Publish to Discover" })}
         </button>
+</SecondaryActions>
+
       </div>
     </div>
   );

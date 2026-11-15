@@ -10,73 +10,25 @@ import type { Page } from "../../types";
 type NavItem = { id: Page; navKey: string; icon: keyof typeof Icons };
 
 
-/**
- * Navigation groups — 5 semantic sections matching the AI Business Workspace design.
- *
- * MAIN     — daily-use entry points (home, ai assistant, feed)
- * BUILD    — project creation hub (new-project → routes to existing engines)
- * OPERATE  — business execution (leads, automation, devices)
- * DISCOVER — content & discovery (discover)
- * SYSTEM   — account management (teams, billing, settings)
- *
- * Hidden pages (app-builder, saas-factory, design, business-lab, agentos, runs,
- * observability, sandbox, ai-routing, integrations, plugins, marketplace,
- * organizations) remain reachable via their direct URL or the command palette.
- */
-const NAV_GROUPS: {
-  groupKey: string;
-  showLabel: boolean;
-  showSep: boolean;
-  items: NavItem[];
-}[] = [
-  {
-    groupKey: "main",
-    showLabel: false,
-    showSep: false,
-    items: [
-      { id: "home", navKey: "home", icon: "home" },
-      { id: "ai",   navKey: "ai",   icon: "ai"   },
-      { id: "feed", navKey: "feed", icon: "feed"  },
-    ],
-  },
-  {
-    groupKey: "build",
-    showLabel: true,
-    showSep: true,
-    items: [
-      { id: "new-project", navKey: "newProject", icon: "new-project" },
-    ],
-  },
-  {
-    groupKey: "operate",
-    showLabel: true,
-    showSep: true,
-    items: [
-      { id: "careers", navKey: "careers", icon: "careers" },
-      { id: "leads",      navKey: "leads",      icon: "leads"      },
-      { id: "automation", navKey: "automation",  icon: "automation"  },
-      { id: "devices",    navKey: "devices",    icon: "devices"    },
-    ],
-  },
-  {
-    groupKey: "discover",
-    showLabel: true,
-    showSep: true,
-    items: [
-      { id: "discover", navKey: "discover", icon: "discover" },
-      { id: "study-library", navKey: "studyLibrary", icon: "discover" },
-    ],
-  },
-  {
-    groupKey: "system",
-    showLabel: true,
-    showSep: true,
-    items: [
-      { id: "teams",    navKey: "teams",    icon: "teams"    },
-      { id: "billing",  navKey: "billing",  icon: "billing"  },
-      { id: "settings", navKey: "settings", icon: "settings" },
-    ],
-  },
+/** Daily destinations stay visible; specialist workspaces remain in More. */
+const NAV_GROUPS: { groupKey: string; showLabel: boolean; showSep: boolean; items: NavItem[] }[] = [
+  { groupKey: "main", showLabel: false, showSep: false, items: [
+    { id: "home", navKey: "home", icon: "home" },
+    { id: "ai", navKey: "ai", icon: "ai" },
+    { id: "new-project", navKey: "newProject", icon: "new-project" },
+    { id: "leads", navKey: "leads", icon: "leads" },
+    { id: "automation", navKey: "automation", icon: "automation" },
+    { id: "settings", navKey: "settings", icon: "settings" },
+  ] },
+  { groupKey: "more", showLabel: false, showSep: false, items: [
+    { id: "feed", navKey: "feed", icon: "feed" },
+    { id: "careers", navKey: "careers", icon: "careers" },
+    { id: "devices", navKey: "devices", icon: "devices" },
+    { id: "discover", navKey: "discover", icon: "discover" },
+    { id: "study-library", navKey: "studyLibrary", icon: "discover" },
+    { id: "teams", navKey: "teams", icon: "teams" },
+    { id: "billing", navKey: "billing", icon: "billing" },
+  ] },
 ];
 
 function GlobeIcon() {
@@ -228,7 +180,8 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="sidebar__nav" aria-label={t("sidebar.mainNav")}>
-          {NAV_GROUPS.map(group => (
+          {NAV_GROUPS.map(group => {
+            const content = (
             <div key={group.groupKey}>
               {/* Group separator */}
               {group.showSep && <div className="sidebar__sep" aria-hidden="true" />}
@@ -271,7 +224,17 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
                 })}
               </div>
             </div>
-          ))}
+          );
+            return group.groupKey === "more" ? (
+              <details key={`more-${page}`} open={group.items.some(item => item.id === page)}>
+                <summary className="sidebar__item" title={t("actions.more")}>
+                  <span className="sidebar__icon" aria-hidden="true">⋯</span>
+                  {!sidebarCollapsed && <span className="sidebar__label">{t("actions.more")}</span>}
+                </summary>
+                {content}
+              </details>
+            ) : content;
+          })}
         </nav>
 
         {/* Footer */}

@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 /**
  * PluginsPage — Installed / Available tab shell (mirrors BillingPage.tsx's
  * and MarketplacePage.tsx's established tab-shell pattern; no React Router
@@ -206,21 +207,24 @@ export function PluginsPage() {
                       <div style={{ fontSize: 11, color: "var(--t4)" }}>v{inst.version} · {inst.plugin_id}</div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <GoldButton variant="ghost" onClick={() => toggleDetails(inst.id)} style={{ padding: "6px 12px", fontSize: 12 }}>
+                      <SecondaryActions>
+<GoldButton variant="ghost" onClick={() => toggleDetails(inst.id)} style={{ padding: "6px 12px", fontSize: 12 }}>
                         {expandedId === inst.id ? t("actions.hide") : t("actions.details")}
                       </GoldButton>
+<GoldButton
+                        variant="danger" onClick={() => void uninstall(inst)} disabled={busy === inst.id}
+                        style={{ padding: "6px 12px", fontSize: 12 }}
+                      >
+                        {t("actions.uninstall")}
+                      </GoldButton>
+</SecondaryActions>
                       <GoldButton
                         variant="ghost" onClick={() => void toggleEnabled(inst)} disabled={busy === inst.id}
                         style={{ padding: "6px 12px", fontSize: 12 }}
                       >
                         {inst.status === "enabled" ? t("actions.disable") : t("actions.enable")}
                       </GoldButton>
-                      <GoldButton
-                        variant="danger" onClick={() => void uninstall(inst)} disabled={busy === inst.id}
-                        style={{ padding: "6px 12px", fontSize: 12 }}
-                      >
-                        {t("actions.uninstall")}
-                      </GoldButton>
+
                     </div>
                   </div>
 
