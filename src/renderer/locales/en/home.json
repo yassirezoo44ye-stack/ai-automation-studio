@@ -1,4 +1,23 @@
 {
+  "work": {
+  "allProjects": "All projects",
+  "title": "Your work",
+  "placeholder": "What do you want to work on?",
+  "recentProjects": "Recent projects",
+  "loading": "Loading…",
+  "noProjects": "No projects yet. Start with New Project.",
+  "running": "In progress",
+  "inProgress": "Running",
+  "allRunning": "View all running work ({{count}})",
+  "retry": "Retry",
+  "errors": {
+    "projects": "Could not load projects.",
+    "stats": "Could not check failed runs.",
+    "approvals": "Could not check pending approvals.",
+    "reviews": "Could not check security reviews.",
+    "workflows": "Could not check running workflows."
+  }
+},
   "header": {
     "title": "Dashboard",
     "backendOnline": "Online",

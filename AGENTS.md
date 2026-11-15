@@ -25,3 +25,11 @@ AgentOS selectors remember the user's choice in this browser. Instructions are
 shipped in Docker. Read the catalog for the distinction between advisory skill
 runs and agents with execution tools. Do not claim production activation unless
 changes were deployed and verified.
+
+UI scope: keep each workspace limited to the user's current work. Home contains
+one assistant request, recent projects, actionable attention items and genuinely
+running work. Do not restore catalogues, promotional examples, idle-agent lists,
+empty status panels, duplicate launchers or general KPI walls to Home. Reducing
+buttons alone is insufficient; reduce visible sections and repeated information.
+Keep specialist tools in their own workspace and preserve discoverability through
+navigation/search. See docs/ESSENTIAL_ACTIONS.md for the action hierarchy.

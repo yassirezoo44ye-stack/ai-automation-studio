@@ -1,85 +1,71 @@
-/**
- * HomePage — "Ask Flow" hands a question to My AI Assistant, and the business
- * pulse shows lead tiers for the selected organization only.
- */
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-let orgState = { loading: false, currentOrgId: "org-1" as string | null };
-vi.mock("../../../contexts/OrgContext", () => ({
-  useOrg: () => ({ ...orgState, currentOrg: null, orgs: [], setCurrentOrgId: vi.fn(), refreshOrgs: vi.fn(), createOrg: vi.fn() }),
-}));
-
-const LEADS = {
-  leads: [
-    { id: "a", name: "Sara", status: "qualified", ai_tier: "hot", ai_score: 9 },
-    { id: "b", name: "Omar", status: "new", ai_tier: "warm", ai_score: 5 },
-    { id: "c", name: "Old Win", status: "won", ai_tier: "hot", ai_score: 9 },
-  ],
-};
-const apiFetchSpy = vi.fn().mockResolvedValue({ ok: true });
+const setPage = vi.fn();
+const setActiveProject = vi.fn();
+const apiFetchSpy = vi.fn();
+let data: Record<string, unknown>;
+vi.mock("../../../contexts/OrgContext", () => ({ useOrg: () => ({ loading: false, currentOrgId: "org-1" }) }));
+vi.mock("../../../contexts/app", () => ({ useAppContext: () => ({ setPage, setActiveProject }) }));
+vi.mock("../../../contexts/lang", () => ({ useLangContext: () => ({ lang: "en" }) }));
+vi.mock("../../../utils/time", () => ({ relTime: () => "just now" }));
 vi.mock("../../../utils/api", () => ({
   apiFetch: (...args: unknown[]) => apiFetchSpy(...args),
-  parseJSON: async (_r: unknown, path: string) => (path.startsWith("/api/leads") ? LEADS : path === "/api/projects" ? [] : {}),
-  APIError: class extends Error {},
+  parseJSON: async (_r: unknown, path: string) => data[path] ?? {},
 }));
-const setPage = vi.fn();
-vi.mock("../../../contexts/app", () => ({ useAppContext: () => ({ setPage, setActiveProject: vi.fn() }) }));
-vi.mock("../../../contexts/lang", () => ({ useLangContext: () => ({ lang: "en" }) }));
-vi.mock("../../../contexts/toast", () => ({ useToast: () => vi.fn() }));
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (k: string, opts?: Record<string, unknown>) =>
-      opts?.returnObjects ? (k === "cc.ask.suggestions" ? ["Plan my week"] : []) : opts?.names ? `${k}:${opts.names}` : k,
-    i18n: { language: "en" },
-  }),
-}));
-vi.mock("framer-motion", () => ({
-  motion: { div: ({ children }: { children: React.ReactNode }) => <div>{children}</div> },
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-vi.mock("../../../shared/ui/StateViews", () => ({ ErrorState: () => <div /> }));
-vi.mock("../../../utils/time", () => ({ relTime: () => "just now" }));
-
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 import { HomePage } from "../HomePage";
 
 beforeEach(() => {
-  orgState = { loading: false, currentOrgId: "org-1" };
-  apiFetchSpy.mockClear();
-  setPage.mockClear();
+  vi.clearAllMocks();
   sessionStorage.clear();
+  apiFetchSpy.mockResolvedValue({ ok: true });
+  data = { "/api/projects": [], "/api/stats": { failed_runs: 0 } };
 });
 
-describe("HomePage — Ask Flow and business pulse", () => {
-  it("hands the typed question to My AI Assistant", async () => {
+describe("work-focused home", () => {
+  it("hands a typed request to the assistant and disables empty submission", async () => {
     await act(async () => { render(<HomePage />); });
-    fireEvent.change(screen.getByLabelText("cc.ask.label"), { target: { value: "  Write a follow-up for Sara  " } });
-    fireEvent.click(screen.getByRole("button", { name: "cc.ask.submit" }));
-    expect(sessionStorage.getItem("flow_assistant_prompt")).toBe("Write a follow-up for Sara");
-    expect(setPage).toHaveBeenCalledWith("ai");
-  });
-
-  it("a suggestion chip asks directly", async () => {
-    await act(async () => { render(<HomePage />); });
-    fireEvent.click(screen.getByRole("button", { name: "Plan my week" }));
+    const submit = screen.getByRole("button", { name: "cc.ask.submit" });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("cc.ask.label"), { target: { value: "  Plan my week  " } });
+    fireEvent.click(submit);
     expect(sessionStorage.getItem("flow_assistant_prompt")).toBe("Plan my week");
     expect(setPage).toHaveBeenCalledWith("ai");
   });
-
-  it("counts open leads by tier and names the hot ones", async () => {
+  it("contains current work without catalogues, metrics, suggestions or empty status panels", async () => {
     await act(async () => { render(<HomePage />); });
-    await waitFor(() => expect(screen.getByText("cc.pulse.hotNow:Sara")).toBeInTheDocument());
-    const hot = screen.getByText("cc.pulse.hot").closest("div");
-    expect(hot).toHaveTextContent("1");   // the won hot lead is not open
-    expect(screen.getByText("cc.pulse.open_").closest("div")).toHaveTextContent("2");
-    fireEvent.click(screen.getByRole("button", { name: /cc\.pulse\.open →/ }));
-    expect(setPage).toHaveBeenCalledWith("leads");
+    expect(screen.getAllByRole("heading").map(h => h.textContent)).toEqual(["work.title", "cc.ask.title", "work.recentProjects"]);
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+    expect(apiFetchSpy.mock.calls.map(([path]) => path)).not.toContain("/api/agentos/agents");
+    expect(apiFetchSpy.mock.calls.some(([path]) => String(path).startsWith("/api/leads"))).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "cc.newProject" }));
+    expect(setPage).toHaveBeenCalledWith("new-project");
   });
-
-  it("does not request leads without an organization", async () => {
-    orgState = { loading: false, currentOrgId: null };
+  it("shows at most five recent projects and opens the selected project", async () => {
+    data['/api/projects'] = Array.from({ length: 8 }, (_, i) => ({ id: String(i), name: `Project ${i}`, created_at: `2026-11-${String(i + 1).padStart(2, '0')}T00:00:00Z` }));
     await act(async () => { render(<HomePage />); });
-    expect(screen.getByText("cc.pulse.noOrg")).toBeInTheDocument();
-    expect(apiFetchSpy.mock.calls.some(([p]) => String(p).startsWith("/api/leads"))).toBe(false);
+    expect(screen.getAllByRole("listitem")).toHaveLength(5);
+    expect(screen.queryByText("Project 0")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Project 7/ }));
+    expect(setActiveProject).toHaveBeenCalledWith("7", "build");
+  });
+  it("shows actionable failures, approvals and running work without idle rows", async () => {
+    data['/api/stats'] = { failed_runs: 2 };
+    data['/api/workflows/approvals/pending'] = { pending: ['approval'] };
+    data['/api/workflows/active'] = { runs: [{ id: '1', name: 'Current job', status: 'running' }, { id: '2', name: 'Old job', status: 'completed' }] };
+    await act(async () => { render(<HomePage />); });
+    expect(screen.getByText('cc.attention.title')).toBeInTheDocument();
+    expect(screen.queryByText('Old job')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Current job/ }));
+    expect(setPage).toHaveBeenCalledWith('automation');
+    fireEvent.click(screen.getByRole('button', { name: /cc.attention.failedRuns/ }));
+    expect(setPage).toHaveBeenCalledWith('runs');
+  });
+  it("reports a failed attention check instead of claiming all systems are healthy", async () => {
+    apiFetchSpy.mockImplementation((path: string) => path === '/api/saas-factory/projects/pending-review' ? Promise.reject(new Error('offline')) : Promise.resolve({ ok: true }));
+    await act(async () => { render(<HomePage />); });
+    expect(screen.getByRole('alert')).toHaveTextContent('work.errors.reviews');
+    expect(screen.queryByText('cc.attention.allClear')).not.toBeInTheDocument();
   });
 });
