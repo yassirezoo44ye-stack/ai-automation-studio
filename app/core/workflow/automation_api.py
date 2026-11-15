@@ -634,8 +634,17 @@ async def cancel_run(
             "WHERE run_id = $1 AND organization_id = $2 AND status = 'pending'",
             run_id, uuid.UUID(ctx.org_id),
         )
+        if result == "UPDATE 0":
+            exists_in_org = await conn.fetchval(
+                "SELECT 1 FROM automation_runs WHERE run_id = $1 AND organization_id = $2",
+                run_id, uuid.UUID(ctx.org_id),
+            )
     if result == "UPDATE 0":
-        # Either already running/finished or wrong org — same 404 shape.
+        # A run outside the caller's organization (or no run at all) is a
+        # 404, like every other run endpoint; 409 is reserved for the
+        # caller's own run that is no longer pending.
+        if not exists_in_org:
+            raise _not_found()
         raise HTTPException(409, "Run is not in a cancellable state")
     return {"run_id": run_id, "status": "cancelled"}
 
