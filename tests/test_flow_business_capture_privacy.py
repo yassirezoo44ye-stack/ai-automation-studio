@@ -5,10 +5,7 @@ without database, outbound email or AI providers. No customer data is used.
 """
 from unittest.mock import AsyncMock, patch
 
-from fastapi.testclient import TestClient
-
-from app.factory import create_app
-from app.core.api_keys import ApiKeyRecord, require_api_key
+from app.core.api_keys import ApiKeyRecord
 
 
 def test_capture_rejects_message_before_persisting():
