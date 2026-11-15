@@ -91,3 +91,29 @@ Open item for M8: whether the **production** database has pgvector. Without it, 
 - Parity: all 66 tables declared across `migrations/versions/*.py` exist after a fresh `lifespan()`, except 001's `agents`, superseded by `ai_agents`; no query references `agents`.
 - Guard `3e00eb76`: the CI schema check now fails if any table declared in a migration file is not created by `lifespan()`.
 - Decision (owner, 2026-11-15): **retire Alembic**. Config archived to `migrations/_alembic_archive/` in the commit after this entry; guard `tests/test_alembic_archived.py`. No database touched. Still to check in M8 (read-only): whether the production DB has an `alembic_version` table.
+
+## M4 — SEC-02 tenant isolation, end to end (2026-11-15)
+Suite: `tests_e2e/test_org_isolation_http.py` (new CI step). Real `lifespan()` on an empty PostgreSQL 16 DB, real auth (register → verify e-mail → login → create org), two synthetic tenants, `example.com` addresses, console e-mail, no Stripe key. Tenant B attacks tenant A's records with B's own valid session, (1) with B's org header + A's ids and (2) with A's org header; A's records are re-read afterwards through A's session.
+
+| Resource | Paths attacked | Result |
+|---|---|---|
+| Organization | get, settings, members, invitations, activity, API keys, rename, invite-self, delete | denied, A unchanged |
+| Leads | get, status change, qualify, list in A | denied, A unchanged |
+| Projects + files | get, update, delete, file list/read/upload/wipe | denied, A's file intact, no foreign upload |
+| Conversations | messages, export, delete, create in A's project, list, search | denied / not listed |
+| Automations + runs | get, update, activate, run, delete, list; run get/cancel/approve/reject | denied, A unchanged (after fix below) |
+| Devices | get, rotate credential, session token, revoke, delete, list | denied, A unchanged (after fixes below) |
+| Notifications | read, archive, delete, read-all, list | denied, A's stays unread |
+| Invoices / billing | invoices, invoice by id, summary, payments, methods, credits (both header modes) | denied / not leaked |
+
+Result: **8/8 pass. No cross-tenant read, write or delete was possible.**
+
+Defects found while building the suite (each fixed in its own commit with a guard):
+- `2d6f2243` — run cancel answered 409 (not 404) for another org's run; inconsistent with the rest of the API. No write was possible.
+- `14faa6f0` — **device enrollment was broken end to end**: (1) auth middleware returned 401 to the unauthenticated agent on `POST /api/devices/enroll`; (2) agent sends `enrollment_token`, API required `token`; (3) `consume_enrollment_token()` violated the `device_id` foreign key on every call. All three fixed; token now locked `FOR UPDATE` for single use.
+
+Observations (not changed in M4):
+- Projects, conversations, files and notifications are **per-user**, not per-organization: org members cannot share them. Isolation holds, but this is a product-design limit for team use.
+- For `/api/orgs/{org_id}/...` routes the `X-Organization-Id` header wins over the path `org_id`. A caller always acts on an org they belong to (no escalation), but a mismatched header/path silently targets the header's org.
+- Shutdown order: `lifespan()` closes the DB pool while queued automation runs may still execute (`pool is closing` in E2E logs); runs in flight at shutdown are marked failed. To review under journey 12 (recovery).
+- Not covered by this suite yet: WebSocket channels, study library, social publisher, careers, marketplace, team chat.
