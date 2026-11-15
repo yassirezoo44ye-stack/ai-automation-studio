@@ -91,7 +91,8 @@
       "now": "الآن",
       "streamErrorPrefix": "⚠️ {{message}}",
       "copyCode": "نسخ",
-      "copied": "تم النسخ!"
+      "copied": "تم النسخ!",
+      "interrupted": "⚠️ انقطع الاتصال قبل اكتمال الرد."
     },
     "convGroups": {
       "today": "اليوم",
