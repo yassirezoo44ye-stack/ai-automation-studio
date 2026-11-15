@@ -151,13 +151,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Report development dependency advisories
-        # npm ci audits the entire dependency tree, while the blocking scan
-        # below excludes dev dependencies. Show the full advisory inventory
-        # explicitly rather than mistaking the production-only result for
-        # a clean complete dependency tree. Keep this informational until
-        # advisories have been reviewed and assigned remediation owners.
-        continue-on-error: true
+      - name: Full-tree dependency scan incl. dev tooling (npm audit)
+        # The production-only scan below excludes dev dependencies, but dev
+        # tooling (vite dev server, vitest, undici via jsdom) runs on
+        # developer machines and CI. High/critical advisories anywhere in
+        # the tree now block. Remaining moderate advisories are tracked in
+        # docs/flow-business-12-pass-audit.md (SEC-01).
         run: npm audit --audit-level=high
 
       - name: Dependency vulnerability scan (npm audit)
