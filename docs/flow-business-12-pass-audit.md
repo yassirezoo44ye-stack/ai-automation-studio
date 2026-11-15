@@ -117,3 +117,30 @@ Observations (not changed in M4):
 - For `/api/orgs/{org_id}/...` routes the `X-Organization-Id` header wins over the path `org_id`. A caller always acts on an org they belong to (no escalation), but a mismatched header/path silently targets the header's org.
 - Shutdown order: `lifespan()` closes the DB pool while queued automation runs may still execute (`pool is closing` in E2E logs); runs in flight at shutdown are marked failed. To review under journey 12 (recovery).
 - Not covered by this suite yet: WebSocket channels, study library, social publisher, careers, marketplace, team chat.
+
+## M5 — SEC-03 lead capture idempotency (2026-11-15)
+Reproduced first, over real HTTP + API key + PostgreSQL (`tests_e2e/test_lead_capture_idempotency.py`, org with an active lead follow-up automation): **6 identical concurrent `POST /api/leads/capture` created 6 leads and 6 follow-up runs; a sequential re-send created a second lead and run.** The follow-up job already had a per-lead dedup key, but each copy made a new lead, so it never matched.
+
+Fixes:
+- `c45bea1e` — `app/core/idempotency.py`: reclaiming a failed / stale-pending key was an unconditional `UPDATE`, so concurrent callers that saw the same row all ran the work. Now a conditional `UPDATE … RETURNING`; the loser gets `IdempotencyInProgress`. New `max_age_s` lets a completed claim expire. Unit tests for both (`tests/test_idempotency.py`, 10 pass).
+- `c7afe50d` — `capture_lead` claims each submission in `idempotency_keys` (scope `lead_capture`), always prefixed with the API key's org:
+  - `Idempotency-Key` header (1–255 visible ASCII, else 400): replay for 24 h; same key with a different body → 422.
+  - no header: SHA-256 fingerprint of normalised name / email / phone digits / source, deduplicated for 24 h.
+  - replay → first result + `Idempotent-Replayed: true`; copy arriving while the first is still running → 409 + `Retry-After: 2`.
+- `345bb700` — E2E proof.
+
+| E2E case | Result |
+|---|---|
+| sequential re-send, no key | same id, 1 lead, 1 follow-up run |
+| 6 concurrent, no key | one id, 1 lead, 1 run (others 409) |
+| 5 concurrent + replay, same key | one id, replay header set, 1 lead, 1 run |
+| same key, different body | 422 |
+| same key + same e-mail in two orgs | two separate leads (no cross-org dedup) |
+| two different people | not merged |
+
+Whole E2E suite 14/14 (isolation 8 + capture 6); unit suite 3283 passed, 4 skipped; ruff unchanged (3 pre-existing).
+
+Residual risks / decisions for the owner:
+- Without a header, the same person submitting the same details again within 24 h gets the first lead back (no new lead). After 24 h a new lead is created; merging repeat leads is a product decision, not done here.
+- If the database fails *after* the lead row is written (qualification is already failure-tolerant), the claim is marked failed and a retry can create a second lead. Low likelihood; would need lead creation and the claim in one transaction.
+- Other create endpoints (`POST /api/leads` from the dashboard) are not deduplicated; they are user actions, not external re-sends.
