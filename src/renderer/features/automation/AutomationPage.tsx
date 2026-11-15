@@ -3,7 +3,7 @@
  * Merges Tasks + Automation views into a single workspace.
  * Data: /api/tasks, /api/agents, /workflows/*
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { useToast } from "../../contexts/toast";
@@ -110,6 +110,7 @@ export function AutomationPage() {
   type WfRun = { run_id: string; name: string; status: string; error?: string | null };
   const [wfRuns, setWfRuns]         = useState<WfRun[]>([]);
   const [wfLoading, setWfLoading]   = useState(false);
+  const wfRequestInFlight = useRef(false);
   const [runningDemo, setRunningDemo] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
@@ -123,12 +124,14 @@ export function AutomationPage() {
   }, [toast, t]);
 
   const loadWorkflows = useCallback(async () => {
+    if (wfRequestInFlight.current) return;
+    wfRequestInFlight.current = true;
     setWfLoading(true);
     try {
       const r = await apiFetch("/api/automation-runs?limit=20");
       const d = await parseJSON<{ items?: WfRun[] }>(r, "/api/automation-runs"); setWfRuns(d.items ?? []);
     } catch { toast(t("toast.loadWorkflowsFailed"), "err"); }
-    finally { setWfLoading(false); }
+    finally { wfRequestInFlight.current = false; setWfLoading(false); }
   }, [toast, t]);
 
   const runDemoWorkflow = async (kind: string) => {
