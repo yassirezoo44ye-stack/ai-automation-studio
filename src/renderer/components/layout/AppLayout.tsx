@@ -34,7 +34,8 @@ const _STALE_CHUNK_MSGS = [
 export function _isStaleChunkError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message;
-  return _STALE_CHUNK_MSGS.some(p => msg.includes(p));
+  if (msg.includes("Unable to preload CSS for")) return true;
+  return err instanceof TypeError && _STALE_CHUNK_MSGS.some(p => p !== "Unable to preload CSS for" && msg.includes(p));
 }
 
 function chunkFallback(err: unknown): never {
