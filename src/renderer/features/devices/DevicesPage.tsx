@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 /**
  * Flow — Multi-Device Control Page  (PRO MAX)
  *
@@ -141,9 +142,7 @@ export function DevicesPage() {
               </span>
             )}
           </div>
-          <p style={{ margin: 0, fontSize: 13, color: "var(--t4)" }}>
-            {t("page.subtitle")}
-          </p>
+
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
           {/* Slot counter */}
@@ -199,7 +198,9 @@ export function DevicesPage() {
       </div>
 
       {/* ── Topology strip ─────────────────────────────────────────────────── */}
-      <TopologyStrip activeCount={onlineCount} total={devices.length} hint={t("topology.hint")} />
+      <WorkspaceDetails kind="technical">
+<TopologyStrip activeCount={onlineCount} total={devices.length} hint={t("topology.hint")} />
+</WorkspaceDetails>
 
       {/* ── Error banner ────────────────────────────────────────────────────── */}
       {error && (

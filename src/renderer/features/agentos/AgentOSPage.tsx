@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 import { useFlowSkill } from "../../shared/hooks/useFlowSkill";
 import { FlowSkillSelect } from "../../shared/ui/FlowSkillSelect";
@@ -378,7 +379,8 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
       )}
 
       {/* Quick examples */}
-      <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+      <WorkspaceDetails kind="examples">
+<div style={{ marginTop: 12, display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
         {["help", "status", "analyze agents", "evolve analyze", "build ."].map(ex => (
           <GoldButton key={ex} variant="ghost" onClick={() => setInput(ex)} style={{ padding: "4px 10px", fontSize: 11 }}>
             {ex}
@@ -393,6 +395,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           {activeProjectId ? `run (active project)` : "run"}
         </GoldButton>
       </div>
+</WorkspaceDetails>
     </GlassCard>
   );
 }
@@ -756,8 +759,6 @@ export function AgentOSPage() {
       <div style={S.header}>
         <div style={S.headerTop}>
           <div style={S.title}>{t("title")}</div>
-          <span className="badge badge-purple">{t("badges.autonomous")}</span>
-          {status?.llm_available && <span className="badge badge-purple">{t("badges.llmReady")}</span>}
           <GoldButton variant="ghost" onClick={refresh} style={{ marginLeft: "auto", padding: "5px 12px", fontSize: 12 }}>
             {t("refresh")}
           </GoldButton>

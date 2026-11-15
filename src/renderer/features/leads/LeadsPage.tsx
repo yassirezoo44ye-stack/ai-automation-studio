@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 import { useState, useEffect, useCallback } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -550,15 +551,17 @@ export function LeadsPage() {
     <div className="leads-page" dir={i18n.dir()}>
       <header className="leads-hero">
         <div>
-          <span className="leads-eyebrow">FLOW · LEADS <b className="leads-ai-badge">AI</b></span>
+
           <h1>{t("page.title")}</h1>
-          <p>{t("page.subtitle")}</p>
+
         </div>
-        <dl className="leads-stats">
+        <WorkspaceDetails kind="summary">
+<dl className="leads-stats">
           <div><dt>{t("stats.total")}</dt><dd>{leads.length}</dd></div>
           {(["hot", "warm", "cold"] as const).map(c => <div key={c} className={`is-${c}`}><dt>{t(`tier.${c}`)}</dt><dd>{tierCount(c)}</dd></div>)}
           <div><dt>{t("stats.won")}</dt><dd>{leads.filter(l => l.status === "won").length}</dd></div>
         </dl>
+</WorkspaceDetails>
       </header>
 
       <div className="leads-toolbar">
@@ -571,7 +574,9 @@ export function LeadsPage() {
         </div>
       </div>
 
-      <LeadFollowupCard key={currentOrgId ?? "none"} orgId={currentOrgId} />
+      <WorkspaceDetails kind="setup">
+<LeadFollowupCard key={currentOrgId ?? "none"} orgId={currentOrgId} />
+</WorkspaceDetails>
 
       {!loading && !error && leads.length > 0 && (
         <BriefPanel brief={brief} busy={busy === "brief"} onJump={jumpTo} onRun={() => void act("brief", async () => {

@@ -154,13 +154,6 @@ function PageTopBar({ onOpenCmd }: { onOpenCmd: () => void }) {
   return (
     <div className="flow-topbar">
       <div className="flow-topbar__left">
-        {/* Brand */}
-        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", letterSpacing: "0.04em", flexShrink: 0 }}>
-          FLOW
-        </span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--b2)", flexShrink: 0 }}>
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
         {/* Org name when available */}
         {currentOrg && (
           <>

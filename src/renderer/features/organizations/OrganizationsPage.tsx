@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 /**
  * OrganizationsPage — create, list, and switch between organizations.
  * Data: GET/POST /api/orgs, GET /api/orgs/{id}/activity
@@ -146,7 +147,8 @@ export function OrganizationsPage() {
         )}
 
         {currentOrgId && (
-          <GlassCard lift={false}>
+          <WorkspaceDetails kind="activity">
+<GlassCard lift={false}>
             <div style={{
               display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12,
               fontSize: 14, fontWeight: 600, color: "var(--t1)", letterSpacing: "-0.1px",
@@ -175,6 +177,7 @@ export function OrganizationsPage() {
               </div>
             ))}
           </GlassCard>
+</WorkspaceDetails>
         )}
       </div>
     </>

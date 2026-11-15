@@ -307,14 +307,14 @@ describe("Case O — Download endpoint", () => {
     );
   });
 
-  it("O-3: sidebar export button calls correct endpoint", async () => {
+  it("O-3: compact workspace retains top-bar export without a duplicate sidebar", async () => {
     await reachWorkspace();
 
-    const sidebarBtn = screen.getByTestId("sidebar-export-btn");
-    expect(sidebarBtn).toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-export-btn")).not.toBeInTheDocument();
+    const exportBtn = screen.getByTestId("topbar-export-btn");
 
     mockSuccessfulDownload();
-    fireEvent.click(sidebarBtn);
+    fireEvent.click(exportBtn);
 
     await waitFor(
       () =>

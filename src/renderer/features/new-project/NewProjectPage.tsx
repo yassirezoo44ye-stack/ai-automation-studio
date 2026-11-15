@@ -80,17 +80,15 @@ export function NewProjectPage() {
   const isAnyCreating = creatingTypeId !== null;
 
   return (
-    <div style={{ padding: "40px 32px", maxWidth: 800, margin: "0 auto" }}>
-      <div style={{ marginBottom: 36 }}>
+    <div style={{ padding: "24px", maxWidth: 800, margin: "0 auto" }}>
+      <div style={{ marginBottom: 20 }}>
         <h1 style={{
-          fontSize: 28, fontWeight: 700, color: "var(--t1)",
+          fontSize: 22, fontWeight: 700, color: "var(--t1)",
           margin: 0, marginBottom: 8, letterSpacing: "-0.5px",
         }}>
           {t("newProject.pageTitle")}
         </h1>
-        <p style={{ fontSize: 15, color: "var(--t3)", margin: 0 }}>
-          {t("newProject.subtitle")}
-        </p>
+
       </div>
 
       {error && (
@@ -118,7 +116,7 @@ export function NewProjectPage() {
               aria-busy={isCreating}
               style={{
                 display: "flex", flexDirection: "column", alignItems: "flex-start",
-                gap: 12, padding: "20px",
+                gap: 10, padding: "16px",
                 background: "var(--bg-card)",
                 border: `1.5px solid ${isHovered && !isAnyCreating ? type.accent : "var(--b1)"}`,
                 borderRadius: 12,

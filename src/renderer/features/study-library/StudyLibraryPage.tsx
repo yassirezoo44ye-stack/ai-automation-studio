@@ -113,13 +113,13 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
     unverified: "وثّق بريد حسابك أولًا من رسالة التحقق حتى نتمكن من مطابقة الشراء.", error: "تعذّر التحقق من صلاحية الدخول الآن. أعد المحاولة قبل إجراء شراء جديد.",
   };
   return <section className="study-library" dir="rtl" aria-label="مكتبة افهمها بصريًا">
-    <header className="study-hero"><div className="study-eyebrow"><span className="study-dot" />مكتبة تعليمية بالعربية</div>
-      <h1>افهمها <span>بصريًا.</span></h1><p className="study-intro">فكرة واضحة، مثال تتذكّره، وتدريب يثبّت المعلومة.<br />ملخصات صغيرة، لتمنح فهمك مساحة أكبر.</p>
-      <div className="study-facts"><span>✦ ست مواد</span><span>PDF قابل للطباعة</span><span>أمثلة وأسئلة محلولة</span></div>
-      <div className="study-orbit" aria-hidden="true"><span>∑</span><span>⚗</span><span>Aa</span><span>✦</span></div>
+    <header className="study-hero">
+      <h1>افهمها <span>بصريًا.</span></h1>
+
+
     </header>
     <section className={`study-access study-access-${membership}`} aria-label="دخول المكتبة">
-      <div><strong>{membership === "active" ? "أهلًا بك في مكتبتك" : "كل ملخص، بداية لفهم جديد"}</strong><p>{accessText[membership]}</p></div>
+      {membership !== "active" && <div><strong>دخول المكتبة</strong><p>{accessText[membership]}</p></div>}
       <div className="study-access-actions">
         {membership === "guest" && onSignIn && <button className="study-primary" onClick={onSignIn}>تسجيل الدخول</button>}
         {membership === "locked" && catalog?.checkout_url && <a className="study-primary" href={catalog.checkout_url} target="_blank" rel="noopener noreferrer">شراء دخول المكتبة ↗</a>}
@@ -128,14 +128,14 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
       </div>
     </section>
     <section className="study-collection" aria-label="الملخصات التعليمية">
-      <div className="study-section-title"><div><span className="study-eyebrow">تعلّم على طريقتك</span><h2>اختر فكرتك التالية</h2></div>
+      <div className="study-section-title"><div><h2>الملخصات</h2></div>
         <form role="search" onSubmit={event => { event.preventDefault(); setLessonSlug(""); setOffset(0); setQuery(search.trim()); }}>
           <label className="study-sr-only" htmlFor="study-search">ابحث عن ملخص</label><input id="study-search" value={search} maxLength={120} onChange={event => setSearch(event.target.value)} placeholder="عن ماذا تريد أن تتعلّم؟" /><button className="study-secondary" type="submit">بحث</button>
         </form>
       </div>
       {(lessonSlug || query || subject) && <button className="study-secondary" onClick={resetFilters}>عرض كل الملخصات</button>}
       <div className="study-filters" aria-label="تصفية حسب المادة">{subjects.map(([id, name, icon]) => <button key={id} aria-pressed={subject === id} onClick={() => { setLessonSlug(""); setSubject(id); setOffset(0); }}><span aria-hidden="true">{icon}</span>{name}</button>)}</div>
-      <p role="status" className="study-notice">{notice}</p>
+      {notice && <p role="status" className="study-notice">{notice}</p>}
       {loading ? <div className="study-empty" role="status">جارٍ ترتيب الملخصات…</div> : error ? <div className="study-empty" role="alert"><p>{error}</p><button className="study-secondary" onClick={reload}>إعادة المحاولة</button></div>
         : !catalog?.lessons.length ? <div className="study-empty"><span aria-hidden="true">✦</span><h3>مساحة لفكرة جديدة</h3><p>{query || subject || lessonSlug ? "لا توجد نتائج لهذه التصفية. جرّب مادة أو كلمة أخرى." : "لم تُضَف ملخصات إلى المكتبة بعد. ستظهر هنا عندما تُنشر."}</p>{(query || subject || lessonSlug) && <button className="study-secondary" onClick={resetFilters}>مسح البحث وعرض كل الملخصات</button>}</div>
         : <div className="study-grid">{catalog.lessons.map(lesson => <article id={`lesson-${lesson.slug}`} key={lesson.slug} className={`study-card study-${lesson.subject}`}>

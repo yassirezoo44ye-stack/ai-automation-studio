@@ -36,22 +36,11 @@ import { BottomTabBar } from "./components/BottomTabBar";
 import type { BuildEventItem, RuntimeEventItem } from "./components/BottomTabBar";
 
 /* ── Types ──────────────────────────────────────────────────────── */
-type AppSection = "overview" | "pages" | "data" | "workflows" | "agents" | "integrations" | "settings";
 // labelKey maps to "appBuilder" namespace (sections.* or phases.*)
 type BuildPhase = { labelKey: string; status: "pending" | "running" | "done" | "error" };
 
 /** Plan overlay state machine */
 type PlanState = "idle" | "planning" | "review";
-
-// Simplified: 3 sections visible to everyday users.
-// Technical sections (data, workflows, agents, integrations) remain in the
-// AppSection type and their panels are still rendered — they are just hidden
-// from the nav so beginners are never overwhelmed.
-const SECTIONS: { id: AppSection; labelKey: string; icon: React.ReactNode }[] = [
-  { id: "overview",  labelKey: "sections.overview",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
-  { id: "pages",     labelKey: "sections.pages",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
-  { id: "settings",  labelKey: "sections.settings",  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06"/></svg> },
-];
 
 /* ── Build phases ────────────────────────────────────────────────── */
 // labelKey maps to appBuilder namespace phases.*
@@ -68,117 +57,6 @@ const INITIAL_PHASES: BuildPhase[] = [
 /* ══════════════════════════════════════════════════════════════════
    Sub-components
    ══════════════════════════════════════════════════════════════════ */
-
-/** Left panel — app structure navigation */
-function AppSidebar({ section, setSection, projectName, onDownload, isDownloading, runtimeState, onPublishToDiscover, hasActiveProject }: {
-  section: AppSection;
-  setSection: (s: AppSection) => void;
-  projectName: string;
-  onDownload: () => void;
-  isDownloading: boolean;
-  /** P0-C: badge is shown only when the project is actually running or in preview. */
-  runtimeState: RuntimeState;
-  onPublishToDiscover: () => void;
-  hasActiveProject: boolean;
-}) {
-  const { t } = useTranslation("appBuilder");
-  return (
-    <div style={{
-      width: 200, flexShrink: 0,
-      background: "var(--bg-surface)",
-      borderRight: "1px solid var(--b1)",
-      display: "flex", flexDirection: "column",
-      overflow: "hidden",
-    }}>
-      {/* App identity */}
-      <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--b1)" }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {projectName || t("appSidebar.appNameFallback")}
-        </div>
-        {/* P0-C: "Live" badge — only when a real server subprocess is running */}
-        {runtimeState === "running" && (
-          <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)", display: "inline-block" }} />
-            {t("appSidebar.statusLive")}
-          </div>
-        )}
-        {/* P0-C: "Preview" badge — static HTML served from blob URL, no server */}
-        {runtimeState === "preview" && (
-          <div style={{ fontSize: 11, color: "var(--accent)", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} />
-            {t("appSidebar.statusPreview")}
-          </div>
-        )}
-      </div>
-
-      {/* Section nav */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-        {SECTIONS.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setSection(s.id)}
-            style={{
-              width: "100%", display: "flex", alignItems: "center", gap: 10,
-              padding: "9px 16px", border: "none", cursor: "pointer",
-              background: section === s.id ? "var(--accent-dim)" : "transparent",
-              color: section === s.id ? "var(--accent)" : "var(--t3)",
-              fontSize: 13, fontWeight: section === s.id ? 600 : 400,
-              borderInlineStart: section === s.id ? "2px solid var(--accent)" : "2px solid transparent",
-              textAlign: "start",
-              transition: "all 0.12s",
-            }}
-          >
-            <span style={{ flexShrink: 0, opacity: section === s.id ? 1 : 0.7 }}>{s.icon}</span>
-            {t(s.labelKey)}
-          </button>
-        ))}
-      </nav>
-
-      {/* Export / download button — downloads workspace as ZIP. */}
-      <div style={{ padding: 12, borderTop: "1px solid var(--b1)", display: "flex", flexDirection: "column", gap: 8 }}>
-        <SecondaryActions>
-<button
-          data-testid="sidebar-export-btn"
-          onClick={onDownload}
-          disabled={isDownloading}
-          style={{
-            width: "100%", padding: "9px", borderRadius: 10, border: "none",
-            background: isDownloading
-              ? "var(--b2)"
-              : "linear-gradient(135deg, var(--accent) 0%, var(--teal) 100%)",
-            color: isDownloading ? "var(--t4)" : "white",
-            fontSize: 12, fontWeight: 600,
-            cursor: isDownloading ? "not-allowed" : "pointer",
-            opacity: isDownloading ? 0.7 : 1,
-            transition: "all 0.15s",
-          }}
-        >
-          {isDownloading ? t("export.buttonBusy") : t("export.button")}
-        </button>
-<button
-          data-testid="sidebar-publish-btn"
-          onClick={onPublishToDiscover}
-          disabled={!hasActiveProject}
-          title={!hasActiveProject ? t("publish.noProject", { defaultValue: "No active project" }) : undefined}
-          style={{
-            width: "100%", padding: "8px", borderRadius: 10,
-            border: "1px solid var(--accent)44",
-            background: hasActiveProject ? "var(--accent)10" : "transparent",
-            color: hasActiveProject ? "var(--accent)" : "var(--t5)",
-            fontSize: 12, fontWeight: 600,
-            cursor: hasActiveProject ? "pointer" : "not-allowed",
-            opacity: hasActiveProject ? 1 : 0.5,
-            transition: "all 0.15s",
-          }}
-        >
-          ↑ {t("publish.button", { ns: "discover", defaultValue: "Publish to Discover" })}
-        </button>
-</SecondaryActions>
-
-      </div>
-    </div>
-  );
-}
 
 /* ── Build phases overlay ─────────────────────────────────────────── */
 function BuildingOverlay({ phases, onCancel, errorMsg }: {
@@ -502,7 +380,6 @@ export function AppBuilderPage() {
   const { setPage, activeProjectId } = useAppContext();
   const toast = useToast();
 
-  const [section, setSection] = useState<AppSection>("overview");
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildDone, setBuildDone]   = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
@@ -1393,6 +1270,7 @@ export function AppBuilderPage() {
         )}
 
         {/* Runtime controls */}
+        {runtimeState === "preview" && <span style={{ fontSize: 12, color: "var(--accent)" }}>{t("appSidebar.statusPreview")}</span>}
         {(runtimeState === "running" || runtimeState === "starting") && (
           <>
             <div style={{
@@ -1405,7 +1283,7 @@ export function AppBuilderPage() {
                 background: runtimeState === "running" ? "var(--green)" : "var(--accent)",
                 animation: runtimeState === "starting" ? "pulse 1s ease-in-out infinite" : "none",
               }} />
-              {runtimeState === "running" ? "Running" : "Starting…"}
+              {runtimeState === "running" ? t("appSidebar.statusLive") : "Starting…"}
             </div>
             {runtimeState === "running" && (
               <button
@@ -1448,6 +1326,11 @@ export function AppBuilderPage() {
         )}
 
         {/* Export / download — downloads workspace ZIP; no deployment backend yet */}
+        <SecondaryActions>
+          <button type="button" disabled={!projectName} onClick={() => setShowPublishModal(true)}>
+            {t("publish.button", { ns: "discover", defaultValue: "Publish to Discover" })}
+          </button>
+        </SecondaryActions>
         <button
           data-testid="topbar-export-btn"
           onClick={handleDownload}
@@ -1485,19 +1368,6 @@ export function AppBuilderPage() {
       {/* ── 3-panel workspace ─────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div className="ab-panels" style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-          <div className="ab-nav">
-            <AppSidebar
-              section={section}
-              setSection={setSection}
-              projectName={projectName}
-              onDownload={handleDownload}
-              isDownloading={isDownloading}
-              runtimeState={runtimeState}
-              onPublishToDiscover={() => setShowPublishModal(true)}
-              hasActiveProject={!!projectName}
-            />
-          </div>
-
           <div className="ab-runtime" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
             <RuntimePanel
               runtimeState={runtimeState}
@@ -1536,7 +1406,7 @@ export function AppBuilderPage() {
             buildError={buildError}
             fileCount={buildFileCount}
             language={buildLanguage}
-            currentSection={section}
+            currentSection="overview"
           />
         </div>
 
