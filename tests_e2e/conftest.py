@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 
 import pytest
+import pytest_asyncio
 
 _DSN = os.getenv("FLOW_E2E_DATABASE_URL")
 
@@ -31,3 +32,19 @@ def pytest_collection_modifyitems(config, items):
     skip = pytest.mark.skip(reason="set FLOW_E2E_DATABASE_URL to an empty database to run E2E tests")
     for item in items:
         item.add_marker(skip)
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def e2e_transport():
+    """One real app (lifespan) per test session.
+
+    Several services cache the DB pool in module-level singletons, so the
+    app must not be started twice in one process, exactly as in production
+    where one process runs one lifespan.
+    """
+    import httpx
+    from app.factory import create_app, lifespan
+
+    app = create_app()
+    async with lifespan(app):
+        yield httpx.ASGITransport(app=app)

@@ -23,69 +23,17 @@ import httpx
 import pytest
 import pytest_asyncio
 
-pytestmark = pytest.mark.asyncio(loop_scope="module")
+from tests_e2e.harness import Tenant, tenants
 
-PASSWORD = "ValidPass123!"
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 DENIED = {401, 403, 404}
 
 
-class Tenant:
-    def __init__(self, label: str, client: httpx.AsyncClient):
-        self.label = label
-        self.client = client
-        self.email = f"flow-e2e-{label}-{uuid.uuid4().hex[:10]}@example.com"
-        self.token = ""
-        self.user_id = ""
-        self.org_id = ""
-        self.ip = f"10.99.0.{1 if label == 'a' else 2}"
-
-    def h(self, org_id: str | None = None) -> dict[str, str]:
-        headers = {"Authorization": f"Bearer {self.token}", "X-Forwarded-For": self.ip}
-        org = self.org_id if org_id is None else org_id
-        if org:
-            headers["X-Organization-Id"] = org
-        return headers
-
-    async def req(self, method: str, url: str, *, org_id: str | None = None, **kw) -> httpx.Response:
-        return await self.client.request(method, url, headers=self.h(org_id), **kw)
-
-
-async def _sign_up(t: Tenant) -> None:
-    from app.core.db import get_pool
-
-    c = t.client
-    r = await c.post("/api/auth/register", headers={"X-Forwarded-For": t.ip},
-                     json={"name": f"E2E {t.label.upper()}", "email": t.email, "password": PASSWORD})
-    assert r.status_code == 201, r.text
-    async with get_pool().acquire() as conn:
-        token = await conn.fetchval(
-            "SELECT e.token FROM email_verification_tokens e JOIN users u ON u.id = e.user_id "
-            "WHERE u.email = $1", t.email)
-    assert (await c.get(f"/api/auth/verify-email/{token}")).status_code == 200
-    r = await c.post("/api/auth/login", headers={"X-Forwarded-For": t.ip},
-                     json={"email": t.email, "password": PASSWORD})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    t.token, t.user_id = body["access_token"], str(body["user"]["id"])
-    c.cookies.clear()  # identity comes only from the bearer token below
-    r = await c.post("/api/orgs", headers=t.h(org_id=""), json={"name": f"E2E Org {t.label.upper()}"})
-    assert r.status_code == 201, r.text
-    t.org_id = r.json()["id"]
-
-
-@pytest_asyncio.fixture(scope="module", loop_scope="module")
-async def world():
-    from app.factory import create_app, lifespan
-
-    app = create_app()
-    async with lifespan(app):
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://e2e") as ca, \
-                   httpx.AsyncClient(transport=transport, base_url="http://e2e") as cb:
-            a, b = Tenant("a", ca), Tenant("b", cb)
-            await _sign_up(a)
-            await _sign_up(b)
-            yield {"a": a, "b": b, "seed": {}}
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
+async def world(e2e_transport):
+    async with tenants(e2e_transport, "a", "b", ip_prefix="10.99.0") as t:
+        yield {**t, "seed": {}}
 
 
 def _denied(r: httpx.Response, what: str, secret: str = "") -> None:
