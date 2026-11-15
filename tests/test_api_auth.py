@@ -11,6 +11,7 @@ import logging
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
+from tests.cookie_client import request_with_cookies
 
 import httpx
 import pytest
@@ -373,7 +374,8 @@ class TestOAuthCallbackProviderUnreachable:
     @staticmethod
     def _get_callback(client, path: str, state: str = "state-value", bind_nonce: str = "test-bind-nonce"):
         _stash_state(state, bind_nonce)
-        return client.get(
+        return request_with_cookies(
+            client, "GET",
             path,
             params={"code": "auth-code", "state": state},
             cookies={"oauth_bind": bind_nonce},
@@ -451,8 +453,9 @@ class TestOAuthTokenExchangeFailureLogging:
     @staticmethod
     def _get_callback(client, path: str, state: str = "state-value", bind_nonce: str = "test-bind-nonce"):
         _stash_state(state, bind_nonce)
-        return client.get(path, params={"code": "auth-code", "state": state},
-                          cookies={"oauth_bind": bind_nonce})
+        return request_with_cookies(client, "GET", path,
+                                    params={"code": "auth-code", "state": state},
+                                    cookies={"oauth_bind": bind_nonce})
 
     def test_microsoft_callback_logs_actual_error_keeps_generic_response(self, client, caplog):
         with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
@@ -551,7 +554,8 @@ class TestOAuthLoginCSRFBrowserBinding:
         for path, cid_patch in self.PROVIDERS:
             _stash_state(state, bind_nonce="real-nonce")
             with patch(cid_patch, "fake-id"):
-                resp = client.get(
+                resp = request_with_cookies(
+                    client, "GET",
                     path,
                     params={"code": "auth-code", "state": state},
                     cookies={"oauth_bind": "wrong-nonce"},  # mismatch
@@ -569,7 +573,8 @@ class TestOAuthLoginCSRFBrowserBinding:
             with patch(cid_patch, "fake-id"), \
                  patch("app.routers.auth_users._httpx.AsyncClient",
                        return_value=_UnreachableProviderClient()):
-                resp = client.get(
+                resp = request_with_cookies(
+                    client, "GET",
                     path,
                     params={"code": "auth-code", "state": state},
                     cookies={"oauth_bind": nonce},
@@ -606,7 +611,8 @@ class TestOAuthLoginCSRFBrowserBinding:
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              patch("app.routers.auth_users._httpx.AsyncClient",
                    return_value=_UnreachableProviderClient()):
-            resp2 = client.get(
+            resp2 = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": state},
                 cookies={"oauth_bind": nonce},
@@ -631,7 +637,8 @@ class TestOAuthLoginCSRFBrowserBinding:
 
         # Attacker calls with wrong cookie — must 400 and leave state intact.
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": state},
                 cookies={"oauth_bind": "attacker-wrong-nonce"},
@@ -645,7 +652,8 @@ class TestOAuthLoginCSRFBrowserBinding:
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              patch("app.routers.auth_users._httpx.AsyncClient",
                    return_value=_UnreachableProviderClient()):
-            resp2 = client.get(
+            resp2 = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": state},
                 cookies={"oauth_bind": real_nonce},
@@ -734,7 +742,8 @@ class TestOAuthCacheFailureSafety:
     def test_google_callback_503s_on_cache_failure(self, client):
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              self._raise_on_get_redis():
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": "any-state"},
                 cookies={"oauth_bind": "any-nonce"},
@@ -744,7 +753,8 @@ class TestOAuthCacheFailureSafety:
     def test_microsoft_callback_503s_on_cache_failure(self, client):
         with patch("app.routers.auth_users._MICROSOFT_CLIENT_ID", "fake-id"), \
              self._raise_on_get_redis():
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/microsoft/callback",
                 params={"code": "auth-code", "state": "any-state"},
                 cookies={"oauth_bind": "any-nonce"},
@@ -754,7 +764,8 @@ class TestOAuthCacheFailureSafety:
     def test_github_callback_503s_on_cache_failure(self, client):
         with patch("app.routers.auth_users._GITHUB_CLIENT_ID", "fake-id"), \
              self._raise_on_get_redis():
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/github/callback",
                 params={"code": "auth-code", "state": "any-state"},
                 cookies={"oauth_bind": "any-nonce"},

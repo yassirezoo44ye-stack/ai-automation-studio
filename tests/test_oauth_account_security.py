@@ -17,6 +17,7 @@ import datetime
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
+from tests.cookie_client import request_with_cookies
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
@@ -103,7 +104,8 @@ def _do_github_login(client, conn, emails: list[dict], gh_user=None):
          patch("app.routers.auth_users._GITHUB_CLIENT_SECRET", "fake-gh-secret"), \
          _github_mock_client(emails=emails, gh_user=gh_user), \
          _mock_pool(conn):
-        return client.get(
+        return request_with_cookies(
+            client, "GET",
             "/api/auth/github/callback",
             params={"code": "gh-code", "state": state},
             cookies={"oauth_bind": cookie},
@@ -148,7 +150,8 @@ def _do_microsoft_login(client, conn, ms_user=None):
          patch("app.routers.auth_users._MICROSOFT_CLIENT_SECRET", "fake-ms-secret"), \
          _microsoft_mock_client(ms_user=ms_user), \
          _mock_pool(conn):
-        return client.get(
+        return request_with_cookies(
+            client, "GET",
             "/api/auth/microsoft/callback",
             params={"code": "ms-code", "state": state},
             cookies={"oauth_bind": cookie},
