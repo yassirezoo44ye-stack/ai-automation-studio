@@ -1,7 +1,7 @@
-"""Regression tests for the external lead capture privacy guard.
+"""Direct handler regression tests for external lead capture privacy.
 
-These tests use FastAPI dependency overrides to exercise the real HTTP route
-without database, outbound email or AI providers. No customer data is used.
+Dependencies are mocked; these do not exercise HTTP authentication or the database.
+No real customer data is used.
 """
 from unittest.mock import AsyncMock, patch
 
@@ -17,7 +17,7 @@ def test_capture_rejects_message_before_persisting():
 
     key = ApiKeyRecord(key_id="test", key_hash="test", name="test", scopes=["write"], organization_id="00000000-0000-4000-8000-000000000001")
     svc = AsyncMock()
-    with patch("app.routers.leads.get_lead_service", return_value=svc):
+    with patch("app.routers.leads.get_lead_service", return_value=svc) as get_service:
         try:
             asyncio.run(capture_lead(CaptureLeadRequest(name="Test Lead", message="Private customer details"), request=None, key=key, _rl=None))
         except HTTPException as exc:
@@ -25,6 +25,7 @@ def test_capture_rejects_message_before_persisting():
             assert "not supported" in exc.detail
         else:
             raise AssertionError("Message capture must fail closed")
+    get_service.assert_not_called()
     svc.create.assert_not_awaited()
     svc.qualify.assert_not_awaited()
 
