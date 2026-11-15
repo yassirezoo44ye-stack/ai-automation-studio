@@ -1270,6 +1270,7 @@ export function AppBuilderPage() {
         )}
 
         {/* Runtime controls */}
+        {runtimeState === "preview" && <span style={{ fontSize: 12, color: "var(--accent)" }}>{t("appSidebar.statusPreview")}</span>}
         {(runtimeState === "running" || runtimeState === "starting") && (
           <>
             <div style={{
@@ -1282,7 +1283,7 @@ export function AppBuilderPage() {
                 background: runtimeState === "running" ? "var(--green)" : "var(--accent)",
                 animation: runtimeState === "starting" ? "pulse 1s ease-in-out infinite" : "none",
               }} />
-              {runtimeState === "running" ? "Running" : "Starting…"}
+              {runtimeState === "running" ? t("appSidebar.statusLive") : "Starting…"}
             </div>
             {runtimeState === "running" && (
               <button
