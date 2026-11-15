@@ -1,6 +1,7 @@
 import { C } from "../../shared/lib/theme";
 import { Component } from "react";
 import type { ReactNode } from "react";
+import { isStaleChunkError } from "../lib/staleChunk";
 
 interface Props {
   name?: string;
@@ -8,13 +9,13 @@ interface Props {
   children: ReactNode;
 }
 
-interface State { error: string | null }
+interface State { error: string | null; staleChunk: boolean }
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, staleChunk: false };
 
   static getDerivedStateFromError(e: Error): State {
-    return { error: e.message };
+    return { error: e.message, staleChunk: isStaleChunkError(e) };
   }
 
   componentDidCatch(e: Error) {
@@ -22,6 +23,23 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
+    if (this.state.error && this.state.staleChunk) {
+      // The page's code belongs to an older deploy. React.lazy keeps the
+      // failed import, so re-rendering can never succeed: only loading the
+      // new build can. Applies even when a custom fallback is given.
+      return (
+        <div className="empty-state" role="alert" style={{ flex: 1 }}>
+          <h3>A new version of Flow is available</h3>
+          <p style={{ color: "var(--t4)", fontSize: 13 }}>Reload to continue. Unsaved text in this page may be lost.</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 12, padding: "8px 20px", borderRadius: 8, background: "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}
+          >
+            Reload
+          </button>
+        </div>
+      );
+    }
     if (this.state.error) {
       if (this.props.fallback) return this.props.fallback;
       return (
@@ -34,7 +52,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </h3>
           <p style={{ color: "var(--t4)", fontSize: 13 }}>{this.state.error}</p>
           <button
-            onClick={() => this.setState({ error: null })}
+            onClick={() => this.setState({ error: null, staleChunk: false })}
             style={{ marginTop: 12, padding: "8px 20px", borderRadius: 8, background: "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}
           >
             Retry

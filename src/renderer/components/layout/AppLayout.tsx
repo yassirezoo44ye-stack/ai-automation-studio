@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useCallback, useEffect } from "react";
+import { Suspense, useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
 import { useAuth } from "../../contexts/AuthContext";
@@ -6,79 +6,42 @@ import { useOrg } from "../../contexts/OrgContext";
 import { PageTransition } from "../../shared/ui/gold";
 import { ErrorBoundary } from "../../shared/ui/ErrorBoundary";
 import { LoadingSpinner } from "../../shared/ui/LoadingSpinner";
+import { lazyPage } from "../../shared/lib/staleChunk";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
 import { CopilotButton } from "../../shared/ui/copilot";
 import { NotificationBell } from "../../shared/ui/notifications";
 import type { Page } from "../../types";
 
-// When a deploy replaces a lazy chunk the old in-memory bundle references the
-// old hash, which 404s.  Catch only genuine stale-chunk TypeErrors (identified
-// by their browser-issued message), reload once, and let the fresh bundle load
-// the correct chunk.  sessionStorage guards against an infinite reload loop if
-// the chunk is genuinely missing rather than just stale.
-const _CHUNK_RELOAD_KEY = "__flow_chunk_reload__";
-
-// Substrings emitted by each browser when a dynamic import 404s after a deploy.
-// Deliberately NOT matching every TypeError — only these browser-native messages
-// confirm the error is a failed network fetch, not a runtime error inside the
-// imported module (e.g. "Cannot read properties of undefined").
-const _STALE_CHUNK_MSGS = [
-  "Failed to fetch dynamically imported module", // Chrome / Edge
-  "Importing a module script failed",            // Safari
-  "error loading dynamically imported module",   // Firefox
-  "Unable to preload CSS for",                    // Vite CSS dependency preload failure
-];
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function _isStaleChunkError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const msg = err.message;
-  if (msg.includes("Unable to preload CSS for")) return true;
-  return err instanceof TypeError && _STALE_CHUNK_MSGS.some(p => p !== "Unable to preload CSS for" && msg.includes(p));
-}
-
-function chunkFallback(err: unknown): never {
-  if (_isStaleChunkError(err)) {
-    try {
-      if (!sessionStorage.getItem(_CHUNK_RELOAD_KEY)) {
-        sessionStorage.setItem(_CHUNK_RELOAD_KEY, "1");
-        window.location.reload();
-      }
-    } catch { /* private browsing — sessionStorage unavailable; skip reload guard */ }
-  }
-  throw err;
-}
-
-const HomePage        = lazy(() => import("../../features/home").then(m => ({ default: m.HomePage })).catch(chunkFallback));
-const AIWorkspace     = lazy(() => import("../../features/ai").then(m => ({ default: m.AIWorkspace })).catch(chunkFallback));
-const DevWorkspace    = lazy(() => import("../../features/dev").then(m => ({ default: m.DevWorkspace })).catch(chunkFallback));
-const SocialPage      = lazy(() => import("../../features/social").then(m => ({ default: m.SocialPage })).catch(chunkFallback));
-const SettingsPage    = lazy(() => import("../../features/settings").then(m => ({ default: m.SettingsPage })).catch(chunkFallback));
-const DesignStudio    = lazy(() => import("../../features/design-studio").then(m => ({ default: m.DesignStudio })).catch(chunkFallback));
-const AutomationPage  = lazy(() => import("../../features/automation/AutomationPage").then(m => ({ default: m.AutomationPage })).catch(chunkFallback));
-const AgentOSPage     = lazy(() => import("../../features/agentos").then(m => ({ default: m.AgentOSPage })).catch(chunkFallback));
-const MarketplacePage = lazy(() => import("../../features/marketplace").then(m => ({ default: m.MarketplacePage })).catch(chunkFallback));
-const OrganizationsPage = lazy(() => import("../../features/organizations").then(m => ({ default: m.OrganizationsPage })).catch(chunkFallback));
-const TeamsPage         = lazy(() => import("../../features/teams").then(m => ({ default: m.TeamsPage })).catch(chunkFallback));
-const BillingPage       = lazy(() => import("../../features/billing").then(m => ({ default: m.BillingPage })).catch(chunkFallback));
-const PluginsPage       = lazy(() => import("../../features/plugins").then(m => ({ default: m.PluginsPage })).catch(chunkFallback));
-const SandboxPage       = lazy(() => import("../../features/sandbox").then(m => ({ default: m.SandboxPage })).catch(chunkFallback));
-const AIRoutingPage     = lazy(() => import("../../features/ai-routing").then(m => ({ default: m.AIRoutingPage })).catch(chunkFallback));
-const ObservabilityPage = lazy(() => import("../../features/observability").then(m => ({ default: m.ObservabilityPage })).catch(chunkFallback));
-const AppBuilderPage  = lazy(() => import("../../features/app-builder").then(m => ({ default: m.AppBuilderPage })).catch(chunkFallback));
-const RunsPage        = lazy(() => import("../../features/runs").then(m => ({ default: m.RunsPage })).catch(chunkFallback));
-const IntegrationsPage    = lazy(() => import("../../features/integrations").then(m => ({ default: m.IntegrationsPage })).catch(chunkFallback));
-const TrainingStudioPage  = lazy(() => import("../../features/training-studio").then(m => ({ default: m.TrainingStudioPage })).catch(chunkFallback));
-const DevicesPage         = lazy(() => import("../../features/devices").then(m => ({ default: m.DevicesPage })).catch(chunkFallback));
-const BusinessLabPage     = lazy(() => import("../../features/business-lab").then(m => ({ default: m.BusinessLabPage })).catch(chunkFallback));
-const DiscoverPage        = lazy(() => import("../../features/discover").then(m => ({ default: m.DiscoverPage })).catch(chunkFallback));
-const FeedPage            = lazy(() => import("../../features/feed").then(m => ({ default: m.FeedPage })).catch(chunkFallback));
-const CareersPage = lazy(() => import("../../features/careers/CareersPage").then(m => ({ default: m.CareersPage })).catch(chunkFallback));
-const StudyLibraryPage = lazy(() => import("../../features/study-library/StudyLibraryPage").then(m => ({ default: m.StudyLibraryPage })).catch(chunkFallback));
-const LeadsPage           = lazy(() => import("../../features/leads").then(m => ({ default: m.LeadsPage })).catch(chunkFallback));
-const SaasFactoryPage     = lazy(() => import("../../features/saas-factory").then(m => ({ default: m.SaasFactoryPage })).catch(chunkFallback));
-const NewProjectPage      = lazy(() => import("../../features/new-project/NewProjectPage").then(m => ({ default: m.NewProjectPage })).catch(chunkFallback));
+const HomePage        = lazyPage(() => import("../../features/home").then(m => m.HomePage));
+const AIWorkspace     = lazyPage(() => import("../../features/ai").then(m => m.AIWorkspace));
+const DevWorkspace    = lazyPage(() => import("../../features/dev").then(m => m.DevWorkspace));
+const SocialPage      = lazyPage(() => import("../../features/social").then(m => m.SocialPage));
+const SettingsPage    = lazyPage(() => import("../../features/settings").then(m => m.SettingsPage));
+const DesignStudio    = lazyPage(() => import("../../features/design-studio").then(m => m.DesignStudio));
+const AutomationPage  = lazyPage(() => import("../../features/automation/AutomationPage").then(m => m.AutomationPage));
+const AgentOSPage     = lazyPage(() => import("../../features/agentos").then(m => m.AgentOSPage));
+const MarketplacePage = lazyPage(() => import("../../features/marketplace").then(m => m.MarketplacePage));
+const OrganizationsPage = lazyPage(() => import("../../features/organizations").then(m => m.OrganizationsPage));
+const TeamsPage         = lazyPage(() => import("../../features/teams").then(m => m.TeamsPage));
+const BillingPage       = lazyPage(() => import("../../features/billing").then(m => m.BillingPage));
+const PluginsPage       = lazyPage(() => import("../../features/plugins").then(m => m.PluginsPage));
+const SandboxPage       = lazyPage(() => import("../../features/sandbox").then(m => m.SandboxPage));
+const AIRoutingPage     = lazyPage(() => import("../../features/ai-routing").then(m => m.AIRoutingPage));
+const ObservabilityPage = lazyPage(() => import("../../features/observability").then(m => m.ObservabilityPage));
+const AppBuilderPage  = lazyPage(() => import("../../features/app-builder").then(m => m.AppBuilderPage));
+const RunsPage        = lazyPage(() => import("../../features/runs").then(m => m.RunsPage));
+const IntegrationsPage    = lazyPage(() => import("../../features/integrations").then(m => m.IntegrationsPage));
+const TrainingStudioPage  = lazyPage(() => import("../../features/training-studio").then(m => m.TrainingStudioPage));
+const DevicesPage         = lazyPage(() => import("../../features/devices").then(m => m.DevicesPage));
+const BusinessLabPage     = lazyPage(() => import("../../features/business-lab").then(m => m.BusinessLabPage));
+const DiscoverPage        = lazyPage(() => import("../../features/discover").then(m => m.DiscoverPage));
+const FeedPage            = lazyPage(() => import("../../features/feed").then(m => m.FeedPage));
+const CareersPage = lazyPage(() => import("../../features/careers/CareersPage").then(m => m.CareersPage));
+const StudyLibraryPage = lazyPage(() => import("../../features/study-library/StudyLibraryPage").then(m => m.StudyLibraryPage));
+const LeadsPage           = lazyPage(() => import("../../features/leads").then(m => m.LeadsPage));
+const SaasFactoryPage     = lazyPage(() => import("../../features/saas-factory").then(m => m.SaasFactoryPage));
+const NewProjectPage      = lazyPage(() => import("../../features/new-project/NewProjectPage").then(m => m.NewProjectPage));
 
 /** Map page keys → sidebar nav translation keys */
 const PAGE_NAV_KEY: Record<string, string> = {
