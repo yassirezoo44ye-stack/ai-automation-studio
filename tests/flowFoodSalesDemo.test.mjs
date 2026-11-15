@@ -20,7 +20,7 @@ function launch() {
     expect(el).not.toBeNull();
     el.click();
   };
-  const count = (id: string) => Number(doc.getElementById(id)?.textContent);
+  const count = (id) => Number(doc.getElementById(id)?.textContent);
   return { dom, doc, click, count };
 }
 
@@ -45,7 +45,7 @@ describe('Flow Food Sales synthetic demo', () => {
 
   it('records a block reason, completion and reopening with updated counters', () => {
     const { dom, doc, click, count } = launch();
-    const reason = doc.getElementById('reason') as HTMLSelectElement;
+    const reason = doc.getElementById('reason');
     reason.value = 'delivery';
     click('blockBtn');
     expect(doc.getElementById('events')?.textContent).toContain('تأخر التوصيل');
