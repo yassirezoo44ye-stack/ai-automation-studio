@@ -146,18 +146,21 @@ export async function* streamBuild(
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-
-      // SSE is delimited by double newlines
+      // HTTP SSE may use CRLF, including a CRLF split across network chunks.
+      buf = buf.replace(/\r\n/g, "\n");
       const parts = buf.split("\n\n");
-      buf = parts.pop() ?? ""; // last part may be incomplete
+      buf = parts.pop() ?? "";
       for (const part of parts) {
-        const line = part.trim();
-        if (!line.startsWith("data:")) continue;
-        const json = line.slice("data:".length).trim();
-        if (!json) continue;
+        const data = part.split("\n")
+          .filter(line => line.startsWith("data:"))
+          .map(line => line.slice(5).trimStart())
+          .join("\n");
+        if (!data) continue;
         try {
-          const event = JSON.parse(json) as BuildEvent;
-          yield event;
+          const event = JSON.parse(data) as BuildEvent;
+          if (event && typeof event === "object" && typeof event.type === "string") {
+            yield event;
+          }
         } catch { /* malformed — skip */ }
       }
     }
