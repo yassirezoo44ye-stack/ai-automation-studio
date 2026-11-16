@@ -243,3 +243,31 @@ async def test_real_postgres_rotation_rolls_back_on_corrupt_second_row(db_pool, 
             )
             assert after == original
             assert Fernet(old).decrypt(after.encode()) == b"original"
+
+@pytest.mark.asyncio
+async def test_real_postgres_rotation_cannot_cross_user_scope(db_pool, monkeypatch):
+    """A forged target user ID cannot rotate another user's credentials."""
+    from cryptography.fernet import Fernet
+    from app.ai.credential_rotation import rotate_user_credentials
+    old, new = Fernet.generate_key(), Fernet.generate_key()
+    org, owner, attacker = [str(uuid.uuid4()) for _ in range(3)]
+    monkeypatch.setenv("BYOK_FERNET_KEY", old.decode())
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=owner):
+            await put_key(conn, org_id=org, user_id=owner, provider="openai", api_key="owner-secret")
+            original = await conn.fetchval(
+                "SELECT encrypted_key FROM ai_user_credentials WHERE provider='openai'"
+            )
+        monkeypatch.setenv("BYOK_FERNET_KEY", new.decode())
+        monkeypatch.setenv("BYOK_FERNET_PREVIOUS_KEYS", old.decode())
+        async with scoped_credential_transaction(conn, org_id=org, user_id=attacker):
+            assert await rotate_user_credentials(conn, org_id=org, user_id=owner) == {
+                "scanned": 0, "rotated": 0
+            }
+        async with scoped_credential_transaction(conn, org_id=org, user_id=owner):
+            ciphertext = await conn.fetchval(
+                "SELECT encrypted_key FROM ai_user_credentials WHERE provider='openai'"
+            )
+            assert ciphertext == original
+            assert Fernet(old).decrypt(ciphertext.encode()) == b"owner-secret"
