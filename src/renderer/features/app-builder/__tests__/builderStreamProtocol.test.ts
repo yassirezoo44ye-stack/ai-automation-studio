@@ -38,7 +38,10 @@ describe("App Builder streaming protocol", () => {
     ]));
     const events = [];
     for await (const event of streamBuild("project-1", "build anime app")) events.push(event);
-    expect(events).toEqual([{ type: "status", message: "working" }]);
+    expect(events).toEqual([
+      { type: "status", message: "working" },
+      { type: "error", message: expect.stringContaining("ended before a completion event") },
+    ]);
   });
   it("reports an interrupted build instead of silently ending", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce(sseResponse([
