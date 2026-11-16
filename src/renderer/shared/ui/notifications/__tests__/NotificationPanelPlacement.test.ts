@@ -5,9 +5,13 @@
  * (jsdom applies no CSS). This guards the stylesheet itself.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-
 // Read the file directly: vitest stubs CSS imports (even `?raw`) to "".
+// The module name is built at runtime because the app's tsconfig carries
+// browser types only (no node:fs declarations).
+const fsModule = "node:" + "fs";
+const { readFileSync } = (await import(/* @vite-ignore */ fsModule)) as {
+  readFileSync: (path: URL, encoding: "utf8") => string;
+};
 const css = readFileSync(new URL("../../../../design-system.css", import.meta.url), "utf8");
 
 function rule(selector: string): string {
