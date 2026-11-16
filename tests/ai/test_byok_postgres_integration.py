@@ -509,3 +509,34 @@ async def test_real_postgres_privileged_inventory_and_coverage(db_pool):
             "expected": 1, "enrolled": 1, "verified": 0}
     finally:
         await admin.close()
+
+@pytest.mark.asyncio
+async def test_real_postgres_updated_credential_invalidates_verified_coverage(db_pool):
+    from app.ai.credential_inventory import read_rotation_coverage
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="first")
+            await conn.execute(
+                """INSERT INTO ai_credential_rotation_checkpoints
+                   (org_id,user_id,status,updated_at)
+                   VALUES ($1,$2,'verified',now())""",
+                uuid.UUID(org), uuid.UUID(user))
+    admin = await asyncpg.connect(DSN)
+    try:
+        schema = await db_pool.fetchval("SHOW search_path")
+        await admin.execute(f'SET search_path TO "{schema}"')
+        assert (await read_rotation_coverage(admin))["verified"] == 1
+        async with db_pool.acquire() as conn:
+            async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+                await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="second")
+                # Ensure distinct timestamps even on fast CI machines.
+                await conn.execute(
+                    """UPDATE ai_user_credentials
+                       SET updated_at=now()+interval '1 second'
+                       WHERE org_id=$1 AND user_id=$2 AND provider='openai'""",
+                    uuid.UUID(org), uuid.UUID(user))
+        assert await read_rotation_coverage(admin) == {
+            "expected": 1, "enrolled": 1, "verified": 0}
+    finally:
+        await admin.close()
