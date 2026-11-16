@@ -26,6 +26,10 @@ async def db_pool(monkeypatch):
     await admin.execute(f'SET search_path TO "{schema}"')
     await admin.execute(SCHEMA_SQL)
     await admin.execute(RLS_SQL)
+    from pathlib import Path
+    checkpoint_sql = Path(__file__).resolve().parents[2].joinpath('db/byok_rotation_checkpoints.sql').read_text()
+    await admin.execute(checkpoint_sql)
+    await admin.execute(f'GRANT SELECT, INSERT, UPDATE ON "{schema}".ai_credential_rotation_checkpoints TO byok_app')
     await admin.execute(f'GRANT SELECT, INSERT, UPDATE, DELETE ON "{schema}".ai_user_credentials TO byok_app')
     pool = await asyncpg.create_pool(
         dsn=os.environ["BYOK_TEST_APP_DATABASE_URL"],
@@ -321,3 +325,43 @@ async def test_real_postgres_rotation_and_write_serialize_safely(db_pool, monkey
     async with db_pool.acquire() as conn:
         async with scoped_credential_transaction(conn, org_id=org, user_id=user):
             assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "latest"
+
+@pytest.mark.asyncio
+async def test_real_postgres_atomic_checkpoint_claim_and_fenced_finish(db_pool):
+    from app.ai.credential_lease import claim_checkpoint, finish_checkpoint
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await conn.execute(
+                "INSERT INTO ai_credential_rotation_checkpoints (org_id,user_id) VALUES ($1,$2)",
+                uuid.UUID(org), uuid.UUID(user))
+    async def claim():
+        async with db_pool.acquire() as conn:
+            async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+                return await claim_checkpoint(conn, org_id=org, user_id=user)
+    first, second = await asyncio.gather(claim(), claim())
+    assert sum(token is not None for token in (first, second)) == 1
+    winner = first or second
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            assert not await finish_checkpoint(conn, org_id=org, user_id=user,
+                lease_token=str(uuid.uuid4()), verified=True)
+            assert await finish_checkpoint(conn, org_id=org, user_id=user,
+                lease_token=winner, verified=True)
+            assert not await finish_checkpoint(conn, org_id=org, user_id=user,
+                lease_token=winner, verified=True)
+            assert await claim_checkpoint(conn, org_id=org, user_id=user) is None
+
+@pytest.mark.asyncio
+async def test_real_postgres_checkpoint_rls_blocks_other_user(db_pool):
+    from app.ai.credential_lease import claim_checkpoint
+    org, owner, outsider = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=owner):
+            await conn.execute(
+                "INSERT INTO ai_credential_rotation_checkpoints (org_id,user_id) VALUES ($1,$2)",
+                uuid.UUID(org), uuid.UUID(owner))
+        async with scoped_credential_transaction(conn, org_id=org, user_id=outsider):
+            assert await claim_checkpoint(conn, org_id=org, user_id=owner) is None
+        async with scoped_credential_transaction(conn, org_id=org, user_id=owner):
+            assert await claim_checkpoint(conn, org_id=org, user_id=owner) is not None
