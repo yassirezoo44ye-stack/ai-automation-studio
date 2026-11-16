@@ -5,13 +5,15 @@ Caller must use a verified identity and scoped_credential_transaction.
 """
 from __future__ import annotations
 import uuid
+import os
 from cryptography.fernet import Fernet, InvalidToken
 from app.ai.user_credentials import _cipher
 
 async def verify_user_primary_key(conn, *, org_id: str, user_id: str) -> dict[str, int | bool]:
     org, user = uuid.UUID(org_id), uuid.UUID(user_id)
     # Validate full key configuration, including malformed previous keys.
-    primary = _cipher()._fernets[0]
+    _cipher()
+    primary = Fernet(os.environ["BYOK_FERNET_KEY"].encode("ascii"))
     rows = await conn.fetch(
         """SELECT encrypted_key FROM ai_user_credentials
            WHERE org_id=$1 AND user_id=$2 ORDER BY provider""", org, user
