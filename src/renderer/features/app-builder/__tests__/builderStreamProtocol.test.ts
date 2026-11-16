@@ -40,4 +40,23 @@ describe("App Builder streaming protocol", () => {
     for await (const event of streamBuild("project-1", "build anime app")) events.push(event);
     expect(events).toEqual([{ type: "status", message: "working" }]);
   });
+  it("reports an interrupted build instead of silently ending", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce(sseResponse([
+      'data: {"type":"status","message":"building"}\\n\\n'.replace(/\\n/g, "\n"),
+    ]));
+    const events = [];
+    for await (const event of streamBuild("project-1", "build anime app")) events.push(event);
+    expect(events.map(event => event.type)).toEqual(["status", "error"]);
+    expect(events[1]).toMatchObject({ type: "error", message: expect.stringContaining("ended before") });
+  });
+
+  it("does not report interruption after a terminal error", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce(sseResponse([
+      'data: {"type":"error","message":"invalid project"}\\n\\n'.replace(/\\n/g, "\n"),
+    ]));
+    const events = [];
+    for await (const event of streamBuild("project-1", "build anime app")) events.push(event);
+    expect(events).toEqual([{ type: "error", message: "invalid project" }]);
+  });
+
 });
