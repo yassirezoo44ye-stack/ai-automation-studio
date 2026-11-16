@@ -10,8 +10,16 @@ WORKDIR /app
 # Copy Node.js binaries from the pinned node:20-slim image used in stage 1.
 # This avoids the supply-chain risk of curl | bash (NodeSource setup script).
 COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
-COPY --from=frontend /usr/local/bin/npm  /usr/local/bin/npm
 COPY --from=frontend /usr/local/lib/node_modules /usr/local/lib/node_modules
+# npm/npx in the node image are *symlinks* into node_modules/npm/bin. COPY
+# dereferences a symlink source, so copying /usr/local/bin/npm produced a
+# plain copy of npm-cli.js that resolved its own modules from /usr/local/bin
+# and crashed in node:internal/modules/cjs/loader (Settings → System showed
+# that error for npm, and npx was missing). Recreate the links instead, and
+# fail the build if either doesn't run.
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version && npx --version
 
 # Install system deps in a single layer:
 #   - gcc / libpq-dev: needed to build asyncpg (C extension)
