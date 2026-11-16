@@ -25,6 +25,8 @@ def summarize_rotation_audit(results: dict[str, dict[str, int | bool]], *, expec
             raise ValueError("invalid audit counts")
         if not isinstance(done, bool) or old > n or bad > old or done != (old == 0):
             raise ValueError("inconsistent audit result")
+        if n == 0:
+            raise ValueError("expected credential scope has no rows; inventory may be stale")
         scanned += n
         old_or_unreadable += old
         unreadable += bad

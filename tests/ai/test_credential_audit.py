@@ -43,3 +43,11 @@ def test_empty_inventory_is_not_proof_of_completion():
 def test_malformed_audit_inputs_fail_closed(bad):
     with pytest.raises(ValueError):
         summarize_rotation_audit(bad, expected_scope_ids={"a"})
+
+def test_missing_credentials_in_expected_scope_is_not_success():
+    with pytest.raises(ValueError, match="no rows"):
+        summarize_rotation_audit({'a': result(scanned=0)}, expected_scope_ids={'a'})
+
+def test_stale_inventory_fails_even_when_other_scopes_pass():
+    with pytest.raises(ValueError, match="no rows"):
+        summarize_rotation_audit({'a': result(), 'b': result(scanned=0)}, expected_scope_ids={'a', 'b'})
