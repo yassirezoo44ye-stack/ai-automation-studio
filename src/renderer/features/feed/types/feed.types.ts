@@ -73,6 +73,10 @@ export interface FeedItem {
   sourceType?: "creation" | "template" | "listing" | "slug";
   /** Additional builder context (prompt, config, etc.) */
   sourceMeta?: Record<string, unknown>;
+  /** ISO publish time — shown as a relative date on the card */
+  publishedAt?: string;
+  /** Page count of a study summary PDF */
+  pages?: number;
   /** Whether the current user has liked/saved this item (local state seed) */
   userLiked?: boolean;
   userSaved?: boolean;

@@ -511,3 +511,5 @@
 .feed-study-pagination button:disabled { opacity: .6; cursor: wait; }
 .feed-study-pagination [role="alert"] { background: #101827; padding: 4px 8px; font-size: 13px; }
 .feed-study-card .feed-bottom-overlay { padding-bottom: 54px; }
+.feed-study-meta { font-size: 12px; color: #ffffffcc; }
+.feed-study-access { margin: 8px 0 0; font-size: 12px; color: #ffffffb3; }

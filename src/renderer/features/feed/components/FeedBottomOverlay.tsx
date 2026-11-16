@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { FeedItem } from "../types/feed.types";
+import { relativeDate } from "./relativeDate";
 
 /** Map ctaType → i18n key in feed.json `cta.*` namespace */
 const CTA_I18N_KEY: Record<string, string> = {
@@ -32,30 +33,32 @@ interface FeedBottomOverlayProps {
 }
 
 export function FeedBottomOverlay({ item, onBuild }: FeedBottomOverlayProps) {
-  const { t } = useTranslation("feed");
+  const { t, i18n } = useTranslation("feed");
+  const when = relativeDate(item.publishedAt, i18n?.language ?? "en");
   const ctaText = t(CTA_I18N_KEY[item.ctaType] ?? "actions.build");
 
   return (
     <div className="feed-bottom-overlay">
       {/* Creator row */}
       <div className="feed-bottom-overlay__creator">
-        <span className="feed-bottom-overlay__handle">{item.creator.handle}</span>
+        {item.creator.handle && <span className="feed-bottom-overlay__handle">{item.creator.handle}</span>}
         <span
           className="feed-bottom-overlay__type-badge"
           style={{ background: TYPE_COLORS[item.type] ?? "var(--accent)" }}
         >
           {typeLabel(item.type, t)}
         </span>
+        {when && <span className="feed-study-meta">{when}</span>}
       </div>
 
       {/* Title */}
       <h2 className="feed-bottom-overlay__title">{item.title}</h2>
 
-      {/* Micro-learning value proposition */}
-      <div className="feed-bottom-overlay__value-prop">
+      {/* Micro-learning value proposition — skipped for a throwaway description */}
+      {item.description.trim().length >= 12 && <div className="feed-bottom-overlay__value-prop">
         <span className="feed-bottom-overlay__value-prop-icon" aria-hidden>✦</span>
-        <p className="feed-bottom-overlay__desc">{item.description}</p>
-      </div>
+        <p className="feed-bottom-overlay__desc" dir="auto">{item.description}</p>
+      </div>}
 
       {/* Tags */}
       <div className="feed-bottom-overlay__tags" aria-label={t("card.tags")}>

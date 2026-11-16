@@ -47,10 +47,12 @@ const PAGE_FOR_TYPE: Record<CreationType, Page> = {
   DEVICE_WORKFLOW:"devices",
 };
 
+/** Community creations carry no public author profile yet, so no handle is
+ *  shown rather than attributing someone's work to the platform account. */
 const DEFAULT_CREATOR: FeedCreator = {
-  id:     "flow-platform",
-  name:   "Flow Platform",
-  handle: "@flow",
+  id:     "flow-community",
+  name:   "Flow community",
+  handle: "",
 };
 
 /* ── Mapper ─────────────────────────────────────────────────────── */
@@ -79,6 +81,7 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
     targetPage:  PAGE_FOR_TYPE[c.type] ?? "app-builder",
     sourceId:    c.source_id ?? undefined,
     sourceType:  "creation",
+    publishedAt: c.created_at,
     sourceMeta:  {
       prompt:      c.description ?? c.title,
       title:       c.title,
