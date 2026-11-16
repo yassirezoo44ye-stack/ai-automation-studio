@@ -10,9 +10,10 @@ import { describe, it, expect } from "vitest";
 // browser types only (no node:fs declarations).
 const fsModule = "node:" + "fs";
 const { readFileSync } = (await import(/* @vite-ignore */ fsModule)) as {
-  readFileSync: (path: URL, encoding: "utf8") => string;
+  readFileSync: (path: string, encoding: "utf8") => string;
 };
-const css = readFileSync(new URL("../../../../design-system.css", import.meta.url), "utf8");
+// Relative to the repo root (vitest's cwd); under jsdom import.meta.url is not a file: URL.
+const css = readFileSync("src/renderer/design-system.css", "utf8");
 
 function rule(selector: string): string {
   const start = css.indexOf(`${selector} {`);
