@@ -116,6 +116,7 @@ python -m agent run
 | `python -m agent run` | Start the agent (uses stored credentials) |
 | `python -m agent clear` | Remove stored credentials (before decommissioning) |
 | `python -m agent version` | Print agent version |
+| `python -m agent inventory on\|off\|status` | Opt in/out of read-only inventory reports (off by default; restart the agent after changing) |
 
 ### Environment Variable Overrides (testing only)
 
@@ -124,6 +125,7 @@ python -m agent run
 | `FLOW_SERVER_URL` | WebSocket server URL |
 | `FLOW_DEVICE_ID` | Device UUID |
 | `FLOW_CREDENTIAL` | Raw credential (use enrollment in production) |
+| `FLOW_INVENTORY` | `1` enables inventory reports with the env override |
 
 ---
 
@@ -135,6 +137,7 @@ python -m agent run
 |--------|----------|------------|-------------|
 | `GET` | `/api/devices/` | `devices:read` | List all devices in org |
 | `GET` | `/api/devices/{id}` | `devices:read` | Get one device |
+| `GET` | `/api/devices/{id}/health` | `devices:read` | Latest inventory snapshot (nulls if the device never reported) |
 | `POST` | `/api/devices/enroll-token` | `devices:create` | Generate enrollment token |
 | `POST` | `/api/devices/enroll` | — (public) | Consume enrollment token (called by agent) |
 | `POST` | `/api/devices/{id}/revoke` | `devices:revoke` | Revoke a device |
@@ -183,6 +186,7 @@ Server → Agent: {"type": "auth_ok"} | {"type": "auth_fail", "reason": "..."}
 | `heartbeat` | Agent→Server | Keep-alive ping |
 | `heartbeat_ack` | Server→Agent | Heartbeat acknowledgement |
 | `display_config` | Agent→Server | Screen resolution/monitor info |
+| `inventory_report` | Agent→Server | Opt-in read-only inventory: installed apps, disks, memory, top 20 processes, Recycle Bin size. ≤128 KB, sanitized, stored in `device_inventory_snapshots` (newest 30 per device, at most one per 5 min). No file names or paths. |
 | `mouse_move` | Primary→Server→Secondary | Cursor position |
 | `mouse_down` | Primary→Server→Secondary | Button press (never dropped) |
 | `mouse_up` | Primary→Server→Secondary | Button release (never dropped) |
@@ -291,6 +295,7 @@ Tables created:
 - `device_control_sessions` — session records
 - `device_control_session_members` — per-session device layout
 - `device_session_authorizations` — per-session device auth tokens
+- `device_inventory_snapshots` — opt-in read-only inventory reports (device advisor)
 
 ### RBAC Permissions
 

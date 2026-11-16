@@ -20,10 +20,14 @@ Usage:
   # Remove Windows autostart registration:
   python -m agent remove-startup
 
+  # Opt in / out of the read-only device inventory (device advisor):
+  python -m agent inventory on|off|status
+
 Environment variables (override stored config):
   FLOW_SERVER_URL   — WebSocket server URL (wss://...)
   FLOW_DEVICE_ID    — Device UUID (overrides stored)
   FLOW_CREDENTIAL   — Raw credential (NOT RECOMMENDED — use enrollment instead)
+  FLOW_INVENTORY    — "1" enables inventory reports when using the env override
 
 SECURITY NOTES:
   - Credentials are stored using Windows DPAPI (never plaintext)
@@ -91,6 +95,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "remove-startup",
         help="Remove Windows autostart registration",
     )
+
+    # inventory — opt in/out of read-only inventory reports (device advisor)
+    inv_p = sub.add_parser(
+        "inventory",
+        help="Turn read-only device inventory reports on or off",
+    )
+    inv_p.add_argument("action", choices=("on", "off", "status"))
 
     return p
 
@@ -161,6 +172,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
         credential = env_credential
         server_url = env_server
         device_name = os.environ.get("FLOW_DEVICE_NAME", "")
+        inventory_enabled = os.environ.get("FLOW_INVENTORY") == "1"
     else:
         stored = load_credential()
         if stored is None:
@@ -171,6 +183,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
         device_id, credential, server_url = stored
         cfg = load_config()
         device_name = cfg.get("device_name", "")
+        inventory_enabled = cfg.get("inventory_enabled") is True
 
     log.info("starting agent device_id=%s server=%s", device_id, server_url)
 
@@ -197,6 +210,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
         server_url      = server_url,
         device_name     = device_name,
         on_state_change = _on_state,
+        inventory_enabled = inventory_enabled,
     )
 
     # Wire tray stop-control button
@@ -220,6 +234,26 @@ def cmd_clear() -> int:
     from agent.security.credentials import clear_credential
     clear_credential()
     print("✅ Credentials cleared.")
+    return 0
+
+
+def cmd_inventory(args: argparse.Namespace) -> int:
+    """Opt in or out of read-only inventory reports. Stored in the local config."""
+    from agent.security.credentials import load_config, save_config
+
+    cfg = load_config()
+    if args.action == "status":
+        state = "on" if cfg.get("inventory_enabled") is True else "off"
+        print(f"Device inventory reports: {state}")
+        return 0
+    cfg["inventory_enabled"] = args.action == "on"
+    save_config(cfg)
+    if args.action == "on":
+        print("✅ Inventory reports ON: installed apps, disks, memory, top processes and")
+        print("   Recycle Bin size are sent to Flow. No file names or document content.")
+    else:
+        print("✅ Inventory reports OFF.")
+    print("   Restart the agent for the change to take effect.")
     return 0
 
 
@@ -340,6 +374,9 @@ def main() -> None:
 
     if args.command == "remove-startup":
         sys.exit(cmd_remove_startup())
+
+    if args.command == "inventory":
+        sys.exit(cmd_inventory(args))
 
     parser.print_help()
     sys.exit(1)

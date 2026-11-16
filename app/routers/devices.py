@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.tenancy.context import OrgContext, require_permission
 from app.services.device_control import get_device_control_service, DEVICE_CONTROL_ENABLED
+from app.services.device_inventory import get_latest_inventory
 
 log = logging.getLogger(__name__)
 
@@ -128,6 +129,31 @@ async def get_device(
     if device is None:
         raise HTTPException(404, "Device not found")
     return device
+
+
+@router.get("/{device_id}/health")
+async def get_device_health(
+    device_id: str,
+    ctx: OrgContext = Depends(require_permission("devices", "read")),  # type: ignore[assignment]
+):
+    """Latest opt-in inventory snapshot for a device (device advisor, read-only).
+
+    Returns nulls when the device has never sent a report (inventory is off by default).
+    """
+    _check_enabled()
+    try:
+        uuid.UUID(device_id)
+    except ValueError:
+        raise HTTPException(404, "Device not found") from None
+    svc = get_device_control_service()
+    if await svc.get_device(ctx.org_id, device_id) is None:
+        raise HTTPException(404, "Device not found")
+    snapshot = await get_latest_inventory(ctx.org_id, device_id)
+    return {
+        "device_id": device_id,
+        "collected_at": snapshot["collected_at"] if snapshot else None,
+        "inventory": snapshot["inventory"] if snapshot else None,
+    }
 
 
 @router.post("/enroll-token", response_model=EnrollmentTokenResponse)
