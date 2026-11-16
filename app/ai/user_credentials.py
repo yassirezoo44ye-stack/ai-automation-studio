@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import uuid
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 
 ALLOWED_PROVIDERS = frozenset({"openai", "anthropic", "gemini", "openrouter", "groq"})
 
@@ -31,14 +31,18 @@ def _validate_provider(provider: str) -> str:
     return provider
 
 
-def _cipher() -> Fernet:
+def _cipher() -> MultiFernet:
     # Dedicated credential-encryption key; never fall back to SESSION_SECRET.
     # Provision via secret manager. Rotation requires an explicit re-encryption plan.
     raw = os.environ.get("BYOK_FERNET_KEY", "")
     if not raw:
         raise RuntimeError("BYOK encryption key is not configured")
+    previous = os.environ.get("BYOK_FERNET_PREVIOUS_KEYS", "")
     try:
-        return Fernet(raw.encode("ascii"))
+        keys = [raw] + (previous.split(",") if previous else [])
+        if any(not key or key != key.strip() for key in keys):
+            raise ValueError("Empty or padded key")
+        return MultiFernet([Fernet(key.encode("ascii")) for key in keys])
     except (ValueError, TypeError, UnicodeError) as exc:
         raise RuntimeError("Invalid BYOK encryption key configuration") from exc
 
