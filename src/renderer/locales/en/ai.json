@@ -24,7 +24,10 @@
       "temperatureLabel": "Temperature",
       "saving": "Saving…",
       "save": "Save Agent",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "skillsLabel": "Agent skills",
+      "skillsHint": "Select up to three skills.",
+      "skillsFailed": "Could not load skills. Reload the page."
     },
     "toast": {
       "updated": "Agent updated",
@@ -121,6 +124,79 @@
       "exportedMarkdown": "Exported as Markdown",
       "exportFailed": "Export failed",
       "backendOffline": "⚠️ Backend offline"
+    }
+  },
+  "skills": {
+    "selectionLabel": "Active skill",
+    "none": "No additional skill",
+    "persistenceHint": "Your choice is remembered for future sessions in this browser.",
+    "loadFailed": "Could not load skills. Reload the page."
+  },
+  "plans": {
+    "tab": "Projects & plans",
+    "heading": "From idea to tracked project",
+    "intro": "Generate a draft, review it, then save a project and its tasks. Nothing runs automatically.",
+    "goal": "Describe your idea",
+    "generate": "Generate draft",
+    "review": "Review before saving",
+    "title": "Project title",
+    "task": "Task {{number}}",
+    "taskTitle": "Task title",
+    "acceptance": "Acceptance criteria (one per line)",
+    "dependencies": "Prerequisites",
+    "save": "Create project and tasks",
+    "discard": "Discard draft",
+    "progress": "{{completed}} of {{total}} tasks completed",
+    "manual": "Review agent results and acceptance criteria before marking a task done.",
+    "blocked": "Complete prerequisites first.",
+    "status": "Task status",
+    "saved": "Saved projects and plans",
+    "empty": "No saved plans yet.",
+    "working": "Working…",
+    "loadFailed": "Could not load plans. Please retry.",
+    "failed": "Operation failed. Please retry.",
+    "states": {
+      "pending": "Pending",
+      "in_progress": "In progress",
+      "done": "Done",
+      "deleted": "Deleted"
+    }
+  },
+  "runs": {
+    "title": "Task agent runs",
+    "scope": "Generate a text deliverable with a skill, or inspect owned project files without running code.",
+    "task": "Task to run",
+    "runner": "Execution mode",
+    "skill": "Skill deliverable",
+    "inspect": "Read-only project inspection",
+    "skillLabel": "Skill for this run",
+    "chooseSkill": "Choose a skill",
+    "approve": "I approve this run and any model usage. I will review its result before marking the task done.",
+    "start": "Start approved run",
+    "activeTask": "An active run already exists for this task.",
+    "history": "Saved run history",
+    "cancel": "Cancel run",
+    "result": "Run result and log",
+    "review": "A completed run is not proof that task acceptance criteria were met. Review the result before marking the task done.",
+    "download": "Download result",
+    "loadFailed": "Could not load run history. Reopen the plan to retry.",
+    "downloadFailed": "Could not download the result.",
+    "states": {
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Result ready",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted — review before retrying"
+    },
+    "events": {
+      "queued_after_approval": "Queued after your approval.",
+      "started": "The agent started working.",
+      "result_ready": "Result ready for your review.",
+      "cancelled_may_be_billed": "Cancelled; model usage already started may still be billed.",
+      "interrupted_not_replayed": "Interrupted; work was not replayed automatically.",
+      "stopped_failed": "Run stopped after an error.",
+      "stopped_interrupted": "Run interrupted; review before retrying."
     }
   }
 }

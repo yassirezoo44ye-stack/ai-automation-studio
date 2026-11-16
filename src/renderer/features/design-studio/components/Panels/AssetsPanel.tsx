@@ -1,3 +1,4 @@
+import { SecondaryActions } from "../../../../shared/ui/SecondaryActions";
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { Asset, AssetType } from "../../types/canvas.types";
@@ -115,20 +116,23 @@ export function AssetsPanel({ onInsert }: Props) {
               >
                 +
               </button>
-              <button
+              <SecondaryActions>
+<button
                 className={styles.action}
                 onClick={() => void handleFav(asset.id)}
                 title={asset.isFavorite ? t("assetsPanel.removeFavourite") : t("assetsPanel.favourite")}
               >
                 {asset.isFavorite ? "★" : "☆"}
               </button>
-              <button
+<button
                 className={styles.action}
                 onClick={() => void handleDelete(asset.id)}
                 title={t("assetsPanel.delete")}
               >
                 ✕
               </button>
+</SecondaryActions>
+
             </div>
             <span className={styles.name}>{asset.name}</span>
           </div>

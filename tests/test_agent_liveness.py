@@ -270,7 +270,7 @@ class TestRunOwnerRegistry:
     def test_a_later_run_cannot_take_over_an_owned_run_id(self):
         """run_id is client-chosen; a second run reusing it must not replace
         the verified owner (that used to hand over the victim's step stream)."""
-        import app.agents.liveness as liveness
+        from app.agents import liveness
         liveness.register_run_owner("r1", "user-a")
         liveness.register_run_owner("r1", "user-b")
         liveness.register_run_owner("r1", None)
@@ -279,7 +279,7 @@ class TestRunOwnerRegistry:
     def test_shared_system_frames_do_not_carry_run_ids(self):
         """Every signed-in user receives the shared "system" topic; a run's
         id is what grants its private step stream, so it stays off it."""
-        import app.agents.liveness as liveness
+        from app.agents import liveness
         fake_ws = MagicMock()
         fake_ws.broadcast = AsyncMock()
         with patch("app.routers.ws.manager", fake_ws):

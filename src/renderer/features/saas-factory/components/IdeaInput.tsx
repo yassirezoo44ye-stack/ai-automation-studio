@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -29,7 +30,7 @@ export function IdeaInput({ onSubmit, loading, orgReady = true }: Props) {
     <div className="sf-idea-input">
       <div className="sf-idea-input__header">
         <h1 className="sf-idea-input__title">{t("input.title")}</h1>
-        <p className="sf-idea-input__subtitle">{t("input.subtitle")}</p>
+
       </div>
 
       <form onSubmit={handleSubmit} className="sf-idea-input__form">
@@ -60,7 +61,8 @@ export function IdeaInput({ onSubmit, loading, orgReady = true }: Props) {
         </div>
       </form>
 
-      <div className="sf-idea-input__examples">
+      <WorkspaceDetails kind="examples">
+<div className="sf-idea-input__examples">
         <p className="sf-idea-input__examples-label">{t("input.examplesLabel")}</p>
         <div className="sf-idea-input__examples-list">
           {EXAMPLES.map((ex, i) => (
@@ -75,6 +77,7 @@ export function IdeaInput({ onSubmit, loading, orgReady = true }: Props) {
           ))}
         </div>
       </div>
+</WorkspaceDetails>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -181,6 +182,11 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
     { id: "career-shortlist", label: t("step.shortlist"), done: shortlisted > 0 },
   ];
   const working = busy !== null;
+  const [setupOpen, setSetupOpen] = useState(false);
+  function goTo(id: string) {
+    if (id !== "career-shortlist") setSetupOpen(true);
+    requestAnimationFrame(() => jumpTo(id));
+  }
 
   async function openDraft(job: Job, ai: boolean) {
     const result = await request<{ text: string }>(`/jobs/${job.id}/${ai ? "ai-draft" : "draft"}`, "POST");
@@ -190,17 +196,19 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
   return <section className="career-workspace" aria-busy={working || loading} dir={i18n.dir()}>
     <header className="career-hero">
       <div>
-        <span className="career-eyebrow">FLOW · CAREERS <b className="career-ai-badge">AI</b></span>
-        <h1>{t("title")}</h1><p>{t("subtitle")}</p>
+
+        <h1>{t("title")}</h1>
       </div>
-      <div className="career-stats">
+      <WorkspaceDetails kind="summary">
+<div className="career-stats">
         <span className="career-count">{t("jobCount", { count: jobs.length })}</span>
         <span className="career-count">{t("shortlistedCount", { count: shortlisted })}</span>
       </div>
+</WorkspaceDetails>
     </header>
 
     <nav className="career-steps" aria-label={t("step.nav")}>
-      {steps.map((s, i) => <button type="button" key={s.id} className={s.done ? "is-done" : ""} onClick={() => jumpTo(s.id)}>
+      {steps.map((s, i) => <button type="button" key={s.id} className={s.done ? "is-done" : ""} onClick={() => goTo(s.id)}>
         <span className="career-step-num" aria-hidden="true">{s.done ? "✓" : i + 1}</span>{s.label}
       </button>)}
     </nav>
@@ -209,7 +217,8 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
     {notice && <div className="career-alert" role="status">{notice}</div>}
 
     {loading ? <div className="career-skeleton" role="status"><span className="career-sr">{t("loading")}</span><div /><div /><div /></div> : <>
-      <div className="career-setup">
+      <WorkspaceDetails kind="setup" expanded={setupOpen} onExpandedChange={setSetupOpen}>
+<div className="career-setup">
         <section id="career-profile" className="career-panel" aria-labelledby="career-profile-title">
           <h2 id="career-profile-title"><span className="career-step-num" aria-hidden="true">1</span>{t("profile")}</h2>
 
@@ -299,6 +308,7 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
           </>}
         </section>
       </div>
+</WorkspaceDetails>
 
       <section id="career-shortlist" aria-labelledby="career-shortlist-title">
         <div className="career-toolbar">
@@ -306,16 +316,18 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
           <label className="career-search">{t("search")}<input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder={t("searchHint")} /></label>
           <label>{t("sort")}<select value={sort} onChange={e => setSort(e.target.value)}><option value="match">{t("match")}</option><option value="salary">{t("salarySort")}</option></select></label>
         </div>
-        <div className="career-tabs" role="group" aria-label={t("filter")}>
-          {["all", ...states, "expired"].map(s => <button type="button" key={s} aria-pressed={filter === s} onClick={() => setFilter(s)}>
-            {s === "all" ? t("all") : t(`status.${s}`)}<span>{jobs.filter(j => inView(j, s)).length}</span>
-          </button>)}
-        </div>
+        <label className="career-tabs">{t("filter")}
+          <select value={filter} onChange={e => setFilter(e.target.value)}>
+            {["all", ...states, "expired"].map(s => <option key={s} value={s}>
+              {s === "all" ? t("all") : t(`status.${s}`)} ({jobs.filter(j => inView(j, s)).length})
+            </option>)}
+          </select>
+        </label>
         <p className="career-muted">{t("rankingNote")}</p>
         {jobs.length >= 500 && <p role="status">{t("limitNote")}</p>}
         {!visible.length && <div className="career-panel career-empty">
           <p>{jobs.length ? t("emptyFilter") : t("empty")}</p>
-          {!jobs.length && <button type="button" className="career-primary" onClick={() => jumpTo("career-add")}>{t("emptyAction")}</button>}
+          {!jobs.length && <button type="button" className="career-primary" onClick={() => goTo("career-add")}>{t("emptyAction")}</button>}
         </div>}
         <div className="career-jobs">{visible.map(job => <article className={`career-panel career-job${job.assessment.expired ? " is-expired" : ""}`} key={job.id}>
           <div className="career-job-title">

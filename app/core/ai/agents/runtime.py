@@ -32,6 +32,7 @@ from collections.abc import AsyncGenerator
 from app.ai.models import (
     CompletionRequest, CompletionResponse, Message, ToolSchema,
 )
+from app.core.ai.skills import compose_skill_system, DEFAULT_AGENT_SKILLS
 from app.core.ai.tools.executor import ToolResult, executor as default_executor
 from app.core.ai.memory.types import MemoryType
 import contextlib
@@ -54,6 +55,7 @@ class AgentConfig:
     memory_enabled:  bool          = False
     conversation_id: str | None = None
     agent_id:        str | None = None
+    skill_ids:       list[str] | None = None  # None: built-in defaults; []: disable
     metadata:        dict[str, Any] = field(default_factory=dict)
 
 
@@ -137,7 +139,11 @@ class AgentRuntime:
         allowed_tools = set(self.config.tools)
 
         messages: list[Message] = [Message(role="user", content=prompt)]
-        system   = self.config.system_prompt or None
+        system = compose_skill_system(
+            self.config.system_prompt or None,
+            self.config.skill_ids if self.config.skill_ids is not None
+            else DEFAULT_AGENT_SKILLS.get(self.config.name, ()),
+        )
         all_tool_calls: list[dict] = []
         last_response: CompletionResponse | None = None
         rounds = 0
@@ -233,7 +239,11 @@ class AgentRuntime:
 
         prompt = await self.on_start(prompt)
         messages: list[Message] = [Message(role="user", content=prompt)]
-        system   = self.config.system_prompt or None
+        system = compose_skill_system(
+            self.config.system_prompt or None,
+            self.config.skill_ids if self.config.skill_ids is not None
+            else DEFAULT_AGENT_SKILLS.get(self.config.name, ()),
+        )
 
         tool_schemas: list[ToolSchema] = []
         if self.config.tools:

@@ -1,4 +1,11 @@
 {
+  "workspaceDetails": {
+  "summary": "Summary",
+  "examples": "Examples",
+  "setup": "Workspace setup",
+  "technical": "Technical details",
+  "activity": "Activity history"
+},
   "sidebar": {
     "groups": {
       "main": "Main",
@@ -106,6 +113,7 @@
     }
   },
   "actions": {
+    "more": "More",
     "cancel": "Cancel",
     "delete": "Delete",
     "save": "Save",

@@ -80,12 +80,11 @@ def register_run_owner(run_id: str, user_id: str | None) -> None:
     "no owner recorded" fallback deliverable downloads use); the
     unguessable run_id is what makes that race safe in practice, not a
     guarantee this function closes."""
-    if run_id:
-        # First verified owner wins: run_id comes from the client, and
-        # /api/agentos/* accept a caller-chosen id, so a later run with the
-        # same id must not be able to take over someone else's run topic.
-        if _run_owners.get(run_id) is None:
-            _run_owners[run_id] = user_id
+    # First verified owner wins: run_id comes from the client, and
+    # /api/agentos/* accept a caller-chosen id, so a later run with the
+    # same id must not be able to take over someone else's run topic.
+    if run_id and _run_owners.get(run_id) is None:
+        _run_owners[run_id] = user_id
 
 
 def get_run_owner(run_id: str) -> str | None:

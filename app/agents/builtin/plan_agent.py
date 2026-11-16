@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 
+from app.core.ai.skills import compose_skill_system
 from app.agents.base import AgentContext, AgentResult, EvolvableAgent
 
 log = logging.getLogger(__name__)
@@ -36,14 +37,14 @@ class PlanAgent(EvolvableAgent):
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not api_key:
             # Fallback: simple rule-based decomposition
-            tasks = _rule_based_plan(goal, list(ctx.kernel._agents.keys()))
+            tasks = _rule_based_plan(goal, ctx.kernel.visible_agent_names(ctx.organization_id))
             return AgentResult.ok(
                 self.name,
                 f"Plan ({len(tasks)} steps): {' → '.join(tasks)}",
                 data={"goal": goal, "tasks": tasks, "method": "rule_based"},
             )
 
-        tasks = await _llm_plan(goal, list(ctx.kernel._agents.keys()), api_key, ctx)
+        tasks = await _llm_plan(goal, ctx.kernel.visible_agent_names(ctx.organization_id), api_key, ctx)
         return AgentResult.ok(
             self.name,
             f"Plan ({len(tasks)} steps): {' → '.join(tasks)}",
@@ -69,6 +70,10 @@ async def _llm_plan(goal: str, agents: list[str], api_key: str,
         msg = await client.messages.create(
             model=model,
             max_tokens=256,
+            system=compose_skill_system(
+                "Return only executable task lines using the supplied agent names.",
+                ["flow-project-planning"],
+            ),
             messages=[{
                 "role": "user",
                 "content": (

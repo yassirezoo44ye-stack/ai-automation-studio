@@ -1,3 +1,5 @@
+import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
+import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
  * ChatTab — 3-column AI command center.
  *
@@ -11,6 +13,8 @@
  * properties in chat.css and `marginInlineStart` etc. in inline styles.
  */
 import { useState, useRef, useEffect, useMemo, memo, type CSSProperties } from "react";
+import { useFlowSkill } from "../../../shared/hooks/useFlowSkill";
+import { FlowSkillSelect } from "../../../shared/ui/FlowSkillSelect";
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
@@ -65,6 +69,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
   // ── Core state (unchanged) ────────────────────────────────────────
   const [projectId, setProjectId] = useState("demo");
+  const skillSelection = useFlowSkill();
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
 
   // Layout state
@@ -244,7 +249,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     try {
       const res = await apiFetch(url, {
         method: "POST",
-        body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId }),
+        body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
+          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [] } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -352,6 +358,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             <option value="default">{t("chatTab.sidebar.defaultAgent")}</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>)}
           </select>
+          {agentId === "default" && <FlowSkillSelect selection={skillSelection} />}
         </div>
 
         {/* Conversation list */}
@@ -504,7 +511,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               <div style={{ fontSize: 14, color: "var(--t4)", maxWidth: 320, lineHeight: 1.65, marginTop: 6 }}>
                 {activeAgent?.description ?? t("chatTab.messages.emptyDescription")}
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
+              <WorkspaceDetails kind="examples">
+<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
                 {[
                   t("chatTab.messages.suggestion1"),
                   t("chatTab.messages.suggestion2"),
@@ -514,6 +522,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                   <GoldButton key={s} variant="ghost" onClick={() => setPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
                 ))}
               </div>
+</WorkspaceDetails>
             </div>
           )}
 
@@ -620,7 +629,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               <div>
                 <div className="chat-context__section-label">{t("chatTab.contextPanel.actions")}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button
+                  <SecondaryActions>
+<button
                     className="chat-context__action-btn"
                     onClick={() => void exportConv()}
                     disabled={exporting}
@@ -634,7 +644,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     </svg>
                     {exporting ? "…" : t("chatTab.contextPanel.export")}
                   </button>
-                  <button
+<button
                     className="chat-context__action-btn"
                     onClick={() => void extractTasks()}
                     disabled={extracting}
@@ -646,6 +656,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     </svg>
                     {extracting ? "…" : t("chatTab.contextPanel.extractTasks")}
                   </button>
+</SecondaryActions>
+
                 </div>
               </div>
             )}

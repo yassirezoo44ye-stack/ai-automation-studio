@@ -357,3 +357,34 @@ GET /api/usage-logs       — Detailed usage logs
 ## License
 
 MIT
+
+## Flow agent skills
+
+Nine repository-local skill definitions cover planning, app building, automation,
+leads, content/design, business analysis, careers, Arabic visual learning, and
+device management. See the [skill catalog](.agents/skills/README.md) and
+[development skill guide](docs/FLOW_DEVELOPMENT_SKILLS.md).
+Select up to three skills in the agent form. Agent chat loads their instructions
+and includes them in context budgeting; built-in AgentRuntime roles use mapped
+defaults. Skills do not grant tools or permissions. AgentOS also registers all nine skills
+as advisory agents; authenticated callers can select one with `skill_id` in
+`POST /api/agentos/run` or list them through `GET /api/agentos/skills`.
+
+Skill choices in general chat and AgentOS are remembered in the same browser.
+Repository `AGENTS.md` guides future development sessions; run
+`python scripts/install_flow_skills.py` to install the nine skills for the current
+Codex user on another machine (see the catalog for scope and persistence limits).
+
+## Durable project plans
+
+The AI workspace's **Projects & plans** tab turns an idea into an AI draft for
+review, then atomically saves a private project, plan and linked tasks. Saved
+progress survives new sessions and prerequisite checks apply to both plan and
+Tasks API updates. See [behavior and API](docs/PROJECT_PLANS.md) and the
+[implementation roadmap](docs/FLOW_EXECUTION_ROADMAP.md). Task progress is manual;
+this feature does not execute arbitrary plan tasks automatically.
+
+Approved plan tasks can now run skill agents or the read-only project inspector,
+with PostgreSQL-backed dispatch, cancellation, saved results and private downloads.
+See [task run modes and recovery](docs/PROJECT_RUNS.md). Model output and file
+inspection do not automatically mark a task done.

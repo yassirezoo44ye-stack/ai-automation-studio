@@ -424,9 +424,7 @@ export function BusinessLabPage() {
             flex: 1, display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center", gap: 12, color: "var(--t4,#9ca3af)",
           }}>
-            <div style={{ fontSize: 48 }}>🧪</div>
             <div style={{ fontSize: 15, fontWeight: 600 }}>اختر خطة أو أنشئ واحدة جديدة</div>
-            <div style={{ fontSize: 12 }}>يحلل الذكاء الاصطناعي فكرتك ويبني خطة عمل متكاملة</div>
           </div>
         )}
 

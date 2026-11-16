@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 /**
  * Integrations — manage provider connections for the current organisation.
  *
@@ -533,7 +534,7 @@ export function IntegrationsPage() {
     const catOk = activeCategory === "all" || i.category === activeCategory;
     const q = search.toLowerCase();
     const searchOk = !q || i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q);
-    return catOk && searchOk;
+    return i.hasBackend && catOk && searchOk;
   });
 
   const connectedCount = integrations.filter(i => i.status === "connected").length;
@@ -589,7 +590,8 @@ export function IntegrationsPage() {
       </div>
 
       {/* ── Stats row ── */}
-      <div style={{ padding: "14px 28px", display: "flex", gap: 14, borderBottom: "1px solid var(--b1)", flexShrink: 0, background: "var(--bg-surface)" }}>
+      <WorkspaceDetails kind="summary">
+<div style={{ padding: "14px 28px", display: "flex", gap: 14, borderBottom: "1px solid var(--b1)", flexShrink: 0, background: "var(--bg-surface)" }}>
         {[
           { labelKey: "stats.connected",   value: connectedCount,                      color: "var(--teal)"  },
           { labelKey: "stats.available",   value: backendCount - connectedCount,         color: "var(--t4)"    },
@@ -602,6 +604,7 @@ export function IntegrationsPage() {
           </div>
         ))}
       </div>
+</WorkspaceDetails>
 
       {/* ── Category tabs ── */}
       <div style={{ padding: "12px 28px", display: "flex", gap: 6, flexShrink: 0, borderBottom: "1px solid var(--b1)", overflowX: "auto", background: "var(--bg-surface)" }}>

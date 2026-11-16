@@ -7,9 +7,10 @@ from datetime import datetime
 import anthropic
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.ai.models import CompletionRequest, Message
+from app.core.ai.skills import compose_skill_system, validate_skill_ids
 from app.core.ai.context.manager import ContextBudgetError, budget_history
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
@@ -23,6 +24,13 @@ router = APIRouter(tags=["chat"])
 
 
 class RunRequest(BaseModel):
+    skill_ids: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("skill_ids")
+    @classmethod
+    def valid_skills(cls, value: list[str]) -> list[str]:
+        return validate_skill_ids(value)
+
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=4000)
     conversation_id: str | None = None
@@ -127,12 +135,16 @@ async def run_stream(req: RunRequest, request: Request):
             # A ContextBudgetError here is caught by this function's own
             # except Exception below, same SSE error channel already used
             # for provider errors — no new HTTP/SSE behavior.
-            budgeted_history = budget_history(history, model="claude-sonnet-4-6", max_tokens=2048)
+            system = compose_skill_system(None, req.skill_ids)
+            budgeted_history = budget_history(
+                history, model="claude-sonnet-4-6", max_tokens=2048, system=system,
+            )
 
             request_obj = CompletionRequest(
                 messages=[Message(role=h["role"], content=h["content"]) for h in budgeted_history],
                 model="claude-sonnet-4-6",
                 max_tokens=2048,
+                system=system,
                 temperature=1.0,        # CompletionRequest defaults to 0.7 and _build_kwargs
                                         # always forwards a non-None temperature — the original
                                         # ai.messages.create() call never set one, which means
@@ -234,6 +246,7 @@ async def run_agent(req: RunRequest, request: Request):
         messages=[Message(role="user", content=req.prompt)],
         model="claude-sonnet-4-6",
         max_tokens=1024,
+        system=compose_skill_system(None, req.skill_ids),
         temperature=1.0,  # match Anthropic's own API default — see run_stream's comment above
         conversation_id=None,
         prompt_id=None,

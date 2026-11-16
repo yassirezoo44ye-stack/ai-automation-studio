@@ -1,3 +1,4 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
 import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../contexts/toast";
@@ -149,7 +150,9 @@ function YouTubePage({ toast }: { toast: (m: string, k?: "ok"|"err"|"info") => v
                 </div>
               ))}
             </div>
-            {info.description && <div style={{ fontSize: 12, color: "var(--t4)", lineHeight: 1.6 }}>{info.description}</div>}
+            {info.description && <WorkspaceDetails kind="technical">
+<div style={{ fontSize: 12, color: "var(--t4)", lineHeight: 1.6 }}>{info.description}</div>
+</WorkspaceDetails>}
             <GoldButton variant="ghost" onClick={fetchTranscript} disabled={transcriptLoading} style={{ width: "100%", marginTop: 12, fontSize: 12 }}>
               {transcriptLoading ? `⏳ ${t("youtube.extracting")}` : transcript ? `✅ ${t("youtube.transcriptLoaded")}` : `📄 ${t("youtube.extractTranscript")}`}
             </GoldButton>

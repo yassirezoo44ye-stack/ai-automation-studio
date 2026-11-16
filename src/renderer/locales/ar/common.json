@@ -1,4 +1,11 @@
 {
+  "workspaceDetails": {
+  "summary": "ملخص الأرقام",
+  "examples": "أمثلة",
+  "setup": "إعدادات مساحة العمل",
+  "technical": "تفاصيل تقنية",
+  "activity": "سجل النشاط"
+},
   "sidebar": {
     "groups": { "main": "الرئيسية", "workspace": "مساحة العمل", "build": "أنشئ", "operate": "شغّل", "discover": "اكتشف", "platform": "المنصة", "organization": "المؤسسة", "automation": "الأتمتة", "system": "النظام" },
     "nav": {
@@ -83,6 +90,7 @@
     }
   },
   "actions": {
+    "more": "المزيد",
     "cancel": "إلغاء",
     "delete": "حذف",
     "save": "حفظ",

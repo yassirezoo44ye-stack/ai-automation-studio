@@ -40,6 +40,7 @@ beforeEach(async () => {
 });
 
 async function ready() {
+  fireEvent.click(await screen.findByText("Workspace setup"));
   await screen.findByRole("heading", { name: "Sales Executive" });
 }
 
@@ -51,6 +52,13 @@ describe("Career assistant", () => {
     expect(screen.getByRole("heading", { name: "مساعد الوظائف" })).toBeInTheDocument();
     expect(container.querySelector("section")).toHaveAttribute("dir", "rtl");
     expect(screen.getByText("ملخص البريد فقط")).toBeInTheDocument();
+  });
+  it("opens collapsed setup from a workflow step", async () => {
+    render(<CareersPage />);
+    await screen.findByRole("heading", { name: "Sales Executive" });
+    expect(screen.queryByLabelText("Full message text or HTML")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Add jobs/ }));
+    expect(screen.getByLabelText("Full message text or HTML")).toBeVisible();
   });
   it("requires a workspace and does not fetch private data without one", () => {
     orgId = null; render(<CareersPage />);

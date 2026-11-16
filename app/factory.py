@@ -110,6 +110,9 @@ async def lifespan(app: FastAPI):
     await ensure_agents_table()
     await ensure_tasks_table()
     await ensure_audit_table()
+    from app.core.project_plans import init_schema as init_project_plans_schema
+    async with pool.acquire() as conn:
+        await init_project_plans_schema(conn)
     WORKSPACES.mkdir(exist_ok=True)
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
@@ -467,8 +470,20 @@ async def lifespan(app: FastAPI):
     get_health_registry().register("database", probe_db, critical=True, timeout_s=5.0)
 
     career_task = asyncio.create_task(career_scheduler(pool))
+    from app.core.project_runs import ProjectRunWorker
+    project_run_worker = ProjectRunWorker(pool)
+    await project_run_worker.start()
+    async def probe_project_runs() -> ProbeResult:
+        alive = (project_run_worker.loop_task is not None and not project_run_worker.loop_task.done()
+                 and project_run_worker.last_error is None)
+        return ProbeResult(name="project_plan_runs", status=HealthStatus.HEALTHY if alive else HealthStatus.UNHEALTHY,
+                           message="PostgreSQL task-run worker active" if alive else "Task-run worker stopped")
+    get_health_registry().register("project_plan_runs", probe_project_runs, critical=False, timeout_s=5.0)
     health.startup_complete = True
-    yield
+    try:
+        yield
+    finally:
+        await project_run_worker.stop()
 
     # ── Shutdown ────────────────────────────────────────────────────────────
     from app.core.workflow.automation_scheduler import stop_scheduler
@@ -766,6 +781,10 @@ def create_app() -> FastAPI:
     for r in (health, subscriptions, chat, stats, projects, build,
               agents, tasks, social, youtube, package, design, runtime, inference):
         app.include_router(r.router)
+
+    from app.routers import project_plans, project_runs
+    app.include_router(project_plans.router)
+    app.include_router(project_runs.router)
 
     # ── API-only mode: redirect browser navigation to the Vercel frontend ─────
     _frontend = FRONTEND_URL.rstrip("/") if FRONTEND_URL else None

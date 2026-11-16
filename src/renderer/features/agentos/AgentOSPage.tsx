@@ -1,3 +1,7 @@
+import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
+import { SecondaryActions } from "../../shared/ui/SecondaryActions";
+import { useFlowSkill } from "../../shared/hooks/useFlowSkill";
+import { FlowSkillSelect } from "../../shared/ui/FlowSkillSelect";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../contexts/app";
@@ -225,6 +229,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
   const { t } = useTranslation("agentos");
   // URL-based identity (set when user navigates to /project/:id/:workspace)
   const { activeProjectId: urlProjectId } = useAppContext();
+  const skillSelection = useFlowSkill();
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [mode, setMode]             = useState<"run" | "deliberate" | "plan">("run");
@@ -279,7 +284,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
       } else {
         const runId = crypto.randomUUID();
         setActiveRunId(runId);
-        const res = await agentOsApi.run(val, undefined, runId, projectId);
+        const res = await agentOsApi.run(val, undefined, runId, projectId, skillSelection.skillId || undefined);
         onResult(res);
       }
     } catch (e: unknown) {
@@ -287,7 +292,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
     }
     setLoading(false);
     setInput("");
-  }, [input, mode, loading, onResult, activeProjectId]);
+  }, [input, mode, loading, onResult, activeProjectId, skillSelection.skillId]);
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
@@ -316,6 +321,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           ))}
         </div>
       </div>
+      {mode === "run" && <FlowSkillSelect selection={skillSelection} />}
       <div style={S.row}>
         <textarea
           ref={inputRef}
@@ -373,7 +379,8 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
       )}
 
       {/* Quick examples */}
-      <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+      <WorkspaceDetails kind="examples">
+<div style={{ marginTop: 12, display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
         {["help", "status", "analyze agents", "evolve analyze", "build ."].map(ex => (
           <GoldButton key={ex} variant="ghost" onClick={() => setInput(ex)} style={{ padding: "4px 10px", fontSize: 11 }}>
             {ex}
@@ -388,6 +395,7 @@ function CommandTerminal({ onResult }: { onResult: (r: AgentResult) => void }) {
           {activeProjectId ? `run (active project)` : "run"}
         </GoldButton>
       </div>
+</WorkspaceDetails>
     </GlassCard>
   );
 }
@@ -531,9 +539,11 @@ function EvolutionPanel({
           <GoldButton onClick={() => run("evolve", onEvolve)} disabled={loading === "evolve"}>
             {loading === "evolve" ? t("evolutionPanel.evolving") : t("evolutionPanel.evolveButton")}
           </GoldButton>
-          <GoldButton variant="ghost" onClick={() => run("suggest", onSuggest)} disabled={loading === "suggest"}>
+          <SecondaryActions>
+<GoldButton variant="ghost" onClick={() => run("suggest", onSuggest)} disabled={loading === "suggest"}>
             {loading === "suggest" ? t("evolutionPanel.suggesting") : t("evolutionPanel.suggestButton")}
           </GoldButton>
+</SecondaryActions>
         </div>
       </div>
       {/* Stats row */}
@@ -749,8 +759,6 @@ export function AgentOSPage() {
       <div style={S.header}>
         <div style={S.headerTop}>
           <div style={S.title}>{t("title")}</div>
-          <span className="badge badge-purple">{t("badges.autonomous")}</span>
-          {status?.llm_available && <span className="badge badge-purple">{t("badges.llmReady")}</span>}
           <GoldButton variant="ghost" onClick={refresh} style={{ marginLeft: "auto", padding: "5px 12px", fontSize: 12 }}>
             {t("refresh")}
           </GoldButton>

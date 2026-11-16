@@ -57,27 +57,13 @@ function makeKey(overrides: Partial<{ key_id: string; name: string }> = {}) {
   };
 }
 
-// SettingsPage's mount effects call fetch(/health) and apiFetch for /api/stats, /api/runtimes.
-// parseJSON is called for all three, so we must account for all three slots.
-function setupSystemEffects() {
-  // /health uses global fetch (mocked in beforeEach) but still calls parseJSON
-  mockedParseJSON.mockResolvedValueOnce({ status: "ok", db: "ok", pg_version: "14" });
-  // /api/stats
-  mockedApiFetch.mockResolvedValueOnce(fakeRes(200));
-  mockedParseJSON.mockResolvedValueOnce({ projects: 0, conversations: 0, messages: 0, agent_runs: 0, success_rate: 100 });
-  // /api/runtimes
-  mockedApiFetch.mockResolvedValueOnce(fakeRes(200));
-  mockedParseJSON.mockResolvedValueOnce({ runtimes: {} });
-}
-
+// Preferences open first; technical system requests are made only in System.
 function setupEmptyList() {
-  setupSystemEffects();
   mockedApiFetch.mockResolvedValueOnce(fakeRes(200));
   mockedParseJSON.mockResolvedValueOnce({ keys: [] });
 }
 
 function setupExistingKeys(keys = [makeKey()]) {
-  setupSystemEffects();
   mockedApiFetch.mockResolvedValueOnce(fakeRes(200));
   mockedParseJSON.mockResolvedValueOnce({ keys });
 }

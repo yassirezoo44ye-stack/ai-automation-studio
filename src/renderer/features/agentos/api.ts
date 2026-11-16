@@ -154,10 +154,11 @@ export const agentOsApi = {
   // project_id: resolved here from sessionStorage so that agents like
   // run_agent.py that require a verified project context receive it — callers
   // may override it, but the default is always the currently active project.
-  run: (input: string, workspace?: string, run_id?: string, project_id?: string) =>
+  run: (input: string, workspace?: string, run_id?: string, project_id?: string, skill_id?: string) =>
     post<AgentResult>("/run", {
       input,
       workspace,
+      skill_id,
       run_id,
       project_id: project_id ?? sessionStorage.getItem("flow_active_project") ?? undefined,
     }),

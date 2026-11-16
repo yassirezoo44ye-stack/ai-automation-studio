@@ -8,8 +8,8 @@
 .leads-grow{flex:1}
 
 /* Hero */
-.leads-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;padding:clamp(20px,3vw,30px);margin-bottom:18px;border:1px solid var(--b1);border-radius:20px;background:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--leads-ai) 20%,transparent),transparent 60%),radial-gradient(90% 120% at 100% 100%,color-mix(in srgb,var(--leads-hot) 12%,transparent),transparent 55%),var(--bg-surface)}
-.leads-hero h1{font-size:clamp(26px,4vw,36px);margin:8px 0 6px;letter-spacing:-.02em}
+.leads-hero{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:0;margin-bottom:16px;background:transparent;border:0;box-shadow:none}
+.leads-hero h1{font-size:22px;margin:0;letter-spacing:0}
 .leads-hero p{margin:0;color:var(--t2);max-width:60ch;line-height:1.7}
 .leads-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;letter-spacing:2px;color:var(--teal)}
 .leads-ai-badge{display:inline-flex;align-items:center;padding:2px 7px;margin-inline-end:7px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,var(--leads-ai),var(--teal));vertical-align:middle}

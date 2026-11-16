@@ -1,8 +1,9 @@
+import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
  * AgentsTab — agent list, creation, and management.
  * CRUD operations against /api/agents. Uses shared S styles.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, authH } from "../../../utils/api";
@@ -29,6 +30,21 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
   const [editing, setEditing]     = useState<Partial<Agent> | null>(null);
   const [saving, setSaving]       = useState(false);
   const [publishTarget, setPublishTarget] = useState<{ id: string; name: string; description?: string } | null>(null);
+
+  const [skills, setSkills] = useState<{ id: string; title: string; description: string }[]>([]);
+  const [skillsFailed, setSkillsFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiFetch("/api/agents/skills", { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("Skill catalog unavailable");
+        const data = await response.json() as { skills: typeof skills };
+        if (!controller.signal.aborted) setSkills(data.skills);
+      })
+      .catch(() => { if (!controller.signal.aborted) setSkillsFailed(true); });
+    return () => controller.abort();
+  }, []);
 
   async function saveAgent() {
     if (!editing?.name?.trim() || !editing?.system_prompt?.trim()) return;
@@ -65,6 +81,23 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
     return (
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
         <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 }}>
+          <fieldset className="g-input">
+            <legend>{t("agentsTab.form.skillsLabel")}</legend>
+            <p>{t("agentsTab.form.skillsHint")}</p>
+            {skillsFailed && <p role="alert">{t("agentsTab.form.skillsFailed")}</p>}
+            {skills.map(skill => {
+              const selected = editing?.skill_ids ?? [];
+              const checked = selected.includes(skill.id);
+              return (
+                <label key={skill.id} style={{ display: "block", marginBottom: 8 }}>
+                  <input type="checkbox" checked={checked} disabled={!checked && selected.length >= 3}
+                    onChange={() => setEditing(previous => ({ ...previous, skill_ids: checked
+                      ? selected.filter(id => id !== skill.id) : [...selected, skill.id] }))} />
+                  {" "}{skill.title}
+                </label>
+              );
+            })}
+          </fieldset>
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ width: 70 }}>
               <label className="g-label" htmlFor="agent-avatar">{t("agentsTab.form.avatarLabel")}</label>
@@ -161,13 +194,14 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
                       <button onClick={() => onChatWith(a.id)} className="btn-icon" title={t("agentsTab.card.chat")} style={{ width: 30, height: 30 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                       </button>
-                      <button onClick={() => openForm(a)} className="btn-icon" title={t("agentsTab.card.edit")} style={{ width: 30, height: 30 }}>
+                      <SecondaryActions>
+<button onClick={() => openForm(a)} className="btn-icon" title={t("agentsTab.card.edit")} style={{ width: 30, height: 30 }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       </button>
-                      <button onClick={() => void deleteAgent(a.id, a.name)} className="btn-icon" title={t("agentsTab.card.delete")} style={{ width: 30, height: 30, color: "var(--red)" }}>
+<button onClick={() => void deleteAgent(a.id, a.name)} className="btn-icon" title={t("agentsTab.card.delete")} style={{ width: 30, height: 30, color: "var(--red)" }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                       </button>
-                      <button
+<button
                         onClick={() => setPublishTarget({ id: a.id, name: a.name, description: a.description ?? undefined })}
                         className="btn-icon"
                         title={t("publish.button", { ns: "discover", defaultValue: "Publish to Discover" })}
@@ -175,6 +209,9 @@ export function AgentsTab({ agents, loading, onRefresh, onChatWith }: AgentsTabP
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
                       </button>
+</SecondaryActions>
+
+
                     </div>
                   </div>
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", gap: 16, alignItems: "center" }}>

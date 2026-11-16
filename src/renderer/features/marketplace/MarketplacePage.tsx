@@ -118,14 +118,14 @@ function ListingCard({ item, onInstall, onUninstall, onToggleDetails, installing
       <div
         role="button" tabIndex={0}
         style={{
-          position: "relative", height: 76, flexShrink: 0, cursor: "pointer",
+          position: "relative", height: 36, flexShrink: 0, cursor: "pointer",
           background: `linear-gradient(135deg, ${meta.color}28, ${meta.color}10)`,
           display: "flex", alignItems: "center", justifyContent: "center",
         }}
         onClick={() => onToggleDetails(item.id)}
         onKeyDown={e => e.key === "Enter" && onToggleDetails(item.id)}
       >
-        <span style={{ fontSize: 34 }}>{meta.icon}</span>
+        <span style={{ fontSize: 20 }}>{meta.icon}</span>
         {item.visibility !== "public" && (
           <span style={{
             position: "absolute", top: 10, right: 10,
