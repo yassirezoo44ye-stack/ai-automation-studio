@@ -1178,8 +1178,12 @@ kbd {
   font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
   box-shadow: 0 0 0 2px var(--bg-surface);
 }
+/* The bell lives in the top bar, so the panel drops *down* and aligns to the
+   bell's end edge. It used to open upwards (bottom: 100%) from its old
+   sidebar-footer spot, which put it above the top of the viewport — the
+   bell looked dead. */
 .g-notif-panel {
-  position: absolute; bottom: calc(100% + 8px); inset-inline-start: 0; width: 340px; max-width: 92vw;
+  position: absolute; top: calc(100% + 8px); inset-inline-end: 0; width: 340px; max-width: 92vw;
   max-height: 480px; display: flex; flex-direction: column;
   background: var(--bg-elevated); border: 1px solid var(--b2); border-radius: var(--r-xl);
   box-shadow: var(--shadow-xl); z-index: 1000; overflow: hidden;
@@ -2314,11 +2318,14 @@ button, [role="button"], input, textarea, select, a,
 
   /* ── Notification panel: full-width on mobile ───────────────────── */
   .g-notif-panel {
-    width: calc(100vw - 32px) !important;
-    max-width: 100vw !important;
-    inset-inline-start: 0 !important;
-    inset-inline-end:   0 !important;
-    margin: 0 16px !important;
+    /* Anchor to the viewport under the top bar so it can span the screen. */
+    position: fixed !important;
+    top: calc(var(--topbar-h) + 8px) !important;
+    inset-inline-start: 16px !important;
+    inset-inline-end:   16px !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
   }
 
   /* ── Dialogs / overlays: mobile-safe ───────────────────────────── */
