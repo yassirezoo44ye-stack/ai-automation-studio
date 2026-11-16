@@ -6,10 +6,12 @@ on:
     paths:
       - 'app/ai/compute_policy.py'
       - 'app/ai/user_credentials.py'
+      - 'app/ai/credential_rotation.py'
       - 'app/ai/credential_access.py'
       - 'app/ai/credential_rls.py'
       - 'tests/ai/test_compute_policy.py'
       - 'tests/ai/test_user_credentials.py'
+      - 'tests/ai/test_credential_rotation.py'
       - 'tests/ai/test_credential_access.py'
       - 'tests/ai/test_credential_rls.py'
       - 'tests/ai/test_byok_encryption_config.py'
@@ -57,7 +59,8 @@ jobs:
             tests/ai/test_user_credentials.py \
             tests/ai/test_byok_encryption_config.py \
             tests/ai/test_credential_access.py \
-            tests/ai/test_credential_rls.py
+            tests/ai/test_credential_rls.py \\
+            tests/ai/test_credential_rotation.py
 
   postgres-isolation:
     runs-on: ubuntu-latest
