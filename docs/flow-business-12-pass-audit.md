@@ -212,3 +212,43 @@ The 35 "no visible effect" are almost all the tab or filter that is already sele
 Observations for M8:
 - Marketplace, Plugins, Sandbox and AI Routing call `/marketplace/*`, `/plugins/*`, `/sandbox/*` (no `/api` prefix). With `VITE_API_URL` unset, Vercel's rewrite answers them with `index.html` and these pages show "Could not load …". They work only if `VITE_API_URL` points at the backend: verify in production.
 - `/api/auth/refresh` shares the 10-per-minute-per-IP `auth` limit with login. Every full page load refreshes the session, so many reloads, or many users behind one office IP, get 429 and a full-screen "Connection error". Reproduced locally.
+
+## M8 — Section 5, internal services (2026-11-16)
+
+Production checked read-only: Render API (services, deploys, logs, metrics), a read-only SQL session on the production database, the Vercel API, and HTTP requests through the production Vercel deployment (which rewrites `/api/*` to Render). Nothing in production was changed. This container cannot reach `*.onrender.com` directly, so `/health` on Render is evidenced by its own request logs.
+
+| Service | Verdict | Evidence |
+|---|---|---|
+| Render web service `ai-automation-studio` (srv-d6705koboq4c7384n0cg) | PASS | Live deploy `bcd6fce` (#51), 2026-11-14. `/health` 200 every 5 s in logs. 0 error/critical log lines and one 500 in 7 days (2026-11-14, no log line kept). Memory 172 MB of 512 MB, CPU ≈0.4 %. `main` commits #52–#54 after it are frontend-only, so no backend skew. |
+| Vercel frontend | PASS (fixed) | Production `26b4d72` (#54) READY. `/api/health/full` and `/api/health/providers` through the production domain reach Render (header `x-render-origin-server: uvicorn`). Security headers present. `VITE_API_URL` set for Production only. **Defect fixed:** a missing `/assets/*.js` returned `index.html` with 200 (checked on the PR #57 preview); see `5b802993`. |
+| PostgreSQL `ai-studio-db` | PASS | PostgreSQL 18.6, `vector` 0.8.1, 135 public tables, 48 MB of 1 GB, no `alembic_version` table (matches the Alembic archive in M3). Pool 4/4 idle. Note: CI uses pg16 (`pgvector/pgvector:pg16`), production is 18. |
+| Redis `flow-production-redis` | FAIL (not wired) | The instance exists (free plan, persistence off, internal only) but the service has no `REDIS_URL`: logs say "using local in-process backend" and the `redis` probe is DEGRADED. Cache, rate limits and the event bus are per process. Safe while `numInstances` = 1; wrong as soon as it scales. |
+| Docker image | BLOCKED locally | `docker build` here cannot reach Docker Hub (429) or `deb.debian.org` (proxy 403). Evidence instead: Render built this Dockerfile for the live deploy, and CI #380's Docker job passed. Node 20 in the `frontend` stage is past end of life (April 2026). |
+| AI gateway | PASS | `/api/health/providers`: Anthropic key present (108 chars, no whitespace), circuit closed, 0 consecutive failures; default `anthropic`. `dev_mock` shows "available" but is not in the default chain (owner build mode only). Only one real provider, so no failover. |
+| OAuth | PASS for Google, start only (fixed) | `/api/auth/google` → 307 to Google with `state` and an HttpOnly `oauth_bind` cookie; callback host `ai-automation-studio-kohl.vercel.app`. The full round trip needs a real Google account: BLOCKED by the no-real-accounts rule. GitHub and Microsoft answer 503 (not configured). **Defect fixed:** their buttons still showed and led to a bare JSON 503 page; see `7ee3eb43`. |
+| Email (SMTP) | BLOCKED | Sending is the only real test and real messages are forbidden. No SMTP line in 7 days of logs, and the env values cannot be read through the tools available. |
+| File storage | FAIL (risk) | `storage` probe OK (56 GB free), but the service has no persistent disk: `workspaces/`, `dist_packages/`, generated images and deliverables are on the container's disk and are lost on every deploy or restart. |
+| Notifications / WebSocket | PASS | Dispatcher wired for 16 event types; `ws_connections` 2 at the time of the check. |
+| Payments (Stripe) | PARTIAL | `STRIPE_SECRET_KEY` set and the `billing` probe is healthy. Whether it is a test or live key was not checked (values were not decrypted). Checkout is an M9 journey, sandbox only. |
+| Error monitoring | FAIL (none) | No Sentry or other external tracker. Only logs, the in-process `alerting` service and Render's default failure e-mails. |
+| Queues / scheduler | PASS (single instance) | Job runner: 5 completed, 0 failed, 0 dead. Automation scheduler started (60 s). Both in process, which again assumes one instance. |
+| Other Render services | Note | `ai-automation-studio` background worker suspended since 2026-09-03 (crash-looping), `ai-automation-studio-1` suspended by the owner, two PgHero services. `flow-api` belongs to the separate `flag` repository and was not audited. |
+
+Defects fixed in this milestone:
+- `5b802993` Service worker. It cached every GET without `/api/` in the URL, including signed-in calls to the backend's `/marketplace`, `/plugins` and `/sandbox` routes (on the `VITE_API_URL` origin with an `Authorization` header), and served them offline to whoever used the device next. It also cached the HTML returned for a missing chunk. Now only same-origin navigations (as the app shell) and `/assets/` files are cached; the cache is renamed so old entries are deleted. `vercel.json` no longer rewrites `/assets/`. Test: `tests/service-worker.test.mjs` (fails on the old files, passes now).
+- `f271f200` The dependency monitor logged the same `GITHUB_CLIENT_ID` warning 288 times a day; it was the only warning in production logs. Now one INFO line when the set changes.
+- `7ee3eb43` Sign-in page shows only configured OAuth providers (`/api/auth/oauth-config` now lists them).
+- `56b810fb` pytest printed a `PytestDeprecationWarning` on every run.
+
+Tests after M8: backend 3261 passed / 28 skipped, E2E 14/14, frontend 552/552, `tsc` and `eslint` clean.
+
+Needs an owner decision (not changed, production settings):
+1. Set `REDIS_URL` on the Render service to the existing Redis instance, or delete the instance.
+2. Persistent storage for builder output and generated files (Render disk or object storage).
+3. An error tracker (e.g. Sentry) for backend and frontend.
+4. `/api/health/full` is public and returns the exact PostgreSQL version, API key lengths, pool, disk, job and WebSocket counts. Suggest limiting it to admins.
+5. Set `VITE_API_URL` for Preview too, so previews can load Marketplace, Plugins and Sandbox.
+6. Move the Docker `frontend` stage from Node 20 (end of life) to Node 22.
+7. Clean up the suspended worker and the second web service.
+
+Seen but not fixed: `/api/ws/ticket` gets a 401 about every 31 s from a client whose session has ended (backoff capped at 30 s); it is harmless in load but the client never stops trying.
