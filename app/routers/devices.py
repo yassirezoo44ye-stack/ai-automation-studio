@@ -33,6 +33,11 @@ def _check_enabled() -> None:
         raise HTTPException(503, "Device Control feature is disabled on this server")
 
 
+def _bad_request(e: ValueError) -> HTTPException:
+    """A session or device the caller's org does not have is 404, like one that does not exist."""
+    return HTTPException(404 if "not found" in str(e).lower() else 400, str(e))
+
+
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class EnrollmentTokenResponse(BaseModel):
@@ -188,7 +193,7 @@ async def enroll_device(body: EnrollRequest):
             device_fingerprint=body.device_fingerprint,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return result
 
 
@@ -342,7 +347,7 @@ async def create_session(
             workspace_id=body.workspace_id,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return session
 
 
@@ -369,7 +374,7 @@ async def start_session(
     try:
         session = await svc.start_session(ctx.org_id, session_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return session
 
 
@@ -383,7 +388,7 @@ async def stop_session(
     try:
         await svc.stop_session(ctx.org_id, session_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return {"status": "stopped"}
 
 
@@ -401,5 +406,5 @@ async def update_layout(
             [item.model_dump() for item in body.layout],
         )
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return {"status": "updated"}
