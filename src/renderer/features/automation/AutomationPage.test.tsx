@@ -52,10 +52,10 @@ it("shows persisted pending and completed runs rather than filtering to running 
 });
 
 it("disables manual workflow refresh while a request is in flight", async () => {
-  let resolveRuns!: (response: Response) => void;
+  const pendingResolvers: Array<(response: Response) => void> = [];
   vi.mocked(apiFetch).mockImplementation(async (path) => {
     if (path.startsWith("/api/automation-runs")) {
-      return new Promise<Response>(resolve => { resolveRuns = resolve; });
+      return new Promise<Response>(resolve => { pendingResolvers.push(resolve); });
     }
     return new Response(JSON.stringify(path.startsWith("/api/tasks") ? { tasks: [] } : []), { status: 200 });
   });
@@ -66,6 +66,8 @@ it("disables manual workflow refresh while a request is in flight", async () => 
   const requestsBefore = vi.mocked(apiFetch).mock.calls.filter(([url]) => url.startsWith("/api/automation-runs")).length;
   fireEvent.click(refresh);
   expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url.startsWith("/api/automation-runs"))).toHaveLength(requestsBefore);
-  resolveRuns(new Response(JSON.stringify({ items: [] }), { status: 200 }));
-  await waitFor(() => expect(refresh).not.toBeDisabled());
+  for (const resolve of pendingResolvers) {
+    resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+  }
+  await waitFor(() => expect(screen.getByRole("button", { name: /Refresh/i })).not.toBeDisabled());
 });
