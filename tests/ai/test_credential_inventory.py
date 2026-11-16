@@ -18,3 +18,12 @@ async def test_inventory_excludes_secrets():
 @pytest.mark.asyncio
 async def test_coverage_distinguishes_missing_scopes():
     assert await read_rotation_coverage(FakeConn()) == {"expected": 4, "enrolled": 3, "verified": 2}
+
+@pytest.mark.asyncio
+async def test_coverage_rejects_stale_verified_checkpoint_in_query():
+    class QueryConn:
+        async def fetchrow(self, sql):
+            assert "k.updated_at > c.updated_at" in sql
+            assert "NOT EXISTS" in sql
+            return {"expected": 1, "enrolled": 1, "verified": 0}
+    assert (await read_rotation_coverage(QueryConn()))["verified"] == 0

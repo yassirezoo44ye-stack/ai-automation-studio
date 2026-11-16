@@ -26,7 +26,7 @@ async def read_rotation_coverage(conn) -> dict[str, int]:
            )
            SELECT count(*)::integer AS expected,
                   count(c.org_id)::integer AS enrolled,
-                  count(*) FILTER (WHERE c.status='verified')::integer AS verified
+                  count(*) FILTER (WHERE c.status='verified' AND NOT EXISTS (\n                      SELECT 1 FROM ai_user_credentials k\n                      WHERE k.org_id=s.org_id AND k.user_id=s.user_id\n                        AND k.updated_at > c.updated_at\n                  ))::integer AS verified
            FROM scopes s LEFT JOIN ai_credential_rotation_checkpoints c
            ON c.org_id=s.org_id AND c.user_id=s.user_id"""
     )
