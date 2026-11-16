@@ -33,6 +33,7 @@ async def test_transaction_local_scope():
     assert calls[-1] == "end"
     assert calls[1][1] == (org,) and calls[2][1] == (user,)
     assert all("true)" in entry[0] for entry in calls[1:3])
+    assert all("set_config" in entry[0] for entry in calls[1:3])
 
 
 @pytest.mark.asyncio

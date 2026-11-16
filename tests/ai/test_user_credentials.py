@@ -33,23 +33,16 @@ class FakeConn:
 @pytest.fixture(autouse=True)
 def test_key(monkeypatch):
     from cryptography.fernet import Fernet
-    monkeypatch.setattr(vault, "_cipher", lambda: Fernet(Fernet.generate_key()))
+    cipher = Fernet(Fernet.generate_key())
+    monkeypatch.setattr(vault, "_cipher", lambda: cipher)
 
 
 @pytest.mark.asyncio
 async def test_encrypted_roundtrip():
-    # Keep a single cipher for both calls.
-    from cryptography.fernet import Fernet
-    cipher = Fernet(Fernet.generate_key())
-    original = vault._cipher
-    vault._cipher = lambda: cipher
-    try:
-        conn = FakeConn()
-        await vault.put_key(conn, org_id=ORG, user_id=USER, provider="openai", api_key="test-secret")
-        assert "test-secret" not in conn.row["encrypted_key"]
-        assert await vault.get_key_for_execution(conn, org_id=ORG, user_id=USER, provider="openai") == "test-secret"
-    finally:
-        vault._cipher = original
+    conn = FakeConn()
+    await vault.put_key(conn, org_id=ORG, user_id=USER, provider="openai", api_key="test-secret")
+    assert "test-secret" not in conn.row["encrypted_key"]
+    assert await vault.get_key_for_execution(conn, org_id=ORG, user_id=USER, provider="openai") == "test-secret"
 
 
 @pytest.mark.asyncio
