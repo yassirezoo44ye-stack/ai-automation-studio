@@ -3,7 +3,7 @@
  * Python-only production image) reads as "Not on this server" with an
  * explanation, not as a failure.
  */
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SettingsPage } from "../SettingsPage";
 
@@ -32,6 +32,8 @@ beforeEach(() => {
 describe("Settings → System runtimes", () => {
   it("labels a missing tool as not on this server and explains it", async () => {
     render(<SettingsPage />);
+    // Settings opens on Appearance; runtimes live on the System tab.
+    fireEvent.click(await screen.findByRole("button", { name: /^System$/ }));
     expect(await screen.findByText("Not on this server")).toBeInTheDocument();
     expect(screen.getByText("3.12.4")).toBeInTheDocument();
     expect(screen.queryByText("not found")).not.toBeInTheDocument();
