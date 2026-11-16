@@ -204,6 +204,33 @@ jobs:
       - name: Vitest unit tests
         run: npm test
 
+      - name: Automation regression repeated 50 times (PR only)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p automation-repeat-results
+          failures=0
+          for i in $(seq 1 50); do
+            if npm test -- --run src/renderer/features/automation/AutomationPage.test.tsx > "automation-repeat-results/run-$i.log" 2>&1; then
+              echo "$i,PASS" >> automation-repeat-results/summary.csv
+            else
+              echo "$i,FAIL" >> automation-repeat-results/summary.csv
+              failures=$((failures+1))
+              tail -n 35 "automation-repeat-results/run-$i.log"
+            fi
+          done
+          echo "Automation repeated failures: $failures/50"
+          test "$failures" -eq 0
+
+      - name: Upload repeated automation evidence
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: automation-repeat-results
+          path: automation-repeat-results/
+          retention-days: 14
+
       - name: Production build
         run: npm run build
 
