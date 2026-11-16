@@ -34,3 +34,12 @@ def test_rejects_duplicate_or_unexpected_scope_count():
 def test_duplicate_scope_cannot_count_twice():
     # Dict input guarantees a scope ID has at most one report.
     assert not summarize_rotation_audit({'a': result()}, expected_scope_ids={'a', 'b'})["complete"]
+
+def test_empty_inventory_is_not_proof_of_completion():
+    with pytest.raises(ValueError, match="inventory"):
+        summarize_rotation_audit({}, expected_scope_ids=set())
+
+@pytest.mark.parametrize("bad", [None, [], {"a": None}, {"a": 1}])
+def test_malformed_audit_inputs_fail_closed(bad):
+    with pytest.raises(ValueError):
+        summarize_rotation_audit(bad, expected_scope_ids={"a"})

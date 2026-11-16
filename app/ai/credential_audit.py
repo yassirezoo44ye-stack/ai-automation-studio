@@ -8,10 +8,16 @@ from __future__ import annotations
 def summarize_rotation_audit(results: dict[str, dict[str, int | bool]], *, expected_scope_ids: set[str]) -> dict[str, int | bool]:
     if not isinstance(expected_scope_ids, set) or any(not isinstance(x, str) or not x for x in expected_scope_ids):
         raise ValueError("expected_scope_ids must be a set of nonempty opaque IDs")
+    if not isinstance(results, dict) or not expected_scope_ids:
+        raise ValueError("nonempty independently verified inventory required")
+    if any(not isinstance(x, str) or not x for x in results):
+        raise ValueError("invalid result scope ID")
     if not set(results).issubset(expected_scope_ids):
         raise ValueError("unexpected scope ID")
     scanned = old_or_unreadable = unreadable = 0
     for item in results.values():
+        if not isinstance(item, dict):
+            raise ValueError("invalid audit result")
         if set(item) != {"scanned", "not_primary", "unreadable", "complete"}:
             raise ValueError("invalid audit result fields")
         n, old, bad, done = (item[k] for k in ("scanned", "not_primary", "unreadable", "complete"))
