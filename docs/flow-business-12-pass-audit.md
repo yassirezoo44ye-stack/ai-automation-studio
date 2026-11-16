@@ -175,3 +175,40 @@ Real browser on the built app + backend: draft survived a refresh; a message cre
 
 Frontend checks: typecheck, `lint:strict`, vitest 538/538, build OK.
 Not covered yet: Safari/Firefox (only Chromium was driven), team chat, WebSocket reconnect.
+
+## M7 — FE-03 responsive / RTL, FE-04 buttons and links (2026-11-16)
+Tool: `scripts/ui-runtime-audit.mjs` (`650dbc36`), real build + real backend + Chromium, synthetic signed-in users. Layout = 29 routes × 6 viewports (desktop 1440×900; tablet 768×1024 / 1024×768; Android 412×915 / 915×412; phone 360×740) × en/ar = **348 screens**. Touch viewports use a mobile, touch-enabled context.
+
+**FE-03 results**
+| Check | Before | After |
+|---|---|---|
+| `<html dir="rtl">` on Arabic screens | 174/174 | 174/174 |
+| Error screens / uncaught page errors / raw i18n keys / unnamed controls | 0 | 0 |
+| Page-level horizontal scroll | 0 | 0 |
+| 360px phone, routes with cut-off content (en / ar) | 12 / 9 | 6 / 5 |
+| Android portrait, routes with cut-off content (en / ar) | 7 / 5 | 5 / 4 |
+| Desktop and tablets, cut-off content | 0 | 0 |
+| Chat Send covered by the Copilot button | tablets + phones | no |
+
+Fixes (`9b68d087`): page roots fill the page column (Leads was 595px wide on a 360px screen and clipped); Settings nav stacks on phones (it took 200px of 360); page headers wrap and tab bars scroll on phones; chat composer leaves room for the Copilot button; toasts are RTL-aware and never wider than the screen. Guard: `tests/responsive-rules.test.mjs`.
+
+Still cut off on phones (page-specific layouts, not changed): AgentOS tab row, AI Routing tab row, Integrations toolbar, Devices "+ Enroll Device", Social analyzer card, Design Studio properties panel (an editor built for wide screens). On landscape phones the Copilot button floats over some primary buttons (Run, Generate, Build My SaaS) until the page is scrolled.
+
+**FE-04 results** (desktop, English, every visible control on every route, fresh page per click): **339 controls**.
+| Outcome | Count |
+|---|---|
+| UI changed (dialog, panel, tab, form) | 148 |
+| API request sent | 90 |
+| Navigated | 13 |
+| In-page anchor with existing target ("Skip to main content") | 29 |
+| Disabled (empty form / unavailable) | 15 |
+| No visible effect | 35 |
+| Not clicked: destructive (Sign Out) | 1 |
+| Harness could not reach (items in the collapsed "More" menu after reload) | 8 |
+| Uncaught errors / error screens / dead or unsafe links / external links | 0 |
+
+The 35 "no visible effect" are almost all the tab or filter that is already selected (e.g. "All", "Chat", "Dark"). One was a real defect: Design Studio zoom `+`/`−` showed "100%" whatever the zoom; fixed in `11fd82a0` (initial fit now shows 78%, then 93%, 65%).
+
+Observations for M8:
+- Marketplace, Plugins, Sandbox and AI Routing call `/marketplace/*`, `/plugins/*`, `/sandbox/*` (no `/api` prefix). With `VITE_API_URL` unset, Vercel's rewrite answers them with `index.html` and these pages show "Could not load …". They work only if `VITE_API_URL` points at the backend: verify in production.
+- `/api/auth/refresh` shares the 10-per-minute-per-IP `auth` limit with login. Every full page load refreshes the session, so many reloads, or many users behind one office IP, get 429 and a full-screen "Connection error". Reproduced locally.
