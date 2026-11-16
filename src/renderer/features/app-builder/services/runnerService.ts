@@ -167,19 +167,22 @@ export async function* streamRun(
       const { done, value } = await reader.read();
       if (done) break;
       buf += dec.decode(value, { stream: true });
-
-      // SSE events are separated by double newlines
+      // Accept CRLF SSE delimiters even when split between network chunks.
+      buf = buf.replace(/\r\n/g, "\n");
       const parts = buf.split("\n\n");
       buf = parts.pop() ?? "";
 
       for (const part of parts) {
-        const line = part.trim();
-        if (!line.startsWith("data:")) continue;
-        const json = line.slice("data:".length).trim();
-        if (!json) continue;
+        const data = part.split("\n")
+          .filter(line => line.startsWith("data:"))
+          .map(line => line.slice(5).trimStart())
+          .join("\n");
+        if (!data) continue;
         try {
-          const event = JSON.parse(json) as RunEvent;
-          yield event;
+          const event = JSON.parse(data) as RunEvent;
+          if (event && typeof event === "object" && typeof event.type === "string") {
+            yield event;
+          }
         } catch { /* malformed — skip */ }
       }
     }
