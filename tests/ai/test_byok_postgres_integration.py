@@ -486,3 +486,26 @@ async def test_real_postgres_checkpoint_enrollment_requires_existing_credential(
         async with scoped_credential_transaction(conn, org_id=org, user_id=other):
             assert await conn.fetchval(
                 "SELECT count(*) FROM ai_credential_rotation_checkpoints") == 0
+
+@pytest.mark.asyncio
+async def test_real_postgres_privileged_inventory_and_coverage(db_pool):
+    from app.ai.credential_inventory import read_rotation_inventory, read_rotation_coverage
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="private")
+            await conn.execute(
+                "INSERT INTO ai_credential_rotation_checkpoints (org_id,user_id) VALUES ($1,$2)",
+                uuid.UUID(org), uuid.UUID(user))
+    # The fixture creates a disposable schema. Admin is the table owner;
+    # the application connection remains RLS-restricted.
+    admin = await asyncpg.connect(DSN)
+    try:
+        schema = await db_pool.fetchval("SHOW search_path")
+        await admin.execute(f'SET search_path TO "{schema}"')
+        rows = await read_rotation_inventory(admin)
+        assert rows == [{"org_id": org, "user_id": user, "credential_count": 1}]
+        assert await read_rotation_coverage(admin) == {
+            "expected": 1, "enrolled": 1, "verified": 0}
+    finally:
+        await admin.close()
