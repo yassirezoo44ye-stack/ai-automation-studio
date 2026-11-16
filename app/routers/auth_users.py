@@ -878,7 +878,19 @@ async def oauth_public_config(response: Response) -> dict:
     if (url.scheme != "https" and not (local and url.scheme == "http")) or not url.netloc or url.username or url.password or url.path or url.query or url.fragment:
         raise HTTPException(503, "OAuth origin is not configured correctly")
     response.headers["Cache-Control"] = "no-store"
-    return {"origin": base}
+    return {"origin": base, "providers": _configured_oauth_providers()}
+
+
+def _configured_oauth_providers() -> list[str]:
+    """Providers whose start route will not answer 503. The sign-in page
+    hides the others: a button for an unconfigured provider used to send
+    the browser to a bare JSON error page (found on production, M8)."""
+    pairs = (
+        ("google", _GOOGLE_CLIENT_ID, _GOOGLE_CLIENT_SECRET),
+        ("github", _GITHUB_CLIENT_ID, _GITHUB_CLIENT_SECRET),
+        ("microsoft", _MICROSOFT_CLIENT_ID, _MICROSOFT_CLIENT_SECRET),
+    )
+    return [name for name, cid, secret in pairs if cid and secret]
 
 
 def _oauth_not_configured(provider: str):
