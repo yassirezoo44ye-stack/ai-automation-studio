@@ -21,7 +21,7 @@ async def test_detects_old_ciphertext_without_exposing_secrets(monkeypatch):
         {"encrypted_key": Fernet(new).encrypt(b"new-secret").decode()},
     ])
     result = await verify_user_primary_key(conn, org_id=str(uuid.uuid4()), user_id=str(uuid.uuid4()))
-    assert result == {"scanned": 2, "not_primary": 1, "complete": False}
+    assert result == {"scanned": 2, "not_primary": 1, "unreadable": 0, "complete": False}
     assert "secret" not in repr(result)
 
 @pytest.mark.asyncio
@@ -37,3 +37,11 @@ async def test_invalid_key_configuration_fails_closed(monkeypatch):
     monkeypatch.delenv("BYOK_FERNET_KEY", raising=False)
     with pytest.raises(RuntimeError):
         await verify_user_primary_key(FakeConn([]), org_id=str(uuid.uuid4()), user_id=str(uuid.uuid4()))
+
+@pytest.mark.asyncio
+async def test_corrupt_ciphertext_is_reported_separately(monkeypatch):
+    monkeypatch.setenv("BYOK_FERNET_KEY", Fernet.generate_key().decode())
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    conn = FakeConn([{"encrypted_key": "corrupted"}])
+    result = await verify_user_primary_key(conn, org_id=str(uuid.uuid4()), user_id=str(uuid.uuid4()))
+    assert result == {"scanned": 1, "not_primary": 1, "unreadable": 1, "complete": False}

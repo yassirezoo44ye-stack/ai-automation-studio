@@ -183,13 +183,13 @@ async def test_real_postgres_primary_key_coverage_is_tenant_scoped(db_pool, monk
         monkeypatch.setenv("BYOK_FERNET_PREVIOUS_KEYS", old.decode())
         async with scoped_credential_transaction(conn, org_id=org, user_id=user_a):
             assert await verify_user_primary_key(conn, org_id=org, user_id=user_a) == {
-                "scanned": 1, "not_primary": 1, "complete": False
+                "scanned": 1, "not_primary": 1, "unreadable": 0, "complete": False
             }
             await put_key(conn, org_id=org, user_id=user_a, provider="openai", api_key="a-new")
             assert await verify_user_primary_key(conn, org_id=org, user_id=user_a) == {
-                "scanned": 1, "not_primary": 0, "complete": True
+                "scanned": 1, "not_primary": 0, "unreadable": 0, "complete": True
             }
         async with scoped_credential_transaction(conn, org_id=org, user_id=user_b):
             assert await verify_user_primary_key(conn, org_id=org, user_id=user_b) == {
-                "scanned": 1, "not_primary": 1, "complete": False
+                "scanned": 1, "not_primary": 1, "unreadable": 0, "complete": False
             }
