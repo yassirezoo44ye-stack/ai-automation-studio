@@ -540,3 +540,36 @@ async def test_real_postgres_updated_credential_invalidates_verified_coverage(db
             "expected": 1, "enrolled": 1, "verified": 0}
     finally:
         await admin.close()
+
+@pytest.mark.asyncio
+async def test_real_postgres_final_audit_detects_legacy_and_corrupt_tokens(db_pool, monkeypatch):
+    from cryptography.fernet import Fernet
+    from app.ai.credential_final_audit import verify_all_primary_ciphertexts
+    primary = os.environ["BYOK_FERNET_KEY"]
+    legacy = Fernet.generate_key().decode()
+    monkeypatch.setenv("BYOK_FERNET_PREVIOUS_KEYS", legacy)
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="current")
+            await conn.execute(
+                """INSERT INTO ai_user_credentials (org_id,user_id,provider,encrypted_key)
+                   VALUES ($1,$2,'anthropic',$3),($1,$2,'gemini',$4)""",
+                uuid.UUID(org), uuid.UUID(user),
+                Fernet(legacy.encode()).encrypt(b"legacy").decode(), "corrupt-token")
+    admin = await asyncpg.connect(DSN)
+    try:
+        schema = await db_pool.fetchval("SHOW search_path")
+        await admin.execute(f'SET search_path TO "{schema}"')
+        assert await verify_all_primary_ciphertexts(admin) == {
+            "scanned": 3, "not_primary": 2, "complete": False}
+        async with db_pool.acquire() as conn:
+            async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+                await conn.execute(
+                    """DELETE FROM ai_user_credentials
+                       WHERE org_id=$1 AND user_id=$2 AND provider IN ('anthropic','gemini')""",
+                    uuid.UUID(org), uuid.UUID(user))
+        assert await verify_all_primary_ciphertexts(admin) == {
+            "scanned": 1, "not_primary": 0, "complete": True}
+    finally:
+        await admin.close()
