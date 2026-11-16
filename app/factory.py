@@ -598,6 +598,26 @@ def create_app() -> FastAPI:
         print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
+    # A malformed id in the URL ("/api/leads/abc") reached uuid.UUID() or a
+    # $1::uuid parameter and surfaced as a 500 on 31 GET routes (journey 11,
+    # M9). The record cannot exist, so the answer is 404, the same as for a
+    # well-formed id that is not there. Only these two exact failures are
+    # mapped; any other ValueError / DataError is still a 500.
+    import asyncpg as _asyncpg_mod
+
+    def _is_malformed_id(exc: Exception) -> bool:
+        msg = str(exc)
+        if isinstance(exc, _asyncpg_mod.exceptions.DataError):
+            return "invalid UUID" in msg or "invalid input syntax for type uuid" in msg
+        return type(exc) is ValueError and msg == "badly formed hexadecimal UUID string"
+
+    @app.exception_handler(ValueError)
+    @app.exception_handler(_asyncpg_mod.exceptions.DataError)
+    async def malformed_id_handler(request: Request, exc: Exception):
+        if _is_malformed_id(exc):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        return await unhandled_error_handler(request, exc)
+
     # ── Tenant context (single source of truth for X-Organization-Id) ──────
     # Extracts the header once into request.state.org_id. This never grants
     # or denies anything — real membership enforcement stays entirely in
