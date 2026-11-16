@@ -193,3 +193,22 @@ async def test_real_postgres_primary_key_coverage_is_tenant_scoped(db_pool, monk
             assert await verify_user_primary_key(conn, org_id=org, user_id=user_b) == {
                 "scanned": 1, "not_primary": 1, "unreadable": 0, "complete": False
             }
+
+@pytest.mark.asyncio
+async def test_real_postgres_audit_detects_corrupt_ciphertext(db_pool, monkeypatch):
+    """Corruption is never reported as successfully migrated ciphertext."""
+    from cryptography.fernet import Fernet
+    from app.ai.credential_verification import verify_user_primary_key
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    monkeypatch.setenv("BYOK_FERNET_KEY", Fernet.generate_key().decode())
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="test")
+            await conn.execute(
+                "UPDATE ai_user_credentials SET encrypted_key=$1 WHERE provider='openai'",
+                "invalid-token",
+            )
+            assert await verify_user_primary_key(conn, org_id=org, user_id=user) == {
+                "scanned": 1, "not_primary": 1, "unreadable": 1, "complete": False
+            }
