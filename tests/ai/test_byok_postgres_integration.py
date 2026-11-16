@@ -375,7 +375,6 @@ async def test_real_postgres_expired_lease_recovery_and_stale_token_rejection(db
             await conn.execute(
                 "INSERT INTO ai_credential_rotation_checkpoints (org_id,user_id) VALUES ($1,$2)",
                 uuid.UUID(org), uuid.UUID(user))
-            )
             stale = await claim_checkpoint(conn, org_id=org, user_id=user)
             assert stale
             await conn.execute(
