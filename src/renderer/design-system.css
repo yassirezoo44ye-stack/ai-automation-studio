@@ -447,6 +447,25 @@ input:focus, textarea:focus, select:focus {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+/* A page root that centres itself with `margin: 0 auto` stops stretching
+   in this flex column and sizes to its content's min-content width, so on
+   a phone it grows wider than the screen and app-main clips it (Leads,
+   New Project, Devices, SaaS factory). Full width + the root's own
+   max-width keeps the centring and lets the content wrap. */
+.page-enter > * { width: 100%; min-width: 0; }
+/* Phones: page headers and tab bars were single non-wrapping rows, so their
+   last buttons/tabs sat past the screen edge, cut off by .app-main and
+   unreachable. Headers wrap onto a second line (their inline fixed height
+   has to give way); tab bars scroll sideways. */
+@media (max-width: 640px) {
+  .page-enter > header {
+    flex-wrap: wrap; row-gap: 8px;
+    height: auto !important; min-height: 0 !important;
+    padding-block: 10px !important;
+  }
+  .page-enter [role="tablist"] { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  .page-enter > header > div, .page-enter .pill-tabs { flex-wrap: wrap; min-width: 0; }
+}
 .page-enter {
   animation: page-enter-motion 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
@@ -689,6 +708,25 @@ input:focus, textarea:focus, select:focus {
 .settings-nav {
   display: flex; flex-direction: column; gap: 2px;
   min-width: 180px; flex-shrink: 0;
+}
+.settings-layout { flex: 1; overflow: hidden; display: flex; min-width: 0; }
+.settings-nav {
+  width: 200px; flex-shrink: 0; padding: 20px 12px;
+  border-inline-end: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.settings-content { flex: 1; min-width: 0; overflow-y: auto; padding: 28px; }
+/* Phones: the 200px column left ~130px for the settings themselves and cut
+   them off; stack the nav above the content as a scrollable row instead. */
+@media (max-width: 640px) {
+  .settings-layout { flex-direction: column; }
+  .settings-nav {
+    width: auto; flex-direction: row; overflow-x: auto; padding: 8px 12px;
+    border-inline-end: 0; border-bottom: 1px solid var(--border);
+  }
+  .settings-nav > .section-label { display: none; }
+  .settings-nav .settings-nav-item { white-space: nowrap; flex-shrink: 0; }
+  .settings-content { padding: 16px; }
 }
 .settings-nav-item {
   display: flex; align-items: center; gap: 10px;

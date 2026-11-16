@@ -423,9 +423,9 @@ export function SettingsPage() {
           </span>
         )}
       </header>
-      <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
-        {/* Left nav */}
-        <div style={{ width: 200, flexShrink: 0, padding: "20px 12px", borderInlineEnd: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 2 }}>
+      <div className="settings-layout">
+        {/* Section nav: a side column, or a scrollable row on phones */}
+        <div className="settings-nav">
           <div className="section-label" style={{ marginBottom: 10, paddingInlineStart: 10 }}>{t("nav.label")}</div>
           {SETTINGS_NAV.map(n => (
             <div
@@ -443,7 +443,7 @@ export function SettingsPage() {
         </div>
 
         {/* Content area */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 28 }}>
+        <div className="settings-content">
 
           {/* ── System ──────────────────────────────────────────────────── */}
           {tab === "system" && (

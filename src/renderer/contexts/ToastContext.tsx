@@ -15,7 +15,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastCtx.Provider value={add}>
       {children}
-      <div style={{ position: "fixed", bottom: 24, right: 24, display: "flex", flexDirection: "column", gap: 8, zIndex: 9999 }}>
+      <div style={{ position: "fixed", bottom: 24, insetInlineEnd: 24, maxWidth: "calc(100vw - 48px)", display: "flex", flexDirection: "column", gap: 8, zIndex: 9999 }}>
         {toasts.map(t => (
           <div key={t.id} className={`toast toast-${t.kind}`} role="alert" aria-live="polite">
             <span className="toast-icon" style={{ fontWeight: 700, fontSize: 12, width: 18, height: 18, borderRadius: "50%", border: "1.5px solid currentColor", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{toastIcon[t.kind]}</span>

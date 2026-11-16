@@ -269,3 +269,14 @@
 @media (max-width: 720px) {
   .chat-rail { display: none; }
 }
+
+/* Send / Stop sit at the bottom inline-end corner, exactly where the fixed
+   Copilot button floats (52px + 24px offset). Without this gap the button
+   covered Send on tablets and phones, so the message could not be sent by
+   tapping. */
+.chat-composer__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-inline-end: 64px;
+}

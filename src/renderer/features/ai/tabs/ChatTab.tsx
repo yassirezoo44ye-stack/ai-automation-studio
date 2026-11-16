@@ -587,7 +587,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             aria-label={t("chatTab.input.placeholder")}
             style={{ width: "100%", maxHeight: 160, resize: "none", marginBottom: 8 }}
           />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+          <div className="chat-composer__actions">
             {streaming ? (
               <GoldButton
                 variant="danger"
