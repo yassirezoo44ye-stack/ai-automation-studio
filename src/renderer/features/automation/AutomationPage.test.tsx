@@ -51,21 +51,21 @@ it("shows persisted pending and completed runs rather than filtering to running 
   expect(vi.mocked(apiFetch).mock.calls.some(([url]) => url === "/api/automation-runs?limit=20")).toBe(true);
 });
 
-it("does not issue overlapping workflow refresh requests", async () => {
+it("disables manual workflow refresh while a request is in flight", async () => {
   let resolveRuns!: (response: Response) => void;
-  let requests = 0;
   vi.mocked(apiFetch).mockImplementation(async (path) => {
     if (path.startsWith("/api/automation-runs")) {
-      requests += 1;
       return new Promise<Response>(resolve => { resolveRuns = resolve; });
     }
     return new Response(JSON.stringify(path.startsWith("/api/tasks") ? { tasks: [] } : []), { status: 200 });
   });
   render(<AutomationPage />);
   fireEvent.click(screen.getByRole("tab", { name: "Workflows" }));
-  await waitFor(() => expect(requests).toBe(1));
-  fireEvent.click(screen.getByRole("button", { name: /Refresh/i }));
-  expect(requests).toBe(1);
+  const refresh = screen.getByRole("button", { name: /Refresh/i });
+  await waitFor(() => expect(refresh).toBeDisabled());
+  const requestsBefore = vi.mocked(apiFetch).mock.calls.filter(([url]) => url.startsWith("/api/automation-runs")).length;
+  fireEvent.click(refresh);
+  expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url.startsWith("/api/automation-runs"))).toHaveLength(requestsBefore);
   resolveRuns(new Response(JSON.stringify({ items: [] }), { status: 200 }));
-  await waitFor(() => expect(screen.queryByText("…")).not.toBeInTheDocument());
+  await waitFor(() => expect(refresh).not.toBeDisabled());
 });
