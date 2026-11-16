@@ -161,6 +161,7 @@ export async function* streamRun(
 
   const dec = new TextDecoder();
   let buf = "";
+  let terminalReceived = false;
 
   try {
     while (true) {
@@ -181,10 +182,23 @@ export async function* streamRun(
         try {
           const event = JSON.parse(data) as RunEvent;
           if (event && typeof event === "object" && typeof event.type === "string") {
+            if (["done", "error", "unsupported", "html", "server_ready"].includes(event.type)) {
+              terminalReceived = true;
+            }
             yield event;
           }
         } catch { /* malformed — skip */ }
       }
+    }
+    if (!terminalReceived && !signal?.aborted) {
+      yield {
+        type: "error",
+        category: "network",
+        message: "Run stream ended before a result or preview became available.",
+        fix: ["Check the process status before retrying"],
+        severity: "high",
+        recoverable: true,
+      } satisfies RunEventError;
     }
   } finally {
     reader.cancel();
