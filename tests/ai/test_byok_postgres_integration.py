@@ -448,3 +448,24 @@ async def test_real_postgres_worker_rolls_back_corrupt_credential_and_claim(db_p
                 "SELECT status, attempt FROM ai_credential_rotation_checkpoints WHERE org_id=$1 AND user_id=$2",
                 uuid.UUID(org), uuid.UUID(user))
             assert row["status"] == "pending" and row["attempt"] == 0
+
+@pytest.mark.asyncio
+async def test_real_postgres_transaction_owning_worker_rolls_back_on_corruption(db_pool):
+    from app.ai.credential_worker import run_scoped_rotation
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await conn.execute(
+                """INSERT INTO ai_user_credentials (org_id,user_id,provider,encrypted_key)
+                   VALUES ($1,$2,'openai','corrupt-token')""",
+                uuid.UUID(org), uuid.UUID(user))
+            await conn.execute(
+                "INSERT INTO ai_credential_rotation_checkpoints (org_id,user_id) VALUES ($1,$2)",
+                uuid.UUID(org), uuid.UUID(user))
+        with pytest.raises(Exception):
+            await run_scoped_rotation(conn, org_id=org, user_id=user)
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            row = await conn.fetchrow(
+                "SELECT status, attempt FROM ai_credential_rotation_checkpoints WHERE org_id=$1 AND user_id=$2",
+                uuid.UUID(org), uuid.UUID(user))
+            assert row["status"] == "pending" and row["attempt"] == 0
