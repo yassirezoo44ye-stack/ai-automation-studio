@@ -15,6 +15,16 @@ on:
       - 'tests/ai/test_byok_encryption_config.py'
       - 'tests/ai/test_byok_postgres_integration.py'
       - '.github/workflows/byok-security.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/ai/**'
+      - 'tests/ai/test_byok_*.py'
+      - 'tests/ai/test_credential_*.py'
+      - 'tests/ai/test_compute_policy.py'
+      - 'tests/ai/test_user_credentials.py'
+      - '.github/workflows/byok-security.yml'
   workflow_dispatch:
 
 permissions:
