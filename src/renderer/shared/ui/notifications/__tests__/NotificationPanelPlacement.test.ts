@@ -5,7 +5,10 @@
  * (jsdom applies no CSS). This guards the stylesheet itself.
  */
 import { describe, it, expect } from "vitest";
-import css from "../../../../design-system.css?raw";
+import { readFileSync } from "node:fs";
+
+// Read the file directly: vitest stubs CSS imports (even `?raw`) to "".
+const css = readFileSync(new URL("../../../../design-system.css", import.meta.url), "utf8");
 
 function rule(selector: string): string {
   const start = css.indexOf(`${selector} {`);
