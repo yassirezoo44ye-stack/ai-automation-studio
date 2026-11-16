@@ -13,6 +13,7 @@ on:
       - 'app/ai/credential_lease.py'
       - 'app/ai/credential_worker.py'
       - 'app/ai/credential_enrollment.py'
+      - 'app/ai/credential_inventory.py'
       - 'app/ai/credential_access.py'
       - 'app/ai/credential_rls.py'
       - 'tests/ai/test_compute_policy.py'
@@ -24,6 +25,7 @@ on:
       - 'tests/ai/test_credential_lease.py'
       - 'tests/ai/test_credential_worker.py'
       - 'tests/ai/test_credential_enrollment.py'
+      - 'tests/ai/test_credential_inventory.py'
       - 'tests/ai/test_credential_access.py'
       - 'tests/ai/test_credential_rls.py'
       - 'tests/ai/test_byok_encryption_config.py'
@@ -78,7 +80,8 @@ jobs:
             tests/ai/test_credential_checkpoint.py \
             tests/ai/test_credential_lease.py \
             tests/ai/test_credential_worker.py \
-            tests/ai/test_credential_enrollment.py
+            tests/ai/test_credential_enrollment.py \
+            tests/ai/test_credential_inventory.py
 
   postgres-isolation:
     runs-on: ubuntu-latest
