@@ -108,3 +108,33 @@ async def test_real_rls_pool_reuse_does_not_leak_scope(db_pool):
         assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") is None
         async with scoped_credential_transaction(conn, org_id=org, user_id=user):
             assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "private"
+
+@pytest.mark.asyncio
+async def test_real_postgres_staged_key_rotation(db_pool, monkeypatch):
+    """Verify previous-key reads and new-key writes against real RLS rows."""
+    from cryptography.fernet import Fernet, InvalidToken
+    old, new = Fernet.generate_key(), Fernet.generate_key()
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    monkeypatch.setenv("BYOK_FERNET_KEY", old.decode("ascii"))
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="old-secret")
+            old_ciphertext = await conn.fetchval(
+                "SELECT encrypted_key FROM ai_user_credentials WHERE provider='openai'"
+            )
+        monkeypatch.setenv("BYOK_FERNET_KEY", new.decode("ascii"))
+        monkeypatch.setenv("BYOK_FERNET_PREVIOUS_KEYS", old.decode("ascii"))
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "old-secret"
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="new-secret")
+            new_ciphertext = await conn.fetchval(
+                "SELECT encrypted_key FROM ai_user_credentials WHERE provider='openai'"
+            )
+        assert Fernet(old).decrypt(old_ciphertext.encode()) == b"old-secret"
+        assert Fernet(new).decrypt(new_ciphertext.encode()) == b"new-secret"
+        with pytest.raises(InvalidToken):
+            Fernet(old).decrypt(new_ciphertext.encode())
+        monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "new-secret"
