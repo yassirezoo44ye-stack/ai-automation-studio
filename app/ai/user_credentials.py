@@ -5,11 +5,10 @@ encrypted at rest; never return ciphertext or plaintext through an API.
 """
 from __future__ import annotations
 
+import os
 import uuid
 
 from cryptography.fernet import Fernet
-
-from app.core.auth import derive_fernet_key
 
 ALLOWED_PROVIDERS = frozenset({"openai", "anthropic", "gemini", "openrouter", "groq"})
 
@@ -33,8 +32,15 @@ def _validate_provider(provider: str) -> str:
 
 
 def _cipher() -> Fernet:
-    # Domain separation from existing OAuth and plugin secret encryption.
-    return Fernet(derive_fernet_key("ai-user-credentials"))
+    # Dedicated credential-encryption key; never fall back to SESSION_SECRET.
+    # Provision via secret manager. Rotation requires an explicit re-encryption plan.
+    raw = os.environ.get("BYOK_FERNET_KEY", "")
+    if not raw:
+        raise RuntimeError("BYOK encryption key is not configured")
+    try:
+        return Fernet(raw.encode("ascii"))
+    except (ValueError, TypeError, UnicodeError) as exc:
+        raise RuntimeError("Invalid BYOK encryption key configuration") from exc
 
 
 async def put_key(conn, *, org_id: str, user_id: str, provider: str, api_key: str) -> None:
