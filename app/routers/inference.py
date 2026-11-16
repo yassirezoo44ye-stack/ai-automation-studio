@@ -495,27 +495,7 @@ async def ai_diagnostics(include_db: bool = False):
 
 # ── Model catalog ─────────────────────────────────────────────────────────────
 
-@router.get("/models")
-async def list_models(provider: str | None = None):
-    """Return known models from the catalog."""
-    from app.core.ai.models.catalog import catalog
-    available = platform.registry.available()
-    models = catalog.for_provider(provider) if provider else [
-        m for m in catalog.all() if m.provider_id in available and not m.deprecated
-    ]
-    return [
-        {
-            "id":              m.id,
-            "provider":        m.provider_id,
-            "display_name":    m.display_name,
-            "context_window":  m.context_window,
-            "output_limit":    m.output_limit,
-            "latency_tier":    m.latency_tier,
-            "supports_tools":  m.supports_tools,
-            "supports_vision": m.supports_vision,
-            "reasoning":       m.reasoning,
-            "input_cost_m":    m.input_cost_m,
-            "output_cost_m":   m.output_cost_m,
-        }
-        for m in models
-    ]
+# GET /api/ai/models is served by app/routers/ai_router_api.py, which is
+# registered first in app/factory.py; a second handler here was never
+# reached and made FastAPI warn "Duplicate Operation ID" on every OpenAPI
+# build, so it was removed (M9).
