@@ -212,3 +212,34 @@ async def test_real_postgres_audit_detects_corrupt_ciphertext(db_pool, monkeypat
             assert await verify_user_primary_key(conn, org_id=org, user_id=user) == {
                 "scanned": 1, "not_primary": 1, "unreadable": 1, "complete": False
             }
+
+@pytest.mark.asyncio
+async def test_real_postgres_rotation_rolls_back_on_corrupt_second_row(db_pool, monkeypatch):
+    """A corrupt row aborts the whole user's rotation; no partial re-encryption."""
+    from cryptography.fernet import Fernet, InvalidToken
+    from app.ai.credential_rotation import rotate_user_credentials
+    old, new = Fernet.generate_key(), Fernet.generate_key()
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    monkeypatch.setenv("BYOK_FERNET_KEY", old.decode())
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="anthropic", api_key="original")
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="will-corrupt")
+            original = await conn.fetchval(
+                "SELECT encrypted_key FROM ai_user_credentials WHERE provider='anthropic'"
+            )
+            await conn.execute(
+                "UPDATE ai_user_credentials SET encrypted_key='invalid-token' WHERE provider='openai'"
+            )
+        monkeypatch.setenv("BYOK_FERNET_KEY", new.decode())
+        monkeypatch.setenv("BYOK_FERNET_PREVIOUS_KEYS", old.decode())
+        with pytest.raises(InvalidToken):
+            async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+                await rotate_user_credentials(conn, org_id=org, user_id=user)
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            after = await conn.fetchval(
+                "SELECT encrypted_key FROM ai_user_credentials WHERE provider='anthropic'"
+            )
+            assert after == original
+            assert Fernet(old).decrypt(after.encode()) == b"original"
