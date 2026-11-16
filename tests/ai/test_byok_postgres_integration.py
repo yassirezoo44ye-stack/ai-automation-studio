@@ -164,3 +164,32 @@ async def test_real_postgres_reencrypt_user_credentials_with_rls(db_pool, monkey
         with pytest.raises(InvalidToken):
             async with scoped_credential_transaction(conn, org_id=org, user_id=user_b):
                 await get_key_for_execution(conn, org_id=org, user_id=user_b, provider="openai")
+
+@pytest.mark.asyncio
+async def test_real_postgres_primary_key_coverage_is_tenant_scoped(db_pool, monkeypatch):
+    """Verification counts only current tenant's ciphertext without exposing it."""
+    from cryptography.fernet import Fernet
+    from app.ai.credential_verification import verify_user_primary_key
+    old, new = Fernet.generate_key(), Fernet.generate_key()
+    org, user_a, user_b = [str(uuid.uuid4()) for _ in range(3)]
+    monkeypatch.setenv("BYOK_FERNET_KEY", old.decode())
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user_a):
+            await put_key(conn, org_id=org, user_id=user_a, provider="openai", api_key="a")
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user_b):
+            await put_key(conn, org_id=org, user_id=user_b, provider="openai", api_key="b")
+        monkeypatch.setenv("BYOK_FERNET_KEY", new.decode())
+        monkeypatch.setenv("BYOK_FERNET_PREVIOUS_KEYS", old.decode())
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user_a):
+            assert await verify_user_primary_key(conn, org_id=org, user_id=user_a) == {
+                "scanned": 1, "not_primary": 1, "complete": False
+            }
+            await put_key(conn, org_id=org, user_id=user_a, provider="openai", api_key="a-new")
+            assert await verify_user_primary_key(conn, org_id=org, user_id=user_a) == {
+                "scanned": 1, "not_primary": 0, "complete": True
+            }
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user_b):
+            assert await verify_user_primary_key(conn, org_id=org, user_id=user_b) == {
+                "scanned": 1, "not_primary": 1, "complete": False
+            }
