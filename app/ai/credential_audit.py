@@ -5,13 +5,13 @@ This module cannot enumerate tenants or attest database snapshot consistency.
 """
 from __future__ import annotations
 
-def summarize_rotation_audit(results: list[dict[str, int | bool]], *, expected_scopes: int) -> dict[str, int | bool]:
-    if isinstance(expected_scopes, bool) or not isinstance(expected_scopes, int) or expected_scopes < 0:
-        raise ValueError("expected_scopes must be a non-negative integer")
-    if len(results) > expected_scopes:
-        raise ValueError("more results than expected scopes")
+def summarize_rotation_audit(results: dict[str, dict[str, int | bool]], *, expected_scope_ids: set[str]) -> dict[str, int | bool]:
+    if not isinstance(expected_scope_ids, set) or any(not isinstance(x, str) or not x for x in expected_scope_ids):
+        raise ValueError("expected_scope_ids must be a set of nonempty opaque IDs")
+    if not set(results).issubset(expected_scope_ids):
+        raise ValueError("unexpected scope ID")
     scanned = old_or_unreadable = unreadable = 0
-    for item in results:
+    for item in results.values():
         if set(item) != {"scanned", "not_primary", "unreadable", "complete"}:
             raise ValueError("invalid audit result fields")
         n, old, bad, done = (item[k] for k in ("scanned", "not_primary", "unreadable", "complete"))
@@ -22,10 +22,10 @@ def summarize_rotation_audit(results: list[dict[str, int | bool]], *, expected_s
         scanned += n
         old_or_unreadable += old
         unreadable += bad
-    covered = len(results) == expected_scopes
+    covered = set(results) == expected_scope_ids
     # Even if every inspected scope passes, incomplete inventory fails closed.
     return {
-        "expected_scopes": expected_scopes,
+        "expected_scopes": len(expected_scope_ids),
         "checked_scopes": len(results),
         "scanned": scanned,
         "not_primary": old_or_unreadable,
