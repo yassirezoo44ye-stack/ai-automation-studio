@@ -25,4 +25,31 @@ describe("App Builder runtime SSE", () => {
     for await (const event of streamRun("project-1")) events.push(event);
     expect(events.map(event => event.type)).toEqual(["status", "server_ready"]);
   });
+  it("reports an interrupted run when the stream has no terminal event", async () => {
+    const encoder = new TextEncoder();
+    vi.mocked(apiFetch).mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"type":"status","message":"starting"}\\n\\n'.replace(/\\n/g, "\n")));
+        controller.close();
+      },
+    }), { status: 200 }));
+    const events = [];
+    for await (const event of streamRun("project-1")) events.push(event);
+    expect(events.map(event => event.type)).toEqual(["status", "error"]);
+    expect(events[1]).toMatchObject({ type: "error", category: "network", recoverable: true });
+  });
+
+  it("does not report an interruption after server_ready", async () => {
+    const encoder = new TextEncoder();
+    vi.mocked(apiFetch).mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"type":"server_ready","preview_url":"/preview","port":3000,"project_type":"vite","message":"ready","command":"npm run dev"}\\n\\n'.replace(/\\n/g, "\n")));
+        controller.close();
+      },
+    }), { status: 200 }));
+    const events = [];
+    for await (const event of streamRun("project-1")) events.push(event);
+    expect(events.map(event => event.type)).toEqual(["server_ready"]);
+  });
+
 });
