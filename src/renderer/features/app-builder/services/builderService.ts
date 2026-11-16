@@ -140,6 +140,7 @@ export async function* streamBuild(
 
   const decoder = new TextDecoder();
   let buf = "";
+  let terminalReceived = false;
 
   try {
     while (true) {
@@ -159,10 +160,14 @@ export async function* streamBuild(
         try {
           const event = JSON.parse(data) as BuildEvent;
           if (event && typeof event === "object" && typeof event.type === "string") {
+            if (event.type === "done" || event.type === "error") terminalReceived = true;
             yield event;
           }
         } catch { /* malformed — skip */ }
       }
+    }
+    if (!terminalReceived && !signal?.aborted) {
+      yield { type: "error", message: "Build stream ended before a completion event. Check project status before retrying." };
     }
   } finally {
     reader.cancel();
