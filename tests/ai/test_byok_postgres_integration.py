@@ -469,3 +469,20 @@ async def test_real_postgres_transaction_owning_worker_rolls_back_on_corruption(
                 "SELECT status, attempt FROM ai_credential_rotation_checkpoints WHERE org_id=$1 AND user_id=$2",
                 uuid.UUID(org), uuid.UUID(user))
             assert row["status"] == "pending" and row["attempt"] == 0
+
+@pytest.mark.asyncio
+async def test_real_postgres_checkpoint_enrollment_requires_existing_credential(db_pool):
+    from app.ai.credential_enrollment import enroll_credential_scope
+    org, user, other = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            assert not await enroll_credential_scope(conn, org_id=org, user_id=user)
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="secret")
+            assert await enroll_credential_scope(conn, org_id=org, user_id=user)
+            assert not await enroll_credential_scope(conn, org_id=org, user_id=user)
+            assert not await enroll_credential_scope(conn, org_id=org, user_id=other)
+            assert await conn.fetchval(
+                "SELECT count(*) FROM ai_credential_rotation_checkpoints") == 1
+        async with scoped_credential_transaction(conn, org_id=org, user_id=other):
+            assert await conn.fetchval(
+                "SELECT count(*) FROM ai_credential_rotation_checkpoints") == 0
