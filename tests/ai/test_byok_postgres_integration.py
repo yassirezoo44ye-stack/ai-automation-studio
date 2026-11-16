@@ -395,3 +395,56 @@ async def test_real_postgres_expired_lease_recovery_and_stale_token_rejection(db
             assert row["status"] == "verified"
             assert row["attempt"] == 2
             assert row["lease_token"] is None
+
+@pytest.mark.asyncio
+async def test_real_postgres_worker_rotates_and_verifies_atomically(db_pool, monkeypatch):
+    from cryptography.fernet import Fernet
+    from app.ai.credential_worker import rotate_and_verify_scope
+    old, primary = Fernet.generate_key(), Fernet.generate_key()
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    monkeypatch.setenv("BYOK_FERNET_KEY", old.decode())
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="private-value")
+            await conn.execute(
+                "INSERT INTO ai_credential_rotation_checkpoints (org_id,user_id) VALUES ($1,$2)",
+                uuid.UUID(org), uuid.UUID(user))
+    monkeypatch.setenv("BYOK_FERNET_KEY", primary.decode())
+    monkeypatch.setenv("BYOK_FERNET_PREVIOUS_KEYS", old.decode())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            outcome = await rotate_and_verify_scope(conn, org_id=org, user_id=user)
+            assert outcome == {"claimed": True, "verified": True, "scanned": 1}
+            assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "private-value"
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "private-value"
+            row = await conn.fetchrow(
+                "SELECT status, attempt FROM ai_credential_rotation_checkpoints WHERE org_id=$1 AND user_id=$2",
+                uuid.UUID(org), uuid.UUID(user))
+            assert row["status"] == "verified" and row["attempt"] == 1
+
+
+@pytest.mark.asyncio
+async def test_real_postgres_worker_rolls_back_corrupt_credential_and_claim(db_pool):
+    from app.ai.credential_worker import rotate_and_verify_scope
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await conn.execute(
+                """INSERT INTO ai_user_credentials (org_id,user_id,provider,encrypted_key)
+                   VALUES ($1,$2,'openai','not-a-valid-fernet-token')""",
+                uuid.UUID(org), uuid.UUID(user))
+            await conn.execute(
+                "INSERT INTO ai_credential_rotation_checkpoints (org_id,user_id) VALUES ($1,$2)",
+                uuid.UUID(org), uuid.UUID(user))
+        with pytest.raises(Exception):
+            async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+                await rotate_and_verify_scope(conn, org_id=org, user_id=user)
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            row = await conn.fetchrow(
+                "SELECT status, attempt FROM ai_credential_rotation_checkpoints WHERE org_id=$1 AND user_id=$2",
+                uuid.UUID(org), uuid.UUID(user))
+            assert row["status"] == "pending" and row["attempt"] == 0
