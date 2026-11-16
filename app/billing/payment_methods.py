@@ -52,7 +52,7 @@ class PaymentMethodService:
             return []
         try:
             methods = stripe.PaymentMethod.list(customer=customer_id, type="card")
-            customer = stripe.Customer.retrieve(customer_id)
+            customer = stripe.Customer.retrieve(customer_id).to_dict()
             default_pm = (customer.get("invoice_settings") or {}).get("default_payment_method")
         except Exception:
             log.warning("stripe payment-method sync failed for org=%s", org_id, exc_info=True)
@@ -62,6 +62,7 @@ class PaymentMethodService:
         seen_ids = []
         async with self._pool.acquire() as conn, conn.transaction():
             for pm in methods.auto_paging_iter():
+                pm = pm.to_dict()
                 card = pm.get("card") or {}
                 seen_ids.append(pm["id"])
                 await conn.execute(

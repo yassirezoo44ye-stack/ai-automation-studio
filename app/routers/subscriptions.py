@@ -22,7 +22,7 @@ class CheckoutRequest(BaseModel):
 @router.post("/api/subscription/checkout")
 async def create_checkout(req: CheckoutRequest):
     if not stripe.api_key:
-        raise HTTPException(500, "Stripe not configured")
+        raise HTTPException(503, "Payments are not configured on this server")
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -97,7 +97,10 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
     try:
-        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+        # stripe-python 8+ returns StripeObjects that are no longer dicts, so
+        # the .get() calls below raised on every subscription event. Work on
+        # a plain (recursive) dict copy instead.
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET).to_dict()
     except stripe.SignatureVerificationError:
         raise HTTPException(400, "Invalid signature") from None
     except Exception:
