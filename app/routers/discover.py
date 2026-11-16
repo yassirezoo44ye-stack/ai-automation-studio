@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 import uuid
 
-from app.core.auth import verify_token, extract_auth_credentials
+from app.core.auth import extract_auth_credentials, owner_email
 from app.core.db import get_pool
 
 router = APIRouter(prefix="/api", tags=["discover"])
@@ -111,9 +111,11 @@ def _get_user_id(request: Request) -> str | None:
 
 
 def _require_auth(request: Request) -> None:
-    sub_token, bearer = extract_auth_credentials(request)
-    if not ((sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer))):
-        raise HTTPException(status_code=401, detail="Authentication required")
+    # Same rule as every other owned route: a subscription token or a valid
+    # account access token. This used to check the Bearer value only as a
+    # subscription token, so a client holding just the login JWT got 401
+    # here although _require_user_id below needs exactly that JWT.
+    owner_email(request)
 
 
 def _require_user_id(request: Request) -> str:
