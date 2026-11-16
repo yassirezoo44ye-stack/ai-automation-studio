@@ -271,3 +271,53 @@ async def test_real_postgres_rotation_cannot_cross_user_scope(db_pool, monkeypat
             )
             assert ciphertext == original
             assert Fernet(old).decrypt(ciphertext.encode()) == b"owner-secret"
+
+@pytest.mark.asyncio
+async def test_real_postgres_rotation_and_write_serialize_safely(db_pool, monkeypatch):
+    """Concurrent writes cannot be silently overwritten by a stale rotation."""
+    from cryptography.fernet import Fernet
+    from app.ai.credential_rotation import rotate_user_credentials
+    old, new = Fernet.generate_key(), Fernet.generate_key()
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    monkeypatch.setenv("BYOK_FERNET_KEY", old.decode())
+    monkeypatch.delenv("BYOK_FERNET_PREVIOUS_KEYS", raising=False)
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="initial")
+    monkeypatch.setenv("BYOK_FERNET_KEY", new.decode())
+    monkeypatch.setenv("BYOK_FERNET_PREVIOUS_KEYS", old.decode())
+    locked = asyncio.Event()
+    release = asyncio.Event()
+
+    async def rotate():
+        async with db_pool.acquire() as conn:
+            async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+                await conn.fetch(
+                    "SELECT provider FROM ai_user_credentials WHERE org_id=$1 AND user_id=$2 FOR UPDATE",
+                    uuid.UUID(org), uuid.UUID(user),
+                )
+                locked.set()
+                await asyncio.wait_for(release.wait(), timeout=5)
+                return await rotate_user_credentials(conn, org_id=org, user_id=user)
+
+    async def update():
+        await asyncio.wait_for(locked.wait(), timeout=5)
+        async with db_pool.acquire() as conn:
+            async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+                await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="latest")
+        release.set()
+
+    # The updater blocks on the row lock until the rotation commits.
+    # Release the rotation after proving the update has started.
+    task = asyncio.create_task(rotate())
+    await asyncio.wait_for(locked.wait(), timeout=5)
+    update_task = asyncio.create_task(update())
+    await asyncio.sleep(0.05)
+    assert not update_task.done()
+    release.set()
+    result = await asyncio.wait_for(task, timeout=5)
+    await asyncio.wait_for(update_task, timeout=5)
+    assert result == {"scanned": 1, "rotated": 1}
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "latest"
