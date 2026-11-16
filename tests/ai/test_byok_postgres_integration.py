@@ -365,3 +365,34 @@ async def test_real_postgres_checkpoint_rls_blocks_other_user(db_pool):
             assert await claim_checkpoint(conn, org_id=org, user_id=owner) is None
         async with scoped_credential_transaction(conn, org_id=org, user_id=owner):
             assert await claim_checkpoint(conn, org_id=org, user_id=owner) is not None
+
+@pytest.mark.asyncio
+async def test_real_postgres_expired_lease_recovery_and_stale_token_rejection(db_pool):
+    from app.ai.credential_lease import claim_checkpoint, finish_checkpoint
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await conn.execute(
+                "INSERT INTO ai_credential_rotation_checkpoints (org_id,user_id) VALUES ($1,$2)",
+                uuid.UUID(org), uuid.UUID(user))
+            )
+            stale = await claim_checkpoint(conn, org_id=org, user_id=user)
+            assert stale
+            await conn.execute(
+                """UPDATE ai_credential_rotation_checkpoints
+                   SET lease_expires_at=now()-interval '1 second'
+                   WHERE org_id=$1 AND user_id=$2""", uuid.UUID(org), uuid.UUID(user)
+            )
+            fresh = await claim_checkpoint(conn, org_id=org, user_id=user)
+            assert fresh and fresh != stale
+            assert not await finish_checkpoint(
+                conn, org_id=org, user_id=user, lease_token=stale, verified=True)
+            assert await finish_checkpoint(
+                conn, org_id=org, user_id=user, lease_token=fresh, verified=True)
+            row = await conn.fetchrow(
+                """SELECT status, attempt, lease_token FROM ai_credential_rotation_checkpoints
+                   WHERE org_id=$1 AND user_id=$2""", uuid.UUID(org), uuid.UUID(user)
+            )
+            assert row["status"] == "verified"
+            assert row["attempt"] == 2
+            assert row["lease_token"] is None
