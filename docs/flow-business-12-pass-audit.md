@@ -252,3 +252,44 @@ Needs an owner decision (not changed, production settings):
 7. Clean up the suspended worker and the second web service.
 
 Seen but not fixed: `/api/ws/ticket` gets a 401 about every 31 s from a client whose session has ended (backoff capped at 30 s); it is harmless in load but the client never stops trying.
+
+## M9 — Section 6, the 12 user journeys (2026-11-16)
+
+`tests_e2e/test_journeys.py` runs each journey against the real app (real lifespan, PostgreSQL 16, every router) with synthetic users only. The AI vendor call goes to an offline sink (DevMockProvider registered as `anthropic`); email goes to the console; payments go through a Stripe webhook signed locally with a test secret, so no Stripe account, no network call and no charge. Result: 12/12 PASS, with the parts below marked BLOCKED where this environment cannot reach the real thing.
+
+| # | Journey | Result | What it checks |
+|---|---------|--------|----------------|
+| 1 | Account | PASS | Register, unverified login refused, verify by token, login, sessions list, refresh, logout, logout-all. Real inbox and Google OAuth round trip: BLOCKED (no SMTP, no OAuth client here). |
+| 2 | Organization | PASS | Create org, Free plan refuses a second seat (409), invite and accept, role change, viewer cannot write, other org sees nothing. |
+| 3 | Building apps | PASS | Project, describe, generated files, preview, edit, re-run, export. |
+| 4 | AI assistant | PASS | Stream a reply, history saved, reload restores it, another user cannot read it. |
+| 5 | Leads | PASS | Website capture with API key, AI qualification, follow-up run stops at the approval gate, approve, run completes, outcome recorded, notification sent. |
+| 6 | Automation | PASS | Bad definitions refused (422), run to completion, AI step fails visibly during an outage, retry succeeds after the provider is back. |
+| 7 | Devices | PASS | Enroll token is single-use, session start, another org gets 404 on every device/session route, stop, revoke, revoked device gets no session token. Real device agent: BLOCKED. |
+| 8 | Content | PASS | Creation private until published, feed, like/save idempotent, library catalog, lesson locked (403) before purchase, opens after a sandbox purchase, locked again after refund, unknown lesson 404. |
+| 9 | Careers | PASS | Profile, import an alert twice without duplicates, matching role ranked first, save a job. |
+| 10 | Billing | PASS | Plans, checkout without a payment provider refuses (503), unsigned webhook refused (400), signed subscription webhook moves the org to Starter and limits change, cancellation returns it to Free, zero payments recorded. Stripe test-mode checkout: BLOCKED (the Stripe connector's sign-in has expired and no test key is set here). |
+| 11 | Security | PASS | Forged and expired tokens, revoked sessions, account lockout after repeated failures, every GET route with a malformed id, oversized and malformed input. |
+| 12 | Recovery | PASS | AI provider down: the user gets an error event, leads and health keep working; provider back: the conversation continues, no lost or duplicated messages, no empty reply stored, the lead created during the outage exists once. |
+
+Defects the journeys found and this milestone fixed:
+- `73866a33` **Stripe subscription webhooks always failed.** stripe-python 8+ objects are not dicts and the handler called `.get()` on them, so every `customer.subscription.*` event returned 500 and the plan never changed after a payment. Payment-method, invoice and credit-balance syncs failed the same way, silently. Production `billing_events` holds only 2 expired-checkout events, so no real subscription was affected yet. Same commit: `/api/subscription/checkout` answers 503 when Stripe is not configured.
+- `985cfd87` Org checkout and billing portal answered 500 when payments are not configured; now 503.
+- `21d64af7` Automation definitions with an unknown step kind (e.g. `emial`) were saved and then ran as a silent no-op that reported success; duplicate ids, unknown dependencies and empty names were accepted too.
+- `a4867364` A device session or device belonging to another org answered 400; now 404, the same as one that does not exist.
+- `229afb83` Creation routes (`/api/creations`) refused a client that holds only the account access token.
+- `a9fe3f17` The same email in different case created a second account; a 10,000-character display name was accepted.
+- `8ae7dbb7` 31 GET routes answered 500 for a malformed id in the URL; now 404.
+- `ec70bce4` Two duplicate OpenAPI operation ids (shadowed `GET /api/ai/models`, the build proxy).
+
+Unit guards: `tests/test_m9_journey_fixes.py` (5 of its 6 tests fail on the code before the fixes).
+
+Tests after M9: backend 3273 passed / 28 skipped, E2E 26/26, `ruff` clean on changed files. Frontend unchanged in M9 (552/552 at M8).
+
+Residual risks (not changed, need a decision):
+1. Retry amplification: one AI workflow step during a provider outage made 18 provider calls and took about 20 s (engine step retries × gateway retries × registry retries). The circuit breaker opens, but only after the inner layers have retried.
+2. After an outage the breaker keeps the only AI provider closed for 30 s; users see "Retry in 30s" even once the provider is back. Expected design, worth a shorter cooldown or a second provider.
+3. Account lockout is per account, so anyone who knows an email can lock that user out for 15 minutes.
+4. Single-session logout leaves that session's access token valid for up to 5 minutes (logout-all revokes it).
+5. The Free plan has 1 seat, so a Free org cannot invite anyone; confirm this is intended.
+6. On shutdown, a workflow waiting for approval logs "workflow usage record failed … pool is closed"; the run's usage is not recorded for that shutdown.
