@@ -59,7 +59,7 @@ jobs:
             tests/ai/test_user_credentials.py \
             tests/ai/test_byok_encryption_config.py \
             tests/ai/test_credential_access.py \
-            tests/ai/test_credential_rls.py \\
+            tests/ai/test_credential_rls.py \
             tests/ai/test_credential_rotation.py
 
   postgres-isolation:
