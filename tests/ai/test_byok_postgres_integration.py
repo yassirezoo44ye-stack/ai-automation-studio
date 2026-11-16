@@ -5,6 +5,7 @@ import uuid
 
 import asyncpg
 import pytest
+import pytest_asyncio
 
 from app.ai.credential_rls import RLS_SQL, scoped_credential_transaction
 from app.ai.user_credentials import SCHEMA_SQL, get_key_for_execution, put_key, revoke_key
@@ -13,7 +14,7 @@ DSN = os.environ.get("BYOK_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DSN, reason="Disposable PostgreSQL DSN required")
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def db_pool(monkeypatch):
     from cryptography.fernet import Fernet
     monkeypatch.setenv("BYOK_FERNET_KEY", Fernet.generate_key().decode())
@@ -48,7 +49,7 @@ async def test_real_rls_scope_and_reused_connection(db_pool):
         async with scoped_credential_transaction(conn, org_id=org_a, user_id=user_a):
             await put_key(conn, org_id=org_a, user_id=user_a, provider="openai", api_key="A-secret")
             assert await get_key_for_execution(conn, org_id=org_a, user_id=user_a, provider="openai") == "A-secret"
-            with pytest.raises(asyncpg.exceptions.CheckViolationError):
+            with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
                 await put_key(conn, org_id=org_b, user_id=user_b, provider="openai", api_key="wrong")
         # After failed statement the transaction is rolled back: no rows.
         assert await conn.fetchval("SELECT count(*) FROM ai_user_credentials") == 0
