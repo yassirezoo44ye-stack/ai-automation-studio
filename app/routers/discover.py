@@ -104,7 +104,7 @@ async def _verified_org_id(request: Request) -> str:
     on another organization's private creations by naming its id (ids are
     visible in the public feed). Resolve the caller from their token and
     require membership, answering 404 for non-members like org_context."""
-    org_id = await _verified_org_id(request)
+    org_id = _get_org_id(request)
     from app.core.auth import owner_email
     from app.tenancy.service import get_tenancy_service
     email = owner_email(request)

@@ -48,7 +48,7 @@ class TestPlatformAdminGate(unittest.TestCase):
                 ("get", "/api/diagnostics/traces"),
                 ("post", "/api/diagnostics/codegen/x/approve"),
             ]:
-                res = getattr(self.c, method)(path, json={"input": "status"})
+                res = self.c.request(method.upper(), path, json={"input": "status"})
                 self.assertEqual(res.status_code, 403, f"{method} {path}")
 
     def test_admin_list_empty_fails_closed(self):
