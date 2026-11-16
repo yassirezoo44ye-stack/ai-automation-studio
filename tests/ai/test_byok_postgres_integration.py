@@ -46,12 +46,13 @@ async def test_real_rls_scope_and_reused_connection(db_pool):
     async with db_pool.acquire() as conn:
         assert await conn.fetchval("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user") is False
         assert await conn.fetchval("SELECT count(*) FROM ai_user_credentials") == 0
-        async with scoped_credential_transaction(conn, org_id=org_a, user_id=user_a):
-            await put_key(conn, org_id=org_a, user_id=user_a, provider="openai", api_key="A-secret")
-            assert await get_key_for_execution(conn, org_id=org_a, user_id=user_a, provider="openai") == "A-secret"
-            with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
+        # A rejected statement aborts its transaction. Catch outside the
+        # transaction manager so rollback happens before the next query.
+        with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
+            async with scoped_credential_transaction(conn, org_id=org_a, user_id=user_a):
+                await put_key(conn, org_id=org_a, user_id=user_a, provider="openai", api_key="A-secret")
+                assert await get_key_for_execution(conn, org_id=org_a, user_id=user_a, provider="openai") == "A-secret"
                 await put_key(conn, org_id=org_b, user_id=user_b, provider="openai", api_key="wrong")
-        # After failed statement the transaction is rolled back: no rows.
         assert await conn.fetchval("SELECT count(*) FROM ai_user_credentials") == 0
         async with scoped_credential_transaction(conn, org_id=org_a, user_id=user_a):
             await put_key(conn, org_id=org_a, user_id=user_a, provider="openai", api_key="A-secret")
