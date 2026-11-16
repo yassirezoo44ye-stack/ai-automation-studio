@@ -80,3 +80,31 @@ async def test_real_rls_concurrent_tenants(db_pool):
         assert await conn.fetchval("SELECT count(*) FROM ai_user_credentials") == 0
         async with scoped_credential_transaction(conn, org_id=ids[0][0], user_id=ids[0][1]):
             assert await get_key_for_execution(conn, org_id=ids[1][0], user_id=ids[1][1], provider="openai") is None
+
+
+@pytest.mark.asyncio
+async def test_real_rls_blocks_unscoped_insert_and_update(db_pool):
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="unscoped")
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="original")
+        # A separate transaction without identity cannot see or mutate the row.
+        assert await conn.fetchval("SELECT count(*) FROM ai_user_credentials") == 0
+        assert await conn.execute("UPDATE ai_user_credentials SET encrypted_key='tampered'") == "UPDATE 0"
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "original"
+
+
+@pytest.mark.asyncio
+async def test_real_rls_pool_reuse_does_not_leak_scope(db_pool):
+    org, user = str(uuid.uuid4()), str(uuid.uuid4())
+    async with db_pool.acquire() as conn:
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            await put_key(conn, org_id=org, user_id=user, provider="openai", api_key="private")
+    async with db_pool.acquire() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM ai_user_credentials") == 0
+        assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") is None
+        async with scoped_credential_transaction(conn, org_id=org, user_id=user):
+            assert await get_key_for_execution(conn, org_id=org, user_id=user, provider="openai") == "private"
