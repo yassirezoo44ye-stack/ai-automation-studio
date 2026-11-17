@@ -9,6 +9,7 @@ import { S } from "../../styles/theme";
 import { GlassCard } from "../../shared/ui/gold";
 import AxonLogo from "../../AxonLogo";
 import { copyText } from "../../shared/utils/clipboard";
+import { AccountTab } from "./AccountTab";
 
 const codeStyle: React.CSSProperties = {
   background: "var(--accent-dim)", padding: "2px 8px",
@@ -16,7 +17,7 @@ const codeStyle: React.CSSProperties = {
   fontFamily: "var(--font-mono)",
 };
 
-type SettingsTab = "system" | "ai" | "appearance" | "about" | "apiKeys";
+type SettingsTab = "account" | "system" | "ai" | "appearance" | "about" | "apiKeys";
 
 interface RuntimeInfo { available?: boolean; version?: string | null }
 
@@ -383,6 +384,7 @@ export function SettingsPage() {
   }
 
   const SETTINGS_NAV: { id: SettingsTab; label: string; icon: React.JSX.Element }[] = [
+    { id: "account",    label: t("nav.account"),    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg> },
     { id: "system",     label: t("nav.system"),     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> },
     { id: "ai",         label: t("nav.ai"),         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
     { id: "apiKeys",    label: t("nav.apiKeys"),    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> },
@@ -687,6 +689,8 @@ export function SettingsPage() {
           )}
 
           {/* ── API Keys ────────────────────────────────────────────────── */}
+          {tab === "account" && <AccountTab />}
+
           {tab === "apiKeys" && (
             <ApiKeysTab orgId={currentOrgId} />
           )}

@@ -1075,6 +1075,9 @@
   font-size: 12px;
   color: var(--t5);
 }
+.lp-footer__legal {
+  margin-bottom: 6px;
+}
 
 /* ── Section center variant ───────────────────────────────────── */
 .lp-section--center {

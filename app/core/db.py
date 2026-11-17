@@ -75,6 +75,9 @@ async def init_db(conn: asyncpg.Connection) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT",
+        # Which Terms/Privacy version the person accepted at sign-up, and when.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT",
     ):
         await conn.execute(_col_sql)
     await conn.execute('''

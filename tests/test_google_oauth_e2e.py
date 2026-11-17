@@ -158,7 +158,7 @@ class _FakeOAuthConn:
     async def execute(self, sql, *args):
         s = " ".join(sql.split())
         if s.startswith("INSERT INTO users"):
-            new_id, email, name, avatar_url = args
+            new_id, email, name, avatar_url, *_terms = args
             self.users[str(new_id)] = {
                 "id": new_id, "email": email, "name": name, "avatar_url": avatar_url,
                 "email_verified": True, "password_hash": None,

@@ -23,6 +23,8 @@ export interface AuthUser {
   email_verified: boolean;
   avatar_url: string | null;
   created_at: string | null;
+  /** false for accounts created only through Google/GitHub/Microsoft. */
+  has_password?: boolean;
 }
 
 export interface MfaChallenge {

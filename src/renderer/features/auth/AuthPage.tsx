@@ -11,6 +11,7 @@ import { all, required, email as emailValidator, minLength, matchesField, passwo
 import { EmailField, PasswordField, TextField, Checkbox, SubmitButton, ErrorBanner, SuccessBanner } from "../../shared/ui/forms";
 import { GoldButton } from "../../shared/ui/gold";
 import { oauthStartUrl } from "./oauth";
+import { LEGAL_PATHS } from "../legal";
 
 type Tab = "login" | "register" | "forgot" | "reset" | "mfa";
 
@@ -141,6 +142,21 @@ interface RegisterValues { name: string; email: string; password: string; confir
 interface ForgotValues { email: string }
 interface ResetValues { password: string; confirmPassword: string }
 interface MfaValues { code: string }
+
+/** Clickwrap notice: shown under every way of creating an account (form and
+ *  OAuth). The server records the accepted terms version at sign-up. */
+function ConsentNote() {
+  const { t } = useTranslation("auth");
+  const link: React.CSSProperties = { color: "var(--accent)" };
+  return (
+    <p style={{ color: "var(--t4)", fontSize: 12, lineHeight: 1.6, margin: "12px 0 0", textAlign: "center" }} data-testid="consent-note">
+      {t("consent.prefix")}{" "}
+      <a href={LEGAL_PATHS.terms} target="_blank" rel="noopener" style={link}>{t("consent.terms")}</a>{" "}
+      {t("consent.and")}{" "}
+      <a href={LEGAL_PATHS.privacy} target="_blank" rel="noopener" style={link}>{t("consent.privacy")}</a>.
+    </p>
+  );
+}
 
 export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   const { t } = useTranslation("auth");
@@ -442,6 +458,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
                   </div>
                   <SubmitButton loading={loginSubmit.isSubmitting} loadingText={t("login.submitting")}>{t("login.submit")}</SubmitButton>
                 </form>
+                <ConsentNote />
               </>
             )}
 
@@ -458,6 +475,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
                   <PasswordField {...registerForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
                   <SubmitButton loading={registerSubmit.isSubmitting} loadingText={t("register.submitting")}>{t("register.submit")}</SubmitButton>
                 </form>
+                <ConsentNote />
               </>
             )}
 

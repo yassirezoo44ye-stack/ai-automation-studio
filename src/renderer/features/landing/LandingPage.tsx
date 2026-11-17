@@ -10,6 +10,7 @@ import AxonLogo from "../../AxonLogo";
 import { useLangContext } from "../../contexts/lang";
 import { captureUtm, trackEvent } from "../../lib/utm";
 import "./landing.css";
+import { LegalLinks } from "../legal/LegalPage";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -848,6 +849,7 @@ function Footer() {
           </div>
         </div>
         <div className="lp-footer__copy">
+          <LegalLinks className="lp-footer__legal" />
           {t("footer.copyright", { year: new Date().getFullYear() })}
         </div>
       </div>
