@@ -15,7 +15,7 @@ from app.core.ai.skills import compose_skill_system, validate_skill_ids
 from app.core.ai.navigation import with_navigation
 from app.core.ai.context.manager import ContextBudgetError, budget_history
 from app.core.ai.inference.engine import InferenceEngine
-from app.core.auth import owner_user_id
+from app.core.auth import owner_email, owner_user_id
 from app.core.db import get_pool
 from app.core.helpers import resolve_project_id, anthropic_error_message
 from app.core.org_quota import check_org_quota, record_org_tokens
@@ -45,6 +45,10 @@ class RunRequest(BaseModel):
     # buttons (the AI assistant page). Adds the page catalog to the system
     # prompt; the assistant can only suggest pages, never act.
     navigation: bool = False
+    # Also set by the assistant page: adds a read-only summary of the
+    # caller's own tasks, projects, leads and automations (M3). The org is
+    # taken from X-Organization-Id and used only after a membership check.
+    workspace_data: bool = False
 
 
 # Copilot prompts carry an invisible "[Context: the user is currently on …]"
@@ -160,6 +164,14 @@ async def run_stream(req: RunRequest, request: Request):
 
     history.append({"role": "user", "content": req.prompt})
 
+    snapshot: str | None = None
+    if req.workspace_data:
+        from app.core.ai.workspace_snapshot import build_snapshot
+        snapshot = await build_snapshot(
+            get_pool(), user_id=uid, email=owner_email(request),
+            org_id=request.headers.get("X-Organization-Id"),
+        )
+
     async def event_stream():
         # The bulkhead slot is held for the whole stream — a StreamingResponse
         # returns from the handler immediately, so guarding only the handler
@@ -185,6 +197,8 @@ async def run_stream(req: RunRequest, request: Request):
             system = compose_skill_system(None, req.skill_ids)
             if req.navigation:
                 system = with_navigation(system)
+            if snapshot:
+                system = f"{system}\n\n{snapshot}" if system else snapshot
             budgeted_history = budget_history(
                 history, model="claude-sonnet-4-6", max_tokens=2048, system=system,
             )

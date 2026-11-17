@@ -279,7 +279,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       const res = await fetch(url, {
         method: "POST", headers: authH(),
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
-          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [], navigation: true } : {}) }),
+          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [], navigation: true, workspace_data: true } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);

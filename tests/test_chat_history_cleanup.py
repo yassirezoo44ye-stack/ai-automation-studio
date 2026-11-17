@@ -151,6 +151,16 @@ class TestNavigationPrompt(unittest.IsolatedAsyncioTestCase):
             self.assertIn(f"- {pid}:", system)
         self.assertIn("leads", PAGES)
 
+    async def test_workspace_snapshot_only_when_requested(self):
+        snap = AsyncMock(return_value="<workspace-data>\nTasks: pending 2\n</workspace-data>")
+        with patch("app.core.ai.workspace_snapshot.build_snapshot", snap), \
+             patch.object(chat_mod, "owner_email", MagicMock(return_value="a@x.io")):
+            on = await self._system_for(workspace_data=True)
+            off = await self._system_for()
+        self.assertIn("Tasks: pending 2", on)
+        self.assertFalse(off and "workspace-data" in off)
+        self.assertEqual(snap.await_count, 1)
+
     async def test_no_catalog_by_default(self):
         system = await self._system_for()
         self.assertFalse(system and "[[open:" in system)

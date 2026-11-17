@@ -93,6 +93,7 @@ it("turns [[open:…]] markers into page buttons the user clicks", async () => {
   expect(screen.getByText("Your settings are here.")).toBeInTheDocument();
   expect(screen.queryByText(/\[\[open/)).not.toBeInTheDocument();
   expect(lastBody.navigation).toBe(true);
+  expect(lastBody.workspace_data).toBe(true);
   expect(setPage).not.toHaveBeenCalled();
   fireEvent.click(btn);
   expect(setPage).toHaveBeenCalledWith("settings");
