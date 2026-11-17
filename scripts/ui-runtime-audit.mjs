@@ -89,6 +89,8 @@ function inspect(touch) {
   const visible = el => {
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return false;
+    // Content of a closed <details> keeps its box in Chromium but is not shown.
+    if (el.checkVisibility && !el.checkVisibility({ contentVisibilityAuto: true })) return false;
     const s = getComputedStyle(el);
     return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0;
   };
@@ -202,9 +204,12 @@ function listControls() {
   const visible = el => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
+    // Content of a closed <details> (e.g. the sidebar's "More") keeps its box
+    // in Chromium but cannot be seen or clicked.
+    if (el.checkVisibility && !el.checkVisibility({ contentVisibilityAuto: true })) return false;
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
   };
-  return [...document.querySelectorAll("button, a[href], [role=button], [role=tab], [role=menuitem]")]
+  return [...document.querySelectorAll("button, a[href], summary, [role=button], [role=tab], [role=menuitem]")]
     .filter(visible)
     .map((el, i, all) => ({
       i,
@@ -263,9 +268,9 @@ async function actions(browser) {
       try {
         // Find the control again by its name (and which one of that name).
         const target = (await page.evaluateHandle(({ name, nth }) => {
-          const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+          const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (!el.checkVisibility || el.checkVisibility()); };
           const nm = el => (el.getAttribute("aria-label") || el.innerText || el.getAttribute("title") || "").trim().replace(/\s+/g, " ").slice(0, 60);
-          return [...document.querySelectorAll("button, a[href], [role=button], [role=tab], [role=menuitem]")]
+          return [...document.querySelectorAll("button, a[href], summary, [role=button], [role=tab], [role=menuitem]")]
             .filter(el => visible(el) && nm(el) === name)[nth] ?? null;
         }, { name: c.name, nth: c.nth })).asElement();
         if (!target) { row.outcome = "not found after reload"; }
