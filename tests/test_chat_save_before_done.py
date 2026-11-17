@@ -54,7 +54,7 @@ async def _collect_events(req, pool):
          patch.object(chat_mod, "resolve_project_id", AsyncMock(return_value=uuid.uuid4())), \
          patch.object(chat_mod, "record_org_tokens", AsyncMock()), \
          patch("app.core.ai.inference.engine.InferenceEngine.stream",
-               return_value=_aiter([{"type": "text", "content": "Hello"}, {"type": "done"}])):
+               return_value=_aiter([{"type": "delta", "text": "Hello"}, {"type": "done"}])):
         resp = await chat_mod.run_stream(req, MagicMock())
         return [chunk async for chunk in resp.body_iterator]
 

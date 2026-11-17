@@ -112,6 +112,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
+  // Mirrors `streaming` for effects that must not clobber an in-flight reply.
+  const streamingRef = useRef(false);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -144,11 +146,17 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       return msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
     },
     [activeConv],
-    { enabled: !!activeConv, isEmpty: () => false },
+    // Only fetch when `messages` doesn't already hold this conversation.
+    // A brand-new conversation's id arrives mid-stream (conv_id event) and
+    // is claimed via setMessagesConvId before activeConv flips; fetching it
+    // anyway returned only the user's message (the reply isn't saved yet)
+    // and the sync effect below then overwrote the streaming reply with it,
+    // so the user saw their message and no answer.
+    { enabled: !!activeConv && messagesConvId !== activeConv, isEmpty: () => false },
   );
   // Sync loaded history into the local, streaming-mutable copy.
   useEffect(() => {
-    if (!loadedMessages) return;
+    if (!loadedMessages || streamingRef.current) return;
     void Promise.resolve().then(() => {
       setMessages(loadedMessages);
       setMessagesConvId(activeConv);
@@ -232,7 +240,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
+    streamingRef.current = true;
     const assistantId = crypto.randomUUID();
+    let gotText = false;
     setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "" }]);
 
     const ctrl = new AbortController();
@@ -270,18 +280,26 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
             setActiveConv(ev.conv_id);
             loadConvs();
           }
-          else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
-          else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
+          else if (ev.type === "delta")  { if (ev.text) gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
+          else if (ev.type === "error")  { gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
           else if (ev.type === "done")   { loadConvs(); closed = true; }
         }
         if (closed) break;
       }
+      // The stream ended (done, or the connection simply closed) without a
+      // single word of reply: say so instead of leaving the typing dots up.
+      if (!gotText) {
+        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.emptyReply") } : m));
+      }
     } catch (err: unknown) {
-      if ((err as Error).name !== "AbortError") {
+      if ((err as Error).name === "AbortError") {
+        // Stopped before any reply arrived: drop the empty placeholder.
+        if (!gotText) setMessages(p => p.filter(m => m.id !== assistantId || m.content !== ""));
+      } else {
         const msg = (err as Error).message ?? "";
         setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg }) } : m));
       }
-    } finally { setStreaming(false); abortRef.current = null; }
+    } finally { setStreaming(false); streamingRef.current = false; abortRef.current = null; }
   }
 
   // ── Derived state ─────────────────────────────────────────────────
@@ -527,6 +545,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               key={m.id}
               msg={m}
               isLast={idx === messages.length - 1}
+              pending={streaming && idx === messages.length - 1}
               agentName={activeAgent?.name ?? null}
               agentAvatar={activeAgent?.avatar ?? null}
             />
@@ -667,9 +686,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 // memo stops React re-rendering (and re-parsing markdown for) every earlier
 // message on each streamed token.
 const MessageRow = memo(function MessageRow({
-  msg, isLast, agentName, agentAvatar,
+  msg, isLast, pending, agentName, agentAvatar,
 }: {
-  msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
+  msg: Message; isLast: boolean; pending: boolean; agentName: string | null; agentAvatar: string | null;
 }) {
   const { t } = useTranslation("ai");
   const toast = useToast();
@@ -739,8 +758,12 @@ const MessageRow = memo(function MessageRow({
             borderRadius: 16, borderTopRightRadius: 4, padding: "12px 18px",
             boxShadow: "0 2px 16px var(--accent-dim)", display: "inline-block",
           }}>{msg.content}</div>
-        ) : msg.content === "" ? (
+        ) : msg.content === "" && pending ? (
           <div style={{ padding: "8px 0" }} className="typing"><span /><span /><span /></div>
+        ) : msg.content === "" ? (
+          // An empty reply saved by an earlier failed run — never show
+          // endless typing dots for history.
+          <div style={{ fontSize: 14, color: "var(--t4)" }}>{t("chatTab.messages.emptyReply")}</div>
         ) : (
           <div style={{ fontSize: 15, color: "var(--t2)", lineHeight: 1.8 }} className="md-body">
             <ReactMarkdown components={MD_COMPONENTS}>{msg.content}</ReactMarkdown>

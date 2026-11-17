@@ -90,6 +90,7 @@
       "assistantFallback": "Claude",
       "now": "الآن",
       "streamErrorPrefix": "⚠️ {{message}}",
+      "emptyReply": "⚠️ لم يصل رد من الذكاء الاصطناعي. حاول مرة أخرى بعد قليل.",
       "copyCode": "نسخ",
       "copied": "تم النسخ!"
     },

@@ -90,6 +90,7 @@
       "assistantFallback": "Claude",
       "now": "now",
       "streamErrorPrefix": "⚠️ {{message}}",
+      "emptyReply": "⚠️ No reply came back from the AI. Please try again in a moment.",
       "copyCode": "Copy",
       "copied": "Copied!"
     },

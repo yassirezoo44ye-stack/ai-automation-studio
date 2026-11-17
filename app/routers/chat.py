@@ -1,6 +1,7 @@
 import contextlib
 import json
 import logging
+import re
 import uuid
 from datetime import datetime
 
@@ -41,6 +42,54 @@ class RunRequest(BaseModel):
     display_text: str | None = Field(None, max_length=4000)
 
 
+# Copilot prompts carry an invisible "[Context: the user is currently on …]"
+# preamble. Since the display_text fix it is no longer stored, but rows
+# written before that fix still hold it in the conversation title and the
+# first user message. Strip it on read so old history shows what the user
+# actually typed.
+# Non-greedy up to the first "]" that ends the preamble (followed by the
+# blank line the client inserts, or the end of the text) so an organization
+# name containing "]" does not cut it short.
+_CONTEXT_PREFIX = re.compile(r"^\s*\[Context:.*?\](?:\n\n|\s*$)", re.DOTALL)
+_DEFAULT_TITLE = "New conversation"
+
+
+def strip_context_prefix(text: str | None) -> str:
+    if not text:
+        return text or ""
+    return _CONTEXT_PREFIX.sub("", text, count=1)
+
+
+def _has_context_prefix(text: str | None) -> bool:
+    return bool(text) and text.lstrip().startswith("[Context:")
+
+
+def make_title(text: str) -> str:
+    clean = " ".join(strip_context_prefix(text).split())
+    if not clean or _has_context_prefix(clean):
+        return _DEFAULT_TITLE
+    return clean[:60] + ("…" if len(clean) > 60 else "")
+
+
+async def _clean_titles(conn, rows) -> dict[uuid.UUID, str]:
+    """Readable titles for rows whose stored title is a leaked context preamble.
+
+    The stored title was cut at 60 characters, usually before the user's own
+    words, so it is rebuilt from the conversation's first user message.
+    """
+    bad = [r["id"] for r in rows if _has_context_prefix(r["title"])]
+    if not bad:
+        return {}
+    firsts = await conn.fetch(
+        "SELECT DISTINCT ON (conversation_id) conversation_id, content FROM messages "
+        "WHERE conversation_id = ANY($1::uuid[]) AND role='user' "
+        "ORDER BY conversation_id, created_at",
+        bad,
+    )
+    by_conv = {f["conversation_id"]: f["content"] for f in firsts}
+    return {cid: make_title(by_conv.get(cid) or "") for cid in bad}
+
+
 class ConversationCreate(BaseModel):
     project_id: str
     title: str | None = "New conversation"
@@ -55,13 +104,6 @@ async def run_stream(req: RunRequest, request: Request):
 
     history: list[dict] = []
     conv_id: uuid.UUID | None = None
-
-    # Text for storage and display — stripped of any invisible context the
-    # caller injects into `prompt`.  The model always receives the full
-    # `prompt` (with its context annotation); only the DB rows and the
-    # conversation title use this cleaner value so they never show
-    # "[Context: …]" prefixes in the chat UI.
-    _user_text = req.display_text or req.prompt
 
     # Text for storage and display — stripped of any invisible context the
     # caller injects into `prompt`.  The model always receives the full
@@ -93,7 +135,7 @@ async def run_stream(req: RunRequest, request: Request):
             pid = await resolve_project_id(conn, req.project_id, uid)
             conv_id = await conn.fetchval(
                 "INSERT INTO conversations (project_id, title) VALUES ($1, $2) RETURNING id",
-                pid, _user_text[:60] + ("…" if len(_user_text) > 60 else ""),
+                pid, make_title(_user_text),
             )
 
         await conn.execute(
@@ -179,6 +221,14 @@ async def run_stream(req: RunRequest, request: Request):
             if stream_error:
                 log.warning("run_stream provider error: %s", stream_error)
                 yield f"data: {json.dumps({'type': 'error', 'message': stream_error})}\n\n"
+                return
+
+            if not full_text.strip():
+                # The provider finished without producing any text. Saving an
+                # empty assistant row would show as a blank (or endlessly
+                # "typing") reply forever; report it so the user can retry.
+                log.warning("run_stream: provider returned an empty reply (conv=%s)", conv_id)
+                yield f"data: {json.dumps({'type': 'error', 'message': 'The AI returned an empty reply. Please try again.'})}\n\n"
                 return
 
             if total_tokens:
@@ -318,7 +368,8 @@ async def list_conversations(request: Request, project_id: str | None = None):
                 "ORDER BY c.updated_at DESC LIMIT 50",
                 uid,
             )
-    return [{"id": str(r["id"]), "title": r["title"],
+        fixed = await _clean_titles(conn, rows)
+    return [{"id": str(r["id"]), "title": fixed.get(r["id"], r["title"]),
              "created_at": r["created_at"].isoformat(), "updated_at": r["updated_at"].isoformat()}
             for r in rows]
 
@@ -338,7 +389,8 @@ async def get_messages(conv_id: str, request: Request):
             "SELECT id, role, content, created_at FROM messages WHERE conversation_id=$1 ORDER BY created_at",
             uuid.UUID(conv_id),
         )
-    return [{"id": str(r["id"]), "role": r["role"], "content": r["content"],
+    return [{"id": str(r["id"]), "role": r["role"],
+             "content": strip_context_prefix(r["content"]) if r["role"] == "user" else r["content"],
              "created_at": r["created_at"].isoformat()} for r in rows]
 
 
@@ -375,11 +427,18 @@ async def search(q: str, request: Request, project_id: str | None = None):
             "WHERE p.user_id=$1 AND m.content ILIKE $2 ORDER BY m.created_at DESC LIMIT 20",
             uid, f"%{q}%",
         )
+        fixed = await _clean_titles(conn, conv_rows)
+        msg_fixed = await _clean_titles(
+            conn, [{"id": r["conversation_id"], "title": r["title"]} for r in msg_rows],
+        )
     return {
-        "conversations": [{"id": str(r["id"]), "title": r["title"],
+        "conversations": [{"id": str(r["id"]), "title": fixed.get(r["id"], r["title"]),
                            "updated_at": r["updated_at"].isoformat()} for r in conv_rows],
-        "messages": [{"id": str(r["id"]), "content": r["content"][:200], "role": r["role"],
-                      "conversation_id": str(r["conversation_id"]), "conv_title": r["title"]}
+        "messages": [{"id": str(r["id"]),
+                      "content": (strip_context_prefix(r["content"]) if r["role"] == "user" else r["content"])[:200],
+                      "role": r["role"],
+                      "conversation_id": str(r["conversation_id"]),
+                      "conv_title": msg_fixed.get(r["conversation_id"], r["title"])}
                      for r in msg_rows],
     }
 
