@@ -39,3 +39,12 @@ optional examples/setup/summaries under descriptive headings; retain form drafts
 when a section closes. Preserve primary tasks, permissions, costs, approvals,
 cancellation and error recovery. Keep analytical metrics where analysis is the
 actual task. Consult docs/WORKSPACE_CONTENT_AUDIT.md before reintroducing content.
+
+Transactional build requests (especially stores) must deliver a runnable frontend,
+backend and persistence with verified journeys, never static screens that pretend
+to authenticate, take payment or save orders. An approved plan must match the
+actual stack and scope; reject unsupported/old plans instead of silently replacing
+technology or inventing integrations. See docs/RUNNABLE_COMMERCE.md. Store preview
+must remain opaque and project-scoped, with Flow credentials stripped upstream.
+Feed must show real published records and server-confirmed interactions; never
+invent creators/counts or create placeholder cards when source duplication fails.

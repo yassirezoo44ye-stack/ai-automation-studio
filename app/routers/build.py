@@ -1,6 +1,7 @@
 import asyncio
 import io
 import json
+import re
 import logging
 import os as _os
 import shutil
@@ -17,6 +18,7 @@ from pydantic import BaseModel, Field
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id, owner_email
+from app.core.commerce_builder import CONTRACT, is_store_request, store_chunks, store_plan, store_files, validate_store_workspace
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
 from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
@@ -65,6 +67,7 @@ def _is_dev_account(request: Request) -> bool:
 
 router = APIRouter(tags=["build"])
 
+
 BUILD_SYSTEM = """You are an expert software engineer and code generator.
 When the user asks you to build something, respond ONLY with a valid JSON object (no markdown, no explanation outside the JSON).
 
@@ -83,7 +86,7 @@ Rules:
 - Use relative paths only, never absolute
 - Make programs self-contained and runnable
 - For Python: include a requirements.txt if needed
-- For web apps: use a single index.html with embedded CSS/JS
+- Use a static HTML page only for explicitly static sites. Stores and transactional apps require a real backend and persistence.
 - Write clean, working, production-quality code
 """
 
@@ -102,7 +105,8 @@ Rules:
 - Use relative paths only (e.g. src/main.py, not /app/src/main.py).
 - Write COMPLETE file content — never use "..." or "# add more here".
 - Write clean, secure code: validate inputs, parameterise SQL, escape output.
-- For simple projects: one index.html with inline CSS/JS is fine.
+- A single static HTML file is allowed only for explicitly static sites. Stores, accounts, payments, inventory and orders require a real backend, database and authorization; never simulate them with localStorage.
+- External services must be labeled unconfigured until connected. Never claim income, payment success or deployment without evidence.
 - For Python: include requirements.txt when 3rd-party packages are needed.
 - For Node: place package.json at the WORKSPACE ROOT (never inside backend/ or server/). Always include a "start" script, e.g. {"scripts": {"start": "node src/server.js"}}. Only create backend/ or frontend/ subdirectories when the user explicitly requests a split frontend+backend architecture.
 - For Node entry points: use src/server.js or server.js (not backend/src/server.js).
@@ -252,6 +256,18 @@ async def build_program(req: BuildRequest, request: Request):
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, req.project_id, uid)
 
+    if is_store_request(req.prompt):
+        if req.plan and req.plan != store_plan():
+            raise HTTPException(409, "Regenerate and approve the supported runnable store plan.")
+        ws = workspace(req.project_id)
+        validate_store_workspace(ws)
+        for path, content in store_files().items():
+            dest = safe_path(ws, path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(dest.write_text, content, 'utf-8')
+        return {"description": store_plan()["description"], "files": list(store_files()),
+                "run_command": "python main.py", "language": "python", "workspace": str(ws)}
+
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
         model="claude-sonnet-4-6",
@@ -382,6 +398,14 @@ async def build_stream(req: BuildRequest, request: Request):
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, req.project_id, uid)
 
+    commerce = is_store_request(req.prompt) or (req.plan or {}).get("delivery_contract") == CONTRACT
+    if commerce:
+        expected = store_plan()
+        if req.plan and req.plan != expected:
+            raise HTTPException(409, "Regenerate and approve the runnable store plan: this plan uses another stack or external services not included in the cash-on-delivery scaffold.")
+        ws = workspace(req.project_id)
+        validate_store_workspace(ws)
+
     async def event_stream():
         # Slot held for the whole stream (handler returns before tokens flow).
         try:
@@ -391,7 +415,9 @@ async def build_stream(req: BuildRequest, request: Request):
             yield _sse("error", message="Server is at capacity — please retry shortly.")
             return
         try:
-            if dev_mode:
+            if commerce:
+                yield _sse("status", message="Creating the runnable store scaffold and database-backed API…")
+            elif dev_mode:
                 yield _sse("status", message="✨ جارٍ إنشاء تطبيقك…")
             else:
                 yield _sse("status", message="🤖 جارٍ الاتصال بـ Claude…")
@@ -404,7 +430,7 @@ async def build_stream(req: BuildRequest, request: Request):
             # Skipped for dev-mock (no credits needed) and on any error (graceful
             # degradation — raw prompt is used instead, identical to pre-P0 behaviour).
             _spec_context = ""
-            if not dev_mode:
+            if not dev_mode and not commerce:
                 try:
                     from app.services.app_builder import get_app_builder_service
                     _svc = get_app_builder_service(get_pool())
@@ -436,7 +462,10 @@ async def build_stream(req: BuildRequest, request: Request):
                         _spec_exc,
                     )
 
-            if dev_mode:
+            if commerce:
+                yield _sse("status", message="Creating runnable storefront, API and persistent SQLite database (cash on delivery).")
+                chunk_source = store_chunks()
+            elif dev_mode:
                 # Free in-process provider — no Anthropic credits consumed.
                 # Inject approved plan (when present) so DevMockProvider can
                 # branch into plan-based multi-file generation instead of the
@@ -610,6 +639,9 @@ async def build_plan(req: PlanRequest, request: Request):
     else:
         org_id = None
 
+    if is_store_request(req.prompt):
+        return {"plan": store_plan()}
+
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
         model="claude-haiku-4-5-20251001",
@@ -661,6 +693,39 @@ async def _require_project_owner(project_id: str, request: Request) -> None:
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, project_id, uid)
+
+
+@router.get("/api/projects/{project_id}/commerce")
+async def commerce_project(project_id: str, request: Request):
+    await _require_project_owner(project_id, request)
+    manifest = safe_path(workspace(project_id), ".flow-commerce.json")
+    if not manifest.is_file() or manifest.stat().st_size > 2000:
+        raise HTTPException(404, "Not a Flow commerce scaffold")
+    try:
+        data = json.loads(await asyncio.to_thread(manifest.read_text, encoding="utf-8"))
+    except (ValueError, OSError):
+        raise HTTPException(404, "Invalid commerce manifest") from None
+    if not isinstance(data, dict) or data.get("delivery_contract") != CONTRACT:
+        raise HTTPException(404, "Invalid commerce contract")
+    ws = workspace(project_id)
+    if not all(safe_path(ws, name).is_file() for name in ("main.py", "index.html", "assets/app.js", "assets/style.css", "requirements.txt")):
+        raise HTTPException(409, "Store build is incomplete")
+    running = process_mgr.get_running(project_id) is not None
+    return {"delivery_contract": CONTRACT, "files": sum(safe_path(ws, name).is_file() for name in store_files()),
+            "running": running, "preview_url": f"/api/projects/{project_id}/proxy/" if running else None}
+
+
+@router.get("/api/projects/{project_id}/store-setup")
+async def store_owner_setup(project_id: str, request: Request):
+    await _require_project_owner(project_id, request)
+    secret = safe_path(workspace(project_id), "data/owner-setup.txt")
+    if not secret.is_file() or secret.is_symlink() or secret.stat().st_size > 200:
+        raise HTTPException(404, "Run the store first. Setup disappears after the owner is configured.")
+    token = await asyncio.to_thread(secret.read_text, encoding="utf-8")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32,100}", token.strip()):
+        raise HTTPException(404, "No valid store setup token")
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"token": token.strip()}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/projects/{project_id}/files")
@@ -863,11 +928,20 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
     # Forward headers except hop-by-hop
     _HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate",
                    "proxy-authorization", "te", "trailer", "transfer-encoding",
-                   "upgrade", "host"}
+                   "upgrade", "host", "authorization", "x-sub-token", "x-organization-id", "x-flow-preview-origin", "x-flow-store-preview", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip", "forwarded"}
     fwd_headers = {
         k: v for k, v in request.headers.items()
         if k.lower() not in _HOP_BY_HOP
     }
+    # The gateway authenticates ownership, then never shares Flow credentials
+    # with generated code. A store may trust this origin only from loopback.
+    fwd_headers["x-flow-preview-origin"] = (request.headers.get("origin") or str(request.base_url)).rstrip("/")
+    if request.headers.get("x-flow-store-preview") == "1":
+        from http.cookies import SimpleCookie
+        cookies = SimpleCookie(request.headers.get("cookie", ""))
+        fwd_headers.pop("cookie", None)
+        if "flow_store_session" in cookies:
+            fwd_headers["cookie"] = "flow_store_session=" + cookies["flow_store_session"].value
     body_bytes = await request.body()
 
     try:
@@ -883,11 +957,16 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
             k: v for k, v in resp.headers.items()
             if k.lower() not in _HOP_BY_HOP
         }
-        return Response(
-            content=resp.content,
-            status_code=resp.status_code,
-            headers=resp_headers,
-        )
+        # Each preview has its own cookie scope; a store login cannot replace
+        # another project's session. Preserve repeated Set-Cookie headers.
+        resp_headers.pop("set-cookie", None)
+        response = Response(content=resp.content, status_code=resp.status_code, headers=resp_headers)
+        import re as cookie_re
+        for cookie in resp.headers.get_list("set-cookie"):
+            cookie = cookie_re.sub(r"(?i);\s*path=[^;]*", "", cookie)
+            cookie += f"; Path=/api/projects/{project_id}/proxy/"
+            response.headers.append("set-cookie", cookie)
+        return response
     except httpx.ConnectError:
         rp_check = process_mgr.get_running(project_id)
         if rp_check is None:
