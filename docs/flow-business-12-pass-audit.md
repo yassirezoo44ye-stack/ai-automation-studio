@@ -1,6 +1,6 @@
 # Flow Business — 12-pass evidence-based audit ledger
 
-Status: **INCOMPLETE — DO NOT CERTIFY**. Started 2026-11-15. Scope: Flow only; Axon remains separate.
+Status: **12 cycles run; NOT PRODUCTION-READY** (see "M10 — final readiness report" at the end). Started 2026-11-15. Scope: Flow only; Axon remains separate.
 
 ## Acceptance rule
 Each of 12 independent passes must include: exact commit/deployment ID, test environment, dataset (synthetic only), user journeys exercised, internal services and database checks, test counts, failures and warning triage, evidence links, remediation and repeat results. A successful CI run is **not** a full-platform pass. No production writes, real payments, customer messages, or destructive testing without separate approval.
@@ -19,7 +19,7 @@ Each of 12 independent passes must include: exact commit/deployment ID, test env
 | Pass | CI | Internal services | User journey | Data isolation | Verdict |
 |---|---|---|---|---|---|
 | 1 | CI #377 succeeded, warning triage open | Not tested | Not tested | Handler-only tests, no DB proof | **Incomplete** |
-| 2–12 | Not run | Not run | Not run | Not run | **Not started** |
+| 2–12 | Superseded by the M10 cycles below (12 independent cycles, 2026-11-17) | | | | |
 
 ## Mandatory journey coverage
 Guest -> registration -> verification -> login -> MFA/OAuth -> create org/team -> new project -> app builder preview/export -> AI assistant -> lead capture/qualification -> approval-gated automation -> notification -> career assistant -> feed/discover -> billing test-only -> settings -> logout -> account deletion. Exercise Arabic/English, mobile/desktop, permissions, expired sessions, invalid input, retries, simultaneous requests, recovery from dependencies being unavailable.
@@ -284,7 +284,7 @@ Defects the journeys found and this milestone fixed:
 
 Unit guards: `tests/test_m9_journey_fixes.py` (5 of its 6 tests fail on the code before the fixes).
 
-Tests after M9: backend 3273 passed / 28 skipped, E2E 26/26, `ruff` clean on changed files. Frontend unchanged in M9 (552/552 at M8).
+Tests after M9: backend 3267 passed / 28 skipped, E2E 26/26, `ruff` clean on changed files. Frontend unchanged in M9 (552/552 at M8).
 
 Residual risks (not changed, need a decision):
 1. Retry amplification: one AI workflow step during a provider outage made 18 provider calls and took about 20 s (engine step retries × gateway retries × registry retries). The circuit breaker opens, but only after the inner layers have retried.
@@ -293,3 +293,62 @@ Residual risks (not changed, need a decision):
 4. Single-session logout leaves that session's access token valid for up to 5 minutes (logout-all revokes it).
 5. The Free plan has 1 seat, so a Free org cannot invite anyone; confirm this is intended.
 6. On shutdown, a workflow waiting for approval logs "workflow usage record failed … pool is closed"; the run's usage is not recorded for that shutdown.
+
+## M10 — 12 independent cycles (2026-11-17)
+
+Runner: `scripts/audit_cycle.sh <n> <out>` (summary by `scripts/audit_cycle_summary.py`). Each cycle starts from nothing shared with another cycle: three new empty PostgreSQL 16 databases, a new `SESSION_SECRET`, backend and frontend tests in a new random order (pytest-randomly and vitest shuffle, seed recorded), a fresh production build, a fresh backend process and a new synthetic account. Synthetic data only; AI goes to an offline sink or is unconfigured, email to the console, Stripe unconfigured (journey 10 signs its sandbox webhook locally). Nothing touched production.
+
+Each cycle runs, in order:
+1. Static gates: `py_compile`, ruff ratchet (≤ 104), `ci_secret_scan.py`, `ci_schema_check.py` (lifespan schema against an empty DB).
+2. Backend unit/integration suite, then the end-to-end suite (isolation, idempotency, the 12 journeys), each on its own empty DB.
+3. Frontend: Vitest, `tsc --noEmit`, `eslint --max-warnings 0`, `vite build`.
+4. Dependencies: `npm audit`, `pip-audit -r requirements.txt`.
+5. The built app in Chromium, served like `vercel.json` (files, `/api` proxied, missing `/assets/` = 404, else `index.html`) over the fresh backend: every route's every visible control clicked on desktop (destructive ones listed, not clicked), every route laid out at 1440 px and 360 px in English and Arabic, a missing old chunk must 404, and the backend log must have no ERROR/CRITICAL line.
+
+A cycle is PASS only if every step exits 0 and the browser run has no error screen, uncaught page error or failed click.
+
+| Cycle | Commit | Seed | Backend | E2E | Frontend | Browser (controls / screens) | Verdict |
+|---|---|---|---|---|---|---|---|
+| 1 | `4d5f4157` | 180472529 | 3267 / 28 skipped | 26 | 554 | 304 / 116 | PASS |
+| 2 | `4d5f4157` | 1072835695 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 3 | `4d5f4157` | 227445813 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 4 | `4d5f4157` | 39635662 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 5 | `4d5f4157` | 34975438 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 6 | `4d5f4157` | 505598767 | 3267 | 26 | **553 / 554** | 304 / 116 | **FAIL** (flaky test, fixed in `f0be560b`) |
+| 6 repeat | `f0be560b` | 335478055 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 7 | `4d5f4157`* | 241694826 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 8 | `4d5f4157`* | 691883648 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 9 | `f0be560b` | 548973697 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 10 | `f0be560b` | 660028389 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 11 | `f0be560b` | 1002664283 | 3267 | 26 | 554 | 304 / 116 | PASS |
+| 12 | `f0be560b` | 461025915 | 3267 | 26 | 554 | 304 / 116 | PASS |
+
+\* Cycles 7 and 8 started on `4d5f4157`; the test-only fix of `f0be560b` was already in the tree when their frontend step ran.
+
+Same in every cycle: secret scan clean, schema check OK, ruff at baseline, `tsc` and ESLint clean, build OK, `npm audit` 7 moderate / 0 high (dev tooling: minimatch via typescript-eslint, no upstream fix), `pip-audit` 0 known vulnerabilities, missing chunk 404, 0 backend ERROR lines, about 29 minutes per cycle. Per-cycle summaries: `/mnt/project-files/flow-audit-m10/cycle-<n>.json` in the project; full logs were kept in the audit container only.
+
+What the cycles found and what was done:
+- `69e99966` **AgentOS → Jobs crashed to the error screen** for an account with no organization selected: `/api/jobs/stats` answers 400 with a JSON body that the tab read as stats. Test: `features/agentos/__tests__/JobsMonitor.test.tsx` (fails before the fix).
+- `227505d2` The runtime security monitor logged a CRITICAL "possible secret" for the E2E harness's synthetic password on every local boot; `tests_e2e` is now skipped like `tests` (neither is in the Docker image).
+- `156e1f67`, `4d5f4157` Four tests passed only in file order (shared mock history, a shared approval-registry key, a shared gauge, skill files loaded by an earlier test). Found by the random order of the first attempt at cycles 1 and 2 (`/mnt/project-files/flow-audit-m10/` keeps only the final run).
+- `f0be560b` One frontend test pressed Escape before the drawer's listener was attached when the machine was loaded (cycle 6).
+- `43e6bd0a` The UI audit counted controls inside the closed "More" menu as visible (Chromium keeps their box) and reported 7 false failed clicks; fixed in the audit script, which now also clicks `<summary>`.
+
+Seen in every cycle, not fixed (minor, 360 px phones): content cut at the screen edge on `/design` (Properties panel), `/devices` ("+ Enroll Device"), `/social` (YouTube card), and tab buttons on `/agentos` and `/ai-routing`, in both languages. 24 controls do nothing visible, all of them the tab or filter that is already selected.
+
+BLOCKED in every cycle (not counted as passed): Docker image build (Docker Hub rate limit and package mirror blocked here; the last proof is CI #380 and the live Render deploy); real email delivery; Google OAuth round trip; Stripe test-mode checkout (connector sign-in expired, no test key); a real device agent; Redis (not configured anywhere); behaviour of the deployed production stack with these fixes, because they are not deployed.
+
+## M10 — final readiness report (2026-11-17)
+
+**Verdict: NOT PRODUCTION-READY.** The code on this branch (`f0be560b` and later docs) passed 12 independent cycles (11 first time, 1 after a test-only fix), the 12 user journeys and a real-browser sweep of every route. That is evidence about this branch in a test environment. It does not make the live platform ready, for these reasons:
+
+1. **None of M1–M10 is live.** Production runs older code: Render `bcd6fce` (main #51, deployed 2026-11-14) and Vercel `26b4d72` (main #54). The live backend still has the bugs fixed here, including the Stripe subscription webhook that fails on every subscription event (`73866a33`), the 500s on malformed ids, the duplicate accounts by email case, the service worker that caches signed-in API responses, and the AgentOS Jobs crash. PR #57 targets PR #56's branch, and neither is merged to main.
+2. **CI has not run on this work.** `ci.yml` only runs for pull requests to main, so PR #57 got Vercel previews only. Merging needs a PR to main and a green CI run there.
+3. **Owner decisions still open (M8):** set `REDIS_URL` (rate limits and the circuit breaker are per process without it), persistent storage for generated files, an error tracker, make `/api/health/full` admin-only (it is public and shows internals), `VITE_API_URL` for Preview, Node 20 → 22, clean up the suspended services.
+4. **Residual risks (M9):** retry amplification (18 provider calls, about 20 s for one failed AI step), 30 s breaker cooldown with a single AI provider, per-account lockout usable to lock a user out, 5-minute access token after single logout, Free plan has 1 seat.
+5. **Not verified here (BLOCKED):** Docker build, real email, Google OAuth, Stripe test checkout, a real device agent, Redis.
+6. **Outside this audit:** licensing, payment-provider eligibility for the UAE business, privacy and data-retention obligations (release blocker 6 above).
+
+Production at the time of this report (read-only checks, 2026-11-17 09:25 UTC): Render web service healthy (`/health` 200), no ERROR/CRITICAL application logs and no 5xx responses in the previous 24 hours; production DB holds 14 users and 2 Stripe events (both expired checkouts).
+
+Suggested order to reach ready: (1) open a PR from this work to main and get CI green; (2) decide items 3.1 and 3.4 at least; (3) deploy to a staging service first and repeat one cycle plus journeys 1, 10 and 12 against it, with a Stripe test key and a test SMTP inbox; (4) then production, with the Stripe webhook watched for the first real subscription.
