@@ -99,6 +99,7 @@
     "scopes": "الصلاحيات",
     "scope_read": "قراءة (GET)",
     "scope_write": "كتابة (POST/PUT/PATCH)",
+    "scope_ai": "بوابة الذكاء الاصطناعي",
     "scope_agents": "الوكلاء",
     "scope_marketplace": "السوق",
     "scopeNoneWarning": "اختر صلاحية واحدة على الأقل.",

@@ -69,6 +69,16 @@ _auth_rl = Depends(make_rate_limit_dep(
     error_detail="Too many authentication attempts — please wait a minute.",
 ))
 
+# Re-authentication endpoints for signed-in users (password change, MFA
+# disable / backup codes): each one checks a secret, so without a limit a
+# stolen session could brute-force the current password or TOTP code.
+_reauth_rl = Depends(make_rate_limit_dep(
+    "auth_reauth",
+    max_calls=5,
+    window=60,
+    error_detail="Too many attempts — please wait a minute.",
+))
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -684,6 +694,7 @@ async def change_password(
     body: ChangePasswordRequest,
     current: Annotated[dict, Depends(get_current_user)],
     request: Request,
+    _rl: None = _reauth_rl,
 ):
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
@@ -714,7 +725,26 @@ class MfaEnableRequest(BaseModel):
 
 
 class MfaDisableRequest(BaseModel):
-    password: str
+    code: str
+    password: str | None = None
+
+
+class MfaBackupCodesRequest(BaseModel):
+    code: str
+
+
+async def _verify_current_totp(conn, user_id: str, code: str) -> None:
+    """Require a valid code from the user's active authenticator. Proves
+    possession of the second factor itself, not just of a session."""
+    import pyotp
+
+    row = await conn.fetchrow(
+        "SELECT secret, enabled FROM mfa_secrets WHERE user_id=$1", uuid.UUID(user_id),
+    )
+    if not row or not row["enabled"]:
+        raise HTTPException(400, "MFA is not enabled")
+    if not pyotp.TOTP(row["secret"]).verify(code.strip(), valid_window=1):
+        raise HTTPException(400, "Invalid authentication code")
 
 
 def _generate_backup_codes(n: int = 10) -> list[str]:
@@ -728,7 +758,7 @@ async def mfa_setup(current: Annotated[dict, Depends(get_current_user)]):
     import pyotp
 
     secret = pyotp.random_base32()
-    uri = pyotp.TOTP(secret).provisioning_uri(name=current["email"], issuer_name="Axon")
+    uri = pyotp.TOTP(secret).provisioning_uri(name=current["email"], issuer_name="Flow")
     async with get_pool().acquire() as conn:
         await conn.execute(
             """INSERT INTO mfa_secrets (user_id, secret, enabled, backup_codes)
@@ -741,7 +771,11 @@ async def mfa_setup(current: Annotated[dict, Depends(get_current_user)]):
 
 
 @router.post("/mfa/enable")
-async def mfa_enable(body: MfaEnableRequest, current: Annotated[dict, Depends(get_current_user)]):
+async def mfa_enable(
+    body: MfaEnableRequest,
+    current: Annotated[dict, Depends(get_current_user)],
+    _rl: None = _reauth_rl,
+):
     """Verify one TOTP code to activate MFA; returns one-time backup codes."""
     import pyotp
 
@@ -764,24 +798,38 @@ async def mfa_enable(body: MfaEnableRequest, current: Annotated[dict, Depends(ge
 
 
 @router.post("/mfa/disable")
-async def mfa_disable(body: MfaDisableRequest, current: Annotated[dict, Depends(get_current_user)]):
+async def mfa_disable(
+    body: MfaDisableRequest,
+    current: Annotated[dict, Depends(get_current_user)],
+    _rl: None = _reauth_rl,
+):
+    """Requires a current authenticator code, plus the password for accounts
+    that have one (OAuth-only accounts have none, and previously could never
+    turn MFA off)."""
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
-        if not user or not user["password_hash"] or not verify_password(body.password, user["password_hash"]):
+        if not user:
+            raise HTTPException(404, "User not found")
+        if user["password_hash"] and (
+            not body.password or not verify_password(body.password, user["password_hash"])
+        ):
             raise HTTPException(400, "Incorrect password")
+        await _verify_current_totp(conn, current["id"], body.code)
         await conn.execute("DELETE FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]))
     await write_audit(current["email"], "mfa.disabled")
     return {"enabled": False}
 
 
 @router.post("/mfa/backup-codes")
-async def mfa_regenerate_backup_codes(current: Annotated[dict, Depends(get_current_user)]):
+async def mfa_regenerate_backup_codes(
+    body: MfaBackupCodesRequest,
+    current: Annotated[dict, Depends(get_current_user)],
+    _rl: None = _reauth_rl,
+):
+    """Requires a current authenticator code: new backup codes are a way
+    around MFA, so a session alone must not be enough to mint them."""
     async with get_pool().acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT enabled FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]),
-        )
-        if not row or not row["enabled"]:
-            raise HTTPException(400, "MFA is not enabled")
+        await _verify_current_totp(conn, current["id"], body.code)
         backup_codes = _generate_backup_codes()
         await conn.execute(
             "UPDATE mfa_secrets SET backup_codes=$2, updated_at=NOW() WHERE user_id=$1",
@@ -816,10 +864,14 @@ async def revoke_session(
     session_id: str,
     current: Annotated[dict, Depends(get_current_user)],
 ):
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(404, "Session not found") from None
     async with get_pool().acquire() as conn:
         result = await conn.execute(
             "DELETE FROM user_sessions WHERE id=$1 AND user_id=$2",
-            uuid.UUID(session_id),
+            sid,
             uuid.UUID(current["id"]),
         )
     if result == "DELETE 0":

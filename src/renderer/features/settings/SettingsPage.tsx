@@ -64,6 +64,7 @@ interface CreatedKey {
 const SCOPE_DEFS = [
   { id: "read",        labelKey: "apiKeys.scope_read" },
   { id: "write",       labelKey: "apiKeys.scope_write" },
+  { id: "ai",          labelKey: "apiKeys.scope_ai" },
   { id: "agents",      labelKey: "apiKeys.scope_agents" },
   { id: "marketplace", labelKey: "apiKeys.scope_marketplace" },
 ] as const;

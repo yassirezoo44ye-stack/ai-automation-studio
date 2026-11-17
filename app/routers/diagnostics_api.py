@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
-from app.core.auth import require_platform_admin
+from app.core.auth import is_platform_admin, require_platform_admin
 from app.core.ssrf_guard import UnsafeUrlError, assert_public_url
 
 log    = logging.getLogger(__name__)
@@ -55,19 +55,19 @@ async def diagnostics_metrics_text():
 
 # ── Traces ────────────────────────────────────────────────────────────────────
 
-@router.get("/traces")
+@router.get("/traces", dependencies=[Depends(require_platform_admin)])
 async def diagnostics_traces(n: int = 100):
     from app.core.observability.tracer import get_tracer
     return {"traces": get_tracer().recent(n)}
 
 
-@router.get("/traces/active")
+@router.get("/traces/active", dependencies=[Depends(require_platform_admin)])
 async def diagnostics_traces_active():
     from app.core.observability.tracer import get_tracer
     return {"active": get_tracer().active()}
 
 
-@router.get("/traces/{trace_id}")
+@router.get("/traces/{trace_id}", dependencies=[Depends(require_platform_admin)])
 async def diagnostics_trace(trace_id: str):
     from app.core.observability.tracer import get_tracer
     spans = get_tracer().trace(trace_id)
@@ -187,7 +187,10 @@ async def diagnostics_memory(request: Request, n: int = 50, kind: str | None = N
     from app.tenancy.context import optional_org_id
     org_id  = await optional_org_id(request)
     mem     = get_layered_memory()
-    records = mem.recent(n, kind=kind, org_id=org_id)
+    # The no-org bucket is shared by every caller outside an org, i.e. by
+    # unrelated users — only a platform admin may read it.
+    records = (mem.recent(n, kind=kind, org_id=org_id)
+               if org_id or await is_platform_admin(request) else [])
     return {
         "stats"  : mem.stats,
         "records": [r.to_dict() for r in reversed(records)],
@@ -205,6 +208,8 @@ async def diagnostics_memory_search(req: MemorySearchRequest, request: Request):
     from app.memory.layered import get_layered_memory
     from app.tenancy.context import optional_org_id
     org_id  = await optional_org_id(request)
+    if not org_id and not await is_platform_admin(request):
+        return {"count": 0, "results": []}  # shared no-org bucket: admins only
     results = get_layered_memory().search(req.query, limit=req.limit, kind=req.kind, org_id=org_id)
     return {"count": len(results), "results": [r.to_dict() for r in results]}
 

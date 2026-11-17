@@ -99,6 +99,7 @@
     "scopes": "Scopes",
     "scope_read": "Read (GET)",
     "scope_write": "Write (POST/PUT/PATCH)",
+    "scope_ai": "AI gateway",
     "scope_agents": "Agents",
     "scope_marketplace": "Marketplace",
     "scopeNoneWarning": "Select at least one scope.",

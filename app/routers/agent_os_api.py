@@ -322,7 +322,12 @@ async def agentos_memory(request: Request, n: int = 50):
     cross-tenant view."""
     from app.agents.memory import get_memory
     from app.tenancy.context import optional_org_id
+    from app.core.auth import is_platform_admin
     org_id = await optional_org_id(request)
+    # The no-org bucket mixes every caller outside an org (unrelated users),
+    # so only a platform admin may read it.
+    if not org_id and not await is_platform_admin(request):
+        return {"count": 0, "records": []}
     records = get_memory().recent(min(n, 200), org_id=org_id)
     return {"count": len(records), "records": [r.to_dict() for r in reversed(records)]}
 

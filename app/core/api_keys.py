@@ -261,6 +261,12 @@ async def _touch_usage(key_hash: str) -> None:
         log.debug("api_key usage update failed", exc_info=True)
 
 
+# Every scope a key may carry. "ai" is the dedicated scope for the AI gateway
+# (/api/ai/*): a key needs it to call AI endpoints as its owner. "agents" is a
+# separate, older scope and does NOT grant AI access.
+VALID_SCOPES: frozenset[str] = frozenset({"read", "write", "admin", "agents", "marketplace", "ai"})
+
+
 # ── Validation (shared by require_api_key and factory.api_auth_middleware) ───
 
 def extract_raw_api_key(request: Request) -> str:
