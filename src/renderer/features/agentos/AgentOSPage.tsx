@@ -808,7 +808,7 @@ export function AgentOSPage() {
 
 // ── Jobs Monitor ──────────────────────────────────────────────────────────────
 
-function JobsMonitor() {
+export function JobsMonitor() {
   type Job = {
     job_id: string; kind: string; status: string;
     progress: number; error?: string;
@@ -833,8 +833,10 @@ function JobsMonitor() {
     setLoading(true);
     try {
       const [jr, sr] = await Promise.all([
-        apiFetch("/api/jobs").then(r => r.json()).catch(() => ({ jobs: [] })),
-        apiFetch("/api/jobs/stats").then(r => r.json()).catch(() => null) as Promise<JobStats | null>,
+        // An error answer (e.g. no organization selected yet) is JSON too:
+        // reading it as stats crashed the whole tab on stats.counts.
+        apiFetch("/api/jobs").then(r => (r.ok ? r.json() : { jobs: [] })).catch(() => ({ jobs: [] })),
+        apiFetch("/api/jobs/stats").then(r => (r.ok ? r.json() : null)).catch(() => null) as Promise<JobStats | null>,
       ]);
       setJobs(jr.jobs ?? []);
       setStats(sr);
