@@ -9,13 +9,15 @@ export const LEGAL_VERSION = "2026-11-17";
 export type LegalDocId = "privacy" | "terms" | "refunds";
 export type LegalLang = "en" | "ar";
 
-/** Fill these in before publishing. They appear in all three documents. */
+/** Fill these in before publishing. Flow is currently run by an individual
+ *  (no company), so the operator is named personally. If a company or
+ *  freelance licence is set up later, put its legal name here instead. */
 export const LEGAL_ENTITY = {
-  name: "[Legal entity name]",
-  nameAr: "[الاسم القانوني للمنشأة]",
-  address: "[Registered address, Dubai, United Arab Emirates]",
-  addressAr: "[العنوان المسجّل، دبي، الإمارات العربية المتحدة]",
-  email: "[privacy@your-domain]",
+  name: "[Operator full name]",
+  nameAr: "[الاسم الكامل للمشغّل]",
+  location: "Dubai, United Arab Emirates",
+  locationAr: "دبي، الإمارات العربية المتحدة",
+  email: "[contact e-mail]",
 };
 
 export interface LegalSection {
@@ -35,7 +37,7 @@ const E = LEGAL_ENTITY;
 const en: Record<LegalDocId, LegalDoc> = {
   privacy: {
     title: "Privacy Policy",
-    intro: `This policy explains what personal data Flow collects, why, who we share it with, and the choices you have. Flow is operated by ${E.name}, ${E.address} ("we"). For data you put into Flow about yourself, we are the controller. For data your organization collects about other people through Flow (for example leads captured by your forms), your organization is the controller and we process it on its behalf.`,
+    intro: `This policy explains what personal data Flow collects, why, who we share it with, and the choices you have. Flow is operated by ${E.name}, an individual based in ${E.location} ("we"). For data you put into Flow about yourself, we are the controller. For data your organization collects about other people through Flow (for example leads captured by your forms), your organization is the controller and we process it on its behalf.`,
     sections: [
       {
         heading: "1. Data we collect",
@@ -121,7 +123,7 @@ const en: Record<LegalDocId, LegalDoc> = {
         heading: "11. Changes and contact",
         paragraphs: [
           "If we change this policy in a meaningful way we will notify you in the app or by e-mail before the change takes effect.",
-          `Contact: ${E.name}, ${E.address}. E-mail: ${E.email}.`,
+          `Contact: ${E.name}, ${E.location}. E-mail: ${E.email}.`,
         ],
       },
     ],
@@ -204,7 +206,7 @@ const en: Record<LegalDocId, LegalDoc> = {
         heading: "11. Changes and contact",
         paragraphs: [
           "We may update these terms. For meaningful changes we will notify you before they take effect; continuing to use Flow after that means you accept them.",
-          `Contact: ${E.name}, ${E.address}. E-mail: ${E.email}.`,
+          `Contact: ${E.name}, ${E.location}. E-mail: ${E.email}.`,
         ],
       },
     ],
@@ -252,7 +254,7 @@ const en: Record<LegalDocId, LegalDoc> = {
 const ar: Record<LegalDocId, LegalDoc> = {
   privacy: {
     title: "سياسة الخصوصية",
-    intro: `توضح هذه السياسة البيانات الشخصية التي تجمعها منصة Flow، ولماذا نجمعها، ومع من نشاركها، والخيارات المتاحة لك. تُشغِّل المنصة ${E.nameAr}، ${E.addressAr} ("نحن"). نحن المتحكّم في البيانات التي تُدخلها عن نفسك. أما البيانات التي تجمعها منظمتك عن أشخاص آخرين عبر Flow (مثل العملاء المحتملين من نماذجك)، فمنظمتك هي المتحكّم فيها ونحن نعالجها نيابة عنها.`,
+    intro: `توضح هذه السياسة البيانات الشخصية التي تجمعها منصة Flow، ولماذا نجمعها، ومع من نشاركها، والخيارات المتاحة لك. يُشغِّل المنصة ${E.nameAr}، وهو فرد مقيم في ${E.locationAr} ("نحن"). نحن المتحكّم في البيانات التي تُدخلها عن نفسك. أما البيانات التي تجمعها منظمتك عن أشخاص آخرين عبر Flow (مثل العملاء المحتملين من نماذجك)، فمنظمتك هي المتحكّم فيها ونحن نعالجها نيابة عنها.`,
     sections: [
       {
         heading: "1. البيانات التي نجمعها",
@@ -338,7 +340,7 @@ const ar: Record<LegalDocId, LegalDoc> = {
         heading: "11. التعديلات والتواصل",
         paragraphs: [
           "إذا عدّلنا هذه السياسة تعديلاً جوهرياً فسنخبرك داخل المنصة أو بالبريد قبل سريانه.",
-          `للتواصل: ${E.nameAr}، ${E.addressAr}. البريد: ${E.email}.`,
+          `للتواصل: ${E.nameAr}، ${E.locationAr}. البريد: ${E.email}.`,
         ],
       },
     ],
@@ -421,7 +423,7 @@ const ar: Record<LegalDocId, LegalDoc> = {
         heading: "11. التعديلات والتواصل",
         paragraphs: [
           "قد نحدّث هذه الشروط، وسنخبرك بالتعديلات الجوهرية قبل سريانها، واستمرارك في استخدام Flow بعد ذلك يعني قبولها.",
-          `للتواصل: ${E.nameAr}، ${E.addressAr}. البريد: ${E.email}.`,
+          `للتواصل: ${E.nameAr}، ${E.locationAr}. البريد: ${E.email}.`,
         ],
       },
     ],
