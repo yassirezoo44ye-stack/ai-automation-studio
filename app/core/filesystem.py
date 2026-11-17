@@ -29,8 +29,14 @@ def workspace(project_id: str) -> Path:
     if re.fullmatch(r"[A-Za-z0-9_-]{1,100}", project_id) is None:
         raise HTTPException(400, "Invalid project_id")
     root = WORKSPACES.resolve()
-    ws = (root / project_id).resolve()
-    if not str(ws).startswith(str(root) + os.sep) or not ws.is_relative_to(root):
+    candidate = os.path.abspath(os.path.join(str(root), project_id))
+    if not candidate.startswith(str(root) + os.sep):
+        raise HTTPException(400, "Invalid project_id")
+    resolved = os.path.realpath(candidate)
+    if not resolved.startswith(str(root) + os.sep):
+        raise HTTPException(400, "Invalid project_id")
+    ws = Path(resolved)
+    if not ws.is_relative_to(root):
         raise HTTPException(400, "Invalid project_id")
     ws.mkdir(parents=True, exist_ok=True)
     return ws
