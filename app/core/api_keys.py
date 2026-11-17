@@ -261,6 +261,42 @@ async def _touch_usage(key_hash: str) -> None:
         log.debug("api_key usage update failed", exc_info=True)
 
 
+# ── Validation (shared by require_api_key and factory.api_auth_middleware) ───
+
+def extract_raw_api_key(request: Request) -> str:
+    """Raw key from `Authorization: ApiKey <key>` or `X-API-Key: <key>`."""
+    auth = request.headers.get("Authorization", "")
+    from_auth = auth[len("ApiKey "):].strip() if auth.startswith("ApiKey ") else ""
+    return from_auth or request.headers.get("X-API-Key", "").strip()
+
+
+def has_api_key_header(request: Request) -> bool:
+    return (
+        request.headers.get("Authorization", "").startswith("ApiKey ")
+        or bool(request.headers.get("X-API-Key", ""))
+    )
+
+
+async def validate_api_key(raw: str) -> ApiKeyRecord:
+    """Resolve a raw key to an active, unexpired record or raise 401.
+
+    SECURITY: api_auth_middleware used to let ANY request carrying an API-key
+    header through unvalidated, on the assumption that each route checks the
+    key itself via require_api_key(). Most routes do not, so a junk header
+    (`X-API-Key: x`) bypassed authentication on them entirely. The middleware
+    now calls this before letting the request reach routing."""
+    if not raw or not raw.startswith(_PREFIX):
+        raise HTTPException(401, "Valid API key required (Authorization: ApiKey axon_...)")
+    rec = await lookup_key(raw)
+    if not rec:
+        raise HTTPException(401, "Invalid API key")
+    if not rec.active:
+        raise HTTPException(401, "API key has been revoked")
+    if rec.is_expired():
+        raise HTTPException(401, "API key has expired")
+    return rec
+
+
 # ── FastAPI dependency ────────────────────────────────────────────────────────
 
 def require_api_key(scopes: list[str] | None = None):
@@ -275,22 +311,7 @@ def require_api_key(scopes: list[str] | None = None):
     required = scopes or []
 
     async def _dep(request: Request) -> ApiKeyRecord:
-        # Extract token
-        auth   = request.headers.get("Authorization", "")
-        raw    = (
-            auth.removeprefix("ApiKey ").strip()
-            or request.headers.get("X-API-Key", "").strip()
-        )
-        if not raw or not raw.startswith(_PREFIX):
-            raise HTTPException(401, "Valid API key required (Authorization: ApiKey axon_...)")
-
-        rec = await lookup_key(raw)
-        if not rec:
-            raise HTTPException(401, "Invalid API key")
-        if not rec.active:
-            raise HTTPException(401, "API key has been revoked")
-        if rec.is_expired():
-            raise HTTPException(401, "API key has expired")
+        rec = await validate_api_key(extract_raw_api_key(request))
         if required and not rec.has_scope(required):
             raise HTTPException(403, f"API key lacks required scope: {required}")
 
