@@ -24,6 +24,8 @@ def gateway(monkeypatch):
             body = json.dumps(dict(self.headers)).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            if self.path == "/folded-header":
+                self.send_header("X-Preview", "safe\r\n\tX-Injected: yes")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -81,3 +83,11 @@ def test_platform_headers_and_capability_never_reach_generated_application(gatew
 def test_other_session_capability_cannot_open_preview(gateway):
     response = gateway.get("/", headers={"Cookie": "__Host-flow_preview=another-project-token"})
     assert response.status_code == 401
+
+
+def test_upstream_folded_header_cannot_split_gateway_response(gateway):
+    response = gateway.get("/folded-header", headers={"Cookie": "__Host-flow_preview=test-only-capability"})
+    assert response.status_code == 200
+    assert "\r" not in response.headers["x-preview"]
+    assert "\n" not in response.headers["x-preview"]
+    assert "x-injected" not in response.headers

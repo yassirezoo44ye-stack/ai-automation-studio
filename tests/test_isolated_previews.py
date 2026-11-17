@@ -10,7 +10,8 @@ from app.execution import isolated, runner
 
 
 @pytest.fixture(autouse=True)
-def clean_state(monkeypatch):
+def clean_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(isolated, "WORKSPACES", tmp_path.parent)
     monkeypatch.setattr(isolated, "_sessions", {})
     monkeypatch.setattr(isolated, "_locks", isolated.defaultdict(asyncio.Lock))
     monkeypatch.setattr(isolated, "_capacity", asyncio.Semaphore(isolated.MAX_SESSIONS))
@@ -251,3 +252,27 @@ def test_remote_output_is_bounded():
     buffer = isolated._Output()
     assert buffer.write(b"x" * 1000000) == 1000000
     assert len(buffer.getvalue()) == 16000
+
+
+def test_workspace_outside_configured_root_is_rejected(tmp_path, monkeypatch):
+    configured = tmp_path / "configured"
+    configured.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "index.html").write_text("must-not-upload")
+    monkeypatch.setattr(isolated, "WORKSPACES", configured)
+    with pytest.raises(ValueError, match="WORKSPACES_DIR"):
+        isolated.workspace_files(external)
+
+
+def test_project_directory_symlink_is_rejected(tmp_path, monkeypatch):
+    from pathlib import Path
+    configured = tmp_path / "configured"
+    configured.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    linked = configured / "linked-project"
+    linked.symlink_to(external, target_is_directory=True)
+    monkeypatch.setattr(isolated, "WORKSPACES", configured)
+    with pytest.raises(ValueError, match="WORKSPACES_DIR"):
+        isolated.workspace_files(Path(linked))

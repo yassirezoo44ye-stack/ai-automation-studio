@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 from types import SimpleNamespace
 
 from app.execution import detector
+from app.core.config import WORKSPACES
 
 log = logging.getLogger(__name__)
 LIFETIME = 300
@@ -59,8 +60,26 @@ def valid_preview_url(value: str) -> bool:
         return False
 
 
+def _trusted_workspace(requested: Path) -> Path:
+    """Select a real directory from the configured root, never from request text.
+
+    A caller's path is only a comparison key. Filesystem operations use an
+    enumerated child of the trusted storage root. Reject root/child symlinks
+    and nested paths, including paths outside that root.
+    """
+    root = WORKSPACES.resolve()
+    requested = requested.absolute()
+    for candidate in root.iterdir():
+        if candidate.absolute() == requested:
+            if candidate.is_symlink() or not candidate.is_dir():
+                break
+            return candidate
+    raise PreviewError("Preview workspace must be an existing project under WORKSPACES_DIR")
+
+
 def workspace_files(ws: Path) -> list[tuple[str, bytes]]:
     """Bound transfers and reject links; do not copy credentials or dependencies."""
+    ws = _trusted_workspace(ws)
     files = []
     total = 0
     for path in sorted(ws.rglob("*")):
@@ -179,6 +198,7 @@ async def stream(project_id: str, ws: Path, command_override: str | None = None)
         try:
             if command_override:
                 raise PreviewError("Custom commands are disabled for isolated previews")
+            ws = _trusted_workspace(ws)
             files = workspace_files(ws)
             if not files:
                 raise PreviewError("Workspace is empty — build the project first")

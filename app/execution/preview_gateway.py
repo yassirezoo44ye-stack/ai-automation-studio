@@ -9,6 +9,7 @@ import http.client
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
+import re
 
 TOKEN = os.environ["FLOW_PREVIEW_TOKEN"]
 COOKIE = "__Host-flow_preview"
@@ -67,7 +68,12 @@ class Gateway(BaseHTTPRequestHandler):
             self.send_response(response.status)
             for key, value in response.getheaders():
                 if key.lower() not in HOP_HEADERS | {"content-length", "cache-control", "referrer-policy"}:
-                    self.send_header(key, value)
+                    # Upstream application headers are untrusted. Strip CR/LF
+                    # and reject invalid field names before serializing them.
+                    key = key.replace("\r", "").replace("\n", "")
+                    value = value.replace("\r", "").replace("\n", "")
+                    if re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", key):
+                        self.send_header(key, value)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
