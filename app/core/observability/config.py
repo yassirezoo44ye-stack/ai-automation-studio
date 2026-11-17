@@ -28,6 +28,20 @@ class ObservabilityConfig:
         return _bool_env("OBS_TRACING_ENABLED", True)
 
     @property
+    def http_tracing_enabled(self) -> bool:
+        """One OpenTelemetry span per HTTP request (FastAPIInstrumentor).
+
+        Defaults to on only when OTEL_EXPORTER_OTLP_ENDPOINT is set: without
+        an exporter those spans only fill the in-memory ring buffer, yet cost
+        about 13% of server CPU per request (perf audit M1, 2026-11-17).
+        Manual spans (auth.login, db.acquire_scoped, ...) are unaffected and
+        still governed by tracing_enabled. OBS_HTTP_TRACING_ENABLED overrides.
+        """
+        if not self.tracing_enabled:
+            return False
+        return _bool_env("OBS_HTTP_TRACING_ENABLED", bool(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")))
+
+    @property
     def metrics_enabled(self) -> bool:
         return _bool_env("OBS_METRICS_ENABLED", True)
 
