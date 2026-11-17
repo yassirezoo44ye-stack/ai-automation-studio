@@ -1,3 +1,4 @@
+import { isolatedPreviewUrl } from "./services/previewUrl";
 import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 /**
  * App Builder — 3-panel workspace for building apps with AI.
@@ -429,10 +430,21 @@ export function AppBuilderPage() {
   // ── Phase 3: Runtime state machine ────────────────────────────────
   const [runtimeState, setRuntimeState]       = useState<RuntimeState>("idle");
   const [previewUrl, setPreviewUrl]           = useState<string | null>(null);
-  const [previewType, setPreviewType]         = useState<"proxy" | "blob" | null>(null);
+  const [previewExpiresAt, setPreviewExpiresAt] = useState<number | null>(null);
+  const [previewType, setPreviewType]         = useState<"isolated" | "blob" | null>(null);
   const [runtimeError, setRuntimeError]       = useState<RuntimeError | null>(null);
   const [runtimeEvents, setRuntimeEvents]     = useState<RuntimeEventItem[]>([]);
   const [startupMessages, setStartupMessages] = useState<string[]>([]);
+  useEffect(() => {
+    if (previewExpiresAt === null) return;
+    const timer = window.setTimeout(() => {
+      setRuntimeState("stopped");
+      setPreviewExpiresAt(null);
+      setPreviewUrl(null);
+      setPreviewType(null);
+    }, Math.max(0, previewExpiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [previewExpiresAt]);
   const runtimeAbortRef = useRef<AbortController | null>(null);
   const isRunningRef    = useRef(false);
 
@@ -757,6 +769,7 @@ export function AppBuilderPage() {
 
     isRunningRef.current = true;
     setRuntimeState("starting");
+    setPreviewExpiresAt(null);
     setRuntimeError(null);
     setRuntimeEvents([]);
     setStartupMessages([]);
@@ -770,7 +783,7 @@ export function AppBuilderPage() {
       if (ev.type === "heartbeat") return;
       const msg =
         ev.type === "log"          ? ev.line
-        : ev.type === "server_ready" ? `✓ ${ev.message} — ${ev.preview_url}`
+        : ev.type === "server_ready" ? `✓ ${ev.message}`
         : "message" in ev          ? (ev as { message: string }).message
         : ev.type;
       setRuntimeEvents(prev => [...prev, {
@@ -790,24 +803,13 @@ export function AppBuilderPage() {
             setStartupMessages(prev => [...prev, ev.message]);
             break;
 
-          case "html": {
-            // Static HTML driver — create blob URL for iframe.
-            // P0-C: use "preview" (not "running") — no real server subprocess.
-            const blob = new Blob([ev.html_content], { type: "text/html" });
-            const url = URL.createObjectURL(blob);
-            setPreviewUrl(url);
-            setPreviewType("blob");
-            setRuntimeState("preview");
-            toast("App preview ready", "ok");
-            isRunningRef.current = false;
-            runtimeAbortRef.current = null;
-            return;
-          }
+          case "html":
+            throw new Error(t("runtime.outdatedServer"));
 
           case "server_ready": {
-            // Server running — proxy URL is relative, same-origin
-            setPreviewUrl(ev.preview_url);
-            setPreviewType("proxy");
+            setPreviewUrl(isolatedPreviewUrl(ev.preview_url));
+            setPreviewType("isolated");
+            setPreviewExpiresAt(Date.now() + Math.min(ev.expires_in ?? 300, 300) * 1000);
             setRuntimeState("running");
             isRunningRef.current = false;
             runtimeAbortRef.current = null;
@@ -852,7 +854,7 @@ export function AppBuilderPage() {
       isRunningRef.current = false;
       runtimeAbortRef.current = null;
     }
-  }, [toast]);
+  }, [t]);
 
   /** Stop the running project. Calls DELETE /api/projects/{id}/process. */
   const handleStop = useCallback(async () => {
@@ -860,19 +862,24 @@ export function AppBuilderPage() {
     runtimeAbortRef.current?.abort();
     runtimeAbortRef.current = null;   // explicit clear — handleRun allocates a fresh controller
     setRuntimeState("stopping");
-    if (projectId) {
-      await stopProject(projectId);
+    try {
+      if (projectId) await stopProject(projectId);
+      setRuntimeState("stopped");
+      setPreviewExpiresAt(null);
+      setPreviewUrl(null);
+      setPreviewType(null);
+      isRunningRef.current = false;
+      return true;
+    } catch {
+      setRuntimeState("failed");
+      setRuntimeError({ category: "network", message: t("runtime.stopFailed"), fix: [t("runtime.retryStop")] });
+      return false;
     }
-    setRuntimeState("stopped");
-    setPreviewUrl(null);
-    setPreviewType(null);
-    isRunningRef.current = false;
-  }, []);
+  }, [t]);
 
-  /** Restart = stop then run again. */
+  /** Restart only after the backend confirms that the old VM stopped. */
   const handleRestart = useCallback(async () => {
-    await handleStop();
-    void handleRun();
+    if (await handleStop()) void handleRun();
   }, [handleStop, handleRun]);
 
   /**
@@ -1293,9 +1300,9 @@ export function AppBuilderPage() {
                 ↺ Restart
               </button>
             )}
-            {runtimeState === "running" && previewUrl && previewType === "proxy" && (
+            {runtimeState === "running" && previewUrl && previewType === "isolated" && (
               <button
-                onClick={() => window.open(`${window.location.origin}${previewUrl}`, "_blank")}
+                onClick={() => window.open(isolatedPreviewUrl(previewUrl), "_blank", "noopener,noreferrer")}
                 style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid var(--b1)", background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer" }}
               >
                 ⇱ Open

@@ -20,7 +20,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from app.core.auth import extract_auth_credentials, verify_token
 from app.integrations.social.oauth_handoff import is_public_social_oauth_request
 from app.core.config import (
-    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
+    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES,
 )
 from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
@@ -113,7 +113,8 @@ async def lifespan(app: FastAPI):
     from app.core.project_plans import init_schema as init_project_plans_schema
     async with pool.acquire() as conn:
         await init_project_plans_schema(conn)
-    WORKSPACES.mkdir(exist_ok=True)
+    from app.core.filesystem import verify_workspace_storage
+    verify_workspace_storage()
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
     await runtime_registry.discover()
@@ -484,6 +485,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await project_run_worker.stop()
+        from app.execution import isolated
+        await isolated.stop_all()
 
     # ── Shutdown ────────────────────────────────────────────────────────────
     from app.core.workflow.automation_scheduler import stop_scheduler
@@ -520,7 +523,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: https:; "
             "connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
-            "frame-src https://checkout.stripe.com https://js.stripe.com blob:; "
+            "frame-src https://checkout.stripe.com https://js.stripe.com https://*.vercel.run blob:; "
             "font-src 'self' data: https://fonts.gstatic.com;"
         )
         return response

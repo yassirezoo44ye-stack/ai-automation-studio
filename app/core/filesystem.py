@@ -4,6 +4,8 @@ Both create or access project workspaces under WORKSPACES/ and must
 guard against path-traversal attacks.
 """
 from pathlib import Path
+import os
+import tempfile
 
 from fastapi import HTTPException
 
@@ -40,3 +42,18 @@ def safe_path(ws: Path, rel: str) -> Path:
     if not p.is_relative_to(ws.resolve()):
         raise HTTPException(400, "Invalid path")
     return p
+
+
+def verify_workspace_storage() -> None:
+    """Fail startup if required durable storage is absent or not writable.
+
+    A filesystem probe does not prove backup/restore or cross-deploy durability;
+    those remain deployment acceptance checks. Local dev need not use a mount.
+    """
+    if os.getenv("REQUIRE_WORKSPACE_MOUNT", "").lower() == "true" and not WORKSPACES.is_mount():
+        raise RuntimeError("WORKSPACES_DIR must be an attached persistent mount; refusing ephemeral storage")
+    WORKSPACES.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryFile(dir=WORKSPACES) as probe:
+        probe.write(b"flow-storage-probe")
+        probe.flush()
+        os.fsync(probe.fileno())

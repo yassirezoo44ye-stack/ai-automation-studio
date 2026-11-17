@@ -9,7 +9,6 @@ import zipfile
 from pathlib import Path
 
 import anthropic
-import httpx
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -22,7 +21,7 @@ from app.core.filesystem import workspace, safe_path
 from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
-from app.execution import process_mgr
+from app.execution import isolated
 from app.execution.runner import run_stream, run_sync
 import contextlib
 
@@ -771,12 +770,13 @@ async def run_project_stream(project_id: str, body: RunRequest2, request: Reques
       status        — progress update
       log           — one line of stdout/stderr
       html          — static HTML (frontend renders blob URL)
-      server_ready  — server started; preview_url = /api/projects/{id}/proxy/
+      server_ready  — isolated server started; preview_url is a short-lived external capability
       unsupported   — project not runnable here, shows local hint
       done          — script finished  {exit_code, duration, stdout, stderr}
       error         — fatal error
     """
     await _require_project_owner(project_id, request)
+    ai_rate_limit(request, max_calls=10, window=60)
     ws = workspace(project_id)
 
     # Sync any in-memory files that arrived via the request body
@@ -799,6 +799,7 @@ async def run_project(project_id: str, body: RunRequest2, request: Request):
     Used by older clients or if SSE is unavailable.
     """
     await _require_project_owner(project_id, request)
+    ai_rate_limit(request, max_calls=10, window=60)
     ws = workspace(project_id)
     result = await run_sync(project_id, ws, body.command or None)
     # Map SSE event to HTTP status
@@ -815,7 +816,7 @@ async def run_project(project_id: str, body: RunRequest2, request: Request):
 async def stop_project(project_id: str, request: Request):
     """Kill any running server process for this project."""
     await _require_project_owner(project_id, request)
-    await process_mgr.kill(project_id)
+    await isolated.stop(project_id)
     return {"stopped": project_id}
 
 
@@ -823,17 +824,7 @@ async def stop_project(project_id: str, request: Request):
 async def project_process_status(project_id: str, request: Request):
     """Check whether a server process is currently running for this project."""
     await _require_project_owner(project_id, request)
-    rp = process_mgr.get_running(project_id)
-    if rp:
-        return {
-            "running": True,
-            "port": rp.port,
-            "project_type": rp.project_type,
-            "command": " ".join(rp.command),
-            "preview_url": f"/api/projects/{project_id}/proxy/",
-            "idle_seconds": round(rp.idle_seconds),
-        }
-    return {"running": False}
+    return await isolated.status(project_id)
 
 
 @router.api_route(
@@ -841,57 +832,6 @@ async def project_process_status(project_id: str, request: Request):
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
 )
 async def proxy_to_project(project_id: str, path: str, request: Request):
-    """
-    Reverse proxy: forwards every request to the running server for this project.
-    The server listens on an internal port; this route exposes it to the browser.
-    """
+    """Legacy same-origin previews are disabled; never forward platform credentials."""
     await _require_project_owner(project_id, request)
-    rp = process_mgr.get_running(project_id)
-    if rp is None:
-        raise HTTPException(503, detail={
-            "error": "No running server",
-            "details": (
-                f"No server is running for project '{project_id}'. "
-                "Click Run to start it."
-            ),
-        })
-
-    target = f"http://127.0.0.1:{rp.port}/{path}"
-    if request.url.query:
-        target += f"?{request.url.query}"
-
-    # Forward headers except hop-by-hop
-    _HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate",
-                   "proxy-authorization", "te", "trailer", "transfer-encoding",
-                   "upgrade", "host"}
-    fwd_headers = {
-        k: v for k, v in request.headers.items()
-        if k.lower() not in _HOP_BY_HOP
-    }
-    body_bytes = await request.body()
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.request(
-                method=request.method,
-                url=target,
-                headers=fwd_headers,
-                content=body_bytes,
-            )
-        # Strip hop-by-hop from response headers
-        resp_headers = {
-            k: v for k, v in resp.headers.items()
-            if k.lower() not in _HOP_BY_HOP
-        }
-        return Response(
-            content=resp.content,
-            status_code=resp.status_code,
-            headers=resp_headers,
-        )
-    except httpx.ConnectError:
-        rp_check = process_mgr.get_running(project_id)
-        if rp_check is None:
-            raise HTTPException(503, detail={"error": "Server has exited"}) from None
-        raise HTTPException(502, detail={"error": "Could not connect to server"}) from None
-    except httpx.TimeoutException:
-        raise HTTPException(504, detail={"error": "Server request timed out"}) from None
+    raise HTTPException(410, "Same-origin previews are disabled. Run the project to create an isolated preview.")
