@@ -39,3 +39,16 @@ def test_deploy_without_driver_does_not_claim_success(tmp_path):
     result = asyncio.run(deploy_handler(CommandContext(command='deploy', workspace=tmp_path, flags={'target':'render'})))
     assert not result.success
     assert result.error_code == 'DEPLOY_DRIVER_UNAVAILABLE'
+
+
+def test_source_archive_excludes_runtime_data_secrets_and_links(tmp_path):
+    from app.core.source_export import source_files
+    (tmp_path/'.flow-commerce.json').write_text('{}')
+    (tmp_path/'main.py').write_text('print(1)')
+    (tmp_path/'.env.example').write_text('PUBLIC_ORIGIN=')
+    (tmp_path/'.env.production').write_text('secret')
+    (tmp_path/'data').mkdir()
+    (tmp_path/'data'/'owner-setup.txt').write_text('private')
+    (tmp_path/'data'/'store.sqlite3').write_text('customer data')
+    (tmp_path/'linked.txt').symlink_to(tmp_path/'.env.production')
+    assert {str(p.relative_to(tmp_path)) for p in source_files(tmp_path)} == {'.flow-commerce.json', '.env.example', 'main.py'}

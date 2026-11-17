@@ -25,6 +25,7 @@ from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
 from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
 from app.core.org_quota import check_org_quota, record_org_tokens
+from app.core.source_export import source_files
 from app.core.security import ai_rate_limit
 from app.execution import process_mgr
 from app.execution.runner import run_stream, run_sync
@@ -778,9 +779,8 @@ async def download_workspace(project_id: str, request: Request):
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in sorted(ws.rglob("*")):
-            if p.is_file():
-                zf.write(p, p.relative_to(ws))
+        for p in source_files(ws):
+            zf.write(p, p.relative_to(ws))
     buf.seek(0)
 
     name = f"project-{project_id[:8]}.zip"
