@@ -71,3 +71,30 @@ class TestWorkspaceRejectsSiblingPrefixGotcha(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_workspace_rejects_symlink_target_outside_root(tmp_path):
+    from unittest.mock import patch
+    import pytest
+    from fastapi import HTTPException
+    from app.core.filesystem import workspace
+    root=tmp_path/'workspaces'
+    root.mkdir()
+    outside=tmp_path/'outside'
+    outside.mkdir()
+    (root/'valid-project').symlink_to(outside,target_is_directory=True)
+    with patch('app.core.filesystem.WORKSPACES',root),pytest.raises(HTTPException):
+        workspace('valid-project')
+
+
+def test_safe_path_rejects_external_symlink(tmp_path):
+    import pytest
+    from fastapi import HTTPException
+    from app.core.filesystem import safe_path
+    root=tmp_path/'owned'
+    root.mkdir()
+    secret=tmp_path/'secret.txt'
+    secret.write_text('not a project file')
+    (root/'file.txt').symlink_to(secret)
+    with pytest.raises(HTTPException):
+        safe_path(root,'file.txt')

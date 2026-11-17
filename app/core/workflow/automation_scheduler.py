@@ -256,7 +256,11 @@ def _make_step_fn(kind: str, spec: dict):
         return _make_approval_step_fn(spec)
     if kind == "email":
         return _make_email_step_fn(spec)
-    # noop: used for testing and inert placeholder steps
+    if kind != "noop":
+        async def _unsupported(**kwargs):
+            raise ValueError(f"Unsupported automation step kind: {kind}. No action was executed.")
+        return _unsupported
+    # Explicit no-op steps perform no external action.
     async def _noop(**kwargs):
         log.debug("automation step noop kind=%s id=%s", kind, spec.get("id"))
         return {"kind": kind, "status": "noop"}

@@ -100,28 +100,19 @@ export function FeedPage() {
   }
 
   /* ── Interaction handlers ──────────────────────────────────── */
+  const [interactionError, setInteractionError] = useState(false);
   const toggleLike = useCallback((id: string) => {
-    let prev: FeedItemState | undefined;
-    setStates(s => {
-      prev = s[id];
-      if (!prev) return s;
-      return { ...s, [id]: { ...prev, liked: !prev.liked, likes: prev.liked ? prev.likes - 1 : prev.likes + 1 } };
-    });
+    setInteractionError(false);
     toggleLikeAPI(id)
-      .then(res => setStates(s => ({ ...s, [id]: { ...s[id], liked: res.liked, likes: res.count } })))
-      .catch(() => setStates(s => prev ? { ...s, [id]: prev } : s));
+      .then(res => setStates(current => current[id] ? { ...current, [id]: { ...current[id], liked: res.liked, likes: res.count } } : current))
+      .catch(() => setInteractionError(true));
   }, []);
 
   const toggleSave = useCallback((id: string) => {
-    let prev: FeedItemState | undefined;
-    setStates(s => {
-      prev = s[id];
-      if (!prev) return s;
-      return { ...s, [id]: { ...prev, saved: !prev.saved, saves: prev.saved ? prev.saves - 1 : prev.saves + 1 } };
-    });
+    setInteractionError(false);
     toggleSaveAPI(id)
-      .then(res => setStates(s => ({ ...s, [id]: { ...s[id], saved: res.saved, saves: res.count } })))
-      .catch(() => setStates(s => prev ? { ...s, [id]: prev } : s));
+      .then(res => setStates(current => current[id] ? { ...current, [id]: { ...current[id], saved: res.saved, saves: res.count } } : current))
+      .catch(() => setInteractionError(true));
   }, []);
 
   /* ── Navigation indicator ──────────────────────────────────── */
@@ -135,6 +126,7 @@ export function FeedPage() {
         if (tab === "explore") setPage("discover");
         if (tab === "for-you") { setContentFilter("all"); setSearch(""); setSubject(""); scrollToIndex(0); }
       }} />
+      {interactionError && <p role="alert">{t("realFeed.interactionError")}</p>}
       {!loading && sharedUnavailable && <p role="alert">{t("error.sharedUnavailable")}</p>}
       <div className="feed-content-filters" role="group" aria-label={t("study.filterLabel")}>
         {(["all", "study"] as const).map(filter => <button key={filter} aria-pressed={contentFilter === filter} onClick={() => { scrollToIndex(0); setContentFilter(filter); setSubject(""); }}>{t(`study.${filter}`)}</button>)}

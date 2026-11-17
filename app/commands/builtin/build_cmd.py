@@ -14,9 +14,9 @@ import tempfile
 import time
 from pathlib import Path
 
+from app.core.source_export import source_files
 from app.commands.context import CommandContext
 from app.commands.result import CommandResult
-import contextlib
 
 
 async def build_handler(ctx: CommandContext) -> CommandResult:
@@ -37,23 +37,13 @@ async def build_handler(ctx: CommandContext) -> CommandResult:
     zip_path = output_dir / zip_name
 
     try:
-        # Zip the workspace, skipping heavy build artifacts
-        skip = {".git", "node_modules", "__pycache__", ".venv", "venv", ".next"}
         tmp_base = Path(tempfile.mkdtemp())
         copy_root = tmp_base / ws.name
         copy_root.mkdir()
-
-        for item in ws.rglob("*"):
-            rel = item.relative_to(ws)
-            if any(part in skip for part in rel.parts):
-                continue
-            target = copy_root / rel
-            if item.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
-            elif item.is_file():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with contextlib.suppress(Exception):
-                    shutil.copy2(item, target)
+        for item in source_files(ws):
+            target = copy_root / item.relative_to(ws)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, target)
 
         archive = shutil.make_archive(str(zip_path.with_suffix("")), "zip", tmp_base, ws.name)
         shutil.rmtree(tmp_base, ignore_errors=True)

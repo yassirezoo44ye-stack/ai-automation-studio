@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import type { FeedItem, FeedItemState } from "../types/feed.types";
 import { FeedActionPanel } from "./FeedActionPanel";
 import { FeedBottomOverlay } from "./FeedBottomOverlay";
+import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../../contexts/app";
 
 interface FeedCardProps {
@@ -15,8 +16,17 @@ interface FeedCardProps {
 
 export function FeedCard({ item, state, isActive, isMock = false, onLike, onSave }: FeedCardProps) {
   const { setPage, setFeedIntent } = useAppContext();
+  const { t } = useTranslation("feed");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!detailsOpen) return;
+    if (detailsRef.current?.showModal) detailsRef.current.showModal();
+    else detailsRef.current?.setAttribute("open", "");
+  }, [detailsOpen]);
 
   const handleBuild = useCallback(() => {
+    if (item.ctaType === "view-creation") { setDetailsOpen(true); return; }
     setFeedIntent({
       sourceId:    item.sourceId,
       sourceType:  item.sourceType,
@@ -24,7 +34,7 @@ export function FeedCard({ item, state, isActive, isMock = false, onLike, onSave
       originItemId: item.id,
     });
     setPage(item.targetPage);
-  }, [item.id, item.sourceId, item.sourceType, item.sourceMeta, item.targetPage, setPage, setFeedIntent]);
+  }, [item.ctaType, item.id, item.sourceId, item.sourceType, item.sourceMeta, item.targetPage, setPage, setFeedIntent]);
 
   const handleShare = useCallback(async (): Promise<boolean> => {
     const url = `${window.location.origin}/feed/${item.id}`;
@@ -93,6 +103,13 @@ export function FeedCard({ item, state, isActive, isMock = false, onLike, onSave
 
       {/* Bottom info overlay */}
       <FeedBottomOverlay item={item} onBuild={handleBuild} />
+      {detailsOpen && <dialog ref={detailsRef} className="feed-real-details" aria-label={t("realFeed.view")} onCancel={() => setDetailsOpen(false)}>
+        <h2>{item.title}</h2><p>{item.description}</p>
+        <p>{t("realFeed.publisher")}: {item.creator.name || t("realFeed.unnamed")}</p>
+        {typeof item.sourceMeta?.createdAt === "string" && <time dateTime={item.sourceMeta.createdAt}>{new Date(item.sourceMeta.createdAt).toLocaleDateString()}</time>}
+        <p>{t("realFeed.scope")}</p>
+        <button onClick={() => setDetailsOpen(false)}>{t("realFeed.close")}</button>
+      </dialog>}
     </article>
   );
 }
