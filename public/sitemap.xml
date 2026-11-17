@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://ai-automation-studio-kohl.vercel.app/en</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-automation-studio-kohl.vercel.app/en"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://ai-automation-studio-kohl.vercel.app/ar"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ai-automation-studio-kohl.vercel.app/"/>
+  </url>
+  <url>
+    <loc>https://ai-automation-studio-kohl.vercel.app/ar</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-automation-studio-kohl.vercel.app/en"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://ai-automation-studio-kohl.vercel.app/ar"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ai-automation-studio-kohl.vercel.app/"/>
+  </url>
+  <url>
+    <loc>https://ai-automation-studio-kohl.vercel.app/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://ai-automation-studio-kohl.vercel.app/en"/>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://ai-automation-studio-kohl.vercel.app/ar"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://ai-automation-studio-kohl.vercel.app/"/>
+  </url>
+  <url>
+    <loc>https://ai-automation-studio-kohl.vercel.app/study-library</loc>
+  </url>
+</urlset>

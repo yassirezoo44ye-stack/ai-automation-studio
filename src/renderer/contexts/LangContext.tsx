@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import i18n from "../i18n";
 import { LangContext, type Lang } from "./lang";
+import { langFromPath } from "../shared/lib/seo";
 
 function getStoredLang(): Lang {
+  // A language URL (/ar, /en) wins, so a shared or indexed link opens in
+  // the language it names.
+  const fromPath = langFromPath(window.location.pathname);
+  if (fromPath) return fromPath;
   try {
     const stored = localStorage.getItem("axon-lang");
     if (stored === "en" || stored === "ar") return stored;

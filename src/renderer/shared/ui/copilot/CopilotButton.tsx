@@ -1,6 +1,10 @@
+import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { useCopilot } from "../../../contexts/copilot";
-import { CopilotPanel } from "./CopilotPanel";
+
+// Loaded on first open: the panel pulls in react-markdown (~39 KB gzipped),
+// which the landing page and every first paint used to download up front.
+const CopilotPanel = lazy(() => import("./CopilotPanel").then(m => ({ default: m.CopilotPanel })));
 
 /** Persistent floating action button — mounted once in AppLayout, available on every page. */
 export function CopilotButton() {
@@ -9,7 +13,7 @@ export function CopilotButton() {
 
   return (
     <div className="g-copilot-fab-wrap">
-      {open && <CopilotPanel />}
+      {open && <Suspense fallback={null}><CopilotPanel /></Suspense>}
       <button
         type="button"
         className="g-copilot-fab"

@@ -1,7 +1,7 @@
 {
   "name": "Flow",
   "short_name": "Flow",
-  "description": "Platform powered by Claude — Chat, Build, Design, Package",
+  "description": "AI automation for small agencies: research, reporting, lead follow-up and content workflows that run automatically.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#090909",

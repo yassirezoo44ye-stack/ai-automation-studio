@@ -9,6 +9,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import AxonLogo from "../../AxonLogo";
 import { useLangContext } from "../../contexts/lang";
 import { captureUtm, trackEvent } from "../../lib/utm";
+import { LANDING_ALTERNATES, langFromPath, usePageMeta } from "../../shared/lib/seo";
 import "./landing.css";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -192,11 +193,31 @@ function PipelineViz({ steps }: { steps: PipelineStep[] }) {
   );
 }
 
+// ── Language URLs ─────────────────────────────────────────────────────────────
+
+/**
+ * Switching language on the landing page also moves to that language's URL
+ * (/ar, /en), so the address bar, a shared link and search engines all agree
+ * on the language shown. It is a real link, so crawlers find both versions.
+ */
+function useLangLink() {
+  const { lang, toggleLang } = useLangContext();
+  const other = lang === "en" ? "ar" : "en";
+  const href = `/${other}`;
+  const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    toggleLang();
+    window.history.replaceState(null, "", href + window.location.search);
+  };
+  return { lang, href, onClick };
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 function Nav({ onSignIn, onSignUp }: Props) {
   const { t } = useTranslation("landing");
-  const { lang, toggleLang } = useLangContext();
+  const langLink = useLangLink();
+  const { lang } = langLink;
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLElement | null>(null);
@@ -262,13 +283,16 @@ function Nav({ onSignIn, onSignUp }: Props) {
 
         {/* Desktop actions */}
         <div className="lp-nav__actions">
-          <button
+          <a
             className="lp-nav__lang"
-            onClick={toggleLang}
+            href={langLink.href}
+            hrefLang={langLink.href.slice(1)}
+            lang={langLink.href.slice(1)}
+            onClick={langLink.onClick}
             aria-label={lang === "en" ? "التبديل إلى العربية" : "Switch to English"}
           >
             {lang === "en" ? "العربية" : "English"}
-          </button>
+          </a>
           <button className="lp-nav__signin" onClick={onSignIn}>
             {t("nav.signIn")}
           </button>
@@ -335,12 +359,15 @@ function Nav({ onSignIn, onSignUp }: Props) {
           <button className="lp-nav__mobile-cta" onClick={() => { onSignUp(); setMenuOpen(false); }}>
             {t("nav.startFree")}
           </button>
-          <button
-            style={{ background: "none", border: "none", color: "var(--t4)", fontSize: 13, cursor: "pointer", textAlign: "center", padding: 8, fontFamily: "var(--font-sans)" }}
-            onClick={() => { toggleLang(); setMenuOpen(false); }}
+          <a
+            style={{ color: "var(--t4)", fontSize: 13, textAlign: "center", padding: 8, fontFamily: "var(--font-sans)", textDecoration: "none" }}
+            href={langLink.href}
+            hrefLang={langLink.href.slice(1)}
+            lang={langLink.href.slice(1)}
+            onClick={e => { langLink.onClick(e); setMenuOpen(false); }}
           >
             {lang === "en" ? "التبديل إلى العربية" : "Switch to English"}
-          </button>
+          </a>
         </div>
       </div>
     </>
@@ -834,6 +861,7 @@ function FinalCtaSection({ onSignIn, onSignUp }: Props) {
 
 function Footer() {
   const { t } = useTranslation("landing");
+  const langLink = useLangLink();
 
   return (
     <footer className="lp-footer" role="contentinfo">
@@ -847,6 +875,12 @@ function Footer() {
             <div className="lp-footer__tagline">{t("footer.tagline")}</div>
           </div>
         </div>
+        <nav className="lp-footer__links" aria-label={t("a11y.footerNav")}>
+          <a href="/study-library">{t("footer.studyLibrary")}</a>
+          <a href={langLink.href} hrefLang={langLink.href.slice(1)} lang={langLink.href.slice(1)} onClick={langLink.onClick}>
+            {t("footer.otherLanguage")}
+          </a>
+        </nav>
         <div className="lp-footer__copy">
           {t("footer.copyright", { year: new Date().getFullYear() })}
         </div>
@@ -859,6 +893,15 @@ function Footer() {
 
 export function LandingPage({ onSignIn, onSignUp }: Props) {
   const { t } = useTranslation("landing");
+  const { lang } = useLangContext();
+  usePageMeta({
+    title: t("seo.title"),
+    description: t("seo.description"),
+    // "/" stays canonical for itself (x-default); /ar and /en name their language.
+    path: langFromPath(window.location.pathname) ? `/${lang}` : "/",
+    lang,
+    alternates: LANDING_ALTERNATES,
+  });
   useEffect(() => {
     captureUtm();
     trackEvent("landing_visit");

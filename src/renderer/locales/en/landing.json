@@ -1,4 +1,8 @@
 {
+  "seo": {
+    "title": "Flow — AI automation for small agencies",
+    "description": "Flow turns research, reporting, lead follow-up and content operations into workflows that run automatically, with full visibility. Start free."
+  },
   "nav": {
     "product": "Product",
     "howItWorks": "How It Works",
@@ -189,6 +193,8 @@
     "ctaSecondary": "Sign In"
   },
   "footer": {
+    "studyLibrary": "Study library",
+    "otherLanguage": "العربية",
     "tagline": "Automate your agency.",
     "copyright": "© {{year}} Flow. All rights reserved."
   },
@@ -199,6 +205,7 @@
     "navMenu": "Navigation menu",
     "closeMenu": "Close menu",
     "howSteps": "How Flow works",
+    "footerNav": "Footer",
     "skipToContent": "Skip to main content"
   }
 }
