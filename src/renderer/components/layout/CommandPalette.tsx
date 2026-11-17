@@ -10,6 +10,7 @@
  * All actions are real (navigate or sessionStorage handoff, never mock).
  */
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Icons } from "../../icons";
 import type { Page } from "../../types";
 import { useAppContext } from "../../contexts/app";
@@ -53,8 +54,15 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const { activeProjectId, setActiveProject } = useAppContext();
+  const { t } = useTranslation("common");
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  // Focus the search box on open and give focus back to whatever opened the
+  // palette when it closes — it used to fall to <body> (WCAG 2.4.3).
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    inputRef.current?.focus();
+    return () => { if (opener && document.contains(opener)) opener.focus(); };
+  }, []);
 
   function go(page: Page) { onNavigate(page); onClose(); }
 
@@ -200,8 +208,8 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div className="cmd-overlay" onClick={onClose}>
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="cmd-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- stopPropagation only: keeps clicks inside the dialog from closing it */}
+      <div className="cmd-modal" role="dialog" aria-modal="true" aria-label={t("cmdPalette.title")} onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
 
         {/* Search input */}
         <div className="cmd-header">
@@ -212,11 +220,13 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
             value={q}
             onChange={e => { setQ(e.target.value); setActive(0); }}
             onKeyDown={onKey}
-            placeholder="Search or type a command…"
+            placeholder={t("cmdPalette.searchPlaceholder")}
+            aria-label={t("cmdPalette.searchPlaceholder")}
           />
           {q && (
             <button
               onClick={() => setQ("")}
+              aria-label={t("cmdPalette.clear")}
               style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t5)", padding: "0 4px", fontSize: 16, lineHeight: 1, display: "flex", alignItems: "center" }}
             >×</button>
           )}
@@ -237,7 +247,7 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
         <div className="cmd-list">
           {filtered.length === 0 && (
             <div style={{ padding: "24px", textAlign: "center" }}>
-              <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 8 }}>No results for "{q}"</div>
+              <div style={{ fontSize: 13, color: "var(--t4)", marginBottom: 8 }}>{t("cmdPalette.noResults", { query: q })}</div>
               <div style={{ fontSize: 11, color: "var(--t5)" }}>Try "build", "agent", "workflow", or a page name</div>
             </div>
           )}

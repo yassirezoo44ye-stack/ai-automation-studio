@@ -228,14 +228,14 @@ function Nav({ onSignIn, onSignUp }: Props) {
       <nav
         className={`lp-nav ${scrolled ? "lp-nav--scrolled" : ""}`}
         role="navigation"
-        aria-label="Main navigation"
+        aria-label={t("a11y.mainNav")}
       >
         {/* Brand */}
         <button
           className="lp-nav__brand"
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
           onClick={() => scrollTo("lp-hero")}
-          aria-label="Flow — home"
+          aria-label={t("a11y.home")}
         >
           <AxonLogo size={32} />
           <span className="lp-nav__wordmark">Flow</span>
@@ -281,7 +281,7 @@ function Nav({ onSignIn, onSignUp }: Props) {
         <button
           className="lp-nav__hamburger"
           onClick={() => setMenuOpen(true)}
-          aria-label="Open menu"
+          aria-label={t("a11y.openMenu")}
           aria-expanded={menuOpen}
         >
           <MenuIcon />
@@ -293,7 +293,7 @@ function Nav({ onSignIn, onSignUp }: Props) {
         className={`lp-nav__mobile-menu ${menuOpen ? "open" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label="Navigation menu"
+        aria-label={t("a11y.navMenu")}
       >
         <div className="lp-nav__mobile-header">
           <button
@@ -306,7 +306,7 @@ function Nav({ onSignIn, onSignUp }: Props) {
           <button
             className="lp-nav__hamburger"
             onClick={() => setMenuOpen(false)}
-            aria-label="Close menu"
+            aria-label={t("a11y.closeMenu")}
           >
             <CloseIcon />
           </button>
@@ -574,7 +574,7 @@ function HowItWorksSection() {
           <h2 id="how-headline" className="lp-h2">{t("howItWorks.headline")}</h2>
         </div>
 
-        <ol className="lp-how__steps" aria-label="How Flow works">
+        <ol className="lp-how__steps" aria-label={t("a11y.howSteps")}>
           {steps.map((step, i) => (
             <li
               key={i}
@@ -858,6 +858,7 @@ function Footer() {
 // ── Main LandingPage ──────────────────────────────────────────────────────────
 
 export function LandingPage({ onSignIn, onSignUp }: Props) {
+  const { t } = useTranslation("landing");
   useEffect(() => {
     captureUtm();
     trackEvent("landing_visit");
@@ -886,8 +887,8 @@ export function LandingPage({ onSignIn, onSignUp }: Props) {
           top: -40,
           insetInlineStart: 0,
           padding: "8px 14px",
-          background: "var(--accent)",
-          color: "#fff",
+          background: "var(--accent-fill)",
+          color: "var(--on-accent)",
           fontSize: 13,
           fontWeight: 600,
           borderRadius: "0 0 var(--r-md) 0",
@@ -898,7 +899,7 @@ export function LandingPage({ onSignIn, onSignUp }: Props) {
         onFocus={e => { (e.target as HTMLAnchorElement).style.top = "0"; }}
         onBlur={e => { (e.target as HTMLAnchorElement).style.top = "-40px"; }}
       >
-        Skip to main content
+        {t("a11y.skipToContent")}
       </a>
 
       <Nav onSignIn={trackedSignIn} onSignUp={trackedSignUp} />

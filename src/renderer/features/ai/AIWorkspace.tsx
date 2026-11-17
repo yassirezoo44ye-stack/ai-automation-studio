@@ -60,7 +60,7 @@ export function AIWorkspace() {
       <header style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={S.headerTitle}>{t("workspace.title")}</span>
-          <div className="pill-tabs">
+          <div className="pill-tabs" role="tablist" aria-label={t("workspace.title")}>
             {TABS.map(([id, label]) => (
               <button
                 key={id}

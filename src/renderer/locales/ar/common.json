@@ -40,11 +40,14 @@
     "signOut": "تسجيل الخروج"
   },
   "appLayout": {
+    "openCommandPalette": "فتح لوحة الأوامر",
     "skipToContent": "تخطي إلى المحتوى الرئيسي",
     "loadingWorkspace": "جارٍ تحميل مساحة العمل…",
     "openNavMenu": "فتح قائمة التنقل"
   },
   "cmdPalette": {
+    "title": "لوحة الأوامر",
+    "clear": "مسح البحث",
     "searchPlaceholder": "ابحث عن صفحات أو إجراءات…",
     "noResults": "لا توجد نتائج لـ \"{{query}}\"",
     "quickActions": "إجراءات سريعة",
@@ -101,5 +104,44 @@
     "justNow": "الآن",
     "minutesAgo": "منذ {{count}} د",
     "hoursAgo": "منذ {{count}} س"
+  },
+  "notifications": {
+    "title": "الإشعارات",
+    "markAllRead": "تعليم الكل كمقروء",
+    "settings": "إعدادات الإشعارات",
+    "settingsShort": "الإعدادات",
+    "withUnread": "الإشعارات، {{count}} غير مقروءة",
+    "all": "الكل",
+    "unread": "غير المقروءة",
+    "filterByCategory": "التصفية حسب الفئة",
+    "allCategories": "كل الفئات",
+    "list": "قائمة الإشعارات",
+    "loading": "جارٍ تحميل الإشعارات…",
+    "loadFailed": "تعذّر التحميل.",
+    "loadingMore": "جارٍ التحميل…",
+    "loadMore": "عرض المزيد",
+    "status": {
+      "live": "متصل",
+      "connecting": "جارٍ الاتصال…",
+      "reconnecting": "جارٍ إعادة الاتصال…",
+      "offline": "غير متصل"
+    },
+    "category": {
+      "system": "النظام",
+      "workflow": "سير العمل",
+      "agent": "الوكلاء",
+      "marketplace": "المتجر",
+      "billing": "الفوترة",
+      "security": "الأمان",
+      "deployment": "النشر",
+      "background_job": "المهام الخلفية",
+      "realtime_event": "الأحداث الفورية",
+      "organization": "المؤسسة"
+    }
+  },
+  "copilot": {
+    "open": "فتح المساعد الذكي",
+    "close": "إغلاق المساعد الذكي",
+    "title": "المساعد الذكي"
   }
 }

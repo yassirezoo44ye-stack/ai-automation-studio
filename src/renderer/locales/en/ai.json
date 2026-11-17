@@ -199,5 +199,6 @@
       "stopped_failed": "Run stopped after an error.",
       "stopped_interrupted": "Run interrupted; review before retrying."
     }
-  }
+  },
+  "chatControls": "Chat controls"
 }

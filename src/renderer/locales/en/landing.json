@@ -191,5 +191,14 @@
   "footer": {
     "tagline": "Automate your agency.",
     "copyright": "© {{year}} Flow. All rights reserved."
+  },
+  "a11y": {
+    "mainNav": "Main navigation",
+    "home": "Flow — home",
+    "openMenu": "Open menu",
+    "navMenu": "Navigation menu",
+    "closeMenu": "Close menu",
+    "howSteps": "How Flow works",
+    "skipToContent": "Skip to main content"
   }
 }

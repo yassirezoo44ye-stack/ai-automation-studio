@@ -191,5 +191,14 @@
   "footer": {
     "tagline": "أتمت عمل وكالتك.",
     "copyright": "© {{year}} Flow. جميع الحقوق محفوظة."
+  },
+  "a11y": {
+    "mainNav": "التنقل الرئيسي",
+    "home": "Flow — الصفحة الرئيسية",
+    "openMenu": "فتح القائمة",
+    "navMenu": "قائمة التنقل",
+    "closeMenu": "إغلاق القائمة",
+    "howSteps": "كيف يعمل Flow",
+    "skipToContent": "تخطّي إلى المحتوى الرئيسي"
   }
 }

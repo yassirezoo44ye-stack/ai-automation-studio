@@ -98,8 +98,8 @@
   padding: 9px 18px;
   border-radius: var(--r-md);
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -187,8 +187,8 @@
   padding: 14px;
   border-radius: var(--r-lg);
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -397,8 +397,8 @@
   padding: 14px 28px;
   border-radius: var(--r-lg);
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -909,8 +909,8 @@
   transform: translateX(-50%);
   padding: 4px 14px;
   border-radius: var(--r-full);
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -960,8 +960,8 @@
   transition: opacity 0.15s, transform 0.15s;
 }
 .lp-price-card--featured .lp-price-card__cta {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   box-shadow: var(--shadow-btn);
 }
 .lp-price-card--featured .lp-price-card__cta:hover {
