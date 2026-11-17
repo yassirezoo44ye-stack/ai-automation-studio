@@ -6,6 +6,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string, opts?: { message?: string }) => opts?.message ? `${key}:${opts.message}` : key }),
 }));
 vi.mock("../contexts/toast", () => ({ useToast: () => vi.fn() }));
+vi.mock("../contexts/AuthContext", () => ({ useAuth: () => ({ user: { name: "Yassir", email: "y@example.com" } }) }));
 
 const CONV_ID = "11111111-1111-1111-1111-111111111111";
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });

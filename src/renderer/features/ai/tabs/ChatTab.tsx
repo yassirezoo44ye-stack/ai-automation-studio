@@ -1,4 +1,3 @@
-import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
  * ChatTab — 3-column AI command center.
@@ -17,6 +16,8 @@ import { useFlowSkill } from "../../../shared/hooks/useFlowSkill";
 import { FlowSkillSelect } from "../../../shared/ui/FlowSkillSelect";
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
+import { useLangContext } from "../../../contexts/lang";
+import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
@@ -57,6 +58,16 @@ function groupConvsByDate(convs: Conv[]): { label: "today" | "thisWeek" | "older
   return groups.filter(g => g.items.length > 0);
 }
 
+const CONTEXT_PANEL_KEY = "flow-chat-context-open";
+
+/** Starter prompts on the empty state — icon + i18n key. */
+const STARTERS: { icon: string; key: string }[] = [
+  { icon: "✉️", key: "chatTab.messages.suggestion1" },
+  { icon: "📈", key: "chatTab.messages.suggestion2" },
+  { icon: "💼", key: "chatTab.messages.suggestion3" },
+  { icon: "🧾", key: "chatTab.messages.suggestion4" },
+];
+
 interface ChatTabProps {
   agents:          Agent[];
   projects:        Project[];
@@ -73,7 +84,19 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
 
   // Layout state
-  const [contextPanelOpen, setContextPanelOpen] = useState(true);
+  // Closed by default so the conversation gets the full width; the choice
+  // is remembered per browser.
+  const [contextPanelOpen, setContextPanelOpenState] = useState(() => {
+    try { return localStorage.getItem(CONTEXT_PANEL_KEY) === "1"; } catch { return false; }
+  });
+  const setContextPanelOpen = (next: boolean | ((prev: boolean) => boolean)) => {
+    setContextPanelOpenState(prev => {
+      const value = typeof next === "function" ? next(prev) : next;
+      try { localStorage.setItem(CONTEXT_PANEL_KEY, value ? "1" : "0"); } catch { /* storage blocked */ }
+      return value;
+    });
+  };
+  const { lang } = useLangContext();
 
   const {
     data: convs = [], status: convsStatus, error: convsError, suggestedFix: convsFix, refetch: loadConvs,
@@ -333,7 +356,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         <div className="chat-rail__top">
           <GoldButton
             onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
-            style={{ fontSize: 12 }}
+            style={{ fontSize: 12, height: 32, padding: "0 12px" }}
           >
             {t("chatTab.sidebar.newChat")}
           </GoldButton>
@@ -408,7 +431,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     style={isDeleting ? { opacity: 0.5, pointerEvents: "none" } : undefined}
                   >
                     <div className="conv-item__title">{c.title}</div>
-                    <span className="conv-item__time">{relTime(c.updated_at)}</span>
+                    <span className="conv-item__time">{relTime(c.updated_at, lang)}</span>
                     <button
                       className="conv-item__del"
                       onClick={e => { if (!isDeleting) void deleteConv(e, c.id); }}
@@ -505,7 +528,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         )}
 
         {/* Messages area */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 0", display: "flex", flexDirection: "column", gap: 0, position: "relative" }}>
+        <div className="chat-messages">
           {showMessagesLoading && <LoadingSpinner fullPage label={t("chatTab.messages.loading")} />}
           {showMessagesError && (
             <ErrorState message={messagesError ?? t("chatTab.messages.loadError")} suggestedFix={messagesFix} onRetry={reloadMessages} />
@@ -513,28 +536,30 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
           {/* Empty state */}
           {!showMessagesLoading && !showMessagesError && messages.length === 0 && (
-            <div style={{ margin: "auto", textAlign: "center", color: "var(--t5)", paddingBottom: 80, animation: "fadeIn .4s ease" }}>
-              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
+            <div className="chat-empty">
+              <div className="chat-empty__orb" aria-hidden="true">
+                {activeAgent ? <span style={{ fontSize: 30 }}>{activeAgent.avatar}</span> : <AxonLogo size={36} />}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>
+              <div className="chat-empty__title">
                 {activeAgent ? activeAgent.name : t("chatTab.messages.emptyAgentName")}
               </div>
-              <div style={{ fontSize: 14, color: "var(--t4)", maxWidth: 320, lineHeight: 1.65, marginTop: 6 }}>
+              <div className="chat-empty__desc">
                 {activeAgent?.description ?? t("chatTab.messages.emptyDescription")}
               </div>
-              <WorkspaceDetails kind="examples">
-<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
-                {[
-                  t("chatTab.messages.suggestion1"),
-                  t("chatTab.messages.suggestion2"),
-                  t("chatTab.messages.suggestion3"),
-                  t("chatTab.messages.suggestion4"),
-                ].map(s => (
-                  <GoldButton key={s} variant="ghost" onClick={() => setPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
+              <div className="chat-starters">
+                {STARTERS.map(({ icon, key }, i) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="chat-starter"
+                    style={{ animationDelay: `${80 + i * 60}ms` }}
+                    onClick={() => setPrompt(t(key))}
+                  >
+                    <span className="chat-starter__icon" aria-hidden="true">{icon}</span>
+                    <span>{t(key)}</span>
+                  </button>
                 ))}
               </div>
-</WorkspaceDetails>
             </div>
           )}
 
@@ -554,36 +579,38 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         </div>
 
         {/* Composer */}
-        <div style={{ padding: "10px 16px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0 }}>
-          <textarea
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
-            placeholder={t("chatTab.input.placeholder")}
-            className="g-input"
-            rows={2}
-            aria-label={t("chatTab.input.placeholder")}
-            style={{ width: "100%", maxHeight: 160, resize: "none", marginBottom: 8 }}
-          />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+        <div className="chat-composer-wrap">
+          <div className="chat-composer">
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
+              placeholder={t("chatTab.input.placeholder")}
+              className="chat-composer__input"
+              rows={1}
+              aria-label={t("chatTab.input.placeholder")}
+            />
             {streaming ? (
-              <GoldButton
-                variant="danger"
+              <button
+                type="button"
+                className="chat-send chat-send--stop"
                 onClick={() => abortRef.current?.abort()}
                 aria-label={t("chatTab.input.stop")}
-                style={{ height: 36, paddingInline: 16, fontSize: 13 }}
-              >
-                ■ {t("chatTab.input.stop")}
-              </GoldButton>
+                title={t("chatTab.input.stop")}
+              >■</button>
             ) : (
-              <GoldButton
+              <button
+                type="button"
+                className="chat-send"
                 onClick={() => void sendMessage()}
                 disabled={!prompt.trim()}
                 aria-label={t("chatTab.input.send")}
-                style={{ height: 36, paddingInline: 16, fontSize: 13 }}
+                title={t("chatTab.input.send")}
               >
-                {t("chatTab.input.send")} ↑
-              </GoldButton>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+                </svg>
+              </button>
             )}
           </div>
         </div>
@@ -704,27 +731,30 @@ const MessageRow = memo(function MessageRow({
   }
 
   const isUser = msg.role === "user";
+  const { user } = useAuth();
+  const userInitial = (user?.name || user?.email || "?").trim().charAt(0).toUpperCase();
   const rowStyle: CSSProperties = {
     display: "flex",
     gap: 14,
     alignItems: "flex-start",
-    padding: "14px 24px",
-    maxWidth: 900,
+    padding: "12px 24px",
+    maxWidth: 960,
     width: "100%",
+    marginInline: "auto",
     animation: "slideIn .22s ease",
-    ...(isUser ? { flexDirection: "row-reverse", alignSelf: "flex-end" } : {}),
+    ...(isUser ? { justifyContent: "flex-end" } : {}),
   };
 
   return (
     <div style={rowStyle} className="msg-row">
       {/* Assistant avatar */}
       {!isUser && (
-        <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+        <div className="msg-avatar msg-avatar--ai">
           <span style={{ fontSize: 18 }}>{agentAvatar ?? "◈"}</span>
         </div>
       )}
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={isUser ? { minWidth: 0, maxWidth: "80%", textAlign: "end" } : { flex: 1, minWidth: 0 }}>
         {/* Label + copy button */}
         <div style={{
           fontSize: 11, fontWeight: 600, marginBottom: 7,
@@ -773,12 +803,7 @@ const MessageRow = memo(function MessageRow({
 
       {/* User avatar */}
       {isUser && (
-        <div style={{
-          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-          background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 13, fontWeight: 700, color: "#121008", marginTop: 2,
-        }}>Y</div>
+        <div className="msg-avatar msg-avatar--user" aria-hidden="true">{userInitial}</div>
       )}
     </div>
   );
