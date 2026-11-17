@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { vi, it, expect, beforeEach, afterEach } from "vitest";
 import { ChatTab } from "../features/ai/tabs/ChatTab";
+import { AppContext } from "../contexts/app";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string, opts?: { message?: string }) => opts?.message ? `${key}:${opts.message}` : key }),
@@ -35,9 +36,13 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   messagesFetchedPromise = new Promise(r => { messagesFetched = r; });
   streamEvents = [{ type: "delta", text: "Nice to meet you, Yassir!" }, { type: "done" }];
-  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+  setPage.mockReset();
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.includes("/api/run/stream")) return new Response(sseStream(), { status: 200 });
+    if (url.includes("/api/run/stream")) {
+      lastBody = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(sseStream(), { status: 200 });
+    }
     if (url.includes(`/api/conversations/${CONV_ID}/messages`)) {
       messagesFetched();
       return json([{ id: "m1", role: "user", content: "hello" }]);
@@ -49,8 +54,15 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); });
 
+const setPage = vi.fn();
+let lastBody: Record<string, unknown> = {};
+
 async function send(text: string) {
-  render(<ChatTab agents={[]} projects={[]} />);
+  render(
+    <AppContext.Provider value={{ setPage } as unknown as React.ContextType<typeof AppContext>}>
+      <ChatTab agents={[]} projects={[]} />
+    </AppContext.Provider>,
+  );
   const box = screen.getByRole("textbox", { name: "chatTab.input.placeholder" });
   fireEvent.change(box, { target: { value: text } });
   fireEvent.keyDown(box, { key: "Enter" });
@@ -72,4 +84,23 @@ it("shows provider errors in place of the reply", async () => {
   streamEvents = [{ type: "error", message: "No AI provider is configured." }];
   await send("hello");
   await waitFor(() => expect(screen.getByText(/No AI provider is configured\./)).toBeInTheDocument(), { timeout: 2000 });
+});
+
+it("turns [[open:…]] markers into page buttons the user clicks", async () => {
+  streamEvents = [{ type: "delta", text: "Your settings are here.\n\n[[open:settings]]" }, { type: "done" }];
+  await send("where are my settings?");
+  const btn = await screen.findByRole("button", { name: /chatTab.nav.open/ }, { timeout: 2000 });
+  expect(screen.getByText("Your settings are here.")).toBeInTheDocument();
+  expect(screen.queryByText(/\[\[open/)).not.toBeInTheDocument();
+  expect(lastBody.navigation).toBe(true);
+  expect(setPage).not.toHaveBeenCalled();
+  fireEvent.click(btn);
+  expect(setPage).toHaveBeenCalledWith("settings");
+});
+
+it("adds a page button when the user plainly asks to open a page", async () => {
+  streamEvents = [{ type: "delta", text: "حسنًا." }, { type: "done" }];
+  await send("افتح الفوترة");
+  fireEvent.click(await screen.findByRole("button", { name: /chatTab.nav.open/ }, { timeout: 2000 }));
+  expect(setPage).toHaveBeenCalledWith("billing");
 });

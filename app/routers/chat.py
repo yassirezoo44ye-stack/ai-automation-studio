@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.skills import compose_skill_system, validate_skill_ids
+from app.core.ai.navigation import with_navigation
 from app.core.ai.context.manager import ContextBudgetError, budget_history
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id
@@ -40,6 +41,10 @@ class RunRequest(BaseModel):
     # Storage (title, message content, usage log) uses this value when set;
     # the model always receives the full `prompt`.
     display_text: str | None = Field(None, max_length=4000)
+    # Set by clients that render [[open:<page>]] markers as navigation
+    # buttons (the AI assistant page). Adds the page catalog to the system
+    # prompt; the assistant can only suggest pages, never act.
+    navigation: bool = False
 
 
 # Copilot prompts carry an invisible "[Context: the user is currently on …]"
@@ -178,6 +183,8 @@ async def run_stream(req: RunRequest, request: Request):
             # except Exception below, same SSE error channel already used
             # for provider errors — no new HTTP/SSE behavior.
             system = compose_skill_system(None, req.skill_ids)
+            if req.navigation:
+                system = with_navigation(system)
             budgeted_history = budget_history(
                 history, model="claude-sonnet-4-6", max_tokens=2048, system=system,
             )

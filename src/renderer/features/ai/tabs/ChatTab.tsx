@@ -18,6 +18,8 @@ import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { useLangContext } from "../../../contexts/lang";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useAppContext } from "../../../contexts/app";
+import { extractNavSuggestions, suggestPagesForPrompt, navLabelKey } from "../../../shared/utils/assistantNav";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
@@ -277,7 +279,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       const res = await fetch(url, {
         method: "POST", headers: authH(),
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
-          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [] } : {}) }),
+          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [], navigation: true } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -305,7 +307,16 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           }
           else if (ev.type === "delta")  { if (ev.text) gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
           else if (ev.type === "error")  { gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
-          else if (ev.type === "done")   { loadConvs(); closed = true; }
+          else if (ev.type === "done")   {
+            loadConvs(); closed = true;
+            // The user plainly asked to open a page but the reply carries no
+            // [[open:…]] marker: add the button on this device anyway.
+            const asked = suggestPagesForPrompt(text);
+            if (asked.length) {
+              setMessages(p => p.map(m => m.id === assistantId && extractNavSuggestions(m.content).pages.length === 0
+                ? { ...m, content: `${m.content}\n\n${asked.map(pg => `[[open:${pg}]]`).join("\n")}` } : m));
+            }
+          }
         }
         if (closed) break;
       }
@@ -722,7 +733,7 @@ const MessageRow = memo(function MessageRow({
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    void copyText(msg.content).then(() => {
+    void copyText(extractNavSuggestions(msg.content).text).then(() => {
       setCopied(true);
       // Reset the "Copied!" indicator after 2 s so it's ready for re-use.
       const id = setTimeout(() => setCopied(false), 2000);
@@ -731,6 +742,11 @@ const MessageRow = memo(function MessageRow({
   }
 
   const isUser = msg.role === "user";
+  const { setPage } = useAppContext();
+  const nav = useMemo(
+    () => isUser ? { text: msg.content, pages: [] } : extractNavSuggestions(msg.content),
+    [isUser, msg.content],
+  );
   const { user } = useAuth();
   const userInitial = (user?.name || user?.email || "?").trim().charAt(0).toUpperCase();
   const rowStyle: CSSProperties = {
@@ -788,15 +804,24 @@ const MessageRow = memo(function MessageRow({
             borderRadius: 16, borderTopRightRadius: 4, padding: "12px 18px",
             boxShadow: "0 2px 16px var(--accent-dim)", display: "inline-block",
           }}>{msg.content}</div>
-        ) : msg.content === "" && pending ? (
+        ) : nav.text === "" && nav.pages.length === 0 && pending ? (
           <div style={{ padding: "8px 0" }} className="typing"><span /><span /><span /></div>
-        ) : msg.content === "" ? (
+        ) : nav.text === "" && nav.pages.length === 0 ? (
           // An empty reply saved by an earlier failed run — never show
           // endless typing dots for history.
           <div style={{ fontSize: 14, color: "var(--t4)" }}>{t("chatTab.messages.emptyReply")}</div>
         ) : (
           <div style={{ fontSize: 15, color: "var(--t2)", lineHeight: 1.8 }} className="md-body">
-            <ReactMarkdown components={MD_COMPONENTS}>{msg.content}</ReactMarkdown>
+            {nav.text && <ReactMarkdown components={MD_COMPONENTS}>{nav.text}</ReactMarkdown>}
+            {nav.pages.length > 0 && !pending && (
+              <div className="msg-nav" role="group" aria-label={t("chatTab.nav.groupLabel")}>
+                {nav.pages.map(pg => (
+                  <button key={pg} type="button" className="msg-nav__btn" onClick={() => setPage(pg)}>
+                    <span aria-hidden="true">↗</span> {t("chatTab.nav.open", { page: t(navLabelKey(pg)) })}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

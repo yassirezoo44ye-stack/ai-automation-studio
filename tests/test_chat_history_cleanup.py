@@ -114,3 +114,53 @@ class TestEmptyReply(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNavigationPrompt(unittest.IsolatedAsyncioTestCase):
+    """M2: the page catalog reaches the model only when the client asks for it."""
+
+    async def _system_for(self, **req_kwargs):
+        conn = MagicMock()
+        conn.fetchval = AsyncMock(return_value=uuid.uuid4())
+        conn.fetch = AsyncMock(return_value=[])
+        conn.execute = AsyncMock(return_value="OK")
+        seen = {}
+
+        def fake_stream(self_engine, request, **_kw):
+            seen["system"] = request.system
+            return _aiter([{"type": "delta", "text": "ok"}])
+
+        req = chat_mod.RunRequest(project_id="demo", prompt="open settings", **req_kwargs)
+        with patch.object(chat_mod, "ai_rate_limit", MagicMock()), \
+             patch.object(chat_mod, "check_org_quota", AsyncMock(return_value="org")), \
+             patch.object(chat_mod, "get_pool", return_value=_pool(conn)), \
+             patch.object(chat_mod, "owner_user_id", AsyncMock(return_value=uuid.uuid4())), \
+             patch.object(chat_mod, "resolve_project_id", AsyncMock(return_value=uuid.uuid4())), \
+             patch.object(chat_mod, "record_org_tokens", AsyncMock()), \
+             patch("app.core.ai.inference.engine.InferenceEngine.stream", fake_stream):
+            resp = await chat_mod.run_stream(req, MagicMock())
+            [_ async for _ in resp.body_iterator]
+        return seen["system"]
+
+    async def test_catalog_added_when_requested(self):
+        system = await self._system_for(navigation=True)
+        self.assertIn("[[open:settings]]", system)
+        self.assertIn("cannot open pages", system)
+        from app.core.ai.navigation import PAGES
+        for pid in ("leads", "billing", "app-builder"):
+            self.assertIn(f"- {pid}:", system)
+        self.assertIn("leads", PAGES)
+
+    async def test_no_catalog_by_default(self):
+        system = await self._system_for()
+        self.assertFalse(system and "[[open:" in system)
+
+
+def test_page_catalog_matches_web_client():
+    """Every page the model may suggest must be one the client can open."""
+    import re as _re
+    from app.core.ai.navigation import PAGES
+    ts = (Path(__file__).parent.parent / "src/renderer/shared/utils/assistantNav.ts").read_text()
+    block = ts.split("export const ASSISTANT_PAGES", 1)[1].split("};", 1)[0]
+    client = set(_re.findall(r'^\s*"?([a-z-]+)"?\s*:\s*\{ page:', block, _re.M))
+    assert set(PAGES) == client

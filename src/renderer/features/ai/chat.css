@@ -487,3 +487,29 @@
 @media (max-width: 720px) {
   .ai-workspace-title { display: none; }
 }
+
+/* ── Assistant page suggestions (M2: navigation only) ───────────── */
+.msg-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.msg-nav__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-dim);
+  color: var(--t1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  animation: chatStarterIn .3s ease both;
+  transition: transform .12s ease, background .15s ease;
+}
+.msg-nav__btn:hover, .msg-nav__btn:focus-visible { transform: translateY(-1px); background: var(--accent-glow, var(--accent-dim)); outline: none; }

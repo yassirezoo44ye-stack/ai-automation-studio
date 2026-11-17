@@ -57,6 +57,7 @@
     }
   },
   "chatTab": {
+    "nav": {"open": "افتح {{page}}", "groupLabel": "صفحات مقترحة"},
     "sidebar": {
       "demoProject": "مشروع تجريبي",
       "defaultAgent": "🤖 Claude (افتراضي)",
