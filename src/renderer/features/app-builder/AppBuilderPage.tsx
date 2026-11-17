@@ -1,4 +1,6 @@
 import { isolatedPreviewUrl } from "./services/previewUrl";
+import { StorePreview } from "./components/StorePreview";
+import { StoreSetup } from "./components/StoreSetup";
 import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 /**
  * App Builder — 3-panel workspace for building apps with AI.
@@ -381,6 +383,7 @@ export function AppBuilderPage() {
   const { setPage, activeProjectId } = useAppContext();
   const toast = useToast();
 
+  const [commerceProject, setCommerceProject] = useState<string | null>(null);
   const [isBuilding, setIsBuilding] = useState(false);
   const [buildDone, setBuildDone]   = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
@@ -461,9 +464,26 @@ export function AppBuilderPage() {
   useEffect(() => {
     const pid = activeProjectId ?? sessionStorage.getItem("flow_active_project");
     if (!pid) return;
+    let active = true;
+    void apiFetch(`/api/projects/${pid}/commerce`).then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (!active) return;
+        const commerce = data?.delivery_contract === "flow-commerce-cod-v1";
+        setCommerceProject(commerce ? pid : null);
+        if (commerce && !isBuildingRef.current) {
+          setBuildDone(true); setBuildLanguage("python"); setBuildFileCount(data.files);
+          setRuntimeState(data.running ? "running" : "ready_to_run");
+          if (data.running) {
+            setPreviewUrl(isolatedPreviewUrl(data.preview_url)); setPreviewType("isolated");
+            setPreviewExpiresAt(Date.now() + Math.max(0, Math.min(data.expires_in ?? 300, 300)) * 1000);
+          }
+        }
+      })
+      .catch(() => { if (active) setCommerceProject(null); });
     getProject(pid)
       .then(p => { if (p.name) setProjectName(p.name); })
       .catch(() => {}); // project may have been deleted; silently ignore
+    return () => { active = false; };
   }, [activeProjectId]);
 
   // Consume feedIntent on mount — pre-fill entryPrompt if the intent carries a prompt
@@ -1300,7 +1320,7 @@ export function AppBuilderPage() {
                 ↺ Restart
               </button>
             )}
-            {runtimeState === "running" && previewUrl && previewType === "isolated" && (
+            {runtimeState === "running" && previewUrl && previewType === "isolated" && currentPlan?.delivery_contract !== "flow-commerce-cod-v1" && !commerceProject && (
               <button
                 onClick={() => window.open(isolatedPreviewUrl(previewUrl), "_blank", "noopener,noreferrer")}
                 style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid var(--b1)", background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer" }}
@@ -1372,11 +1392,15 @@ export function AppBuilderPage() {
         )}
       </div>
 
+      {runtimeState === "running" && (currentPlan?.delivery_contract === "flow-commerce-cod-v1" || commerceProject === (activeProjectId ?? sessionStorage.getItem("flow_active_project"))) && (activeProjectId ?? sessionStorage.getItem("flow_active_project")) && <StoreSetup key={activeProjectId ?? sessionStorage.getItem("flow_active_project")} projectId={(activeProjectId ?? sessionStorage.getItem("flow_active_project"))!} />}
+
       {/* ── 3-panel workspace ─────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div className="ab-panels" style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
           <div className="ab-runtime" style={{ flex: 1, minWidth: 0, display: "flex", overflow: "hidden" }}>
-            <RuntimePanel
+            {runtimeState === "running" && (currentPlan?.delivery_contract === "flow-commerce-cod-v1" || commerceProject === (activeProjectId ?? sessionStorage.getItem("flow_active_project"))) && (activeProjectId ?? sessionStorage.getItem("flow_active_project"))
+              ? <StorePreview key={activeProjectId ?? sessionStorage.getItem("flow_active_project")} projectId={(activeProjectId ?? sessionStorage.getItem("flow_active_project"))!} />
+              : (            <RuntimePanel
               runtimeState={runtimeState}
               previewUrl={previewUrl}
               previewType={previewType}
@@ -1388,7 +1412,8 @@ export function AppBuilderPage() {
               onStop={() => void handleStop()}
               onRestart={() => void handleRestart()}
               onExplainError={handleExplainError}
-            />
+            />)}
+
           </div>
 
           {/* Dev mode badge — shown when server routed to DevMockProvider */}

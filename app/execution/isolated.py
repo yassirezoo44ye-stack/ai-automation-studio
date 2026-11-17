@@ -7,6 +7,7 @@ are deliberately ephemeral; a backend restart cannot extend a VM's lifetime.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import timedelta
@@ -16,6 +17,8 @@ import logging
 import os
 from pathlib import Path
 import secrets
+import re
+import tempfile
 import subprocess
 import time
 from urllib.parse import urlsplit
@@ -48,6 +51,8 @@ class Session:
     project_type: str
     command: list[str]
     expires_at: float
+    store_workspace: Path | None = None
+    store_dirty: bool = False
 
 
 def valid_preview_url(value: str) -> bool:
@@ -64,7 +69,7 @@ def _trusted_workspace(requested: Path) -> Path:
     """Select a real directory from the configured root, never from request text.
 
     A caller's path is only a comparison key. Filesystem operations use an
-    enumerated child of the trusted storage root. Reject root/child symlinks
+    enumerated child of the trusted storage root. Reject child symlinks
     and nested paths, including paths outside that root.
     """
     root = WORKSPACES.resolve()
@@ -130,6 +135,9 @@ async def stop(project_id: str):
     async with _locks[project_id]:
         session = _sessions.get(project_id)
         if session:
+            # Never discard a store mutation whose durable save failed.
+            if session.store_dirty:
+                await persist_store(session)
             # Keep the handle if remote deletion fails, allowing a retry.
             await session.sandbox.destroy()
             _sessions.pop(project_id, None)
@@ -148,7 +156,8 @@ async def status(project_id: str) -> dict:
         return {"running": False}
     return {"running": bool(session.preview_url), "port": 3000,
             "project_type": session.project_type, "command": " ".join(session.command),
-            "preview_url": session.preview_url, "idle_seconds": 0}
+            "preview_url": session.preview_url, "idle_seconds": 0,
+            "expires_in": max(0, int(session.expires_at - time.monotonic()))}
 
 
 async def cleanup_expired():
@@ -202,6 +211,12 @@ async def stream(project_id: str, ws: Path, command_override: str | None = None)
             files = workspace_files(ws)
             if not files:
                 raise PreviewError("Workspace is empty — build the project first")
+            source_map = dict(files)
+            try:
+                store = json.loads(source_map.get(".flow-commerce.json", b"{}"))
+                store = isinstance(store, dict) and store.get("delivery_contract") == "flow-commerce-cod-v1"
+            except ValueError:
+                store = False
             info = detector.detect(ws)
             effective = info.effective_root or ws
             subdir = effective.relative_to(ws).as_posix()
@@ -221,6 +236,7 @@ async def stream(project_id: str, ws: Path, command_override: str | None = None)
                     env={},
                 )
                 session = Session(client, sandbox, None, info.project_type, [], time.monotonic() + LIFETIME)
+                session.store_workspace = ws if store else None
                 await sandbox.fs.mkdir(ROOT)
                 directories = {ROOT}
                 for path, data in files:
@@ -280,6 +296,9 @@ async def stream(project_id: str, ws: Path, command_override: str | None = None)
                 if route is None or not valid_preview_url(route.url):
                     raise PreviewError("Sandbox did not return an approved HTTPS preview domain")
                 session.preview_url = f"{route.url.rstrip('/')}/_flow_preview/{token}"
+                if store:
+                    session.store_dirty = True
+                    await persist_store(session)
                 _sessions[project_id] = session
                 retained = True
                 yield _event("server_ready", preview_url=session.preview_url, port=3000,
@@ -323,4 +342,100 @@ for attempt in range(100):
         break
     except OSError: time.sleep(0.3)
 else: raise SystemExit(1)
+"""
+
+
+@asynccontextmanager
+async def store_access(project_id: str):
+    """Serialize store RPC and persistence with Stop; never resume an expired VM."""
+    async with _locks[project_id]:
+        session = _sessions.get(project_id)
+        if (session is None or not session.store_workspace or not session.preview_url
+                or not valid_preview_url(session.preview_url)
+                or time.monotonic() >= session.expires_at):
+            raise PreviewError("Run the isolated store first; this preview is unavailable or expired")
+        yield session
+
+
+async def _read_current(session: Session, path: str, limit: int) -> bytes:
+    current = session.sandbox.current_session
+    if current is None or time.monotonic() >= session.expires_at:
+        raise PreviewError("The isolated preview expired; start it again")
+    async with current.fs.open(path, "rb") as source:
+        data = await source.read(limit + 1)
+    if len(data) > limit:
+        raise PreviewError("Store preview state exceeds the transfer limit")
+    return data
+
+
+async def store_setup_token(project_id: str) -> str:
+    async with store_access(project_id) as session:
+        try:
+            data = await _read_current(session, f"{ROOT}/data/owner-setup.txt", 200)
+            token = data.decode().strip()
+        except PreviewError:
+            raise
+        except Exception:
+            raise PreviewError("Run the store first. Setup disappears after the owner is configured.") from None
+        if not re.fullmatch(r"[A-Za-z0-9_-]{32,100}", token):
+            raise PreviewError("No valid store setup token")
+        return token
+
+
+async def persist_store(session: Session):
+    """SQLite backup runs in the VM; only bounded bytes are atomically saved here.
+
+    Called under the project lock, before acknowledging a store mutation. A
+    failed save leaves store_dirty set and prevents Stop from discarding it.
+    """
+    if not session.store_workspace:
+        return
+    current = session.sandbox.current_session
+    if current is None or time.monotonic() >= session.expires_at:
+        raise PreviewError("Store state could not be saved before preview expiry")
+    try:
+        await _checked(current, "python3", ["-c", _STORE_BACKUP], cwd="/tmp")
+        data = await _read_current(session, "/tmp/flow-store-backup.sqlite3", MAX_BYTES)
+        if not data.startswith(b"SQLite format 3\x00"):
+            raise PreviewError("The isolated store returned invalid database state")
+        root = _trusted_workspace(session.store_workspace)
+        await asyncio.to_thread(_save_store_database, root, data)
+        session.store_dirty = False
+    except PreviewError:
+        raise
+    except Exception:
+        raise PreviewError("Store state could not be saved. Retry before stopping this preview.") from None
+
+
+def _save_store_database(root: Path, data: bytes):
+    from app.core.filesystem import safe_path
+    destination = safe_path(root, "data/store.sqlite3")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as file:
+            temporary = file.name
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, destination)
+        temporary = None
+        directory = os.open(destination.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if temporary:
+            os.unlink(temporary)
+
+
+_STORE_BACKUP = f"""import sqlite3
+source = sqlite3.connect('file:{ROOT}/data/store.sqlite3?mode=ro', uri=True, timeout=10)
+target = sqlite3.connect('/tmp/flow-store-backup.sqlite3')
+try:
+    source.backup(target)
+finally:
+    target.close()
+    source.close()
 """

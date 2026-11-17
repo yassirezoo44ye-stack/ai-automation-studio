@@ -8,8 +8,11 @@ its Blueprint or start paid sandbox sessions without deployment authorization.
 App Builder's `/api/projects/{id}/run` and `/run/stream` use `vercel-sandbox==1.0.0`.
 They never dispatch generated code to host drivers, even when provider setup
 fails. Existing ownership guards apply to Run, Stop, status and the retired
-proxy. The old same-origin proxy returns 410 **after** checking ownership; it
-never forwards subscription headers, bearer tokens or platform cookies.
+proxy. Generic same-origin navigation returns 410 **after** checking ownership.
+The opaque commerce preview retains only its authenticated, path-limited RPC
+bridge. That bridge targets the isolated VM, never host loopback; it forwards no
+subscription headers, bearer tokens or platform cookies. Its responses are
+non-executable attachments with nosniff, not same-origin HTML or JavaScript.
 
 Each run creates a nonpersistent Vercel microVM with one vCPU, a 300-second
 provider-enforced lifetime and no inherited host environment. The backend-only
@@ -34,7 +37,7 @@ respect `PORT=8080`; FastAPI and Flask; bounded Python scripts. A custom command
 is rejected. Other frameworks may need a dedicated adapter. HTTP preview
 responses and request bodies are capped at 10 MB; WebSocket/HMR proxying is not
 implemented. A new Run starts a new VM from the durable source files. Runtime
-writes inside a VM are temporary and are not synchronized back into source.
+writes inside a VM are temporary, except the commerce state described below.
 
 The VM exposes only a trusted gateway on port 3000. A random per-run bootstrap
 capability sets a Secure, HttpOnly, SameSite=None, Partitioned cookie and
@@ -131,3 +134,32 @@ Deployment acceptance (requires authorized activation):
 - `/health` reports the approved SHA and the relevant deployed checks pass.
 
 No live provider execution or Render restart was performed by local tests.
+
+
+## Commerce integration with current main
+
+The existing opaque storefront and its project-scoped message bridge are
+preserved. Store requests use an owner-authenticated, allowlisted RPC path to the
+VM gateway. Only the per-preview capability and that project's store cookie
+cross the boundary. Response cookies are restricted to flow_store_session and
+are scoped to that project's proxy path. Origin/JSON checks remain enforced by
+the store. Redirects are not followed. Request and response sizes are bounded.
+Only the shipped verified storefront client is evaluated by the opaque preview.
+
+The owner setup token is read from the active VM, not a stale host-side file.
+The backend snapshots the store's SQLite database using SQLite backup **inside
+the VM**, then atomically writes bounded bytes to data/store.sqlite3 under the
+project's durable workspace. It flushes file and directory metadata. The initial
+initialized database is saved before server_ready; each commerce mutation is
+saved before its result is returned to the UI. A new VM receives the saved data.
+The host never imports or executes the generated store backend for this work.
+Failed saves remain visible and prevent Stop from discarding dirty state. A
+backend/provider crash or hard VM expiry can still lose mutations that have not
+been acknowledged as saved; this is a preview, not a production transaction host.
+
+Direct Open is withheld for commerce so the supported UI uses the saving bridge.
+Storefront mutations made manually against the VM URL are outside this supported
+persistence path. Runtime-written files for arbitrary apps remain ephemeral.
+Activation tests must additionally verify owner setup, inventory, customer login,
+checkout, and order history across VM replacement and service restart. Existing
+source exports continue to exclude runtime databases and credentials.
