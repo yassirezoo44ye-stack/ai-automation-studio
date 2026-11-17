@@ -9,7 +9,7 @@ CONTRACT = 'flow-commerce-cod-v1'
 
 def is_store_request(prompt: str) -> bool:
     text = prompt.lower()
-    return bool(re.search(r'متجر|متجراً|متجرا|تجاره الكترونيه|تجارة إلكترونية|e[- ]?commerce|online (?:store|shop)|web ?shop', text))
+    return bool(re.search(r'متجر|متجراً|متجرا|تجاره الكترونيه|تجارة إلكترونية|e[- ]?commerce|online (?:store|shop)|(?:build|design|create) (?:an? )?(?:store|shop)|web ?shop', text))
 
 
 def store_plan():

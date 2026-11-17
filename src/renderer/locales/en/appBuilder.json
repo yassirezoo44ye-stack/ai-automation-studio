@@ -1,11 +1,14 @@
 {
   "commerce": {
-"customClient": "This storefront client differs from the verified preview version. Export the project to run the modified client on its own host.",
-"preview":"Running store preview","previewError":"Could not load the store. Check it is running and retry.","retry":"Retry","loading":"Loading the store…",
-  "setup": "Store owner setup",
-  "instructions": "This token is private to the project owner. In the store, open Account → Owner setup and choose your admin email/password. The token is consumed after setup.",
-  "unavailable": "Run the store first. If its owner is already configured, sign in with that account."
-},
+    "customClient": "This storefront client differs from the verified preview version. Export the project to run the modified client on its own host.",
+    "preview": "Running store preview",
+    "previewError": "Could not load the store. Check it is running and retry.",
+    "retry": "Retry",
+    "loading": "Loading the store…",
+    "setup": "Store owner setup",
+    "instructions": "This token is private to the project owner. In the store, open Account → Owner setup and choose your admin email/password. The token is consumed after setup.",
+    "unavailable": "Run the store first. If its owner is already configured, sign in with that account."
+  },
   "sections": {
     "overview": "Overview",
     "pages": "Pages",
@@ -75,10 +78,10 @@
     "dismiss": "Dismiss"
   },
   "done": {
-    "title": "Your app is ready!",
+    "title": "Files generated",
     "filesGenerated": "{{count}} files generated",
     "filesGeneratedWithLang": "{{count}} files generated · {{lang}}",
-    "buildComplete": "App build complete",
+    "buildComplete": "Files generated; run the app to verify",
     "dismiss": "Dismiss",
     "publish": "🚀 Publish"
   },

@@ -83,3 +83,33 @@ def test_reopening_completed_store_restores_its_delivery_contract(api):
     assert response.status_code==200
     assert response.json()['running'] is False
     assert response.json()['files']==len(store_files())
+
+
+def test_owner_generation_uses_real_provider_and_rejects_partial_business_app(api):
+    client, _, engine = api
+
+    async def chunks(*args, **kwargs):
+        yield {'type': 'delta', 'text': '<<<FILE: index.html>>>\n<h1>CRM</h1>\n<<<ENDFILE>>>\n<<<META>>>\n{"run_command":"serve ."}\n<<<ENDMETA>>>\n'}
+
+    engine.return_value.stream.side_effect = chunks
+    with patch('app.services.app_builder.get_app_builder_service', side_effect=RuntimeError('spec unavailable')), patch('app.ai.providers.dev_mock.DevMockProvider') as mock_provider:
+        response = client.post('/api/build/stream', json={'project_id':str(uuid.uuid4()), 'prompt':'Build a CRM'})
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith('data: ')]
+    engine.return_value.stream.assert_called_once()
+    mock_provider.assert_not_called()
+    assert not any(e['type']=='done' for e in events)
+    assert any(e['type']=='error' and 'backend' in e['message'] for e in events)
+
+
+def test_truncated_stream_never_announces_completion(api):
+    client, _, engine = api
+
+    async def chunks(*args, **kwargs):
+        yield {'type':'delta', 'text':'<<<FILE: main.py>>>\nprint(1)\n<<<ENDFILE>>>\n<<<META>>>\n{"run_command":"python main.py"}\n'}
+
+    engine.return_value.stream.side_effect = chunks
+    with patch('app.services.app_builder.get_app_builder_service', side_effect=RuntimeError('spec unavailable')):
+        response=client.post('/api/build/stream', json={'project_id':str(uuid.uuid4()),'prompt':'A simple Python script'})
+    events=[json.loads(line[6:]) for line in response.text.splitlines() if line.startswith('data: ')]
+    assert not any(e['type']=='done' for e in events)
+    assert any(e['type']=='error' and 'incomplete' in e['message'] for e in events)

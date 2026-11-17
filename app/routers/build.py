@@ -20,6 +20,7 @@ from app.ai.models import CompletionRequest, Message
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id, owner_email
 from app.core.commerce_builder import CONTRACT, is_store_request, store_chunks, store_plan, store_files, validate_store_workspace
+from app.core.build_delivery import validate_delivery
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
 from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
@@ -31,21 +32,9 @@ import contextlib
 
 log = logging.getLogger(__name__)
 
-# ── Dev / owner account ───────────────────────────────────────────────────────
-#
-# The dev account bypasses Anthropic credits by routing to DevMockProvider,
-# a free in-process provider.  This is NOT a billing bypass — it is a
-# legitimate alternative provider, identical in principle to LocalProvider.
-#
-# Security properties:
-#   • The email is resolved from the HMAC-verified auth token (owner_email()),
-#     not from the request body or any header the caller controls.
-#   • Routing to dev_mock does NOT escalate permissions — tenancy, RLS,
-#     project ownership, rate limits, and org quota all apply unchanged.
-#   • Normal users are NEVER routed to dev_mock; this code path is only
-#     reached when the authenticated identity exactly matches _DEV_ACCOUNT.
-#
-# Keep this in sync with tests/test_dev_mode.py's _DEV_ACCOUNT constant.
+# Existing owner quota policy. This identity check does not select a mock
+# provider and never replaces authentication or project ownership checks.
+# Keep the identity constant in sync with tests/test_dev_mode.py.
 _DEV_ACCOUNT: str = _os.getenv("DEV_ACCOUNT_EMAIL", "yassirezoo44.ye@gmail.com")
 
 
@@ -166,26 +155,7 @@ class _BuildParser:
         return None
 
 
-async def _dev_mock_chunks(provider, request_obj):
-    """
-    Adapt DevMockProvider.stream() (yields StreamChunk objects) to the dict
-    format consumed by build_stream's event_stream() (which expects dicts with
-    keys "type", "text", "usage", "error").
 
-    This thin adapter keeps the event_stream loop generic — it works unchanged
-    whether the source is InferenceEngine (already yields dicts) or DevMockProvider.
-    """
-    async for sc in provider.stream(request_obj):
-        if sc.type == "delta":
-            yield {"type": "delta", "text": sc.text or ""}
-        elif sc.type == "usage" and sc.usage:
-            yield {"type": "usage", "usage": {
-                "total_tokens": sc.usage.total_tokens,
-            }}
-        elif sc.type == "done":
-            yield {"type": "done"}
-        elif sc.type == "error":
-            yield {"type": "error", "error": getattr(sc, "error", "dev_mock error")}
 
 
 class PlanRequest(BaseModel):
@@ -266,7 +236,8 @@ async def build_program(req: BuildRequest, request: Request):
             dest = safe_path(ws, path)
             dest.parent.mkdir(parents=True, exist_ok=True)
             await asyncio.to_thread(dest.write_text, content, 'utf-8')
-        return {"description": store_plan()["description"], "files": list(store_files()),
+        return {"delivery": validate_delivery(req.prompt, store_plan(), store_files(), "python main.py"),
+                "description": store_plan()["description"], "files": list(store_files()),
                 "run_command": "python main.py", "language": "python", "workspace": str(ws)}
 
     request_obj = CompletionRequest(
@@ -301,6 +272,8 @@ async def build_program(req: BuildRequest, request: Request):
     except json.JSONDecodeError:
         raise HTTPException(502, f"Claude returned non-JSON: {raw[:200]}") from None
 
+    delivered = {f['path']: f['content'] for f in result.get('files', [])}
+    delivery = validate_delivery(req.prompt, req.plan, delivered, result.get('run_command', ''))
     ws = workspace(req.project_id)
     written = []
     for f in result.get("files", []):
@@ -316,6 +289,7 @@ async def build_program(req: BuildRequest, request: Request):
         )
 
     return {
+        "delivery": delivery,
         "description": result.get("description", ""),
         "files": written,
         "run_command": result.get("run_command", ""),
@@ -349,13 +323,13 @@ def _build_prompt_with_plan(prompt: str, plan: dict | None) -> str:
     """
     Inject an approved BuildPlan JSON into the code-generation prompt.
 
-    When plan is non-empty, the code generator (Claude or DevMockProvider) receives
+    When plan is non-empty, the code generator (the real inference provider) receives
     the exact pages, DB tables, API routes, agents, and workflows the user reviewed
     and approved via the Build Plan panel — so generated files match the approved
     design instead of free-form prompt interpretation.
 
     This is called AFTER _build_prompt_with_spec so both validated spec and approved
-    plan are available to the generator.  The plan XML wrapper lets DevMockProvider
+    plan are available to the generator.  The plan XML wrapper lets the generator
     detect it and branch into plan-based multi-file generation.
     """
     if not plan:
@@ -385,7 +359,7 @@ async def build_stream(req: BuildRequest, request: Request):
     from app.core.reliability import get_bulkhead
     bulkhead = get_bulkhead("build", 8)
     ai_rate_limit(request, max_calls=10, window=60)
-    # Owner/dev account: skip platform quota check — routes to free dev_mock provider
+    # Preserve the existing owner quota policy; generation always uses a real provider.
     dev_mode = _is_dev_account(request)
     if not dev_mode:
         org_id = await check_org_quota(request)
@@ -418,8 +392,6 @@ async def build_stream(req: BuildRequest, request: Request):
         try:
             if commerce:
                 yield _sse("status", message="Creating the runnable store scaffold and database-backed API…")
-            elif dev_mode:
-                yield _sse("status", message="✨ جارٍ إنشاء تطبيقك…")
             else:
                 yield _sse("status", message="🤖 جارٍ الاتصال بـ Claude…")
 
@@ -428,10 +400,10 @@ async def build_stream(req: BuildRequest, request: Request):
             # routing, cost tracking, and context budgeting apply automatically.
             # The structured spec (entity names, column types, pages, roles) is
             # injected into Claude's code-gen prompt as <validated_app_spec> XML.
-            # Skipped for dev-mock (no credits needed) and on any error (graceful
+            # Skipped for deterministic commerce and on any error (graceful
             # degradation — raw prompt is used instead, identical to pre-P0 behaviour).
             _spec_context = ""
-            if not dev_mode and not commerce:
+            if not commerce:
                 try:
                     from app.services.app_builder import get_app_builder_service
                     _svc = get_app_builder_service(get_pool())
@@ -466,26 +438,6 @@ async def build_stream(req: BuildRequest, request: Request):
             if commerce:
                 yield _sse("status", message="Creating runnable storefront, API and persistent SQLite database (cash on delivery).")
                 chunk_source = store_chunks()
-            elif dev_mode:
-                # Free in-process provider — no Anthropic credits consumed.
-                # Inject approved plan (when present) so DevMockProvider can
-                # branch into plan-based multi-file generation instead of the
-                # keyword-template path that only produced 2 files.
-                from app.ai.providers.dev_mock import DevMockProvider
-                _provider = DevMockProvider()
-                _dev_content = _build_prompt_with_plan(req.prompt, req.plan)
-                request_obj = CompletionRequest(
-                    messages=[Message(role="user", content=_dev_content)],
-                    model="dev-mock-v2",
-                    max_tokens=8192,
-                    system=BUILD_UNIFIED_SYSTEM,
-                    conversation_id=None,
-                    prompt_id=None,
-                    memory_enabled=False,
-                    tools=None,
-                    stream=True,
-                )
-                chunk_source = _dev_mock_chunks(_provider, request_obj)
             else:
                 # P0-A spec context + approved plan both injected for real Claude.
                 _base_prompt = _build_prompt_with_spec(req.prompt, _spec_context)
@@ -513,6 +465,7 @@ async def build_stream(req: BuildRequest, request: Request):
             last_heartbeat = time.time()
             stream_error: str | None = None
             total_tokens = 0
+            delivered: dict[str, str] = {}
 
             async for chunk in chunk_source:
                 ctype = chunk.get("type")
@@ -539,6 +492,7 @@ async def build_stream(req: BuildRequest, request: Request):
                             yield _sse("status", message=f"✍️ Writing {data}…")
                         elif etype == "file_done":
                             path, content = data
+                            delivered[path] = content
                             dest = safe_path(ws, path)
                             dest.parent.mkdir(parents=True, exist_ok=True)
                             await asyncio.to_thread(dest.write_text, content, "utf-8")
@@ -563,6 +517,7 @@ async def build_stream(req: BuildRequest, request: Request):
                 event = parser.feed(buf)
                 if event and event[0] == "file_done":
                     path, content = event[1]
+                    delivered[path] = content
                     dest = safe_path(ws, path)
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     await asyncio.to_thread(dest.write_text, content, "utf-8")
@@ -578,7 +533,15 @@ async def build_stream(req: BuildRequest, request: Request):
                 with contextlib.suppress(Exception):
                     meta = json.loads("\n".join(parser.meta_lines))
 
-            yield _sse("done",
+            if parser.state != "done":
+                yield _sse("error", message="Build incomplete: generation ended before all files and startup metadata were delivered.")
+                return
+            try:
+                delivery = validate_delivery(req.prompt, req.plan, delivered, meta.get("run_command", ""))
+            except HTTPException as exc:
+                yield _sse("error", message=exc.detail)
+                return
+            yield _sse("done", delivery=delivery,
                        description=meta.get("description", ""),
                        files=parser.completed_files,
                        run_command=meta.get("run_command", ""),
