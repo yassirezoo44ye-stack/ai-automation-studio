@@ -7,6 +7,7 @@ import os as _os
 import shutil
 import time
 import zipfile
+import uuid
 from pathlib import Path
 
 import anthropic
@@ -911,6 +912,10 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
     The server listens on an internal port; this route exposes it to the browser.
     """
     await _require_project_owner(project_id, request)
+    try:
+        cookie_project_id = str(uuid.UUID(project_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid project_id") from None
     rp = process_mgr.get_running(project_id)
     if rp is None:
         raise HTTPException(503, detail={
@@ -961,11 +966,14 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
         # another project's session. Preserve repeated Set-Cookie headers.
         resp_headers.pop("set-cookie", None)
         response = Response(content=resp.content, status_code=resp.status_code, headers=resp_headers)
-        import re as cookie_re
-        for cookie in resp.headers.get_list("set-cookie"):
-            cookie = cookie_re.sub(r"(?i);\s*path=[^;]*", "", cookie)
-            cookie += f"; Path=/api/projects/{project_id}/proxy/"
-            response.headers.append("set-cookie", cookie)
+        from http.cookies import SimpleCookie
+        for header in resp.headers.get_list("set-cookie"):
+            parsed = SimpleCookie()
+            parsed.load(header)
+            for morsel in parsed.values():
+                morsel["path"] = f"/api/projects/{cookie_project_id}/proxy/"
+                morsel["domain"] = ""
+                response.headers.append("set-cookie", morsel.OutputString())
         return response
     except httpx.ConnectError:
         rp_check = process_mgr.get_running(project_id)
