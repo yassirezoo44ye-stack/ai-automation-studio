@@ -7,7 +7,8 @@
     "ai": "AI & Models",
     "apiKeys": "API Keys",
     "appearance": "Appearance",
-    "about": "About"
+    "about": "About",
+    "account": "Account & security"
   },
   "system": {
     "refresh": "Refresh",
@@ -120,5 +121,78 @@
     "runtime": "Runtime",
     "license": "License",
     "copyright": "© {{year}} Flow AI. All rights reserved."
+  },
+  "account": {
+    "signedOut": "You have been signed out. Please sign in again.",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "loading": "Loading…",
+    "profile": {
+      "title": "Profile",
+      "email": "Email",
+      "name": "Display name",
+      "save": "Save",
+      "saved": "Saved"
+    },
+    "password": {
+      "title": "Password",
+      "current": "Current password",
+      "new": "New password",
+      "hint": "At least 8 characters.",
+      "confirm": "Confirm new password",
+      "mismatch": "Passwords do not match.",
+      "signOutNote": "Changing your password signs you out on every device.",
+      "submit": "Change password",
+      "changed": "Password changed. Signing you out…"
+    },
+    "mfa": {
+      "title": "Two-factor authentication",
+      "description": "Protect your account with a code from an authenticator app.",
+      "on": "On",
+      "off": "Off",
+      "setup": "Set up",
+      "step1": "1. Add this key to your authenticator app:",
+      "step2": "2. Enter the 6-digit code it shows:",
+      "copySecret": "Copy key",
+      "openApp": "Open in authenticator app",
+      "code": "6-digit code",
+      "enable": "Turn on",
+      "regenerate": "New backup codes",
+      "regenerateHint": "Enter a current code to replace your backup codes.",
+      "disable": "Turn off",
+      "disableHint": "Enter a current code to turn off two-factor authentication.",
+      "disableConfirm": "Turn off two-factor",
+      "backupTitle": "Backup codes",
+      "backupWarning": "Save these codes somewhere safe. Each one works once, and they will not be shown again.",
+      "backupSaved": "I saved them"
+    },
+    "sessions": {
+      "title": "Active sessions",
+      "description": "Devices that are signed in to your account.",
+      "empty": "No other active sessions.",
+      "unknownDevice": "Unknown device",
+      "lastUsed": "Last used",
+      "revoke": "Sign out",
+      "signOutAll": "Sign out everywhere",
+      "confirmAll": "Sign out of every device, including this one?"
+    },
+    "delete": {
+      "title": "Delete account",
+      "description": "Permanently deletes your account and its data. This cannot be undone.",
+      "oauthNote": "This account signs in with an external provider. Contact support to delete it.",
+      "start": "Delete my account",
+      "typeEmail": "Type {{email}} to confirm",
+      "confirm": "Delete permanently"
+    },
+    "errors": {
+      "generic": "Something went wrong.",
+      "rateLimited": "Too many attempts. Please wait a minute.",
+      "currentPassword": "Current password is incorrect.",
+      "code": "That code is not valid.",
+      "password": "Password is incorrect.",
+      "email": "The email does not match your account.",
+      "mfaOff": "Two-factor authentication is not on.",
+      "noPassword": "This account has no password to change."
+    }
   }
 }

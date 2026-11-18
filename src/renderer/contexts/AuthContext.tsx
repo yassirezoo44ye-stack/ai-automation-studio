@@ -23,6 +23,10 @@ export interface AuthUser {
   email_verified: boolean;
   avatar_url: string | null;
   created_at: string | null;
+  /** From GET /api/auth/me only: false for OAuth-only accounts. */
+  has_password?: boolean;
+  /** From GET /api/auth/me only. */
+  mfa_enabled?: boolean;
 }
 
 export interface MfaChallenge {

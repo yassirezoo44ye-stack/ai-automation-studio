@@ -206,6 +206,18 @@ class UpdateProfileRequest(BaseModel):
     name: str | None = None
     avatar_url: str | None = None
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be empty")
+        if len(v) > 100:
+            raise ValueError("name is too long")
+        return v
+
     @field_validator("avatar_url")
     @classmethod
     def validate_avatar_url(cls, v: str | None) -> str | None:
@@ -603,7 +615,16 @@ async def get_me(current: Annotated[dict, Depends(get_current_user)]):
         user = await _get_user_by_id(conn, current["id"])
         if not user:
             raise HTTPException(404, "User not found")
-        return _user_response(user)
+        mfa = await conn.fetchrow(
+            "SELECT enabled FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]),
+        )
+    # Settings > Account & security needs these to pick the right forms:
+    # OAuth-only accounts have no password to change or confirm with.
+    return {
+        **_user_response(user),
+        "has_password": bool(user["password_hash"]),
+        "mfa_enabled": bool(mfa and mfa["enabled"]),
+    }
 
 
 @router.get("/me/audit-log")

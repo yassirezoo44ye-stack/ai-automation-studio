@@ -2407,3 +2407,16 @@ button, [role="button"], input, textarea, select, a,
   /* Glow-pulse keyframe: frozen */
   @keyframes glow-pulse { to { box-shadow: 0 0 12px var(--accent-dim); } }
 }
+
+/* Settings: stack the nav above the content on narrow screens */
+@media (max-width: 720px) {
+  .settings-layout { flex-direction: column; overflow-y: auto !important; }
+  .settings-layout .settings-nav {
+    width: auto !important; flex-direction: row !important; overflow-x: auto;
+    padding: 10px 12px !important; border-inline-end: none !important;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-layout .settings-nav .section-label { display: none; }
+  .settings-layout .settings-nav-item { white-space: nowrap; flex-shrink: 0; }
+  .settings-layout .settings-content { padding: 16px !important; overflow-y: visible !important; }
+}
