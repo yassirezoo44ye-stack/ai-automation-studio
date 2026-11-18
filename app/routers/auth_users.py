@@ -20,6 +20,7 @@ Endpoints:
 """
 import asyncio
 import datetime
+import hashlib
 import logging
 import secrets
 import uuid
@@ -51,6 +52,31 @@ from app.core.jwt_utils import (
 from app.core.passwords import hash_password, verify_password
 
 log = logging.getLogger(__name__)
+
+# Password-reset links: short-lived, single-use, stored only as a SHA-256 hash
+# so a read of password_reset_tokens (backup, SQL injection elsewhere, a
+# support query) cannot be replayed into an account takeover.
+PASSWORD_RESET_TTL = datetime.timedelta(minutes=30)
+
+
+def _reset_token_digest(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _email_fingerprint(email: str) -> str:
+    """Stable, non-reversible id for logs — never log the raw address."""
+    return hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()[:12]
+
+
+def _record_failed_login_event(email: str, ip: str, reason: str) -> None:
+    log.warning("auth.login_failed reason=%s account=%s ip=%s",
+                reason, _email_fingerprint(email), ip)
+    try:
+        from app.core.observability.metrics import get_metrics
+        get_metrics().counter("auth_login_failures_total").inc()
+    except Exception:
+        pass
+
 
 # Pre-computed once at startup; used as a timing sentinel so the response time
 # for a non-existent account is indistinguishable from a wrong-password attempt.
@@ -291,6 +317,7 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
         ip = _client_ip(request)
         if await check_login_locked_async(body.email):
             span.set_tag("error", "account_locked")
+            _record_failed_login_event(body.email, ip, "account_locked")
             raise HTTPException(429, "Too many failed login attempts — try again in 15 minutes")
         async with get_pool().acquire() as conn:
             user = await _get_user_by_email(conn, body.email)
@@ -301,10 +328,12 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
                 # reveals whether the account exists).
                 verify_password(body.password, _TIMING_DUMMY_HASH)
                 await record_login_failure_async(body.email)
+                _record_failed_login_event(body.email, ip, "invalid_credentials")
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
             if not verify_password(body.password, user["password_hash"]):
                 await record_login_failure_async(body.email)
+                _record_failed_login_event(body.email, ip, "invalid_credentials")
                 span.set_tag("error", "invalid_credentials")
                 raise HTTPException(401, "Invalid email or password")
             if not user["email_verified"]:
@@ -537,9 +566,9 @@ async def forgot_password(body: ForgotPasswordRequest, _rl: None = _auth_rl):
         await conn.execute(
             """INSERT INTO password_reset_tokens (token, user_id, expires_at)
                VALUES ($1, $2, $3)""",
-            reset_token,
+            _reset_token_digest(reset_token),
             user["id"],
-            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+            datetime.datetime.now(datetime.timezone.utc) + PASSWORD_RESET_TTL,
         )
 
     await send_password_reset_email(body.email, reset_token)
@@ -550,21 +579,24 @@ async def forgot_password(body: ForgotPasswordRequest, _rl: None = _auth_rl):
 async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
     user_email: str | None = None
     user_id_str: str | None = None
-    async with get_pool().acquire() as conn:
+    async with get_pool().acquire() as conn, conn.transaction():
+        # Consume the token atomically: DELETE ... RETURNING means two
+        # concurrent requests with the same link cannot both succeed
+        # (single use), and an expired token is removed on first sight.
+        consumed = await conn.fetchrow(
+            "DELETE FROM password_reset_tokens WHERE token=$1 "
+            "RETURNING user_id, expires_at",
+            _reset_token_digest(body.token),
+        )
+        if not consumed:
+            raise HTTPException(400, "Invalid or expired reset link")
+        if consumed["expires_at"] < datetime.datetime.now(datetime.timezone.utc):
+            raise HTTPException(400, "Reset link expired")
         row = await conn.fetchrow(
-            """SELECT prt.user_id, prt.expires_at, u.email
-               FROM password_reset_tokens prt
-               JOIN users u ON u.id = prt.user_id
-               WHERE prt.token=$1""",
-            body.token,
+            "SELECT id AS user_id, email FROM users WHERE id=$1", consumed["user_id"],
         )
         if not row:
             raise HTTPException(400, "Invalid or expired reset link")
-        if row["expires_at"] < datetime.datetime.now(datetime.timezone.utc):
-            await conn.execute(
-                "DELETE FROM password_reset_tokens WHERE token=$1", body.token
-            )
-            raise HTTPException(400, "Reset link expired")
 
         user_email = row["email"]
         user_id_str = str(row["user_id"])
@@ -572,8 +604,9 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2", pw_hash, row["user_id"]
         )
+        # Any other outstanding link for this account dies with the change.
         await conn.execute(
-            "DELETE FROM password_reset_tokens WHERE token=$1", body.token
+            "DELETE FROM password_reset_tokens WHERE user_id=$1", row["user_id"]
         )
         # Invalidate all sessions on password reset
         await conn.execute(
@@ -698,6 +731,11 @@ async def change_password(
         )
         await conn.execute(
             "DELETE FROM user_sessions WHERE user_id=$1",
+            uuid.UUID(current["id"]),
+        )
+        # A reset link mailed before the change must not still work after it.
+        await conn.execute(
+            "DELETE FROM password_reset_tokens WHERE user_id=$1",
             uuid.UUID(current["id"]),
         )
     await revoke_user_tokens(current["id"])

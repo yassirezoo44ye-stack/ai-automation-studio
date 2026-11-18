@@ -284,15 +284,19 @@ class TestChangePasswordClearsSessions:
 
     def test_change_password_clears_sessions(self):
         """
-        A successful password change must trigger exactly two execute() calls:
+        A successful password change must trigger exactly three execute() calls:
         1. UPDATE users SET password_hash=…
         2. DELETE FROM user_sessions WHERE user_id=…
+        3. DELETE FROM password_reset_tokens WHERE user_id=… (an old reset
+           link must not survive the change)
         """
         conn, result = self._run(verify_ok=True)
 
         assert result == {"message": "Password changed successfully"}
-        assert conn.execute.await_count == 2, (
-            f"Expected 2 execute() calls (UPDATE + DELETE), "
+        sqls = [c.args[0] for c in conn.execute.await_args_list]
+        assert any("DELETE FROM password_reset_tokens" in q for q in sqls)
+        assert conn.execute.await_count == 3, (
+            f"Expected 3 execute() calls (UPDATE + 2 DELETEs), "
             f"got {conn.execute.await_count}. "
             "change_password() must DELETE FROM user_sessions after the "
             "password update — stolen refresh tokens must not stay valid."

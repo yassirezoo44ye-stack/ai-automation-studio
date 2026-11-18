@@ -501,6 +501,33 @@ async def lifespan(app: FastAPI):
 
 # ── Middleware ─────────────────────────────────────────────────────────────────
 
+class HTTPSRedirectBehindProxyMiddleware:
+    """Pure-ASGI: when the TLS-terminating proxy (Render/Vercel) reports that
+    the client used plain HTTP (X-Forwarded-Proto: http), answer with a 308
+    to the https:// URL instead of serving the request. Requests without the
+    header (container health checks, local runs, tests) pass through, and
+    nothing happens in development."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            from app.core.config import is_development
+            headers = dict(scope.get("headers") or [])
+            proto = headers.get(b"x-forwarded-proto", b"").split(b",")[0].strip().lower()
+            host = headers.get(b"host", b"").decode("latin-1")
+            if proto == b"http" and host and not is_development():
+                qs = scope.get("query_string", b"").decode("latin-1")
+                url = f"https://{host}{scope.get('path', '/')}" + (f"?{qs}" if qs else "")
+                await send({"type": "http.response.start", "status": 308,
+                            "headers": [(b"location", url.encode("latin-1")),
+                                        (b"content-length", b"0")]})
+                await send({"type": "http.response.body", "body": b""})
+                return
+        await self.app(scope, receive, send)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
@@ -530,7 +557,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
-    app = FastAPI(title="Axon", version="1.0.0", lifespan=lifespan)
+    # Interactive API docs and the OpenAPI schema map every endpoint for an
+    # attacker; serve them only in development (ENVIRONMENT unset = production).
+    from app.core.config import is_development as _is_dev
+    _docs = _is_dev()
+    app = FastAPI(
+        title="Axon", version="1.0.0", lifespan=lifespan,
+        docs_url="/docs" if _docs else None,
+        redoc_url="/redoc" if _docs else None,
+        openapi_url="/openapi.json" if _docs else None,
+    )
 
     # ── OpenTelemetry — auto-instruments HTTP request/response spans.
     # get_tracer() (app/core/observability/tracer.py) sets the global
@@ -723,6 +759,8 @@ def create_app() -> FastAPI:
     app.add_middleware(UploadBodySizeLimitMiddleware)
     # Compress responses ≥1KB — runs outermost so it sees the full response.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # Outermost of all: plain-HTTP requests never reach the app.
+    app.add_middleware(HTTPSRedirectBehindProxyMiddleware)
 
     # ── API Routers (must be registered BEFORE the SPA catch-all) ───────────
     app.include_router(auth_users.router)

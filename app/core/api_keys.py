@@ -237,8 +237,22 @@ async def list_api_keys(
     return [_row_to_record(r) for r in rows]
 
 
+def _dev_key_enabled() -> bool:
+    """AXON_DEV_API_KEY is an env-defined key with the "admin" scope. It only
+    works when ENVIRONMENT=development; in any other environment (including
+    unset, which means production) it is ignored, so a forgotten dev value in
+    a production dashboard can never become a platform-admin backdoor."""
+    if not _DEV_KEY_RAW:
+        return False
+    from app.core.config import is_development
+    if is_development():
+        return True
+    log.warning("AXON_DEV_API_KEY is set but ignored outside ENVIRONMENT=development")
+    return False
+
+
 async def lookup_key(raw_key: str) -> ApiKeyRecord | None:
-    if _DEV_KEY_RAW and secrets.compare_digest(raw_key, _DEV_KEY_RAW):
+    if _dev_key_enabled() and secrets.compare_digest(raw_key, _DEV_KEY_RAW):
         return _dev_key_record()
     from app.core.db import get_pool
     row = await get_pool().fetchrow(

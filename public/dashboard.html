@@ -367,11 +367,21 @@
           el.className = 'activity-item';
           const ago = timeSince(new Date(item.time));
           const detail = item.details?.prompt_preview || item.details?.project_id || '';
-          el.innerHTML = `
-            <div class="activity-dot" style="background:${colors[i % colors.length]}"></div>
-            <div class="activity-text"><strong>${item.action.replace('_', ' ')}</strong>${detail ? ' — ' + detail.slice(0, 40) : ''}</div>
-            <div class="activity-time">${ago}</div>
-          `;
+          // Build with textContent: action/prompt text is user-supplied and
+          // must never be parsed as HTML (stored XSS).
+          const dot = document.createElement('div');
+          dot.className = 'activity-dot';
+          dot.style.background = colors[i % colors.length];
+          const text = document.createElement('div');
+          text.className = 'activity-text';
+          const strong = document.createElement('strong');
+          strong.textContent = String(item.action || '').replace('_', ' ');
+          text.appendChild(strong);
+          if (detail) text.appendChild(document.createTextNode(' — ' + String(detail).slice(0, 40)));
+          const time = document.createElement('div');
+          time.className = 'activity-time';
+          time.textContent = ago;
+          el.append(dot, text, time);
           list.appendChild(el);
         });
       }

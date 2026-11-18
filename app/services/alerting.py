@@ -66,6 +66,9 @@ _DEFAULT_RULES = [
     # handful of 429s without being abuse — this rule is for a sustained
     # pattern (e.g. a cost-exposure attack against ai_rate_limit).
     ("Elevated rate-limit rejections", "counter_rate_above", "rate_limit_rejections_total", 20.0),
+    # Repeated failed logins (credential stuffing / brute force). Counted in
+    # app/routers/auth_users.py's login handler, with no email or password.
+    ("Repeated failed logins", "counter_rate_above", "auth_login_failures_total", 10.0),
 ]
 
 
