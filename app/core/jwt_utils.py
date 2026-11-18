@@ -72,6 +72,8 @@ async def decode_access_token_shared(token: str) -> dict:
         return payload
     from app.core.cache import get_redis
     cache = await get_redis()
+    if cache.backend != "redis":
+        raise jwt.InvalidTokenError("Shared revocation backend unavailable")
     revoked = await cache.get(f"jwt:revoke:{user_id}")
     if revoked is not None and float(payload["iat"]) <= float(revoked):
         raise jwt.ExpiredSignatureError("Token has been revoked")
