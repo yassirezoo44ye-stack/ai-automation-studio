@@ -26,16 +26,15 @@ async def revoke_user_tokens(user_id: str) -> None:
     """
     now = time.time()
     _revoked_before[user_id] = now
-    try:
-        from app.core.cache import get_redis
-        cache = await get_redis()
-        await cache.set(
-            f"jwt:revoke:{user_id}",
-            str(now),
-            ttl=ACCESS_EXPIRE_MINUTES * 60 + 30,
-        )
-    except Exception:
-        pass
+    from app.core.cache import get_redis
+    cache = await get_redis()
+    if cache.backend != "redis":
+        raise RuntimeError("JWT revocation requires shared Redis")
+    await cache.set(
+        f"jwt:revoke:{user_id}",
+        str(now),
+        ttl=ACCESS_EXPIRE_MINUTES * 60 + 30,
+    )
 
 
 def make_access_token(user_id: str, email: str) -> str:
