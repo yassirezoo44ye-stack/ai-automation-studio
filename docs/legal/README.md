@@ -6,7 +6,7 @@
 They are **drafts written from what the code does, not legal advice**.
 Before launch:
 
-1. Fill in `LEGAL_ENTITY` (operator name and contact e-mail). Flow is run by an
+1. `LEGAL_ENTITY` holds the operator name and contact e-mail. Flow is run by an
    individual for now, so there is no company name or registered address.
 2. Confirm the business choices: minimum age 16, 7-day refund on a first
    subscription payment, 14 days for faulty digital products, Dubai courts.

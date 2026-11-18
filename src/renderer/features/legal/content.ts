@@ -9,15 +9,15 @@ export const LEGAL_VERSION = "2026-11-17";
 export type LegalDocId = "privacy" | "terms" | "refunds";
 export type LegalLang = "en" | "ar";
 
-/** Fill these in before publishing. Flow is currently run by an individual
+/** Operator details shown in all three documents. Flow is currently run by an individual
  *  (no company), so the operator is named personally. If a company or
  *  freelance licence is set up later, put its legal name here instead. */
 export const LEGAL_ENTITY = {
-  name: "[Operator full name]",
-  nameAr: "[الاسم الكامل للمشغّل]",
+  name: "Yassir Ezzeldin",
+  nameAr: "ياسر عزالدين",
   location: "Dubai, United Arab Emirates",
   locationAr: "دبي، الإمارات العربية المتحدة",
-  email: "[contact e-mail]",
+  email: "yassirezoo44.ye@gmail.com",
 };
 
 export interface LegalSection {
