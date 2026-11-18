@@ -63,5 +63,19 @@ def decode_access_token(token: str) -> dict:
     return payload
 
 
+
+async def decode_access_token_shared(token: str) -> dict:
+    """Validate JWT and check cross-worker revocation before accepting it."""
+    payload = decode_access_token(token)
+    user_id = payload.get("sub")
+    if not user_id:
+        return payload
+    from app.core.cache import get_redis
+    cache = await get_redis()
+    revoked = await cache.get(f"jwt:revoke:{user_id}")
+    if revoked is not None and float(payload["iat"]) <= float(revoked):
+        raise jwt.ExpiredSignatureError("Token has been revoked")
+    return payload
+
 def make_refresh_token() -> str:
     return secrets.token_urlsafe(48)
