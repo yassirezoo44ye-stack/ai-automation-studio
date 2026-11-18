@@ -62,7 +62,8 @@ def test_forgot_password_stores_only_a_hash_with_30_minute_expiry():
     stored_token, _uid, expires_at = insert.args[1], insert.args[2], insert.args[3]
     raw = sent["token"]
     assert stored_token != raw, "raw reset token must never be stored"
-    assert stored_token == hashlib.sha256(raw.encode()).hexdigest()
+    assert stored_token == au._reset_token_digest(raw)
+    assert raw not in stored_token
     ttl = expires_at - before
     assert datetime.timedelta(minutes=29) < ttl <= datetime.timedelta(minutes=31)
 
@@ -89,10 +90,12 @@ def _run_reset(consumed_row):
 def test_reset_password_consumes_token_atomically_by_hash():
     future = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=5)
     conn, result = _run_reset({"user_id": "u1", "expires_at": future})
+    from app.routers.auth_users import _reset_token_digest
     first = conn.fetchrow.await_args_list[0]
     assert first.args[0].startswith("DELETE FROM password_reset_tokens")
     assert "RETURNING" in first.args[0]
-    assert first.args[1] == hashlib.sha256(b"raw-token").hexdigest()
+    assert first.args[1] == _reset_token_digest("raw-token")
+    assert first.args[1] != hashlib.sha256(b"raw-token").hexdigest()  # keyed
     sqls = [c.args[0] for c in conn.execute.await_args_list]
     assert any("DELETE FROM user_sessions" in q for q in sqls)
     assert "successfully" in result["message"]

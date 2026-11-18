@@ -21,6 +21,7 @@ Endpoints:
 import asyncio
 import datetime
 import hashlib
+import hmac
 import logging
 import secrets
 import uuid
@@ -60,7 +61,12 @@ PASSWORD_RESET_TTL = datetime.timedelta(minutes=30)
 
 
 def _reset_token_digest(raw: str) -> str:
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    """Keyed digest (HMAC-SHA256 with a SESSION_SECRET-bound key) of a random
+    256-bit reset token. The token is not a password, so a slow KDF adds
+    nothing; the key means a leaked table alone can't even confirm a guess."""
+    from app.core.config import SESSION_SECRET
+    key = hashlib.sha256(f"{SESSION_SECRET}:password-reset".encode("utf-8")).digest()
+    return hmac.new(key, raw.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _email_fingerprint(email: str) -> str:
