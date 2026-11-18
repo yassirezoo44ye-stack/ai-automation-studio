@@ -352,3 +352,24 @@ BLOCKED in every cycle (not counted as passed): Docker image build (Docker Hub r
 Production at the time of this report (read-only checks, 2026-11-17 09:25 UTC): Render web service healthy (`/health` 200), no ERROR/CRITICAL application logs and no 5xx responses in the previous 24 hours; production DB holds 14 users and 2 Stripe events (both expired checkouts).
 
 Suggested order to reach ready: (1) open a PR from this work to main and get CI green; (2) decide items 3.1 and 3.4 at least; (3) deploy to a staging service first and repeat one cycle plus journeys 1, 10 and 12 against it, with a Stripe test key and a test SMTP inbox; (4) then production, with the Stripe webhook watched for the first real subscription.
+
+## Proof of value — before / after (2026-11-18)
+
+The same E2E suite (`tests_e2e/`, 12 journeys + tenant isolation, 26 tests) run on a fresh database against two trees:
+
+| Code | Result |
+|---|---|
+| Production backend `bcd6fce` (main #51, live on Render) | **12 failed / 14 passed** |
+| This branch `1c950a23` (M1–M10, merged with PR #56 and main incl. #65) | **26 / 26 passed** |
+
+What fails on the production code and passes here:
+- J1: a second account can be registered with the same email in another letter case.
+- J11: a 10,000-character display name is accepted.
+- J6: an automation with an unknown step kind is saved (the scheduler then skips it silently).
+- J7: a registered user cannot enroll a device (401 "Subscription required").
+- J8: a user signed in with the normal login token gets 401 on creations.
+- J10: subscription checkout answers 500 when payments are not configured (here 503); the webhook fails on stripe-python objects.
+- Lead capture: all 4 idempotency tests create duplicate leads.
+- Isolation: cancelling another organization's run answers 409 (reveals its state; here 404), and device isolation cannot be tested because enroll is refused.
+
+After merging main, journey 3 was adapted to main's new delivery gate: a static landing page is built, and "a booking system with customer accounts" is refused with "requires a backend" (asserted).
