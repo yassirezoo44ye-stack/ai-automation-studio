@@ -170,11 +170,15 @@ async def capture_lead(
         raise HTTPException(403, "API key must be scoped to an organization to capture leads")
 
     org_id = key.organization_id
-    svc = get_lead_service()
 
-    source = body.source or "external_capture"
+    # Keep free-text messages out of source metadata: it is shown in lead
+    # listings and can be included in AI prompts, logs and exports. Until a
+    # dedicated, access-controlled message field exists, reject messages
+    # rather than silently discarding customer-submitted information.
     if body.message:
-        source = f"{source} — {body.message[:200]}"
+        raise HTTPException(422, "Lead messages are not supported by this endpoint yet")
+    source = body.source or "external_capture"
+    svc = get_lead_service()
 
     lead = await svc.create(
         org_id=org_id,
