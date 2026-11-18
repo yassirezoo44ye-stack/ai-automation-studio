@@ -350,7 +350,7 @@ async def system_run_ws(ws: WebSocket, run_id: str):
 
 # ── Notification stream (per-user, authenticated) ─────────────────────────────
 
-async async def _user_id_from_ws_token(token: str) -> str | None:
+async def _user_id_from_ws_token(token: str) -> str | None:
     """Browsers can't set an Authorization header on a WS handshake, so the
     access token travels as a query param instead. Same JWT the REST API
     already issues (app.core.jwt_utils) — its `sub` claim IS the user id,
@@ -369,7 +369,7 @@ async async def _user_id_from_ws_token(token: str) -> str | None:
         return None
 
 
-async async def _user_id_from_ws_params(ws: WebSocket) -> str | None:
+async def _user_id_from_ws_params(ws: WebSocket) -> str | None:
     """Resolve user identity from WS query params.
 
     Preference order:
