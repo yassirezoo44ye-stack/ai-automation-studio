@@ -674,12 +674,12 @@ def create_app() -> FastAPI:
             else:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.
-                from app.core.jwt_utils import decode_access_token
+                from app.core.jwt_utils import decode_access_token_shared
                 import jwt as _pyjwt
                 if not bearer:
                     return JSONResponse(status_code=401, content={"detail": "Subscription required"})
                 try:
-                    decode_access_token(bearer)
+                    await decode_access_token_shared(bearer)
                 except _pyjwt.ExpiredSignatureError:
                     # Distinct from "invalid/missing" so a client can tell
                     # "silently refresh and retry" apart from "force a full
