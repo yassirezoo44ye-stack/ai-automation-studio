@@ -243,7 +243,8 @@ async function actions(browser) {
       if (c.disabled) { results.push({ ...row, outcome: "disabled" }); continue; }
       if (c.href !== null && c.kind === "link") {
         const h = c.href.trim();
-        row.linkIssue = !h || h === "#" || h.startsWith("javascript:") ? "dead href"
+        row.linkIssue = !h || h === "#" ? "dead href"
+          : /^(javascript|data|vbscript):/i.test(h) ? "script or data href"
           : c.target === "_blank" && !/noopener|noreferrer/.test(c.rel ?? "") ? "_blank without noopener" : null;
         if (/^https?:/.test(h) && !h.startsWith(BASE)) {   // external: check, don't follow
           try {
