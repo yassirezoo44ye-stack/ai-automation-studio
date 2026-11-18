@@ -57,6 +57,7 @@
     }
   },
   "chatTab": {
+    "actions": {"kind": {"create_task": "مهمة جديدة", "create_lead": "عميل محتمل جديد"}, "needsConfirm": "يحتاج تأكيدك", "confirm": "تأكيد", "dismiss": "تجاهل", "running": "جارٍ الحفظ…", "done": "تم — حُفظ في مساحة عملك.", "failed": "تعذّر الحفظ: {{message}}", "priority": {"low": "منخفضة", "medium": "متوسطة", "high": "عالية"}, "fields": {"title": "العنوان", "priority": "الأولوية", "due": "الموعد", "notes": "ملاحظات", "name": "الاسم", "source": "المصدر", "email": "البريد", "phone": "الهاتف"}},
     "nav": {"open": "افتح {{page}}", "groupLabel": "صفحات مقترحة"},
     "sidebar": {
       "demoProject": "مشروع تجريبي",

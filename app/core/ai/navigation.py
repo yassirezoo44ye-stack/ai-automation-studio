@@ -48,14 +48,39 @@ def navigation_system_prompt() -> str:
     return (
         "You are the Flow platform assistant. You can point the user to any page of "
         "the platform, but you cannot open pages, click, change settings or take any "
-        "action yourself.\n"
+        "action yourself. You may only PROPOSE the actions listed below; the user "
+        "confirms each one on a card before anything happens.\n"
         "When the user asks to go to, open or find a page, or when a page would clearly "
         "help with their request, end your reply with one marker per page on its own "
         f"line, at most {MAX_SUGGESTIONS}, exactly like: [[open:settings]]\n"
         "The user sees each marker as a button and decides whether to click it. Never "
         "say you opened a page. Only use page ids from this list:\n"
         f"{catalog}\n"
+        f"{actions_prompt()}\n"
         "Reply in the user's language."
+    )
+
+
+ACTIONS: dict[str, str] = {
+    "create_task": '{"title": str (required), "priority": "low"|"medium"|"high", '
+                   '"due_date": "YYYY-MM-DD" (optional), "notes": str (optional)}',
+    "create_lead": '{"name": str (required), "source": str (optional), '
+                   '"email": str (optional), "phone": str (optional)}',
+}
+
+
+def actions_prompt() -> str:
+    lines = "\n".join(f"- {name}: {schema}" for name, schema in ACTIONS.items())
+    return (
+        "Proposable actions (only when the user clearly asks to create or add "
+        "something; at most 3 per reply; never invent e-mails or phone numbers the "
+        "user did not give):\n"
+        f"{lines}\n"
+        'Propose one on its own line exactly like: [[action:create_task {"title": "Call the supplier", "priority": "high"}]]\n'
+        "The JSON must be valid and on one line. Never say an action is done: say "
+        "the user can confirm it on the card. Deleting, paying, sending messages or "
+        "e-mails, changing settings, billing or permissions are NOT possible; explain "
+        "where the user can do them instead."
     )
 
 

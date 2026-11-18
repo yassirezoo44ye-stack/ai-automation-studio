@@ -47,8 +47,15 @@ export const ASSISTANT_PAGES: Record<string, { page: Page; navKey: string }> = {
 
 const MAX_SUGGESTIONS = 2;
 const MARKER = /\[\[\s*open\s*:\s*([a-z-]+)\s*\]\]/gi;
-// A marker still arriving mid-stream ("…\n[[op") — hidden until complete.
-const PARTIAL_TAIL = /\[(?:\[\s*(?:o|op|ope|open)?(?:\s*:\s*[a-z-]*)?)?$/i;
+// A marker still arriving mid-stream ("…\n[[op", "[[action:create_task {\"ti")
+// is hidden until it is complete.
+function stripPartialMarker(text: string): string {
+  const at = text.lastIndexOf("[[");
+  if (at >= 0 && !text.includes("]]", at) && /^\[\[\s*(?:o(?:p(?:en?)?)?|a(?:c(?:t(?:i(?:on?)?)?)?)?)?(?:\s*:[^\n]*)?$/i.test(text.slice(at))) {
+    return text.slice(0, at);
+  }
+  return text.endsWith("[") ? text.slice(0, -1) : text;
+}
 
 export interface NavExtraction {
   /** Reply text without markers. */
@@ -64,7 +71,7 @@ export function extractNavSuggestions(content: string): NavExtraction {
     if (entry && !pages.includes(entry.page) && pages.length < MAX_SUGGESTIONS) pages.push(entry.page);
     return "";
   });
-  text = text.replace(PARTIAL_TAIL, "").replace(/\n{3,}/g, "\n\n").trimEnd();
+  text = stripPartialMarker(text).replace(/\n{3,}/g, "\n\n").trimEnd();
   return { text, pages };
 }
 

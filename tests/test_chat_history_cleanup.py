@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import json
+
+import pytest
 import sys
 import unittest
 import uuid
@@ -174,3 +176,21 @@ def test_page_catalog_matches_web_client():
     block = ts.split("export const ASSISTANT_PAGES", 1)[1].split("};", 1)[0]
     client = set(_re.findall(r'^\s*"?([a-z-]+)"?\s*:\s*\{ page:', block, _re.M))
     assert set(PAGES) == client
+
+
+def test_action_catalogue_is_allow_list_only():
+    from app.core.ai.navigation import ACTIONS, navigation_system_prompt
+    assert set(ACTIONS) == {"create_task", "create_lead"}
+    prompt = navigation_system_prompt()
+    assert "[[action:create_task" in prompt
+    assert "Never say an action is done" in prompt
+    assert "Deleting, paying, sending messages" in prompt
+
+
+def test_task_source_is_restricted():
+    import pydantic
+    from app.routers.tasks import TaskCreate
+    assert TaskCreate(title="x").source == "manual"
+    assert TaskCreate(title="x", source="assistant").source == "assistant"
+    with pytest.raises(pydantic.ValidationError):
+        TaskCreate(title="x", source="admin")

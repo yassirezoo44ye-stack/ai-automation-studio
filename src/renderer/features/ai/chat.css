@@ -513,3 +513,39 @@
   transition: transform .12s ease, background .15s ease;
 }
 .msg-nav__btn:hover, .msg-nav__btn:focus-visible { transform: translateY(-1px); background: var(--accent-glow, var(--accent-dim)); outline: none; }
+
+/* ── Assistant action cards (M4: confirm before anything runs) ──── */
+.action-cards { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; max-width: 520px; }
+.action-card {
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  padding: 12px 14px;
+  font-size: 13px;
+  animation: chatStarterIn .3s ease both;
+}
+.action-card--done { border-color: var(--green, var(--accent-border)); }
+.action-card__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.action-card__icon {
+  width: 24px; height: 24px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+  background: var(--accent-dim); font-size: 12px;
+}
+.action-card__title { font-weight: 700; color: var(--t1); }
+.action-card__badge {
+  margin-inline-start: auto; font-size: 10px; font-weight: 600; color: var(--t4);
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+}
+.action-card--done .action-card__badge { display: none; }
+.action-card__fields { display: grid; gap: 4px; margin: 0 0 10px; }
+.action-card__fields div { display: flex; gap: 8px; }
+.action-card__fields dt { color: var(--t5); min-width: 64px; }
+.action-card__fields dd { margin: 0; color: var(--t1); word-break: break-word; }
+.action-card__buttons { display: flex; gap: 8px; }
+.action-card__confirm, .action-card__dismiss, .action-card__link {
+  height: 30px; padding: 0 14px; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.action-card__confirm { border: none; color: #fff; background: linear-gradient(135deg, var(--accent), var(--teal, var(--accent-2))); }
+.action-card__confirm:disabled { opacity: .6; cursor: default; }
+.action-card__dismiss, .action-card__link { border: 1px solid var(--border); background: none; color: var(--t3); }
+.action-card__result { display: flex; align-items: center; gap: 10px; color: var(--green, var(--t1)); font-weight: 600; }
+.action-card__error { margin-top: 8px; color: var(--red); font-size: 12px; }
