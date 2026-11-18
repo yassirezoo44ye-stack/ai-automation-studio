@@ -115,7 +115,9 @@ async def lifespan(app: FastAPI):
     from app.core.project_plans import init_schema as init_project_plans_schema
     async with pool.acquire() as conn:
         await init_project_plans_schema(conn)
-    WORKSPACES.mkdir(exist_ok=True)
+    WORKSPACES.mkdir(parents=True, exist_ok=True)
+    from app.core.filesystem import workspaces_persistence_warning
+    workspaces_persistence_warning()
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
     await runtime_registry.discover()

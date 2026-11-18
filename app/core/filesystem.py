@@ -3,11 +3,36 @@ Workspace path helpers shared between the Build and Package routers.
 Both create or access project workspaces under WORKSPACES/ and must
 guard against path-traversal attacks.
 """
+import logging
+import os
 from pathlib import Path
 
 from fastapi import HTTPException
 
-from app.core.config import WORKSPACES
+from app.core.config import WORKSPACES, get_environment
+
+log = logging.getLogger(__name__)
+
+
+def workspaces_persistence_warning() -> str | None:
+    """Warn when production keeps project files on the container's own disk.
+
+    Project files (generated code, uploads, images, export packages) live
+    under WORKSPACES. On Render the container disk is wiped on every deploy
+    and restart, and it is not in any database backup, so production must
+    point WORKSPACES_DIR at a persistent disk (render.yaml mounts one at
+    /var/data). Returns the warning text, or None when nothing is wrong.
+    """
+    if get_environment() != "production" or os.getenv("WORKSPACES_DIR"):
+        return None
+    msg = (
+        "WORKSPACES_DIR is not set: project files are stored at "
+        f"{WORKSPACES} on the container's own disk and will be lost on the "
+        "next deploy or restart. Attach a persistent disk and set "
+        "WORKSPACES_DIR (see docs/BACKUP_RESTORE.md)."
+    )
+    log.warning(msg)
+    return msg
 
 
 def workspace(project_id: str) -> Path:
