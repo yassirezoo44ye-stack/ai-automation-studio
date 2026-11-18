@@ -210,7 +210,7 @@ class TestBuildProgramCompleteCallShape(unittest.IsolatedAsyncioTestCase):
 
         pool, _ = _fake_pool()
         fake_resp = CompletionResponse(
-            content='{"description":"d","files":[],"run_command":"","language":"python"}',
+            content='{"description":"d","files":[{"path":"main.py","content":"print(1)"}],"run_command":"python main.py","language":"python"}',
             usage=UsageStats(input_tokens=20, output_tokens=8, total_tokens=28, cost_usd=0.002),
         )
 
@@ -226,6 +226,8 @@ class TestBuildProgramCompleteCallShape(unittest.IsolatedAsyncioTestCase):
             build_mod, "record_org_tokens", AsyncMock(),
         ) as mock_record, unittest.mock.patch.object(
             build_mod, "workspace", return_value=Path("does-not-matter"),
+        ), unittest.mock.patch.object(
+            build_mod, "safe_path", return_value=MagicMock(),
         ), unittest.mock.patch(
             "app.core.ai.inference.engine.InferenceEngine.complete",
             AsyncMock(return_value=fake_resp),
