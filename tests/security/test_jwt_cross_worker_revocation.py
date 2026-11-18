@@ -36,4 +36,4 @@ async def test_revoked_token_is_rejected_in_another_worker(monkeypatch):
         # A second worker has no process-local revocation state.
         monkeypatch.setattr(jwt_utils, "_revoked_before", {})
         with pytest.raises(jwt.PyJWTError):
-            jwt_utils.decode_access_token(token)
+            await jwt_utils.decode_access_token_shared(token)
