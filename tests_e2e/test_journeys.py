@@ -326,7 +326,7 @@ async def test_journey_03_build_app(e2e_transport, ai_sink):
         pid = proj["id"]
 
         r = await b.req("POST", "/api/build/stream",
-                        json={"project_id": pid, "prompt": "A simple booking page for a barber shop"})
+                        json={"project_id": pid, "prompt": "A one-page landing site for a barber shop with opening hours"})
         assert r.status_code == 200, r.text[:300]
         events = _sse(r.text)
         assert not [e for e in events if e.get("type") == "error"], events[-3:]
@@ -341,11 +341,18 @@ async def test_journey_03_build_app(e2e_transport, ai_sink):
 
         # Edit: a second build on the same project changes or adds files.
         r = await b.req("POST", "/api/build/stream",
-                        json={"project_id": pid, "prompt": "Add a contact form to the booking page"})
+                        json={"project_id": pid, "prompt": "Add a gallery section to the landing page"})
         assert r.status_code == 200
         assert not [e for e in _sse(r.text) if e.get("type") == "error"]
         files2 = _ok(await b.req("GET", f"/api/projects/{pid}/files"), "files after edit")
         assert files2
+
+        # An app that needs a server (bookings) is refused when the model only
+        # returns interface files, instead of being reported as built.
+        r = await b.req("POST", "/api/build/stream",
+                        json={"project_id": pid, "prompt": "A booking system with customer accounts"})
+        assert any(e.get("type") == "error" and "requires a backend" in e.get("message", "")
+                   for e in _sse(r.text)), _sse(r.text)[-2:]
 
         # Export: the project downloads as a zip containing the files.
         r = await b.req("GET", f"/api/projects/{pid}/download")
