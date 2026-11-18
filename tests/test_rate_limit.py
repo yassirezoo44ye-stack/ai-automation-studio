@@ -13,9 +13,14 @@ from app.core.rate_limit import check_rate_limit, require_rate_limit, rl_store
 
 @pytest.fixture(autouse=True)
 def clear_store():
+    import app.core.rate_limit as rl
     rl_store.clear()
+    rl._key_windows.clear()
+    rl._last_gc = 0.0
     yield
     rl_store.clear()
+    rl._key_windows.clear()
+    rl._last_gc = 0.0
 
 
 def _req(ip: str = "1.2.3.4", owner: str = "test@example.com") -> MagicMock:
