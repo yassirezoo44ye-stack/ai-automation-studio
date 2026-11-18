@@ -233,6 +233,22 @@ class TestLoginLockoutGarbageCollection:
                 assert await rl.check_login_locked_async("lockout@example.com")
 
     @pytest.mark.asyncio
+    async def test_login_lockout_expires_after_15_minutes(self):
+        from unittest.mock import AsyncMock, patch
+        import app.core.rate_limit as rl
+
+        cache = MagicMock()
+        cache.backend = "memory"
+        with patch("app.core.cache.get_redis", new=AsyncMock(return_value=cache)):
+            with patch("app.core.rate_limit.time.time", return_value=1000.0):
+                for _ in range(5):
+                    await rl.record_login_failure_async("expires@example.com")
+                assert await rl.check_login_locked_async("expires@example.com")
+
+            with patch("app.core.rate_limit.time.time", return_value=1901.0):
+                assert not await rl.check_login_locked_async("expires@example.com")
+
+    @pytest.mark.asyncio
     async def test_successful_login_clears_lockout_window_metadata(self):
         from unittest.mock import AsyncMock, patch
         import app.core.rate_limit as rl
