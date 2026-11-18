@@ -187,6 +187,8 @@ async def check_login_locked_async(email: str) -> bool:
         log.debug("check_login_locked redis fallback: %s", exc)
     # In-process fallback
     now = time.time()
+    _key_windows[key] = _LOGIN_FAIL_WINDOW
+    _maybe_gc(now, _LOGIN_FAIL_WINDOW)
     rl_store[key] = [t for t in rl_store[key] if now - t < _LOGIN_FAIL_WINDOW]
     return len(rl_store[key]) >= _LOGIN_FAIL_MAX
 
@@ -196,6 +198,8 @@ async def record_login_failure_async(email: str) -> None:
     key = f"login_fail:{email.lower()}"
     rkey = f"rl:{key}"
     now = time.time()
+    _key_windows[key] = _LOGIN_FAIL_WINDOW
+    _maybe_gc(now, _LOGIN_FAIL_WINDOW)
     rl_store[key] = [t for t in rl_store[key] if now - t < _LOGIN_FAIL_WINDOW]
     rl_store[key].append(now)
     try:
@@ -212,6 +216,7 @@ async def clear_login_failures_async(email: str) -> None:
     key = f"login_fail:{email.lower()}"
     rkey = f"rl:{key}"
     rl_store.pop(key, None)
+    _key_windows.pop(key, None)
     try:
         from app.core.cache import get_redis
         cache = await get_redis()
