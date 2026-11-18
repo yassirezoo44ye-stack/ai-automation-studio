@@ -211,31 +211,31 @@ describe("toggleSave", () => {
 describe("creationToFeedItem — CTA and routing", () => {
   it("maps APP type to build-app ctaType and app-builder targetPage", () => {
     const item = creationToFeedItem(BASE_CREATION);
-    expect(item.ctaType).toBe("build-app");
+    expect(item.ctaType).toBe("view-creation");
     expect(item.targetPage).toBe("app-builder");
   });
 
   it("maps AGENT type to build-agent ctaType and agentos targetPage", () => {
     const item = creationToFeedItem({ ...BASE_CREATION, type: "AGENT" });
-    expect(item.ctaType).toBe("build-agent");
+    expect(item.ctaType).toBe("view-creation");
     expect(item.targetPage).toBe("agentos");
   });
 
   it("maps AUTOMATION type to use-automation ctaType and automation targetPage", () => {
     const item = creationToFeedItem({ ...BASE_CREATION, type: "AUTOMATION" });
-    expect(item.ctaType).toBe("use-automation");
+    expect(item.ctaType).toBe("view-creation");
     expect(item.targetPage).toBe("automation");
   });
 
   it("maps WORKFLOW type to run-workflow ctaType and automation targetPage", () => {
     const item = creationToFeedItem({ ...BASE_CREATION, type: "WORKFLOW" });
-    expect(item.ctaType).toBe("run-workflow");
+    expect(item.ctaType).toBe("view-creation");
     expect(item.targetPage).toBe("automation");
   });
 
   it("maps TEMPLATE type to use-template ctaType", () => {
     const item = creationToFeedItem({ ...BASE_CREATION, type: "TEMPLATE" });
-    expect(item.ctaType).toBe("use-template");
+    expect(item.ctaType).toBe("view-creation");
   });
 });
 
@@ -299,4 +299,18 @@ describe("study library in feed", () => {
     expect(result.items[0].id).toBe(BASE_CREATION.id);
     expect(result.error).toBe(true);
   });
+});
+
+
+it("uses the actual publisher and opens published content instead of inventing a build", () => {
+  const item = creationToFeedItem({ ...BASE_CREATION, creator_name: "A real creator" });
+  expect(item.creator.name).toBe("A real creator");
+  expect(item.creator.handle).toBe("A real creator");
+  expect(item.ctaType).toBe("view-creation");
+});
+
+it("does not attribute unknown creators to Flow Platform", () => {
+  const item = creationToFeedItem(BASE_CREATION);
+  expect(item.creator.name).not.toBe("Flow Platform");
+  expect(item.sourceMeta?.createdAt).toBe(BASE_CREATION.created_at);
 });

@@ -172,8 +172,8 @@ export function FeedActionPanel({ item, state, isMock = false, onLike, onSave, o
       <button
         className="feed-action-btn feed-action-btn--build"
         onClick={onBuild}
-        aria-label={t("actions.build")}
-        title={t("actions.build")}
+        aria-label={t(item.ctaType === "view-creation" ? "realFeed.view" : "actions.build")}
+        title={t(item.ctaType === "view-creation" ? "realFeed.view" : "actions.build")}
       >
         <span className="feed-action-btn__icon"><BoltIcon /></span>
       </button>
