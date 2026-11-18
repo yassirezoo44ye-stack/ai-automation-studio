@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "../../utils/api";
 import { useAuth } from "../../contexts/AuthContext";
@@ -290,12 +290,14 @@ function SessionsSection({ onSignedOut }: { onSignedOut: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
 
-  const load = useCallback(async () => {
-    try { setSessions(await call<SessionRow[]>("/api/auth/sessions")); setError(null); }
-    catch (err) { setError(errorText(err)); setSessions([]); }
+  useEffect(() => {
+    let alive = true;
+    call<SessionRow[]>("/api/auth/sessions")
+      .then(rows => { if (alive) { setSessions(rows); setError(null); } })
+      .catch(err => { if (alive) { setError(errorText(err)); setSessions([]); } });
+    return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => { void load(); }, [load]);
 
   const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleString(i18n.language) : "—";
 
