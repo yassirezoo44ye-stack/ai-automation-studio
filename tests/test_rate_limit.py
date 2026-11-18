@@ -132,6 +132,33 @@ class TestRlStoreGarbageCollection:
         assert "brand:new:key" in rl.rl_store
 
 
+    def test_gc_preserves_long_window_when_short_window_triggers_sweep(self):
+        import app.core.rate_limit as rl
+        from unittest.mock import patch
+
+        with patch("app.core.rate_limit.time.time", return_value=1000.0):
+            rl._last_gc = 1000.0
+            assert check_rate_limit("long:window", max_calls=1, window=600)
+        with patch("app.core.rate_limit.time.time", return_value=1100.0):
+            rl._last_gc = 0.0
+            assert check_rate_limit("short:window", max_calls=1, window=30)
+            assert "long:window" in rl.rl_store
+            assert not check_rate_limit("long:window", max_calls=1, window=600)
+
+    def test_gc_evicts_long_window_after_expiration(self):
+        import app.core.rate_limit as rl
+        from unittest.mock import patch
+
+        with patch("app.core.rate_limit.time.time", return_value=1000.0):
+            rl._last_gc = 1000.0
+            assert check_rate_limit("expired:long:window", max_calls=1, window=600)
+        with patch("app.core.rate_limit.time.time", return_value=1700.0):
+            rl._last_gc = 0.0
+            assert check_rate_limit("trigger:short:window", max_calls=1, window=30)
+            assert "expired:long:window" not in rl.rl_store
+            assert "expired:long:window" not in rl._key_windows
+
+
 class TestRateLimitObservability:
     """A 429 is a 4xx — it never touched http_errors_total (5xx-only) or
     any other metric, so a sustained rejection pattern (e.g. a
