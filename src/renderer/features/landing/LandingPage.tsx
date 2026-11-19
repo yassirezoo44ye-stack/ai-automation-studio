@@ -847,6 +847,10 @@ function Footer() {
             <div className="lp-footer__tagline">{t("footer.tagline")}</div>
           </div>
         </div>
+        <nav className="lp-footer__links" aria-label={t("footer.legalNav")}>
+          <a href="/privacy">{t("footer.privacy")}</a>
+          <a href="/terms">{t("footer.terms")}</a>
+        </nav>
         <div className="lp-footer__copy">
           {t("footer.copyright", { year: new Date().getFullYear() })}
         </div>

@@ -10,6 +10,7 @@ import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
 import { LandingPage }   from "./features/landing/LandingPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
+import { legalDocForPath } from "./features/legal/legalRoutes";
 import "./design-system.css";
 
 
@@ -19,6 +20,7 @@ setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
 type AuthView = "landing" | "login" | "register";
 const StudyLibraryPage = lazy(() => import("./features/study-library/StudyLibraryPage").then(m => ({ default: m.StudyLibraryPage })));
+const LegalPage = lazy(() => import("./features/legal/LegalPage").then(m => ({ default: m.LegalPage })));
 
 function AppInner() {
   const { user, loading, bootstrapError, pendingMfaChallenge } = useAuth();
@@ -27,6 +29,13 @@ function AppInner() {
   // Deep-link routing is handled by AppContext (URL ↔ page sync).
   // The OAuth callback and reset-password paths are handled by AuthContext
   // and AuthPage respectively — no URL manipulation needed here.
+
+  // Public legal pages — static content, reachable signed in or out and even
+  // when the backend is unreachable, so they are resolved before auth state.
+  const legalDoc = legalDocForPath(window.location.pathname);
+  if (legalDoc) {
+    return <Suspense fallback={<LoadingSpinner fullPage />}><LegalPage doc={legalDoc} /></Suspense>;
+  }
 
   if (loading) {
     return <LoadingSpinner fullPage label="Starting Flow…" />;

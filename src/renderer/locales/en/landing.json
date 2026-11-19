@@ -189,6 +189,9 @@
   },
   "footer": {
     "tagline": "Automate your agency.",
-    "copyright": "© {{year}} Flow. All rights reserved."
+    "copyright": "© {{year}} Flow. All rights reserved.",
+    "legalNav": "Legal",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Use"
   }
 }

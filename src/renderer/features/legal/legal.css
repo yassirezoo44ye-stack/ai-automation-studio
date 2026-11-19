@@ -1,0 +1,85 @@
+/* Public legal pages (/privacy, /terms) — uses design-system.css tokens. */
+.legal-root {
+  min-height: 100vh;
+  overflow-y: auto;
+  background: var(--bg-base);
+  color: var(--t2);
+  font-family: inherit;
+}
+.legal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 20px 16px;
+}
+.legal-home {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--t1);
+  text-decoration: none;
+}
+.legal-lang {
+  padding: 6px 12px;
+  border: 1px solid var(--b1);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.legal-main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 8px 16px 64px;
+  line-height: 1.7;
+  font-size: 15px;
+}
+.legal-main h1 {
+  font-size: clamp(26px, 5vw, 34px);
+  color: var(--t1);
+  margin: 12px 0 4px;
+}
+.legal-updated {
+  font-size: 13px;
+  color: var(--t4);
+  margin: 0 0 20px;
+}
+.legal-intro {
+  color: var(--t2);
+}
+.legal-section h2 {
+  font-size: 18px;
+  color: var(--t1);
+  margin: 28px 0 8px;
+}
+.legal-section p,
+.legal-section li {
+  color: var(--t3);
+}
+.legal-section ul {
+  padding-inline-start: 20px;
+  margin: 8px 0;
+}
+.legal-section li + li {
+  margin-top: 6px;
+}
+.legal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--b1);
+}
+.legal-footer a {
+  color: var(--t3);
+  font-size: 13px;
+  text-decoration: none;
+}
+.legal-footer a:hover {
+  color: var(--t1);
+  text-decoration: underline;
+}

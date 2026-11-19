@@ -24,6 +24,7 @@ from app.core.config import (
 )
 from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
+from app.core.error_monitoring import capture_exception, init_error_monitoring
 from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware, UploadBodySizeLimitMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
 from app.core.rate_limit import _real_ip, check_rate_limit
@@ -530,6 +531,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
+    init_error_monitoring()  # no-op unless SENTRY_DSN is set
     app = FastAPI(title="Axon", version="1.0.0", lifespan=lifespan)
 
     # ── OpenTelemetry — auto-instruments HTTP request/response spans.
@@ -589,6 +591,7 @@ def create_app() -> FastAPI:
         import asyncpg as _asyncpg
         category = "db" if isinstance(exc, (_asyncpg.exceptions.PostgresError, OSError)) else "app"
         record_error(category)
+        capture_exception(exc)
         print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 

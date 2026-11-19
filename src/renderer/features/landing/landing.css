@@ -1075,6 +1075,20 @@
   font-size: 12px;
   color: var(--t5);
 }
+.lp-footer__links {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.lp-footer__links a {
+  color: var(--t4);
+  font-size: 13px;
+  text-decoration: none;
+}
+.lp-footer__links a:hover {
+  color: var(--t1);
+  text-decoration: underline;
+}
 
 /* ── Section center variant ───────────────────────────────────── */
 .lp-section--center {
