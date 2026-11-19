@@ -5,7 +5,7 @@ so the entry point (app_main.py or main.py) stays lean.
 """
 import asyncio
 import os
-import sys
+import logging
 from contextlib import asynccontextmanager
 
 import asyncpg
@@ -554,7 +554,9 @@ def create_app() -> FastAPI:
         )
         # Pydantic puts the raw exception object (e.g. the ValueError a
         # field_validator raised) in ctx, which json.dumps can't serialize.
-        safe_errors = [{k: v for k, v in e.items() if k != "ctx"} for e in errors]
+        # Never reflect request inputs (passwords/tokens or whole models) or
+        # exception context into validation responses or browser diagnostics.
+        safe_errors = [{k: e[k] for k in ("type", "loc", "msg") if k in e} for e in errors]
         return JSONResponse(status_code=422, content={"detail": detail, "errors": safe_errors})
 
     @app.exception_handler(QuotaExceeded)
@@ -589,8 +591,13 @@ def create_app() -> FastAPI:
         import asyncpg as _asyncpg
         category = "db" if isinstance(exc, (_asyncpg.exceptions.PostgresError, OSError)) else "app"
         record_error(category)
-        print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
-        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        # Exception messages and attacker-controlled paths can contain secrets,
+        # SQL values or injected log lines. Retain only non-sensitive metadata.
+        logging.getLogger(__name__).error("Unhandled server error", extra={
+            "error_type": type(exc).__name__, "category": category,
+        })
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"},
+                            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     # ── Tenant context (single source of truth for X-Organization-Id) ──────
     # Extracts the header once into request.state.org_id. This never grants
