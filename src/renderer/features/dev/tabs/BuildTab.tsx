@@ -1,3 +1,4 @@
+import { readSSE } from "../../../shared/utils/sse";
 import { loadPrefs } from "../../../shared/utils/preferences";
 /**
  * BuildTab — AI-driven code generation panel.
@@ -64,45 +65,33 @@ export function BuildTab({
         throw new Error((errBody as { detail?: string }).detail ?? `HTTP ${res.status}`);
       }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          let ev: Record<string, unknown>;
-          try { ev = JSON.parse(line.slice(6)); } catch { continue; }
-
-          if (ev.type === "status") {
-            onStatus(ev.message as string);
-          } else if (ev.type === "file") {
-            const f = { path: ev.path as string, content: ev.content as string };
-            accumulated.push(f);
-            onFileAppend(f);
-            onStatus(t("buildTab.writingFile", { path: ev.path }));
-          } else if (ev.type === "done") {
-            onDescription(ev.description as string);
-            onStateChange("done");
-            onStatus(t("buildTab.builtFiles", { count: (ev.files as unknown[]).length }));
-            onBuildDone(accumulated);
-            onToast(t("buildTab.builtToast", { description: (ev.description as string) || t("buildTab.builtFiles", { count: (ev.files as unknown[]).length }) }));
-            // Stay on Generate — the Installation panel renders below the
-            // button and auto-scrolls into view as the first actionable step.
-          } else if (ev.type === "error") {
-            onStateChange("error");
-            onStatus(t("buildTab.errorPrefix", { message: ev.message }));
-            onToast(ev.message as string, "err");
-          }
-          // heartbeat: no-op
+      let closed = false;
+      for await (const ev of readSSE(res.body)) {
+        if (ev.type === "status") {
+          onStatus(ev.message as string);
+        } else if (ev.type === "file") {
+          const f = { path: ev.path as string, content: ev.content as string };
+          accumulated.push(f);
+          onFileAppend(f);
+          onStatus(t("buildTab.writingFile", { path: ev.path }));
+        } else if (ev.type === "done") {
+          closed = true;
+          onDescription(ev.description as string);
+          onStateChange("done");
+          onStatus(t("buildTab.builtFiles", { count: (ev.files as unknown[]).length }));
+          onBuildDone(accumulated);
+          onToast(t("buildTab.builtToast", { description: (ev.description as string) || t("buildTab.builtFiles", { count: (ev.files as unknown[]).length }) }));
+          // Stay on Generate — the Installation panel renders below the
+          // button and auto-scrolls into view as the first actionable step.
+        } else if (ev.type === "error") {
+          closed = true;
+          onStateChange("error");
+          onStatus(t("buildTab.errorPrefix", { message: ev.message }));
+          onToast(ev.message as string, "err");
         }
+        if (closed) break;
       }
+      if (!closed) throw new Error(t("buildTab.interrupted"));
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
         onStateChange("error");

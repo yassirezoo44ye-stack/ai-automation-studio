@@ -32,16 +32,20 @@ function getRefreshFn(): RefreshFn | undefined {
   return (window as unknown as Record<string, RefreshFn | undefined>).__axon_refresh_fn;
 }
 
-function buildHeaders(path: string, init?: RequestInit): Record<string, string> {
+function buildHeaders(init?: RequestInit): Record<string, string> {
   const jwt = getJwt();
   const orgId = getOrgId();
-  return {
+  const headers: Record<string, string> = {
     "X-Sub-Token": getToken(),
     ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
     ...(orgId ? { "X-Organization-Id": orgId } : {}),
     ...(init?.body != null && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
-    ...(init?.headers as Record<string, string> ?? {}),
   };
+  new Headers(init?.headers).forEach((value, key) => {
+    const existing = Object.keys(headers).find(name => name.toLowerCase() === key);
+    headers[existing ?? key] = value;
+  });
+  return headers;
 }
 
 /**
@@ -59,7 +63,10 @@ function buildHeaders(path: string, init?: RequestInit): Record<string, string> 
  * the retried request also comes back 401.
  */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${API}${path}`, { ...init, headers: buildHeaders(path, init) });
+  const initialJwt = getJwt();
+  const initialSubToken = getToken();
+  const headers = buildHeaders(init);
+  const res = await fetch(`${API}${path}`, { ...init, headers });
 
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
     let expired = false;
@@ -74,16 +81,28 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
       // Non-JSON or empty 401 body — not our refreshable shape.
     }
     if (expired) {
+      // Explicit credentials for another identity must never be replaced by
+      // this browser session. authH() snapshots, however, are session-owned.
+      const authorization = new Headers(headers).get("Authorization");
+      if (authorization && authorization !== `Bearer ${initialJwt}`) return res;
+      init?.signal?.throwIfAborted();
       const refresh = getRefreshFn();
       const { token } = (await refresh?.()) ?? { token: null };
       if (token) {
-        // Callers that pass headers: authH() captured the stale token in
-        // init.headers, which buildHeaders spreads last — put the fresh
-        // credentials back on top so the retry doesn't repeat the 401.
-        const headers = buildHeaders(path, init);
-        headers["Authorization"] = `Bearer ${getJwt() || token}`;
-        headers["X-Sub-Token"] = getToken();
-        return fetch(`${API}${path}`, { ...init, headers });
+        init?.signal?.throwIfAborted();
+        const currentJwt = getJwt();
+        if (currentJwt !== initialJwt && currentJwt !== token) return res;
+        const retryHeaders = { ...headers };
+        const replace = (name: string, value: string) => {
+          const old = Object.keys(retryHeaders).find(key => key.toLowerCase() === name.toLowerCase());
+          retryHeaders[old ?? name] = value;
+        };
+        replace("Authorization", `Bearer ${token}`);
+        if (new Headers(headers).get("X-Sub-Token") === initialSubToken) replace("X-Sub-Token", getToken());
+        // Preserve the original organization and payload even if navigation
+        // changes while the refresh is pending. Only credentials rotate.
+        await res.body?.cancel().catch(() => {});
+        return fetch(`${API}${path}`, { ...init, headers: retryHeaders });
       }
     }
   }

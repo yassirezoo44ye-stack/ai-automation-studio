@@ -1,3 +1,4 @@
+import { readSSE } from "../shared/utils/sse";
 import { loadPrefs } from "../shared/utils/preferences";
 /**
  * CopilotContext — persistent, page-aware AI assistant.
@@ -13,6 +14,7 @@ import { loadPrefs } from "../shared/utils/preferences";
  * resolve_project_id) under a distinct title, so no schema change was
  * needed to keep this separate in spirit from regular AI Workspace chats.
  */
+import { useTranslation } from "react-i18next";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAppContext } from "./app";
@@ -42,6 +44,7 @@ const PAGE_LABELS: Record<Page, string> = {
 };
 
 export function CopilotProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation("common");
   const { page } = useAppContext();
   const { currentOrg } = useOrg();
 
@@ -91,33 +94,22 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
         });
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "", closed = false;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split("\n");
-          buf = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const ev = JSON.parse(line.slice(6)) as { type: string; conv_id?: string; text?: string; message?: string };
-            if (ev.type === "conv_id" && ev.conv_id) {
-              conversationIdRef.current = ev.conv_id;
-            } else if (ev.type === "delta" && ev.text) {
-              setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m));
-            } else if (ev.type === "error") {
-              setError(ev.message ?? "The copilot hit an error.");
-              closed = true;
-              break;
-            } else if (ev.type === "done") {
-              closed = true;
-            }
+        let closed = false;
+        for await (const ev of readSSE<{ type: string; conv_id?: string; text?: string; message?: string }>(res.body)) {
+          if (ev.type === "conv_id" && ev.conv_id) {
+            conversationIdRef.current = ev.conv_id;
+          } else if (ev.type === "delta" && ev.text) {
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m));
+          } else if (ev.type === "error") {
+            setError(ev.message ?? "The copilot hit an error.");
+            closed = true;
+            break;
+          } else if (ev.type === "done") {
+            closed = true;
           }
           if (closed) break;
         }
+        if (!closed) throw new Error(t("stream.interrupted"));
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
           setError((err as Error).message?.includes("fetch") ? "Backend offline." : ((err as Error).message || "Copilot is unavailable right now."));
@@ -127,7 +119,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
         abortRef.current = null;
       }
     })();
-  }, [streaming, page, currentOrg]);
+  }, [streaming, page, currentOrg, t]);
 
   const dismissAction = useCallback(() => setSuggestedAction(null), []);
 

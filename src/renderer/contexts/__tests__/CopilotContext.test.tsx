@@ -153,3 +153,23 @@ describe("CopilotProvider", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("Copilot stream completion", () => {
+  it("keeps a partial reply and reports interruption when the connection ends without done", async () => {
+    vi.mocked(fetch).mockResolvedValue(mockStreamResponse([sseFrame({ type: "delta", text: "Partial answer" })]) as Response);
+    render(<CopilotProvider><Consumer /></CopilotProvider>);
+    fireEvent.click(screen.getByText("ask"));
+    await waitFor(() => expect(screen.getByTestId("streaming")).toHaveTextContent("false"));
+    expect(screen.getByTestId("msg-assistant")).toHaveTextContent("Partial answer");
+    expect(screen.getByTestId("error").textContent).not.toBe("");
+  });
+
+  it("accepts the final done event even without its trailing newline", async () => {
+    vi.mocked(fetch).mockResolvedValue(mockStreamResponse([sseFrame({ type: "delta", text: "Complete answer" }), 'data: {"type":"done"}']) as Response);
+    render(<CopilotProvider><Consumer /></CopilotProvider>);
+    fireEvent.click(screen.getByText("ask"));
+    await waitFor(() => expect(screen.getByTestId("streaming")).toHaveTextContent("false"));
+    expect(screen.getByTestId("msg-assistant")).toHaveTextContent("Complete answer");
+    expect(screen.getByTestId("error")).toHaveTextContent(/^$/);
+  });
+});

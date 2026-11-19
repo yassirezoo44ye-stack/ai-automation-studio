@@ -1,3 +1,4 @@
+import { readSSE } from "../../../shared/utils/sse";
 import { loadPrefs } from "../../../shared/utils/preferences";
 import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
@@ -256,37 +257,27 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "", closed = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === "conv_id" && !activeConv) {
-            // Claim this id for the messages already in local state *before*
-            // flipping activeConv, so the messages-loading effect (keyed on
-            // activeConv) sees them as already in sync and never shows a
-            // loading state over the reply that's actively streaming in.
-            setMessagesConvId(ev.conv_id);
-            setActiveConv(ev.conv_id);
-            loadConvs();
-          }
-          else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
-          else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
-          else if (ev.type === "done")   { loadConvs(); closed = true; }
+      let closed = false;
+      for await (const ev of readSSE<{ type: string; conv_id?: string; text?: string; message?: string }>(res.body)) {
+        if (ev.type === "conv_id" && ev.conv_id && !activeConv) {
+          // Claim this id for the messages already in local state *before*
+          // flipping activeConv, so the messages-loading effect (keyed on
+          // activeConv) sees them as already in sync and never shows a
+          // loading state over the reply that's actively streaming in.
+          setMessagesConvId(ev.conv_id);
+          setActiveConv(ev.conv_id);
+          loadConvs();
         }
+        else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
+        else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
+        else if (ev.type === "done")   { loadConvs(); closed = true; }
         if (closed) break;
       }
+      if (!closed) throw new Error(t("chatTab.messages.interrupted"));
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
         const msg = (err as Error).message ?? "";
-        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg }) } : m));
+        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + (msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg })) } : m));
       }
     } finally { setStreaming(false); abortRef.current = null; }
   }
