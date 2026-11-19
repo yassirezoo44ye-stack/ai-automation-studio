@@ -621,9 +621,8 @@ async def _package_docker(ws, safe_name, app_name, app_version, log, done, err, 
     SKIP_EXTS = {".pyc", ".pyo", ".log", ".tmp"}
 
     all_files: list[Path] = []
-    for p in ws.rglob("*"):
-        if p.is_dir():
-            continue
+    from app.core.source_export import source_files
+    for p in source_files(ws):
         rel = p.relative_to(ws)
         if any(part in SKIP_DIRS for part in rel.parts):
             continue

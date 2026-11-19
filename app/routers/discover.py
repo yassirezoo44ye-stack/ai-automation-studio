@@ -217,16 +217,16 @@ async def public_discover_feed(
     async with pool.acquire() as conn:
         if type:
             rows = await conn.fetch(
-                "SELECT * FROM flow_creations "
-                "WHERE visibility='public' AND type=$1 "
-                "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                "SELECT c.*, u.name AS creator_name FROM flow_creations c LEFT JOIN users u ON u.id=c.created_by_user_id "
+                "WHERE c.visibility='public' AND c.type=$1 "
+                "ORDER BY c.created_at DESC LIMIT $2 OFFSET $3",
                 type.upper(), limit, offset,
             )
         else:
             rows = await conn.fetch(
-                "SELECT * FROM flow_creations "
-                "WHERE visibility='public' "
-                "ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+                "SELECT c.*, u.name AS creator_name FROM flow_creations c LEFT JOIN users u ON u.id=c.created_by_user_id "
+                "WHERE c.visibility='public' "
+                "ORDER BY c.created_at DESC LIMIT $1 OFFSET $2",
                 limit, offset,
             )
         liked_ids: set[str] = set()
@@ -357,7 +357,7 @@ async def get_creation(request: Request, creation_id: str):
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT * FROM flow_creations WHERE id=$1", creation_id
+            "SELECT c.*, u.name AS creator_name FROM flow_creations c LEFT JOIN users u ON u.id=c.created_by_user_id WHERE c.id=$1", creation_id
         )
     if row is None:
         raise HTTPException(status_code=404, detail="Creation not found")
@@ -544,8 +544,10 @@ async def clone_creation(request: Request, creation_id: str):
                 )
             new_source_id = cloned_app.get("id") if cloned_app else None
         except Exception:
-            # Clone service unavailable — create card without source link
-            new_source_id = None
+            raise HTTPException(409, "Source duplication is unavailable; no project or placeholder card was created.") from None
+
+    if d.get("source_type") != "APP" or not new_source_id or new_source_id == d.get("source_id"):
+        raise HTTPException(409, "This published item cannot be duplicated as a runnable resource yet.")
 
     # Insert a new creation card in the caller's org
     async with pool.acquire() as conn:

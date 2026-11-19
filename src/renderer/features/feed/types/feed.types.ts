@@ -16,6 +16,7 @@ export type FeedTab = "for-you" | "following" | "explore";
 
 /** The CTA action type — drives both label and navigator */
 export type CTAType =
+  | "view-creation"
   | "build-app"
   | "use-automation"
   | "build-agent"

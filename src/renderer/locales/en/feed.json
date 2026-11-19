@@ -1,4 +1,12 @@
 {
+  "realFeed": {
+  "interactionError": "Could not save this interaction. Please retry.",
+  "view": "View published item",
+  "publisher": "Publisher",
+  "unnamed": "Creator without a display name",
+  "scope": "Project details as published by its creator, with the display name and publication date.",
+  "close": "Close"
+},
   "page": {
     "ariaLabel": "Flow Feed",
     "feedLabel": "Content feed"

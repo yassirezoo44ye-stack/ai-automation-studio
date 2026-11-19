@@ -46,20 +46,11 @@ async def deploy_handler(ctx: CommandContext) -> CommandResult:
         from app.commands.builtin.build_cmd import build_handler
         return await build_handler(ctx)
 
-    # All other targets are scaffolded — emit a plan
-    lines = [
-        f"── Deploy Plan: {ws.name} → {target} ─────────────────────",
-        f"  Target      : {target}",
-        f"  Description : {_TARGETS[target]}",
-        f"  Workspace   : {ws}",
-        "",
-        "  This target is a scaffold.  Install the corresponding deploy",
-        f"  plugin (e.g. plugins/deploy-{target}.py) to enable it.",
-    ]
-    return CommandResult.ok(
+    return CommandResult.fail(
         "deploy",
-        output="\n".join(lines),
-        data={"workspace": str(ws), "target": target, "status": "scaffold"},
+        f"Deployment to {target} is unavailable: no deployment driver is installed. Nothing was published.",
+        "DEPLOY_DRIVER_UNAVAILABLE",
+        suggestions=["Export the project as ZIP or configure a verified deployment integration."],
     )
 
 

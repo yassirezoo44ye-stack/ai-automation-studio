@@ -20,6 +20,7 @@ export type BuildPlan = {
   agents: string[];
   workflows: string[];
   integrations: string[];
+  delivery_contract?: string;
   estimated_files: number;
   complexity: "simple" | "moderate" | "complex";
 };
