@@ -35,6 +35,9 @@ rl_store: dict[str, list[float]] = defaultdict(list)
 # key ever seen".
 _last_gc: float = 0.0
 _GC_INTERVAL = 300.0  # sweep at most once per 5 minutes
+# Retain the longest window used for each key so a shorter-window request
+# cannot prematurely evict another key's active rate-limit history.
+_key_windows: dict[str, int] = {}
 
 
 def _maybe_gc(now: float, window: int) -> None:
@@ -42,14 +45,19 @@ def _maybe_gc(now: float, window: int) -> None:
     if now - _last_gc < _GC_INTERVAL:
         return
     _last_gc = now
-    dead = [k for k, ts in rl_store.items() if not any(now - t < window for t in ts)]
+    dead = [
+        k for k, ts in rl_store.items()
+        if not any(now - t < _key_windows.get(k, window) for t in ts)
+    ]
     for k in dead:
         del rl_store[k]
+        _key_windows.pop(k, None)
 
 
 def check_rate_limit(key: str, max_calls: int = 10, window: int = 60) -> bool:
     """Return True if the call is allowed; False if the limit is exceeded."""
     now = time.time()
+    _key_windows[key] = max(window, _key_windows.get(key, 0))
     _maybe_gc(now, window)
     rl_store[key] = [t for t in rl_store[key] if now - t < window]
     if len(rl_store[key]) >= max_calls:
@@ -179,6 +187,8 @@ async def check_login_locked_async(email: str) -> bool:
         log.debug("check_login_locked redis fallback: %s", exc)
     # In-process fallback
     now = time.time()
+    _key_windows[key] = _LOGIN_FAIL_WINDOW
+    _maybe_gc(now, _LOGIN_FAIL_WINDOW)
     rl_store[key] = [t for t in rl_store[key] if now - t < _LOGIN_FAIL_WINDOW]
     return len(rl_store[key]) >= _LOGIN_FAIL_MAX
 
@@ -188,6 +198,8 @@ async def record_login_failure_async(email: str) -> None:
     key = f"login_fail:{email.lower()}"
     rkey = f"rl:{key}"
     now = time.time()
+    _key_windows[key] = _LOGIN_FAIL_WINDOW
+    _maybe_gc(now, _LOGIN_FAIL_WINDOW)
     rl_store[key] = [t for t in rl_store[key] if now - t < _LOGIN_FAIL_WINDOW]
     rl_store[key].append(now)
     try:
@@ -204,6 +216,7 @@ async def clear_login_failures_async(email: str) -> None:
     key = f"login_fail:{email.lower()}"
     rkey = f"rl:{key}"
     rl_store.pop(key, None)
+    _key_windows.pop(key, None)
     try:
         from app.core.cache import get_redis
         cache = await get_redis()

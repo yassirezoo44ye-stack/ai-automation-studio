@@ -492,7 +492,7 @@ class TestBuildStreamI18N(unittest.IsolatedAsyncioTestCase):
             return_value=_StreamChunks([
                 # Must include at least one file or the router emits an error
                 # instead of done ("Claude did not produce any files").
-                {"type": "delta", "text": "<<<FILE: main.py>>>\nprint('ok')\n<<<ENDFILE>>>\n"},
+                {"type": "delta", "text": "<<<FILE: main.py>>>\nfrom fastapi import FastAPI\nimport sqlite3\napp = FastAPI()\nconnection = sqlite3.connect('app.sqlite3')\n<<<ENDFILE>>>\n<<<FILE: index.html>>>\n<main>CRM</main>\n<<<ENDFILE>>>\n<<<FILE: requirements.txt>>>\nfastapi\nuvicorn\n<<<ENDFILE>>>\n"},
                 {"type": "delta", "text": "<<<META>>>\n"},
                 {"type": "delta", "text": '{"description":"ok","run_command":"python main.py","language":"python"}\n'},
                 {"type": "delta", "text": "<<<ENDMETA>>>\n"},

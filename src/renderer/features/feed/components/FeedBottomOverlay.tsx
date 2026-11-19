@@ -3,6 +3,7 @@ import type { FeedItem } from "../types/feed.types";
 
 /** Map ctaType → i18n key in feed.json `cta.*` namespace */
 const CTA_I18N_KEY: Record<string, string> = {
+  "view-creation": "realFeed.view",
   "build-app":      "cta.buildApp",
   "use-automation": "cta.useAutomation",
   "build-agent":    "cta.buildAgent",
@@ -39,7 +40,7 @@ export function FeedBottomOverlay({ item, onBuild }: FeedBottomOverlayProps) {
     <div className="feed-bottom-overlay">
       {/* Creator row */}
       <div className="feed-bottom-overlay__creator">
-        <span className="feed-bottom-overlay__handle">{item.creator.handle}</span>
+        <span className="feed-bottom-overlay__handle">{item.creator.handle || t("realFeed.publisher")}</span>
         <span
           className="feed-bottom-overlay__type-badge"
           style={{ background: TYPE_COLORS[item.type] ?? "var(--accent)" }}

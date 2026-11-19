@@ -74,14 +74,13 @@ class TestStepDispatcher(unittest.TestCase):
             self.assertEqual(result["status"], "noop")
         asyncio.run(_t())
 
-    def test_unknown_kind_is_noop(self):
+    def test_unknown_kind_fails_without_claiming_execution(self):
         from app.core.workflow.automation_scheduler import _make_step_fn
         async def _t():
             fn = _make_step_fn("http_request", {"id": "s2"})
             self.assertTrue(inspect.iscoroutinefunction(fn))
-            result = await fn()
-            self.assertEqual(result["kind"], "http_request")
-            self.assertEqual(result["status"], "noop")
+            with self.assertRaisesRegex(ValueError, "Unsupported automation step"):
+                await fn()
         asyncio.run(_t())
 
     def test_approval_kind_is_coroutine_fn(self):

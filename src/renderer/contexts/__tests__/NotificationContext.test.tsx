@@ -1,5 +1,6 @@
 import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { StrictMode } from "react";
 import { NotificationProvider } from "../NotificationContext";
 import { useNotifications, type Notification } from "../notifications";
 
@@ -55,16 +56,20 @@ function defaultApiJSON() {
 }
 
 function Consumer() {
-  const { notifications, unreadCount, status, markRead, markAllRead, archive, remove } = useNotifications();
+  const { notifications, unreadCount, status, error, mutedCategories, preferencesLoaded, setMuted, refetch, markRead, markAllRead, archive, remove } = useNotifications();
   return (
     <div>
       <div data-testid="status">{status}</div>
       <div data-testid="unread">{unreadCount}</div>
+      <div data-testid="error">{error}</div>
+      <div data-testid="muted">{mutedCategories.join(",")}</div>
+      <button disabled={!preferencesLoaded} onClick={() => setMuted("workflow", true)}>mute-workflow</button>
       <ul>
         {notifications.map(n => (
           <li key={n.id} data-testid={`n-${n.id}`}>{n.title}:{n.read_status ? "read" : "unread"}</li>
         ))}
       </ul>
+      <button onClick={refetch}>reload-inbox</button>
       <button onClick={() => markRead("n1")}>mark-read-n1</button>
       <button onClick={markAllRead}>mark-all-read</button>
       <button onClick={() => archive("n1")}>archive-n1</button>
@@ -107,7 +112,7 @@ describe("NotificationProvider", () => {
     expect(screen.getByTestId("n-n1")).toHaveTextContent("Workflow done:unread");
   });
 
-  it("markRead optimistically flips read_status and decrements unread count", async () => {
+  it("markRead confirms the server change before updating read status and count", async () => {
     apiJSONMock.mockImplementation((path: string) => {
       if (path.startsWith("/api/notifications/unread-count")) return Promise.resolve({ unread_count: 1 });
       if (path.startsWith("/api/notifications/preferences")) return Promise.resolve({ muted_categories: [] });
@@ -397,4 +402,104 @@ describe("NotificationProvider — ticket-based WS authentication", () => {
 
     vi.useRealTimers();
   }, 10000);
+});
+
+
+describe("NotificationProvider — server-confirmed changes", () => {
+  function inboxResponse(path: string) {
+    if (path.endsWith("/unread-count")) return Promise.resolve({ unread_count: 1 });
+    if (path.endsWith("/preferences")) return Promise.resolve({ muted_categories: [] });
+    return Promise.resolve({ notifications: [makeNotification()], has_more: false });
+  }
+
+  it("keeps the item unread while a save is pending and after a rejected save", async () => {
+    let rejectRead!: (error: Error) => void;
+    apiJSONMock.mockImplementation((path: string) => path.endsWith("/n1/read")
+      ? new Promise((_resolve, reject) => { rejectRead = reject; }) : inboxResponse(path));
+    render(<NotificationProvider><Consumer /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByTestId("n-n1")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("mark-read-n1"));
+    expect(screen.getByTestId("n-n1")).toHaveTextContent("unread");
+    expect(screen.getByTestId("unread")).toHaveTextContent("1");
+    await act(async () => rejectRead(new Error("Save rejected")));
+    await waitFor(() => expect(screen.getByTestId("error").textContent).not.toBe(""));
+    expect(screen.getByTestId("n-n1")).toHaveTextContent("unread");
+    expect(screen.getByTestId("unread")).toHaveTextContent("1");
+  });
+
+  it("does not hide an item when the authenticated delete request fails", async () => {
+    apiJSONMock.mockImplementation(inboxResponse);
+    apiFetchMock.mockImplementation((path: string) => Promise.resolve(path.includes("/api/notifications/")
+      ? { ok: false, status: 403 } : { ok: true, json: async () => ({ ticket: "ticket" }) }));
+    render(<NotificationProvider><Consumer /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByTestId("n-n1")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("remove-n1"));
+    await waitFor(() => expect(screen.getByTestId("error").textContent).not.toBe(""));
+    expect(screen.getByTestId("n-n1")).toBeInTheDocument();
+    expect(apiFetchMock).toHaveBeenCalledWith("/api/notifications/n1", { method: "DELETE" });
+  });
+
+  it("keeps preferences unchanged when saving fails", async () => {
+    apiJSONMock.mockImplementation((path: string, init?: RequestInit) => init?.method === "PUT"
+      ? Promise.reject(new Error("Save rejected")) : inboxResponse(path));
+    render(<NotificationProvider><Consumer /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByText("mute-workflow")).toBeEnabled());
+    fireEvent.click(screen.getByText("mute-workflow"));
+    await waitFor(() => expect(screen.getByTestId("error").textContent).not.toBe(""));
+    expect(screen.getByTestId("muted")).toBeEmptyDOMElement();
+  });
+
+  it("sends one preference mutation under StrictMode and uses the confirmed response", async () => {
+    apiJSONMock.mockImplementation((path: string, init?: RequestInit) => init?.method === "PUT"
+      ? Promise.resolve({ muted_categories: ["workflow"] }) : inboxResponse(path));
+    render(<StrictMode><NotificationProvider><Consumer /></NotificationProvider></StrictMode>);
+    await waitFor(() => expect(screen.getByText("mute-workflow")).toBeEnabled());
+    fireEvent.click(screen.getByText("mute-workflow"));
+    await waitFor(() => expect(screen.getByTestId("muted")).toHaveTextContent("workflow"));
+    expect(apiJSONMock.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+  });
+});
+
+
+describe("NotificationProvider — stale responses", () => {
+  it("does not restore an unread item from a refresh that predates a confirmed read", async () => {
+    let listRequests = 0;
+    let finishRefresh!: (value: unknown) => void;
+    apiJSONMock.mockImplementation((path: string) => {
+      if (path.endsWith("/n1/read")) return Promise.resolve({ ok: true });
+      if (path.endsWith("/unread-count")) return Promise.resolve({ unread_count: 1 });
+      if (path.endsWith("/preferences")) return Promise.resolve({ muted_categories: [] });
+      if (++listRequests > 1) return new Promise(resolve => { finishRefresh = resolve; });
+      return Promise.resolve({ notifications: [makeNotification()], has_more: false });
+    });
+    render(<NotificationProvider><Consumer /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByTestId("n-n1")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("reload-inbox"));
+    fireEvent.click(screen.getByText("mark-read-n1"));
+    await waitFor(() => expect(screen.getByTestId("unread")).toHaveTextContent("0"));
+    await act(async () => finishRefresh({ notifications: [makeNotification()], has_more: false }));
+    expect(screen.getByTestId("unread")).toHaveTextContent("0");
+    expect(screen.getByTestId("n-n1")).toHaveTextContent("Workflow done:read");
+  });
+
+  it("does not overwrite saved preferences with an older read response", async () => {
+    let preferenceReads = 0;
+    let finishRefresh!: (value: unknown) => void;
+    apiJSONMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === "PUT") return Promise.resolve({ muted_categories: ["workflow"] });
+      if (path.endsWith("/preferences")) {
+        if (++preferenceReads > 1) return new Promise(resolve => { finishRefresh = resolve; });
+        return Promise.resolve({ muted_categories: [] });
+      }
+      if (path.endsWith("/unread-count")) return Promise.resolve({ unread_count: 0 });
+      return Promise.resolve({ notifications: [], has_more: false });
+    });
+    render(<NotificationProvider><Consumer /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByText("mute-workflow")).toBeEnabled());
+    fireEvent.click(screen.getByText("reload-inbox"));
+    fireEvent.click(screen.getByText("mute-workflow"));
+    await waitFor(() => expect(screen.getByTestId("muted")).toHaveTextContent("workflow"));
+    await act(async () => finishRefresh({ muted_categories: [] }));
+    expect(screen.getByTestId("muted")).toHaveTextContent("workflow");
+  });
 });

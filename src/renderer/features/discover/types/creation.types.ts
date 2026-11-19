@@ -12,6 +12,7 @@ export interface FlowCreation {
   id: string;
   organization_id: string;
   created_by_user_id: string | null;
+  creator_name?: string | null;
   type: CreationType;
   title: string;
   description: string | null;

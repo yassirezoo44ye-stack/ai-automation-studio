@@ -1,11 +1,13 @@
 import asyncio
 import io
 import json
+import re
 import logging
 import os as _os
 import shutil
 import time
 import zipfile
+import uuid
 from pathlib import Path
 
 import anthropic
@@ -17,10 +19,14 @@ from pydantic import BaseModel, Field
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id, owner_email
+from app.core.commerce_builder import CONTRACT, is_store_request, store_chunks, store_plan, store_files, validate_store_workspace
+from app.core.build_delivery import validate_delivery
+from app.core.model_preferences import BuildModel, DEFAULT_MODEL
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
 from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
 from app.core.org_quota import check_org_quota, record_org_tokens
+from app.core.source_export import source_files
 from app.core.security import ai_rate_limit
 from app.execution import process_mgr
 from app.execution.runner import run_stream, run_sync
@@ -28,21 +34,9 @@ import contextlib
 
 log = logging.getLogger(__name__)
 
-# ── Dev / owner account ───────────────────────────────────────────────────────
-#
-# The dev account bypasses Anthropic credits by routing to DevMockProvider,
-# a free in-process provider.  This is NOT a billing bypass — it is a
-# legitimate alternative provider, identical in principle to LocalProvider.
-#
-# Security properties:
-#   • The email is resolved from the HMAC-verified auth token (owner_email()),
-#     not from the request body or any header the caller controls.
-#   • Routing to dev_mock does NOT escalate permissions — tenancy, RLS,
-#     project ownership, rate limits, and org quota all apply unchanged.
-#   • Normal users are NEVER routed to dev_mock; this code path is only
-#     reached when the authenticated identity exactly matches _DEV_ACCOUNT.
-#
-# Keep this in sync with tests/test_dev_mode.py's _DEV_ACCOUNT constant.
+# Existing owner quota policy. This identity check does not select a mock
+# provider and never replaces authentication or project ownership checks.
+# Keep the identity constant in sync with tests/test_dev_mode.py.
 _DEV_ACCOUNT: str = _os.getenv("DEV_ACCOUNT_EMAIL", "yassirezoo44.ye@gmail.com")
 
 
@@ -65,6 +59,7 @@ def _is_dev_account(request: Request) -> bool:
 
 router = APIRouter(tags=["build"])
 
+
 BUILD_SYSTEM = """You are an expert software engineer and code generator.
 When the user asks you to build something, respond ONLY with a valid JSON object (no markdown, no explanation outside the JSON).
 
@@ -83,7 +78,7 @@ Rules:
 - Use relative paths only, never absolute
 - Make programs self-contained and runnable
 - For Python: include a requirements.txt if needed
-- For web apps: use a single index.html with embedded CSS/JS
+- Use a static HTML page only for explicitly static sites. Stores and transactional apps require a real backend and persistence.
 - Write clean, working, production-quality code
 """
 
@@ -102,7 +97,8 @@ Rules:
 - Use relative paths only (e.g. src/main.py, not /app/src/main.py).
 - Write COMPLETE file content — never use "..." or "# add more here".
 - Write clean, secure code: validate inputs, parameterise SQL, escape output.
-- For simple projects: one index.html with inline CSS/JS is fine.
+- A single static HTML file is allowed only for explicitly static sites. Stores, accounts, payments, inventory and orders require a real backend, database and authorization; never simulate them with localStorage.
+- External services must be labeled unconfigured until connected. Never claim income, payment success or deployment without evidence.
 - For Python: include requirements.txt when 3rd-party packages are needed.
 - For Node: place package.json at the WORKSPACE ROOT (never inside backend/ or server/). Always include a "start" script, e.g. {"scripts": {"start": "node src/server.js"}}. Only create backend/ or frontend/ subdirectories when the user explicitly requests a split frontend+backend architecture.
 - For Node entry points: use src/server.js or server.js (not backend/src/server.js).
@@ -161,26 +157,7 @@ class _BuildParser:
         return None
 
 
-async def _dev_mock_chunks(provider, request_obj):
-    """
-    Adapt DevMockProvider.stream() (yields StreamChunk objects) to the dict
-    format consumed by build_stream's event_stream() (which expects dicts with
-    keys "type", "text", "usage", "error").
 
-    This thin adapter keeps the event_stream loop generic — it works unchanged
-    whether the source is InferenceEngine (already yields dicts) or DevMockProvider.
-    """
-    async for sc in provider.stream(request_obj):
-        if sc.type == "delta":
-            yield {"type": "delta", "text": sc.text or ""}
-        elif sc.type == "usage" and sc.usage:
-            yield {"type": "usage", "usage": {
-                "total_tokens": sc.usage.total_tokens,
-            }}
-        elif sc.type == "done":
-            yield {"type": "done"}
-        elif sc.type == "error":
-            yield {"type": "error", "error": getattr(sc, "error", "dev_mock error")}
 
 
 class PlanRequest(BaseModel):
@@ -217,6 +194,7 @@ Be concise and realistic. Do not invent features not implied by the request."""
 
 
 class BuildRequest(BaseModel):
+    model: BuildModel = DEFAULT_MODEL
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=10000)
     # Optional: approved BuildPlan from /api/build/plan.
@@ -252,9 +230,22 @@ async def build_program(req: BuildRequest, request: Request):
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, req.project_id, uid)
 
+    if is_store_request(req.prompt):
+        if req.plan and req.plan != store_plan():
+            raise HTTPException(409, "Regenerate and approve the supported runnable store plan.")
+        ws = workspace(req.project_id)
+        validate_store_workspace(ws)
+        for path, content in store_files().items():
+            dest = safe_path(ws, path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(dest.write_text, content, 'utf-8')
+        return {"delivery": validate_delivery(req.prompt, store_plan(), store_files(), "python main.py"),
+                "description": store_plan()["description"], "files": list(store_files()),
+                "run_command": "python main.py", "language": "python", "workspace": str(ws)}
+
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
-        model="claude-sonnet-4-6",
+        model=req.model,
         max_tokens=16000,
         temperature=1.0,  # match Anthropic's own API default (see chat.py's migration for why)
         system=BUILD_SYSTEM,
@@ -284,6 +275,8 @@ async def build_program(req: BuildRequest, request: Request):
     except json.JSONDecodeError:
         raise HTTPException(502, f"Claude returned non-JSON: {raw[:200]}") from None
 
+    delivered = {f['path']: f['content'] for f in result.get('files', [])}
+    delivery = validate_delivery(req.prompt, req.plan, delivered, result.get('run_command', ''))
     ws = workspace(req.project_id)
     written = []
     for f in result.get("files", []):
@@ -299,6 +292,7 @@ async def build_program(req: BuildRequest, request: Request):
         )
 
     return {
+        "delivery": delivery,
         "description": result.get("description", ""),
         "files": written,
         "run_command": result.get("run_command", ""),
@@ -332,13 +326,13 @@ def _build_prompt_with_plan(prompt: str, plan: dict | None) -> str:
     """
     Inject an approved BuildPlan JSON into the code-generation prompt.
 
-    When plan is non-empty, the code generator (Claude or DevMockProvider) receives
+    When plan is non-empty, the code generator (the real inference provider) receives
     the exact pages, DB tables, API routes, agents, and workflows the user reviewed
     and approved via the Build Plan panel — so generated files match the approved
     design instead of free-form prompt interpretation.
 
     This is called AFTER _build_prompt_with_spec so both validated spec and approved
-    plan are available to the generator.  The plan XML wrapper lets DevMockProvider
+    plan are available to the generator.  The plan XML wrapper lets the generator
     detect it and branch into plan-based multi-file generation.
     """
     if not plan:
@@ -368,7 +362,7 @@ async def build_stream(req: BuildRequest, request: Request):
     from app.core.reliability import get_bulkhead
     bulkhead = get_bulkhead("build", 8)
     ai_rate_limit(request, max_calls=10, window=60)
-    # Owner/dev account: skip platform quota check — routes to free dev_mock provider
+    # Preserve the existing owner quota policy; generation always uses a real provider.
     dev_mode = _is_dev_account(request)
     if not dev_mode:
         org_id = await check_org_quota(request)
@@ -382,6 +376,14 @@ async def build_stream(req: BuildRequest, request: Request):
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, req.project_id, uid)
 
+    commerce = is_store_request(req.prompt) or (req.plan or {}).get("delivery_contract") == CONTRACT
+    if commerce:
+        expected = store_plan()
+        if req.plan and req.plan != expected:
+            raise HTTPException(409, "Regenerate and approve the runnable store plan: this plan uses another stack or external services not included in the cash-on-delivery scaffold.")
+        ws = workspace(req.project_id)
+        validate_store_workspace(ws)
+
     async def event_stream():
         # Slot held for the whole stream (handler returns before tokens flow).
         try:
@@ -391,8 +393,8 @@ async def build_stream(req: BuildRequest, request: Request):
             yield _sse("error", message="Server is at capacity — please retry shortly.")
             return
         try:
-            if dev_mode:
-                yield _sse("status", message="✨ جارٍ إنشاء تطبيقك…")
+            if commerce:
+                yield _sse("status", message="Creating the runnable store scaffold and database-backed API…")
             else:
                 yield _sse("status", message="🤖 جارٍ الاتصال بـ Claude…")
 
@@ -401,10 +403,10 @@ async def build_stream(req: BuildRequest, request: Request):
             # routing, cost tracking, and context budgeting apply automatically.
             # The structured spec (entity names, column types, pages, roles) is
             # injected into Claude's code-gen prompt as <validated_app_spec> XML.
-            # Skipped for dev-mock (no credits needed) and on any error (graceful
+            # Skipped for deterministic commerce and on any error (graceful
             # degradation — raw prompt is used instead, identical to pre-P0 behaviour).
             _spec_context = ""
-            if not dev_mode:
+            if not commerce:
                 try:
                     from app.services.app_builder import get_app_builder_service
                     _svc = get_app_builder_service(get_pool())
@@ -436,33 +438,16 @@ async def build_stream(req: BuildRequest, request: Request):
                         _spec_exc,
                     )
 
-            if dev_mode:
-                # Free in-process provider — no Anthropic credits consumed.
-                # Inject approved plan (when present) so DevMockProvider can
-                # branch into plan-based multi-file generation instead of the
-                # keyword-template path that only produced 2 files.
-                from app.ai.providers.dev_mock import DevMockProvider
-                _provider = DevMockProvider()
-                _dev_content = _build_prompt_with_plan(req.prompt, req.plan)
-                request_obj = CompletionRequest(
-                    messages=[Message(role="user", content=_dev_content)],
-                    model="dev-mock-v2",
-                    max_tokens=8192,
-                    system=BUILD_UNIFIED_SYSTEM,
-                    conversation_id=None,
-                    prompt_id=None,
-                    memory_enabled=False,
-                    tools=None,
-                    stream=True,
-                )
-                chunk_source = _dev_mock_chunks(_provider, request_obj)
+            if commerce:
+                yield _sse("status", message="Creating runnable storefront, API and persistent SQLite database (cash on delivery).")
+                chunk_source = store_chunks()
             else:
                 # P0-A spec context + approved plan both injected for real Claude.
                 _base_prompt = _build_prompt_with_spec(req.prompt, _spec_context)
                 _final_content = _build_prompt_with_plan(_base_prompt, req.plan)
                 request_obj = CompletionRequest(
                     messages=[Message(role="user", content=_final_content)],
-                    model="claude-sonnet-4-6",
+                    model=req.model,
                     max_tokens=8192,
                     temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
                     system=BUILD_UNIFIED_SYSTEM,
@@ -483,6 +468,7 @@ async def build_stream(req: BuildRequest, request: Request):
             last_heartbeat = time.time()
             stream_error: str | None = None
             total_tokens = 0
+            delivered: dict[str, str] = {}
 
             async for chunk in chunk_source:
                 ctype = chunk.get("type")
@@ -509,6 +495,7 @@ async def build_stream(req: BuildRequest, request: Request):
                             yield _sse("status", message=f"✍️ Writing {data}…")
                         elif etype == "file_done":
                             path, content = data
+                            delivered[path] = content
                             dest = safe_path(ws, path)
                             dest.parent.mkdir(parents=True, exist_ok=True)
                             await asyncio.to_thread(dest.write_text, content, "utf-8")
@@ -533,6 +520,7 @@ async def build_stream(req: BuildRequest, request: Request):
                 event = parser.feed(buf)
                 if event and event[0] == "file_done":
                     path, content = event[1]
+                    delivered[path] = content
                     dest = safe_path(ws, path)
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     await asyncio.to_thread(dest.write_text, content, "utf-8")
@@ -548,7 +536,15 @@ async def build_stream(req: BuildRequest, request: Request):
                 with contextlib.suppress(Exception):
                     meta = json.loads("\n".join(parser.meta_lines))
 
-            yield _sse("done",
+            if parser.state != "done":
+                yield _sse("error", message="Build incomplete: generation ended before all files and startup metadata were delivered.")
+                return
+            try:
+                delivery = validate_delivery(req.prompt, req.plan, delivered, meta.get("run_command", ""))
+            except HTTPException as exc:
+                yield _sse("error", message=exc.detail)
+                return
+            yield _sse("done", delivery=delivery,
                        description=meta.get("description", ""),
                        files=parser.completed_files,
                        run_command=meta.get("run_command", ""),
@@ -610,6 +606,9 @@ async def build_plan(req: PlanRequest, request: Request):
     else:
         org_id = None
 
+    if is_store_request(req.prompt):
+        return {"plan": store_plan()}
+
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
         model="claude-haiku-4-5-20251001",
@@ -661,6 +660,39 @@ async def _require_project_owner(project_id: str, request: Request) -> None:
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
         await resolve_project_id(conn, project_id, uid)
+
+
+@router.get("/api/projects/{project_id}/commerce")
+async def commerce_project(project_id: str, request: Request):
+    await _require_project_owner(project_id, request)
+    manifest = safe_path(workspace(project_id), ".flow-commerce.json")
+    if not manifest.is_file() or manifest.stat().st_size > 2000:
+        raise HTTPException(404, "Not a Flow commerce scaffold")
+    try:
+        data = json.loads(await asyncio.to_thread(manifest.read_text, encoding="utf-8"))
+    except (ValueError, OSError):
+        raise HTTPException(404, "Invalid commerce manifest") from None
+    if not isinstance(data, dict) or data.get("delivery_contract") != CONTRACT:
+        raise HTTPException(404, "Invalid commerce contract")
+    ws = workspace(project_id)
+    if not all(safe_path(ws, name).is_file() for name in ("main.py", "index.html", "assets/app.js", "assets/style.css", "requirements.txt")):
+        raise HTTPException(409, "Store build is incomplete")
+    running = process_mgr.get_running(project_id) is not None
+    return {"delivery_contract": CONTRACT, "files": sum(safe_path(ws, name).is_file() for name in store_files()),
+            "running": running, "preview_url": f"/api/projects/{project_id}/proxy/" if running else None}
+
+
+@router.get("/api/projects/{project_id}/store-setup")
+async def store_owner_setup(project_id: str, request: Request):
+    await _require_project_owner(project_id, request)
+    secret = safe_path(workspace(project_id), "data/owner-setup.txt")
+    if not secret.is_file() or secret.is_symlink() or secret.stat().st_size > 200:
+        raise HTTPException(404, "Run the store first. Setup disappears after the owner is configured.")
+    token = await asyncio.to_thread(secret.read_text, encoding="utf-8")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32,100}", token.strip()):
+        raise HTTPException(404, "No valid store setup token")
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"token": token.strip()}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/projects/{project_id}/files")
@@ -749,9 +781,8 @@ async def download_workspace(project_id: str, request: Request):
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in sorted(ws.rglob("*")):
-            if p.is_file():
-                zf.write(p, p.relative_to(ws))
+        for p in source_files(ws):
+            zf.write(p, p.relative_to(ws))
     buf.seek(0)
 
     name = f"project-{project_id[:8]}.zip"
@@ -846,6 +877,10 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
     The server listens on an internal port; this route exposes it to the browser.
     """
     await _require_project_owner(project_id, request)
+    try:
+        cookie_project_id = str(uuid.UUID(project_id))
+    except ValueError:
+        raise HTTPException(400, "Invalid project_id") from None
     rp = process_mgr.get_running(project_id)
     if rp is None:
         raise HTTPException(503, detail={
@@ -863,11 +898,20 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
     # Forward headers except hop-by-hop
     _HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate",
                    "proxy-authorization", "te", "trailer", "transfer-encoding",
-                   "upgrade", "host"}
+                   "upgrade", "host", "authorization", "x-sub-token", "x-organization-id", "x-flow-preview-origin", "x-flow-store-preview", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip", "forwarded"}
     fwd_headers = {
         k: v for k, v in request.headers.items()
         if k.lower() not in _HOP_BY_HOP
     }
+    # The gateway authenticates ownership, then never shares Flow credentials
+    # with generated code. A store may trust this origin only from loopback.
+    fwd_headers["x-flow-preview-origin"] = (request.headers.get("origin") or str(request.base_url)).rstrip("/")
+    if request.headers.get("x-flow-store-preview") == "1":
+        from http.cookies import SimpleCookie
+        cookies = SimpleCookie(request.headers.get("cookie", ""))
+        fwd_headers.pop("cookie", None)
+        if "flow_store_session" in cookies:
+            fwd_headers["cookie"] = "flow_store_session=" + cookies["flow_store_session"].value
     body_bytes = await request.body()
 
     try:
@@ -883,11 +927,19 @@ async def proxy_to_project(project_id: str, path: str, request: Request):
             k: v for k, v in resp.headers.items()
             if k.lower() not in _HOP_BY_HOP
         }
-        return Response(
-            content=resp.content,
-            status_code=resp.status_code,
-            headers=resp_headers,
-        )
+        # Each preview has its own cookie scope; a store login cannot replace
+        # another project's session. Preserve repeated Set-Cookie headers.
+        resp_headers.pop("set-cookie", None)
+        response = Response(content=resp.content, status_code=resp.status_code, headers=resp_headers)
+        from http.cookies import SimpleCookie
+        for header in resp.headers.get_list("set-cookie"):
+            parsed = SimpleCookie()
+            parsed.load(header)
+            for morsel in parsed.values():
+                morsel["path"] = f"/api/projects/{cookie_project_id}/proxy/"
+                morsel["domain"] = ""
+                response.headers.append("set-cookie", morsel.OutputString())
+        return response
     except httpx.ConnectError:
         rp_check = process_mgr.get_running(project_id)
         if rp_check is None:

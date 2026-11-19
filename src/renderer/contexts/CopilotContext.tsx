@@ -1,3 +1,4 @@
+import { loadPrefs } from "../shared/utils/preferences";
 /**
  * CopilotContext — persistent, page-aware AI assistant.
  *
@@ -82,6 +83,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
           headers: authH(),
           body: JSON.stringify({
             project_id: "copilot",
+            model: loadPrefs().chatModel,
             prompt: promptWithContext,
             display_text: trimmed,
             conversation_id: conversationIdRef.current,

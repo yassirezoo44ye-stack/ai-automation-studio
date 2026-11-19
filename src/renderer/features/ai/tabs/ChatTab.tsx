@@ -1,3 +1,4 @@
+import { loadPrefs } from "../../../shared/utils/preferences";
 import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
  * ChatTab — 3-column AI command center.
@@ -282,7 +283,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       const res = await fetch(url, {
         method: "POST", headers: authH(),
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
-          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [], navigation: true, workspace_data: true } : {}) }),
+          ...(!useAgent ? { model: loadPrefs().chatModel, skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [], navigation: true, workspace_data: true } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);

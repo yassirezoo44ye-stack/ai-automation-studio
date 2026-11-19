@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.model_preferences import ChatModel, DEFAULT_MODEL
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.skills import compose_skill_system, validate_skill_ids
 from app.core.ai.navigation import with_navigation
@@ -26,6 +27,7 @@ router = APIRouter(tags=["chat"])
 
 
 class RunRequest(BaseModel):
+    model: ChatModel = DEFAULT_MODEL
     skill_ids: list[str] = Field(default_factory=list, max_length=3)
 
     @field_validator("skill_ids")
@@ -200,12 +202,12 @@ async def run_stream(req: RunRequest, request: Request):
             if snapshot:
                 system = f"{system}\n\n{snapshot}" if system else snapshot
             budgeted_history = budget_history(
-                history, model="claude-sonnet-4-6", max_tokens=2048, system=system,
+                history, model=req.model, max_tokens=2048, system=system,
             )
 
             request_obj = CompletionRequest(
                 messages=[Message(role=h["role"], content=h["content"]) for h in budgeted_history],
-                model="claude-sonnet-4-6",
+                model=req.model,
                 max_tokens=2048,
                 system=system,
                 temperature=1.0,        # CompletionRequest defaults to 0.7 and _build_kwargs
@@ -315,7 +317,7 @@ async def run_agent(req: RunRequest, request: Request):
 
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
-        model="claude-sonnet-4-6",
+        model=req.model,
         max_tokens=1024,
         system=compose_skill_system(None, req.skill_ids),
         temperature=1.0,  # match Anthropic's own API default — see run_stream's comment above
