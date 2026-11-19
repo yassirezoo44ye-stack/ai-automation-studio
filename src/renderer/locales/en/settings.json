@@ -7,7 +7,8 @@
     "ai": "AI & Models",
     "apiKeys": "API Keys",
     "appearance": "Appearance",
-    "about": "About"
+    "about": "About",
+    "account": "Account"
   },
   "system": {
     "refresh": "Refresh",
@@ -121,6 +122,23 @@
     "runtime": "Runtime",
     "license": "License",
     "copyright": "© {{year}} Flow AI. All rights reserved."
+  },
+  "account": {
+    "exportTitle": "Your data",
+    "exportBody": "Download a copy of the personal data Flow holds about you, as a JSON file. Passwords and access tokens are never included.",
+    "exportButton": "Download my data",
+    "exporting": "Preparing…",
+    "exportFailed": "Could not prepare your data. Please try again.",
+    "deleteTitle": "Delete account",
+    "deleteBody": "This permanently deletes your account, your content, and any organization where you are the only member, and cancels their paid subscriptions immediately. It cannot be undone. Download your data first if you want a copy.",
+    "deleteButton": "Delete my account",
+    "typeEmail": "Type your e-mail ({{email}}) to confirm",
+    "password": "Password",
+    "deleteConfirm": "Delete permanently",
+    "deleting": "Deleting…",
+    "cancel": "Cancel",
+    "deleteFailed": "Your account was not deleted. Please try again.",
+    "transferFirst": "You are the only owner of: {{orgs}}. Make another member an owner, or remove the other members, then try again."
   },
   "saveError": "Could not save preferences in this browser. Please try again."
 }
