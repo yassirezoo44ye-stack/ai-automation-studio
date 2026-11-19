@@ -1,3 +1,4 @@
+import { readSSE } from "../../../shared/utils/sse";
 import { loadPrefs } from "../../../shared/utils/preferences";
 import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
@@ -19,7 +20,7 @@ import { FlowSkillSelect } from "../../../shared/ui/FlowSkillSelect";
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
 import { useToast } from "../../../contexts/toast";
-import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
+import { apiFetch, apiJSON, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
@@ -262,45 +263,34 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const useAgent = agentId !== "default";
-    const url = useAgent ? `${API}/api/agents/${agentId}/chat/stream` : `${API}/api/run/stream`;
+    const url = useAgent ? `/api/agents/${agentId}/chat/stream` : "/api/run/stream";
 
     try {
-      const res = await fetch(url, {
-        method: "POST", headers: authH(),
+      const res = await apiFetch(url, {
+        method: "POST",
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
           ...(!useAgent ? { model: loadPrefs().chatModel, skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [] } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "", closed = false;
+      let closed = false;
       answered = true;  // the server has the message from here on
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === "conv_id" && !activeConv) {
-            // Claim this id for the messages already in local state *before*
-            // flipping activeConv, so the messages-loading effect (keyed on
-            // activeConv) sees them as already in sync and never shows a
-            // loading state over the reply that's actively streaming in.
-            setMessagesConvId(ev.conv_id);
-            // Anything typed while the reply streams moves with the chat.
-            writeDraft(draftScope(projectId, ev.conv_id), promptRef.current);
-            setActiveConv(ev.conv_id);
-            loadConvs();
-          }
-          else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
-          else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
-          else if (ev.type === "done")   { loadConvs(); closed = true; }
+      for await (const ev of readSSE<{ type: string; conv_id?: string; text?: string; message?: string }>(res.body)) {
+        if (ev.type === "conv_id" && ev.conv_id && !activeConv) {
+          // Claim this id for the messages already in local state *before*
+          // flipping activeConv, so the messages-loading effect (keyed on
+          // activeConv) sees them as already in sync and never shows a
+          // loading state over the reply that's actively streaming in.
+          setMessagesConvId(ev.conv_id);
+          // Anything typed while the reply streams moves with the chat.
+          writeDraft(draftScope(projectId, ev.conv_id), promptRef.current);
+          setActiveConv(ev.conv_id);
+          loadConvs();
         }
+        else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
+        else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
+        else if (ev.type === "done")   { loadConvs(); closed = true; }
         if (closed) break;
       }
       // The body ended without "done" or "error": the connection dropped.

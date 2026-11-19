@@ -24,7 +24,7 @@ describe("responsive layout rules", () => {
   });
 
   it("phones: settings nav stacks above the content", () => {
-    expect(ds).toMatch(/@media \(max-width: 640px\) \{ \.settings-layout \{ flex-direction: column; \}/);
+    expect(ds).toMatch(/@media \(max-width: 760px\) \{\s*\.flow-settings-layout \{ flex-direction: column; \}/);
   });
 
   it("chat Send keeps clear of the floating Copilot button", () => {
