@@ -54,3 +54,7 @@ verification and deployment. Use the shared build delivery gate, never silently
 route an owner to a mock generator, never treat unknown automation kinds as noop,
 and never report deployment success without a driver result. Preserve minimal
 workspaces. See docs/REAL_EXECUTION.md for enforced scope and remaining verification.
+
+Release automation must tag the exact smoke-tested deployment commit and publish
+notes without writing directly to protected main. Preserve branch rules, refuse
+conflicting tags, and make retries reuse the version for the same deployed commit.

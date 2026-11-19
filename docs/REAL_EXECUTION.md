@@ -50,3 +50,12 @@ This change establishes and enforces these boundaries at the audited build,
 workflow-dispatch, deploy-command, and Feed paths. It does not certify every
 integration or every screen as production-ready. Expand verification journey by
 journey, without adding dashboard clutter or mock activity to the product.
+
+## Release pipeline
+
+After production health confirms the exact source SHA, CI generates release notes
+without changing tracked files and tags that verified commit. It does not push a
+release commit to protected main. Changelog edits can use the normal PR process;
+the GitHub Release carries the automated notes. A retry reuses a tag at the same
+commit, and a conflicting tag is rejected without overwriting history. Release
+publication remains separate from evidence that the production deployment is live.
