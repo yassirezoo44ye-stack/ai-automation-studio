@@ -52,6 +52,8 @@ export interface NotificationContextType {
   filters: NotificationFilters;
   setFilters: (f: Partial<NotificationFilters>) => void;
   mutedCategories: NotificationCategory[];
+  preferencesLoaded?: boolean;
+  savingPreferences?: boolean;
   refetch: () => void;
   loadMore: () => void;
   markRead: (id: string) => void;
@@ -82,6 +84,8 @@ export const NotificationContext = createContext<NotificationContextType>({
   filters: { unreadOnly: false, category: null, search: "" },
   setFilters: noop,
   mutedCategories: [],
+  preferencesLoaded: false,
+  savingPreferences: false,
   refetch: noop,
   loadMore: noop,
   markRead: noop,

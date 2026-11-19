@@ -10,6 +10,7 @@ fan-out is cheap.
 """
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -24,6 +25,13 @@ SEVERITIES = ("success", "info", "warning", "error")
 
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
     d = dict(row)
+    action = d.get('action')
+    if isinstance(action, str):
+        try:
+            action = json.loads(action)
+        except ValueError:
+            action = None
+    d['action'] = action if isinstance(action, dict) and isinstance(action.get('href'), str) and isinstance(action.get('label'), str) else None
     for key in ("id", "user_id", "organization_id"):
         if d.get(key) is not None:
             d[key] = str(d[key])
@@ -50,7 +58,6 @@ class NotificationService:
             raise ValueError(f"invalid category {category!r}")
         if severity not in SEVERITIES:
             raise ValueError(f"invalid severity {severity!r}")
-        import json
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
