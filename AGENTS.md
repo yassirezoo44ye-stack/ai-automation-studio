@@ -39,3 +39,28 @@ optional examples/setup/summaries under descriptive headings; retain form drafts
 when a section closes. Preserve primary tasks, permissions, costs, approvals,
 cancellation and error recovery. Keep analytical metrics where analysis is the
 actual task. Consult docs/WORKSPACE_CONTENT_AUDIT.md before reintroducing content.
+
+Transactional build requests (especially stores) must deliver a runnable frontend,
+backend and persistence with verified journeys, never static screens that pretend
+to authenticate, take payment or save orders. An approved plan must match the
+actual stack and scope; reject unsupported/old plans instead of silently replacing
+technology or inventing integrations. See docs/RUNNABLE_COMMERCE.md. Store preview
+must remain opaque and project-scoped, with Flow credentials stripped upstream.
+Feed must show real published records and server-confirmed interactions; never
+invent creators/counts or create placeholder cards when source duplication fails.
+
+Across Flow and all generated app types, distinguish generated files from runtime
+verification and deployment. Use the shared build delivery gate, never silently
+route an owner to a mock generator, never treat unknown automation kinds as noop,
+and never report deployment success without a driver result. Preserve minimal
+workspaces. See docs/REAL_EXECUTION.md for enforced scope and remaining verification.
+
+Release automation must tag the exact smoke-tested deployment commit and publish
+notes without writing directly to protected main. Preserve branch rules, refuse
+conflicting tags, and make retries reuse the version for the same deployed commit.
+
+Notification popups must remain visible in top-bar/mobile layouts and must not
+close nested preference dialogs on interaction. Normalize JSONB action links,
+show write failures, and protect confirmed changes from stale responses. Settings
+controls must affect the real request/runtime preference they describe. See
+`docs/NOTIFICATIONS_AND_SETTINGS.md` for persistence boundaries and verification.

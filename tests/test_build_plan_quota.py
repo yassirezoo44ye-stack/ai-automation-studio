@@ -338,6 +338,8 @@ class TestBuildEndpointUnaffected(unittest.TestCase):
         req = MagicMock()
         req.project_id = str(project_uuid)
         req.prompt = "Build a script"
+        req.plan = None
+        req.model = "claude-sonnet-4-6"
 
         ws = pathlib.Path(tempfile.mkdtemp())
 
@@ -381,6 +383,8 @@ class TestBuildEndpointUnaffected(unittest.TestCase):
         req = MagicMock()
         req.project_id = str(project_uuid)
         req.prompt = "Build a script"
+        req.plan = None
+        req.model = "claude-sonnet-4-6"
 
         bulkhead_cm = MagicMock()
         bulkhead_cm.__aenter__ = AsyncMock(return_value=None)

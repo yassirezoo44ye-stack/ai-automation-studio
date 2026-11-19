@@ -1,8 +1,8 @@
 import { apiFetch, parseJSON, API } from "../../../shared/utils/api";
 
 export async function fetchSystemInfo(): Promise<Record<string, unknown>> {
-  const r = await apiFetch("/api/runtime/health");
-  return parseJSON<Record<string, unknown>>(r, "/api/runtime/health");
+  const r = await apiFetch("/api/health/full");
+  return parseJSON<Record<string, unknown>>(r, "/api/health/full");
 }
 
 export async function checkHealth(): Promise<boolean> {

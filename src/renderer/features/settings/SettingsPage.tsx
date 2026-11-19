@@ -1,13 +1,14 @@
 import { WorkspaceDetails } from "../../shared/ui/WorkspaceDetails";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { apiFetch, parseJSON, APIError, API } from "../../utils/api";
+import { apiFetch, parseJSON, APIError } from "../../utils/api";
 import { useAppContext } from "../../contexts/app";
 import { useLangContext } from "../../contexts/lang";
 import { useOrg } from "../../contexts/OrgContext";
 import { S } from "../../styles/theme";
 import { GlassCard } from "../../shared/ui/gold";
 import AxonLogo from "../../AxonLogo";
+import { loadPrefs, savePrefs, type UserPrefs } from "../../shared/utils/preferences";
 import { copyText } from "../../shared/utils/clipboard";
 import { AccountTab } from "./AccountTab";
 
@@ -20,31 +21,6 @@ const codeStyle: React.CSSProperties = {
 type SettingsTab = "account" | "system" | "ai" | "appearance" | "about" | "apiKeys";
 
 interface RuntimeInfo { available?: boolean; version?: string | null }
-
-const PREFS_KEY = "axon-prefs";
-
-interface UserPrefs {
-  chatModel:   string;
-  buildModel:  string;
-  sidebarMode: "expanded" | "collapsed";
-}
-
-const DEFAULT_PREFS: UserPrefs = {
-  chatModel:   "claude-sonnet-4-6",
-  buildModel:  "claude-sonnet-4-6",
-  sidebarMode: "expanded",
-};
-
-function loadPrefs(): UserPrefs {
-  try {
-    const raw = localStorage.getItem(PREFS_KEY);
-    return raw ? { ...DEFAULT_PREFS, ...JSON.parse(raw) } : { ...DEFAULT_PREFS };
-  } catch { return { ...DEFAULT_PREFS }; }
-}
-
-function savePrefs(p: UserPrefs) {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
-}
 
 interface OrgApiKey {
   key_id: string;
@@ -345,20 +321,25 @@ export function SettingsPage() {
   const { lang, setLang } = useLangContext();
   const { currentOrgId } = useOrg();
   const [tab, setTab]           = useState<SettingsTab>("appearance");
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    navRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [tab, lang]);
   const [health, setHealth]     = useState<Record<string, string> | null>(null);
   const [healthErr, setHealthErr] = useState(false);
   const [stats, setStats]       = useState<Record<string, number> | null>(null);
   const [runtimes, setRuntimes] = useState<Record<string, RuntimeInfo> | null>(null);
   const [prefs, setPrefs]       = useState<UserPrefs>(loadPrefs);
   const [saved, setSaved]       = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadSystemInfo = useCallback(() => {
     setRefreshing(true);
     Promise.all([
-      fetch(`${API}/health`)
-        .then(r => parseJSON<Record<string, string>>(r, "/health"))
-        .then(d => { setHealth(d); setHealthErr(false); })
+      apiFetch("/api/health/full")
+        .then(r => parseJSON<{ status: string; checks: { database?: string; pg_version?: string } }>(r, "/api/health/full"))
+        .then(d => { setHealth({ status: d.status, db: d.checks.database ?? t("system.unknown"), pg_version: d.checks.pg_version ?? "" }); setHealthErr(false); })
         .catch(() => { setHealth(null); setHealthErr(true); }),
       apiFetch(`/api/stats`)
         .then(r => parseJSON<Record<string, number>>(r, "/api/stats"))
@@ -369,15 +350,16 @@ export function SettingsPage() {
         .then(d => setRuntimes(d.runtimes ?? {}))
         .catch(() => {}),
     ]).finally(() => setRefreshing(false));
-  }, []);
+  }, [t]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (tab === "system") loadSystemInfo(); }, [loadSystemInfo, tab]);
 
   function updatePref<K extends keyof UserPrefs>(key: K, val: UserPrefs[K]) {
     const next = { ...prefs, [key]: val };
+    try { savePrefs(next); setSaveError(false); }
+    catch { setSaveError(true); setSaved(false); return; }
     setPrefs(next);
-    savePrefs(next);
     if (key === "sidebarMode") setSidebarCollapsed(val === "collapsed");
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
@@ -425,27 +407,27 @@ export function SettingsPage() {
           </span>
         )}
       </header>
-      <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+      {saveError && <div role="alert" style={{ padding: "10px 20px", color: "var(--red)" }}>{t("saveError")}</div>}
+      <div className="flow-settings-layout">
         {/* Left nav */}
-        <div style={{ width: 200, flexShrink: 0, padding: "20px 12px", borderInlineEnd: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 2 }}>
+        <nav ref={navRef} className="flow-settings-nav" aria-label={t("nav.label")}>
           <div className="section-label" style={{ marginBottom: 10, paddingInlineStart: 10 }}>{t("nav.label")}</div>
           {SETTINGS_NAV.map(n => (
-            <div
+            <button
+              type="button"
               key={n.id}
               className={`settings-nav-item${tab === n.id ? " active" : ""}`}
               onClick={() => setTab(n.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={e => e.key === "Enter" && setTab(n.id)}
+              aria-pressed={tab === n.id}
             >
               {n.icon}
               {n.label}
-            </div>
+            </button>
           ))}
-        </div>
+        </nav>
 
         {/* Content area */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 28 }}>
+        <div className="flow-settings-content">
 
           {/* ── System ──────────────────────────────────────────────────── */}
           {tab === "system" && (
@@ -476,14 +458,14 @@ export function SettingsPage() {
                       <hr className="divider" />
                       <Row label={t("system.status")}     value={health.status} />
                       <Row label={t("system.database")}   value={health.db} />
-                      <Row label={t("system.postgresql")} value={health.pg_version?.split(" on ")[0]} />
+                      {health.pg_version && <Row label={t("system.postgresql")} value={health.pg_version.split(" on ")[0]} />}
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", background: healthErr ? "var(--red)" : "var(--t5)", flexShrink: 0 }} />
                       <span style={{ fontSize: 13, color: healthErr ? "var(--red)" : "var(--t4)" }}>
                         {healthErr ? (
-                          <>{t("system.backendOffline")} <code style={codeStyle}>python main.py</code></>
+                          <>{t("system.backendUnavailable")}</>
                         ) : t("system.checking")}
                       </span>
                     </div>

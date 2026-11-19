@@ -258,7 +258,7 @@ jobs:
           echo "::error::Running commit never matched $GITHUB_SHA within 15 min — the Render build may have failed or is unusually slow. Check the Render dashboard (Events tab). If /health has no 'commit' field, the running build predates this pipeline; this check will work from the next deploy onward."
           exit 1
 
-  # ── Release: version bump + changelog + GitHub Release ──────────────────────
+  # ── Release: tag verified deployment + GitHub release notes ──────────────────────
   release:
     name: Create release
     runs-on: ubuntu-latest
@@ -273,34 +273,33 @@ jobs:
           fetch-depth: 0
 
       - id: release
-        name: Bump version + update CHANGELOG.md
-        run: python scripts/ci_release.py
+        name: Generate release version and notes
+        run: python scripts/ci_release.py --notes-only
 
-      - name: Tag + push
-        # [skip ci] on the release commit message is load-bearing: without
-        # it, this push to main would re-trigger this same workflow,
-        # which would deploy and release again, which would push again —
-        # an infinite loop.
+      - name: Tag verified deployment
+        # Tag the exact commit that passed the smoke test. Main remains
+        # protected; no release commit, bypass token or skipped checks needed.
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-            echo "::error::Tag $VERSION already exists — refusing to overwrite. Likely a partially-completed earlier release; reconcile manually (delete the stale tag or bump past it)."
-            exit 1
+            if [ "$(git rev-parse "$VERSION^{commit}")" != "$GITHUB_SHA" ]; then
+              echo "::error::Tag $VERSION already points to a different commit; refusing to overwrite."
+              exit 1
+            fi
+          else
+            git tag "$VERSION" "$GITHUB_SHA"
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "chore: release $VERSION [skip ci]"
-          git tag "$VERSION"
-          # --atomic: the branch commit and the tag land together or not at
-          # all — a network blip can't leave a release commit on main with
-          # no matching tag (which would poison the next run's changelog).
-          git push --atomic origin HEAD:main "refs/tags/$VERSION"
+          git push origin "refs/tags/$VERSION"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if gh release view "${{ steps.release.outputs.version }}" >/dev/null 2>&1; then
+            echo "Release already exists for the verified deployment."
+            exit 0
+          fi
           gh release create "${{ steps.release.outputs.version }}" \
+            --verify-tag \
             --title "${{ steps.release.outputs.version }}" \
             --notes-file .release-notes.md

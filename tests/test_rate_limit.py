@@ -13,9 +13,14 @@ from app.core.rate_limit import check_rate_limit, require_rate_limit, rl_store
 
 @pytest.fixture(autouse=True)
 def clear_store():
+    import app.core.rate_limit as rl
     rl_store.clear()
+    rl._key_windows.clear()
+    rl._last_gc = 0.0
     yield
     rl_store.clear()
+    rl._key_windows.clear()
+    rl._last_gc = 0.0
 
 
 def _req(ip: str = "1.2.3.4", owner: str = "test@example.com") -> MagicMock:
@@ -132,6 +137,33 @@ class TestRlStoreGarbageCollection:
         assert "brand:new:key" in rl.rl_store
 
 
+    def test_gc_preserves_long_window_when_short_window_triggers_sweep(self):
+        import app.core.rate_limit as rl
+        from unittest.mock import patch
+
+        with patch("app.core.rate_limit.time.time", return_value=1000.0):
+            rl._last_gc = 1000.0
+            assert check_rate_limit("long:window", max_calls=1, window=600)
+        with patch("app.core.rate_limit.time.time", return_value=1100.0):
+            rl._last_gc = 0.0
+            assert check_rate_limit("short:window", max_calls=1, window=30)
+            assert "long:window" in rl.rl_store
+            assert not check_rate_limit("long:window", max_calls=1, window=600)
+
+    def test_gc_evicts_long_window_after_expiration(self):
+        import app.core.rate_limit as rl
+        from unittest.mock import patch
+
+        with patch("app.core.rate_limit.time.time", return_value=1000.0):
+            rl._last_gc = 1000.0
+            assert check_rate_limit("expired:long:window", max_calls=1, window=600)
+        with patch("app.core.rate_limit.time.time", return_value=1700.0):
+            rl._last_gc = 0.0
+            assert check_rate_limit("trigger:short:window", max_calls=1, window=30)
+            assert "expired:long:window" not in rl.rl_store
+            assert "expired:long:window" not in rl._key_windows
+
+
 class TestRateLimitObservability:
     """A 429 is a 4xx — it never touched http_errors_total (5xx-only) or
     any other metric, so a sustained rejection pattern (e.g. a
@@ -178,3 +210,55 @@ class TestRateLimitObservability:
                 ai_rate_limit(req, max_calls=1, window=60)  # rejected
 
         assert counter.value == before + 1
+
+
+class TestLoginLockoutGarbageCollection:
+    @pytest.mark.asyncio
+    async def test_short_window_gc_does_not_clear_login_lockout(self):
+        from unittest.mock import AsyncMock, patch
+        import app.core.rate_limit as rl
+
+        cache = MagicMock()
+        cache.backend = "memory"
+        with patch("app.core.cache.get_redis", new=AsyncMock(return_value=cache)):
+            with patch("app.core.rate_limit.time.time", return_value=1000.0):
+                rl._last_gc = 1000.0
+                for _ in range(5):
+                    await rl.record_login_failure_async("lockout@example.com")
+                assert await rl.check_login_locked_async("lockout@example.com")
+
+            with patch("app.core.rate_limit.time.time", return_value=1100.0):
+                rl._last_gc = 0.0
+                assert check_rate_limit("unrelated:short", max_calls=1, window=30)
+                assert await rl.check_login_locked_async("lockout@example.com")
+
+    @pytest.mark.asyncio
+    async def test_login_lockout_expires_after_15_minutes(self):
+        from unittest.mock import AsyncMock, patch
+        import app.core.rate_limit as rl
+
+        cache = MagicMock()
+        cache.backend = "memory"
+        with patch("app.core.cache.get_redis", new=AsyncMock(return_value=cache)):
+            with patch("app.core.rate_limit.time.time", return_value=1000.0):
+                for _ in range(5):
+                    await rl.record_login_failure_async("expires@example.com")
+                assert await rl.check_login_locked_async("expires@example.com")
+
+            with patch("app.core.rate_limit.time.time", return_value=1901.0):
+                assert not await rl.check_login_locked_async("expires@example.com")
+
+    @pytest.mark.asyncio
+    async def test_successful_login_clears_lockout_window_metadata(self):
+        from unittest.mock import AsyncMock, patch
+        import app.core.rate_limit as rl
+
+        cache = MagicMock()
+        cache.backend = "memory"
+        key = "login_fail:clear@example.com"
+        with patch("app.core.cache.get_redis", new=AsyncMock(return_value=cache)):
+            await rl.record_login_failure_async("clear@example.com")
+            assert key in rl._key_windows
+            await rl.clear_login_failures_async("clear@example.com")
+            assert key not in rl.rl_store
+            assert key not in rl._key_windows
