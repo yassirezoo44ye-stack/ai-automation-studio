@@ -54,3 +54,13 @@ verification and deployment. Use the shared build delivery gate, never silently
 route an owner to a mock generator, never treat unknown automation kinds as noop,
 and never report deployment success without a driver result. Preserve minimal
 workspaces. See docs/REAL_EXECUTION.md for enforced scope and remaining verification.
+
+Release automation must tag the exact smoke-tested deployment commit and publish
+notes without writing directly to protected main. Preserve branch rules, refuse
+conflicting tags, and make retries reuse the version for the same deployed commit.
+
+Notification popups must remain visible in top-bar/mobile layouts and must not
+close nested preference dialogs on interaction. Normalize JSONB action links,
+show write failures, and protect confirmed changes from stale responses. Settings
+controls must affect the real request/runtime preference they describe. See
+`docs/NOTIFICATIONS_AND_SETTINGS.md` for persistence boundaries and verification.

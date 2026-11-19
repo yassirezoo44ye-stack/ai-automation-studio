@@ -1,6 +1,6 @@
 {
   "title": "الإعدادات",
-  "saved": "تم الحفظ",
+  "saved": "تم الحفظ في هذا المتصفح",
   "nav": {
     "label": "الإعدادات",
     "system": "النظام",
@@ -49,7 +49,9 @@
       "rectangleTool": "أداة المستطيل",
       "circleTool": "أداة الدائرة",
       "textTool": "أداة النص"
-    }
+    },
+    "unknown": "غير معروف",
+    "backendUnavailable": "تعذّر الاتصال بالخادم. أعد المحاولة."
   },
   "ai": {
     "modelRecommended": "موصى به",
@@ -60,9 +62,9 @@
     "manageBilling": "إدارة الفوترة عبر console.anthropic.com",
     "defaultModels": "النماذج الافتراضية",
     "chatModel": "نموذج المحادثة",
-    "chatModelHint": "يُستخدم في محادثة مساحة عمل الذكاء الاصطناعي.",
+    "chatModelHint": "يُستخدم في المحادثة العامة والمساعد. محفوظ في هذا المتصفح.",
     "buildModel": "نموذج البناء",
-    "buildModelHint": "يُستخدم في أداة بناء الكود بمساحة عمل التطوير."
+    "buildModelHint": "يُستخدم لتوليد الكود في منشئ التطبيقات وبيئة التطوير."
   },
   "appearance": {
     "theme": "المظهر",
@@ -100,7 +102,6 @@
     "scopes": "الصلاحيات",
     "scope_read": "قراءة (GET)",
     "scope_write": "كتابة (POST/PUT/PATCH)",
-    "scope_ai": "بوابة الذكاء الاصطناعي",
     "scope_agents": "الوكلاء",
     "scope_marketplace": "السوق",
     "scopeNoneWarning": "اختر صلاحية واحدة على الأقل.",
@@ -122,6 +123,7 @@
     "license": "الترخيص",
     "copyright": "© {{year}} Flow AI. جميع الحقوق محفوظة."
   },
+  "saveError": "تعذّر حفظ الإعدادات في هذا المتصفح. أعد المحاولة.",
   "account": {
     "signedOut": "تم تسجيل خروجك. يرجى تسجيل الدخول مرة أخرى.",
     "saving": "جارٍ الحفظ…",

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { memo } from "react";
 import type { KeyboardEvent } from "react";
 import type { Notification } from "../../../contexts/notifications";
@@ -15,14 +16,15 @@ function NotificationItemImpl({
   onSelect: (id: string) => void;
   onArchive: (id: string) => void;
   onRemove: (id: string) => void;
-  onNavigate: (href: string) => void;
+  onNavigate: (href: string, organizationId?: string | null) => void;
   itemRef: (el: HTMLDivElement | null) => void;
 }) {
+  const { t } = useTranslation("common");
   const n = notification;
 
   function activate() {
     if (!n.read_status) onSelect(n.id);
-    if (n.action) onNavigate(n.action.href);
+    if (n.action) onNavigate(n.action.href, n.organization_id);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -50,19 +52,19 @@ function NotificationItemImpl({
           {n.action && <span className="g-notif-item__action-hint">{n.action.label} →</span>}
         </div>
       </div>
-      {!n.read_status && <span className="g-notif-item__dot" aria-label="Unread" />}
+      {!n.read_status && <span className="g-notif-item__dot" aria-label={t("notifications.unread")} />}
       <div className="g-notif-item__ops">
         <button
           type="button" className="g-notif-item__op"
           onClick={e => { e.stopPropagation(); onArchive(n.id); }}
-          aria-label={`Archive: ${n.title}`} title="Archive"
+          aria-label={`${t("notifications.archive")}: ${n.title}`} title={t("notifications.archive")}
         >
           ▢
         </button>
         <button
           type="button" className="g-notif-item__op"
           onClick={e => { e.stopPropagation(); onRemove(n.id); }}
-          aria-label={`Delete: ${n.title}`} title="Delete"
+          aria-label={`${t("notifications.delete")}: ${n.title}`} title={t("notifications.delete")}
         >
           ×
         </button>

@@ -1,31 +1,31 @@
+import { useTranslation } from "react-i18next";
+import { ErrorState } from "../StateViews";
 import { Dialog } from "../gold";
 import { NOTIFICATION_CATEGORIES, useNotifications } from "../../../contexts/notifications";
 
-const CATEGORY_LABEL: Record<string, string> = {
-  system: "System", workflow: "Workflows", agent: "Agents", marketplace: "Marketplace",
-  billing: "Billing", security: "Security", deployment: "Deployments",
-  background_job: "Background jobs", realtime_event: "Realtime events", organization: "Organization",
-};
-
 export function NotificationSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { mutedCategories, setMuted } = useNotifications();
+  const { t } = useTranslation("common");
+  const { mutedCategories, setMuted, error, refetch, preferencesLoaded = true, savingPreferences } = useNotifications();
 
   return (
-    <Dialog open={open} onClose={onClose} title="Notification settings" width={380}>
+    <Dialog open={open} onClose={onClose} title={t("notifications.settings")} width={380}>
       <p style={{ fontSize: 12.5, color: "var(--t5)", margin: "0 0 14px" }}>
-        Turn off categories you don't want to be notified about. You can still see them in Activity.
+        {t("notifications.instructions")}
       </p>
+      {error && <ErrorState compact message={error} onRetry={refetch} />}
+      {savingPreferences && <p role="status">{t("notifications.saving")}</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {NOTIFICATION_CATEGORIES.map(cat => {
           const muted = mutedCategories.includes(cat);
           return (
             <label key={cat} className="g-checkbox-row" style={{ justifyContent: "space-between", padding: "7px 2px" }}>
-              <span>{CATEGORY_LABEL[cat] ?? cat}</span>
+              <span>{t(`notifications.categories.${cat}`)}</span>
               <input
                 type="checkbox"
                 checked={!muted}
+                disabled={!preferencesLoaded || savingPreferences}
                 onChange={e => setMuted(cat, !e.target.checked)}
-                aria-label={`Notify me about ${CATEGORY_LABEL[cat] ?? cat}`}
+                aria-label={t("notifications.notifyCategory", { category: t(`notifications.categories.${cat}`) })}
               />
             </label>
           );

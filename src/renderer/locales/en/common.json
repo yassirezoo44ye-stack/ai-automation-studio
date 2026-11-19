@@ -124,5 +124,50 @@
     "justNow": "just now",
     "minutesAgo": "{{count}}m ago",
     "hoursAgo": "{{count}}h ago"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "unreadAria": "Notifications, {{count}} unread",
+    "announcement": "{{count}} unread notifications",
+    "markAllRead": "Mark all as read",
+    "settings": "Notification settings",
+    "all": "All",
+    "unread": "Unread",
+    "allCategories": "All categories",
+    "filterCategory": "Filter by category",
+    "list": "Notification list",
+    "loading": "Loading notifications…",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "actionFailed": "Could not save this notification change. Please retry.",
+    "preferencesFailed": "Could not load or save notification preferences. Please retry.",
+    "instructions": "Turn off categories you don't want to be notified about. You can still see them in Activity.",
+    "notifyCategory": "Notify me about {{category}}",
+    "archive": "Archive",
+    "delete": "Delete",
+    "empty": "You're all caught up",
+    "emptyFiltered": "No notifications match",
+    "emptyDescription": "New activity will show up here.",
+    "filteredDescription": "Try clearing filters to see more.",
+    "categories": {
+      "system": "System",
+      "workflow": "Workflows",
+      "agent": "Agents",
+      "marketplace": "Marketplace",
+      "billing": "Billing",
+      "security": "Security",
+      "deployment": "Deployments",
+      "background_job": "Background jobs",
+      "realtime_event": "Realtime events",
+      "organization": "Organization"
+    },
+    "statuses": {
+      "live": "Live",
+      "connecting": "Connecting…",
+      "reconnecting": "Reconnecting…",
+      "offline": "Offline"
+    },
+    "saving": "Saving…",
+    "organizationUnavailable": "The linked workspace is unavailable. Refresh or check your access."
   }
 }

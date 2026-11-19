@@ -6,9 +6,10 @@
  * receive-only, so there's no outgoing queue to manage while offline.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { useAuth } from "./AuthContext";
-import { apiJSON, apiFetch, API, authH } from "../shared/utils/api";
+import { apiJSON, apiFetch, API } from "../shared/utils/api";
 import {
   NotificationContext,
   type Notification, type NotificationCategory, type NotificationFilters,
@@ -41,6 +42,13 @@ async function fetchWsTicket(): Promise<string | null> {
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user, accessToken } = useAuth();
+  const { t } = useTranslation("common");
+  const pendingMutations = useRef(new Set<string>());
+  const preferencesQueue = useRef(Promise.resolve());
+  const confirmedPreferences = useRef<NotificationCategory[]>([]);
+  const preferencesRevision = useRef(0);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [savingPreferences, setSavingPreferences] = useState(false);
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -59,6 +67,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+  const currentUserRef = useRef(user?.id);
+  useEffect(() => {
+    const owner = user?.id;
+    const requests = requestIdRef;
+    currentUserRef.current = owner;
+    void Promise.resolve().then(() => {
+      if (currentUserRef.current !== owner) return;
+      setNotifications([]); setUnreadCount(0); setStatus("loading");
+      setMutedCategories([]); setPreferencesLoaded(false);
+      setSavingPreferences(false);
+      preferencesRevision.current++;
+      confirmedPreferences.current = [];
+    });
+    return () => { currentUserRef.current = undefined; requests.current++; };
+  }, [user?.id]);
   const seenIdsRef = useRef<Set<string>>(new Set());
   // Lets the WS effect (keyed only on user id / token, not on filters) always
   // backfill against the CURRENT filters on reconnect, not whatever was
@@ -100,15 +123,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, [buildQuery]);
 
-  const refetch = useCallback(() => { void fetchFirstPage(filters); }, [fetchFirstPage, filters]);
+  const fetchPreferences = useCallback(async () => {
+    const owner = user?.id;
+    const revision = preferencesRevision.current;
+    if (!owner || currentUserRef.current !== owner) return;
+    try {
+      const res = await apiJSON<{ muted_categories: NotificationCategory[] }>("/api/notifications/preferences");
+      if (currentUserRef.current !== owner || preferencesRevision.current !== revision) return;
+      confirmedPreferences.current = res.muted_categories;
+      setMutedCategories(res.muted_categories);
+      setPreferencesLoaded(true);
+    } catch {
+      if (currentUserRef.current === owner && preferencesRevision.current === revision) setError(t("notifications.preferencesFailed"));
+    }
+  }, [t, user?.id]);
+
+  const refetch = useCallback(() => { void fetchFirstPage(filters); void fetchPreferences(); }, [fetchFirstPage, filters, fetchPreferences]);
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore || notifications.length === 0) return;
     setLoadingMore(true);
+    const requestId = requestIdRef.current;
     const before = notifications[notifications.length - 1].id;
     void apiJSON<{ notifications: Notification[]; has_more: boolean }>(
       `/api/notifications?${buildQuery(filters, before)}`,
     ).then(res => {
+      if (requestIdRef.current !== requestId) return;
       setNotifications(prev => {
         const fresh = res.notifications.filter(n => !seenIdsRef.current.has(n.id));
         fresh.forEach(n => seenIdsRef.current.add(n.id));
@@ -116,9 +156,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       });
       setHasMore(res.has_more);
     }).catch(() => {
-      // Non-fatal — the list simply doesn't grow; the user can retry via loadMore again.
+      if (requestIdRef.current === requestId) setError(t("notifications.actionFailed"));
     }).finally(() => setLoadingMore(false));
-  }, [loadingMore, hasMore, notifications, buildQuery, filters]);
+  }, [loadingMore, hasMore, notifications, buildQuery, filters, t]);
 
   // Refetch whenever filters change (fresh first page under the new filter).
   useEffect(() => {
@@ -128,12 +168,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [user?.id, filters]);
 
   useEffect(() => {
-    if (!user) return;
-    void apiJSON<{ muted_categories: NotificationCategory[] }>("/api/notifications/preferences")
-      .then(res => setMutedCategories(res.muted_categories))
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+    if (!user?.id) return;
+    void Promise.resolve().then(fetchPreferences);
+  }, [user?.id, fetchPreferences]);
 
   // ── WS live stream ─────────────────────────────────────────────────────────
 
@@ -232,54 +269,87 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setFiltersState(prev => ({ ...prev, ...f }));
   }, []);
 
+  const mutate = useCallback((key: string, action: () => Promise<unknown>, success: () => void) => {
+    const owner = user?.id;
+    const mutationKey = `${owner}:${key}`;
+    if (!owner || currentUserRef.current !== owner || pendingMutations.current.has(mutationKey)) return;
+    pendingMutations.current.add(mutationKey);
+    setError(null);
+    void action().then(() => {
+      if (currentUserRef.current === owner) { requestIdRef.current++; success(); }
+    })
+      .catch(() => { if (currentUserRef.current === owner) setError(t("notifications.actionFailed")); })
+      .finally(() => pendingMutations.current.delete(mutationKey));
+  }, [t, user?.id]);
+
   const markRead = useCallback((id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read_status: true } : n));
-    setUnreadCount(c => Math.max(0, c - 1));
-    void apiJSON(`/api/notifications/${id}/read`, { method: "POST" }).catch(() => {});
-  }, []);
+    const target = notifications.find(n => n.id === id);
+    if (!target || target.read_status) return;
+    mutate(id, () => apiJSON(`/api/notifications/${id}/read`, { method: "POST" }), () => {
+      setNotifications(prev => filtersRef.current.unreadOnly
+        ? prev.filter(n => n.id !== id)
+        : prev.map(n => n.id === id ? { ...n, read_status: true } : n));
+      setUnreadCount(c => Math.max(0, c - 1));
+    });
+  }, [notifications, mutate]);
 
   const markAllRead = useCallback(() => {
-    setNotifications(prev => prev.map(n => ({ ...n, read_status: true })));
-    setUnreadCount(0);
-    void apiJSON("/api/notifications/read-all", { method: "POST" }).catch(() => {});
-  }, []);
+    mutate("read-all", () => apiJSON("/api/notifications/read-all", { method: "POST" }), () => {
+      void fetchFirstPage(filtersRef.current);
+    });
+  }, [mutate, fetchFirstPage]);
 
   const archive = useCallback((id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-    setUnreadCount(c => {
-      const n = notifications.find(x => x.id === id);
-      return n && !n.read_status ? Math.max(0, c - 1) : c;
+    const target = notifications.find(n => n.id === id);
+    mutate(id, () => apiJSON(`/api/notifications/${id}/archive`, { method: "POST" }), () => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      if (target && !target.read_status) setUnreadCount(c => Math.max(0, c - 1));
     });
-    void apiJSON(`/api/notifications/${id}/archive`, { method: "POST" }).catch(() => {});
-  }, [notifications]);
+  }, [notifications, mutate]);
 
   const remove = useCallback((id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-    setUnreadCount(c => {
-      const n = notifications.find(x => x.id === id);
-      return n && !n.read_status ? Math.max(0, c - 1) : c;
+    const target = notifications.find(n => n.id === id);
+    mutate(id, async () => {
+      const res = await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Notification deletion rejected");
+    }, () => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      if (target && !target.read_status) setUnreadCount(c => Math.max(0, c - 1));
     });
-    void fetch(`${API}/api/notifications/${id}`, { method: "DELETE", headers: authH() }).catch(() => {});
-  }, [notifications]);
+  }, [notifications, mutate]);
 
   const setMuted = useCallback((category: NotificationCategory, muted: boolean) => {
-    setMutedCategories(prev => {
-      const next = muted ? [...new Set([...prev, category])] : prev.filter(c => c !== category);
-      void apiJSON("/api/notifications/preferences", {
-        method: "PUT", body: JSON.stringify({ muted_categories: next }),
-      }).catch(() => {});
-      return next;
+    // Serialize changes against the last server-confirmed preferences. React
+    // state updaters must not send requests (StrictMode can invoke them twice).
+    const owner = user?.id;
+    preferencesRevision.current++;
+    preferencesQueue.current = preferencesQueue.current.then(async () => {
+      if (!preferencesLoaded || !owner || currentUserRef.current !== owner) return;
+      setSavingPreferences(true);
+      setError(null);
+      const previous = confirmedPreferences.current;
+      const next = muted ? [...new Set([...previous, category])] : previous.filter(c => c !== category);
+      try {
+        const res = await apiJSON<{ muted_categories: NotificationCategory[] }>("/api/notifications/preferences", {
+          method: "PUT", body: JSON.stringify({ muted_categories: next }),
+        });
+        if (currentUserRef.current !== owner) return;
+        preferencesRevision.current++;
+        confirmedPreferences.current = res.muted_categories;
+        setMutedCategories(res.muted_categories);
+      } catch { if (currentUserRef.current === owner) setError(t("notifications.preferencesFailed")); }
+      finally { if (currentUserRef.current === owner) setSavingPreferences(false); }
     });
-  }, []);
+  }, [preferencesLoaded, t, user?.id]);
 
   const value = useMemo(() => ({
     notifications, unreadCount, status, error, hasMore, loadingMore, connectionStatus,
     filters, setFilters, mutedCategories, refetch, loadMore, markRead, markAllRead,
-    archive, remove, setMuted, presenceDeltas,
+    archive, remove, setMuted, presenceDeltas, preferencesLoaded, savingPreferences,
   }), [
     notifications, unreadCount, status, error, hasMore, loadingMore, connectionStatus,
     filters, setFilters, mutedCategories, refetch, loadMore, markRead, markAllRead,
-    archive, remove, setMuted, presenceDeltas,
+    archive, remove, setMuted, presenceDeltas, preferencesLoaded, savingPreferences,
   ]);
 
   return (
