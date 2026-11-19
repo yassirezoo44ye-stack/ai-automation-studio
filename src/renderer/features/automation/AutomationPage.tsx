@@ -361,7 +361,7 @@ export function AutomationPage() {
               </GoldButton>
             </div>
             <div style={{ padding: "0 0 4px" }}>
-              {wfLoading ? (
+              {wfLoading && wfRuns.length === 0 ? (
                 <div style={{ padding: "16px 18px" }}><div className="skeleton" style={{ height: 40, borderRadius: 8 }} /></div>
               ) : wfRuns.length === 0 ? (
                 <div style={{ padding: "16px 18px", color: "var(--t4)", fontSize: 13 }}>{t("workflows.emptyRecent", { defaultValue: "No workflow runs yet." })}</div>

@@ -34,40 +34,39 @@
     "steps": ["Collect Data", "Analyze", "Generate Report", "Send to Client", "Flag Issues"]
   },
   "features": {
-    "eyebrow": "Platform",
-    "headline": "Everything your agency needs to automate.",
-    "sub": "Six purpose-built capabilities that work together as one.",
-    "agents": {
-      "title": "AI Agents",
-      "body": "Create specialized AI workers with goals, instructions, tools, memory, and permissions. Your AI team never sleeps.",
-      "detail": "Research → Content → Review → Publish"
-    },
-    "workflows": {
-      "title": "Workflow Builder",
-      "body": "Connect agents, tools, conditions, and triggers. Sequential pipelines, parallel execution, approval gates, and automatic retries.",
-      "detail": "Visual · Conditional · Parallel · Retries"
-    },
-    "agentos": {
-      "title": "AgentOS",
-      "body": "The command center for your automation. Monitor runs, jobs, and results. Catch errors before they become problems.",
-      "detail": "Agents · Jobs · Runs · Results · Errors"
-    },
-    "gateway": {
-      "title": "AI Gateway",
-      "body": "A unified intelligent routing layer. Send every request to the right model for the right task — maximize quality, minimize cost.",
-      "detail": "Route · Balance · Optimize · Control"
-    },
-    "memory": {
-      "title": "Memory",
-      "body": "Give your agents context that persists across workflows. Agents remember what matters, improve over time, and work smarter on every run.",
-      "detail": "Persist · Retrieve · Learn · Improve"
-    },
-    "integrations": {
-      "title": "Integrations",
-      "body": "Connect your existing tools and data sources. Flow plugs into your stack — no rebuild required.",
-      "detail": "Connect · Sync · Automate · Extend"
-    }
+  "headline": "From a clear idea to work you can run.",
+  "sub": "Practical capabilities, with a clear boundary between local functionality and external services.",
+  "agents": {
+    "title": "Specialist skills and agents",
+    "body": "Planning, writing, analysis and career assistance with scoped tools and reviewable results.",
+    "detail": "Saved instructions · Reviewable output"
   },
+  "workflows": {
+    "title": "Trackable execution",
+    "body": "Tasks, steps, approvals and execution history, with cancellation and interruption handling for supported runs.",
+    "detail": "Persisted state · Approval · Cancellation"
+  },
+  "agentos": {
+    "title": "A runnable full-stack store",
+    "body": "Products, accounts, orders, inventory and administration with SQLite and cash on delivery. Configure your products and hosting before selling.",
+    "detail": "Frontend · API · Data · Export"
+  },
+  "gateway": {
+    "title": "Models and connected services",
+    "body": "Connect supported AI providers and integrations and manage usage. External services require account configuration.",
+    "detail": "Connections · Permissions · Usage"
+  },
+  "memory": {
+    "title": "Persistent project plans",
+    "body": "Review plans, create tasks, track progress and return to saved execution results.",
+    "detail": "Plan → Approve → Work → Review"
+  },
+  "integrations": {
+    "title": "A feed of published work",
+    "body": "Browse real published projects and study resources with publisher information and saved interactions. Empty results stay empty.",
+    "detail": "Published source · Save · Share"
+  }
+},
   "howItWorks": {
     "eyebrow": "Process",
     "headline": "From idea to automation in five steps.",

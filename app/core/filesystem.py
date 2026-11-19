@@ -5,6 +5,7 @@ guard against path-traversal attacks.
 """
 import logging
 import os
+import re
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -49,8 +50,17 @@ def workspace(project_id: str) -> Path:
     attacker-chosen text), but `is_relative_to()` closes the class of bug
     outright rather than relying on that being true forever.
     """
-    ws = (WORKSPACES / project_id).resolve()
-    if not ws.is_relative_to(WORKSPACES.resolve()):
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,100}", project_id) is None:
+        raise HTTPException(400, "Invalid project_id")
+    root = WORKSPACES.resolve()
+    candidate = os.path.abspath(os.path.join(str(root), project_id))
+    if not candidate.startswith(str(root) + os.sep):
+        raise HTTPException(400, "Invalid project_id")
+    resolved = os.path.realpath(candidate)
+    if not resolved.startswith(str(root) + os.sep):
+        raise HTTPException(400, "Invalid project_id")
+    ws = Path(resolved)
+    if not ws.is_relative_to(root):
         raise HTTPException(400, "Invalid project_id")
     ws.mkdir(parents=True, exist_ok=True)
     return ws
@@ -61,7 +71,16 @@ def safe_path(ws: Path, rel: str) -> Path:
 
     AUDIT FIX: same `is_relative_to()` hardening as workspace() above —
     see its comment for the exact gotcha this closes."""
-    p = (ws / rel).resolve()
-    if not p.is_relative_to(ws.resolve()):
+    root = ws.resolve()
+    # Check lexically before resolving symlinks (which touches the filesystem),
+    # then check the real target with a separator boundary, not a raw prefix.
+    candidate = os.path.abspath(os.path.join(str(root), rel))
+    if not candidate.startswith(str(root) + os.sep):
+        raise HTTPException(400, "Invalid path")
+    resolved = os.path.realpath(candidate)
+    if not resolved.startswith(str(root) + os.sep):
+        raise HTTPException(400, "Invalid path")
+    p = Path(resolved)
+    if not p.is_relative_to(root):
         raise HTTPException(400, "Invalid path")
     return p

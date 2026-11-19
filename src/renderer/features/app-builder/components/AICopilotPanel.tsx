@@ -109,7 +109,7 @@ export function AICopilotPanel({
     setLoading(true);
 
     // "generate" and "modify" always route to the build pipeline
-    // (/api/build/stream), which uses dev_mock for the owner account and
+    // (/api/build/stream), which uses the real inference provider and
     // real Claude for normal users.  This is the only path that actually
     // changes files in the project workspace.
     if (action === "generate" || action === "modify") {

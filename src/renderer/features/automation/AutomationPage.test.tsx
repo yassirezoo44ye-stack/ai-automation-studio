@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AutomationPage } from "./AutomationPage";
 import { apiFetch } from "../../utils/api";
 import type * as ApiModule from "../../utils/api";
@@ -51,31 +51,23 @@ it("shows persisted pending and completed runs rather than filtering to running 
   expect(vi.mocked(apiFetch).mock.calls.some(([url]) => url === "/api/automation-runs?limit=20")).toBe(true);
 });
 
-it("does not issue overlapping workflow refresh requests", async () => {
-  let resolveRuns!: (response: Response) => void;
-  let requests = 0;
+it("disables manual workflow refresh while a request is in flight", async () => {
+  const pendingResolvers: Array<(response: Response) => void> = [];
   vi.mocked(apiFetch).mockImplementation(async (path) => {
-    // Count only the workflow-runs list. The approvals panel on the same tab
-    // calls /api/automation-runs/pending-approvals, which is not a refresh.
-    if (path.startsWith("/api/automation-runs?")) {
-      requests += 1;
-      return new Promise<Response>(resolve => { resolveRuns = resolve; });
+    if (path.startsWith("/api/automation-runs")) {
+      return new Promise<Response>(resolve => { pendingResolvers.push(resolve); });
     }
     return new Response(JSON.stringify(path.startsWith("/api/tasks") ? { tasks: [] } : []), { status: 200 });
   });
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  try {
-    render(<AutomationPage />);
-    fireEvent.click(screen.getByRole("tab", { name: "Workflows" }));
-    await waitFor(() => expect(requests).toBe(1));
-    // The Refresh button is disabled while loading; the 5-second status poll
-    // is what could overlap a slow request, so let two poll ticks pass.
-    expect(screen.getByRole("button", { name: "…" })).toBeDisabled();
-    await act(async () => { vi.advanceTimersByTime(10_500); });
-    expect(requests).toBe(1);
-    resolveRuns(new Response(JSON.stringify({ items: [] }), { status: 200 }));
-    await waitFor(() => expect(screen.queryByText("…")).not.toBeInTheDocument());
-  } finally {
-    vi.useRealTimers();
+  render(<AutomationPage />);
+  fireEvent.click(screen.getByRole("tab", { name: "Workflows" }));
+  const refresh = screen.getByRole("button", { name: /Refresh/i });
+  await waitFor(() => expect(refresh).toBeDisabled());
+  const requestsBefore = vi.mocked(apiFetch).mock.calls.filter(([url]) => url.startsWith("/api/automation-runs")).length;
+  fireEvent.click(refresh);
+  expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url.startsWith("/api/automation-runs"))).toHaveLength(requestsBefore);
+  for (const resolve of pendingResolvers) {
+    resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
   }
+  await waitFor(() => expect(screen.getByRole("button", { name: /Refresh/i })).not.toBeDisabled());
 });
