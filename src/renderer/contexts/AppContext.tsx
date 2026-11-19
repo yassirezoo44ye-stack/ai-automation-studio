@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useTransition, useRef } from "react";
 import type { Page } from "../types";
+import { loadPrefs } from "../shared/utils/preferences";
 import { AppContext, type Theme, type FeedIntent, type ProjectWorkspace } from "./app";
 
 const PATH_TO_PAGE: Record<string, Page> = {
@@ -122,7 +123,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     startPageTransition(() => setPageState(newPage));
   }, []);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => loadPrefs().sidebarMode === "collapsed");
   const [feedIntent, setFeedIntentState] = useState<FeedIntent | null>(null);
   const setFeedIntent = useCallback((intent: FeedIntent | null) => setFeedIntentState(intent), []);
   const [theme, setThemeState] = useState<Theme>(() => {

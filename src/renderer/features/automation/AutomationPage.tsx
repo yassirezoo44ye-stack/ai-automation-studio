@@ -3,6 +3,7 @@
  * Merges Tasks + Automation views into a single workspace.
  * Data: /api/tasks, /api/agents, /workflows/*
  */
+import { NotificationRunDetails } from "./NotificationRunDetails";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
@@ -95,7 +96,23 @@ function TaskCard({ task, onStatusChange, onDelete }: {
 export function AutomationPage() {
   const { t } = useTranslation("automation");
   const toast = useToast();
-  const [tab, setTab]         = useState<AutoTab>("tasks");
+  const [selectedRunId, setSelectedRunId] = useState(() => new URLSearchParams(window.location.search).get("run"));
+  const [tab, setTab] = useState<AutoTab>(() => new URLSearchParams(window.location.search).get("run") ? "workflows" : "tasks");
+  useEffect(() => {
+    const sync = () => {
+      const runId = new URLSearchParams(window.location.search).get("run");
+      setSelectedRunId(runId);
+      if (runId) setTab("workflows");
+    };
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  const closeRun = () => {
+    const target = new URL(window.location.href);
+    target.searchParams.delete("run");
+    window.history.replaceState(null, "", target.pathname + target.search + target.hash);
+    setSelectedRunId(null);
+  };
   const [tasks, setTasks]     = useState<Task[]>([]);
   const [, setAgents]         = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -312,6 +329,7 @@ export function AutomationPage() {
       {/* ── Workflows tab ─────────────────────────────────────────────────────── */}
       {tab === "workflows" && (
         <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+          {selectedRunId && <NotificationRunDetails key={selectedRunId} runId={selectedRunId} onClose={closeRun} />}
 
           {/* Visual workflow pipeline diagram */}
           <GlassCard lift={false}>

@@ -40,10 +40,12 @@ interface OrgContextType {
 
 const OrgContext = createContext<OrgContextType | null>(null);
 
+export function useOrg(options?: { optional: false }): OrgContextType;
+export function useOrg(options: { optional: true }): OrgContextType | null;
 // eslint-disable-next-line react-refresh/only-export-components
-export function useOrg(): OrgContextType {
+export function useOrg(options?: { optional: boolean }): OrgContextType | null {
   const ctx = useContext(OrgContext);
-  if (!ctx) throw new Error("useOrg must be used within OrgProvider");
+  if (!ctx && !options?.optional) throw new Error("useOrg must be used within OrgProvider");
   return ctx;
 }
 

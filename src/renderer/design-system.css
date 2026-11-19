@@ -709,25 +709,6 @@ input:focus, textarea:focus, select:focus {
   display: flex; flex-direction: column; gap: 2px;
   min-width: 180px; flex-shrink: 0;
 }
-.settings-layout { flex: 1; overflow: hidden; display: flex; min-width: 0; }
-.settings-nav {
-  width: 200px; flex-shrink: 0; padding: 20px 12px;
-  border-inline-end: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 2px;
-}
-.settings-content { flex: 1; min-width: 0; overflow-y: auto; padding: 28px; }
-/* Phones: the 200px column left ~130px for the settings themselves and cut
-   them off; stack the nav above the content as a scrollable row instead. */
-@media (max-width: 640px) {
-  .settings-layout { flex-direction: column; }
-  .settings-nav {
-    width: auto; flex-direction: row; overflow-x: auto; padding: 8px 12px;
-    border-inline-end: 0; border-bottom: 1px solid var(--border);
-  }
-  .settings-nav > .section-label { display: none; }
-  .settings-nav .settings-nav-item { white-space: nowrap; flex-shrink: 0; }
-  .settings-content { padding: 16px; }
-}
 .settings-nav-item {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 12px; border-radius: var(--r-md);
@@ -1217,10 +1198,10 @@ kbd {
   box-shadow: 0 0 0 2px var(--bg-surface);
 }
 .g-notif-panel {
-  position: absolute; bottom: calc(100% + 8px); inset-inline-start: 0; width: 340px; max-width: 92vw;
+  position: fixed; width: 340px; max-width: calc(100vw - 16px);
   max-height: 480px; display: flex; flex-direction: column;
   background: var(--bg-elevated); border: 1px solid var(--b2); border-radius: var(--r-xl);
-  box-shadow: var(--shadow-xl); z-index: 1000; overflow: hidden;
+  box-shadow: var(--shadow-xl); z-index: 950; overflow: hidden;
 }
 .g-notif-panel__header {
   display: flex; align-items: center; justify-content: space-between;
@@ -2350,15 +2331,6 @@ button, [role="button"], input, textarea, select, a,
     padding: 10px 10px;
   }
 
-  /* ── Notification panel: full-width on mobile ───────────────────── */
-  .g-notif-panel {
-    width: calc(100vw - 32px) !important;
-    max-width: 100vw !important;
-    inset-inline-start: 0 !important;
-    inset-inline-end:   0 !important;
-    margin: 0 16px !important;
-  }
-
   /* ── Dialogs / overlays: mobile-safe ───────────────────────────── */
   /* BuildingOverlay and BillingErrorOverlay modal cards */
   .ab-panels [style*="maxWidth: 400"],
@@ -2444,4 +2416,17 @@ button, [role="button"], input, textarea, select, a,
   .flow-node-card, .flow-case-card { transition: none !important; }
   /* Glow-pulse keyframe: frozen */
   @keyframes glow-pulse { to { box-shadow: 0 0 12px var(--accent-dim); } }
+}
+
+/* Settings stay usable beside the navigation on desktop and on small screens. */
+.flow-settings-layout { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.flow-settings-nav { width: 200px; flex-shrink: 0; padding: 20px 12px; border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-item { border: 0; background: transparent; font: inherit; text-align: start; }
+.flow-settings-content { flex: 1; min-width: 0; overflow-y: auto; padding: 28px; }
+@media (max-width: 760px) {
+  .flow-settings-layout { flex-direction: column; }
+  .flow-settings-nav { width: auto; flex-direction: row; overflow-x: auto; padding: 8px; border-inline-end: 0; border-bottom: 1px solid var(--border); }
+  .flow-settings-nav > .section-label { display: none; }
+  .flow-settings-nav .settings-nav-item { flex-shrink: 0; white-space: nowrap; }
+  .flow-settings-content { padding: 16px; }
 }
