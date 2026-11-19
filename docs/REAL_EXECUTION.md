@@ -10,6 +10,15 @@ Both build endpoints validate delivered files and startup metadata. Requests wit
 business transactions, database tables, or an approved backend stack must include
 server source, persistence implementation, and dependency configuration. Truncated
 streams and frontend-only transactional outputs emit an error, not `done`.
+Business apps also require interface files unless an API-only scope was explicitly
+requested or approved. Python files must parse successfully; backend/database
+evidence comes from application calls and model declarations, excluding tests and
+fixtures. Imports, comments and descriptive strings do not supply Python backend
+or database implementations. Recognized Python, Node and Uvicorn startup entries
+must be delivered, and npm startup scripts must exist in the root package.json.
+These checks parse source without importing or executing generated code. They do
+not establish route behavior, database connectivity, integration readiness or that
+every framework/startup-command variant is supported.
 This is a structural minimum, not a security audit or proof of runtime behavior.
 The API reports `status: generated`, `structure_checked: true`,
 `runtime_verified: false`, `deployed: false`. The UI says files were generated.

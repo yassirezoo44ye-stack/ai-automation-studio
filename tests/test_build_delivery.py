@@ -52,3 +52,70 @@ def test_source_archive_excludes_runtime_data_secrets_and_links(tmp_path):
     (tmp_path/'data'/'store.sqlite3').write_text('customer data')
     (tmp_path/'linked.txt').symlink_to(tmp_path/'.env.production')
     assert {str(p.relative_to(tmp_path)) for p in source_files(tmp_path)} == {'.flow-commerce.json', '.env.example', 'main.py'}
+
+
+def _python_business_app():
+    return {
+        'main.py': 'from fastapi import FastAPI as API\nimport sqlite3 as db\napp = API()\nconnection = db.connect("app.sqlite3")',
+        'requirements.txt': 'fastapi\nuvicorn',
+        'index.html': '<main>Customer records</main>',
+    }
+
+
+def test_business_backend_requires_an_interface_but_explicit_api_only_is_supported():
+    files = _python_business_app()
+    del files['index.html']
+    with pytest.raises(HTTPException, match='interface'):
+        validate_delivery('Build a CRM', {}, files, 'uvicorn main:app')
+    result = validate_delivery('Build an API-only CRM backend', {}, files, 'uvicorn main:app')
+    assert result['requires_backend'] and not result['requires_frontend']
+    assert not result['runtime_verified']
+
+
+def test_framework_and_database_names_in_comments_cannot_supply_a_backend():
+    files = _python_business_app()
+    files['main.py'] = '# FastAPI() sqlite3.connect("db")\nprint("FastAPI sqlite3")'
+    with pytest.raises(HTTPException, match='backend'):
+        validate_delivery('Build CRM', {}, files, 'python main.py')
+
+
+def test_database_import_without_implementation_does_not_complete():
+    files = _python_business_app()
+    files['main.py'] = 'from fastapi import FastAPI\nimport sqlite3\napp = FastAPI()'
+    with pytest.raises(HTTPException, match='database'):
+        validate_delivery('Build CRM', {}, files, 'python main.py')
+
+
+def test_backend_existing_only_in_test_files_cannot_complete():
+    files = _python_business_app()
+    files['tests/test_api.py'] = files.pop('main.py')
+    with pytest.raises(HTTPException, match='backend'):
+        validate_delivery('Build CRM', {}, files, 'python tests/test_api.py')
+
+
+@pytest.mark.parametrize('command', ['python missing.py', 'uvicorn missing:app', 'node missing.js'])
+def test_missing_startup_entry_is_rejected(command):
+    with pytest.raises(HTTPException, match='entry file'):
+        validate_delivery('Build CRM', {}, _python_business_app(), command)
+
+
+def test_invalid_generated_python_is_rejected_without_executing_it():
+    files = _python_business_app()
+    files['main.py'] += '\nif : broken'
+    with pytest.raises(HTTPException, match='Python syntax'):
+        validate_delivery('Build CRM', {}, files, 'python main.py')
+
+
+def test_npm_startup_script_must_exist():
+    files = {'index.html': '<main>Portfolio</main>', 'package.json':'{"scripts":{"build":"vite build"}}'}
+    with pytest.raises(HTTPException, match='npm startup script'):
+        validate_delivery('Static portfolio', {}, files, 'npm run dev')
+    files['package.json'] = '{"scripts":{"dev":"vite"}}'
+    assert validate_delivery('Static portfolio', {}, files, 'npm run dev')['structure_checked']
+
+
+def test_approved_api_only_scope_is_preserved():
+    files = _python_business_app()
+    del files['index.html']
+    result = validate_delivery('CRM API', {'tech_stack':{'frontend':'none','backend':'FastAPI'},'pages':[]}, files, 'uvicorn main:app')
+    assert not result['requires_frontend']
