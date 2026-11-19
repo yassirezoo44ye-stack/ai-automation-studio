@@ -180,8 +180,10 @@ python -B /app/app/activation_check.py \
 Replace the SHA placeholder; do not compare the running SHA to itself or assume
 that a successful check on a developer computer represents the Render service.
 The current production image may not include this new file. A reviewed copy can
-also be supplied on standard input using `python -B -` with the same arguments;
-that does not require saving it into production or deploying merely to inspect
+also be supplied on standard input using `python -B -` with the same arguments.
+When WORKSPACES_DIR is unset, start that Shell in /app (the service's WORKDIR);
+the stdin copy uses its working directory for the default ./workspaces path.
+That does not require saving it into production or deploying merely to inspect
 configuration. Use the secure service Shell, not chat, for any secret setup.
 
 The tool reports only:

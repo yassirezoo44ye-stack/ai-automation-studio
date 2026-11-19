@@ -127,3 +127,15 @@ def test_cli_rejects_invalid_target_without_echoing_input(capsys):
     output = capsys.readouterr().out
     assert "private-invalid-fixture" not in output
     assert json.loads(output)["error"] == "invalid_expected_target"
+
+
+def test_reviewed_stdin_copy_uses_shell_working_directory(tmp_path):
+    root = tmp_path / 'workspaces'
+    root.mkdir()
+    source = Path(activation_check.__file__).read_text()
+    result = subprocess.run([sys.executable, '-B', '-'], input=source,
+                            cwd=tmp_path, env={'PATH': os.defpath},
+                            capture_output=True, text=True, check=False)
+    assert result.returncode == 1
+    assert json.loads(result.stdout)['checks']['workspace_mount']['exists'] is True
+    assert list(tmp_path.iterdir()) == [root]

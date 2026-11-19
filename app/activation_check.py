@@ -43,7 +43,10 @@ def configuration_report(
     record("release_identity", "NOT_RUN" if expected_commit is None else
            "PASS" if env.get("RENDER_GIT_COMMIT", "").lower() == expected_commit.lower() else "FAIL")
     record("mount_enforcement", "PASS" if env.get("REQUIRE_WORKSPACE_MOUNT", "").lower() == "true" else "FAIL")
-    root = Path(env.get("WORKSPACES_DIR") or str(Path(__file__).resolve().parent.parent / "workspaces"))
+    # A reviewed copy can be piped into python -B -. In that mode __file__
+    # is <stdin>; use the service Shell's working directory, not its parent.
+    project_root = Path.cwd() if __file__ == "<stdin>" else Path(__file__).resolve().parent.parent
+    root = Path(env.get("WORKSPACES_DIR") or str(project_root / "workspaces"))
     try:
         directory = root.is_dir()
         mounted = directory and root.is_mount()
