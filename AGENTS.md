@@ -64,3 +64,9 @@ close nested preference dialogs on interaction. Normalize JSONB action links,
 show write failures, and protect confirmed changes from stale responses. Settings
 controls must affect the real request/runtime preference they describe. See
 `docs/NOTIFICATIONS_AND_SETTINGS.md` for persistence boundaries and verification.
+
+Streaming clients must use shared authenticated transport and require a terminal
+SSE event before reporting completion; preserve partial output on disconnect.
+Refresh retries retain the original request organization/body and respect account
+changes/cancellation. Confirm source sync before execution. Agent `done` must follow
+committed reply persistence. See `docs/SESSION_AND_EXECUTION_RECOVERY.md`.

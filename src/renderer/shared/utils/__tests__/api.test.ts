@@ -139,3 +139,59 @@ describe("authH — always sends both credential headers when available", () => 
     expect(headers["X-Organization-Id"]).toBe("org-1");
   });
 });
+
+describe("session recovery boundaries", () => {
+  const globals = window as unknown as Record<string, unknown>;
+  it("rotates captured auth headers while preserving the original organization and body", async () => {
+    globals.__axon_access_token = "old";
+    globals.__axon_org_id = "original-org";
+    localStorage.setItem("sub_token", "old-sub");
+    const headers = authH();
+    globals.__axon_refresh_fn = async () => {
+      globals.__axon_access_token = "fresh";
+      globals.__axon_org_id = "different-org";
+      localStorage.setItem("sub_token", "fresh-sub");
+      return { token: "fresh" };
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(401, { error: "token_expired" })).mockResolvedValueOnce(jsonResponse(200, {}));
+    await apiFetch("/api/run/stream", { method: "POST", headers, body: '{"prompt":"original"}' });
+    const retried = vi.mocked(fetch).mock.calls[1][1]!;
+    expect(new Headers(retried.headers).get("authorization")).toBe("Bearer fresh");
+    expect(new Headers(retried.headers).get("x-sub-token")).toBe("fresh-sub");
+    expect(new Headers(retried.headers).get("x-organization-id")).toBe("original-org");
+    expect(retried.body).toBe('{"prompt":"original"}');
+  });
+
+  it.each([new Headers({ "X-Trace": "test" }), [["X-Trace", "test"]] as [string, string][]])("accepts standard HeadersInit shapes", async headers => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, {}));
+    await apiFetch("/api/projects", { headers });
+    expect(new Headers(vi.mocked(fetch).mock.calls[0][1]?.headers).get("x-trace")).toBe("test");
+  });
+
+  it.each(["", "another-account"])("does not replay after logout or an account switch (%s)", async currentToken => {
+    globals.__axon_access_token = "old";
+    globals.__axon_refresh_fn = async () => { globals.__axon_access_token = currentToken; return { token: "fresh" }; };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(401, { error: "token_expired" }));
+    expect((await apiFetch("/api/projects")).status).toBe(401);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("does not replay an aborted operation after refresh", async () => {
+    const controller = new AbortController();
+    globals.__axon_access_token = "old";
+    globals.__axon_refresh_fn = async () => { controller.abort(); return { token: "fresh" }; };
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(401, { error: "token_expired" }));
+    await expect(apiFetch("/api/projects", { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("does not replace explicitly supplied credentials for another identity", async () => {
+    globals.__axon_access_token = "browser-user";
+    const refresh = vi.fn();
+    globals.__axon_refresh_fn = refresh;
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(401, { error: "token_expired" }));
+    await apiFetch("/api/projects", { headers: { authorization: "Bearer explicit-other-user" } });
+    expect(refresh).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+});
