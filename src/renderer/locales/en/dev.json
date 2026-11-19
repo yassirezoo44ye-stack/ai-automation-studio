@@ -35,7 +35,8 @@
     "writingFile": "Writing {{path}}…",
     "builtFiles": "Built {{count}} files",
     "builtToast": "Built: {{description}}",
-    "errorPrefix": "Error: {{message}}"
+    "errorPrefix": "Error: {{message}}",
+    "interrupted": "Connection interrupted before completion. Please retry; existing files were kept."
   },
   "filesTab": {
     "treeAriaLabel": "File tree",
@@ -60,7 +61,8 @@
     "emptyTitle": "Nothing to run yet",
     "emptyHint": "This workspace is empty. Generate a project first — the Terminal will auto-detect the right command and run it here.",
     "goToGenerate": "✦ Go to Generate",
-    "starting": "▶ Starting…\n"
+    "starting": "▶ Starting…\n",
+    "interrupted": "Connection interrupted before completion. Please retry; existing files were kept."
   },
   "packageTab": {
     "projectLabel": "Project",

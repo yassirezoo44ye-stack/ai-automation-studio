@@ -25,7 +25,8 @@ export async function fetchMessages(convId: string): Promise<Message[]> {
 }
 
 export async function deleteConversation(convId: string): Promise<void> {
-  await apiFetch(`/api/conversations/${convId}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/conversations/${convId}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("Conversation deletion rejected");
 }
 
 export async function exportConversation(convId: string): Promise<Blob> {
@@ -41,11 +42,12 @@ export async function extractTasksFromConversation(convId: string): Promise<{ cr
 }
 
 export async function updateTaskStatus(taskId: string, status: Task["status"]): Promise<void> {
-  await apiFetch(`/api/tasks/${taskId}`, {
+  const response = await apiFetch(`/api/tasks/${taskId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
+  if (!response.ok) throw new Error("Task update rejected");
 }
 
 export async function fetchRecentTasks(limit = 6): Promise<Task[]> {
