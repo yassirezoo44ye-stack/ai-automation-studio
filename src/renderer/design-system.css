@@ -1178,15 +1178,11 @@ kbd {
   font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
   box-shadow: 0 0 0 2px var(--bg-surface);
 }
-/* The bell lives in the top bar, so the panel drops *down* and aligns to the
-   bell's end edge. It used to open upwards (bottom: 100%) from its old
-   sidebar-footer spot, which put it above the top of the viewport — the
-   bell looked dead. */
 .g-notif-panel {
-  position: absolute; top: calc(100% + 8px); inset-inline-end: 0; width: 340px; max-width: 92vw;
+  position: fixed; width: 340px; max-width: calc(100vw - 16px);
   max-height: 480px; display: flex; flex-direction: column;
   background: var(--bg-elevated); border: 1px solid var(--b2); border-radius: var(--r-xl);
-  box-shadow: var(--shadow-xl); z-index: 1000; overflow: hidden;
+  box-shadow: var(--shadow-xl); z-index: 950; overflow: hidden;
 }
 .g-notif-panel__header {
   display: flex; align-items: center; justify-content: space-between;
@@ -2316,18 +2312,6 @@ button, [role="button"], input, textarea, select, a,
     padding: 10px 10px;
   }
 
-  /* ── Notification panel: full-width on mobile ───────────────────── */
-  .g-notif-panel {
-    /* Anchor to the viewport under the top bar so it can span the screen. */
-    position: fixed !important;
-    top: calc(var(--topbar-h) + 8px) !important;
-    inset-inline-start: 16px !important;
-    inset-inline-end:   16px !important;
-    width: auto !important;
-    max-width: none !important;
-    margin: 0 !important;
-  }
-
   /* ── Dialogs / overlays: mobile-safe ───────────────────────────── */
   /* BuildingOverlay and BillingErrorOverlay modal cards */
   .ab-panels [style*="maxWidth: 400"],
@@ -2413,4 +2397,17 @@ button, [role="button"], input, textarea, select, a,
   .flow-node-card, .flow-case-card { transition: none !important; }
   /* Glow-pulse keyframe: frozen */
   @keyframes glow-pulse { to { box-shadow: 0 0 12px var(--accent-dim); } }
+}
+
+/* Settings stay usable beside the navigation on desktop and on small screens. */
+.flow-settings-layout { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.flow-settings-nav { width: 200px; flex-shrink: 0; padding: 20px 12px; border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-item { border: 0; background: transparent; font: inherit; text-align: start; }
+.flow-settings-content { flex: 1; min-width: 0; overflow-y: auto; padding: 28px; }
+@media (max-width: 760px) {
+  .flow-settings-layout { flex-direction: column; }
+  .flow-settings-nav { width: auto; flex-direction: row; overflow-x: auto; padding: 8px; border-inline-end: 0; border-bottom: 1px solid var(--border); }
+  .flow-settings-nav > .section-label { display: none; }
+  .flow-settings-nav .settings-nav-item { flex-shrink: 0; white-space: nowrap; }
+  .flow-settings-content { padding: 16px; }
 }

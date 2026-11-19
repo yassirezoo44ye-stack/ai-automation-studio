@@ -1,6 +1,8 @@
+import { useTranslation } from "react-i18next";
 import { EmptyState } from "../StateViews";
 
 export function EmptyNotifications({ filtered = false }: { filtered?: boolean }) {
+  const { t } = useTranslation("common");
   return (
     <EmptyState
       compact
@@ -10,8 +12,8 @@ export function EmptyNotifications({ filtered = false }: { filtered?: boolean })
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
       }
-      title={filtered ? "No notifications match" : "You're all caught up"}
-      description={filtered ? "Try clearing filters to see more." : "New activity will show up here."}
+      title={t(filtered ? "notifications.emptyFiltered" : "notifications.empty")}
+      description={t(filtered ? "notifications.filteredDescription" : "notifications.emptyDescription")}
     />
   );
 }

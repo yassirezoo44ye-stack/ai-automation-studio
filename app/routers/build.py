@@ -21,6 +21,7 @@ from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id, owner_email
 from app.core.commerce_builder import CONTRACT, is_store_request, store_chunks, store_plan, store_files, validate_store_workspace
 from app.core.build_delivery import validate_delivery
+from app.core.model_preferences import BuildModel, DEFAULT_MODEL
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
 from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
@@ -193,6 +194,7 @@ Be concise and realistic. Do not invent features not implied by the request."""
 
 
 class BuildRequest(BaseModel):
+    model: BuildModel = DEFAULT_MODEL
     project_id: str
     prompt: str = Field(..., min_length=1, max_length=10000)
     # Optional: approved BuildPlan from /api/build/plan.
@@ -243,7 +245,7 @@ async def build_program(req: BuildRequest, request: Request):
 
     request_obj = CompletionRequest(
         messages=[Message(role="user", content=req.prompt)],
-        model="claude-sonnet-4-6",
+        model=req.model,
         max_tokens=16000,
         temperature=1.0,  # match Anthropic's own API default (see chat.py's migration for why)
         system=BUILD_SYSTEM,
@@ -445,7 +447,7 @@ async def build_stream(req: BuildRequest, request: Request):
                 _final_content = _build_prompt_with_plan(_base_prompt, req.plan)
                 request_obj = CompletionRequest(
                     messages=[Message(role="user", content=_final_content)],
-                    model="claude-sonnet-4-6",
+                    model=req.model,
                     max_tokens=8192,
                     temperature=1.0,  # match Anthropic's own API default (see chat.py's migration)
                     system=BUILD_UNIFIED_SYSTEM,

@@ -1,3 +1,4 @@
+import { loadPrefs } from "../../../shared/utils/preferences";
 import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
@@ -250,7 +251,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       const res = await apiFetch(url, {
         method: "POST",
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
-          ...(!useAgent ? { skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [] } : {}) }),
+          ...(!useAgent ? { model: loadPrefs().chatModel, skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [] } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);

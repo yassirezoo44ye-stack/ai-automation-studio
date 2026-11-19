@@ -186,7 +186,7 @@ function PageTopBar({ onOpenCmd }: { onOpenCmd: () => void }) {
         </button>
 
         {/* Notification bell */}
-        <NotificationBell collapsed={false} />
+        <NotificationBell collapsed />
 
         {/* User avatar chip */}
         {user && (

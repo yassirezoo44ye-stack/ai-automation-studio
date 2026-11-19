@@ -1,6 +1,6 @@
 {
   "title": "Settings",
-  "saved": "Saved",
+  "saved": "Saved in this browser",
   "nav": {
     "label": "Settings",
     "system": "System",
@@ -51,7 +51,9 @@
       "rectangleTool": "Rectangle tool",
       "circleTool": "Circle tool",
       "textTool": "Text tool"
-    }
+    },
+    "unknown": "Unknown",
+    "backendUnavailable": "Cannot reach the server. Please retry."
   },
   "ai": {
     "modelRecommended": "Recommended",
@@ -62,9 +64,9 @@
     "manageBilling": "Manage billing at console.anthropic.com",
     "defaultModels": "Default Models",
     "chatModel": "Chat Model",
-    "chatModelHint": "Used in the AI Workspace chat.",
+    "chatModelHint": "Used in general chat and Copilot. Saved in this browser.",
     "buildModel": "Build Model",
-    "buildModelHint": "Used in the Dev Workspace code builder."
+    "buildModelHint": "Used for AI code generation in App Builder and Dev Workspace."
   },
   "appearance": {
     "theme": "Theme",
@@ -122,5 +124,6 @@
     "runtime": "Runtime",
     "license": "License",
     "copyright": "© {{year}} Flow AI. All rights reserved."
-  }
+  },
+  "saveError": "Could not save preferences in this browser. Please try again."
 }

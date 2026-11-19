@@ -1,3 +1,4 @@
+import { loadPrefs } from "../../../shared/utils/preferences";
 /**
  * BuildTab — AI-driven code generation panel.
  * Handles streaming build via /api/build/stream.
@@ -54,7 +55,7 @@ export function BuildTab({
     try {
       const res = await apiFetch("/api/build/stream", {
         method: "POST",
-        body: JSON.stringify({ project_id: projectId, prompt: buildPrompt }),
+        body: JSON.stringify({ project_id: projectId, prompt: buildPrompt, model: loadPrefs().buildModel }),
         signal: controller.signal,
       });
 

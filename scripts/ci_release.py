@@ -2,12 +2,16 @@
 CI release helper — runs only after a successful post-deploy smoke test on
 main. Reads commits since the last tag, buckets them by this repo's existing
 conventional-commit prefix convention (feat/fix/test/docs), bumps a patch
-version, updates CHANGELOG.md, and prints the new tag + release notes for
+version, optionally updates CHANGELOG.md, and prints the tag + release notes for
 the calling workflow step to create the tag and GitHub Release with.
 
 Does not push or create the tag itself — keeps side effects (git push, `gh
 release create`) visible in the workflow YAML rather than hidden in this
 script.
+
+CI uses --notes-only: tracked files and HEAD stay unchanged so the release
+can tag the smoke-tested commit without pushing to protected main. Running
+without that flag retains the local CHANGELOG.md update behavior.
 """
 import os
 import re
@@ -32,7 +36,7 @@ def _run(*args: str) -> str:
     ).stdout.strip()
 
 
-def _last_tag() -> str:
+def _last_tag(ref: str = "HEAD") -> str:
     # --match restricts this to actual release tags (vX.Y.Z / vX.Y.Z-rcN).
     # Without it, a non-semver milestone tag (e.g. "v1.0-design-studio",
     # used to mark a project-phase checkpoint, not a release) can be the
@@ -44,6 +48,7 @@ def _last_tag() -> str:
         return _run(
             "git", "describe", "--tags", "--abbrev=0",
             "--match", "v[0-9]*.[0-9]*.[0-9]*",
+            ref,
         )
     except subprocess.CalledProcessError:
         return "v0.0.0"
@@ -77,9 +82,14 @@ def _bucket_commits(last_tag: str) -> dict[str, list[str]]:
     return buckets
 
 
-def main() -> None:
+def main(*, notes_only: bool = False) -> None:
     last_tag = _last_tag()
     new_version = _next_version(last_tag)
+    if notes_only and last_tag != "v0.0.0":
+        # Retries reuse the version for this exact deployed commit.
+        if _run("git", "rev-parse", f"{last_tag}^{{commit}}") == _run("git", "rev-parse", "HEAD"):
+            new_version = last_tag
+            last_tag = _last_tag("HEAD^")
     buckets = _bucket_commits(last_tag)
 
     lines = [f"## {new_version}", ""]
@@ -91,8 +101,9 @@ def main() -> None:
         lines.append("")
     notes = "\n".join(lines).strip() or f"## {new_version}\n\nNo notable changes."
 
-    existing = CHANGELOG.read_text(encoding="utf-8") if CHANGELOG.exists() else "# Changelog\n"
-    CHANGELOG.write_text(existing.rstrip() + "\n\n" + notes + "\n", encoding="utf-8")
+    if not notes_only:
+        existing = CHANGELOG.read_text(encoding="utf-8") if CHANGELOG.exists() else "# Changelog\n"
+        CHANGELOG.write_text(existing.rstrip() + "\n\n" + notes + "\n", encoding="utf-8")
 
     # Machine-readable output for the calling workflow step (modern GITHUB_OUTPUT
     # file, not the deprecated ::set-output:: command).
@@ -114,4 +125,4 @@ if __name__ == "__main__":
         print("Next version:", _next_version(last_tag))
         print("Buckets:", _bucket_commits(last_tag))
     else:
-        main()
+        main(notes_only="--notes-only" in sys.argv)
