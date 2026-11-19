@@ -58,10 +58,22 @@
     "starting": "Starting…",
     "trigger": "On demand",
     "templates": {
-      "sequential": { "name": "Sequential Pipeline", "desc": "Run steps one after another — fetch → process → store" },
-      "parallel": { "name": "Parallel Fan-out", "desc": "Execute independent steps simultaneously for speed" },
-      "approval": { "name": "Human-in-the-Loop", "desc": "Pause at checkpoints for manual review and approval" },
-      "saga": { "name": "Saga (Compensating)", "desc": "Distributed transaction with automatic rollback" }
+      "sequential": {
+        "name": "Sequential Pipeline",
+        "desc": "Run steps one after another — fetch → process → store"
+      },
+      "parallel": {
+        "name": "Parallel Fan-out",
+        "desc": "Execute independent steps simultaneously for speed"
+      },
+      "approval": {
+        "name": "Human-in-the-Loop",
+        "desc": "Pause at checkpoints for manual review and approval"
+      },
+      "saga": {
+        "name": "Saga (Compensating)",
+        "desc": "Distributed transaction with automatic rollback"
+      }
     },
     "pipelineTitle": "How Automations Work",
     "pipelineDesc": "Events flow through your pipeline automatically",
@@ -100,5 +112,11 @@
     "loadWorkflowsFailed": "Could not load workflow runs",
     "updateTaskFailed": "Task update failed. Your task was kept.",
     "deleteTaskFailed": "Task deletion failed. Your task was kept."
+  },
+  "runDetails": {
+    "title": "Run details",
+    "close": "Close details",
+    "loading": "Loading run…",
+    "failed": "Could not load this run. Retry or check your access."
   }
 }

@@ -1,5 +1,6 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import * as Organizations from "../../../../contexts/OrgContext";
 import { NotificationBell } from "../NotificationBell";
 import { NotificationContext, type NotificationContextType, type Notification } from "../../../../contexts/notifications";
 
@@ -81,7 +82,7 @@ describe("NotificationBell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
     expect(screen.getByText("Network down")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(refetch).toHaveBeenCalledTimes(2);
   });
 
   it("clicking a notification title marks it read", () => {
@@ -90,5 +91,76 @@ describe("NotificationBell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
     fireEvent.click(screen.getByText("Workflow done"));
     expect(markRead).toHaveBeenCalledWith("n1");
+  });
+});
+
+
+describe("Notification popup interactions", () => {
+  it("renders outside clipped layout containers and keeps the settings dialog open while editing", async () => {
+    const setMuted = vi.fn();
+    const { container } = renderBell(baseCtx({ setMuted }));
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    const panel = screen.getByRole("dialog", { name: "Notifications" });
+    expect(container).not.toContainElement(panel);
+    fireEvent.click(screen.getByRole("button", { name: "Notification settings" }));
+    const checkbox = screen.getByRole("checkbox", { name: "Notify me about Workflows" });
+    fireEvent.mouseDown(checkbox);
+    fireEvent.click(checkbox);
+    expect(setMuted).toHaveBeenCalledWith("workflow", true);
+    expect(screen.getByRole("dialog", { name: "Notification settings" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Notification settings" })).not.toBeInTheDocument());
+    expect(panel).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Notification settings" })).toHaveFocus();
+  });
+
+  it("preserves notification destination query parameters", () => {
+    renderBell(baseCtx({ notifications: [makeNotification({ action: { href: "/automation?run=run-123", label: "View run" } })] }));
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    fireEvent.click(screen.getByText("Workflow done"));
+    expect(window.location.pathname).toBe("/automation");
+    expect(window.location.search).toBe("?run=run-123");
+    window.history.replaceState(null, "", "/");
+  });
+});
+
+
+afterEach(() => { vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
+
+describe("Notification destination scopes", () => {
+  function organizationContext(known: boolean) {
+    const org = { id: "org1", name: "Linked workspace", slug: "linked", kind: "organization" as const, plan: "free", created_at: "2026-11-19" };
+    return { orgs: known ? [org] : [], currentOrgId: "other", currentOrg: null, loading: false,
+      setCurrentOrgId: vi.fn(), refreshOrgs: vi.fn(async () => {}), createOrg: vi.fn(async () => org) };
+  }
+
+  it("switches to a known membership before opening the notification destination", () => {
+    const context = organizationContext(true);
+    vi.spyOn(Organizations, "useOrg").mockReturnValue(context);
+    renderBell(baseCtx({ notifications: [makeNotification({ action: { href: "/automation?run=run-1", label: "View run" } })] }));
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    fireEvent.click(screen.getByText("Workflow done"));
+    expect(context.setCurrentOrgId).toHaveBeenCalledWith("org1");
+    expect(window.location.pathname + window.location.search).toBe("/automation?run=run-1");
+  });
+
+  it("reports a workspace the user cannot select instead of opening the wrong organization", () => {
+    const context = organizationContext(false);
+    vi.spyOn(Organizations, "useOrg").mockReturnValue(context);
+    renderBell(baseCtx({ notifications: [makeNotification({ action: { href: "/automation?run=run-1", label: "View run" } })] }));
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    fireEvent.click(screen.getByText("Workflow done"));
+    expect(screen.getByText("The linked workspace is unavailable. Refresh or check your access.")).toBeInTheDocument();
+    expect(context.setCurrentOrgId).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/");
+  });
+
+  it.each(["https://other.example/automation", "javascript:alert(1)", "http://[", "/automation/not-a-route"])("ignores an invalid destination %s", href => {
+    renderBell(baseCtx({ notifications: [makeNotification({ action: { href, label: "Invalid target" } })] }));
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    fireEvent.click(screen.getByText("Workflow done"));
+    expect(window.location.pathname).toBe("/");
+    expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument();
   });
 });

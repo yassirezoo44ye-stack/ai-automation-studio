@@ -1,3 +1,4 @@
+import { loadPrefs } from "../../../shared/utils/preferences";
 /**
  * Builder service — wraps the streaming build API.
  *
@@ -91,7 +92,7 @@ export async function* streamBuild(
    *  user reviewed — rather than a free-form interpretation of the raw prompt. */
   approvedPlan?: object | null,
 ): AsyncGenerator<BuildEvent> {
-  const body: Record<string, unknown> = { project_id: projectId, prompt };
+  const body: Record<string, unknown> = { project_id: projectId, prompt, model: loadPrefs().buildModel };
   if (approvedPlan) body.plan = approvedPlan;
   const res = await apiFetch("/api/build/stream", {
     method: "POST",

@@ -9,6 +9,7 @@ vi.mock("../../contexts/toast", () => ({ useToast: () => toast }));
 vi.mock("../../utils/api", async original => ({ ...await original<typeof ApiModule>(), apiFetch: vi.fn() }));
 let failMutation = true;
 beforeEach(async () => {
+  window.history.replaceState(null, "", "/automation");
   vi.resetAllMocks(); failMutation = true; await i18n.changeLanguage("en");
   vi.mocked(apiFetch).mockImplementation(async (path, options) => {
     if (options?.method) return new Response(null, { status: failMutation ? 403 : 204 });
@@ -32,4 +33,29 @@ it("updates a task after the server accepts it", async () => {
   failMutation = false; render(<AutomationPage />); await screen.findByText("Keep this task");
   fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
   await screen.findByRole("button", { name: "Mark pending" });
+});
+
+
+it("opens the completed run requested by a notification instead of the tasks tab", async () => {
+  window.history.replaceState(null, "", "/automation?run=completed-123");
+  const original = vi.mocked(apiFetch).getMockImplementation()!;
+  vi.mocked(apiFetch).mockImplementation(async (path, options) => path === "/api/automation-runs/completed-123"
+    ? Response.json({ run_id: "completed-123", name: "Saved workflow result", status: "completed", steps: [{ step_id: "result", name: "Write result", status: "completed", result: "Verified output" }] })
+    : original(path, options));
+  render(<AutomationPage />);
+  expect(await screen.findByText("Saved workflow result")).toBeInTheDocument();
+  expect(screen.getByText("Verified output")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Workflows" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(screen.getByRole("button", { name: "Close details" }));
+  expect(window.location.search).toBe("");
+  expect(screen.queryByText("Saved workflow result")).not.toBeInTheDocument();
+});
+
+it("shows an error for a notification run the user cannot read", async () => {
+  window.history.replaceState(null, "", "/automation?run=private-run");
+  const original = vi.mocked(apiFetch).getMockImplementation()!;
+  vi.mocked(apiFetch).mockImplementation(async (path, options) => path === "/api/automation-runs/private-run"
+    ? Response.json({ detail: "Not found" }, { status: 404 }) : original(path, options));
+  render(<AutomationPage />);
+  expect(await screen.findByText("Could not load this run. Retry or check your access.")).toBeInTheDocument();
 });
