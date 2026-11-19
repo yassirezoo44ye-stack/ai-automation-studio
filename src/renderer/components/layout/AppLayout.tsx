@@ -273,7 +273,7 @@ function WorkspaceContent() {
 
 export function AppLayout() {
   const { t } = useTranslation("common");
-  const { setPage, isPageTransitioning } = useAppContext();
+  const { page, setPage, isPageTransitioning } = useAppContext();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen,    setCmdOpen]    = useState(false);
   const closeMobile = useCallback(() => setMobileOpen(false), []);
@@ -332,7 +332,9 @@ export function AppLayout() {
         />
       )}
 
-      <CopilotButton />
+      {/* The floating copilot duplicates — and covered the Send button of —
+          the full AI assistant page, so it is hidden there. */}
+      {page !== "ai" && <CopilotButton />}
     </>
   );
 }

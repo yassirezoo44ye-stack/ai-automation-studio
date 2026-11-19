@@ -1,4 +1,5 @@
 {
+  "brand": { "tagline": "Your AI assistant" },
   "workspaceDetails": {
   "summary": "Summary",
   "examples": "Examples",
@@ -62,7 +63,10 @@
     "signOutTitle": "Sign out ({{email}})",
     "signOut": "Sign Out"
   },
+  "notificationsBell": { "label": "Notifications", "unread": "Notifications, {{count}} unread", "unreadLive": "{{count}} unread notifications" },
   "appLayout": {
+    "search": "Search…",
+    "openCommandPalette": "Open command palette",
     "skipToContent": "Skip to main content",
     "loadingWorkspace": "Loading workspace…",
     "openNavMenu": "Open navigation menu"
