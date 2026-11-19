@@ -39,6 +39,7 @@ import logging
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
+from tests.cookie_client import request_with_cookies
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
@@ -1115,7 +1116,8 @@ class TestGoogleOAuthLoginCSRFBinding:
         mock_google = _MockGoogleClient()
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(mock_google):
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": state},
                 cookies={"oauth_bind": "wrong-nonce"},
@@ -1139,7 +1141,8 @@ class TestGoogleOAuthLoginCSRFBinding:
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              patch("app.core.cache.redis_adapter.get_redis",
                    _AM(side_effect=RuntimeError("redis down"))):
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": "any-state"},
                 cookies={"oauth_bind": "any-nonce"},
@@ -1157,7 +1160,8 @@ class TestExpiredOAuthState:
     def test_expired_state_returns_400(self, client):
         """A state token that was never stored (simulates TTL expiry) must 400."""
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": "expired-nonexistent-state"},
                 cookies={"oauth_bind": "some-nonce"},
@@ -1200,7 +1204,8 @@ class TestConcurrentCallbacks:
         # Second callback — same state, same nonce → must be rejected (replayed).
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(mock_google), _mock_pool(conn):
-            resp2 = client.get(
+            resp2 = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "code-2", "state": state},
                 cookies={"oauth_bind": bind_cookie},
@@ -1296,7 +1301,6 @@ class TestFrontendUrlSeparation:
             resp = client.get(
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": state},
-                cookies={},
             )
         assert resp.status_code == 400
         assert "Invalid or expired OAuth state" in resp.text

@@ -447,6 +447,25 @@ input:focus, textarea:focus, select:focus {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+/* A page root that centres itself with `margin: 0 auto` stops stretching
+   in this flex column and sizes to its content's min-content width, so on
+   a phone it grows wider than the screen and app-main clips it (Leads,
+   New Project, Devices, SaaS factory). Full width + the root's own
+   max-width keeps the centring and lets the content wrap. */
+.page-enter > * { width: 100%; min-width: 0; }
+/* Phones: page headers and tab bars were single non-wrapping rows, so their
+   last buttons/tabs sat past the screen edge, cut off by .app-main and
+   unreachable. Headers wrap onto a second line (their inline fixed height
+   has to give way); tab bars scroll sideways. */
+@media (max-width: 640px) {
+  .page-enter > header {
+    flex-wrap: wrap; row-gap: 8px;
+    height: auto !important; min-height: 0 !important;
+    padding-block: 10px !important;
+  }
+  .page-enter [role="tablist"] { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  .page-enter > header > div, .page-enter .pill-tabs { flex-wrap: wrap; min-width: 0; }
+}
 .page-enter {
   animation: page-enter-motion 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
 }

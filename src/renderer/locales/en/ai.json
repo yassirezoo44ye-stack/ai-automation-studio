@@ -92,7 +92,7 @@
       "streamErrorPrefix": "⚠️ {{message}}",
       "copyCode": "Copy",
       "copied": "Copied!",
-      "interrupted": "The reply was interrupted. Please retry."
+      "interrupted": "⚠️ The connection was lost before the reply finished."
     },
     "convGroups": {
       "today": "Today",

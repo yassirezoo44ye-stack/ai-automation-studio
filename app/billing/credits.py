@@ -78,7 +78,7 @@ class CreditService:
             from app.billing.subscriptions import get_org_subscription_service
             customer_id = await get_org_subscription_service().get_stripe_customer_id(org_id)
             if customer_id:
-                customer = stripe.Customer.retrieve(customer_id)
+                customer = stripe.Customer.retrieve(customer_id).to_dict()
                 return max(0, -(customer.get("balance") or 0))
         except Exception:
             log.debug("stripe balance read failed for org=%s, falling back to ledger", org_id, exc_info=True)

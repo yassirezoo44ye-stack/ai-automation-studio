@@ -29,7 +29,7 @@ import asyncpg
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import Field, BaseModel, EmailStr, field_validator
 
 from app.core.db import get_pool, write_audit
 from app.core.email import send_password_reset_email, send_verification_email
@@ -142,10 +142,23 @@ def _user_response(user) -> dict:
 # ── Models ────────────────────────────────────────────────────────────────────
 
 
+def _normalize_email(v: str) -> str:
+    """One account per mailbox, whatever the casing typed.
+
+    EmailStr lowercases only the domain, so "Ann@example.com" and
+    "ann@example.com" used to become two accounts, and the mixed-case one
+    could neither sign in as "ann@…" nor accept an invitation (invitations
+    are stored and matched in lowercase). Every auth request model runs
+    the address through this before it reaches SQL."""
+    return v.strip().lower()
+
+
 class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
     password: str
+
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
 
     @field_validator("password")
     @classmethod
@@ -161,6 +174,10 @@ class RegisterRequest(BaseModel):
     def non_empty_name(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Name cannot be empty")
+        # users.name is TEXT, so a 10,000-character name was stored and then
+        # shown in headers, member lists and e-mails (found by journey 11).
+        if len(v.strip()) > 120:
+            raise ValueError("Name must be at most 120 characters")
         return v.strip()
 
 
@@ -169,6 +186,8 @@ class LoginRequest(BaseModel):
     password: str
     remember: bool = False
 
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
+
 
 class RefreshRequest(BaseModel):
     refresh_token: str
@@ -176,6 +195,8 @@ class RefreshRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
 
 
 class ResetPasswordRequest(BaseModel):
@@ -193,7 +214,7 @@ class ResetPasswordRequest(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    name: str | None = None
+    name: str | None = Field(None, max_length=120)
     avatar_url: str | None = None
 
     @field_validator("avatar_url")
@@ -224,6 +245,8 @@ class ChangePasswordRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -878,7 +901,19 @@ async def oauth_public_config(response: Response) -> dict:
     if (url.scheme != "https" and not (local and url.scheme == "http")) or not url.netloc or url.username or url.password or url.path or url.query or url.fragment:
         raise HTTPException(503, "OAuth origin is not configured correctly")
     response.headers["Cache-Control"] = "no-store"
-    return {"origin": base}
+    return {"origin": base, "providers": _configured_oauth_providers()}
+
+
+def _configured_oauth_providers() -> list[str]:
+    """Providers whose start route will not answer 503. The sign-in page
+    hides the others: a button for an unconfigured provider used to send
+    the browser to a bare JSON error page (found on production, M8)."""
+    pairs = (
+        ("google", _GOOGLE_CLIENT_ID, _GOOGLE_CLIENT_SECRET),
+        ("github", _GITHUB_CLIENT_ID, _GITHUB_CLIENT_SECRET),
+        ("microsoft", _MICROSOFT_CLIENT_ID, _MICROSOFT_CLIENT_SECRET),
+    )
+    return [name for name, cid, secret in pairs if cid and secret]
 
 
 def _oauth_not_configured(provider: str):
@@ -1026,6 +1061,7 @@ async def _upsert_oauth_user(
             f"{provider.capitalize()} did not verify this email address. "
             "Sign in with your Flow password and link this provider from Account Settings.",
         )
+    email = _normalize_email(email)
     existing = await conn.fetchrow("SELECT * FROM users WHERE email=$1", email)
     if existing:
         if existing["password_hash"] is not None:

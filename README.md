@@ -126,10 +126,10 @@ pytest tests/ -v
 
 ### Schema management
 
-Alembic is present in the repo but is **not** how schema changes actually
-ship — `alembic history` fails past migration `001` (later migrations use
-a different, non-Alembic `up(conn)/down(conn)` shape). The real mechanism
-is the idempotent `init_db()`/`ensure_*_table()`/`init_*_schema()` calls
+Alembic is **not** used. Its configuration was archived to
+`migrations/_alembic_archive/` (the revision chain was broken past `001`
+and nothing ever ran it). The schema is applied by the idempotent
+`init_db()`/`ensure_*_table()`/`init_*_schema()` calls
 `app.factory.lifespan()` runs on every startup: add your new
 `CREATE TABLE IF NOT EXISTS`/`ALTER TABLE` statements to the relevant
 `init_*_schema()` function and restart the app. See `DEPLOYMENT.md` →

@@ -870,6 +870,10 @@ async def project_process_status(project_id: str, request: Request):
 @router.api_route(
     "/api/projects/{project_id}/proxy/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+    # One route, seven methods: FastAPI gives them all the same operation
+    # id and warns "Duplicate Operation ID" every time the OpenAPI schema is
+    # built. A pass-through proxy has no schema worth publishing.
+    include_in_schema=False,
 )
 async def proxy_to_project(project_id: str, path: str, request: Request):
     """

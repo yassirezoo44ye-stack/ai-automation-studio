@@ -10,7 +10,7 @@ import { useAsyncSubmit } from "../../shared/forms/useAsyncSubmit";
 import { all, required, email as emailValidator, minLength, matchesField, passwordStrength } from "../../shared/forms/validators";
 import { EmailField, PasswordField, TextField, Checkbox, SubmitButton, ErrorBanner, SuccessBanner } from "../../shared/ui/forms";
 import { GoldButton } from "../../shared/ui/gold";
-import { oauthStartUrl } from "./oauth";
+import { oauthProviders, oauthStartUrl, type OAuthProvider } from "./oauth";
 
 type Tab = "login" | "register" | "forgot" | "reset" | "mfa";
 
@@ -94,20 +94,33 @@ function MicrosoftIcon() {
   );
 }
 
-function OAuthRow({ onSelect, disabled = false }: { onSelect: (provider: "google" | "github" | "microsoft") => void; disabled?: boolean }) {
+function OAuthRow({ onSelect, disabled = false, available = null }: {
+  onSelect: (provider: OAuthProvider) => void;
+  disabled?: boolean;
+  /** Providers the server has configured; null (unknown) shows them all. */
+  available?: OAuthProvider[] | null;
+}) {
   const { t } = useTranslation("auth");
+  const shows = (p: OAuthProvider) => available === null || available.includes(p);
+  if (available !== null && available.length === 0) return null;
   return (
     <>
       <div style={S.oauthRow}>
-        <button disabled={disabled} style={S.oauthBtn("#4285F4")} onClick={() => onSelect("google")} type="button">
-          <GoogleIcon /> {t("oauth.google")}
-        </button>
-        <button disabled={disabled} style={S.oauthBtn("#24292e")} onClick={() => onSelect("github")} type="button">
-          <GitHubIcon /> {t("oauth.github")}
-        </button>
-        <button disabled={disabled} style={S.oauthBtn("#2f2f2f")} onClick={() => onSelect("microsoft")} type="button">
-          <MicrosoftIcon /> {t("oauth.microsoft")}
-        </button>
+        {shows("google") && (
+          <button disabled={disabled} style={S.oauthBtn("#4285F4")} onClick={() => onSelect("google")} type="button">
+            <GoogleIcon /> {t("oauth.google")}
+          </button>
+        )}
+        {shows("github") && (
+          <button disabled={disabled} style={S.oauthBtn("#24292e")} onClick={() => onSelect("github")} type="button">
+            <GitHubIcon /> {t("oauth.github")}
+          </button>
+        )}
+        {shows("microsoft") && (
+          <button disabled={disabled} style={S.oauthBtn("#2f2f2f")} onClick={() => onSelect("microsoft")} type="button">
+            <MicrosoftIcon /> {t("oauth.microsoft")}
+          </button>
+        )}
       </div>
       <div style={S.divider}>
         <span style={S.divLine} /><span>{t("oauth.or")}</span><span style={S.divLine} />
@@ -167,6 +180,12 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthStarting, setOauthStarting] = useState(false);
   const oauthPending = useRef(false);
+  const [oauthAvailable, setOauthAvailable] = useState<OAuthProvider[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void oauthProviders().then(p => { if (live) setOauthAvailable(p); });
+    return () => { live = false; };
+  }, []);
   // Local MFA challenge state for password-login MFA flow.
   // OAuth-initiated MFA is read from context's pendingMfaChallenge.
   const [localMfaChallenge, setLocalMfaChallenge] = useState<MfaChallenge | null>(null);
@@ -184,7 +203,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     }
   }, []);
 
-  async function handleOAuth(provider: "google" | "github" | "microsoft") {
+  async function handleOAuth(provider: OAuthProvider) {
     if (oauthPending.current) return;
     oauthPending.current = true;
     setOauthStarting(true); setOauthError(null);
@@ -428,7 +447,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
             {/* ── Login ── */}
             {effectiveTab === "login" && (
               <>
-                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} />
+                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} available={oauthAvailable} />
                 {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
                 <form onSubmit={loginForm.handleSubmit} noValidate>
                   <EmailField {...loginForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
@@ -448,7 +467,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
             {/* ── Register ── */}
             {effectiveTab === "register" && !registeredEmail && (
               <>
-                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} />
+                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} available={oauthAvailable} />
                 {registerSubmit.error && <ErrorBanner message={registerSubmit.error} suggestedFix={registerSubmit.suggestedFix} onRetry={registerForm.isValid ? registerSubmit.retry : undefined} />}
                 <form onSubmit={registerForm.handleSubmit} noValidate>
                   <TextField {...registerForm.register("name")} label={t("register.name")} required autoFocus autoComplete="name" />

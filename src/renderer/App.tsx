@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OrgProvider }   from "./contexts/OrgContext";
 import { AppProvider }   from "./contexts/AppContext";
@@ -10,6 +10,8 @@ import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
 import { LandingPage }   from "./features/landing/LandingPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
+import { lazyPage } from "./shared/lib/staleChunk";
+import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import "./design-system.css";
 
 
@@ -18,7 +20,7 @@ const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
 type AuthView = "landing" | "login" | "register";
-const StudyLibraryPage = lazy(() => import("./features/study-library/StudyLibraryPage").then(m => ({ default: m.StudyLibraryPage })));
+const StudyLibraryPage = lazyPage(() => import("./features/study-library/StudyLibraryPage").then(m => m.StudyLibraryPage));
 
 function AppInner() {
   const { user, loading, bootstrapError, pendingMfaChallenge } = useAuth();
@@ -78,7 +80,7 @@ function AppInner() {
 
   // Not authenticated — show landing page or auth form
   if (authView === "landing" && window.location.pathname === "/study-library") {
-    return <main className="study-library-public" aria-label="مكتبة الملخصات التعليمية"><Suspense fallback={<LoadingSpinner fullPage label="تحميل المكتبة…" />}><StudyLibraryPage onSignIn={() => setAuthView("login")} /></Suspense></main>;
+    return <main className="study-library-public" aria-label="مكتبة الملخصات التعليمية"><ErrorBoundary name="study-library"><Suspense fallback={<LoadingSpinner fullPage label="تحميل المكتبة…" />}><StudyLibraryPage onSignIn={() => setAuthView("login")} /></Suspense></ErrorBoundary></main>;
   }
 
   if (authView === "landing") {

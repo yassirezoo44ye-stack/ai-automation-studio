@@ -19,6 +19,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
 from app.integrations.social.oauth_handoff import is_public_social_oauth_request
+from app.routers.devices import is_public_device_enroll_request
 from app.core.config import (
     APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
 )
@@ -121,9 +122,6 @@ async def lifespan(app: FastAPI):
     # Initialize AI Platform with DB pool
     from app.core.ai.platform import platform as ai_platform
     ai_platform.init(pool)
-    maintenance_task = asyncio.create_task(maintenance_loop())
-    cleanup_task     = asyncio.create_task(process_cleanup_loop())
-
     # ── Enterprise multi-tenancy + usage + org-billing schemas ─────────────
     from app.tenancy import init_tenancy_schema
     from app.billing import (
@@ -145,6 +143,14 @@ async def lifespan(app: FastAPI):
         await init_coupons_schema(conn)
         await init_credits_schema(conn)
     await get_plan_service(pool).refresh_cache()
+
+    # Start background maintenance only now: its first cycle runs
+    # immediately and queries organizations / organization_members /
+    # org_subscriptions / usage tables, which the schema block above
+    # creates. Starting it earlier raced schema init on a fresh database
+    # and the reconciliation steps failed silently (BE-03).
+    maintenance_task = asyncio.create_task(maintenance_loop())
+    cleanup_task     = asyncio.create_task(process_cleanup_loop())
 
     # Cross-instance cache coherence: when any instance edits the plan
     # catalog (PlanService.update_plan publishes "plans:catalog"), every
@@ -592,6 +598,26 @@ def create_app() -> FastAPI:
         print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
+    # A malformed id in the URL ("/api/leads/abc") reached uuid.UUID() or a
+    # $1::uuid parameter and surfaced as a 500 on 31 GET routes (journey 11,
+    # M9). The record cannot exist, so the answer is 404, the same as for a
+    # well-formed id that is not there. Only these two exact failures are
+    # mapped; any other ValueError / DataError is still a 500.
+    import asyncpg as _asyncpg_mod
+
+    def _is_malformed_id(exc: Exception) -> bool:
+        msg = str(exc)
+        if isinstance(exc, _asyncpg_mod.exceptions.DataError):
+            return "invalid UUID" in msg or "invalid input syntax for type uuid" in msg
+        return type(exc) is ValueError and msg == "badly formed hexadecimal UUID string"
+
+    @app.exception_handler(ValueError)
+    @app.exception_handler(_asyncpg_mod.exceptions.DataError)
+    async def malformed_id_handler(request: Request, exc: Exception):
+        if _is_malformed_id(exc):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        return await unhandled_error_handler(request, exc)
+
     # ── Tenant context (single source of truth for X-Organization-Id) ──────
     # Extracts the header once into request.state.org_id. This never grants
     # or denies anything — real membership enforcement stays entirely in
@@ -655,6 +681,7 @@ def create_app() -> FastAPI:
         if (path.startswith("/api/")
                 and not any(path.startswith(p) for p in PUBLIC_PREFIXES)
                 and not is_public_social_oauth_request(request.method, path)
+                and not is_public_device_enroll_request(request.method, path)
                 and not study_library_router.is_public_study_request(request.method, path)
                 and not study_library_router.is_study_publish_request(request)):
             sub_token, bearer = extract_auth_credentials(request)

@@ -31,7 +31,10 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # pgvector/pgvector:pg16 is postgres:16 plus the pgvector extension, so
+        # CI exercises semantic memory's real pgvector path instead of only
+        # its in-process TF-IDF fallback ("extension vector is not available").
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -39,7 +42,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U test -d test_axon"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -126,6 +129,18 @@ jobs:
           fi
           exit "$rc"
 
+      - name: End-to-end tenant isolation (real HTTP + auth + Postgres)
+        # Boots the real app (lifespan) against a separate empty database,
+        # signs up two synthetic tenants through the public auth API and
+        # proves neither can read, change or delete the other's leads,
+        # projects, files, conversations, automations, devices,
+        # notifications or invoices. See tests_e2e/conftest.py.
+        env:
+          FLOW_E2E_DATABASE_URL: postgresql://test:test@localhost:5432/flow_e2e
+        run: |
+          PGPASSWORD=test psql -h localhost -U test -d test_axon -c "CREATE DATABASE flow_e2e"
+          python -m pytest tests_e2e -v --tb=short
+
       - name: Dependency vulnerability scan (pip-audit)
         # Informational for now: this is the first time it's run in CI at
         # all, so today's run establishes the real baseline rather than
@@ -151,6 +166,40 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Export full dependency audit evidence
+        # Preserve machine-readable evidence even when advisories are present.
+        # npm audit returns nonzero on findings, so capture the result without
+        # masking JSON generation errors or treating findings as a clean pass.
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > npm-audit-full.json
+          rc=$?
+          set -e
+          if ! node -e 'const a=require("./npm-audit-full.json"); if (!a.metadata || !a.metadata.vulnerabilities) process.exit(1)'; then
+            echo "::error::npm audit did not produce a valid vulnerability summary"
+            exit 1
+          fi
+          node -e 'const v=require("./npm-audit-full.json").metadata.vulnerabilities; console.log("Full dependency audit:",JSON.stringify(v))'
+          echo "npm audit exit status: $rc (advisories are recorded, not ignored)"
+
+      - name: Upload full dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-full
+          path: npm-audit-full.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Full-tree dependency scan incl. dev tooling (npm audit)
+        # The production-only scan below excludes dev dependencies, but dev
+        # tooling (vite dev server, vitest, undici via jsdom) runs on
+        # developer machines and CI. High/critical advisories anywhere in
+        # the tree now block. Remaining moderate advisories are tracked in
+        # docs/flow-business-12-pass-audit.md (SEC-01).
+        run: npm audit --audit-level=high
+
       - name: Dependency vulnerability scan (npm audit)
         # --audit-level=high: gate only on high/critical advisories. An
         # advisory database is a moving target — without a threshold, any
@@ -168,6 +217,33 @@ jobs:
 
       - name: Vitest unit tests
         run: npm test
+
+      - name: Automation regression repeated 50 times (PR only)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p automation-repeat-results
+          failures=0
+          for i in $(seq 1 50); do
+            if npm test -- --run src/renderer/features/automation/AutomationPage.test.tsx > "automation-repeat-results/run-$i.log" 2>&1; then
+              echo "$i,PASS" >> automation-repeat-results/summary.csv
+            else
+              echo "$i,FAIL" >> automation-repeat-results/summary.csv
+              failures=$((failures+1))
+              tail -n 35 "automation-repeat-results/run-$i.log"
+            fi
+          done
+          echo "Automation repeated failures: $failures/50"
+          test "$failures" -eq 0
+
+      - name: Upload repeated automation evidence
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: automation-repeat-results
+          path: automation-repeat-results/
+          retention-days: 14
 
       - name: Production build
         run: npm run build

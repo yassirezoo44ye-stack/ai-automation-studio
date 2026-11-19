@@ -79,6 +79,9 @@ function DesignStudioInner() {
     useCallback((ids: string[]) => {
       setSelectedIds(ids);
     }, [setSelectedIds]),
+    useCallback((viewport: { zoom: number; panX: number; panY: number }) => {
+      dispatch({ type: "SET_VIEWPORT", viewport });
+    }, [dispatch]),
   );
 
   const { getCanvas, addShape, addText, addImage, deleteSelected, copySelected,

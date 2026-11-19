@@ -21,9 +21,12 @@ Security:
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import re
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -156,6 +159,7 @@ class CaptureLeadRequest(BaseModel):
 async def capture_lead(
     body: CaptureLeadRequest,
     request: Request,
+    response: Response,
     key: ApiKeyRecord = Depends(require_api_key(["write"])),
     _rl: None = Depends(make_rate_limit_dep("leads_capture", max_calls=30, window=60)),
 ):
@@ -170,11 +174,81 @@ async def capture_lead(
         raise HTTPException(403, "API key must be scoped to an organization to capture leads")
 
     org_id = key.organization_id
-    svc = get_lead_service()
 
-    source = body.source or "external_capture"
+    # Keep free-text messages out of source metadata: it is shown in lead
+    # listings and can be included in AI prompts, logs and exports. Until a
+    # dedicated, access-controlled message field exists, reject messages
+    # rather than silently discarding customer-submitted information.
     if body.message:
-        source = f"{source} — {body.message[:200]}"
+        raise HTTPException(422, "Lead messages are not supported by this endpoint yet")
+    source = body.source or "external_capture"
+
+    # SEC-03: a form that re-submits (double click, network retry, a
+    # webhook redelivery) must not create a second lead or start a second
+    # follow-up, even when the copies arrive at the same moment. The claim
+    # lives in idempotency_keys (UNIQUE(scope, key)), so it holds across
+    # workers and processes, and both key forms are prefixed with the org
+    # taken from the API key, so two organisations never share a claim.
+    #   * Idempotency-Key header: the client's own retry key, kept for
+    #     _CAPTURE_KEY_TTL_S. Reusing it with a different body is a client
+    #     bug and gets 422 instead of a silent replay of someone else.
+    #   * no header: a fingerprint of the normalised submission, which
+    #     deduplicates identical re-sends within _CAPTURE_DEDUP_WINDOW_S.
+    fingerprint = _capture_fingerprint(body, source)
+    client_key = request.headers.get("Idempotency-Key")
+    if client_key is not None:
+        if not _IDEMPOTENCY_KEY_RE.fullmatch(client_key):
+            raise HTTPException(400, "Idempotency-Key must be 1-255 visible ASCII characters")
+        claim = f"{org_id}:k:{hashlib.sha256(client_key.encode()).hexdigest()}"
+        max_age_s = None
+    else:
+        claim = f"{org_id}:f:{fingerprint}"
+        max_age_s = _CAPTURE_DEDUP_WINDOW_S
+
+    from app.core.db import get_pool
+    from app.core.idempotency import IdempotencyInProgress, idempotent
+
+    try:
+        async with idempotent("lead_capture", claim, pool=get_pool(),
+                              ttl_s=_CAPTURE_KEY_TTL_S, max_age_s=max_age_s) as guard:
+            if guard.is_replay:
+                cached = dict(guard.cached_result or {})
+                if cached.pop("_fp", None) != fingerprint:
+                    raise HTTPException(
+                        422, "Idempotency-Key was already used with a different request body")
+                response.headers["Idempotent-Replayed"] = "true"
+                return cached
+            result = await _capture_new_lead(org_id=org_id, body=body, source=source)
+            guard.result = {**result, "_fp": fingerprint}
+            return result
+    except IdempotencyInProgress:
+        raise HTTPException(
+            409, "This lead is already being captured; retry shortly",
+            headers={"Retry-After": "2"},
+        ) from None
+
+
+# Client-supplied Idempotency-Key: printable ASCII, same bound as Stripe's.
+_IDEMPOTENCY_KEY_RE = re.compile(r"[\x21-\x7e]{1,255}")
+_CAPTURE_KEY_TTL_S = 24 * 3600
+_CAPTURE_DEDUP_WINDOW_S = 24 * 3600
+
+
+def _capture_fingerprint(body: CaptureLeadRequest, source: str) -> str:
+    """Stable hash of what identifies one submission: case and spacing in
+    name/email/source and formatting in the phone number do not make a
+    re-sent form a different request."""
+    norm = {
+        "name": " ".join(body.name.split()).casefold(),
+        "email": (body.email or "").strip().casefold(),
+        "phone": re.sub(r"\D", "", body.phone or ""),
+        "source": " ".join(source.split()).casefold(),
+    }
+    return hashlib.sha256(json.dumps(norm, sort_keys=True).encode()).hexdigest()
+
+
+async def _capture_new_lead(*, org_id: str, body: CaptureLeadRequest, source: str) -> dict:
+    svc = get_lead_service()
 
     lead = await svc.create(
         org_id=org_id,

@@ -61,8 +61,9 @@ class TestSubTokenCookieRejectedByRealMiddleware(unittest.IsolatedAsyncioTestCas
     async def test_valid_sub_token_sent_only_as_a_cookie_is_rejected(self):
         tok = make_token("a@b.com", False, 0)
         transport = ASGITransport(app=_app())
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            res = await client.get("/api/projects", cookies={"sub_token": tok})
+        async with AsyncClient(transport=transport, base_url="http://test",
+                               cookies={"sub_token": tok}) as client:
+            res = await client.get("/api/projects")
         self.assertEqual(res.status_code, 401)
 
     async def test_same_valid_sub_token_sent_as_the_header_is_not_rejected_by_the_middleware(self):

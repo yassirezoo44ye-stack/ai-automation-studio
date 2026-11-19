@@ -53,7 +53,7 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/renderer/__tests__/setup.ts"],
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/**/*.test.mjs"],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

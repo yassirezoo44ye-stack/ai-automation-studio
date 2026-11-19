@@ -49,6 +49,8 @@ _SKIP_DIRS     = {
     # deployed image — but this stops false CRITICALs from training
     # anyone watching logs to ignore this service.
     "tests",
+    # Same for the end-to-end suite added in the audit (synthetic passwords).
+    "tests_e2e",
 }
 
 

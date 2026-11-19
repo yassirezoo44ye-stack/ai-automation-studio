@@ -92,7 +92,7 @@
       "streamErrorPrefix": "⚠️ {{message}}",
       "copyCode": "نسخ",
       "copied": "تم النسخ!",
-      "interrupted": "انقطع الرد قبل اكتماله. أعد المحاولة."
+      "interrupted": "⚠️ انقطع الاتصال قبل اكتمال الرد."
     },
     "convGroups": {
       "today": "اليوم",
