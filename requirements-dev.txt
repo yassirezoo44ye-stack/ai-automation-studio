@@ -15,3 +15,4 @@ ruff==0.15.21        # linter — pinned: 0.16.0 changed its default rule
                      # not something that should happen as a side effect
                      # of a routine `pip install`.
 pip-audit>=2.7       # dependency vulnerability scanner (CI)
+PyYAML>=6.0.3,<7    # parse release workflow in protected-branch integration tests

@@ -1,5 +1,6 @@
 import contextlib
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
@@ -15,6 +16,8 @@ from app.core.db import get_pool, ensure_agents_table
 from app.core.helpers import resolve_project_id
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.security import ai_rate_limit
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["agents"])
 
@@ -247,21 +250,25 @@ async def agent_chat_stream(agent_id: str, req: AgentChatRequest, request: Reque
                 with contextlib.suppress(Exception):
                     await record_org_tokens(org_id, total_tokens, str(conv_id), ref_type="agents")
 
-            yield f"data: {json.dumps({'type':'done'})}\n\n"
-
             try:
                 async with get_pool().acquire() as conn:
-                    await conn.execute(
-                        "INSERT INTO messages (conversation_id, role, content) VALUES ($1,'assistant',$2)",
-                        conv_id, full_text,
-                    )
-                    await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
-                    await conn.execute(
-                        "UPDATE ai_agents SET message_count=message_count+1, updated_at=NOW() WHERE id=$1",
-                        uuid.UUID(agent_id),
-                    )
-            except Exception:
-                pass
+                    async with conn.transaction():
+                        await conn.execute(
+                            "INSERT INTO messages (conversation_id, role, content) VALUES ($1,'assistant',$2)",
+                            conv_id, full_text,
+                        )
+                        await conn.execute("UPDATE conversations SET updated_at=NOW() WHERE id=$1", conv_id)
+                        await conn.execute(
+                            "UPDATE ai_agents SET message_count=message_count+1, updated_at=NOW() WHERE id=$1",
+                            uuid.UUID(agent_id),
+                        )
+            except Exception as error:
+                log.warning("Agent reply persistence failed (%s)", type(error).__name__)
+                yield f"data: {json.dumps({'type':'error','message':'Failed to save agent reply. Please retry.'})}\n\n"
+                return
+            # The browser can disconnect as soon as it receives this frame.
+            # A completion is truthful only after the transaction committed.
+            yield f"data: {json.dumps({'type':'done'})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type':'error','message':str(e)})}\n\n"
         finally:

@@ -107,41 +107,53 @@
   },
   "notifications": {
     "title": "الإشعارات",
-    "markAllRead": "تعليم الكل كمقروء",
+    "unreadAria": "الإشعارات، {{count}} غير مقروءة",
+    "announcement": "{{count}} إشعارات غير مقروءة",
+    "markAllRead": "قراءة الكل",
     "settings": "إعدادات الإشعارات",
-    "settingsShort": "الإعدادات",
-    "withUnread": "الإشعارات، {{count}} غير مقروءة",
     "all": "الكل",
     "unread": "غير المقروءة",
-    "filterByCategory": "التصفية حسب الفئة",
     "allCategories": "كل الفئات",
+    "filterCategory": "تصفية حسب الفئة",
     "list": "قائمة الإشعارات",
     "loading": "جارٍ تحميل الإشعارات…",
-    "loadFailed": "تعذّر التحميل.",
+    "loadMore": "تحميل المزيد",
     "loadingMore": "جارٍ التحميل…",
-    "loadMore": "عرض المزيد",
-    "status": {
+    "actionFailed": "تعذّر حفظ التغيير على الإشعار. أعد المحاولة.",
+    "preferencesFailed": "تعذّر تحميل تفضيلات الإشعارات أو حفظها. أعد المحاولة.",
+    "instructions": "عطّل الفئات التي لا تريد إشعاراتها. تظل متاحة في سجل النشاط.",
+    "notifyCategory": "إشعاري عن {{category}}",
+    "archive": "أرشفة",
+    "delete": "حذف",
+    "empty": "لا توجد إشعارات جديدة",
+    "emptyFiltered": "لا توجد إشعارات مطابقة",
+    "emptyDescription": "سيظهر النشاط الجديد هنا.",
+    "filteredDescription": "أزل التصفية لعرض المزيد.",
+    "categories": {
+      "system": "النظام",
+      "workflow": "الأتمتة",
+      "agent": "الوكلاء",
+      "marketplace": "السوق",
+      "billing": "الفوترة",
+      "security": "الأمان",
+      "deployment": "النشر",
+      "background_job": "المهام الخلفية",
+      "realtime_event": "الأحداث المباشرة",
+      "organization": "المؤسسة"
+    },
+    "statuses": {
       "live": "متصل",
       "connecting": "جارٍ الاتصال…",
       "reconnecting": "جارٍ إعادة الاتصال…",
       "offline": "غير متصل"
     },
-    "category": {
-      "system": "النظام",
-      "workflow": "سير العمل",
-      "agent": "الوكلاء",
-      "marketplace": "المتجر",
-      "billing": "الفوترة",
-      "security": "الأمان",
-      "deployment": "النشر",
-      "background_job": "المهام الخلفية",
-      "realtime_event": "الأحداث الفورية",
-      "organization": "المؤسسة"
-    }
+    "saving": "جارٍ الحفظ…",
+    "organizationUnavailable": "تعذّر فتح مساحة العمل المرتبطة. حدّث القائمة أو تحقق من صلاحياتك."
   },
   "copilot": {
     "open": "فتح المساعد الذكي",
     "close": "إغلاق المساعد الذكي",
     "title": "المساعد الذكي"
-  }
+  },
+  "stream": {"interrupted": "انقطع الرد قبل اكتماله. أعد المحاولة."}
 }

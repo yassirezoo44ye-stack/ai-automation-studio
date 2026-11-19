@@ -130,26 +130,29 @@
   },
   "notifications": {
     "title": "Notifications",
+    "unreadAria": "Notifications, {{count}} unread",
+    "announcement": "{{count}} unread notifications",
     "markAllRead": "Mark all as read",
     "settings": "Notification settings",
-    "settingsShort": "Settings",
-    "withUnread": "Notifications, {{count}} unread",
     "all": "All",
     "unread": "Unread",
-    "filterByCategory": "Filter by category",
     "allCategories": "All categories",
+    "filterCategory": "Filter by category",
     "list": "Notification list",
     "loading": "Loading notifications…",
-    "loadFailed": "Failed to load.",
-    "loadingMore": "Loading…",
     "loadMore": "Load more",
-    "status": {
-      "live": "Live",
-      "connecting": "Connecting…",
-      "reconnecting": "Reconnecting…",
-      "offline": "Offline"
-    },
-    "category": {
+    "loadingMore": "Loading…",
+    "actionFailed": "Could not save this notification change. Please retry.",
+    "preferencesFailed": "Could not load or save notification preferences. Please retry.",
+    "instructions": "Turn off categories you don't want to be notified about. You can still see them in Activity.",
+    "notifyCategory": "Notify me about {{category}}",
+    "archive": "Archive",
+    "delete": "Delete",
+    "empty": "You're all caught up",
+    "emptyFiltered": "No notifications match",
+    "emptyDescription": "New activity will show up here.",
+    "filteredDescription": "Try clearing filters to see more.",
+    "categories": {
       "system": "System",
       "workflow": "Workflows",
       "agent": "Agents",
@@ -160,11 +163,20 @@
       "background_job": "Background jobs",
       "realtime_event": "Realtime events",
       "organization": "Organization"
-    }
+    },
+    "statuses": {
+      "live": "Live",
+      "connecting": "Connecting…",
+      "reconnecting": "Reconnecting…",
+      "offline": "Offline"
+    },
+    "saving": "Saving…",
+    "organizationUnavailable": "The linked workspace is unavailable. Refresh or check your access."
   },
   "copilot": {
     "open": "Open AI Copilot",
     "close": "Close AI Copilot",
     "title": "AI Copilot"
-  }
+  },
+  "stream": {"interrupted": "The reply was interrupted. Please retry."}
 }

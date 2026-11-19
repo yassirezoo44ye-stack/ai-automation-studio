@@ -2,9 +2,10 @@
  * RunTab — streaming execution console.
  * Handles run/stop lifecycle, error display, and server-preview detection.
  */
+import { readSSE } from "../../../shared/utils/sse";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { apiFetch, authH } from "../../../shared/utils/api";
+import { apiFetch, parseJSON } from "../../../shared/utils/api";
 import { GoldButton } from "../../../shared/ui/gold";
 import type { BuildFile } from "../../../shared/types";
 
@@ -56,16 +57,16 @@ export function RunTab({
 
     try {
       if (files.length > 0) {
-        await apiFetch(`/api/projects/${projectId}/sync`, {
+        const synced = await apiFetch(`/api/projects/${projectId}/sync`, {
           method: "POST",
-          headers: authH(),
           body: JSON.stringify({ files }),
+          signal: ctrl.signal,
         });
+        await parseJSON(synced, `/api/projects/${projectId}/sync`);
       }
 
       const res = await apiFetch(`/api/projects/${projectId}/run/stream`, {
         method: "POST",
-        headers: authH(),
         body: JSON.stringify({ command: runCmd || null }),
         signal: ctrl.signal,
       });
@@ -76,80 +77,66 @@ export function RunTab({
         return;
       }
 
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
       const append = (line: string) => onOutput(prev => (typeof prev === "string" ? prev : "") + line + "\n");
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-
-        for (const raw of lines) {
-          if (!raw.startsWith("data: ")) continue;
-          let ev: Record<string, unknown>;
-          try { ev = JSON.parse(raw.slice(6)); } catch { continue; }
-
-          switch (ev.type) {
-            case "status": append(ev.message as string); break;
-            case "log":    append(`${ev.stream === "stderr" ? "⚠ " : ""}${ev.line}`); break;
-            case "html": {
-              const blob = new Blob([ev.html_content as string], { type: "text/html" });
-              const url = URL.createObjectURL(blob);
-              onPreviewUrl(url);
-              onSwitchTab("preview");
-              onRunning(false);
-              return;
-            }
-            case "server_ready": {
-              const proxyUrl = ev.preview_url as string;
-              onPreviewUrl(proxyUrl);
-              append(`✓ ${ev.message}\n🌐 Preview: ${proxyUrl}`);
-              onSwitchTab("preview");
-              onRunning(false);
-              return;
-            }
-            case "done": {
-              const parts: string[] = [];
-              if (ev.command) parts.push(`$ ${ev.command}`);
-              if (ev.stdout)  parts.push(String(ev.stdout).trimEnd());
-              if (ev.stderr)  parts.push(`\nstderr:\n${String(ev.stderr).trimEnd()}`);
-              parts.push(`\n[exit ${ev.exit_code}]  (${ev.duration}s)`);
-              onOutput(parts.join("\n"));
-              onRunning(false);
-              return;
-            }
-            case "error": {
-              const fix: string[] = Array.isArray(ev.fix) ? ev.fix : ev.hint ? [ev.hint as string] : [];
-              onError({
-                category: String(ev.category ?? "execution"),
-                message:  String(ev.message ?? ev.error ?? "Unknown error"),
-                fix,
-                severity: (ev.severity as "low" | "medium" | "high") ?? "high",
-              });
-              onRunning(false);
-              return;
-            }
-            case "unsupported": {
-              const hint = ev.local_run_hint ?? ev.details ?? "";
-              onError({
-                category: "unsupported",
-                message:  String(ev.message ?? ev.error ?? "Project type not supported"),
-                fix:      [String(hint), "Download the ZIP to run locally"].filter(Boolean),
-                severity: "medium",
-              });
-              onRunning(false);
-              return;
-            }
+      for await (const ev of readSSE(res.body)) {
+        switch (ev.type) {
+          case "status": append(ev.message as string); break;
+          case "log":    append(`${ev.stream === "stderr" ? "⚠ " : ""}${ev.line}`); break;
+          case "html": {
+            const blob = new Blob([ev.html_content as string], { type: "text/html" });
+            const url = URL.createObjectURL(blob);
+            onPreviewUrl(url);
+            onSwitchTab("preview");
+            onRunning(false);
+            return;
+          }
+          case "server_ready": {
+            const proxyUrl = ev.preview_url as string;
+            onPreviewUrl(proxyUrl);
+            append(`✓ ${ev.message}\n🌐 Preview: ${proxyUrl}`);
+            onSwitchTab("preview");
+            onRunning(false);
+            return;
+          }
+          case "done": {
+            const parts: string[] = [];
+            if (ev.command) parts.push(`$ ${ev.command}`);
+            if (ev.stdout)  parts.push(String(ev.stdout).trimEnd());
+            if (ev.stderr)  parts.push(`\nstderr:\n${String(ev.stderr).trimEnd()}`);
+            parts.push(`\n[exit ${ev.exit_code}]  (${ev.duration}s)`);
+            onOutput(parts.join("\n"));
+            onRunning(false);
+            return;
+          }
+          case "error": {
+            const fix: string[] = Array.isArray(ev.fix) ? ev.fix : ev.hint ? [ev.hint as string] : [];
+            onError({
+              category: String(ev.category ?? "execution"),
+              message:  String(ev.message ?? ev.error ?? "Unknown error"),
+              fix,
+              severity: (ev.severity as "low" | "medium" | "high") ?? "high",
+            });
+            onRunning(false);
+            return;
+          }
+          case "unsupported": {
+            const hint = ev.local_run_hint ?? ev.details ?? "";
+            onError({
+              category: "unsupported",
+              message:  String(ev.message ?? ev.error ?? "Project type not supported"),
+              fix:      [String(hint), "Download the ZIP to run locally"].filter(Boolean),
+              severity: "medium",
+            });
+            onRunning(false);
+            return;
           }
         }
       }
+      throw new Error(t("runTab.interrupted"));
     } catch (e: unknown) {
       if ((e as Error).name !== "AbortError") {
-        onOutput(`Error: ${(e as Error).message}`);
+        onOutput(previous => previous + `\nError: ${(e as Error).message}`);
+        onError({ category: "execution", message: (e as Error).message, fix: [], severity: "high" });
       }
     } finally {
       onRunning(false);

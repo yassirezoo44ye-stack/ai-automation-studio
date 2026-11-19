@@ -1,3 +1,5 @@
+import { readSSE } from "../../../shared/utils/sse";
+import { loadPrefs } from "../../../shared/utils/preferences";
 /**
  * Builder service — wraps the streaming build API.
  *
@@ -91,7 +93,7 @@ export async function* streamBuild(
    *  user reviewed — rather than a free-form interpretation of the raw prompt. */
   approvedPlan?: object | null,
 ): AsyncGenerator<BuildEvent> {
-  const body: Record<string, unknown> = { project_id: projectId, prompt };
+  const body: Record<string, unknown> = { project_id: projectId, prompt, model: loadPrefs().buildModel };
   if (approvedPlan) body.plan = approvedPlan;
   const res = await apiFetch("/api/build/stream", {
     method: "POST",
@@ -135,35 +137,14 @@ export async function* streamBuild(
     });
   }
 
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No readable body from build stream");
-
-  const decoder = new TextDecoder();
-  let buf = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-
-      // SSE is delimited by double newlines
-      const parts = buf.split("\n\n");
-      buf = parts.pop() ?? ""; // last part may be incomplete
-      for (const part of parts) {
-        const line = part.trim();
-        if (!line.startsWith("data:")) continue;
-        const json = line.slice("data:".length).trim();
-        if (!json) continue;
-        try {
-          const event = JSON.parse(json) as BuildEvent;
-          yield event;
-        } catch { /* malformed — skip */ }
-      }
-    }
-  } finally {
-    reader.cancel();
+  if (!res.body) throw new Error("No readable body from build stream");
+  let complete = false;
+  for await (const event of readSSE<BuildEvent>(res.body)) {
+    if (event.type === "done" || event.type === "error") complete = true;
+    yield event;
+    if (complete) break;
   }
+  if (!complete) throw new Error("Build interrupted before completion. Generated files were kept; retry to finish.");
 }
 
 /* ── Derive a project name from a free-form prompt ─────────────── */

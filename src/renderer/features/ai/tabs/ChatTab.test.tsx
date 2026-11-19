@@ -33,7 +33,10 @@ vi.mock("../../../utils/api", async original => {
     ...real,
     API: "",
     authH: () => ({ "Content-Type": "application/json" }),
-    apiFetch: vi.fn(async (path: string) => json(route(path))),
+    // The chat stream goes through apiFetch; hand it to the stubbed fetch
+    // so each test controls the stream.
+    apiFetch: vi.fn(async (path: string, init?: RequestInit) =>
+      path.endsWith("/stream") ? globalThis.fetch(path, init) : json(route(path))),
     apiJSON: vi.fn(async (path: string) => route(path)),
   };
 });

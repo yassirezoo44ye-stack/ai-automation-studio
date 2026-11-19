@@ -1,11 +1,11 @@
-import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useRef, useState } from "react";
 import { useNotifications } from "../../../contexts/notifications";
 import { NotificationPanel } from "./NotificationPanel";
 
 export function NotificationBell({ collapsed = false }: { collapsed?: boolean }) {
-  const { unreadCount } = useNotifications();
   const { t } = useTranslation("common");
+  const { unreadCount, refetch } = useNotifications();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -15,8 +15,8 @@ export function NotificationBell({ collapsed = false }: { collapsed?: boolean })
         ref={triggerRef}
         type="button"
         className="sidebar__item"
-        onClick={() => setOpen(v => !v)}
-        aria-label={unreadCount > 0 ? t("notifications.withUnread", { count: unreadCount }) : t("notifications.title")}
+        onClick={() => { if (!open) refetch(); setOpen(v => !v); }}
+        aria-label={unreadCount > 0 ? t("notifications.unreadAria", { count: unreadCount }) : t("notifications.title")}
         aria-expanded={open}
         aria-haspopup="dialog"
         title={t("notifications.title")}
@@ -32,12 +32,12 @@ export function NotificationBell({ collapsed = false }: { collapsed?: boolean })
             </span>
           )}
         </span>
-        {!collapsed && <span className="sidebar__label">Notifications</span>}
+        {!collapsed && <span className="sidebar__label">{t("notifications.title")}</span>}
       </button>
       {/* aria-live region so screen readers announce new unread counts without
           requiring the panel to be open. */}
       <span className="sr-only" role="status" aria-live="polite">
-        {unreadCount > 0 ? `${unreadCount} unread notifications` : ""}
+        {unreadCount > 0 ? t("notifications.announcement", { count: unreadCount }) : ""}
       </span>
       {open && <NotificationPanel onClose={() => setOpen(false)} triggerRef={triggerRef} />}
     </div>
