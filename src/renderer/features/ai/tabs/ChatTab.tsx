@@ -1,3 +1,4 @@
+import { readSSE } from "../../../shared/utils/sse";
 import { loadPrefs } from "../../../shared/utils/preferences";
 import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
@@ -25,7 +26,7 @@ import { extractActions } from "../../../shared/utils/assistantActions";
 import { AssistantActionCard } from "./AssistantActionCard";
 import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { useToast } from "../../../contexts/toast";
-import { apiFetch, apiJSON, authH, API, APIError } from "../../../utils/api";
+import { apiFetch, apiJSON, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
 import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
@@ -277,55 +278,45 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const useAgent = agentId !== "default";
-    const url = useAgent ? `${API}/api/agents/${agentId}/chat/stream` : `${API}/api/run/stream`;
+    const url = useAgent ? `/api/agents/${agentId}/chat/stream` : "/api/run/stream";
 
     try {
-      const res = await fetch(url, {
-        method: "POST", headers: authH(),
+      const res = await apiFetch(url, {
+        method: "POST",
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
           ...(!useAgent ? { model: loadPrefs().chatModel, skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [], navigation: true, workspace_data: true } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "", closed = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === "conv_id" && !activeConv) {
-            // Claim this id for the messages already in local state *before*
-            // flipping activeConv, so the messages-loading effect (keyed on
-            // activeConv) sees them as already in sync and never shows a
-            // loading state over the reply that's actively streaming in.
-            setMessagesConvId(ev.conv_id);
-            setActiveConv(ev.conv_id);
-            loadConvs();
-          }
-          else if (ev.type === "delta")  { if (ev.text) gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
-          else if (ev.type === "error")  { gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
-          else if (ev.type === "done")   {
-            loadConvs(); closed = true;
-            // The user plainly asked to open a page but the reply carries no
-            // [[open:…]] marker: add the button on this device anyway.
-            const asked = suggestPagesForPrompt(text);
-            if (asked.length) {
-              setMessages(p => p.map(m => m.id === assistantId && extractNavSuggestions(extractActions(m.content).text).pages.length === 0
-                ? { ...m, content: `${m.content}\n\n${asked.map(pg => `[[open:${pg}]]`).join("\n")}` } : m));
-            }
+      let closed = false;
+      for await (const ev of readSSE<{ type: string; conv_id?: string; text?: string; message?: string }>(res.body)) {
+        if (ev.type === "conv_id" && ev.conv_id && !activeConv) {
+          // Claim this id for the messages already in local state *before*
+          // flipping activeConv, so the messages-loading effect (keyed on
+          // activeConv) sees them as already in sync and never shows a
+          // loading state over the reply that's actively streaming in.
+          setMessagesConvId(ev.conv_id);
+          setActiveConv(ev.conv_id);
+          loadConvs();
+        }
+        else if (ev.type === "delta")  { if (ev.text) gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (ev.text ?? "") } : m)); }
+        else if (ev.type === "error")  { gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
+        else if (ev.type === "done")   {
+          loadConvs(); closed = true;
+          // The user plainly asked to open a page but the reply carries no
+          // [[open:…]] marker: add the button on this device anyway.
+          const asked = suggestPagesForPrompt(text);
+          if (asked.length) {
+            setMessages(p => p.map(m => m.id === assistantId && extractNavSuggestions(extractActions(m.content).text).pages.length === 0
+              ? { ...m, content: `${m.content}\n\n${asked.map(pg => `[[open:${pg}]]`).join("\n")}` } : m));
           }
         }
         if (closed) break;
       }
-      // The stream ended (done, or the connection simply closed) without a
-      // single word of reply: say so instead of leaving the typing dots up.
+      if (!closed) throw new Error(t("chatTab.messages.interrupted"));
+      // The stream finished without a single word of reply: say so instead
+      // of leaving the typing dots up.
       if (!gotText) {
         setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.emptyReply") } : m));
       }
@@ -335,7 +326,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         if (!gotText) setMessages(p => p.filter(m => m.id !== assistantId || m.content !== ""));
       } else {
         const msg = (err as Error).message ?? "";
-        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg }) } : m));
+        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + (msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg })) } : m));
       }
     } finally { setStreaming(false); streamingRef.current = false; abortRef.current = null; }
   }

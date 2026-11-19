@@ -35,7 +35,8 @@
     "writingFile": "جارٍ كتابة {{path}}…",
     "builtFiles": "تم بناء {{count}} ملف",
     "builtToast": "تم البناء: {{description}}",
-    "errorPrefix": "خطأ: {{message}}"
+    "errorPrefix": "خطأ: {{message}}",
+    "interrupted": "انقطع الاتصال قبل اكتمال العملية. أعد المحاولة؛ الملفات الحالية محفوظة."
   },
   "filesTab": {
     "treeAriaLabel": "شجرة الملفات",
@@ -60,7 +61,8 @@
     "emptyTitle": "لا يوجد ما يُشغَّل بعد",
     "emptyHint": "بيئة العمل هذه فارغة. ولّد مشروعًا أولًا — ستكتشف الطرفية الأمر المناسب وتشغّله هنا.",
     "goToGenerate": "✦ الذهاب إلى التوليد",
-    "starting": "▶ جارٍ البدء…\n"
+    "starting": "▶ جارٍ البدء…\n",
+    "interrupted": "انقطع الاتصال قبل اكتمال العملية. أعد المحاولة؛ الملفات الحالية محفوظة."
   },
   "packageTab": {
     "projectLabel": "المشروع",

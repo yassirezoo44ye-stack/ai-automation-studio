@@ -94,7 +94,8 @@
       "streamErrorPrefix": "⚠️ {{message}}",
       "emptyReply": "⚠️ No reply came back from the AI. Please try again in a moment.",
       "copyCode": "Copy",
-      "copied": "Copied!"
+      "copied": "Copied!",
+      "interrupted": "The reply was interrupted. Please retry."
     },
     "convGroups": {
       "today": "Today",

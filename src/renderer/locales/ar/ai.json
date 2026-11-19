@@ -94,7 +94,8 @@
       "streamErrorPrefix": "⚠️ {{message}}",
       "emptyReply": "⚠️ لم يصل رد من الذكاء الاصطناعي. حاول مرة أخرى بعد قليل.",
       "copyCode": "نسخ",
-      "copied": "تم النسخ!"
+      "copied": "تم النسخ!",
+      "interrupted": "انقطع الرد قبل اكتماله. أعد المحاولة."
     },
     "convGroups": {
       "today": "اليوم",

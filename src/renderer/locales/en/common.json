@@ -173,5 +173,6 @@
     },
     "saving": "Saving…",
     "organizationUnavailable": "The linked workspace is unavailable. Refresh or check your access."
-  }
+  },
+  "stream": {"interrupted": "The reply was interrupted. Please retry."}
 }
