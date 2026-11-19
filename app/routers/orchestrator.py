@@ -218,12 +218,16 @@ async def cost_summary(request: Request):
     """Real numbers from ai_usage_log — the consolidated cost/token ledger
     (AI Routing consolidation; see app/ai/cost_tracker.py). Org-scoped when
     the caller is a verified member of the org named in X-Organization-Id,
-    platform-wide otherwise."""
+    platform-wide otherwise — and the platform-wide view (every tenant's
+    spend) is restricted to platform admins."""
     from app.ai import cost_tracker
+    from app.core.auth import is_platform_admin
     from app.core.db import get_pool
     from app.tenancy.context import optional_org_id
 
     org_id = await optional_org_id(request)
+    if not org_id and not await is_platform_admin(request):
+        raise HTTPException(403, "Select an organization to view its AI costs")
     pool   = get_pool()
     totals = await cost_tracker.totals(pool=pool, org_id=org_id)
     by_provider_rows = await cost_tracker.by_provider(pool=pool, org_id=org_id)

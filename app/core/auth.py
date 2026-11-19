@@ -127,3 +127,38 @@ async def owner_user_id(conn, request: Request) -> uuid.UUID:
     if not uid:
         raise HTTPException(401, "No account found for this subscription — please register.")
     return uid
+
+
+async def is_platform_admin(request: Request) -> bool:
+    """Non-raising variant of require_platform_admin, for endpoints that
+    widen their view (e.g. cross-tenant data) only for platform admins."""
+    try:
+        await require_platform_admin(request)
+    except HTTPException:
+        return False
+    return True
+
+
+async def require_platform_admin(request: Request) -> str:
+    """FastAPI dependency for platform-wide operator endpoints (stopping
+    background services, kernel execute/rollback, global alert rules, codegen
+    approvals). These act on the whole deployment, not on the caller's own
+    data, so a valid session alone is not enough: the caller must be listed
+    in ADMIN_EMAILS, or present an API key carrying the "admin" scope (which
+    can itself only be minted by an ADMIN_EMAILS user). Fails closed: with
+    ADMIN_EMAILS unset nobody passes via a session."""
+    from app.core.api_keys import extract_raw_api_key, has_api_key_header, validate_api_key
+    from app.core.config import ADMIN_EMAILS
+
+    if has_api_key_header(request):
+        rec = getattr(request.state, "api_key", None) or await validate_api_key(
+            extract_raw_api_key(request),
+        )
+        if "admin" not in rec.scopes:
+            raise HTTPException(403, "Platform admin access required")
+        return f"api_key:{rec.key_id}"
+
+    email = owner_email(request)
+    if email.strip().lower() not in ADMIN_EMAILS:
+        raise HTTPException(403, "Platform admin access required")
+    return email

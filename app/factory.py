@@ -4,13 +4,14 @@ Centralises app creation, middleware, lifespan, static files, and router registr
 so the entry point (app_main.py or main.py) stays lean.
 """
 import asyncio
+import logging
 import os
 import sys
 from contextlib import asynccontextmanager
 
 import asyncpg
 import stripe
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -18,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
+from app.core.api_keys import extract_raw_api_key, has_api_key_header, validate_api_key
 from app.integrations.social.oauth_handoff import is_public_social_oauth_request
 from app.core.config import (
     APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
@@ -661,16 +663,19 @@ def create_app() -> FastAPI:
 
             if (sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer)):
                 pass  # valid subscription token (X-Sub-Token/cookie, or Authorization: Bearer)
-            elif (
-                request.headers.get("Authorization", "").startswith("ApiKey ")
-                or request.headers.get("X-API-Key", "")
-            ):
-                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...)
-                # — defer to the require_api_key() FastAPI dependency on the specific
-                # route. The middleware's job is subscription/JWT gating; actual key
-                # validation and scope enforcement happen in the dependency so they
-                # stay co-located with the endpoint rather than spread across layers.
-                pass
+            elif has_api_key_header(request):
+                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...).
+                # SECURITY FIX: this branch used to `pass` without checking the
+                # key at all, deferring to a require_api_key() dependency that
+                # most routes never declare — so any junk value bypassed auth.
+                # The key is now validated here; scope checks stay on the route.
+                try:
+                    request.state.api_key = await validate_api_key(extract_raw_api_key(request))
+                except HTTPException as exc:
+                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+                except Exception:
+                    logging.getLogger(__name__).exception("API key validation failed")
+                    return JSONResponse(status_code=503, content={"detail": "Authentication temporarily unavailable"})
             else:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.

@@ -299,6 +299,11 @@ class TenancyService:
         actor_role = await self.get_member_role(org_id, actor_id)
         if actor_role not in ("owner", "admin", "manager"):
             raise TenancyError("insufficient permissions to invite", 403)
+        # Same rule as change_member_role: an invitation must not hand out a
+        # role above the inviter's own (a manager could otherwise invite a
+        # second account of theirs as admin).
+        if ROLE_RANK[role] < ROLE_RANK[actor_role]:
+            raise TenancyError("cannot invite with a role above your own", 403)
         await self._check_seat_capacity(org_id)
         token = secrets.token_urlsafe(32)
         async with self._pool.acquire() as conn:
