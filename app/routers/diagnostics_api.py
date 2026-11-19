@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
+from app.core.auth import require_platform_admin
 from app.core.ssrf_guard import UnsafeUrlError, assert_public_url
 
 log    = logging.getLogger(__name__)
@@ -54,19 +55,19 @@ async def diagnostics_metrics_text():
 
 # ── Traces ────────────────────────────────────────────────────────────────────
 
-@router.get("/traces")
+@router.get("/traces", dependencies=[Depends(require_platform_admin)])
 async def diagnostics_traces(n: int = 100):
     from app.core.observability.tracer import get_tracer
     return {"traces": get_tracer().recent(n)}
 
 
-@router.get("/traces/active")
+@router.get("/traces/active", dependencies=[Depends(require_platform_admin)])
 async def diagnostics_traces_active():
     from app.core.observability.tracer import get_tracer
     return {"active": get_tracer().active()}
 
 
-@router.get("/traces/{trace_id}")
+@router.get("/traces/{trace_id}", dependencies=[Depends(require_platform_admin)])
 async def diagnostics_trace(trace_id: str):
     from app.core.observability.tracer import get_tracer
     spans = get_tracer().trace(trace_id)
@@ -83,7 +84,7 @@ async def diagnostics_services():
     return {"services": get_service_registry().status()}
 
 
-@router.post("/services/{name}/start")
+@router.post("/services/{name}/start", dependencies=[Depends(require_platform_admin)])
 async def service_start(name: str):
     from app.services.registry import get_service_registry
     ok = get_service_registry().start(name)
@@ -92,7 +93,7 @@ async def service_start(name: str):
     return {"started": name}
 
 
-@router.post("/services/{name}/stop")
+@router.post("/services/{name}/stop", dependencies=[Depends(require_platform_admin)])
 async def service_stop(name: str):
     from app.services.registry import get_service_registry
     ok = get_service_registry().stop(name)
@@ -127,7 +128,7 @@ class AlertRuleCreate(BaseModel):
         return v
 
 
-@router.get("/alerts/rules")
+@router.get("/alerts/rules", dependencies=[Depends(require_platform_admin)])
 async def list_alert_rules():
     from app.core.db import get_pool
     async with get_pool().acquire() as conn:
@@ -135,7 +136,7 @@ async def list_alert_rules():
     return {"rules": [dict(r) for r in rows]}
 
 
-@router.post("/alerts/rules", status_code=201)
+@router.post("/alerts/rules", status_code=201, dependencies=[Depends(require_platform_admin)])
 async def create_alert_rule(body: AlertRuleCreate):
     if body.rule_type not in ("gauge_above", "counter_rate_above", "health_unhealthy"):
         raise HTTPException(400, "Invalid rule_type")
@@ -150,7 +151,7 @@ async def create_alert_rule(body: AlertRuleCreate):
     return dict(row)
 
 
-@router.post("/alerts/rules/{rule_id}/toggle")
+@router.post("/alerts/rules/{rule_id}/toggle", dependencies=[Depends(require_platform_admin)])
 async def toggle_alert_rule(rule_id: str, enabled: bool):
     from app.core.db import get_pool
     async with get_pool().acquire() as conn:
@@ -163,7 +164,7 @@ async def toggle_alert_rule(rule_id: str, enabled: bool):
     return dict(row)
 
 
-@router.get("/alerts/history")
+@router.get("/alerts/history", dependencies=[Depends(require_platform_admin)])
 async def alert_history(limit: int = 100, open_only: bool = False):
     from app.core.db import get_pool
     query = "SELECT h.*, r.name AS rule_name FROM alert_history h JOIN alert_rules r ON r.id = h.rule_id"
@@ -210,7 +211,7 @@ async def diagnostics_memory_search(req: MemorySearchRequest, request: Request):
 
 # ── Code generation ───────────────────────────────────────────────────────────
 
-@router.get("/codegen")
+@router.get("/codegen", dependencies=[Depends(require_platform_admin)])
 async def diagnostics_codegen():
     from app.codegen.pipeline import get_codegen_pipeline
     pending = get_codegen_pipeline().list_pending()
@@ -225,7 +226,7 @@ class RejectRequest(BaseModel):
     reason: str = ""
 
 
-@router.post("/codegen/{run_id}/approve")
+@router.post("/codegen/{run_id}/approve", dependencies=[Depends(require_platform_admin)])
 async def codegen_approve(run_id: str, req: ApproveRequest):
     from app.codegen.pipeline import get_codegen_pipeline
     result = get_codegen_pipeline().approve(run_id, approver=req.approver)
@@ -234,7 +235,7 @@ async def codegen_approve(run_id: str, req: ApproveRequest):
     return result.to_dict()
 
 
-@router.post("/codegen/{run_id}/reject")
+@router.post("/codegen/{run_id}/reject", dependencies=[Depends(require_platform_admin)])
 async def codegen_reject(run_id: str, req: RejectRequest):
     from app.codegen.pipeline import get_codegen_pipeline
     result = get_codegen_pipeline().reject(run_id, reason=req.reason)

@@ -99,9 +99,8 @@ export class AIDesignEngine {
   }
 
   // ── Text → Image ────────────────────────────────────────────────────────────
-  // No backend yet (/api/ai/image/generate doesn't exist) — kept as a dormant,
-  // fully-typed contract for when one is built. The only UI caller (AIPanel's
-  // "Image" tab) keeps its Generate button disabled until then.
+  // Backed by POST /api/ai/image/generate (app/routers/design.py): returns
+  // PNG data URLs; 503 when the server has no image provider key.
 
   async textToImage(params: TextToImageParams): Promise<TextToImageResult> {
     const res = await apiFetch("/api/ai/image/generate", {

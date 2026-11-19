@@ -29,6 +29,11 @@ class DependencyMonitorService(BaseService):
     interval_s  = 300.0
     auto_restart = True
 
+    # Optional settings are reported when the set changes, not on every tick:
+    # a permanent gap (e.g. GitHub sign-in not configured) otherwise logs a
+    # WARNING every 5 minutes and buries real errors in the logs.
+    _last_missing_optional: tuple[str, ...] | None = None
+
     async def tick(self) -> None:
         from app.core.observability.metrics import get_metrics
         m = get_metrics()
@@ -53,8 +58,13 @@ class DependencyMonitorService(BaseService):
             log.error("Dependency monitor: missing packages: %s", missing_pkgs)
         if missing_required:
             log.error("Dependency monitor: missing required env vars: %s", missing_required)
-        if missing_optional:
-            log.warning("Dependency monitor: missing optional env vars: %s", missing_optional)
+        current_optional = tuple(missing_optional)
+        if current_optional != self._last_missing_optional:
+            if missing_optional:
+                log.warning("Dependency monitor: missing optional env vars: %s", missing_optional)
+            elif self._last_missing_optional:
+                log.info("Dependency monitor: all optional env vars are now set")
+            self._last_missing_optional = current_optional
 
         log.debug("Dependency monitor tick complete — pkgs=%d env_req=%d env_opt=%d",
                   len(missing_pkgs), len(missing_required), len(missing_optional))

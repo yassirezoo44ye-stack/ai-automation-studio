@@ -92,9 +92,9 @@ async def execute(req: ExecuteRequest, request: Request):
     """
     async with get_pool().acquire() as conn:
         uid = await owner_user_id(conn, request)
-        await resolve_project_id(conn, req.project_id, uid)
+        pid = await resolve_project_id(conn, req.project_id, uid)
 
-    ws = resolve_workspace(req.project_id)
+    ws = resolve_workspace(str(pid))  # resolved id, never the shared "demo" alias
 
     engine       = UnifiedExecutionEngine()
     execution_id = None

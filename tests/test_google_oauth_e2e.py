@@ -133,6 +133,9 @@ class _FakeOAuthConn:
         s = " ".join(sql.split())
         if "SELECT * FROM users WHERE email=$1" in s:
             return self._by_email(args[0])
+        if "FROM users WHERE lower(email)=$1" in s:
+            return next((dict(u) for u in self.users.values()
+                         if u["email"].lower() == args[0]), None)
         if "FROM users WHERE id=$1" in s:  # covers both `SELECT *` and the column-list variant
             row = self.users.get(str(args[0]))
             return dict(row) if row else None

@@ -64,6 +64,7 @@ export function creationToFeedItem(c: FlowCreation): FeedItem {
     targetPage:  PAGE_FOR_TYPE[c.type] ?? "app-builder",
     sourceId:    c.source_id ?? undefined,
     sourceType:  "creation",
+    publishedAt: c.created_at,
     sourceMeta:  {
       prompt:      c.description ?? c.title,
       title:       c.title,

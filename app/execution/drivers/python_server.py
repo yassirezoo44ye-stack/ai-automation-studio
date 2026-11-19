@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import socket
 import time
 from pathlib import Path
@@ -70,8 +69,9 @@ async def stream(project_id: str, ws: Path, info, command_override: str | None =
         )
         return
 
-    env = {**os.environ, "PORT": str(port), "FLASK_RUN_PORT": str(port),
-           "FLASK_ENV": "development"}
+    from app.core.child_env import child_env
+    env = child_env({"PORT": str(port), "FLASK_RUN_PORT": str(port),
+                     "FLASK_ENV": "development"})
     yield _ev("status", message=f"▶ {' '.join(args)}  (port {port})",
               command=" ".join(args), port=port)
 

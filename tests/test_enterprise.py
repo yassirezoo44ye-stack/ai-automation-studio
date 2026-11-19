@@ -495,12 +495,28 @@ class TestApiKeys(unittest.TestCase):
         import app.core.api_keys as ak
         from unittest.mock import patch
 
-        with patch.object(ak, "_DEV_KEY_RAW", "axon_devtestkey0000"):
+        with patch.object(ak, "_DEV_KEY_RAW", "axon_devtestkey0000"), \
+             patch("app.core.config.is_development", return_value=True):
             rec = run(ak.lookup_key("axon_devtestkey0000"))
         self.assertIsNotNone(rec)
         self.assertEqual(rec.owner_id, "system")
         self.assertIsNone(rec.organization_id)
         self.assertIn("admin", rec.scopes)
+
+    def test_dev_key_is_ignored_outside_development(self):
+        """The env dev key is admin-scoped; a stray AXON_DEV_API_KEY in
+        production must not authenticate."""
+        from unittest.mock import AsyncMock, patch
+
+        import app.core.api_keys as ak
+
+        pool = AsyncMock()
+        pool.fetchrow.return_value = None
+        with patch.object(ak, "_DEV_KEY_RAW", "axon_devtestkey0000"), \
+             patch("app.core.config.is_development", return_value=False), \
+             patch("app.core.db.get_pool", return_value=pool):
+            rec = run(ak.lookup_key("axon_devtestkey0000"))
+        self.assertIsNone(rec)
 
     def test_epoch_datetime_round_trip(self):
         import time

@@ -1026,7 +1026,13 @@ async def _upsert_oauth_user(
             f"{provider.capitalize()} did not verify this email address. "
             "Sign in with your Flow password and link this provider from Account Settings.",
         )
-    existing = await conn.fetchrow("SELECT * FROM users WHERE email=$1", email)
+    # Emails are compared case-insensitively: users.email is case-sensitive
+    # TEXT, so a provider returning "Admin@Corp.com" used to create a second
+    # account beside "admin@corp.com" — and ADMIN_EMAILS checks lowercase.
+    email = email.strip().lower()
+    existing = await conn.fetchrow(
+        "SELECT * FROM users WHERE lower(email)=$1 ORDER BY created_at LIMIT 1", email,
+    )
     if existing:
         if existing["password_hash"] is not None:
             raise HTTPException(
@@ -1249,9 +1255,19 @@ async def microsoft_oauth_callback(code: str, request: Request, state: str | Non
     except _httpx.RequestError as exc:
         raise _oauth_provider_unreachable("Microsoft", exc) from exc
 
-    email = info.get("mail") or info.get("userPrincipalName")
-    if not email:
-        raise HTTPException(400, "Microsoft did not return an email address")
+    # Graph `mail` is a directory attribute any tenant admin can set to an
+    # arbitrary address (including someone else's), so it is not proof of
+    # ownership. userPrincipalName must be on a domain the tenant has
+    # verified (or is the Microsoft-verified address of a personal account),
+    # so only it is used for sign-in and linking. Guest UPNs (#EXT#) embed a
+    # foreign address and are refused.
+    email = (info.get("userPrincipalName") or "").strip()
+    if not email or "@" not in email or "#EXT#" in email.upper():
+        raise HTTPException(
+            400,
+            "Microsoft did not return a verified sign-in address for this account. "
+            "Sign in with email and password instead.",
+        )
 
     async with get_pool().acquire() as conn:
         user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft",
