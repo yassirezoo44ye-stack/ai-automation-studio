@@ -52,7 +52,10 @@ RUN mkdir -p workspaces dist_packages \
     && useradd -r -g axon -u 1001 --no-create-home axon \
     && chown -R axon:axon /app
 
-USER axon
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# No "USER axon" here: the entrypoint starts as root only to make a mounted
+# persistent disk (WORKSPACES_DIR) writable, then runs the app as axon.
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 EXPOSE 8000
 

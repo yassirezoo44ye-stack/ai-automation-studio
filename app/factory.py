@@ -8,7 +8,6 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-import asyncpg
 import stripe
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -23,7 +22,7 @@ from app.routers.devices import is_public_device_enroll_request
 from app.core.config import (
     APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
 )
-from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
+from app.core.db import init_db, set_pool, get_pool, create_bounded_pool, PoolExhausted, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware, UploadBodySizeLimitMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
@@ -99,7 +98,9 @@ async def lifespan(app: FastAPI):
     # command_timeout bounds every query — a runaway query fails loudly
     # instead of holding a connection forever. asyncpg also caches prepared
     # statements per connection automatically; no extra layer needed.
-    pool = await asyncpg.create_pool(
+    # BoundedPool: every acquire() waits at most DB_ACQUIRE_TIMEOUT_S, so a
+    # saturated pool sheds requests with 503 instead of hanging them forever.
+    pool = await create_bounded_pool(
         DATABASE_URL,
         min_size=int(os.getenv("DB_POOL_MIN", "2")),
         max_size=int(os.getenv("DB_POOL_MAX", "10")),
@@ -114,7 +115,9 @@ async def lifespan(app: FastAPI):
     from app.core.project_plans import init_schema as init_project_plans_schema
     async with pool.acquire() as conn:
         await init_project_plans_schema(conn)
-    WORKSPACES.mkdir(exist_ok=True)
+    WORKSPACES.mkdir(parents=True, exist_ok=True)
+    from app.core.filesystem import workspaces_persistence_warning
+    workspaces_persistence_warning()
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
     await runtime_registry.discover()
@@ -545,7 +548,9 @@ def create_app() -> FastAPI:
     # one tracer, not a second parallel one. Gated by ObservabilityConfig
     # (default on) so it can be disabled without a code change.
     from app.core.observability.config import get_observability_config
-    if get_observability_config().tracing_enabled:
+    # Per-request HTTP spans are on by default only when an OTLP exporter is
+    # configured (see ObservabilityConfig.http_tracing_enabled).
+    if get_observability_config().http_tracing_enabled:
         from app.core.observability.tracer import get_tracer
         get_tracer()  # registers the global TracerProvider first
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -588,6 +593,17 @@ def create_app() -> FastAPI:
                 "error": "bulkhead_saturated",
             },
             headers={"Retry-After": str(exc.retry_after_s)},
+        )
+
+    @app.exception_handler(PoolExhausted)
+    async def pool_exhausted_handler(request: Request, exc: PoolExhausted):
+        # Every pooled DB connection stayed busy for DB_ACQUIRE_TIMEOUT_S:
+        # load shed, like a full bulkhead, not a bug in this request.
+        record_error("db")
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Server is busy — retry shortly.", "error": "db_pool_exhausted"},
+            headers={"Retry-After": "2"},
         )
 
     @app.exception_handler(Exception)

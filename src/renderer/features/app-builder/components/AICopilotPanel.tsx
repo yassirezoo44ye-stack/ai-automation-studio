@@ -293,7 +293,7 @@ export function AICopilotPanel({
                 <div style={{
                   maxWidth: "88%", padding: "9px 11px",
                   borderRadius: "11px 11px 3px 11px",
-                  background: "var(--accent)", color: "white",
+                  background: "var(--accent-fill)", color: "var(--on-accent)",
                   fontSize: 12, lineHeight: 1.5,
                 }}>
                   {msg.content}

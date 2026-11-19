@@ -22,6 +22,9 @@
 
   /* Accent — Canva purple */
   --accent:        #6E32E0;
+  /* Filled accent surfaces (buttons) and the text on them: >= 4.5:1. */
+  --accent-fill:   #6E32E0;
+  --on-accent:     #FFFFFF;
   --accent-2:      #7C3AED;
   --accent-light:  #8B5CF6;
   --accent-bright: #A78BFA;
@@ -38,8 +41,8 @@
   --green-dim:    rgba(22,163,74,0.14);
   --red:          #DC2626;
   --red-dim:      rgba(220,38,38,0.14);
-  --yellow:       #A16207;
-  --yellow-dim:   rgba(161,98,7,0.14);
+  --yellow:       #8A5A00;
+  --yellow-dim:   rgba(138,90,0,0.14);
   --blue:         #2563EB;
   --blue-dim:     rgba(37,99,235,0.15);
   --purple-dim:   rgba(110,50,224,0.15);
@@ -48,8 +51,11 @@
   --t1: #1A1523;
   --t2: #322B45;
   --t3: #6B6480;
-  --t4: rgba(107,100,128,0.65);
-  --t5: rgba(107,100,128,0.35);
+  /* t4/t5 were translucent (65%/35%) and fell to 2.6:1 and 1.6:1 —
+     below WCAG AA's 4.5:1 for text. Solid values that keep >= 4.5:1 on
+     every surface (#FFFFFF, #F5F4FA, #EBEAEB). */
+  --t4: #6B6480;
+  --t5: #6B6480;
   --ta: #7C3AED;
 
   /* Borders */
@@ -201,6 +207,9 @@
 
   /* FLOW Pink — primary accent */
   --accent:        #FF1744;
+  /* White on #FF1744 is 3.85:1; buttons use a deeper fill (4.88:1). */
+  --accent-fill:   #E0103A;
+  --on-accent:     #FFFFFF;
   --accent-2:      #FF4569;
   --accent-light:  #FF6B84;
   --accent-bright: #FF99AA;
@@ -227,8 +236,10 @@
   --t1: #F5F5F5;
   --t2: #E0E0E0;
   --t3: #9E9E9E;
-  --t4: rgba(158,158,158,0.65);
-  --t5: rgba(158,158,158,0.35);
+  /* Solid, >= 4.5:1 on every dark surface up to #262626 (the translucent
+     65%/35% values measured 3.5:1 and 1.9:1). */
+  --t4: #939393;
+  --t5: #8F8F8F;
   --ta: #FF4569;
 
   /* Borders */
@@ -300,6 +311,9 @@
   --bg-input:    #000000;
 
   --accent:        #FFFF00;
+  /* White on yellow was 1.07:1. */
+  --accent-fill:   #FFFF00;
+  --on-accent:     #000000;
   --accent-2:      #FFFF00;
   --accent-light:  #FFFF66;
   --accent-bright: #FFFF66;
@@ -557,7 +571,7 @@ input:focus, textarea:focus, select:focus {
 }
 .badge-green  { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(22,163,74,0.25); }
 .badge-red    { background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(220,38,38,0.25); }
-.badge-yellow { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(161,98,7,0.25); }
+.badge-yellow { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(138,90,0,0.25); }
 .badge-blue   { background: var(--blue-dim);   color: var(--blue);   border: 1px solid rgba(37,99,235,0.25); }
 .badge-purple { background: var(--accent-dim); color: var(--ta);     border: 1px solid var(--accent-border); }
 .badge-muted  { background: var(--bg-hover); color: var(--t4); border: 1px solid var(--b1); }
@@ -1058,7 +1072,7 @@ kbd {
 /* ── Skip to main content ────────────────────────────────────────── */
 .skip-link {
   position: absolute; top: -100%; inset-inline-start: var(--sp-4);
-  background: var(--accent); color: #fff;
+  background: var(--accent-fill); color: var(--on-accent);
   padding: var(--sp-2) var(--sp-4);
   border-radius: var(--r-md);
   font-weight: 600; z-index: 9999;
@@ -2130,7 +2144,7 @@ code, kbd, samp, pre,
 .flow-upgrade-card__sub   { font-size: 11px; color: var(--t4); margin-bottom: 10px; }
 .flow-upgrade-card__btn {
   display: block; width: 100%;
-  background: var(--accent); color: #fff;
+  background: var(--accent-fill); color: var(--on-accent);
   border: none; border-radius: var(--r-md);
   padding: 7px; font-family: inherit;
   font-size: 12px; font-weight: 700; cursor: pointer;

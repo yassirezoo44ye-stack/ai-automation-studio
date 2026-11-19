@@ -460,7 +460,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       <div className="chat-main">
 
         {/* Toolbar */}
-        <div className="chat-toolbar" role="toolbar" aria-label="Chat controls">
+        <div className="chat-toolbar" role="toolbar" aria-label={t("chatControls")}>
           <span style={{ fontSize: 16 }}>{activeAgent?.avatar ?? "🤖"}</span>
           <span style={{ fontSize: 12, fontWeight: 500, color: "var(--t2)" }}>
             {activeAgent?.name ?? t("chatTab.contextPanel.defaultAgent")}

@@ -102,11 +102,10 @@ export function TrainingStudioPage() {
                   background: active ? "var(--accent-dim)" : "transparent",
                   border: "none",
                   borderInlineStart: active ? "2px solid var(--accent)" : "2px solid transparent",
-                  color: active ? "var(--accent)" : "var(--t3)",
+                  color: active ? "var(--ta)" : "var(--t3)",
                   fontSize: 12.5, fontWeight: active ? 600 : 400,
                   cursor: "pointer", textAlign: "start",
                   transition: "background 0.1s, color 0.1s",
-                  outline: "none",
                 }}
                 onFocus={e => { if (!active) e.currentTarget.style.background = "var(--bg-hover)"; }}
                 onBlur={e => { if (!active) e.currentTarget.style.background = "transparent"; }}

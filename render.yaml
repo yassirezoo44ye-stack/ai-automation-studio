@@ -6,6 +6,14 @@ services:
     plan: starter
     healthCheckPath: /health
     autoDeploy: false
+    # Project files (generated code, uploads, images, export packages) live
+    # under WORKSPACES_DIR. The container's own disk is wiped on every deploy
+    # and restart, so they need a persistent disk. Render snapshots disks
+    # daily. Note: a service with a disk cannot do zero-downtime deploys.
+    disk:
+      name: workspaces
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: ENVIRONMENT
         value: "production"
@@ -89,6 +97,8 @@ services:
           property: connectionString
       - key: PORT
         value: "8000"
+      - key: WORKSPACES_DIR
+        value: /var/data/workspaces
 
 databases:
   - name: ai-studio-db

@@ -63,11 +63,14 @@
     "signOut": "Sign Out"
   },
   "appLayout": {
+    "openCommandPalette": "Open command palette",
     "skipToContent": "Skip to main content",
     "loadingWorkspace": "Loading workspace…",
     "openNavMenu": "Open navigation menu"
   },
   "cmdPalette": {
+    "title": "Command palette",
+    "clear": "Clear search",
     "searchPlaceholder": "Search pages, actions…",
     "noResults": "No results for \"{{query}}\"",
     "quickActions": "Quick Actions",
@@ -124,5 +127,44 @@
     "justNow": "just now",
     "minutesAgo": "{{count}}m ago",
     "hoursAgo": "{{count}}h ago"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "settings": "Notification settings",
+    "settingsShort": "Settings",
+    "withUnread": "Notifications, {{count}} unread",
+    "all": "All",
+    "unread": "Unread",
+    "filterByCategory": "Filter by category",
+    "allCategories": "All categories",
+    "list": "Notification list",
+    "loading": "Loading notifications…",
+    "loadFailed": "Failed to load.",
+    "loadingMore": "Loading…",
+    "loadMore": "Load more",
+    "status": {
+      "live": "Live",
+      "connecting": "Connecting…",
+      "reconnecting": "Reconnecting…",
+      "offline": "Offline"
+    },
+    "category": {
+      "system": "System",
+      "workflow": "Workflows",
+      "agent": "Agents",
+      "marketplace": "Marketplace",
+      "billing": "Billing",
+      "security": "Security",
+      "deployment": "Deployments",
+      "background_job": "Background jobs",
+      "realtime_event": "Realtime events",
+      "organization": "Organization"
+    }
+  },
+  "copilot": {
+    "open": "Open AI Copilot",
+    "close": "Close AI Copilot",
+    "title": "AI Copilot"
   }
 }

@@ -155,6 +155,23 @@ interface ForgotValues { email: string }
 interface ResetValues { password: string; confirmPassword: string }
 interface MfaValues { code: string }
 
+// The API answers in English ("Invalid email or password", ...). Shown as is,
+// an Arabic page announced an English error to screen-reader users (WCAG
+// 3.1.2, a11y audit M2). Known messages are mapped to translations; anything
+// else is shown unchanged.
+const SERVER_AUTH_ERRORS: Record<string, string> = {
+  "Invalid email or password": "serverErrors.invalidCredentials",
+  "email_not_verified": "serverErrors.emailNotVerified",
+  "Email already registered": "serverErrors.emailTaken",
+};
+
+function localizeAuthError(err: unknown, t: (key: string) => string): unknown {
+  if (!(err instanceof Error)) return err;
+  const key = SERVER_AUTH_ERRORS[err.message]
+    ?? (err.message.startsWith("Too many failed login attempts") ? "serverErrors.tooManyAttempts" : undefined);
+  return key ? new Error(t(key)) : err;
+}
+
 export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   const { t } = useTranslation("auth");
   const { login, register, completeMfa, pendingMfaChallenge, clearMfaChallenge } = useAuth();
@@ -228,7 +245,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
           setLocalMfaChallenge({ token: err.challengeToken, remember: err.remember });
           return;
         }
-        throw err;
+        throw localizeAuthError(err, t);
       }
     }),
   });
@@ -245,7 +262,12 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     },
     onValid: values => {
       registerSubmit.run(async () => {
-        const res = await register(values.name, values.email, values.password);
+        let res;
+        try {
+          res = await register(values.name, values.email, values.password);
+        } catch (err) {
+          throw localizeAuthError(err, t);
+        }
         trackEvent("signup"); // attribution only — no PII sent
         setRegisteredEmail(values.email);
         return res;
@@ -417,7 +439,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
                   fontFamily: "var(--font-sans)",
                   transition: "color 0.15s",
                 }}
-                aria-label="Back to home"
+                aria-label={t("backToHome")}
                 onMouseEnter={e => (e.currentTarget.style.color = "var(--t2)")}
                 onMouseLeave={e => (e.currentTarget.style.color = "var(--t4)")}
               >

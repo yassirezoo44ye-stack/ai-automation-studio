@@ -1,9 +1,11 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNotifications } from "../../../contexts/notifications";
 import { NotificationPanel } from "./NotificationPanel";
 
 export function NotificationBell({ collapsed = false }: { collapsed?: boolean }) {
   const { unreadCount } = useNotifications();
+  const { t } = useTranslation("common");
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -14,10 +16,10 @@ export function NotificationBell({ collapsed = false }: { collapsed?: boolean })
         type="button"
         className="sidebar__item"
         onClick={() => setOpen(v => !v)}
-        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+        aria-label={unreadCount > 0 ? t("notifications.withUnread", { count: unreadCount }) : t("notifications.title")}
         aria-expanded={open}
         aria-haspopup="dialog"
-        title="Notifications"
+        title={t("notifications.title")}
       >
         <span className="sidebar__icon" aria-hidden="true" style={{ position: "relative" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

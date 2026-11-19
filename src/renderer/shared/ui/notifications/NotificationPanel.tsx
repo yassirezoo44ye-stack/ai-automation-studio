@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppContext } from "../../../contexts/app";
 import { useNotifications, type NotificationCategory } from "../../../contexts/notifications";
 import { LoadingSpinner } from "../LoadingSpinner";
@@ -17,15 +18,10 @@ const VALID_PAGES = new Set<Page>([
   "business-lab", "devices", "discover", "feed", "leads", "saas-factory", "new-project",
 ]);
 
-const CATEGORY_LABEL: Record<string, string> = {
-  system: "System", workflow: "Workflows", agent: "Agents", marketplace: "Marketplace",
-  billing: "Billing", security: "Security", deployment: "Deployments",
-  background_job: "Background jobs", realtime_event: "Realtime events", organization: "Organization",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  live: "Live", connecting: "Connecting…", reconnecting: "Reconnecting…", offline: "Offline",
-};
+const CATEGORY_IDS = [
+  "system", "workflow", "agent", "marketplace", "billing", "security", "deployment",
+  "background_job", "realtime_event", "organization",
+] as const;
 
 export function NotificationPanel({ onClose, triggerRef }: {
   onClose: () => void;
@@ -36,6 +32,7 @@ export function NotificationPanel({ onClose, triggerRef }: {
     filters, setFilters, refetch, loadMore, markRead, markAllRead, archive, remove,
   } = useNotifications();
   const { setPage } = useAppContext();
+  const { t } = useTranslation("common");
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState(0);
@@ -87,15 +84,15 @@ export function NotificationPanel({ onClose, triggerRef }: {
   }
 
   return (
-    <div ref={panelRef} className="g-notif-panel" role="dialog" aria-label="Notifications">
+    <div ref={panelRef} className="g-notif-panel" role="dialog" aria-label={t("notifications.title")}>
       <div className="g-notif-panel__header">
         <span className="g-notif-panel__title">
-          Notifications
-          <span className={`g-notif-status g-notif-status--${connectionStatus}`} title={STATUS_LABEL[connectionStatus]} />
+          {t("notifications.title")}
+          <span className={`g-notif-status g-notif-status--${connectionStatus}`} role="img" title={t(`notifications.status.${connectionStatus}`)} aria-label={t(`notifications.status.${connectionStatus}`)} />
         </span>
         <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" className="g-notif-item__op" onClick={markAllRead} title="Mark all as read" aria-label="Mark all as read">✓✓</button>
-          <button type="button" className="g-notif-item__op" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Notification settings">⚙</button>
+          <button type="button" className="g-notif-item__op" onClick={markAllRead} title={t("notifications.markAllRead")} aria-label={t("notifications.markAllRead")}>✓✓</button>
+          <button type="button" className="g-notif-item__op" onClick={() => setSettingsOpen(true)} title={t("notifications.settingsShort")} aria-label={t("notifications.settings")}>⚙</button>
         </div>
       </div>
 
@@ -104,21 +101,21 @@ export function NotificationPanel({ onClose, triggerRef }: {
           type="button"
           className={`g-notif-chip ${!filters.unreadOnly ? "g-notif-chip--active" : ""}`}
           onClick={() => setFilters({ unreadOnly: false })}
-        >All</button>
+        >{t("notifications.all")}</button>
         <button
           type="button"
           className={`g-notif-chip ${filters.unreadOnly ? "g-notif-chip--active" : ""}`}
           onClick={() => setFilters({ unreadOnly: true })}
-        >Unread</button>
+        >{t("notifications.unread")}</button>
         <select
           value={filters.category ?? ""}
           onChange={e => setFilters({ category: (e.target.value || null) as NotificationCategory | null })}
-          aria-label="Filter by category"
+          aria-label={t("notifications.filterByCategory")}
           className="g-notif-category-select"
         >
-          <option value="">All categories</option>
-          {Object.entries(CATEGORY_LABEL).map(([id, label]) => (
-            <option key={id} value={id}>{label}</option>
+          <option value="">{t("notifications.allCategories")}</option>
+          {CATEGORY_IDS.map(id => (
+            <option key={id} value={id}>{t(`notifications.category.${id}`)}</option>
           ))}
         </select>
       </div>
@@ -126,12 +123,12 @@ export function NotificationPanel({ onClose, triggerRef }: {
       <div
         className="g-notif-panel__list"
         role="listbox"
-        aria-label="Notification list"
+        aria-label={t("notifications.list")}
         onKeyDown={onListKeyDown}
         tabIndex={-1}
       >
-        {status === "loading" && <LoadingSpinner label="Loading notifications…" />}
-        {status === "error" && <ErrorState compact message={error ?? "Failed to load."} onRetry={refetch} />}
+        {status === "loading" && <LoadingSpinner label={t("notifications.loading")} />}
+        {status === "error" && <ErrorState compact message={error ?? t("notifications.loadFailed")} onRetry={refetch} />}
         {status === "success" && notifications.length === 0 && (
           <EmptyNotifications filtered={filters.unreadOnly || !!filters.category} />
         )}
@@ -150,7 +147,7 @@ export function NotificationPanel({ onClose, triggerRef }: {
         {status === "success" && hasMore && (
           <div style={{ padding: "8px 12px" }}>
             <GoldButton variant="ghost" onClick={loadMore} disabled={loadingMore}>
-              {loadingMore ? "Loading…" : "Load more"}
+              {loadingMore ? t("notifications.loadingMore") : t("notifications.loadMore")}
             </GoldButton>
           </div>
         )}

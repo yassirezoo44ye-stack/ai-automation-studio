@@ -52,7 +52,7 @@ export function AIRoutingPage() {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+      <div role="tabpanel" tabIndex={0} aria-label={t(`tabs.${tab}`)} style={{ flex: 1, overflowY: "auto", padding: 24 }}>
         {tab === "providers" ? (
           <ProvidersTab />
         ) : tab === "models" ? (

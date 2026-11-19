@@ -3,21 +3,81 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://ai-automation-studio-viio.onrender.com/api/:path*" },
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "https://ai-automation-studio-viio.onrender.com/api/:path*"
+    },
+    {
+      "source": "/(ar|en|study-library)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/:root(home|ai|dev|design|automation|social|settings|agentos|marketplace|organizations|teams|billing|plugins|sandbox|ai-routing|observability|app-builder|runs|integrations|training|business-lab|devices|discover|feed|careers|leads|saas-factory|new-project|oauth-callback|reset-password|verify-email)/:rest*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/feed/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/project/:id/:workspace",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options",  "value": "nosniff" },
-        { "key": "X-Frame-Options",          "value": "DENY" },
-        { "key": "Referrer-Policy",          "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy",       "value": "geolocation=(), microphone=(), camera=()" },
-        { "key": "Strict-Transport-Security","value": "max-age=31536000; includeSubDomains" },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "geolocation=(), microphone=(), camera=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        },
         {
           "key": "Content-Security-Policy",
           "value": "default-src 'self'; script-src 'self' https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; connect-src 'self' https://ai-automation-studio-viio.onrender.com wss://ai-automation-studio-viio.onrender.com https://api.stripe.com https://checkout.stripe.com; frame-src https://checkout.stripe.com https://js.stripe.com blob:; font-src 'self' data: https://fonts.gstatic.com;"
+        }
+      ]
+    },
+    {
+      "source": "/:root(home|ai|dev|design|automation|social|settings|agentos|marketplace|organizations|teams|billing|plugins|sandbox|ai-routing|observability|app-builder|runs|integrations|training|business-lab|devices|discover|feed|careers|leads|saas-factory|new-project|oauth-callback|reset-password|verify-email)/:rest*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/feed/:id",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
+      "source": "/project/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
         }
       ]
     }
