@@ -495,12 +495,27 @@ class TestApiKeys(unittest.TestCase):
         import app.core.api_keys as ak
         from unittest.mock import patch
 
-        with patch.object(ak, "_DEV_KEY_RAW", "axon_devtestkey0000"):
+        with patch.object(ak, "_DEV_KEY_RAW", "axon_devtestkey0000"), \
+                patch.dict("os.environ", {"ENVIRONMENT": "development"}):
             rec = run(ak.lookup_key("axon_devtestkey0000"))
         self.assertIsNotNone(rec)
         self.assertEqual(rec.owner_id, "system")
         self.assertIsNone(rec.organization_id)
         self.assertIn("admin", rec.scopes)
+
+    def test_dev_key_is_ignored_outside_development(self):
+        """The env-defined admin key must never authenticate in production
+        (or when ENVIRONMENT is unset, which means production)."""
+        import app.core.api_keys as ak
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        pool = MagicMock()
+        pool.fetchrow = AsyncMock(return_value=None)
+        for env in ({"ENVIRONMENT": "production"}, {"ENVIRONMENT": "staging"}):
+            with patch.object(ak, "_DEV_KEY_RAW", "axon_devtestkey0000"), \
+                    patch.dict("os.environ", env), \
+                    patch("app.core.db.get_pool", return_value=pool):
+                self.assertIsNone(run(ak.lookup_key("axon_devtestkey0000")))
 
     def test_epoch_datetime_round_trip(self):
         import time

@@ -33,8 +33,9 @@ async def create_checkout(req: CheckoutRequest):
             cancel_url=f"{APP_URL}/?canceled=1",
         )
         return {"url": session.url}
-    except Exception as e:
-        raise HTTPException(400, str(e)) from None
+    except Exception:
+        logging.getLogger(__name__).exception("stripe checkout session failed")
+        raise HTTPException(400, "Could not start checkout. Please try again.") from None
 
 
 @router.get("/api/subscription/status")
