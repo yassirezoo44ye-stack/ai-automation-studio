@@ -7,6 +7,7 @@ Tables:
   device_control_sessions        — multi-device control sessions
   device_control_session_members — devices in a session + layout geometry
   device_session_authorizations  — short-lived per-session credentials for agents
+  device_inventory_snapshots     — opt-in read-only inventory reports (device advisor)
 
 Follows the repository's idempotent init_*_schema(conn) startup pattern.
 DO NOT reference alembic — this is the production migration mechanism here.
@@ -141,6 +142,19 @@ CREATE INDEX IF NOT EXISTS idx_dsa_session ON device_session_authorizations(sess
 CREATE INDEX IF NOT EXISTS idx_dsa_device  ON device_session_authorizations(device_id)  WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_dsa_hash    ON device_session_authorizations(token_hash)  WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_dsa_expires ON device_session_authorizations(expires_at)  WHERE revoked_at IS NULL;
+
+
+-- ─── Device inventory snapshots (opt-in, read-only; newest 30 kept per device) ─
+CREATE TABLE IF NOT EXISTS device_inventory_snapshots (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id        UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    organization_id  UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    collected_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- sanitized fixed-shape JSON: apps, disks, memory, top_processes, recycle_bin
+    inventory        JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_dis_device_time ON device_inventory_snapshots(device_id, collected_at DESC);
 """
 
 # Idempotent column-level migrations — run after CREATE TABLE IF NOT EXISTS so

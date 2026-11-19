@@ -16,3 +16,6 @@ pystray>=0.19
 #
 # Tray icon image generation (agent/windows/tray.py — Image.new / ImageDraw)
 Pillow>=10.0
+#
+# Read-only inventory: disks, memory, processes (agent/inventory/collector.py)
+psutil>=5.9

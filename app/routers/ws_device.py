@@ -21,6 +21,9 @@ Protocol (JSON frames, version=1):
     {"version":1, "type":"key_up",     "vk":..., "scan":..., "flags":..., "seq":..., "timestamp":...}
     {"version":1, "type":"display_config", "monitors":[...], "primary_width":..., "primary_height":...}
     {"version":1, "type":"device_focus"}     -- agent has UI focus on its local device
+    {"version":1, "type":"inventory_report", "apps":[...], "disks":[...], "memory":{...},
+                  "top_processes":[...], "recycle_bin":{...}, "timestamp":...}
+                  -- opt-in, read-only device inventory (≤128 KB); sanitized before storage
 
   Server → Agent:
     {"version":1, "type":"auth_ok",    "device_id":"...", "session_id":"..."}
@@ -56,6 +59,7 @@ from app.services.device_control import (
     WS_TIMEOUT_S,
 )
 from app.core.db import write_audit
+from app.services.device_inventory import record_inventory_snapshot
 import contextlib
 
 log = logging.getLogger(__name__)
@@ -64,6 +68,15 @@ router = APIRouter(tags=["device-control-ws"])
 
 # Maximum allowed frame size in bytes (protects against oversized payloads)
 _MAX_FRAME_BYTES = 4096
+# inventory_report frames carry the installed-app list and may be larger
+_MAX_INVENTORY_FRAME_BYTES = 128 * 1024
+
+
+def _frame_size_ok(raw_len: int, msg_type: object) -> bool:
+    """Every frame type but inventory_report keeps the 4 KB cap."""
+    if msg_type == "inventory_report":
+        return raw_len <= _MAX_INVENTORY_FRAME_BYTES
+    return raw_len <= _MAX_FRAME_BYTES
 
 # Allowed message types from the agent after authentication
 _ALLOWED_TYPES = frozenset({
@@ -73,6 +86,7 @@ _ALLOWED_TYPES = frozenset({
     "display_config",
     "device_focus",
     "device_switch",
+    "inventory_report",
 })
 
 # Mouse move is high-frequency — coalesce window in seconds
@@ -367,7 +381,8 @@ async def device_agent_ws(ws: WebSocket, device_id: str):
                                   "ts": int(time.time() * 1000)})
                 continue
 
-            if len(raw) > _MAX_FRAME_BYTES:
+            # Hard cap before parsing; the per-type cap is applied after.
+            if len(raw) > _MAX_INVENTORY_FRAME_BYTES:
                 log.warning("ws_device: oversized frame from device=%s (%d bytes)", device_id, len(raw))
                 await _send(ws, {"version": 1, "type": "error", "message": "frame_too_large"})
                 continue
@@ -376,6 +391,11 @@ async def device_agent_ws(ws: WebSocket, device_id: str):
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 await _send(ws, {"version": 1, "type": "error", "message": "invalid_json"})
+                continue
+
+            if not _frame_size_ok(len(raw), msg.get("type") if isinstance(msg, dict) else None):
+                log.warning("ws_device: oversized frame from device=%s (%d bytes)", device_id, len(raw))
+                await _send(ws, {"version": 1, "type": "error", "message": "frame_too_large"})
                 continue
 
             if not _validate_frame(msg):
@@ -411,6 +431,10 @@ async def device_agent_ws(ws: WebSocket, device_id: str):
                         screen_width=msg.get("primary_width"),
                         screen_height=msg.get("primary_height"),
                     ))
+
+            elif mtype == "inventory_report":
+                # Opt-in read-only snapshot; sanitized and throttled in the service
+                asyncio.create_task(_store_inventory(device_id, org_id, msg))
 
             elif mtype == "mouse_move":
                 # High-frequency — coalesce, never persist, route to target device
@@ -477,6 +501,14 @@ async def device_agent_ws(ws: WebSocket, device_id: str):
                 device_id, session_id,
             )
             asyncio.create_task(svc.handle_primary_disconnect(session_id, org_id))
+
+
+async def _store_inventory(device_id: str, org_id: str, msg: dict) -> None:
+    try:
+        await record_inventory_snapshot(device_id, org_id, msg)
+    except Exception as e:
+        # Never log the frame — it holds the device's app and process names
+        log.warning("ws_device: inventory store failed device=%s: %s", device_id, type(e).__name__)
 
 
 async def _route_frame_to_target(
