@@ -91,7 +91,8 @@
       "now": "now",
       "streamErrorPrefix": "⚠️ {{message}}",
       "copyCode": "Copy",
-      "copied": "Copied!"
+      "copied": "Copied!",
+      "interrupted": "The reply was interrupted. Please retry."
     },
     "convGroups": {
       "today": "Today",
