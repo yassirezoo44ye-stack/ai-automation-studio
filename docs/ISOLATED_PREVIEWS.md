@@ -163,3 +163,47 @@ persistence path. Runtime-written files for arbitrary apps remain ephemeral.
 Activation tests must additionally verify owner setup, inventory, customer login,
 checkout, and order history across VM replacement and service restart. Existing
 source exports continue to exclude runtime databases and credentials.
+
+
+## Read-only configuration check
+
+`app/activation_check.py` is a standalone, standard-library-only check. Run it
+inside the intended service, as its normal application user, using a reviewed
+40-character release SHA and the confirmed service ID:
+
+```sh
+python -B /app/app/activation_check.py \
+  --expected-service srv-d6705koboq4c7384n0cg \
+  --expected-commit REVIEWED_40_CHARACTER_RELEASE_SHA
+```
+
+Replace the SHA placeholder; do not compare the running SHA to itself or assume
+that a successful check on a developer computer represents the Render service.
+The current production image may not include this new file. A reviewed copy can
+also be supplied on standard input using `python -B -` with the same arguments;
+that does not require saving it into production or deploying merely to inspect
+configuration. Use the secure service Shell, not chat, for any secret setup.
+
+The tool reports only:
+- Whether each required Sandbox variable is nonempty, never its value.
+- Whether the service and release match the explicitly reviewed identifiers.
+- Whether mount enforcement is enabled and the workspace root is a real mount.
+- Root directory counts, without filenames or reading project/customer content.
+- Whether the pinned Sandbox SDK is installed, without importing it.
+
+It does not import Flow, initialize schemas, create files, run a write probe,
+start a VM, access a database or call a provider. It makes no network requests.
+`-B` prevents Python bytecode files. `os.access` is only a permission hint and is
+explicitly INCONCLUSIVE for actual writes. A configuration PASS (exit 0) is not
+runtime verification, a verified backup, or deployment authorization. FAIL exits
+1; missing evidence exits 2. Backup/restore, actual writes, cross-restart
+persistence and the customer journey remain separate acceptance checks.
+
+Operational observation on 2026-11-19: the confirmed Render service was live on
+`1d79b1323347a4f1ac3dbf52adabaead0e7c0698`; PR #63 remained a draft. The service's
+actual auto-deploy setting was `checksPass`, despite `autoDeploy: false` in the
+Blueprint. Recheck this before authorizing a merge: merging a green PR can deploy
+before disk/data/provider preparation. No production setting was changed during
+that inspection. The connector did not expose disk or secret-presence evidence;
+the browser sign-in was not completed, so those items remain unverified. This
+check prepares a way to collect that evidence without disclosing secret values.
