@@ -78,6 +78,8 @@ def _startup_entry(files: dict[str, str], command: str) -> None:
     if entry and str(PurePosixPath(entry)) not in files:
         raise HTTPException(422, 'Build incomplete: the startup entry file was not delivered.')
     if executable == 'npm' and len(args) > 1 and args[1] in ('run', 'start'):
+        if args[1] == 'run' and len(args) < 3:
+            raise HTTPException(422, 'Build incomplete: the npm startup command must name a script.')
         script = args[2] if args[1] == 'run' and len(args) > 2 else 'start'
         try:
             scripts = json.loads(files.get('package.json', '{}')).get('scripts', {})

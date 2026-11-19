@@ -119,3 +119,9 @@ def test_approved_api_only_scope_is_preserved():
     del files['index.html']
     result = validate_delivery('CRM API', {'tech_stack':{'frontend':'none','backend':'FastAPI'},'pages':[]}, files, 'uvicorn main:app')
     assert not result['requires_frontend']
+
+
+def test_npm_run_without_a_script_does_not_start_an_application():
+    files = {'index.html':'<main>App</main>', 'package.json':'{"scripts":{"start":"vite"}}'}
+    with pytest.raises(HTTPException, match='name a script'):
+        validate_delivery('Static site', {}, files, 'npm run')
