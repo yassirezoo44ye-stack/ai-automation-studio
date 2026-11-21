@@ -22,7 +22,11 @@ const StudyLibraryPage = lazy(() => import("./features/study-library/StudyLibrar
 
 function AppInner() {
   const { user, loading, bootstrapError, pendingMfaChallenge } = useAuth();
-  const [authView, setAuthView] = useState<AuthView>("landing");
+  // Links from emails (/verify-email, /reset-password) must open the auth
+  // form directly — the landing page knows nothing about their tokens.
+  const [authView, setAuthView] = useState<AuthView>(() =>
+    ["/verify-email", "/reset-password"].includes(window.location.pathname) ? "login" : "landing",
+  );
 
   // Deep-link routing is handled by AppContext (URL ↔ page sync).
   // The OAuth callback and reset-password paths are handled by AuthContext
@@ -54,8 +58,12 @@ function AppInner() {
     );
   }
 
-  // Authenticated — render the full app
-  if (user) {
+  // Email action links must be handled before the authenticated-app branch.
+  // Otherwise an existing session skips AuthPage and leaves the token unused.
+  const isEmailActionLink = ["/verify-email", "/reset-password"].includes(window.location.pathname);
+
+  // Authenticated — render the full app, except when following an email action link.
+  if (user && !isEmailActionLink) {
     return (
       <ToastProvider>
         <OrgProvider>
