@@ -1,3 +1,5 @@
+import { buildPromptError, promptCharacterCount, MAX_BUILD_PROMPT_CHARS } from "./services/promptValidation";
+import { isolatedPreviewUrl } from "./services/previewUrl";
 import { StorePreview } from "./components/StorePreview";
 import { StoreSetup } from "./components/StoreSetup";
 import { SecondaryActions } from "../../shared/ui/SecondaryActions";
@@ -432,10 +434,21 @@ export function AppBuilderPage() {
   // ── Phase 3: Runtime state machine ────────────────────────────────
   const [runtimeState, setRuntimeState]       = useState<RuntimeState>("idle");
   const [previewUrl, setPreviewUrl]           = useState<string | null>(null);
-  const [previewType, setPreviewType]         = useState<"proxy" | "blob" | null>(null);
+  const [previewExpiresAt, setPreviewExpiresAt] = useState<number | null>(null);
+  const [previewType, setPreviewType]         = useState<"isolated" | "blob" | null>(null);
   const [runtimeError, setRuntimeError]       = useState<RuntimeError | null>(null);
   const [runtimeEvents, setRuntimeEvents]     = useState<RuntimeEventItem[]>([]);
   const [startupMessages, setStartupMessages] = useState<string[]>([]);
+  useEffect(() => {
+    if (previewExpiresAt === null) return;
+    const timer = window.setTimeout(() => {
+      setRuntimeState("stopped");
+      setPreviewExpiresAt(null);
+      setPreviewUrl(null);
+      setPreviewType(null);
+    }, Math.max(0, previewExpiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [previewExpiresAt]);
   const runtimeAbortRef = useRef<AbortController | null>(null);
   const isRunningRef    = useRef(false);
 
@@ -461,7 +474,10 @@ export function AppBuilderPage() {
         if (commerce && !isBuildingRef.current) {
           setBuildDone(true); setBuildLanguage("python"); setBuildFileCount(data.files);
           setRuntimeState(data.running ? "running" : "ready_to_run");
-          if (data.running) { setPreviewUrl(data.preview_url); setPreviewType("proxy"); }
+          if (data.running) {
+            setPreviewUrl(isolatedPreviewUrl(data.preview_url)); setPreviewType("isolated");
+            setPreviewExpiresAt(Date.now() + Math.max(0, Math.min(data.expires_in ?? 300, 300)) * 1000);
+          }
         }
       })
       .catch(() => { if (active) setCommerceProject(null); });
@@ -529,6 +545,11 @@ export function AppBuilderPage() {
    */
   const handleBuild = useCallback(async (prompt: string, approvedPlan?: BuildPlan | null) => {
     if (isBuildingRef.current) return;
+    const promptError = buildPromptError(prompt);
+    if (promptError) {
+      const message = t(`input.${promptError}`, { max: MAX_BUILD_PROMPT_CHARS });
+      setBuildError(message); toast(message, "err"); return;
+    }
     isBuildingRef.current = true;
 
     setIsBuilding(true);
@@ -704,7 +725,7 @@ export function AppBuilderPage() {
       setIsBuilding(false);
       abortRef.current = null;
     }
-  }, [toast]);
+  }, [toast, t]);
 
   /** Cancel an in-progress build. */
   const handleCancel = useCallback(() => {
@@ -727,6 +748,12 @@ export function AppBuilderPage() {
    *    fall through directly to handleBuild(prompt).
    */
   const handleStartBuild = useCallback(async (prompt: string) => {
+    const promptError = buildPromptError(prompt);
+    if (promptError) {
+      const message = t(`input.${promptError}`, { max: MAX_BUILD_PROMPT_CHARS });
+      setBuildError(message); toast(message, "err"); return;
+    }
+    setBuildError(null);
     setPendingPrompt(prompt);
     setBuildEvents([]);
 
@@ -751,15 +778,22 @@ export function AppBuilderPage() {
         setPlanState("review");
         return; // Wait for user to approve plan
       }
-      // Non-OK response → skip plan, build directly
+      // A rejected request must not become a second, potentially billable
+      // build attempt. Keep the draft and surface a localized recovery message.
+      if (r.status >= 400 && r.status < 500) {
+        setPlanState("idle");
+        setBuildError(t("input.rejected", { status: r.status }));
+        return;
+      }
+      // Planning service unavailable → preserve the existing fallback.
       setPlanState("idle");
       void handleBuild(prompt);
     } catch {
-      // Plan unavailable (credits, network, or test mock) → build directly
+      // Network failure or malformed plan response → preserve existing fallback
       setPlanState("idle");
       void handleBuild(prompt);
     }
-  }, [handleBuild, buildDone]);
+  }, [handleBuild, buildDone, t, toast]);
 
   // ── Phase 3: Runtime handlers ──────────────────────────────────────
 
@@ -774,6 +808,7 @@ export function AppBuilderPage() {
 
     isRunningRef.current = true;
     setRuntimeState("starting");
+    setPreviewExpiresAt(null);
     setRuntimeError(null);
     setRuntimeEvents([]);
     setStartupMessages([]);
@@ -787,7 +822,7 @@ export function AppBuilderPage() {
       if (ev.type === "heartbeat") return;
       const msg =
         ev.type === "log"          ? ev.line
-        : ev.type === "server_ready" ? `✓ ${ev.message} — ${ev.preview_url}`
+        : ev.type === "server_ready" ? `✓ ${ev.message}`
         : "message" in ev          ? (ev as { message: string }).message
         : ev.type;
       setRuntimeEvents(prev => [...prev, {
@@ -807,24 +842,13 @@ export function AppBuilderPage() {
             setStartupMessages(prev => [...prev, ev.message]);
             break;
 
-          case "html": {
-            // Static HTML driver — create blob URL for iframe.
-            // P0-C: use "preview" (not "running") — no real server subprocess.
-            const blob = new Blob([ev.html_content], { type: "text/html" });
-            const url = URL.createObjectURL(blob);
-            setPreviewUrl(url);
-            setPreviewType("blob");
-            setRuntimeState("preview");
-            toast("App preview ready", "ok");
-            isRunningRef.current = false;
-            runtimeAbortRef.current = null;
-            return;
-          }
+          case "html":
+            throw new Error(t("runtime.outdatedServer"));
 
           case "server_ready": {
-            // Server running — proxy URL is relative, same-origin
-            setPreviewUrl(ev.preview_url);
-            setPreviewType("proxy");
+            setPreviewUrl(isolatedPreviewUrl(ev.preview_url));
+            setPreviewType("isolated");
+            setPreviewExpiresAt(Date.now() + Math.min(ev.expires_in ?? 300, 300) * 1000);
             setRuntimeState("running");
             isRunningRef.current = false;
             runtimeAbortRef.current = null;
@@ -869,7 +893,7 @@ export function AppBuilderPage() {
       isRunningRef.current = false;
       runtimeAbortRef.current = null;
     }
-  }, [toast]);
+  }, [t]);
 
   /** Stop the running project. Calls DELETE /api/projects/{id}/process. */
   const handleStop = useCallback(async () => {
@@ -877,19 +901,24 @@ export function AppBuilderPage() {
     runtimeAbortRef.current?.abort();
     runtimeAbortRef.current = null;   // explicit clear — handleRun allocates a fresh controller
     setRuntimeState("stopping");
-    if (projectId) {
-      await stopProject(projectId);
+    try {
+      if (projectId) await stopProject(projectId);
+      setRuntimeState("stopped");
+      setPreviewExpiresAt(null);
+      setPreviewUrl(null);
+      setPreviewType(null);
+      isRunningRef.current = false;
+      return true;
+    } catch {
+      setRuntimeState("failed");
+      setRuntimeError({ category: "network", message: t("runtime.stopFailed"), fix: [t("runtime.retryStop")] });
+      return false;
     }
-    setRuntimeState("stopped");
-    setPreviewUrl(null);
-    setPreviewType(null);
-    isRunningRef.current = false;
-  }, []);
+  }, [t]);
 
-  /** Restart = stop then run again. */
+  /** Restart only after the backend confirms that the old VM stopped. */
   const handleRestart = useCallback(async () => {
-    await handleStop();
-    void handleRun();
+    if (await handleStop()) void handleRun();
   }, [handleStop, handleRun]);
 
   /**
@@ -955,7 +984,9 @@ export function AppBuilderPage() {
       "متجر إلكتروني",
     ];
 
-    const canBuild = entryPrompt.trim().length > 0;
+    const inputError = buildPromptError(entryPrompt);
+    const inputCount = promptCharacterCount(entryPrompt);
+    const canBuild = inputError === null;
 
     return (
       <div style={{
@@ -1018,6 +1049,8 @@ export function AppBuilderPage() {
 
               {/* Textarea */}
               <textarea
+                aria-describedby="build-prompt-feedback"
+                aria-invalid={inputError === "tooLong" || undefined}
                 value={entryPrompt}
                 onChange={e => setEntryPrompt(e.target.value)}
                 onKeyDown={e => {
@@ -1049,7 +1082,14 @@ export function AppBuilderPage() {
                 onBlur={e => { e.currentTarget.style.borderColor = "var(--b1)"; }}
               />
 
-              {/* Error pill — shows verbatim error message for test compatibility */}
+              <div id="build-prompt-feedback" role={inputError === "tooLong" ? "alert" : undefined}
+                style={{ fontSize: 12, marginBottom: 12, color: inputError === "tooLong" ? "var(--red)" : "var(--t4)" }}>
+                {inputError === "tooLong"
+                  ? t("input.tooLong", { max: MAX_BUILD_PROMPT_CHARS })
+                  : t("input.characters", { count: inputCount, max: MAX_BUILD_PROMPT_CHARS })}
+              </div>
+
+              {/* Error recovery preserves the full draft. */}
               {buildError && (
                 <div style={{
                   marginBottom: 14,
@@ -1310,9 +1350,9 @@ export function AppBuilderPage() {
                 ↺ Restart
               </button>
             )}
-            {runtimeState === "running" && previewUrl && previewType === "proxy" && (
+            {runtimeState === "running" && previewUrl && previewType === "isolated" && currentPlan?.delivery_contract !== "flow-commerce-cod-v1" && !commerceProject && (
               <button
-                onClick={() => window.open(`${window.location.origin}${previewUrl}`, "_blank")}
+                onClick={() => window.open(isolatedPreviewUrl(previewUrl), "_blank", "noopener,noreferrer")}
                 style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid var(--b1)", background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer" }}
               >
                 ⇱ Open

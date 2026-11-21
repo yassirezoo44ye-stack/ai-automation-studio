@@ -1,5 +1,6 @@
 """JWT access tokens + opaque refresh tokens."""
 import datetime
+import os
 import secrets
 import time
 
@@ -18,6 +19,10 @@ REFRESH_EXPIRE_DAYS_SESSION = 1
 _revoked_before: dict[str, float] = {}
 
 
+class RevocationStoreUnavailable(RuntimeError):
+    """Configured shared authentication state cannot be checked safely."""
+
+
 async def revoke_user_tokens(user_id: str) -> None:
     """Revoke all outstanding access tokens for *user_id* immediately.
 
@@ -29,13 +34,16 @@ async def revoke_user_tokens(user_id: str) -> None:
     try:
         from app.core.cache import get_redis
         cache = await get_redis()
+        if os.getenv("REDIS_URL") and cache.backend != "redis":
+            raise RevocationStoreUnavailable("Shared revocation store unavailable")
         await cache.set(
             f"jwt:revoke:{user_id}",
             str(now),
             ttl=ACCESS_EXPIRE_MINUTES * 60 + 30,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        if os.getenv("REDIS_URL"):
+            raise RevocationStoreUnavailable("Shared revocation store unavailable") from exc
 
 
 def make_access_token(user_id: str, email: str) -> str:
@@ -44,7 +52,7 @@ def make_access_token(user_id: str, email: str) -> str:
         "sub": user_id,
         "email": email,
         "type": "access",
-        "iat": now,
+        "iat": now.timestamp(),
         "exp": now + datetime.timedelta(minutes=ACCESS_EXPIRE_MINUTES),
     }
     return jwt.encode(payload, _SECRET, algorithm=_ALGO)
@@ -65,3 +73,29 @@ def decode_access_token(token: str) -> dict:
 
 def make_refresh_token() -> str:
     return secrets.token_urlsafe(48)
+
+
+async def verify_access_token(token: str) -> dict:
+    """Verify JWT and shared revocation before authorizing an async request.
+
+    The synchronous decoder remains a cryptographic/local check for legacy
+    helpers. HTTP boundaries and legacy WebSocket handshakes use this method.
+    Configured Redis must not silently degrade to process-local auth state.
+    Without REDIS_URL only single-process revocation is supported.
+    """
+    payload = decode_access_token(token)
+    user_id, iat = payload.get("sub"), payload.get("iat")
+    if user_id and iat is not None:
+        try:
+            from app.core.cache import get_redis
+            cache = await get_redis()
+            if os.getenv("REDIS_URL") and cache.backend != "redis":
+                raise RevocationStoreUnavailable("Shared revocation store unavailable")
+            revoked = await cache.get(f"jwt:revoke:{user_id}")
+            threshold = float(revoked) if revoked is not None else None
+        except Exception as exc:
+            raise RevocationStoreUnavailable("Shared revocation store unavailable") from exc
+        issued = iat.timestamp() if isinstance(iat, datetime.datetime) else float(iat)
+        if threshold is not None and issued <= threshold:
+            raise jwt.ExpiredSignatureError("Token has been revoked")
+    return payload

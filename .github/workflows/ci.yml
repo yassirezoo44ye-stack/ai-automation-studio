@@ -27,6 +27,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
       STUDY_TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
+      LOCAL_SECURITY_TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
+      LOCAL_SECURITY_REDIS_URL: redis://localhost:6379/15
       SESSION_SECRET: ci-test-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
     services:
@@ -41,6 +43,16 @@ jobs:
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
 

@@ -12,6 +12,7 @@ Zero AI logic. Zero provider imports.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -40,7 +41,22 @@ async def _user_id(request: Request) -> str:
     in the app ever sets (a dead, isolated identity mechanism that made
     every ownership filter below a no-op). Raises 401 if the caller's
     token doesn't resolve to a real account, matching owner_user_id's
-    behavior everywhere else it's used."""
+    behavior everywhere else it's used.
+
+    API-key callers (already validated by api_auth_middleware) act as the
+    key's owner, but only with the dedicated "ai" scope — never "agents"."""
+    key = getattr(request.state, "api_key", None)
+    if key is not None:
+        if not key.has_scope(["ai"]):
+            raise HTTPException(403, "API key lacks required scope: ['ai']")
+        try:
+            owner = uuid.UUID(str(key.owner_id))
+        except ValueError:
+            raise HTTPException(403, "This API key is not tied to a user account") from None
+        async with get_pool().acquire() as conn:
+            if not await conn.fetchval("SELECT id FROM users WHERE id=$1", owner):
+                raise HTTPException(401, "API key owner no longer exists")
+        return str(owner)
     async with get_pool().acquire() as conn:
         return str(await owner_user_id(conn, request))
 
@@ -53,6 +69,10 @@ async def _org_id(request: Request) -> str | None:
     # against an org is exactly that kind of consumer, so this verifies
     # membership (not just presence) before trusting the header, the same
     # way app.core.org_quota.check_org_quota does for the legacy routers.
+    key = getattr(request.state, "api_key", None)
+    if key is not None:
+        # An org-scoped key bills its own org; the header can't redirect it.
+        return str(key.organization_id) if key.organization_id else None
     from app.tenancy.context import optional_org_id
     return await optional_org_id(request)
 

@@ -14,10 +14,12 @@
  *   failed       → error received; AI assistance offered
  *
  * Preview surfaces:
- *   proxy URL  (/api/projects/{id}/proxy/) → iframe (same-origin relative URL)
- *   blob URL   (object URL from html driver) → iframe (blob: URL)
+ *   isolated HTTPS URL → cross-origin iframe; no platform authentication is sent.
+ *   Legacy blob previews remain opaque (no allow-same-origin).
  */
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { isolatedPreviewUrl } from "../services/previewUrl";
 
 export type RuntimeState =
   | "idle"
@@ -38,7 +40,7 @@ export type RuntimeError = {
 interface Props {
   runtimeState: RuntimeState;
   previewUrl: string | null;
-  previewType: "proxy" | "blob" | null;
+  previewType: "isolated" | "blob" | null;
   runtimeError: RuntimeError | null;
   buildDone: boolean;
   projectName: string;
@@ -179,17 +181,14 @@ function RunningView({
   label = "Running",
 }: {
   previewUrl: string;
-  previewType: "proxy" | "blob";
+  previewType: "isolated" | "blob";
   onStop: () => void;
   onRestart: () => void;
   /** Status label shown in the toolbar. "Running" = real server; "Preview" = static blob. */
   label?: string;
 }) {
-  // proxy URL is relative (/api/projects/.../proxy/) → same-origin iframe is safe
-  // blob URL is object URL → also safe in iframe
-  const iframeSrc = previewType === "proxy"
-    ? `${window.location.origin}${previewUrl}`
-    : previewUrl;
+  const { t } = useTranslation("appBuilder");
+  const iframeSrc = previewType === "isolated" ? isolatedPreviewUrl(previewUrl) : previewUrl;
 
   const isPreview = label !== "Running";
   const dotColor  = isPreview ? "var(--teal, #0ea5e9)" : "var(--green)";
@@ -216,15 +215,15 @@ function RunningView({
             textOverflow: "ellipsis", whiteSpace: "nowrap",
             fontFamily: "var(--font-mono, monospace)",
           }}>
-            {previewUrl}
+            {t("runtime.expires")}
           </div>
         </div>
         <button style={BTN_GHOST} onClick={onRestart}>↺ Restart</button>
         <button style={BTN_DANGER} onClick={onStop}>■ Stop</button>
-        {previewType === "proxy" && (
+        {previewType === "isolated" && (
           <button
             style={BTN_GHOST}
-            onClick={() => window.open(iframeSrc, "_blank")}
+            onClick={() => window.open(iframeSrc, "_blank", "noopener,noreferrer")}
           >
             ⇱ Open
           </button>
@@ -235,7 +234,8 @@ function RunningView({
         src={iframeSrc}
         title="App Preview"
         style={{ flex: 1, border: "none", width: "100%", height: "100%" }}
-        sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"
+        referrerPolicy="no-referrer"
+        sandbox={previewType === "isolated" ? "allow-scripts allow-forms allow-same-origin" : "allow-scripts allow-forms"}
       />
     </div>
   );
@@ -264,8 +264,10 @@ function FailedView({
   error,
   onRetry,
   onExplain,
+  onStop,
 }: {
   error: RuntimeError;
+  onStop?: () => void;
   onRetry: () => void;
   onExplain: (err: RuntimeError) => void;
 }) {
@@ -309,6 +311,7 @@ function FailedView({
         )}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {onStop && <button style={BTN_DANGER} onClick={onStop}>■ Stop</button>}
           <button style={BTN_PRIMARY} onClick={onRetry}>↺ Retry</button>
           <button style={BTN_GHOST} onClick={() => onExplain(error)}>
             🤖 Explain with AI
@@ -397,6 +400,7 @@ export function RuntimePanel({
           error={runtimeError}
           onRetry={onRun}
           onExplain={onExplainError}
+          onStop={onStop}
         />
       )}
     </div>

@@ -209,3 +209,49 @@ describe("AuthProvider — logout", () => {
     expect((window as unknown as Record<string, unknown>).__axon_access_token).toBeNull();
   });
 });
+
+describe("AuthProvider — refresh rate-limited (429)", () => {
+  function BootstrapProbe() {
+    const { user, loading, bootstrapError } = useAuth();
+    return (
+      <div>
+        <div data-testid="loading">{String(loading)}</div>
+        <div data-testid="user">{user?.email ?? ""}</div>
+        <div data-testid="error">{bootstrapError ?? ""}</div>
+      </div>
+    );
+  }
+  const tooMany = () => new Response(JSON.stringify({ detail: "slow down" }), {
+    status: 429,
+    headers: { "Content-Type": "application/json", "Retry-After": "0.01" },
+  });
+
+  it("retries after Retry-After and restores the session instead of showing an error screen", async () => {
+    localStorage.setItem("axon_refresh_token", "stored-refresh-tok");
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(tooMany())
+      .mockResolvedValueOnce(jsonResponse(200, { access_token: "new-jwt", refresh_token: "rotated-refresh" }))
+      .mockResolvedValueOnce(jsonResponse(200, fakeUser));
+
+    render(<AuthProvider><BootstrapProbe /></AuthProvider>);
+
+    await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("user@example.com"));
+    expect(screen.getByTestId("error")).toHaveTextContent("");
+    expect(localStorage.getItem("axon_refresh_token")).toBe("rotated-refresh");
+  });
+
+  it("keeps the stored session and shows a friendly message if still rate-limited after retries", async () => {
+    localStorage.setItem("axon_refresh_token", "stored-refresh-tok");
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockImplementation(async () => tooMany());
+
+    render(<AuthProvider><BootstrapProbe /></AuthProvider>);
+
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("false"));
+    expect(screen.getByTestId("error")).toHaveTextContent("Too many requests");
+    expect(screen.getByTestId("error")).not.toHaveTextContent("429");
+    expect(localStorage.getItem("axon_refresh_token")).toBe("stored-refresh-tok");
+    expect(fetchMock).toHaveBeenCalledTimes(4); // first try + 3 retries
+  });
+});

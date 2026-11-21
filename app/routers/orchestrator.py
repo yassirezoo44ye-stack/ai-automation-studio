@@ -6,6 +6,7 @@ Transport layer only: validates inputs, delegates to platform, returns results.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -17,6 +18,7 @@ from app.core.ai.platform import platform
 from app.core.ai.policy.engine import PolicyViolationError
 
 router = APIRouter(prefix="/api/ai", tags=["orchestrator"])
+log = logging.getLogger(__name__)
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -65,8 +67,9 @@ async def orchestrate(body: OrchestrateIn, request: Request):
         return result.__dict__
     except PolicyViolationError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from None
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from None
+    except Exception:
+        log.exception("orchestrator request failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.post("/orchestrate/stream")
@@ -116,8 +119,9 @@ async def run_builtin_agent(body: AgentRunIn):
             "rounds":     result.rounds,
             "error":      result.error,
         }
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from None
+    except Exception:
+        log.exception("orchestrator request failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.post("/agents/builtin/stream")
@@ -184,8 +188,9 @@ async def run_workflow(body: WorkflowRunIn, request: Request):
             "error":           execution.error,
             "context":         execution.context,
         }
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from None
+    except Exception:
+        log.exception("orchestrator request failed")
+        raise HTTPException(status_code=500, detail="Internal server error") from None
 
 
 @router.post("/workflows/{execution_id}/resume")
@@ -218,12 +223,16 @@ async def cost_summary(request: Request):
     """Real numbers from ai_usage_log — the consolidated cost/token ledger
     (AI Routing consolidation; see app/ai/cost_tracker.py). Org-scoped when
     the caller is a verified member of the org named in X-Organization-Id,
-    platform-wide otherwise."""
+    platform-wide otherwise — and the platform-wide view (every tenant's
+    spend) is restricted to platform admins."""
     from app.ai import cost_tracker
+    from app.core.auth import is_platform_admin
     from app.core.db import get_pool
     from app.tenancy.context import optional_org_id
 
     org_id = await optional_org_id(request)
+    if not org_id and not await is_platform_admin(request):
+        raise HTTPException(403, "Select an organization to view its AI costs")
     pool   = get_pool()
     totals = await cost_tracker.totals(pool=pool, org_id=org_id)
     by_provider_rows = await cost_tracker.by_provider(pool=pool, org_id=org_id)

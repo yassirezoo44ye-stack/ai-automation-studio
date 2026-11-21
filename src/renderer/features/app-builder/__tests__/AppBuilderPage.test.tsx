@@ -1021,8 +1021,8 @@ describe("Case Q — Plan Mode: Modify/Regenerate re-calls /api/build/plan", () 
 describe("Case R — Plan Mode: plan failure falls back to direct build", () => {
   beforeEach(resetPlanMocks);
 
-  it("falls back to direct build (no approvedPlan) on non-OK plan response", async () => {
-    (apiFetch as Mock).mockResolvedValueOnce({ ok: false, status: 429 });
+  it("falls back to direct build (no approvedPlan) on unavailable plan service", async () => {
+    (apiFetch as Mock).mockResolvedValueOnce({ ok: false, status: 503 });
     streamBuildSpy.mockReturnValue(makeEventStream([]));
 
     render(<AppBuilderPage />);
@@ -1053,5 +1053,46 @@ describe("Case R — Plan Mode: plan failure falls back to direct build", () => 
       string, string, AbortSignal, BuildPlan | undefined
     ];
     expect(approvedPlan).toBeUndefined();
+  });
+});
+
+/* Validation failures must not fall through to a second, billable AI request. */
+describe("Build prompt validation", () => {
+  beforeEach(() => {
+    resetPlanMocks();
+    sessionStorage.removeItem("flow:app-builder:draft");
+  });
+
+  it("preserves an oversized paste and prevents generation", () => {
+    render(<AppBuilderPage />);
+    const prompt = "ع".repeat(32_001);
+    submitPrompt(prompt);
+    expect(screen.getByRole("textbox")).toHaveValue(prompt);
+    expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(_createProjectSpy).not.toHaveBeenCalled();
+    expect(streamBuildSpy).not.toHaveBeenCalled();
+  });
+
+  it("sends a valid long Unicode request to planning without truncation", async () => {
+    (apiFetch as Mock).mockResolvedValueOnce({ ok: true, status: 200 });
+    (parseJSON as Mock).mockResolvedValueOnce({ plan: VALID_PLAN });
+    render(<AppBuilderPage />);
+    const prompt = "🚀".repeat(12_000);
+    submitPrompt(prompt);
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    const [, options] = (apiFetch as Mock).mock.calls[0];
+    expect(JSON.parse(options.body).prompt).toBe(prompt);
+    expect(streamBuildSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 402, 422, 429])("blocks generation after planning rejects with %s", async (status) => {
+    (apiFetch as Mock).mockResolvedValueOnce({ ok: false, status });
+    render(<AppBuilderPage />);
+    submitPrompt("Build a CRM");
+    await waitFor(() => expect(screen.getByText("input.rejected")).toBeInTheDocument());
+    expect(screen.getByRole("textbox")).toHaveValue("Build a CRM");
+    expect(_createProjectSpy).not.toHaveBeenCalled();
+    expect(streamBuildSpy).not.toHaveBeenCalled();
   });
 });

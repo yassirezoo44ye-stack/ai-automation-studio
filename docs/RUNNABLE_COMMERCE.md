@@ -33,14 +33,19 @@ Their future adapters must verify actual provider events before reporting succes
 
 ## Running and preview
 
-The existing detector identifies FastAPI; the existing Python server driver
-installs dependencies and starts the store, returning server_ready. Exported
-projects also run directly with `python main.py`, honoring PORT. SQLite is a
-single-instance store; durable hosting requires a persistent volume and backups.
-Public deployment is a separate explicit action. Flow preview is private.
+The detector identifies FastAPI; Flow runs the store in an isolated Vercel VM,
+never on the API host. Backend-only Sandbox credentials are required and missing
+configuration fails closed. The preview has a five-minute lifetime. The opaque
+preview's authenticated RPC bridge saves SQLite state to the project's durable
+workspace before acknowledging mutations, and new VMs receive the saved state.
+Failed saves remain visible; manually mutating the separate VM URL bypasses this
+supported persistence bridge. Exported projects also run directly with
+`python main.py`, honoring PORT. SQLite remains single-instance; durable public
+hosting requires a persistent volume and backups. Public deployment is a separate
+explicit action. See ISOLATED_PREVIEWS.md for activation and failure boundaries.
 
 On first run, a 0600 `data/owner-setup.txt` file contains the one-time token, stored
-as a hash in the database. The authenticated project owner can reveal it through
+as a hash in the database. The authenticated project owner can reveal the active VM's token through
 Store owner setup. In the store's Account section, use it to initialize ownership.
 It is deleted after successful setup; restarting an unconfigured store rotates it.
 Public storefront APIs never return that token. Host CLI setup is also available.
@@ -49,8 +54,10 @@ The in-Flow preview uses an opaque sandbox with a project-scoped message bridge.
 It never exposes Flow tokens, parent DOM or parent storage to generated scripts.
 Only the shipped, verified storefront client is previewed here, using public static client assets under the existing CSP; modified client
 code can be exported and run on its own host. Server responses remain authoritative.
-Saved commerce projects are recognized by their manifest and reopen with the correct runtime state. Store API requests are proxied with Flow ownership authentication, then Flow auth
-headers are stripped before reaching generated code. Cookies are project-scoped;
+Saved commerce projects are recognized by their manifest and reopen with the correct runtime state. Store API requests are proxied to the isolated VM with Flow ownership
+authentication; only the preview capability and project store cookie reach the
+VM. Flow auth headers are never forwarded. Bridge responses are non-executable
+attachments with nosniff, including storefront HTML and JavaScript fetched as text. Cookies are project-scoped;
 only the store session is forwarded in this preview mode. Standalone storage keeps
 cart state; opaque preview keeps the cart in memory while orders persist in SQLite.
 
@@ -76,6 +83,10 @@ stock contention, cancellation, persisted history and same-origin JSON writes.
 Route tests verify plan/file consistency, no model/mock invocation, preserving
 existing work and owner-only setup access. Proxy tests verify token stripping and
 cookie scoping. Bootstrap also revokes pre-existing sessions if the owner had previously registered as a customer. Clone-failure tests assert no placeholder insertion.
-Browser verification uses the real Python runtime driver and exported application:
-owner setup → inventory → customer → checkout → history after reload. Flow preview
-verification additionally exercises the owner-authenticated proxy and opaque frame.
+Previous host-driver browser verification covered the exported application's
+owner setup → inventory → customer → checkout → history after reload and the
+opaque frame. The new isolated driver requires its own authorized live-provider
+acceptance run; local isolation tests use provider mocks and fixture HTTP servers.
+The new regression tests verify bounded durable snapshots, restoration on the
+next upload, save-before-response, credential stripping, cookie scoping, and
+retaining unsaved state on failed Stop. They do not certify production activation.

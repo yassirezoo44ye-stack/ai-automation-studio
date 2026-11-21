@@ -435,10 +435,10 @@ async def create_org_api_key(
     ctx: OrgContext = Depends(require_permission("api_keys", "manage")),
 ):
     from app.core.api_keys import create_api_key
-    valid_scopes = {"read", "write", "admin", "agents", "marketplace"}
-    bad = set(body.scopes) - valid_scopes
+    from app.core.api_keys import VALID_SCOPES
+    bad = set(body.scopes) - VALID_SCOPES
     if bad:
-        raise HTTPException(400, f"Unknown scopes: {bad}. Valid: {valid_scopes}")
+        raise HTTPException(400, f"Unknown scopes: {sorted(bad)}. Valid: {sorted(VALID_SCOPES)}")
     # SECURITY FIX: "admin" isn't org-scoped in practice — ApiKeyRecord.
     # has_scope() ignores organization_id, so an org-scoped "admin" key
     # also passes require_api_key(scopes=["admin"]) on platform-wide
