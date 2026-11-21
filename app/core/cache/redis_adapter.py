@@ -478,9 +478,10 @@ async def get_redis(namespace: str = "axon") -> RedisAdapter:
             client  = aioredis.from_url(redis_url, decode_responses=False)
             await client.ping()
             _instance = RedisAdapter(RedisCacheBackend(client), namespace)
-            log.info("cache: Redis backend connected (%s)", redis_url.split("@")[-1])
+            log.info("cache: Redis backend connected")
         except Exception as exc:
-            log.warning("cache: Redis unavailable (%s) — using local backend", exc)
+            log.warning("cache: Redis unavailable — using local backend",
+                        extra={"error_type": type(exc).__name__})
             _instance = RedisAdapter(LocalCacheBackend(), namespace)
     else:
         log.info("cache: REDIS_URL not set — using local in-process backend")

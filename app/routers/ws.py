@@ -131,6 +131,8 @@ async def agent_ws(ws: WebSocket, session_id: str):
     the "subscribe" message exists in src/renderer), so tightening this
     carries no regression risk to an active feature.
     """
+    if not await _legacy_ws_revocation_check(ws):
+        return
     user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
@@ -197,6 +199,8 @@ async def job_ws(ws: WebSocket, job_id: str):
     Server streams {"type": "progress", "pct": 0-100, "log": "..."} frames.
     Connection closes when job reaches a terminal state.
     """
+    if not await _legacy_ws_revocation_check(ws):
+        return
     user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
@@ -271,6 +275,8 @@ async def system_ws(ws: WebSocket):
     per-tenant secret, but the channel still requires a valid session so
     it isn't wide open to anyone on the internet, matching every other
     WS endpoint here that carries live operational data."""
+    if not await _legacy_ws_revocation_check(ws):
+        return
     user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
@@ -316,6 +322,8 @@ async def system_run_ws(ws: WebSocket, run_id: str):
     run_id with no owner on record — not yet started, or started by an
     unauthenticated caller — falls back to any authenticated user, same
     as deliverables' "no owner recorded" case."""
+    if not await _legacy_ws_revocation_check(ws):
+        return
     user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
@@ -395,6 +403,25 @@ def _user_id_from_ws_params(ws: WebSocket) -> str | None:
     return _user_id_from_ws_token(token)
 
 
+async def _legacy_ws_revocation_check(ws: WebSocket) -> bool:
+    """Shared revocation check for the legacy JWT handshake, before accept."""
+    if ws.query_params.get("ticket"):
+        return True  # ticket consumed by the existing single-use resolver
+    token = ws.query_params.get("token", "")
+    if not token:
+        await ws.close(code=4401, reason="unauthorized")
+        return False
+    from app.core.jwt_utils import verify_access_token, RevocationStoreUnavailable
+    try:
+        await verify_access_token(token)
+        return True
+    except RevocationStoreUnavailable:
+        await ws.close(code=1013, reason="authentication temporarily unavailable")
+    except Exception:
+        await ws.close(code=4401, reason="unauthorized")
+    return False
+
+
 @router.websocket("/ws/notifications")
 async def notifications_ws(ws: WebSocket):
     """Live stream of this user's own notifications. Emits
@@ -410,6 +437,8 @@ async def notifications_ws(ws: WebSocket):
     `presence:{user_id}`, so {"type": "event", "topic": "presence:{user_id}",
     "data": {"user_id": ..., "online": ...}} frames for this user's org-mates
     arrive here too, interleaved with notification events."""
+    if not await _legacy_ws_revocation_check(ws):
+        return
     user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")
@@ -490,6 +519,8 @@ async def chat_ws(ws: WebSocket, room_key: str):
     (POST /api/orgs/{org_id}/chat/messages or .../teams/{team_id}/chat/
     messages), which broadcasts here after persisting. Clients should fetch
     the REST history endpoint on connect/reconnect to backfill."""
+    if not await _legacy_ws_revocation_check(ws):
+        return
     user_id = _user_id_from_ws_params(ws)
     if not user_id:
         await ws.close(code=4401, reason="unauthorized")

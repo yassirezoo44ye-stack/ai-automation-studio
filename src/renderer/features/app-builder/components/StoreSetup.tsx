@@ -18,6 +18,7 @@ export function StoreSetup({ projectId }: { projectId: string }) {
     finally { setBusy(false); }
   }
   return <div style={{ padding: "8px 16px", fontSize: 12 }}>
+    <span style={{ marginInlineEnd: 12 }}>{t("runtime.expires")}</span>
     <button type="button" disabled={busy} onClick={() => { if (token) setToken(""); else void reveal(); }}>{t("commerce.setup")}</button>
     {token && <div><p>{t("commerce.instructions")}</p><code style={{ overflowWrap: "anywhere", userSelect: "all" }}>{token}</code></div>}
     {error && <p role="alert">{t("commerce.unavailable")}</p>}

@@ -141,5 +141,17 @@
     "button": "⬇ Export",
     "buttonBusy": "⏳ Exporting…",
     "buttonBusyShort": "⏳…"
+  },
+  "input": {
+    "empty": "Enter a request first.",
+    "tooLong": "Requests can contain up to {{max}} characters. Shorten it while keeping the essential requirements.",
+    "characters": "{{count}} / {{max}} characters",
+    "rejected": "The server rejected planning ({{status}}). Check the inputs or account access and retry; your draft is preserved."
+  },
+  "runtime": {
+    "outdatedServer": "Update the backend to use isolated previews.",
+    "stopFailed": "Could not confirm the preview stopped. Retry Stop; the environment expires within five minutes.",
+    "retryStop": "Retry Stop",
+    "expires": "Temporary isolated preview · expires within five minutes"
   }
 }

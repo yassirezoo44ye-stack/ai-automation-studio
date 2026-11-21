@@ -47,6 +47,7 @@ export type RunEventHtml = {
 
 export type RunEventServerReady = {
   type: "server_ready";
+  expires_in?: number;
   preview_url: string;
   port: number;
   project_type: string;
@@ -188,15 +189,10 @@ export async function* streamRun(
   }
 }
 
-/**
- * Stop (kill) the running process for a project.
- * Calls DELETE /api/projects/{id}/process.
- * Best-effort — does not throw on failure.
- */
+/** Stop the isolated VM. Errors must remain visible so a user can retry. */
 export async function stopProject(projectId: string): Promise<void> {
-  try {
-    await apiFetch(`/api/projects/${projectId}/process`, { method: "DELETE" });
-  } catch { /* best effort */ }
+  const response = await apiFetch(`/api/projects/${projectId}/process`, { method: "DELETE" });
+  if (!response.ok) throw new Error(`Unable to stop preview (HTTP ${response.status})`);
 }
 
 /**

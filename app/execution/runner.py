@@ -1,16 +1,7 @@
 """
-ExecutionEngine — detects project type and dispatches to the appropriate driver.
+ExecutionEngine — App Builder entry points backed exclusively by isolated microVMs.
 
-Phase 3: Merged run/build/package decision flow via driver chain.
-Phase 4: Every run stream includes a 10-second SSE heartbeat.
-Phase 2: Preflight gate blocks execution before any subprocess if tools missing.
-
-Driver chain (checked in order, first match wins):
-  static          HTML projects
-  python_script   Python scripts (non-server)
-  python_server   FastAPI / Flask / generic Python server
-  node            Node.js / npm projects (when node/npm is available)
-  fallback        Anything else — shows a helpful unsupported message
+Host drivers are retained for legacy internal callers, never dispatched here.
 
 SSE event types:
   status        progress update
@@ -32,22 +23,12 @@ import shlex
 from pathlib import Path
 from collections.abc import AsyncIterator, AsyncGenerator
 
-from app.execution import detector as det
-from app.execution.drivers import fallback, node, python_script, python_server, static
-from app.runtime.errors import sse_error
-from app.runtime.preflight import run_preflight_for_strategy, preflight_error_events
 import contextlib
 
 log = logging.getLogger(__name__)
 
 _SHELL_CHARS: frozenset[str] = frozenset(";& |><`$(){}\\")
 _ALLOWED_EXECUTABLES: frozenset[str] = frozenset({"python", "python3", "node", "npm"})
-
-# Drivers checked in order — first whose can_handle() returns True wins
-_DRIVER_CHAIN = [static, python_script, python_server, node, fallback]
-
-# Strategies that have no runtime requirement (always safe to run)
-_NO_PREFLIGHT_STRATEGIES = frozenset({"static", "unsupported"})
 
 _HEARTBEAT_INTERVAL = 10.0  # seconds
 
@@ -89,72 +70,11 @@ async def run_sync(
 # ── Core ──────────────────────────────────────────────────────────────────────
 
 async def _run(project_id: str, ws: Path, command_override: str | None, request_id: str = ""):
-    # runtime_id is stable for this run's lifetime; request_id comes from the HTTP layer.
-    runtime_id = secrets.token_hex(8)
-
-    def _ev_r(type_: str, **kw) -> str:
-        """Emit SSE event with observability fields for distributed tracing."""
-        return _ev(type_, request_id=request_id, runtime_id=runtime_id, **kw)
-
-    if not ws.exists():
-        yield sse_error(
-            category="config",
-            message=f"Workspace not found for project '{project_id}'",
-            fix=["Build the project first to create a workspace"],
-            severity="high",
-        )
-        return
-
-    if not any(ws.rglob("*")):
-        yield sse_error(
-            category="config",
-            message="Workspace is empty — no files to run",
-            fix=["Use the Build tab to generate project files first"],
-            severity="high",
-        )
-        return
-
-    info = det.detect(ws)
-
-    # Use the effective root when the project lives in a subdirectory (e.g. backend/).
-    run_ws = info.effective_root if info.effective_root is not None else ws
-
-    log.info("run project=%s type=%s strategy=%s entry=%s run_ws=%s request_id=%s runtime_id=%s",
-             project_id, info.project_type, info.run_strategy, info.entry_point,
-             run_ws, request_id, runtime_id)
-
-    if run_ws != ws:
-        yield _ev_r("status",
-                    message=f"📂 Project found in '{run_ws.name}/' subdirectory — running from there",
-                    subdir=run_ws.name)
-
-    yield _ev_r("status",
-                message=f"🔍 Detected: {info.project_type} ({info.confidence} confidence)",
-                project_type=info.project_type,
-                entry_point=info.entry_point,
-                run_strategy=info.run_strategy)
-
-    # ── Phase 2: preflight gate ───────────────────────────────────────────────
-    if info.run_strategy not in _NO_PREFLIGHT_STRATEGIES:
-        pf = run_preflight_for_strategy(info.run_strategy)
-        if not pf.ok:
-            for ev in preflight_error_events(pf):
-                yield ev
-            return
-
-    # ── Phase 3: driver dispatch ──────────────────────────────────────────────
-    for driver in _DRIVER_CHAIN:
-        if driver.can_handle(info):
-            async for chunk in driver.stream(project_id, run_ws, info, command_override):
-                yield chunk
-            return
-
-    yield sse_error(
-        category="execution",
-        message="No driver matched this project type",
-        fix=["Add a main.py, index.html, or package.json to the project"],
-        severity="medium",
-    )
+    # Generated projects must never enter the legacy host driver chain.
+    from app.execution.isolated import stream
+    async with contextlib.aclosing(stream(project_id, ws, command_override)) as events:
+        async for event in events:
+            yield event
 
 
 # ── Phase 4: heartbeat wrapper ────────────────────────────────────────────────
@@ -195,6 +115,7 @@ async def _with_heartbeat(
         pending.cancel()
         with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
             await pending
+        await it.aclose()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

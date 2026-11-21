@@ -65,8 +65,9 @@ def test_setup_token_requires_project_ownership_before_filesystem_access(api):
     with patch.object(build, '_require_project_owner', AsyncMock(side_effect=HTTPException(404, 'Project not found'))), patch.object(build, 'workspace') as workspace:
         assert client.get('/api/projects/other/store-setup').status_code==404
         workspace.assert_not_called()
-    with patch.object(build, '_require_project_owner', AsyncMock()):
+    with patch.object(build, '_require_project_owner', AsyncMock()), patch.object(build.isolated, 'store_setup_token', AsyncMock(return_value='x'*43)) as remote:
         response=client.get('/api/projects/own/store-setup')
+        remote.assert_awaited_once_with('own')
         assert response.json()=={'token':'x'*43}
         assert response.headers['cache-control']=='no-store'
 
@@ -78,7 +79,7 @@ def test_reopening_completed_store_restores_its_delivery_contract(api):
         dest=folder/name
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content)
-    with patch.object(build,'_require_project_owner',AsyncMock()),patch.object(build.process_mgr,'get_running',return_value=None):
+    with patch.object(build,'_require_project_owner',AsyncMock()),patch.object(build.isolated,'status',AsyncMock(return_value={'running': False})):
         response=client.get('/api/projects/own/commerce')
     assert response.status_code==200
     assert response.json()['running'] is False

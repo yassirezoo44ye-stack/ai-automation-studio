@@ -6,7 +6,24 @@ services:
     plan: starter
     healthCheckPath: /health
     autoDeploy: false
+    # Applying this Blueprint provisions storage and interrupts the service.
+    # Back up existing ephemeral files BEFORE applying; see docs/ISOLATED_PREVIEWS.md.
+    disk:
+      name: flow-workspaces
+      mountPath: /app/workspaces
+      sizeGB: 5
     envVars:
+      - key: WORKSPACES_DIR
+        value: /app/workspaces
+      - key: REQUIRE_WORKSPACE_MOUNT
+        value: "true"
+      # Backend-only sandbox credentials. Missing values fail closed on Run.
+      - key: VERCEL_TOKEN
+        sync: false
+      - key: VERCEL_TEAM_ID
+        sync: false
+      - key: VERCEL_PROJECT_ID
+        sync: false
       - key: ENVIRONMENT
         value: "production"
       - key: ANTHROPIC_API_KEY

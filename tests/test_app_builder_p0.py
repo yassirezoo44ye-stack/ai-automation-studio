@@ -21,7 +21,7 @@ Tests:
   AB-P0-13  Step 3 in _run_build_pipeline uses _generate_crud_routes (structural)
   AB-P0-14  Step 3 no longer uses the fake len(entities)*5 expression (structural)
   AB-P0-15  RuntimePanel.tsx exports "preview" in RuntimeState union
-  AB-P0-16  AppBuilderPage.tsx sets runtimeState to "preview" on html SSE event
+  AB-P0-16  HTML previews fail closed when isolated execution is unavailable
   AB-P0-17  AppSidebar "Live" badge is conditional on runtimeState (P0-C structural)
 """
 from __future__ import annotations
@@ -223,21 +223,19 @@ def test_runtime_state_includes_preview():
     )
 
 
-def test_html_event_sets_preview_not_running():
-    """AB-P0-16: the html SSE event handler sets runtimeState to 'preview', not 'running'."""
-    src = _src("src/renderer/features/app-builder/AppBuilderPage.tsx")
-    # Find the case "html": block and verify it sets "preview"
-    # The block is identifiable by the Blob creation on the next line
-    html_block_idx = src.find('case "html":')
-    assert html_block_idx != -1, 'case "html": not found in AppBuilderPage.tsx'
-    # Extract ~300 chars after the case label
-    html_block = src[html_block_idx: html_block_idx + 400]
-    assert 'setRuntimeState("preview")' in html_block, (
-        'html SSE handler must call setRuntimeState("preview"), not "running"'
-    )
-    assert 'setRuntimeState("running")' not in html_block, (
-        'html SSE handler must NOT call setRuntimeState("running") — that is a false state'
-    )
+async def test_html_preview_requires_isolation(tmp_path, monkeypatch):
+    """AB-P0-16: HTML must not bypass isolation through a host/blob preview."""
+    from unittest.mock import AsyncMock, patch
+    from app.execution import isolated, runner
+    monkeypatch.setattr(isolated, "WORKSPACES", tmp_path.parent)
+    (tmp_path / "index.html").write_text("<script>untrusted()</script>")
+    with patch.object(isolated, "_client", side_effect=isolated.PreviewError("Isolation unavailable")), \
+         patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as host:
+        result = await runner.run_sync("test-html-project", tmp_path, None)
+    assert result["type"] == "error"
+    assert result["category"] == "isolation"
+    assert "html_content" not in result
+    host.assert_not_called()
 
 
 def test_live_badge_conditional_on_runtime_state():

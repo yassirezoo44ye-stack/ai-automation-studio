@@ -27,8 +27,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.core.auth import require_platform_admin
 
 log    = logging.getLogger(__name__)
 router = APIRouter(tags=["kernel"])
@@ -40,7 +42,7 @@ class KernelExecuteRequest(BaseModel):
     user_id: str | None = None
 
 
-@router.post("/api/kernel/execute")
+@router.post("/api/kernel/execute", dependencies=[Depends(require_platform_admin)])
 async def kernel_execute(req: KernelExecuteRequest):
     from app.kernel import get_kernel
     kernel = get_kernel()
@@ -70,7 +72,7 @@ async def kernel_modifications():
     }
 
 
-@router.post("/api/kernel/rollback/{index}")
+@router.post("/api/kernel/rollback/{index}", dependencies=[Depends(require_platform_admin)])
 async def kernel_rollback(index: int):
     from app.kernel import get_kernel
     try:

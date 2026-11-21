@@ -4,13 +4,13 @@ Centralises app creation, middleware, lifespan, static files, and router registr
 so the entry point (app_main.py or main.py) stays lean.
 """
 import asyncio
+import logging
 import os
-import sys
 from contextlib import asynccontextmanager
 
 import asyncpg
 import stripe
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -18,9 +18,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
+from app.core.api_keys import extract_raw_api_key, has_api_key_header, validate_api_key
 from app.integrations.social.oauth_handoff import is_public_social_oauth_request
 from app.core.config import (
-    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
+    APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES,
 )
 from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
@@ -113,7 +114,8 @@ async def lifespan(app: FastAPI):
     from app.core.project_plans import init_schema as init_project_plans_schema
     async with pool.acquire() as conn:
         await init_project_plans_schema(conn)
-    WORKSPACES.mkdir(exist_ok=True)
+    from app.core.filesystem import verify_workspace_storage
+    verify_workspace_storage()
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
     await runtime_registry.discover()
@@ -484,6 +486,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await project_run_worker.stop()
+        from app.execution import isolated
+        await isolated.stop_all()
 
     # ── Shutdown ────────────────────────────────────────────────────────────
     from app.core.workflow.automation_scheduler import stop_scheduler
@@ -500,6 +504,33 @@ async def lifespan(app: FastAPI):
 
 
 # ── Middleware ─────────────────────────────────────────────────────────────────
+
+class HTTPSRedirectBehindProxyMiddleware:
+    """Pure-ASGI: when the TLS-terminating proxy (Render/Vercel) reports that
+    the client used plain HTTP (X-Forwarded-Proto: http), answer with a 308
+    to the https:// URL instead of serving the request. Requests without the
+    header (container health checks, local runs, tests) pass through, and
+    nothing happens in development."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            from app.core.config import is_development
+            headers = dict(scope.get("headers") or [])
+            proto = headers.get(b"x-forwarded-proto", b"").split(b",")[0].strip().lower()
+            host = headers.get(b"host", b"").decode("latin-1")
+            if proto == b"http" and host and not is_development():
+                qs = scope.get("query_string", b"").decode("latin-1")
+                url = f"https://{host}{scope.get('path', '/')}" + (f"?{qs}" if qs else "")
+                await send({"type": "http.response.start", "status": 308,
+                            "headers": [(b"location", url.encode("latin-1")),
+                                        (b"content-length", b"0")]})
+                await send({"type": "http.response.body", "body": b""})
+                return
+        await self.app(scope, receive, send)
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -520,7 +551,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: https:; "
             "connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
-            "frame-src https://checkout.stripe.com https://js.stripe.com blob:; "
+            "frame-src https://checkout.stripe.com https://js.stripe.com https://*.vercel.run blob:; "
             "font-src 'self' data: https://fonts.gstatic.com;"
         )
         return response
@@ -530,7 +561,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
-    app = FastAPI(title="Axon", version="1.0.0", lifespan=lifespan)
+    # Interactive API docs and the OpenAPI schema map every endpoint for an
+    # attacker; serve them only in development (ENVIRONMENT unset = production).
+    from app.core.config import is_development as _is_dev
+    _docs = _is_dev()
+    app = FastAPI(
+        title="Axon", version="1.0.0", lifespan=lifespan,
+        docs_url="/docs" if _docs else None,
+        redoc_url="/redoc" if _docs else None,
+        openapi_url="/openapi.json" if _docs else None,
+    )
 
     # ── OpenTelemetry — auto-instruments HTTP request/response spans.
     # get_tracer() (app/core/observability/tracer.py) sets the global
@@ -554,7 +594,9 @@ def create_app() -> FastAPI:
         )
         # Pydantic puts the raw exception object (e.g. the ValueError a
         # field_validator raised) in ctx, which json.dumps can't serialize.
-        safe_errors = [{k: v for k, v in e.items() if k != "ctx"} for e in errors]
+        # Never reflect request inputs (passwords/tokens or whole models) or
+        # exception context into validation responses or browser diagnostics.
+        safe_errors = [{k: e[k] for k in ("type", "loc", "msg") if k in e} for e in errors]
         return JSONResponse(status_code=422, content={"detail": detail, "errors": safe_errors})
 
     @app.exception_handler(QuotaExceeded)
@@ -589,8 +631,13 @@ def create_app() -> FastAPI:
         import asyncpg as _asyncpg
         category = "db" if isinstance(exc, (_asyncpg.exceptions.PostgresError, OSError)) else "app"
         record_error(category)
-        print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
-        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        # Exception messages and attacker-controlled paths can contain secrets,
+        # SQL values or injected log lines. Retain only non-sensitive metadata.
+        logging.getLogger(__name__).error("Unhandled server error", extra={
+            "error_type": type(exc).__name__, "category": category,
+        })
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"},
+                            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     # ── Tenant context (single source of truth for X-Organization-Id) ──────
     # Extracts the header once into request.state.org_id. This never grants
@@ -661,25 +708,30 @@ def create_app() -> FastAPI:
 
             if (sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer)):
                 pass  # valid subscription token (X-Sub-Token/cookie, or Authorization: Bearer)
-            elif (
-                request.headers.get("Authorization", "").startswith("ApiKey ")
-                or request.headers.get("X-API-Key", "")
-            ):
-                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...)
-                # — defer to the require_api_key() FastAPI dependency on the specific
-                # route. The middleware's job is subscription/JWT gating; actual key
-                # validation and scope enforcement happen in the dependency so they
-                # stay co-located with the endpoint rather than spread across layers.
-                pass
+            elif has_api_key_header(request):
+                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...).
+                # SECURITY FIX: this branch used to `pass` without checking the
+                # key at all, deferring to a require_api_key() dependency that
+                # most routes never declare — so any junk value bypassed auth.
+                # The key is now validated here; scope checks stay on the route.
+                try:
+                    request.state.api_key = await validate_api_key(extract_raw_api_key(request))
+                except HTTPException as exc:
+                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+                except Exception:
+                    logging.getLogger(__name__).error("API key validation unavailable")
+                    return JSONResponse(status_code=503, content={"detail": "Authentication temporarily unavailable"})
             else:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.
-                from app.core.jwt_utils import decode_access_token
+                from app.core.jwt_utils import verify_access_token, RevocationStoreUnavailable
                 import jwt as _pyjwt
                 if not bearer:
                     return JSONResponse(status_code=401, content={"detail": "Subscription required"})
                 try:
-                    decode_access_token(bearer)
+                    await verify_access_token(bearer)
+                except RevocationStoreUnavailable:
+                    return JSONResponse(status_code=503, content={"detail": "Authentication temporarily unavailable"})
                 except _pyjwt.ExpiredSignatureError:
                     # Distinct from "invalid/missing" so a client can tell
                     # "silently refresh and retry" apart from "force a full
@@ -723,6 +775,8 @@ def create_app() -> FastAPI:
     app.add_middleware(UploadBodySizeLimitMiddleware)
     # Compress responses ≥1KB — runs outermost so it sees the full response.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # Outermost of all: plain-HTTP requests never reach the app.
+    app.add_middleware(HTTPSRedirectBehindProxyMiddleware)
 
     # ── API Routers (must be registered BEFORE the SPA catch-all) ───────────
     app.include_router(auth_users.router)
