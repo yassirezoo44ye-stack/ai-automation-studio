@@ -43,7 +43,7 @@ from app.core.rate_limit import (
 from app.core.jwt_utils import (
     REFRESH_EXPIRE_DAYS_REMEMBER,
     REFRESH_EXPIRE_DAYS_SESSION,
-    decode_access_token,
+    decode_access_token_shared,
     make_access_token,
     make_refresh_token,
     revoke_user_tokens,
@@ -87,7 +87,7 @@ async def get_current_user(
     if not creds:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     try:
-        payload = decode_access_token(creds.credentials)
+        payload = await decode_access_token_shared(creds.credentials)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired") from None
     except jwt.PyJWTError:

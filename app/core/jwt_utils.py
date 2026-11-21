@@ -26,16 +26,15 @@ async def revoke_user_tokens(user_id: str) -> None:
     """
     now = time.time()
     _revoked_before[user_id] = now
-    try:
-        from app.core.cache import get_redis
-        cache = await get_redis()
-        await cache.set(
-            f"jwt:revoke:{user_id}",
-            str(now),
-            ttl=ACCESS_EXPIRE_MINUTES * 60 + 30,
-        )
-    except Exception:
-        pass
+    from app.core.cache import get_redis
+    cache = await get_redis()
+    if cache.backend != "redis":
+        raise RuntimeError("JWT revocation requires shared Redis")
+    await cache.set(
+        f"jwt:revoke:{user_id}",
+        str(now),
+        ttl=ACCESS_EXPIRE_MINUTES * 60 + 30,
+    )
 
 
 def make_access_token(user_id: str, email: str) -> str:
@@ -62,6 +61,22 @@ def decode_access_token(token: str) -> dict:
             raise jwt.ExpiredSignatureError("Token has been revoked")
     return payload
 
+
+
+async def decode_access_token_shared(token: str) -> dict:
+    """Validate JWT and check cross-worker revocation before accepting it."""
+    payload = decode_access_token(token)
+    user_id = payload.get("sub")
+    if not user_id:
+        return payload
+    from app.core.cache import get_redis
+    cache = await get_redis()
+    if cache.backend != "redis":
+        raise jwt.InvalidTokenError("Shared revocation backend unavailable")
+    revoked = await cache.get(f"jwt:revoke:{user_id}")
+    if revoked is not None and float(payload["iat"]) <= float(revoked):
+        raise jwt.ExpiredSignatureError("Token has been revoked")
+    return payload
 
 def make_refresh_token() -> str:
     return secrets.token_urlsafe(48)

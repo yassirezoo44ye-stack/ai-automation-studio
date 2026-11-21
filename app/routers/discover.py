@@ -97,13 +97,13 @@ def _get_org_id(request: Request) -> str:
     return org_id
 
 
-def _get_user_id(request: Request) -> str | None:
+async def _get_user_id(request: Request) -> str | None:
     """Best-effort user extraction from JWT — None if not available."""
     try:
         _, bearer = extract_auth_credentials(request)
         if bearer:
-            from app.core.jwt_utils import decode_access_token
-            payload = decode_access_token(bearer)
+            from app.core.jwt_utils import decode_access_token_shared
+            payload = await decode_access_token_shared(bearer)
             return payload.get("sub") or payload.get("user_id")
     except Exception:
         pass
@@ -116,9 +116,9 @@ def _require_auth(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
 
-def _require_user_id(request: Request) -> str:
+async def _require_user_id(request: Request) -> str:
     """Extract user_id from JWT or raise 401."""
-    user_id = _get_user_id(request)
+    user_id = await _get_user_id(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
     return user_id
@@ -197,7 +197,7 @@ async def public_discover_feed(
         liked_ids: set[str] = set()
         saved_ids: set[str] = set()
         counts: dict[str, dict[str, int]] = {}
-        user_id = _get_user_id(request)
+        user_id = await _get_user_id(request)
         if rows:
             try:
                 import uuid as _uuid
@@ -278,7 +278,7 @@ async def create_creation(request: Request, body: CreateCreationRequest):
     """Publish a new creation card. Auth required."""
     _require_auth(request)
     org_id = _get_org_id(request)
-    user_id = _get_user_id(request)
+    user_id = await _get_user_id(request)
 
     source_id = None
     if body.source_id:
@@ -492,7 +492,7 @@ async def clone_creation(request: Request, creation_id: str):
             ),
         )
 
-    user_id = _get_user_id(request)
+    user_id = await _get_user_id(request)
     new_source_id = d.get("source_id")
 
     # Route clone through real domain API when there is a source resource
@@ -559,7 +559,7 @@ async def _toggle_interaction(
     creation_id: str, request: Request, interaction_type: str
 ) -> dict:
     _require_auth(request)
-    user_id = _require_user_id(request)
+    user_id = await _require_user_id(request)
     org_id = _get_org_id(request)
     pool = get_pool()
     async with pool.acquire() as conn:

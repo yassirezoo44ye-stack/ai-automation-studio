@@ -43,14 +43,14 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ws", tags=["websocket-auth"])
 
 
-def _require_jwt_user_id(request: Request) -> str:
+async def _require_jwt_user_id(request: Request) -> str:
     """Extract user_id from JWT Bearer token. Raises 401 if missing or invalid."""
     bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if not bearer:
         raise HTTPException(401, "Authorization header required")
     try:
-        from app.core.jwt_utils import decode_access_token
-        claims = decode_access_token(bearer)
+        from app.core.jwt_utils import decode_access_token_shared
+        claims = await decode_access_token_shared(bearer)
         user_id = claims.get("sub")
         if not user_id:
             raise HTTPException(401, "Invalid token: missing sub claim")
@@ -124,7 +124,7 @@ async def create_ws_ticket(request: Request) -> dict:
 
     Response: {"ticket": "<64-char hex>", "expires_in": 30}
     """
-    user_id = _require_jwt_user_id(request)
+    user_id = await _require_jwt_user_id(request)
     try:
         ticket = issue_ticket(user_id)
     except RuntimeError:
