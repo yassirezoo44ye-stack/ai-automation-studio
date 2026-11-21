@@ -18,6 +18,7 @@ def configured(tmp_path, monkeypatch):
     monkeypatch.setattr(activation_check.metadata, "version", lambda _: "1.0.0")
     monkeypatch.setattr(Path, "is_mount", lambda _: True)
     return {
+        "REDIS_URL": "rediss://user:never-disclose-redis-fixture@cache.example:6379/0",
         "VERCEL_TOKEN": "never-disclose-token-fixture",
         "VERCEL_TEAM_ID": "never-disclose-team-fixture",
         "VERCEL_PROJECT_ID": "never-disclose-project-fixture",
@@ -34,6 +35,9 @@ def test_reports_only_presence_and_never_certifies_live_activation(configured):
     result = report(configured)
     assert result["result"] == "PASS"
     serialized = json.dumps(result)
+    assert configured["REDIS_URL"] not in serialized
+    assert "never-disclose-redis-fixture" not in serialized
+    assert result["checks"]["shared_redis_configuration"]["connectivity_verified"] is False
     for key in activation_check.SANDBOX_KEYS:
         assert configured[key] not in serialized
         assert result["checks"]["sandbox_configuration"]["present"][key] is True
@@ -139,3 +143,22 @@ def test_reviewed_stdin_copy_uses_shell_working_directory(tmp_path):
     assert result.returncode == 1
     assert json.loads(result.stdout)['checks']['workspace_mount']['exists'] is True
     assert list(tmp_path.iterdir()) == [root]
+
+
+@pytest.mark.parametrize("value", ["", "   ", "https://cache.example", "redis://", "redis://cache.example:broken", "redis://cache.example:0"])
+def test_invalid_or_missing_shared_redis_blocks_activation(configured, value):
+    configured["REDIS_URL"] = value
+    result = report(configured)
+    assert result["result"] == "FAIL"
+    assert result["checks"]["shared_redis_configuration"]["status"] == "FAIL"
+
+
+@pytest.mark.parametrize("value", ["redis://localhost:6379/0", "rediss://user:private-fixture@cache.example:6380/1", "redis://[::1]:6379/0"])
+def test_redis_presence_is_not_connectivity_or_durability_evidence(configured, value):
+    configured["REDIS_URL"] = value
+    result = report(configured)
+    check = result["checks"]["shared_redis_configuration"]
+    assert check["status"] == "PASS"
+    assert check["connectivity_verified"] is False
+    assert "redis_persistence_and_eviction_policy" in result["not_verified"]
+    assert value not in json.dumps(result)

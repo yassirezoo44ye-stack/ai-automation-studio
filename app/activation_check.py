@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+from urllib.parse import urlsplit
 
 SANDBOX_KEYS = ("VERCEL_TOKEN", "VERCEL_TEAM_ID", "VERCEL_PROJECT_ID")
 SDK_VERSION = "1.0.0"
@@ -38,6 +39,17 @@ def configuration_report(
 
     present = {key: bool(env.get(key, "").strip()) for key in SANDBOX_KEYS}
     record("sandbox_configuration", "PASS" if all(present.values()) else "FAIL", present=present)
+    # Presence/format only: no network request and no URL/credential output.
+    redis_url = env.get("REDIS_URL", "").strip()
+    redis_valid = False
+    try:
+        parsed = urlsplit(redis_url)
+        redis_valid = bool(parsed.scheme in {"redis", "rediss"} and parsed.hostname
+                           and (parsed.port is None or 1 <= parsed.port <= 65535))
+    except ValueError:
+        pass
+    record("shared_redis_configuration", "PASS" if redis_valid else "FAIL",
+           present=bool(redis_url), format_valid=redis_valid, connectivity_verified=False)
     record("service_identity", "NOT_RUN" if expected_service is None else
            "PASS" if env.get("RENDER_SERVICE_ID") == expected_service else "FAIL")
     record("release_identity", "NOT_RUN" if expected_commit is None else
@@ -79,14 +91,14 @@ def configuration_report(
     except Exception:
         record("sandbox_sdk", "INCONCLUSIVE")
     required = ("sandbox_configuration", "service_identity", "release_identity", "mount_enforcement",
-                "workspace_mount", "sandbox_sdk", "workspace_inventory")
+                "workspace_mount", "sandbox_sdk", "workspace_inventory", "shared_redis_configuration")
     statuses = {checks[name]["status"] for name in required}
     result = "FAIL" if "FAIL" in statuses else "PASS" if statuses == {"PASS"} else "INCONCLUSIVE"
     return {
         "scope": "read_only_configuration",
         "result": result,
         "checks": checks,
-        "not_verified": ["provider_authentication", "provider_capacity_and_billing", "actual_writes",
+        "not_verified": ["redis_connectivity", "redis_persistence_and_eviction_policy", "provider_authentication", "provider_capacity_and_billing", "actual_writes",
                          "backup_and_restore", "cross_restart_persistence", "browser_and_customer_journeys", "automatic_deploy_settings"],
         "deployment_authorized": False,
         "live_activation_verified": False,

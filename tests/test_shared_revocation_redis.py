@@ -81,3 +81,46 @@ async def main():
 asyncio.run(main())
 ''', env)
     assert "UNAVAILABLE_REDIS_DENIED" in checked
+
+
+class LostRevocationSecurityFailure(AssertionError):
+    """The known unsafe acceptance, distinct from setup/connection failures."""
+
+
+@pytest.mark.xfail(strict=True, raises=LostRevocationSecurityFailure,
+                   reason="Redis revocation loss requires a durable auth authority; blocks activation")
+def test_lost_revocation_record_must_not_restore_an_old_token():
+    """Known security gap: erase only this synthetic user's Redis record."""
+    env = local_environment()
+    uid = str(uuid.uuid4())
+    issued = process('''
+import asyncio,json,sys,time,jwt
+from app.core.jwt_utils import revoke_user_tokens
+from app.core.config import SESSION_SECRET
+from app.core.cache import get_redis
+async def main():
+    uid=json.load(sys.stdin)
+    token=jwt.encode({"sub":uid,"email":"local@example.com","type":"access","iat":time.time()-60,"exp":time.time()+240},SESSION_SECRET,algorithm="HS256")
+    await revoke_user_tokens(uid)
+    await (await get_redis()).delete("jwt:revoke:"+uid)
+    print(json.dumps({"token":token}))
+asyncio.run(main())
+''', env, uid)
+    data = json.loads(issued.strip().splitlines()[-1])
+    observed = process('''
+import asyncio,json,sys,jwt
+from app.core.jwt_utils import verify_access_token
+async def main():
+    data=json.load(sys.stdin)
+    try:
+        await verify_access_token(data["token"])
+    except jwt.PyJWTError:
+        print("REJECTED_AFTER_LOSS")
+        return
+    print("ACCEPTED_AFTER_LOSS")
+asyncio.run(main())
+''', env, data)
+
+    if "ACCEPTED_AFTER_LOSS" in observed:
+        raise LostRevocationSecurityFailure("Old JWT accepted after losing its shared revocation record")
+    assert "REJECTED_AFTER_LOSS" in observed
