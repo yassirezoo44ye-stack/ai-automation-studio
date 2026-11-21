@@ -28,7 +28,7 @@ from app.core.helpers import resolve_project_id, anthropic_error_message, strip_
 from app.core.org_quota import check_org_quota, record_org_tokens
 from app.core.source_export import source_files
 from app.core.security import ai_rate_limit
-from app.execution import process_mgr
+from app.execution import isolated
 from app.execution.runner import run_stream, run_sync
 import contextlib
 
@@ -677,20 +677,18 @@ async def commerce_project(project_id: str, request: Request):
     ws = workspace(project_id)
     if not all(safe_path(ws, name).is_file() for name in ("main.py", "index.html", "assets/app.js", "assets/style.css", "requirements.txt")):
         raise HTTPException(409, "Store build is incomplete")
-    running = process_mgr.get_running(project_id) is not None
+    state = await isolated.status(project_id)
     return {"delivery_contract": CONTRACT, "files": sum(safe_path(ws, name).is_file() for name in store_files()),
-            "running": running, "preview_url": f"/api/projects/{project_id}/proxy/" if running else None}
+            **state}
 
 
 @router.get("/api/projects/{project_id}/store-setup")
 async def store_owner_setup(project_id: str, request: Request):
     await _require_project_owner(project_id, request)
-    secret = safe_path(workspace(project_id), "data/owner-setup.txt")
-    if not secret.is_file() or secret.is_symlink() or secret.stat().st_size > 200:
-        raise HTTPException(404, "Run the store first. Setup disappears after the owner is configured.")
-    token = await asyncio.to_thread(secret.read_text, encoding="utf-8")
-    if not re.fullmatch(r"[A-Za-z0-9_-]{32,100}", token.strip()):
-        raise HTTPException(404, "No valid store setup token")
+    try:
+        token = await isolated.store_setup_token(project_id)
+    except isolated.PreviewError as exc:
+        raise HTTPException(404, str(exc)) from None
     from fastapi.responses import JSONResponse
     return JSONResponse({"token": token.strip()}, headers={"Cache-Control": "no-store"})
 
@@ -802,12 +800,13 @@ async def run_project_stream(project_id: str, body: RunRequest2, request: Reques
       status        — progress update
       log           — one line of stdout/stderr
       html          — static HTML (frontend renders blob URL)
-      server_ready  — server started; preview_url = /api/projects/{id}/proxy/
+      server_ready  — isolated server started; preview_url is a short-lived external capability
       unsupported   — project not runnable here, shows local hint
       done          — script finished  {exit_code, duration, stdout, stderr}
       error         — fatal error
     """
     await _require_project_owner(project_id, request)
+    ai_rate_limit(request, max_calls=10, window=60)
     ws = workspace(project_id)
 
     # Sync any in-memory files that arrived via the request body
@@ -830,6 +829,7 @@ async def run_project(project_id: str, body: RunRequest2, request: Request):
     Used by older clients or if SSE is unavailable.
     """
     await _require_project_owner(project_id, request)
+    ai_rate_limit(request, max_calls=10, window=60)
     ws = workspace(project_id)
     result = await run_sync(project_id, ws, body.command or None)
     # Map SSE event to HTTP status
@@ -846,7 +846,7 @@ async def run_project(project_id: str, body: RunRequest2, request: Request):
 async def stop_project(project_id: str, request: Request):
     """Kill any running server process for this project."""
     await _require_project_owner(project_id, request)
-    await process_mgr.kill(project_id)
+    await isolated.stop(project_id)
     return {"stopped": project_id}
 
 
@@ -854,17 +854,7 @@ async def stop_project(project_id: str, request: Request):
 async def project_process_status(project_id: str, request: Request):
     """Check whether a server process is currently running for this project."""
     await _require_project_owner(project_id, request)
-    rp = process_mgr.get_running(project_id)
-    if rp:
-        return {
-            "running": True,
-            "port": rp.port,
-            "project_type": rp.project_type,
-            "command": " ".join(rp.command),
-            "preview_url": f"/api/projects/{project_id}/proxy/",
-            "idle_seconds": round(rp.idle_seconds),
-        }
-    return {"running": False}
+    return await isolated.status(project_id)
 
 
 @router.api_route(
@@ -872,78 +862,73 @@ async def project_process_status(project_id: str, request: Request):
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
 )
 async def proxy_to_project(project_id: str, path: str, request: Request):
-    """
-    Reverse proxy: forwards every request to the running server for this project.
-    The server listens on an internal port; this route exposes it to the browser.
-    """
+    """Owner-authenticated RPC for the opaque storefront, never a same-origin app."""
     await _require_project_owner(project_id, request)
+    if request.headers.get("x-flow-store-preview") != "1":
+        raise HTTPException(410, "Same-origin previews are disabled. Run the isolated preview.")
+    if not re.fullmatch(r"(?:api/[A-Za-z0-9/_-]+|assets/(?:app\.js|style\.css))?", path) or request.url.query:
+        raise HTTPException(400, "Only storefront preview paths are allowed")
     try:
         cookie_project_id = str(uuid.UUID(project_id))
     except ValueError:
         raise HTTPException(400, "Invalid project_id") from None
-    rp = process_mgr.get_running(project_id)
-    if rp is None:
-        raise HTTPException(503, detail={
-            "error": "No running server",
-            "details": (
-                f"No server is running for project '{project_id}'. "
-                "Click Run to start it."
-            ),
-        })
-
-    target = f"http://127.0.0.1:{rp.port}/{path}"
-    if request.url.query:
-        target += f"?{request.url.query}"
-
-    # Forward headers except hop-by-hop
-    _HOP_BY_HOP = {"connection", "keep-alive", "proxy-authenticate",
-                   "proxy-authorization", "te", "trailer", "transfer-encoding",
-                   "upgrade", "host", "authorization", "x-sub-token", "x-organization-id", "x-flow-preview-origin", "x-flow-store-preview", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip", "forwarded"}
-    fwd_headers = {
-        k: v for k, v in request.headers.items()
-        if k.lower() not in _HOP_BY_HOP
-    }
-    # The gateway authenticates ownership, then never shares Flow credentials
-    # with generated code. A store may trust this origin only from loopback.
-    fwd_headers["x-flow-preview-origin"] = (request.headers.get("origin") or str(request.base_url)).rstrip("/")
-    if request.headers.get("x-flow-store-preview") == "1":
-        from http.cookies import SimpleCookie
-        cookies = SimpleCookie(request.headers.get("cookie", ""))
-        fwd_headers.pop("cookie", None)
-        if "flow_store_session" in cookies:
-            fwd_headers["cookie"] = "flow_store_session=" + cookies["flow_store_session"].value
-    body_bytes = await request.body()
-
+    body = await request.body()
+    if len(body) > 32768:
+        raise HTTPException(413, "Store preview request too large")
+    from http.cookies import SimpleCookie, CookieError
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.request(
-                method=request.method,
-                url=target,
-                headers=fwd_headers,
-                content=body_bytes,
-            )
-        # Strip hop-by-hop from response headers
-        resp_headers = {
-            k: v for k, v in resp.headers.items()
-            if k.lower() not in _HOP_BY_HOP
-        }
-        # Each preview has its own cookie scope; a store login cannot replace
-        # another project's session. Preserve repeated Set-Cookie headers.
-        resp_headers.pop("set-cookie", None)
-        response = Response(content=resp.content, status_code=resp.status_code, headers=resp_headers)
-        from http.cookies import SimpleCookie
-        for header in resp.headers.get_list("set-cookie"):
-            parsed = SimpleCookie()
-            parsed.load(header)
-            for morsel in parsed.values():
-                morsel["path"] = f"/api/projects/{cookie_project_id}/proxy/"
-                morsel["domain"] = ""
-                response.headers.append("set-cookie", morsel.OutputString())
-        return response
-    except httpx.ConnectError:
-        rp_check = process_mgr.get_running(project_id)
-        if rp_check is None:
-            raise HTTPException(503, detail={"error": "Server has exited"}) from None
-        raise HTTPException(502, detail={"error": "Could not connect to server"}) from None
-    except httpx.TimeoutException:
-        raise HTTPException(504, detail={"error": "Server request timed out"}) from None
+        cookies = SimpleCookie(request.headers.get("cookie", ""))
+    except CookieError:
+        raise HTTPException(400, "Invalid store cookie") from None
+    try:
+        async with isolated.store_access(project_id) as session:
+            from urllib.parse import urlsplit
+            parts = urlsplit(session.preview_url)
+            target = f"https://{parts.hostname}/{path}"
+            capability = parts.path.removeprefix("/_flow_preview/")
+            headers = {"cookie": f"__Host-flow_preview={capability}",
+                       "x-flow-preview-origin": (request.headers.get("origin") or str(request.base_url)).rstrip("/")}
+            for name in ("accept", "content-type", "origin"):
+                if name in request.headers:
+                    headers[name] = request.headers[name]
+            if "flow_store_session" in cookies:
+                value = cookies["flow_store_session"].value
+                if not re.fullmatch(r"[A-Za-z0-9_-]{0,200}", value):
+                    raise HTTPException(400, "Invalid store session")
+                headers["cookie"] += f"; flow_store_session={value}"
+            if request.method not in ("GET", "HEAD", "OPTIONS"):
+                session.store_dirty = True
+            async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client:
+                async with client.stream(request.method, target, headers=headers, content=body) as upstream:
+                    output = bytearray()
+                    async for chunk in upstream.aiter_bytes():
+                        output.extend(chunk)
+                        if len(output) > 10 * 1024 * 1024:
+                            raise HTTPException(502, "Store preview response too large")
+                    # Commit preview business state before reporting its result.
+                    if session.store_dirty:
+                        await isolated.persist_store(session)
+                    response = Response(bytes(output), status_code=upstream.status_code,
+                                        media_type="application/octet-stream",
+                                        headers={"Content-Disposition": "attachment; filename=store-preview",
+                                                 "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+                    for raw in upstream.headers.get_list("set-cookie"):
+                        parsed = SimpleCookie()
+                        try:
+                            parsed.load(raw)
+                        except CookieError:
+                            continue
+                        if "flow_store_session" not in parsed:
+                            continue
+                        morsel = parsed["flow_store_session"]
+                        if not re.fullmatch(r"[A-Za-z0-9_-]{0,200}", morsel.value):
+                            continue
+                        response.set_cookie("flow_store_session", morsel.value,
+                                            path=f"/api/projects/{cookie_project_id}/proxy/", httponly=True,
+                                            secure=request.url.scheme == "https", samesite="lax",
+                                            max_age=86400 if morsel.value else 0)
+                    return response
+    except isolated.PreviewError as exc:
+        raise HTTPException(503, str(exc)) from None
+    except httpx.HTTPError:
+        raise HTTPException(502, "Isolated store preview unavailable") from None
