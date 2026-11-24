@@ -20,6 +20,7 @@ Endpoints:
 """
 import asyncio
 import datetime
+from asyncio import to_thread as _to_thread
 import logging
 import secrets
 import uuid
@@ -55,6 +56,20 @@ log = logging.getLogger(__name__)
 # Pre-computed once at startup; used as a timing sentinel so the response time
 # for a non-existent account is indistinguishable from a wrong-password attempt.
 _TIMING_DUMMY_HASH: str = hash_password("__timing_sentinel_do_not_use__")
+
+
+# bcrypt is deliberately slow (~0.3 s of CPU per call on a small instance).
+# Called directly from an async handler it blocks the event loop, so every
+# other request on the server waits behind each login (performance audit
+# M1: 5 simultaneous logins delayed /health by 1.4 s). pyca/bcrypt releases
+# the GIL while hashing, so a worker thread keeps the loop free. The module
+# globals are looked up at call time, so tests can still patch them here.
+async def _hash_pw(plain: str) -> str:
+    return await _to_thread(hash_password, plain)
+
+
+async def _verify_pw(plain: str, hashed: str) -> bool:
+    return await _to_thread(verify_password, plain, hashed)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -258,7 +273,7 @@ async def register(body: RegisterRequest, request: Request, _rl: None = _auth_rl
     with tracer.start_span("auth.register", service="auth") as span:
         user_id = uuid.uuid4()
         span.set_tag("user_id", str(user_id))
-        pw_hash = hash_password(body.password)
+        pw_hash = await _hash_pw(body.password)
         ev_token = secrets.token_urlsafe(32)
         expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
 
@@ -292,7 +307,7 @@ async def _finish_login(conn, user, *, remember: bool, ip: str, ua: str) -> dict
     so they return byte-identical response shapes."""
     refresh_token = await _create_session(conn, str(user["id"]), remember, ip, ua)
     access_token = make_access_token(str(user["id"]), user["email"])
-    await write_audit(user["email"], "login", ip_address=ip)
+    await write_audit(user["email"], "login", ip_address=ip, conn=conn)
 
     from app.core.auth import make_token as _make_sub_token
     sub_token = _make_sub_token(user["email"], trial=True, days_remaining=30)
@@ -315,27 +330,31 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
         if await check_login_locked_async(body.email):
             span.set_tag("error", "account_locked")
             raise HTTPException(429, "Too many failed login attempts — try again in 15 minutes")
+        # The bcrypt check runs with NO pooled connection held and off the
+        # event loop: holding a connection for ~0.3 s of hashing per login
+        # starved the pool, and hashing on the loop stalled every request.
         async with get_pool().acquire() as conn:
             user = await _get_user_by_email(conn, body.email)
-            if not user or not user["password_hash"]:
-                # Always run a dummy hash so response time is indistinguishable
-                # from a wrong-password attempt — prevents account enumeration
-                # via timing side-channel (bcrypt takes ~100 ms; skipping it
-                # reveals whether the account exists).
-                verify_password(body.password, _TIMING_DUMMY_HASH)
-                await record_login_failure_async(body.email)
-                span.set_tag("error", "invalid_credentials")
-                raise HTTPException(401, "Invalid email or password")
-            if not verify_password(body.password, user["password_hash"]):
-                await record_login_failure_async(body.email)
-                span.set_tag("error", "invalid_credentials")
-                raise HTTPException(401, "Invalid email or password")
-            if not user["email_verified"]:
-                span.set_tag("error", "email_not_verified")
-                raise HTTPException(403, "email_not_verified")
-            await clear_login_failures_async(body.email)
-            span.set_tag("user_id", str(user["id"]))
+        if not user or not user["password_hash"]:
+            # Always run a dummy hash so response time is indistinguishable
+            # from a wrong-password attempt — prevents account enumeration
+            # via timing side-channel (bcrypt takes ~100 ms; skipping it
+            # reveals whether the account exists).
+            await _verify_pw(body.password, _TIMING_DUMMY_HASH)
+            await record_login_failure_async(body.email)
+            span.set_tag("error", "invalid_credentials")
+            raise HTTPException(401, "Invalid email or password")
+        if not await _verify_pw(body.password, user["password_hash"]):
+            await record_login_failure_async(body.email)
+            span.set_tag("error", "invalid_credentials")
+            raise HTTPException(401, "Invalid email or password")
+        if not user["email_verified"]:
+            span.set_tag("error", "email_not_verified")
+            raise HTTPException(403, "email_not_verified")
+        await clear_login_failures_async(body.email)
+        span.set_tag("user_id", str(user["id"]))
 
+        async with get_pool().acquire() as conn:
             mfa = await conn.fetchrow(
                 "SELECT enabled FROM mfa_secrets WHERE user_id=$1", user["id"]
             )
@@ -591,7 +610,7 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
 
         user_email = row["email"]
         user_id_str = str(row["user_id"])
-        pw_hash = hash_password(body.password)
+        pw_hash = await _hash_pw(body.password)
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2", pw_hash, row["user_id"]
         )
@@ -712,11 +731,11 @@ async def change_password(
         user = await _get_user_by_id(conn, current["id"])
         if not user or not user["password_hash"]:
             raise HTTPException(400, "Cannot change password")
-        if not verify_password(body.current_password, user["password_hash"]):
+        if not await _verify_pw(body.current_password, user["password_hash"]):
             raise HTTPException(400, "Current password is incorrect")
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2",
-            hash_password(body.new_password),
+            await _hash_pw(body.new_password),
             uuid.UUID(current["id"]),
         )
         await conn.execute(
@@ -790,7 +809,7 @@ async def mfa_enable(body: MfaEnableRequest, current: Annotated[dict, Depends(ge
 async def mfa_disable(body: MfaDisableRequest, current: Annotated[dict, Depends(get_current_user)]):
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
-        if not user or not user["password_hash"] or not verify_password(body.password, user["password_hash"]):
+        if not user or not user["password_hash"] or not await _verify_pw(body.password, user["password_hash"]):
             raise HTTPException(400, "Incorrect password")
         await conn.execute("DELETE FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]))
     await write_audit(current["email"], "mfa.disabled")
@@ -864,7 +883,7 @@ async def delete_account(
         # password_hash can be NULL for OAuth-created accounts; treat as invalid credentials
         if not user or not user["password_hash"]:
             raise HTTPException(400, "Invalid credentials")
-        if not verify_password(body.password, user["password_hash"]):
+        if not await _verify_pw(body.password, user["password_hash"]):
             raise HTTPException(400, "Invalid credentials")
         await conn.execute("DELETE FROM users WHERE id=$1", uuid.UUID(current["id"]))
 

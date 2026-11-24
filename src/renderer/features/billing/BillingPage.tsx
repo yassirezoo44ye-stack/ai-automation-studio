@@ -103,7 +103,7 @@ export function BillingPage() {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+      <div role="tabpanel" tabIndex={0} aria-label={t(`tabs.${tab}`)} style={{ flex: 1, overflowY: "auto", padding: 24 }}>
         {loading ? (
           <div className="skeleton" style={{ height: 200, borderRadius: 16 }} />
         ) : tab === "subscription" ? (

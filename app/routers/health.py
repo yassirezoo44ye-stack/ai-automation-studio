@@ -1,7 +1,7 @@
 """
 Health endpoints — Layer 13 surface.
 
-GET /health              liveness probe  — is the process alive?
+GET /health              liveness probe  — alive, and DB pool not stalled for 60 s?
 GET /health/live         alias for /health (Kubernetes-conventional name)
 GET /health/ready        readiness probe — is the server ready for traffic?
 GET /health/startup      startup probe   — has lifespan startup finished?
@@ -32,14 +32,47 @@ _BOOT_AT = time.time()
 startup_complete = False
 
 
-# ── Liveness — fast; never touches DB ────────────────────────────────────────
+# ── Liveness — fast; restarts the process only on a sustained DB stall ──────
+
+# A wedged connection pool (every connection held, nothing released) left the
+# process "alive" while every DB route hung, and since this probe never looked
+# at the DB, Render never restarted it (perf audit M1). The probe now asks the
+# pool for a connection with a short timeout, and fails liveness only after the
+# pool has been unable to hand one out for DB_STALL_RESTART_S in a row — a
+# brief spike or a short DB blip never triggers a restart.
+_DB_PROBE_TIMEOUT_S = float(os.getenv("DB_LIVENESS_PROBE_TIMEOUT_S", "2"))
+_DB_STALL_RESTART_S = float(os.getenv("DB_STALL_RESTART_S", "60"))
+_db_stalled_since: float | None = None
+
+
+async def _db_stall_seconds() -> float:
+    """Seconds the pool has continuously failed to provide a connection (0 = fine)."""
+    global _db_stalled_since
+    from app.core.db import get_pool
+
+    pool = get_pool()
+    if pool is None or not startup_complete:
+        return 0.0
+    try:
+        async with pool.acquire(timeout=_DB_PROBE_TIMEOUT_S) as conn:
+            await conn.fetchval("SELECT 1", timeout=_DB_PROBE_TIMEOUT_S)
+    except Exception:
+        now = time.monotonic()
+        if _db_stalled_since is None:
+            _db_stalled_since = now
+        return now - _db_stalled_since
+    _db_stalled_since = None
+    return 0.0
+
 
 @router.get("/health")
 @router.get("/health/live")
 async def liveness():
     """
     Kubernetes liveness probe.
-    Returns 200 as long as the process is alive and the event loop is running.
+    Returns 200 while the process is alive and its DB pool can hand out a
+    connection; 503 once the pool has been stalled for DB_STALL_RESTART_S,
+    so the platform restarts the process instead of leaving it wedged.
 
     "commit" is the git SHA of the running build (Render sets
     RENDER_GIT_COMMIT on every deploy; empty locally). CI's post-deploy
@@ -48,12 +81,18 @@ async def liveness():
     zero-downtime swap, where the previous build keeps serving 200 for the
     entire duration of the new build.
     """
-    return {
+    stalled_s = await _db_stall_seconds()
+    body = {
         "status"    : "alive",
         "uptime_s"  : round(time.time() - _BOOT_AT, 1),
         "commit"    : os.getenv("RENDER_GIT_COMMIT", ""),
         "timestamp" : datetime.now(timezone.utc).isoformat(),
     }
+    if stalled_s >= _DB_STALL_RESTART_S:
+        body["status"] = "db_stalled"
+        body["db_stalled_s"] = round(stalled_s, 1)
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 
 # ── Startup — has lifespan startup finished? ─────────────────────────────────

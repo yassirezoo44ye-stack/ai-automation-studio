@@ -239,7 +239,7 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
             <button
               type="submit"
               disabled={creating || !newKeyName.trim() || selectedScopes.length === 0}
-              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: creating || !newKeyName.trim() || selectedScopes.length === 0 ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() || selectedScopes.length === 0 ? 0.6 : 1 }}
+              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent-fill)", color: "var(--on-accent)", fontSize: 13, fontWeight: 600, cursor: creating || !newKeyName.trim() || selectedScopes.length === 0 ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() || selectedScopes.length === 0 ? 0.6 : 1 }}
             >
               {creating ? t("apiKeys.creating") : t("apiKeys.createButton")}
             </button>

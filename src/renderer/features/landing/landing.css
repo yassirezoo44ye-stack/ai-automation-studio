@@ -98,8 +98,8 @@
   padding: 9px 18px;
   border-radius: var(--r-md);
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -187,8 +187,8 @@
   padding: 14px;
   border-radius: var(--r-lg);
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -205,6 +205,9 @@
   font-weight: 600;
   cursor: pointer;
   font-family: var(--font-sans);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
   transition: border-color 0.15s, color 0.15s;
 }
 .lp-nav__lang:hover { border-color: var(--b2); color: var(--t1); }
@@ -397,8 +400,8 @@
   padding: 14px 28px;
   border-radius: var(--r-lg);
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -909,8 +912,8 @@
   transform: translateX(-50%);
   padding: 4px 14px;
   border-radius: var(--r-full);
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -960,8 +963,8 @@
   transition: opacity 0.15s, transform 0.15s;
 }
 .lp-price-card--featured .lp-price-card__cta {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   box-shadow: var(--shadow-btn);
 }
 .lp-price-card--featured .lp-price-card__cta:hover {
@@ -1075,6 +1078,19 @@
   font-size: 12px;
   color: var(--t5);
 }
+.lp-footer__links {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.lp-footer__links a {
+  font-size: 13px;
+  color: var(--t3);
+  text-decoration: none;
+  padding: 4px 0;
+}
+.lp-footer__links a:hover { color: var(--t1); text-decoration: underline; }
+.lp-footer__links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
 /* ── Section center variant ───────────────────────────────────── */
 .lp-section--center {

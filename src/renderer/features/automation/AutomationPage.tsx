@@ -235,7 +235,7 @@ export function AutomationPage() {
       <header style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={S.headerTitle}>{t("header.title")}</span>
-          <div style={{ display: "flex", gap: 4, background: "var(--bg-card)", borderRadius: 12, padding: 4 }}>
+          <div role="tablist" aria-label={t("header.title")} style={{ display: "flex", gap: 4, background: "var(--bg-card)", borderRadius: 12, padding: 4 }}>
             {TABS.map(([id, label]) => (
               <button key={id} onClick={() => setTab(id)} role="tab" aria-selected={tab === id} style={{
                 padding: "6px 16px", borderRadius: 9, border: "none", cursor: "pointer",

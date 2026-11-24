@@ -457,6 +457,7 @@ export function TeamsPage() {
                     {(m.name || m.email)[0]?.toUpperCase()}
                   </div>
                   <span
+                    role="img"
                     title={isOnline(m.user_id) ? t("presence.online") : t("presence.offline")}
                     aria-label={isOnline(m.user_id) ? t("presence.online") : t("presence.offline")}
                     style={{

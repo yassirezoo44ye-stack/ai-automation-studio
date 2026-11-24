@@ -103,12 +103,37 @@ describe("service worker caching", () => {
 });
 
 describe("vercel.json", () => {
+  const cfg = JSON.parse(readFileSync(join(process.cwd(), "vercel.json"), "utf8"));
+  // Vercel path-to-regexp sources -> RegExp, for the forms this file uses.
+  const toRe = src => new RegExp("^" + src
+    .replace(/\/:rest\*$/, "(?:/.*)?")
+    .replace(/:root\(/, "(")
+    .replace(/:[a-z]+\*/gi, ".*")
+    .replace(/:[a-z]+/gi, "[^/]+") + "$");
+  const spa = cfg.rewrites.filter(r => r.destination === "/index.html").map(r => toRe(r.source));
+  const rewritten = path => spa.some(re => re.test(path));
+
   it("lets a missing /assets/ file 404 instead of rewriting it to index.html", () => {
-    const cfg = JSON.parse(readFileSync(join(process.cwd(), "vercel.json"), "utf8"));
-    const spa = cfg.rewrites.find(r => r.destination === "/index.html");
-    const re = new RegExp("^" + spa.source.replace(/^\//, "\\/") + "$");
-    expect(re.test("/assets/Page-old.js")).toBe(false);
-    expect(re.test("/leads")).toBe(true);
-    expect(re.test("/settings/billing")).toBe(true);
+    expect(rewritten("/assets/Page-old.js")).toBe(false);
+    expect(rewritten("/leads")).toBe(true);
+    expect(rewritten("/settings/billing")).toBe(true);
+  });
+
+  it("answers unknown pages with a real 404 and serves robots.txt and sitemap.xml as files", () => {
+    for (const path of ["/no-such-page", "/robots.txt", "/sitemap.xml", "/dashboard.html"]) {
+      expect(rewritten(path), path).toBe(false);
+    }
+    for (const path of ["/ar", "/en", "/study-library", "/feed/abc", "/project/p1/ai", "/oauth-callback"]) {
+      expect(rewritten(path), path).toBe(true);
+    }
+  });
+
+  it("keeps signed-in app pages out of search results but not the public pages", () => {
+    const noindex = cfg.headers
+      .filter(h => h.headers.some(x => x.key === "X-Robots-Tag" && /noindex/.test(x.value)))
+      .map(h => toRe(h.source));
+    const hidden = path => noindex.some(re => re.test(path));
+    for (const path of ["/settings", "/billing/plans", "/feed/abc", "/project/p1/ai"]) expect(hidden(path), path).toBe(true);
+    for (const path of ["/", "/ar", "/en", "/study-library"]) expect(hidden(path), path).toBe(false);
   });
 });

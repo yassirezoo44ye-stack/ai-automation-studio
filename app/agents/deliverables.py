@@ -5,9 +5,11 @@ download, with the org-scoping a raw filesystem path doesn't carry on
 its own (see app/routers/agent_os_api.py's deliverable download route).
 
 In-process only, same tradeoff as app.agents.liveness's `_running` dict:
-a deliverable entry is a link back to a file that's already durably on
-disk under WORKSPACES. Losing the registry entry on a process restart
-means the download link expires — it does not delete the artifact.
+a deliverable entry is a link back to a file on disk under WORKSPACES.
+Losing the registry entry on a process restart means the download link
+expires; it does not delete the artifact. The file itself survives a
+restart only when WORKSPACES_DIR points at a persistent disk (see
+docs/BACKUP_RESTORE.md); the container's own disk is wiped on redeploy.
 """
 from __future__ import annotations
 
