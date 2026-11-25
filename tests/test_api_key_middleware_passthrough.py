@@ -12,7 +12,12 @@ require_api_key() dependency) ever ran. The fix adds an elif branch that
 recognises the ApiKey scheme and the X-API-Key header and lets those
 requests pass through to require_api_key() for proper validation.
 
-This file proves the fix and prevents regressions.
+Security follow-up: passing on header *presence* let any request carrying
+"X-API-Key: x" reach every router that has no route-level dependency (kernel,
+diagnostics, orchestrator, agentos, …) anonymously. The middleware now
+validates the key (lookup, active, not expired) before passing it through.
+
+This file proves both behaviours and prevents regressions.
 """
 from __future__ import annotations
 
@@ -22,7 +27,20 @@ import unittest
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
 
+from unittest.mock import patch
+
 from httpx import AsyncClient, ASGITransport  # noqa: E402
+
+import app.core.api_keys as ak
+
+_VALID = "axon_testkey00000000000000000000000000000000"
+
+
+async def _fake_lookup(raw: str):
+    if raw == _VALID:
+        return ak.ApiKeyRecord(key_id="k1", key_hash=ak._hash(raw), name="t",
+                               scopes=["read"], owner_id="u1", organization_id=None)
+    return None
 
 
 def _app():
@@ -41,8 +59,9 @@ class TestApiKeyMiddlewarePassthrough(unittest.IsolatedAsyncioTestCase):
         the middleware did NOT return the "Subscription required" sentinel."""
         transport = ASGITransport(app=_app())
         try:
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                res = await client.get("/api/projects", headers=headers)
+            with patch.object(ak, "lookup_key", _fake_lookup):
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    res = await client.get("/api/projects", headers=headers)
         except AttributeError as exc:
             # DB interaction failed downstream (expected in DB-free test env).
             # An exception from that depth proves the middleware let the
@@ -68,6 +87,34 @@ class TestApiKeyMiddlewarePassthrough(unittest.IsolatedAsyncioTestCase):
         await self._assert_not_subscription_required(
             {"X-API-Key": "axon_testkey00000000000000000000000000000000"}
         )
+
+    async def _status_with(self, headers: dict, path: str = "/api/kernel/status") -> tuple[int, dict]:
+        transport = ASGITransport(app=_app())
+        with patch.object(ak, "lookup_key", _fake_lookup):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                res = await client.get(path, headers=headers)
+        return res.status_code, res.json()
+
+    async def test_unknown_api_key_is_rejected_by_middleware(self):
+        """A made-up key must not unlock routers that rely on the middleware
+        alone (the kernel router has no route-level auth)."""
+        for headers in ({"X-API-Key": "x"},
+                        {"X-API-Key": "axon_" + "0" * 40},
+                        {"Authorization": "ApiKey axon_" + "0" * 40}):
+            status, body = await self._status_with(headers)
+            self.assertEqual(status, 401, headers)
+            self.assertEqual(body.get("detail"), "Valid API key required")
+
+    async def test_revoked_or_expired_key_is_rejected(self):
+        async def revoked(raw):
+            rec = await _fake_lookup(_VALID)
+            rec.active = False
+            return rec
+        transport = ASGITransport(app=_app())
+        with patch.object(ak, "lookup_key", revoked):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                res = await client.get("/api/kernel/status", headers={"X-API-Key": _VALID})
+        self.assertEqual(res.status_code, 401)
 
     async def test_no_credentials_still_blocked_by_middleware(self):
         """Sanity check: a request with no auth must still get 401 from

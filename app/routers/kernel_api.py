@@ -33,7 +33,7 @@ from pydantic import BaseModel
 from app.core.auth import require_platform_admin
 
 log    = logging.getLogger(__name__)
-router = APIRouter(tags=["kernel"])
+router = APIRouter(tags=["kernel"], dependencies=[Depends(require_platform_admin)])
 
 
 class KernelExecuteRequest(BaseModel):

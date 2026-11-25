@@ -15,6 +15,19 @@ from app.ai.models import UsageStats
 log = logging.getLogger(__name__)
 
 
+def _as_uuid(value) -> uuid.UUID:
+    """Coerce an id to uuid.UUID.
+
+    Callers pass ids as strings or as UUID objects read back from asyncpg
+    (asyncpg's own UUID type). uuid.UUID() only accepts a hex string, and
+    handing it an asyncpg UUID raised "'UUID' object has no attribute
+    'replace'", which silently dropped the usage row for every gateway call.
+    """
+    if isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(str(value))
+
+
 async def record(
     *,
     pool,
@@ -26,9 +39,9 @@ async def record(
 ) -> None:
     """Insert one row into ai_usage_log. Fails silently to never break AI calls."""
     try:
-        uid  = uuid.UUID(user_id)  if user_id          else None
-        cid  = uuid.UUID(conversation_id) if conversation_id else None
-        oid  = uuid.UUID(org_id)   if org_id           else None
+        uid  = _as_uuid(user_id)  if user_id          else None
+        cid  = _as_uuid(conversation_id) if conversation_id else None
+        oid  = _as_uuid(org_id)   if org_id           else None
         async with pool.acquire() as conn:
             await conn.execute(
                 """
@@ -63,11 +76,11 @@ async def totals(
         i = 1
         if user_id:
             clauses.append(f"user_id = ${i}")
-            args.append(uuid.UUID(user_id))
+            args.append(_as_uuid(user_id))
             i += 1
         if org_id:
             clauses.append(f"organization_id = ${i}")
-            args.append(uuid.UUID(org_id))
+            args.append(_as_uuid(org_id))
             i += 1
         if since:
             clauses.append(f"created_at >= ${i}")
@@ -107,11 +120,11 @@ async def by_provider(
         i = 1
         if user_id:
             clauses.append(f"user_id = ${i}")
-            args.append(uuid.UUID(user_id))
+            args.append(_as_uuid(user_id))
             i += 1
         if org_id:
             clauses.append(f"organization_id = ${i}")
-            args.append(uuid.UUID(org_id))
+            args.append(_as_uuid(org_id))
             i += 1
         if since:
             clauses.append(f"created_at >= ${i}")
@@ -150,11 +163,11 @@ async def by_month(
         i = 1
         if user_id:
             clauses.append(f"user_id = ${i}")
-            args.append(uuid.UUID(user_id))
+            args.append(_as_uuid(user_id))
             i += 1
         if org_id:
             clauses.append(f"organization_id = ${i}")
-            args.append(uuid.UUID(org_id))
+            args.append(_as_uuid(org_id))
             i += 1
         if since:
             clauses.append(f"created_at >= ${i}")

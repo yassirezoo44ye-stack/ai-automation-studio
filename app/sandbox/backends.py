@@ -212,7 +212,8 @@ class ProcessBackend(SandboxBackend):
         org_id, config, limits, secret_env, context_rpc_handler,
     ) -> Worker:
         _prepare_workspace_runner(workspace_dir)
-        env = {**os.environ, **_worker_env(
+        from app.core.child_env import child_env
+        env = {**child_env(), **_worker_env(
             installation_id=installation_id, entry_point=entry_point, plugin_id=plugin_id,
             org_id=org_id, config=config, secret_env=secret_env,
         )}

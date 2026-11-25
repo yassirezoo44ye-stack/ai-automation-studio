@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import shlex
 from pathlib import Path
 
 from app.agents.base import AgentContext, AgentPermissions, AgentResult, EvolvableAgent
+from app.agents.builtin._owned_workspace import owned_workspace
 
 log = logging.getLogger(__name__)
 
@@ -33,15 +33,12 @@ class BuildAgent(EvolvableAgent):
         return AgentPermissions(can_execute_subprocess=True, max_execution_seconds=310.0)
 
     async def execute(self, ctx: AgentContext) -> AgentResult:
-        parts    = shlex.split(ctx.args) if ctx.args else []
-        workspace = parts[0] if parts else ctx.workspace
-        if not workspace:
-            return AgentResult.fail(self.name,
-                                    "No workspace specified. Usage: build <path>")
-
-        ws = Path(workspace).expanduser().resolve()
-        if not ws.exists():
-            return AgentResult.fail(self.name, f"Workspace not found: {workspace}")
+        # The workspace comes only from a project the caller owns — never
+        # from ctx.args/ctx.workspace (see _owned_workspace.py).
+        resolved = await owned_workspace(ctx, self.name)
+        if isinstance(resolved, AgentResult):
+            return resolved
+        ws = resolved
 
         await ctx.step(f"Detecting build system in {ws.name}…", "info")
         cmd = _detect_build_cmd(ws)
@@ -57,8 +54,9 @@ class BuildAgent(EvolvableAgent):
             # asyncio subprocess, not subprocess.run — a sync call here
             # blocks the entire event loop (every request on this server)
             # for up to 300 seconds while a build runs.
+            from app.core.child_env import child_env
             proc = await asyncio.create_subprocess_exec(
-                *cmd, cwd=ws,
+                *cmd, cwd=ws, env=child_env(),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
             try:

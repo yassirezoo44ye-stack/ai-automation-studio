@@ -29,15 +29,15 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.commands import get_registry, get_runner
-from app.core.auth import owner_user_id
+from app.core.auth import owner_user_id, require_platform_admin
 from app.core.db import get_pool
 
 log    = logging.getLogger(__name__)
-router = APIRouter(tags=["commands"])
+router = APIRouter(tags=["commands"], dependencies=[Depends(require_platform_admin)])
 
 
 # ── Request models ────────────────────────────────────────────────────────────
