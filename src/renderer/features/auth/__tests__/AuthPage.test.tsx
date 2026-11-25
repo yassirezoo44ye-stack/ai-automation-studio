@@ -241,3 +241,14 @@ describe("AuthPage — MFA challenge flow", () => {
     expect(clearMfaChallenge).toHaveBeenCalled();
   });
 });
+
+describe("AuthPage — terms consent", () => {
+  it("links the Terms and Privacy Policy on sign-in and sign-up (OAuth can create accounts on both)", () => {
+    render(<AuthPage initialTab="register" />);
+    const note = screen.getByTestId("consent-note");
+    expect(note.querySelector('a[href="/terms"]')).not.toBeNull();
+    expect(note.querySelector('a[href="/privacy"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /sign in/i }));
+    expect(screen.getByTestId("consent-note")).toBeInTheDocument();
+  });
+});

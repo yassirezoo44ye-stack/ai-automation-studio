@@ -4,6 +4,7 @@ import { apiFetch } from "../../utils/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { GlassCard } from "../../shared/ui/gold";
 import { copyText } from "../../shared/utils/clipboard";
+import { AccountTab } from "./AccountTab";
 
 interface SessionRow {
   id: string;
@@ -350,48 +351,6 @@ function SessionsSection({ onSignedOut }: { onSignedOut: () => void }) {
   );
 }
 
-// ── Delete account ───────────────────────────────────────────────────────────
-
-function DeleteSection({ email, hasPassword, onDeleted }: { email: string; hasPassword: boolean; onDeleted: () => void }) {
-  const { t } = useTranslation("settings");
-  const errorText = useErrorText();
-  const [open, setOpen] = useState(false);
-  const [typedEmail, setTypedEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true); setError(null);
-    try {
-      await call("/api/auth/me", { method: "DELETE", body: JSON.stringify({ email: typedEmail.trim(), password }) });
-      onDeleted();
-    } catch (err) { setError(errorText(err)); setBusy(false); }
-  }
-
-  return (
-    <Section title={t("account.delete.title")}>
-      <div style={{ fontSize: 13, color: "var(--t3)" }}>{t("account.delete.description")}</div>
-      {!hasPassword ? (
-        <div style={{ fontSize: 13, color: "var(--t4)" }}>{t("account.delete.oauthNote")}</div>
-      ) : !open ? (
-        <div><button type="button" className="g-btn g-btn--danger" onClick={() => setOpen(true)}>{t("account.delete.start")}</button></div>
-      ) : (
-        <form onSubmit={e => void submit(e)} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <Field id="delete-email" label={t("account.delete.typeEmail", { email })} value={typedEmail} onChange={e => setTypedEmail(e.target.value)} autoComplete="off" dir="ltr" required />
-          <Field id="delete-password" type="password" label={t("account.password.current")} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
-          {error && <Notice kind="error">{error}</Notice>}
-          <div style={rowStyle}>
-            <button type="submit" className="g-btn g-btn--danger" disabled={busy || typedEmail.trim().toLowerCase() !== email.toLowerCase() || !password}>{t("account.delete.confirm")}</button>
-            <button type="button" className="g-btn g-btn--ghost" onClick={() => { setOpen(false); setTypedEmail(""); setPassword(""); setError(null); }}>{t("account.cancel")}</button>
-          </div>
-        </form>
-      )}
-    </Section>
-  );
-}
-
 // ── Tab ──────────────────────────────────────────────────────────────────────
 
 export function AccountSecurityTab() {
@@ -415,7 +374,8 @@ export function AccountSecurityTab() {
       {hasPassword && <PasswordSection onSignedOut={signOut} />}
       <MfaSection enabled={!!user.mfa_enabled} hasPassword={hasPassword} onChanged={refreshUser} />
       <SessionsSection onSignedOut={signOut} />
-      <DeleteSection email={user.email} hasPassword={hasPassword} onDeleted={signOut} />
+      {/* Data export + account deletion (incl. sole-owner org handling and OAuth-only accounts). */}
+      <AccountTab />
     </div>
   );
 }

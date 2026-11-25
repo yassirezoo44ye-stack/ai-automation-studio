@@ -10,6 +10,7 @@ import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
 import { LandingPage }   from "./features/landing/LandingPage";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
+import { LegalPage, legalDocFromPath } from "./features/legal";
 import "./design-system.css";
 
 
@@ -31,6 +32,13 @@ function AppInner() {
   // Deep-link routing is handled by AppContext (URL ↔ page sync).
   // The OAuth callback and reset-password paths are handled by AuthContext
   // and AuthPage respectively — no URL manipulation needed here.
+
+  // Policies are public and must open for everyone, signed in or not (they
+  // are linked from sign-up, checkout and OAuth consent screens).
+  const legalDoc = legalDocFromPath(window.location.pathname);
+  if (legalDoc) {
+    return <LegalPage doc={legalDoc} />;
+  }
 
   if (loading) {
     return <LoadingSpinner fullPage label="Starting Flow…" />;

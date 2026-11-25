@@ -17,9 +17,11 @@ Endpoints:
   GET  /api/auth/sessions
   DELETE /api/auth/sessions/{session_id}
   DELETE /api/auth/me
+  GET  /api/auth/me/export
 """
 import asyncio
 import datetime
+import json
 import logging
 import secrets
 import uuid
@@ -49,6 +51,7 @@ from app.core.jwt_utils import (
     revoke_user_tokens,
 )
 from app.core.passwords import hash_password, verify_password
+from app.core.legal import TERMS_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -160,6 +163,9 @@ def _user_response(user) -> dict:
         "email_verified": user["email_verified"],
         "avatar_url": user["avatar_url"],
         "created_at": user["created_at"].isoformat() if user["created_at"] else None,
+        # OAuth-only accounts have no password; the UI uses this to decide how
+        # to confirm account deletion.
+        "has_password": bool(user["password_hash"]) if "password_hash" in user else True,
     }
 
 
@@ -279,9 +285,10 @@ async def register(body: RegisterRequest, request: Request, _rl: None = _auth_rl
             async with conn.transaction():
                 try:
                     await conn.execute(
-                        """INSERT INTO users (id, email, name, password_hash, email_verified)
-                           VALUES ($1, $2, $3, $4, false)""",
-                        user_id, body.email, body.name, pw_hash,
+                        """INSERT INTO users (id, email, name, password_hash, email_verified,
+                                              terms_accepted_at, terms_version)
+                           VALUES ($1, $2, $3, $4, false, NOW(), $5)""",
+                        user_id, body.email, body.name, pw_hash, TERMS_VERSION,
                     )
                 except asyncpg.UniqueViolationError:
                     span.set_tag("error", "email_already_registered")
@@ -914,26 +921,88 @@ async def revoke_session(
     return {"message": "Session revoked"}
 
 
+class DeleteAccountRequest(BaseModel):
+    email: EmailStr
+    # Required for accounts that have a password. Accounts created through
+    # Google, GitHub or Microsoft have none and confirm by typing their e-mail.
+    password: str | None = None
+
+
 @router.delete("/me")
 async def delete_account(
-    body: LoginRequest,
+    body: DeleteAccountRequest,
     current: Annotated[dict, Depends(get_current_user)],
     request: Request,
 ):
-    """Permanently delete account. Requires password confirmation."""
-    if body.email != current["email"]:
+    """Permanently delete the account, the organizations only this user is in,
+    and stop their Stripe subscriptions. Nothing is deleted if billing cannot
+    be cancelled."""
+    from app.services.account_lifecycle import (
+        AccountDeletionBlocked,
+        BillingCancellationFailed,
+        apply_account_deletion,
+        cancel_stripe_subscriptions,
+        plan_account_deletion,
+    )
+
+    if body.email.strip().lower() != current["email"].strip().lower():
         raise HTTPException(400, "Email does not match")
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
-        # password_hash can be NULL for OAuth-created accounts; treat as invalid credentials
-        if not user or not user["password_hash"]:
+        if not user:
             raise HTTPException(400, "Invalid credentials")
-        if not verify_password(body.password, user["password_hash"]):
-            raise HTTPException(400, "Invalid credentials")
-        await conn.execute("DELETE FROM users WHERE id=$1", uuid.UUID(current["id"]))
+        if user["password_hash"]:
+            if not body.password or not verify_password(body.password, user["password_hash"]):
+                raise HTTPException(400, "Invalid credentials")
+        try:
+            plan = await plan_account_deletion(conn, current["id"], user["email"])
+        except AccountDeletionBlocked as exc:
+            raise HTTPException(
+                409, {"message": str(exc), "organizations": exc.org_names}
+            ) from None
+        try:
+            await cancel_stripe_subscriptions(plan.stripe_subscriptions)
+        except BillingCancellationFailed as exc:
+            raise HTTPException(
+                502, f"{exc}. Your account was not deleted; please try again or contact support."
+            ) from None
+        await apply_account_deletion(conn, current["id"], user["email"], plan)
 
+    await revoke_user_tokens(current["id"])
     await write_audit(current["email"], "account_deleted", ip_address=_client_ip(request))
     return {"message": "Account deleted"}
+
+
+_export_rl = Depends(make_rate_limit_dep(
+    "data_export", max_calls=5, window=3600,
+    error_detail="Too many export requests — please try again later.",
+))
+
+
+@router.get("/me/export")
+async def export_account_data(
+    current: Annotated[dict, Depends(get_current_user)],
+    request: Request,
+    _rl: None = _export_rl,
+):
+    """Download a JSON copy of the personal data held for this account."""
+    from app.services.account_lifecycle import export_user_data
+
+    async with get_pool().acquire() as conn:
+        try:
+            payload = await export_user_data(conn, current["id"])
+        except LookupError:
+            raise HTTPException(404, "User not found") from None
+    await write_audit(current["email"], "data_exported", ip_address=_client_ip(request))
+    stamp = datetime.date.today().isoformat()
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="flow-data-export-{stamp}.json"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 # ── OAuth (Google + GitHub + Microsoft) ────────────────────────────────────────
@@ -1130,9 +1199,10 @@ async def _upsert_oauth_user(
         return existing
     new_id = uuid.uuid4()
     await conn.execute(
-        """INSERT INTO users (id, email, name, avatar_url, email_verified, password_hash, created_at)
-           VALUES ($1,$2,$3,$4,true,NULL,NOW())""",
-        new_id, email, name or email.split("@")[0], avatar_url or None,
+        """INSERT INTO users (id, email, name, avatar_url, email_verified, password_hash, created_at,
+                              terms_accepted_at, terms_version)
+           VALUES ($1,$2,$3,$4,true,NULL,NOW(),NOW(),$5)""",
+        new_id, email, name or email.split("@")[0], avatar_url or None, TERMS_VERSION,
     )
     return await conn.fetchrow("SELECT * FROM users WHERE id=$1", new_id)
 
