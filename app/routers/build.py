@@ -14,7 +14,7 @@ import anthropic
 import httpx
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.ai.models import CompletionRequest, Message
 from app.core.ai.inference.engine import InferenceEngine
@@ -160,8 +160,23 @@ class _BuildParser:
 
 
 
-class PlanRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, max_length=2000)
+# Bounded long-form specifications, shared by planning and generation.
+MAX_BUILD_PROMPT_CHARS = 32_000
+
+
+class BuildPromptRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=MAX_BUILD_PROMPT_CHARS)
+
+    @field_validator("prompt")
+    @classmethod
+    def non_blank_prompt(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("A build request is required")
+        return value
+
+
+class PlanRequest(BuildPromptRequest):
+    pass
 
 
 PLAN_SYSTEM = """You are a senior software architect. Analyze the user's request and produce a concise, structured build plan.
@@ -193,10 +208,9 @@ Rules:
 Be concise and realistic. Do not invent features not implied by the request."""
 
 
-class BuildRequest(BaseModel):
+class BuildRequest(BuildPromptRequest):
     model: BuildModel = DEFAULT_MODEL
     project_id: str
-    prompt: str = Field(..., min_length=1, max_length=10000)
     # Optional: approved BuildPlan from /api/build/plan.
     # When present, injected into the code-generation prompt so the generator
     # produces files that match the pages, DB tables, and API routes the user
