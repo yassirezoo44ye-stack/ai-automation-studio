@@ -78,7 +78,10 @@ describe("AccountSecurityTab", () => {
     render(<AccountSecurityTab />);
     await screen.findByText("No other active sessions.");
     expect(screen.queryByLabelText("Current password")).not.toBeInTheDocument();
-    expect(screen.getByText(/signs in with an external provider/)).toBeInTheDocument();
+    // Provider accounts delete by typing their e-mail only (no password field).
+    fireEvent.click(screen.getByTestId("delete-account-start"));
+    expect(screen.getByTestId("delete-email")).toBeInTheDocument();
+    expect(screen.queryByTestId("delete-password")).not.toBeInTheDocument();
   });
 
   it("asks to sign in when there is no user", () => {

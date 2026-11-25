@@ -18,6 +18,8 @@ const HISTORY: Record<string, { id: string; role: string; content: string }[]> =
   ],
 };
 
+// MessageRow shows the signed-in user's initial.
+vi.mock("../../../contexts/AuthContext", () => ({ useAuth: () => ({ user: { name: "Test", email: "t@example.com" } }) }));
 vi.mock("../../../utils/api", async original => {
   const real = await original<typeof ApiModule>();
   const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });

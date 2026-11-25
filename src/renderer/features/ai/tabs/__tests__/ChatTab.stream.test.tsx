@@ -7,12 +7,14 @@
  * on-screen messages — wiping the streaming reply until the conversation was
  * reopened.
  */
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import i18n from "../../../../i18n";
 import { ToastCtx } from "../../../../contexts/toast";
 
 const apiJSON = vi.fn();
+// MessageRow shows the signed-in user's initial.
+vi.mock("../../../../contexts/AuthContext", () => ({ useAuth: () => ({ user: { name: "Test", email: "t@example.com" } }) }));
 vi.mock("../../../../utils/api", () => ({
   apiJSON: (...args: unknown[]) => apiJSON(...args),
   // The stream request goes through apiFetch; hand it to the stubbed fetch.
@@ -67,7 +69,9 @@ describe("ChatTab — streaming into a new conversation", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Send/ }));
 
     await screen.findByText(/Here is the weekly plan\./);
-    await waitFor(() => expect(apiJSON).toHaveBeenCalledWith("/api/conversations/c-1/messages"));
+    // The new conversation's messages are already on screen, so the history
+    // load is skipped (PR #64); if a load does resolve later it must not
+    // replace the streamed reply either (PR #45).
 
     await act(async () => {
       resolveLoad([{ id: "u-1", role: "user", content: "Plan the week" }]);

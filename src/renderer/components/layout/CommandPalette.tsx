@@ -14,6 +14,8 @@ import { useTranslation } from "react-i18next";
 import { Icons } from "../../icons";
 import type { Page } from "../../types";
 import { useAppContext } from "../../contexts/app";
+import { ASSISTANT_PAGES } from "../../shared/utils/assistantNav";
+import { matchesQuery } from "./commandSearch";
 
 type CmdItem = {
   id: string;
@@ -24,6 +26,8 @@ type CmdItem = {
   action: () => void;
   kbd?: string;
   group: "ai" | "action" | "navigate" | "platform";
+  /** Extra search terms: the page's sidebar name in Arabic and English. */
+  keywords?: string[];
 };
 
 // ── Inline icons not in Icons registry ──────────────────────────────────────
@@ -54,7 +58,7 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const { activeProjectId, setActiveProject } = useAppContext();
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
 
   // Focus the search box on open and give focus back to whatever opened the
   // palette when it closes — it used to fall to <body> (WCAG 2.4.3).
@@ -178,15 +182,35 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
     { id: "settings",      label: "Settings",        sub: "System & app configuration",           icon: Icons.settings(),       group: "platform", action: () => go("settings") },
   ];
 
-  const filtered = q.trim()
-    ? items.filter(i =>
-        i.label.toLowerCase().includes(q.toLowerCase()) ||
-        i.sub?.toLowerCase().includes(q.toLowerCase()) ||
-        i.group === "ai" // AI commands always shown when there's a query
-          ? i.label.toLowerCase().includes(q.toLowerCase()) || i.sub?.toLowerCase().includes(q.toLowerCase())
-          : i.label.toLowerCase().includes(q.toLowerCase()) || i.sub?.toLowerCase().includes(q.toLowerCase())
-      )
-    : items;
+  // Every page the sidebar and assistant know about is reachable here, even
+  // ones without a hand-written entry above (Leads, Billing, Teams, Training,
+  // Business Lab…), and every page is findable by its Arabic or English name.
+  const ar = i18n.getFixedT("ar", "common");
+  const en = i18n.getFixedT("en", "common");
+  const navNames = (navKey: string) => {
+    const key = `sidebar.nav.${navKey}`;
+    return [t(key), ar(key), en(key)].filter(v => v && v !== key);
+  };
+  const known = new Set(items.map(i => i.id));
+  for (const [id, { page, navKey }] of Object.entries(ASSISTANT_PAGES)) {
+    const names = navNames(navKey);
+    const existing = items.find(i => i.id === id && (i.group === "navigate" || i.group === "platform"));
+    if (existing) { existing.keywords = names; continue; }
+    if (known.has(id)) continue;
+    const iconFn = (Icons as Record<string, (() => React.JSX.Element) | undefined>)[id];
+    items.push({
+      id, label: names[0] ?? id, icon: iconFn ? iconFn() : I.search(), group: "navigate",
+      keywords: names, action: () => go(page),
+    });
+  }
+
+  // With a query, a page whose *name* matches (e.g. "billing" → Billing)
+  // wins over items that only mention the word in their description (the
+  // SaaS template's "auth, billing, teams…"); descriptions are the fallback.
+  const byName = q.trim() ? items.filter(i => matchesQuery({ label: i.label, keywords: i.keywords }, q)) : items;
+  const matched = byName.length ? byName : items.filter(i => matchesQuery(i, q));
+  // Keep the list in display (group) order so Enter runs the highlighted row.
+  const filtered = (["ai", "action", "navigate", "platform"] as const).flatMap(g => matched.filter(i => i.group === g));
 
   function run(item: CmdItem) { item.action(); onClose(); }
 

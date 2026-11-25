@@ -28,6 +28,6 @@ describe("responsive layout rules", () => {
   });
 
   it("chat Send keeps clear of the floating Copilot button", () => {
-    expect(read("features/ai/chat.css")).toMatch(/\.chat-composer__actions \{[^}]*padding-inline-end: 64px;/);
+    expect(read("features/ai/chat.css")).toMatch(/\.chat-composer-wrap \{[^}]*padding-inline-end: 64px;/);
   });
 });
