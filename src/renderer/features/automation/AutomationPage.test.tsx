@@ -35,6 +35,43 @@ it("updates a task after the server accepts it", async () => {
   await screen.findByRole("button", { name: "Mark pending" });
 });
 
+it("shows persisted pending and completed runs rather than filtering to running only", async () => {
+  vi.mocked(apiFetch).mockImplementation(async (path) => {
+    if (path.startsWith("/api/automation-runs")) {
+      return new Response(JSON.stringify({ items: [
+        { run_id: "run-pending-1", name: "Pending order sync", status: "pending" },
+        { run_id: "run-complete-2", name: "Completed order sync", status: "completed" },
+      ] }), { status: 200 });
+    }
+    return new Response(JSON.stringify(path.startsWith("/api/tasks") ? { tasks: [] } : []), { status: 200 });
+  });
+  render(<AutomationPage />);
+  fireEvent.click(screen.getByRole("tab", { name: "Workflows" }));
+  expect(await screen.findByText(/Pending order sync/)).toBeInTheDocument();
+  expect(screen.getByText(/Completed order sync/)).toBeInTheDocument();
+  expect(vi.mocked(apiFetch).mock.calls.some(([url]) => url === "/api/automation-runs?limit=20")).toBe(true);
+});
+
+it("disables manual workflow refresh while a request is in flight", async () => {
+  const pendingResolvers: Array<(response: Response) => void> = [];
+  vi.mocked(apiFetch).mockImplementation(async (path) => {
+    if (path.startsWith("/api/automation-runs")) {
+      return new Promise<Response>(resolve => { pendingResolvers.push(resolve); });
+    }
+    return new Response(JSON.stringify(path.startsWith("/api/tasks") ? { tasks: [] } : []), { status: 200 });
+  });
+  render(<AutomationPage />);
+  fireEvent.click(screen.getByRole("tab", { name: "Workflows" }));
+  const refresh = screen.getByRole("button", { name: /Refresh/i });
+  await waitFor(() => expect(refresh).toBeDisabled());
+  const requestsBefore = vi.mocked(apiFetch).mock.calls.filter(([url]) => url.startsWith("/api/automation-runs")).length;
+  fireEvent.click(refresh);
+  expect(vi.mocked(apiFetch).mock.calls.filter(([url]) => url.startsWith("/api/automation-runs"))).toHaveLength(requestsBefore);
+  for (const resolve of pendingResolvers) {
+    resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+  }
+  await waitFor(() => expect(screen.getByRole("button", { name: /Refresh/i })).not.toBeDisabled());
+});
 
 it("opens the completed run requested by a notification instead of the tasks tab", async () => {
   window.history.replaceState(null, "", "/automation?run=completed-123");

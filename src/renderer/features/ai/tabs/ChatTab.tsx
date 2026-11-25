@@ -32,6 +32,7 @@ import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
 import { useAsyncData } from "../../../shared/hooks/useAsyncData";
 import { clearAssistantHandoff, peekAssistantHandoff } from "../../../shared/utils/assistantHandoff";
+import { draftScope, readDraft, readSession, writeDraft, writeSession } from "../chat/chatPersistence";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { ErrorState, EmptyState } from "../../../shared/ui/StateViews";
 import { GoldButton } from "../../../shared/ui/gold";
@@ -86,7 +87,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const toast = useToast();
 
   // ── Core state (unchanged) ────────────────────────────────────────
-  const [projectId, setProjectId] = useState("demo");
+  // A refresh reopens the project and conversation this tab had open.
+  const [restored] = useState(readSession);
+  const [projectId, setProjectId] = useState(restored?.projectId ?? "demo");
   const skillSelection = useFlowSkill();
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
 
@@ -109,7 +112,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     data: convs = [], status: convsStatus, error: convsError, suggestedFix: convsFix, refetch: loadConvs,
   } = useAsyncData(() => apiJSON<Conv[]>(`/api/conversations?project_id=${projectId}`), [projectId]);
 
-  const [activeConv, setActiveConv]         = useState<string | null>(null);
+  const [activeConv, setActiveConv]         = useState<string | null>(restored?.activeConv ?? null);
   // Local, mutable copy of the active conversation's messages. Backed by
   // useAsyncData below for the *load* — but sendMessage() must keep
   // appending/streaming tokens into this directly, which a hook whose only
@@ -124,9 +127,21 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   // the new id immediately, in the same handler that flips activeConv, so
   // the in-progress streamed reply is never hidden behind a loading state).
   const [messagesConvId, setMessagesConvId] = useState<string | null>(null);
-  // A question handed over from another page (Home's "Ask Flow") prefills the input once.
-  const [prompt, setPrompt]                 = useState(peekAssistantHandoff);
+  // A question handed over from another page (Home's "Ask Flow") prefills
+  // the input once; otherwise the unsent draft of this conversation does.
+  const [prompt, setPrompt]                 = useState(
+    () => peekAssistantHandoff() || readDraft(draftScope(projectId, activeConv)),
+  );
   useEffect(() => { clearAssistantHandoff(); }, []);
+  // Drafts are kept per conversation: switching conversation shows that
+  // conversation's own unsent text (React's adjust-state-on-change pattern).
+  const scope = draftScope(projectId, activeConv);
+  const [prevScope, setPrevScope] = useState(scope);
+  if (prevScope !== scope) { setPrevScope(scope); setPrompt(readDraft(scope)); }
+  useEffect(() => { writeDraft(scope, prompt); }, [scope, prompt]);
+  useEffect(() => { writeSession({ projectId, activeConv }); }, [projectId, activeConv]);
+  const promptRef = useRef(prompt);
+  useEffect(() => { promptRef.current = prompt; }, [prompt]);
   const [streaming, setStreaming]           = useState(false);
   const [searchQ, setSearchQ]               = useState("");
   // Same local-copy-synced-from-hook pattern as messages: setTaskStatus
@@ -144,6 +159,12 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const abortRef  = useRef<AbortController | null>(null);
   // Mirrors `streaming` for effects that must not clobber an in-flight reply.
   const streamingRef = useRef(false);
+  // `streaming` state is stale inside a handler until React re-renders, so
+  // two Enter presses in one tick would both send; this ref is not.
+  const sendingRef = useRef(false);
+  // Closing the chat (navigating away) stops the reply instead of leaving
+  // the request running in the background.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -271,7 +292,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
   async function sendMessage() {
     const text = prompt.trim();
-    if (!text || streaming) return;
+    if (!text || sendingRef.current) return;
+    sendingRef.current = true;
     setPrompt("");
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages(prev => [...prev, userMsg]);
@@ -281,6 +303,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
     let gotText = false;
     setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "" }]);
 
+    let answered = false;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const useAgent = agentId !== "default";
@@ -296,6 +319,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
       let closed = false;
+      answered = true;  // the server has the message from here on
       for await (const ev of readSSE<{ type: string; conv_id?: string; text?: string; message?: string }>(res.body)) {
         if (ev.type === "conv_id" && ev.conv_id && !activeConv) {
           // Claim this id for the messages already in local state *before*
@@ -303,6 +327,8 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           // activeConv) sees them as already in sync and never shows a
           // loading state over the reply that's actively streaming in.
           setMessagesConvId(ev.conv_id);
+          // Anything typed while the reply streams moves with the chat.
+          writeDraft(draftScope(projectId, ev.conv_id), promptRef.current);
           setActiveConv(ev.conv_id);
           loadConvs();
         }
@@ -320,7 +346,9 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         }
         if (closed) break;
       }
-      if (!closed) throw new Error(t("chatTab.messages.interrupted"));
+      // The body ended without "done" or "error": the connection dropped.
+      // Keep whatever arrived and say it is incomplete.
+      if (!closed) { markInterrupted(assistantId); return; }
       // The stream finished without a single word of reply: say so instead
       // of leaving the typing dots up.
       if (!gotText) {
@@ -330,11 +358,22 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       if ((err as Error).name === "AbortError") {
         // Stopped before any reply arrived: drop the empty placeholder.
         if (!gotText) setMessages(p => p.filter(m => m.id !== assistantId || m.content !== ""));
+      } else if (answered) {
+        markInterrupted(assistantId);
       } else {
+        // Nothing reached the server: give the text back so it isn't lost.
+        setPrompt(current => current || text);
         const msg = (err as Error).message ?? "";
         setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + (msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg })) } : m));
       }
-    } finally { setStreaming(false); streamingRef.current = false; abortRef.current = null; }
+    } finally { sendingRef.current = false; setStreaming(false); streamingRef.current = false; abortRef.current = null; }
+  }
+
+  /** Keep the partial reply but say it is incomplete. */
+  function markInterrupted(assistantId: string) {
+    const note = t("chatTab.messages.interrupted");
+    setMessages(p => p.map(m => m.id === assistantId
+      ? { ...m, content: m.content ? `${m.content}\n\n${note}` : note } : m));
   }
 
   // ── Derived state ─────────────────────────────────────────────────
@@ -472,7 +511,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       <div className="chat-main">
 
         {/* Toolbar */}
-        <div className="chat-toolbar" role="toolbar" aria-label="Chat controls">
+        <div className="chat-toolbar" role="toolbar" aria-label={t("chatControls")}>
           <span style={{ fontSize: 16 }}>{activeAgent?.avatar ?? "🤖"}</span>
           <span style={{ fontSize: 12, fontWeight: 500, color: "var(--t2)" }}>
             {activeAgent?.name ?? t("chatTab.contextPanel.defaultAgent")}

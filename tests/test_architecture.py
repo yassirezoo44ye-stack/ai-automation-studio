@@ -21,6 +21,7 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -719,6 +720,47 @@ class TestBackgroundServiceTicks(unittest.TestCase):
                 )
                 await svc.tick()
         run(_run())
+
+    def test_dependency_monitor_logs_optional_gaps_once(self):
+        """Production logged the same GITHUB_CLIENT_ID warning every 5 min."""
+        import logging
+        from app.services.dependency_monitor import DependencyMonitorService
+
+        async def _run(records):
+            svc = DependencyMonitorService()
+            handler = logging.Handler()
+            handler.emit = records.append
+            lg = logging.getLogger("app.services.dependency_monitor")
+            lg.addHandler(handler)
+            old_level = lg.level
+            lg.setLevel(logging.DEBUG)
+            try:
+                with patch("app.core.observability.metrics.get_metrics") as mock_m, \
+                     patch.dict("os.environ", {"DATABASE_URL": "x", "SESSION_SECRET": "x",
+                                               "ANTHROPIC_API_KEY": "x", "STRIPE_SECRET_KEY": "x",
+                                               "GOOGLE_CLIENT_ID": "x"}):
+                    os.environ.pop("GITHUB_CLIENT_ID", None)
+                    mock_m.return_value = MagicMock(
+                        gauge=MagicMock(return_value=MagicMock(set=MagicMock()))
+                    )
+                    for _ in range(3):
+                        await svc.tick()
+                    os.environ["GITHUB_CLIENT_ID"] = "x"
+                    await svc.tick()
+                    os.environ.pop("GITHUB_CLIENT_ID")
+                    await svc.tick()
+            finally:
+                lg.removeHandler(handler)
+                lg.setLevel(old_level)
+
+        records: list = []
+        run(_run(records))
+        optional = [r for r in records if "optional env vars" in r.getMessage()]
+        # Logged once for the first three ticks, nothing when it got set,
+        # once again when it went missing.
+        assert len(optional) == 2
+        assert all(r.levelno == logging.INFO for r in optional)
+        assert not [r for r in records if r.levelno >= logging.WARNING]
 
     def test_memory_compactor_tick(self):
         from app.services.memory_compactor import MemoryCompactorService

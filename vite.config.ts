@@ -41,10 +41,14 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ["react", "react-dom"],
-          markdown: ["react-markdown"],
-          fabric: ["fabric"],
+        // A function, not a name map: with the map form Rollup placed React's
+        // CommonJS wrappers in the "markdown" chunk, so every page (the landing
+        // page included) preloaded react-markdown just to get React.
+        manualChunks(id: string) {
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "vendor";
+          if (/[\\/]node_modules[\\/]react-markdown[\\/]/.test(id)) return "markdown";
+          if (/[\\/]node_modules[\\/]fabric[\\/]/.test(id)) return "fabric";
+          return undefined;
         },
       },
     },
@@ -53,7 +57,7 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/renderer/__tests__/setup.ts"],
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/**/*.test.mjs"],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

@@ -549,3 +549,11 @@
 .action-card__dismiss, .action-card__link { border: 1px solid var(--border); background: none; color: var(--t3); }
 .action-card__result { display: flex; align-items: center; gap: 10px; color: var(--green, var(--t1)); font-weight: 600; }
 .action-card__error { margin-top: 8px; color: var(--red); font-size: 12px; }
+
+/* Send / Stop sit at the bottom inline-end corner, exactly where the fixed
+   Copilot button floats (52px + 24px offset). Without this gap the button
+   covered Send on tablets and phones, so the message could not be sent by
+   tapping. */
+.chat-composer-wrap {
+  padding-inline-end: 64px;
+}

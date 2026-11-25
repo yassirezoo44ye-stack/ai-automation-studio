@@ -72,6 +72,8 @@
     "openNavMenu": "Open navigation menu"
   },
   "cmdPalette": {
+    "title": "Command palette",
+    "clear": "Clear search",
     "searchPlaceholder": "Search pages, actions…",
     "noResults": "No results for \"{{query}}\"",
     "quickActions": "Quick Actions",
@@ -173,6 +175,11 @@
     },
     "saving": "Saving…",
     "organizationUnavailable": "The linked workspace is unavailable. Refresh or check your access."
+  },
+  "copilot": {
+    "open": "Open AI Copilot",
+    "close": "Close AI Copilot",
+    "title": "AI Copilot"
   },
   "stream": {"interrupted": "The reply was interrupted. Please retry."}
 }

@@ -92,7 +92,7 @@ function Timeline({ sections }: { sections: Section[] }) {
         const dotColor = status === "COMPLETED" ? "#10b981"
           : status === "RUNNING" ? "#3b82f6"
           : status === "FAILED"  ? "#ef4444"
-          : "var(--b3,#d1d5db)";
+          : "var(--b2)";
         return (
           <div key={key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 10, height: 10, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
@@ -180,8 +180,8 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
 
       <button onClick={submit} disabled={loading} style={{
         padding: "9px 18px", borderRadius: 8, border: "none",
-        background: loading ? "var(--b2,#e5e7eb)" : "var(--accent,#8b5cf6)",
-        color: "#fff", fontWeight: 700, fontSize: 13, cursor: loading ? "default" : "pointer",
+        background: loading ? "var(--b2,#e5e7eb)" : "var(--accent-fill,#6e32e0)",
+        color: "var(--on-accent,#fff)", fontWeight: 700, fontSize: 13, cursor: loading ? "default" : "pointer",
       }}>
         {loading ? "جارٍ الإنشاء…" : "ابدأ التحليل 🚀"}
       </button>
@@ -221,7 +221,7 @@ function SectionCard({ section }: { section: Section }) {
       {open && section.content && (
         <div style={{
           padding: "12px 16px", borderTop: "1px solid var(--b1,#e5e7eb)",
-          background: "var(--bg-subtle,#f9fafb)",
+          background: "var(--bg-surface)",
           fontSize: 13, lineHeight: 1.7, color: "var(--t2,#374151)",
           whiteSpace: "pre-wrap", maxHeight: 400, overflowY: "auto",
         }}>
@@ -346,7 +346,7 @@ export function BusinessLabPage() {
   return (
     <div className="business-lab" style={{
       display: "flex", height: "100%", overflow: "hidden",
-      background: "var(--bg,#f9fafb)", fontFamily: "inherit",
+      background: "var(--bg-base)", fontFamily: "inherit",
     }}>
       {/* ── Sidebar: plan list ── */}
       <div className="business-lab-sidebar" style={{
@@ -360,7 +360,7 @@ export function BusinessLabPage() {
           </div>
           <button onClick={() => setShowNew(v => !v)} style={{
             width: "100%", padding: "8px", borderRadius: 8, border: "none",
-            background: "var(--accent,#8b5cf6)", color: "#fff",
+            background: "var(--accent-fill,#6e32e0)", color: "var(--on-accent,#fff)",
             fontWeight: 700, fontSize: 12, cursor: "pointer",
           }}>
             + خطة جديدة
@@ -395,7 +395,7 @@ export function BusinessLabPage() {
               tabIndex={0}
               style={{
               padding: "10px 14px", cursor: "pointer",
-              background: selected === p.id ? "var(--accent-subtle,#ede9fe)" : "transparent",
+              background: selected === p.id ? "var(--accent-dim)" : "transparent",
               borderRight: selected === p.id ? "3px solid var(--accent,#8b5cf6)" : "3px solid transparent",
               marginRight: -1,
             }}>
@@ -446,7 +446,7 @@ export function BusinessLabPage() {
               ] as [Tab, string][]).map(([t, label]) => (
                 <button key={t} onClick={() => setTab(t)} style={{
                   padding: "7px 14px", border: "none", borderRadius: "8px 8px 0 0",
-                  background: tab === t ? "var(--bg,#f9fafb)" : "transparent",
+                  background: tab === t ? "var(--bg-base)" : "transparent",
                   color: tab === t ? "var(--accent,#8b5cf6)" : "var(--t3,#6b7280)",
                   fontWeight: tab === t ? 700 : 500, fontSize: 12, cursor: "pointer",
                   borderBottom: tab === t ? "2px solid var(--accent,#8b5cf6)" : "2px solid transparent",
@@ -707,7 +707,7 @@ export function BusinessLabPage() {
                           </div>
                           <button onClick={() => void handleExport(variant)} style={{
                             padding: "6px 14px", borderRadius: 7, border: "none",
-                            background: "var(--accent,#8b5cf6)", color: "#fff",
+                            background: "var(--accent-fill,#6e32e0)", color: "var(--on-accent,#fff)",
                             fontWeight: 700, fontSize: 12, cursor: "pointer",
                           }}>
                             تحميل

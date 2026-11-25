@@ -1,0 +1,11 @@
+# Flow: only the public pages are meant for search. Signed-in app pages
+# answer with "X-Robots-Tag: noindex" (vercel.json), so they stay out of
+# results even when linked from elsewhere.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /oauth-callback
+Disallow: /reset-password
+Disallow: /verify-email
+
+Sitemap: https://ai-automation-studio-kohl.vercel.app/sitemap.xml

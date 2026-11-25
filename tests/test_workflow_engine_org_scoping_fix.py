@@ -66,10 +66,13 @@ class TestWorkflowEngineApproveRejectRequireOwnership(unittest.TestCase):
         """The exact exploit shape: an authenticated user from a
         different org must not be able to approve someone else's
         workflow step."""
+        # Own step id: _approval_registry is shared by the whole process, and
+        # test_approve_by_owning_org_succeeds approves "run-a:step1" — in a
+        # random test order that made this assertion fail.
         engine = self._engine_with_runs()
         from app.core.workflow.engine import _approval_registry
-        self.assertFalse(engine.approve("run-a", "step1", org_id="org-b"))
-        self.assertFalse(_approval_registry.was_approved("run-a:step1"))
+        self.assertFalse(engine.approve("run-a", "step-cross-org", org_id="org-b"))
+        self.assertFalse(_approval_registry.was_approved("run-a:step-cross-org"))
 
     def test_reject_by_other_org_fails_without_mutation(self):
         # Distinct step id — _approval_registry is a module-level

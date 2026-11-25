@@ -6,7 +6,7 @@
 .home-workspace__ask { background: var(--bg-surface); border: 1px solid var(--b1); border-radius: 12px; padding: 20px; margin-bottom: 28px; }
 .home-workspace__ask form { display: flex; gap: 12px; align-items: flex-end; }
 .home-workspace textarea { flex: 1; min-width: 0; padding: 10px; resize: vertical; background: var(--bg-input); color: var(--t1); border: 1px solid var(--b1); border-radius: 8px; font: inherit; font-size: 14px; }
-.home-workspace__primary { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-size: 13px; cursor: pointer; flex-shrink: 0; }
+.home-workspace__primary { background: var(--accent-fill); color: var(--on-accent); border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-size: 13px; cursor: pointer; flex-shrink: 0; }
 .home-workspace__primary:disabled { opacity: .45; cursor: default; }
 .home-workspace__section { margin-bottom: 28px; }
 .home-workspace__list { list-style: none; padding: 0; margin: 0; }

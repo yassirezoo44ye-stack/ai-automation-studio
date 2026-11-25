@@ -117,9 +117,21 @@ def _cache_key(scope: str, key: str) -> str:
 @asynccontextmanager
 async def idempotent(
     scope: str, key: str, *, pool: asyncpg.Pool, ttl_s: int = 86400,
+    max_age_s: int | None = None,
 ) -> AsyncIterator[IdempotencyGuard]:
-    """Claim (scope, key) for exclusive execution — see module docstring."""
+    """Claim (scope, key) for exclusive execution — see module docstring.
+
+    max_age_s bounds how long a *completed* row counts as a duplicate.
+    None (the default) keeps it forever. With a value, a completed row
+    older than that is reclaimed like a failed one, so a key derived from
+    the request content (no client-supplied key) only deduplicates
+    re-sends within that window instead of blocking the same request for
+    ever. The cache entry never outlives the window either.
+    """
     from app.core.cache import get_redis
+
+    if max_age_s is not None:
+        ttl_s = min(ttl_s, max_age_s)
 
     ck = _cache_key(scope, key)
     try:
@@ -148,11 +160,17 @@ async def idempotent(
         # in the module docstring.
         existing = await pool.fetchrow(
             """SELECT status, result,
-                      EXTRACT(EPOCH FROM (now() - created_at)) AS age_s
+                      EXTRACT(EPOCH FROM (now() - created_at)) AS age_s,
+                      EXTRACT(EPOCH FROM (now() - completed_at)) AS done_age_s
                FROM idempotency_keys WHERE scope=$1 AND key=$2""",
             scope, key,
         )
-        if existing is not None and existing["status"] == "completed":
+        expired = (
+            existing is not None and existing["status"] == "completed"
+            and max_age_s is not None and existing["done_age_s"] is not None
+            and existing["done_age_s"] >= max_age_s
+        )
+        if existing is not None and existing["status"] == "completed" and not expired:
             cached_result = existing["result"]
             if isinstance(cached_result, str):
                 with suppress(Exception):
@@ -170,12 +188,30 @@ async def idempotent(
                 f"({scope!r}, {key!r}) is already being processed by another "
                 f"call (started {existing['age_s']:.0f}s ago) — retry shortly."
             )
-        # Stale pending, or failed -> legitimate retry: reset and proceed.
-        await pool.execute(
-            "UPDATE idempotency_keys SET status='pending', error=NULL "
-            "WHERE scope=$1 AND key=$2",
-            scope, key,
+        # Stale pending, failed, or expired completed -> legitimate retry.
+        # The reclaim is conditional and atomic: when several callers see
+        # the same reclaimable row at once, exactly one UPDATE matches and
+        # wins; the others re-read and are told to wait (or get the
+        # winner's result). An unconditional UPDATE here would let every
+        # one of them run the guarded work.
+        claimed = await pool.fetchrow(
+            """UPDATE idempotency_keys
+               SET status='pending', error=NULL, result=NULL,
+                   completed_at=NULL, created_at=now()
+               WHERE scope=$1 AND key=$2
+                 AND (status='failed'
+                      OR (status='pending'
+                          AND created_at < now() - make_interval(secs => $3))
+                      OR ($4::float8 IS NOT NULL AND status='completed'
+                          AND completed_at < now() - make_interval(secs => $4::float8)))
+               RETURNING id""",
+            scope, key, float(_STALE_PENDING_S),
+            float(max_age_s) if max_age_s is not None else None,
         )
+        if claimed is None:
+            raise IdempotencyInProgress(
+                f"({scope!r}, {key!r}) was reclaimed by another concurrent call — retry shortly."
+            )
 
     guard = IdempotencyGuard(is_replay=False)
     try:

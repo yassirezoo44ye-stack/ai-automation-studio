@@ -240,12 +240,13 @@ class TestPipelineMetrics:
         m = get_metrics()
         gauge = m.gauge("saas_factory_active_pipelines", "")
         ctr   = m.counter("saas_factory_pipelines_total", "")
-        before_gauge = gauge.value
         before_ctr   = ctr.value
 
         pipeline._reserve_slot()
 
-        assert gauge.value == before_gauge + 1
+        # The gauge mirrors this pipeline's own slot count (it is set, not
+        # incremented), so another test leaving it at 1 must not matter.
+        assert gauge.value == pipeline._active == 1
         assert ctr.value   == before_ctr + 1
 
     def test_release_decrements_gauge(self):

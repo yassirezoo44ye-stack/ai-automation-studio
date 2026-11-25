@@ -35,6 +35,18 @@ os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-i
 
 # ── shared test fixtures ─────────────────────────────────────────────────────
 
+def _discard_coro(coro):
+    """Stand-in for asyncio.create_task in tests that patch it out.
+
+    The handlers schedule fire-and-forget coroutines (e.g. write_audit).
+    The coroutine object is created before create_task is called, so the
+    mocked call is still recorded; closing it here stops Python from
+    emitting "coroutine ... was never awaited" when it is garbage-collected.
+    """
+    coro.close()
+    return MagicMock()
+
+
 def _make_ws() -> MagicMock:
     """Minimal WebSocket mock (close is async)."""
     ws       = MagicMock()
@@ -265,7 +277,7 @@ class TestChangePasswordClearsSessions:
                  patch("app.routers.auth_users.hash_password",   return_value="hashed-new-pw"), \
                  patch("app.routers.auth_users.write_audit",     new=AsyncMock()), \
                  patch("app.routers.auth_users.asyncio") as mock_asyncio:
-                mock_asyncio.create_task = MagicMock()
+                mock_asyncio.create_task = MagicMock(side_effect=_discard_coro)
                 from app.routers.auth_users import change_password, ChangePasswordRequest
                 body    = ChangePasswordRequest(
                     current_password="old-pass",
@@ -380,7 +392,7 @@ class TestChangePasswordClearsSessions:
                  patch("app.routers.auth_users.hash_password",   return_value="new-hp"), \
                  patch("app.routers.auth_users.write_audit",     new=AsyncMock()), \
                  patch("app.routers.auth_users.asyncio") as mock_asyncio:
-                mock_asyncio.create_task = MagicMock()
+                mock_asyncio.create_task = MagicMock(side_effect=_discard_coro)
                 from app.routers.auth_users import change_password, ChangePasswordRequest
                 body    = ChangePasswordRequest(
                     current_password="old-pass",
@@ -458,7 +470,7 @@ class TestAccessTokenRevocation:
                  patch("app.routers.auth_users.hash_password",   return_value="new-hp"), \
                  patch("app.routers.auth_users.write_audit",     new=AsyncMock()), \
                  patch("app.routers.auth_users.asyncio") as mock_asyncio:
-                mock_asyncio.create_task = MagicMock()
+                mock_asyncio.create_task = MagicMock(side_effect=_discard_coro)
                 req = MagicMock()
                 req.headers = {}
                 req.client   = MagicMock()
@@ -493,7 +505,7 @@ class TestAccessTokenRevocation:
             with patch("app.routers.auth_users.get_pool", return_value=pool), \
                  patch("app.routers.auth_users.write_audit", new=AsyncMock()), \
                  patch("app.routers.auth_users.asyncio") as mock_asyncio:
-                mock_asyncio.create_task = MagicMock()
+                mock_asyncio.create_task = MagicMock(side_effect=_discard_coro)
                 req = MagicMock()
                 req.headers = {}
                 req.client   = MagicMock()
@@ -525,7 +537,7 @@ class TestAccessTokenRevocation:
             with patch("app.routers.auth_users.get_pool", return_value=pool), \
                  patch("app.routers.auth_users.write_audit", new=AsyncMock()), \
                  patch("app.routers.auth_users.asyncio") as mock_asyncio:
-                mock_asyncio.create_task = MagicMock()
+                mock_asyncio.create_task = MagicMock(side_effect=_discard_coro)
                 req = MagicMock()
                 req.headers = {}
                 req.client   = MagicMock()
@@ -577,7 +589,7 @@ class TestAuditLogCompleteness:
             with patch("app.routers.auth_users.get_pool",    return_value=pool), \
                  patch("app.routers.auth_users.write_audit",  audit_mock), \
                  patch("app.routers.auth_users.asyncio") as mock_asyncio:
-                mock_asyncio.create_task = MagicMock(side_effect=lambda coro: coro)
+                mock_asyncio.create_task = MagicMock(side_effect=_discard_coro)
                 current = {"id": str(self._USER_ID), "email": self._EMAIL}
                 from app.routers.auth_users import logout_all
                 await logout_all(current, self._make_req())
@@ -606,7 +618,7 @@ class TestAuditLogCompleteness:
                  patch("app.routers.auth_users.hash_password",   return_value="new-hp"), \
                  patch("app.routers.auth_users.write_audit",  audit_mock), \
                  patch("app.routers.auth_users.asyncio") as mock_asyncio:
-                mock_asyncio.create_task = MagicMock(side_effect=lambda coro: coro)
+                mock_asyncio.create_task = MagicMock(side_effect=_discard_coro)
                 from app.routers.auth_users import change_password, ChangePasswordRequest
                 body    = ChangePasswordRequest(current_password="old", new_password="NewPass123")
                 current = {"id": str(self._USER_ID), "email": self._EMAIL}

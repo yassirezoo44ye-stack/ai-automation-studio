@@ -1,0 +1,98 @@
+name: Database backup
+
+# Daily off-site backup of the production database (Render Postgres 18).
+#
+# Render keeps point-in-time recovery for only 3 days (7 on Pro) and nothing
+# outside Render, so this job takes a pg_dump every night, proves it restores
+# by loading it into a throwaway Postgres 18 + pgvector container, encrypts
+# the dump and its per-table fingerprint with `age`, and keeps the encrypted
+# file as a workflow artifact for 30 days.
+#
+# Needs two repository secrets (Settings -> Secrets and variables -> Actions):
+#   BACKUP_DATABASE_URL   Render's *External* Database URL (read access is enough)
+#   BACKUP_AGE_RECIPIENT  an age public key (age1...). Only the matching private
+#                         key can decrypt, and it never goes into GitHub.
+# Without them the job skips with a warning instead of failing.
+# Runbook: docs/BACKUP_RESTORE.md. Scheduled runs only happen on the default branch.
+
+on:
+  schedule:
+    - cron: "17 2 * * *"   # 02:17 UTC daily
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+      SCRATCH_URL: postgresql://restore:restore@localhost:5432/restore_check
+
+    services:
+      scratch:
+        # Same major version as production, with pgvector, so the restore test
+        # matches what a real restore would hit.
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: restore
+          POSTGRES_DB: restore_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U restore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check configuration
+        id: config
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ] || [ -z "$BACKUP_AGE_RECIPIENT" ]; then
+            echo "::warning::Database backup skipped: set the BACKUP_DATABASE_URL and BACKUP_AGE_RECIPIENT secrets (see docs/BACKUP_RESTORE.md)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.ready == 'true'
+
+      - name: Dump and test-restore (Postgres 18 client)
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          mkdir -p out
+          # The URLs go in as environment variables, never on the command line.
+          docker run --rm --network host --user "$(id -u):$(id -g)" \
+            -e SRC="$BACKUP_DATABASE_URL" -e SCRATCH="$SCRATCH_URL" \
+            -v "$PWD:/w" -w /w pgvector/pgvector:pg18 \
+            bash -c 'bash scripts/backup/db_backup.sh "$SRC" out "$SCRATCH"'
+        shell: bash
+
+      - name: Encrypt
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq age
+          ls out/flow-*.dump out/flow-*.fingerprint.txt
+          name="$(basename out/flow-*.dump .dump)"
+          tar -C out -cf - . | age -r "$BACKUP_AGE_RECIPIENT" -o "$name.tar.age"
+          rm -rf out
+          echo "ARCHIVE=$name.tar.age" >> "$GITHUB_ENV"
+          ls -l "$name.tar.age"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.config.outputs.ready == 'true'
+        with:
+          name: ${{ env.ARCHIVE }}
+          path: ${{ env.ARCHIVE }}
+          retention-days: 30
+          if-no-files-found: error

@@ -22,7 +22,7 @@ class CheckoutRequest(BaseModel):
 @router.post("/api/subscription/checkout")
 async def create_checkout(req: CheckoutRequest):
     if not stripe.api_key:
-        raise HTTPException(500, "Stripe not configured")
+        raise HTTPException(503, "Payments are not configured on this server")
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -98,7 +98,10 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
     try:
-        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+        # stripe-python 8+ returns StripeObjects that are no longer dicts, so
+        # the .get() calls below raised on every subscription event. Work on
+        # a plain (recursive) dict copy instead.
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET).to_dict()
     except stripe.SignatureVerificationError:
         raise HTTPException(400, "Invalid signature") from None
     except Exception:
@@ -130,69 +133,72 @@ async def stripe_webhook(request: Request):
 async def _dispatch_webhook_event(event: dict) -> None:
     event_type = event["type"]
 
-    async with get_pool().acquire() as conn:
-        if event_type == "checkout.session.completed":
-            s = event["data"]["object"]
-            email = s.get("customer_email") or ""
-            cust_id = s.get("customer", "")
-            sub_id = s.get("subscription", "")
-            if email:
-                await conn.execute('''
-                    INSERT INTO subscriptions (email, stripe_customer_id, stripe_subscription_id, status)
-                    VALUES ($1, $2, $3, 'active')
-                    ON CONFLICT (email) DO UPDATE
-                    SET stripe_customer_id=$2, stripe_subscription_id=$3, status='active', updated_at=NOW()
-                ''', email, cust_id, sub_id)
+    # No connection is held across this dispatch: each write uses the
+    # pool directly, and the _sync_* helpers acquire their own. Holding one
+    # here while they acquired another was a nested acquire that could
+    # exhaust the pool under a burst of webhooks (perf audit M1).
+    if event_type == "checkout.session.completed":
+        s = event["data"]["object"]
+        email = s.get("customer_email") or ""
+        cust_id = s.get("customer", "")
+        sub_id = s.get("subscription", "")
+        if email:
+            await get_pool().execute('''
+                INSERT INTO subscriptions (email, stripe_customer_id, stripe_subscription_id, status)
+                VALUES ($1, $2, $3, 'active')
+                ON CONFLICT (email) DO UPDATE
+                SET stripe_customer_id=$2, stripe_subscription_id=$3, status='active', updated_at=NOW()
+            ''', email, cust_id, sub_id)
 
-            # Org-scoped tiered plan (only present when checkout was started
-            # via POST /api/orgs/{org_id}/billing/checkout).
-            org_id = (s.get("metadata") or {}).get("organization_id")
-            plan_id = (s.get("metadata") or {}).get("plan_id")
-            if org_id and plan_id:
-                await _sync_org_subscription(
-                    organization_id=org_id, plan_id=plan_id, status="active",
-                    stripe_customer_id=cust_id, stripe_subscription_id=sub_id,
-                    current_period_end=None,
-                )
+        # Org-scoped tiered plan (only present when checkout was started
+        # via POST /api/orgs/{org_id}/billing/checkout).
+        org_id = (s.get("metadata") or {}).get("organization_id")
+        plan_id = (s.get("metadata") or {}).get("plan_id")
+        if org_id and plan_id:
+            await _sync_org_subscription(
+                organization_id=org_id, plan_id=plan_id, status="active",
+                stripe_customer_id=cust_id, stripe_subscription_id=sub_id,
+                current_period_end=None,
+            )
 
-        elif event_type in (
-            "customer.subscription.created", "customer.subscription.updated",
-            "customer.subscription.deleted",
-        ):
-            sub = event["data"]["object"]
-            sub_id = sub["id"]
-            # Legacy flat-rate table keeps its existing binary active/inactive
-            # contract unchanged (it predates trials and its own status read
-            # at /api/subscription/status does a strict "active" check) — only
-            # the org-tiered system (below) gets the real Stripe status, since
-            # that's the system trials actually apply to.
-            legacy_status = "active" if sub["status"] == "active" else "inactive"
-            period_end = datetime.utcfromtimestamp(sub.get("current_period_end", 0))
-            await conn.execute('''
-                UPDATE subscriptions SET status=$1, current_period_end=$2, updated_at=NOW()
-                WHERE stripe_subscription_id=$3
-            ''', legacy_status, period_end, sub_id)
+    elif event_type in (
+        "customer.subscription.created", "customer.subscription.updated",
+        "customer.subscription.deleted",
+    ):
+        sub = event["data"]["object"]
+        sub_id = sub["id"]
+        # Legacy flat-rate table keeps its existing binary active/inactive
+        # contract unchanged (it predates trials and its own status read
+        # at /api/subscription/status does a strict "active" check) — only
+        # the org-tiered system (below) gets the real Stripe status, since
+        # that's the system trials actually apply to.
+        legacy_status = "active" if sub["status"] == "active" else "inactive"
+        period_end = datetime.utcfromtimestamp(sub.get("current_period_end", 0))
+        await get_pool().execute('''
+            UPDATE subscriptions SET status=$1, current_period_end=$2, updated_at=NOW()
+            WHERE stripe_subscription_id=$3
+        ''', legacy_status, period_end, sub_id)
 
-            org_id = (sub.get("metadata") or {}).get("organization_id")
-            plan_id = (sub.get("metadata") or {}).get("plan_id")
-            if org_id and plan_id:
-                await _sync_org_subscription(
-                    organization_id=org_id, plan_id=plan_id, status=sub["status"],
-                    stripe_customer_id=sub.get("customer"), stripe_subscription_id=sub_id,
-                    current_period_end=period_end,
-                )
+        org_id = (sub.get("metadata") or {}).get("organization_id")
+        plan_id = (sub.get("metadata") or {}).get("plan_id")
+        if org_id and plan_id:
+            await _sync_org_subscription(
+                organization_id=org_id, plan_id=plan_id, status=sub["status"],
+                stripe_customer_id=sub.get("customer"), stripe_subscription_id=sub_id,
+                current_period_end=period_end,
+            )
 
-        elif event_type in (
-            "invoice.created", "invoice.finalized", "invoice.paid",
-            "invoice.payment_failed", "invoice.voided",
-        ):
-            await _sync_invoice(event["data"]["object"], event_type=event_type)
+    elif event_type in (
+        "invoice.created", "invoice.finalized", "invoice.paid",
+        "invoice.payment_failed", "invoice.voided",
+    ):
+        await _sync_invoice(event["data"]["object"], event_type=event_type)
 
-        elif event_type in ("payment_method.attached", "payment_method.detached", "payment_method.updated"):
-            await _sync_payment_methods_for_customer(event["data"]["object"].get("customer"))
+    elif event_type in ("payment_method.attached", "payment_method.detached", "payment_method.updated"):
+        await _sync_payment_methods_for_customer(event["data"]["object"].get("customer"))
 
-        elif event_type == "customer.updated":
-            await _sync_payment_methods_for_customer(event["data"]["object"].get("id"))
+    elif event_type == "customer.updated":
+        await _sync_payment_methods_for_customer(event["data"]["object"].get("id"))
 
 
 async def _sync_invoice(invoice_obj: dict, *, event_type: str) -> None:

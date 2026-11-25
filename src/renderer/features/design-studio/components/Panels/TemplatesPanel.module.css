@@ -47,8 +47,8 @@
 }
 
 .catBtn.active {
-  background:   var(--accent);
-  color:        #fff;
+  background:   var(--accent-fill);
+  color:        var(--on-accent);
   border-color: var(--accent);
 }
 

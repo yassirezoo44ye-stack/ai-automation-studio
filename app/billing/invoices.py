@@ -218,7 +218,7 @@ class InvoiceService:
         try:
             invoices = stripe.Invoice.list(customer=stripe_customer_id, limit=100)
             for inv in invoices.auto_paging_iter():
-                await self.upsert_from_stripe_invoice(inv, organization_id=org_id)
+                await self.upsert_from_stripe_invoice(inv.to_dict(), organization_id=org_id)
         except Exception:
             log.warning("stripe invoice backfill failed for org=%s", org_id, exc_info=True)
 

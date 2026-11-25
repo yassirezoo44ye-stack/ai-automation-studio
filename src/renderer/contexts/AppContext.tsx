@@ -75,7 +75,8 @@ function parseCurrentPath(): ParsedRoute {
     // Unknown workspace segment — fall through to flat-path resolution with no projectId.
   }
   // Strip /feed/:id suffix — feed page handles its own ID state
-  const base = path.startsWith("/feed/") ? "/feed" : path;
+  // /ar and /en are the landing page's language URLs; signed in, they are home.
+  const base = path.startsWith("/feed/") ? "/feed" : /^\/(ar|en)\/?$/.test(path) ? "/" : path;
   return { page: PATH_TO_PAGE[base] ?? "app-builder", projectId: null };
 }
 

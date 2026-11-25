@@ -1,0 +1,55 @@
+name: Flow journey repeated validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "Number of repeats per available test suite"
+        required: true
+        default: "50"
+        type: choice
+        options: ["50", "75", "100"]
+
+permissions:
+  contents: read
+
+jobs:
+  automation:
+    name: "Automation journey repeated checks"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Repeat automation UI regression tests
+        shell: bash
+        env:
+          ITERATIONS: ${{ inputs.iterations }}
+        run: |
+          set -uo pipefail
+          mkdir -p validation-results
+          failed=0
+          for i in $(seq 1 "$ITERATIONS"); do
+            echo "::group::Automation iteration $i/$ITERATIONS"
+            if npm test -- --run src/renderer/features/automation/AutomationPage.test.tsx > "validation-results/automation-$i.log" 2>&1; then
+              echo "$i,PASS" >> validation-results/summary.csv
+            else
+              echo "$i,FAIL" >> validation-results/summary.csv
+              failed=$((failed+1))
+              tail -n 80 "validation-results/automation-$i.log"
+            fi
+            echo "::endgroup::"
+          done
+          echo "Automation failures: $failed / $ITERATIONS"
+          test "$failed" -eq 0
+      - name: Upload per-iteration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: automation-repeat-evidence
+          path: validation-results/
+          retention-days: 14

@@ -41,6 +41,7 @@ export interface UseFabricCanvasReturn {
 export function useFabricCanvas(
   onObjectsChange: (json: object) => void,
   onSelectionChange: (ids: string[]) => void,
+  onViewportChange?: (viewport: { zoom: number; panX: number; panY: number }) => void,
 ): UseFabricCanvasReturn {
   const canvasRef      = useRef<HTMLCanvasElement | null>(null);
   const fabricRef      = useRef<FabricCanvas | null>(null);
@@ -58,6 +59,15 @@ export function useFabricCanvas(
   const onSelectionChangeRef = useRef(onSelectionChange);
   useEffect(() => { onObjectsChangeRef.current = onObjectsChange; }, [onObjectsChange]);
   useEffect(() => { onSelectionChangeRef.current = onSelectionChange; }, [onSelectionChange]);
+  const onViewportChangeRef  = useRef(onViewportChange);
+  useEffect(() => { onViewportChangeRef.current = onViewportChange; }, [onViewportChange]);
+  // The toolbar's zoom label, the guides and the minimap read the store's
+  // viewport, so every zoom/pan here must be reported back. Without this the
+  // label stayed at "100%" whatever the real zoom (found by the UI audit).
+  const reportViewport = useCallback((fc: FabricCanvas) => {
+    const v = fc.viewportTransform;
+    onViewportChangeRef.current?.({ zoom: fc.getZoom(), panX: v?.[4] ?? 0, panY: v?.[5] ?? 0 });
+  }, []);
 
   // ── Init / destroy ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -255,21 +265,24 @@ export function useFabricCanvas(
     if (!fc) return;
     const z = clamp(fc.getZoom() * 1.2, ZOOM_MIN, ZOOM_MAX);
     fc.setZoom(z);
-  }, []);
+    reportViewport(fc);
+  }, [reportViewport]);
 
   const zoomOut = useCallback(() => {
     const fc = fabricRef.current;
     if (!fc) return;
     const z = clamp(fc.getZoom() / 1.2, ZOOM_MIN, ZOOM_MAX);
     fc.setZoom(z);
-  }, []);
+    reportViewport(fc);
+  }, [reportViewport]);
 
   const zoomReset = useCallback(() => {
     const fc = fabricRef.current;
     if (!fc) return;
     fc.setZoom(1);
     fc.setViewportTransform([1, 0, 0, 1, 0, 0]);
-  }, []);
+    reportViewport(fc);
+  }, [reportViewport]);
 
   const zoomToFitCanvas = useCallback(() => {
     const fc = fabricRef.current;
@@ -282,7 +295,8 @@ export function useFabricCanvas(
     const panX = (vw - (fc.width  ?? 1280) * z) / 2;
     const panY = (vh - (fc.height ?? 720)  * z) / 2;
     fc.setViewportTransform([z, 0, 0, z, panX, panY]);
-  }, []);
+    reportViewport(fc);
+  }, [reportViewport]);
 
   // ── Page load/save ──────────────────────────────────────────────────────────
   const loadPage = useCallback(async (page: CanvasPage) => {

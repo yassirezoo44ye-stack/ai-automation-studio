@@ -24,6 +24,7 @@ import datetime
 import hashlib
 import hmac
 import json
+from asyncio import to_thread as _to_thread
 import logging
 import secrets
 import uuid
@@ -33,7 +34,7 @@ import asyncpg
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import Field, BaseModel, EmailStr, field_validator
 
 from app.core.db import get_pool, write_audit
 from app.core.email import send_password_reset_email, send_verification_email
@@ -90,6 +91,20 @@ def _record_failed_login_event(email: str, ip: str, reason: str) -> None:
 # Pre-computed once at startup; used as a timing sentinel so the response time
 # for a non-existent account is indistinguishable from a wrong-password attempt.
 _TIMING_DUMMY_HASH: str = hash_password("__timing_sentinel_do_not_use__")
+
+
+# bcrypt is deliberately slow (~0.3 s of CPU per call on a small instance).
+# Called directly from an async handler it blocks the event loop, so every
+# other request on the server waits behind each login (performance audit
+# M1: 5 simultaneous logins delayed /health by 1.4 s). pyca/bcrypt releases
+# the GIL while hashing, so a worker thread keeps the loop free. The module
+# globals are looked up at call time, so tests can still patch them here.
+async def _hash_pw(plain: str) -> str:
+    return await _to_thread(hash_password, plain)
+
+
+async def _verify_pw(plain: str, hashed: str) -> bool:
+    return await _to_thread(verify_password, plain, hashed)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -204,10 +219,23 @@ def _user_response(user) -> dict:
 # ── Models ────────────────────────────────────────────────────────────────────
 
 
+def _normalize_email(v: str) -> str:
+    """One account per mailbox, whatever the casing typed.
+
+    EmailStr lowercases only the domain, so "Ann@example.com" and
+    "ann@example.com" used to become two accounts, and the mixed-case one
+    could neither sign in as "ann@…" nor accept an invitation (invitations
+    are stored and matched in lowercase). Every auth request model runs
+    the address through this before it reaches SQL."""
+    return v.strip().lower()
+
+
 class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
     password: str
+
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
 
     @field_validator("password")
     @classmethod
@@ -223,6 +251,10 @@ class RegisterRequest(BaseModel):
     def non_empty_name(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Name cannot be empty")
+        # users.name is TEXT, so a 10,000-character name was stored and then
+        # shown in headers, member lists and e-mails (found by journey 11).
+        if len(v.strip()) > 120:
+            raise ValueError("Name must be at most 120 characters")
         return v.strip()
 
 
@@ -231,6 +263,8 @@ class LoginRequest(BaseModel):
     password: str
     remember: bool = False
 
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
+
 
 class RefreshRequest(BaseModel):
     refresh_token: str
@@ -238,6 +272,8 @@ class RefreshRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
 
 
 class ResetPasswordRequest(BaseModel):
@@ -255,7 +291,7 @@ class ResetPasswordRequest(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    name: str | None = None
+    name: str | None = Field(None, max_length=120)
     avatar_url: str | None = None
 
     @field_validator("name")
@@ -299,6 +335,8 @@ class ChangePasswordRequest(BaseModel):
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
 
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
+
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -309,7 +347,7 @@ async def register(body: RegisterRequest, request: Request, _rl: None = _auth_rl
     with tracer.start_span("auth.register", service="auth") as span:
         user_id = uuid.uuid4()
         span.set_tag("user_id", str(user_id))
-        pw_hash = hash_password(body.password)
+        pw_hash = await _hash_pw(body.password)
         ev_token = secrets.token_urlsafe(32)
         expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
 
@@ -344,7 +382,7 @@ async def _finish_login(conn, user, *, remember: bool, ip: str, ua: str) -> dict
     so they return byte-identical response shapes."""
     refresh_token = await _create_session(conn, str(user["id"]), remember, ip, ua)
     access_token = make_access_token(str(user["id"]), user["email"])
-    await write_audit(user["email"], "login", ip_address=ip)
+    await write_audit(user["email"], "login", ip_address=ip, conn=conn)
 
     from app.core.auth import make_token as _make_sub_token
     sub_token = _make_sub_token(user["email"], trial=True, days_remaining=30)
@@ -368,29 +406,33 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
             span.set_tag("error", "account_locked")
             _record_failed_login_event(body.email, ip, "account_locked")
             raise HTTPException(429, "Too many failed login attempts — try again in 15 minutes")
+        # The bcrypt check runs with NO pooled connection held and off the
+        # event loop: holding a connection for ~0.3 s of hashing per login
+        # starved the pool, and hashing on the loop stalled every request.
         async with get_pool().acquire() as conn:
             user = await _get_user_by_email(conn, body.email)
-            if not user or not user["password_hash"]:
-                # Always run a dummy hash so response time is indistinguishable
-                # from a wrong-password attempt — prevents account enumeration
-                # via timing side-channel (bcrypt takes ~100 ms; skipping it
-                # reveals whether the account exists).
-                verify_password(body.password, _TIMING_DUMMY_HASH)
-                await record_login_failure_async(body.email)
-                _record_failed_login_event(body.email, ip, "invalid_credentials")
-                span.set_tag("error", "invalid_credentials")
-                raise HTTPException(401, "Invalid email or password")
-            if not verify_password(body.password, user["password_hash"]):
-                await record_login_failure_async(body.email)
-                _record_failed_login_event(body.email, ip, "invalid_credentials")
-                span.set_tag("error", "invalid_credentials")
-                raise HTTPException(401, "Invalid email or password")
-            if not user["email_verified"]:
-                span.set_tag("error", "email_not_verified")
-                raise HTTPException(403, "Please verify your email before signing in.")
-            await clear_login_failures_async(body.email)
-            span.set_tag("user_id", str(user["id"]))
+        if not user or not user["password_hash"]:
+            # Always run a dummy hash so response time is indistinguishable
+            # from a wrong-password attempt — prevents account enumeration
+            # via timing side-channel (bcrypt takes ~100 ms; skipping it
+            # reveals whether the account exists).
+            await _verify_pw(body.password, _TIMING_DUMMY_HASH)
+            await record_login_failure_async(body.email)
+            _record_failed_login_event(body.email, ip, "invalid_credentials")
+            span.set_tag("error", "invalid_credentials")
+            raise HTTPException(401, "Invalid email or password")
+        if not await _verify_pw(body.password, user["password_hash"]):
+            await record_login_failure_async(body.email)
+            _record_failed_login_event(body.email, ip, "invalid_credentials")
+            span.set_tag("error", "invalid_credentials")
+            raise HTTPException(401, "Invalid email or password")
+        if not user["email_verified"]:
+            span.set_tag("error", "email_not_verified")
+            raise HTTPException(403, "email_not_verified")
+        await clear_login_failures_async(body.email)
+        span.set_tag("user_id", str(user["id"]))
 
+        async with get_pool().acquire() as conn:
             mfa = await conn.fetchrow(
                 "SELECT enabled FROM mfa_secrets WHERE user_id=$1", user["id"]
             )
@@ -649,7 +691,7 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
 
         user_email = row["email"]
         user_id_str = str(row["user_id"])
-        pw_hash = hash_password(body.password)
+        pw_hash = await _hash_pw(body.password)
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2", pw_hash, row["user_id"]
         )
@@ -781,11 +823,11 @@ async def change_password(
         user = await _get_user_by_id(conn, current["id"])
         if not user or not user["password_hash"]:
             raise HTTPException(400, "Cannot change password")
-        if not verify_password(body.current_password, user["password_hash"]):
+        if not await _verify_pw(body.current_password, user["password_hash"]):
             raise HTTPException(400, "Current password is incorrect")
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2",
-            hash_password(body.new_password),
+            await _hash_pw(body.new_password),
             uuid.UUID(current["id"]),
         )
         await conn.execute(
@@ -897,7 +939,7 @@ async def mfa_disable(
         if not user:
             raise HTTPException(404, "User not found")
         if user["password_hash"] and (
-            not body.password or not verify_password(body.password, user["password_hash"])
+            not body.password or not await _verify_pw(body.password, user["password_hash"])
         ):
             raise HTTPException(400, "Incorrect password")
         await _verify_current_totp(conn, current["id"], body.code)
@@ -996,7 +1038,7 @@ async def delete_account(
         if not user:
             raise HTTPException(400, "Invalid credentials")
         if user["password_hash"]:
-            if not body.password or not verify_password(body.password, user["password_hash"]):
+            if not body.password or not await _verify_pw(body.password, user["password_hash"]):
                 raise HTTPException(400, "Invalid credentials")
         try:
             plan = await plan_account_deletion(conn, current["id"], user["email"])
@@ -1078,7 +1120,19 @@ async def oauth_public_config(response: Response) -> dict:
     if (url.scheme != "https" and not (local and url.scheme == "http")) or not url.netloc or url.username or url.password or url.path or url.query or url.fragment:
         raise HTTPException(503, "OAuth origin is not configured correctly")
     response.headers["Cache-Control"] = "no-store"
-    return {"origin": base}
+    return {"origin": base, "providers": _configured_oauth_providers()}
+
+
+def _configured_oauth_providers() -> list[str]:
+    """Providers whose start route will not answer 503. The sign-in page
+    hides the others: a button for an unconfigured provider used to send
+    the browser to a bare JSON error page (found on production, M8)."""
+    pairs = (
+        ("google", _GOOGLE_CLIENT_ID, _GOOGLE_CLIENT_SECRET),
+        ("github", _GITHUB_CLIENT_ID, _GITHUB_CLIENT_SECRET),
+        ("microsoft", _MICROSOFT_CLIENT_ID, _MICROSOFT_CLIENT_SECRET),
+    )
+    return [name for name, cid, secret in pairs if cid and secret]
 
 
 def _oauth_not_configured(provider: str):
@@ -1229,7 +1283,7 @@ async def _upsert_oauth_user(
     # Emails are compared case-insensitively: users.email is case-sensitive
     # TEXT, so a provider returning "Admin@Corp.com" used to create a second
     # account beside "admin@corp.com" — and ADMIN_EMAILS checks lowercase.
-    email = email.strip().lower()
+    email = _normalize_email(email)
     existing = await conn.fetchrow(
         "SELECT * FROM users WHERE lower(email)=$1 ORDER BY created_at LIMIT 1", email,
     )

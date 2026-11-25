@@ -217,6 +217,7 @@ class DeviceControlService:
                            expires_at, used_at
                     FROM device_enrollment_tokens
                     WHERE token_hash = $1
+                    FOR UPDATE
                     """,
                     hashed,
                 )
@@ -230,13 +231,6 @@ class DeviceControlService:
 
                 org_id = str(row["organization_id"])
                 workspace_id = str(row["workspace_id"]) if row["workspace_id"] else None
-                # Mark token used atomically
-                await conn.execute(
-                    "UPDATE device_enrollment_tokens SET used_at=NOW(), device_id=$1 WHERE id=$2",
-                    uuid.UUID(device_id),
-                    row["id"],
-                )
-
                 # Create device
                 await conn.execute(
                     """
@@ -259,6 +253,18 @@ class DeviceControlService:
                     screen_height,
                     cred_hash,
                     device_fingerprint,
+                )
+
+                # Mark the token used only after the device row exists:
+                # device_enrollment_tokens.device_id references devices(id),
+                # so updating it first violated the foreign key and every
+                # enrollment failed. The row lock taken by SELECT ... FOR
+                # UPDATE above makes the used_at check single-use under
+                # concurrent requests.
+                await conn.execute(
+                    "UPDATE device_enrollment_tokens SET used_at=NOW(), device_id=$1 WHERE id=$2",
+                    uuid.UUID(device_id),
+                    row["id"],
                 )
 
         # Publish event (best-effort)

@@ -58,18 +58,29 @@ class FakeIdempotencyPool:
             row = self.rows.get((scope, key))
             if row is None:
                 return None
-            return {"status": row["status"], "result": row["result"], "age_s": row["age_s"]}
+            return {"status": row["status"], "result": row["result"], "age_s": row["age_s"],
+                    "done_age_s": row["age_s"] if row["status"] == "completed" else None}
+        if q.startswith("UPDATE idempotency_keys SET status='pending'"):
+            # Conditional reclaim: mirrors the WHERE clause in idempotent().
+            scope, key, stale_s, max_age_s = args
+            row = self.rows.get((scope, key))
+            if row is None:
+                return None
+            ok = (row["status"] == "failed"
+                  or (row["status"] == "pending" and row["age_s"] > stale_s)
+                  or (max_age_s is not None and row["status"] == "completed"
+                      and row["age_s"] > max_age_s))
+            if not ok:
+                return None
+            row.update(status="pending", error=None, result=None, age_s=0)
+            return {"id": "fake-id"}
         raise AssertionError(f"unexpected fetchrow query: {query!r}")
 
     async def execute(self, query, *args):
         q = _norm(query)
         if not q.startswith("UPDATE idempotency_keys"):
             raise AssertionError(f"unexpected execute query: {query!r}")
-        if "status='pending'" in q:
-            scope, key = args
-            self.rows[(scope, key)]["status"] = "pending"
-            self.rows[(scope, key)]["error"] = None
-        elif "status='failed'" in q:
+        if "status='failed'" in q:
             scope, key, error = args
             self.rows[(scope, key)]["status"] = "failed"
             self.rows[(scope, key)]["error"] = error
@@ -203,6 +214,52 @@ class TestIdempotentContextManager(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ran, [1])
         self.assertEqual(pool.rows[("test_scope_6", "key-crashed")]["status"], "completed")
+
+    async def test_reclaim_lost_to_a_concurrent_caller_raises_in_progress(self):
+        """Two callers that both saw the same failed row must not both run
+        the work: the reclaim UPDATE is conditional, so the loser (whose
+        UPDATE matches nothing because the winner already re-claimed the
+        row) is told to wait instead of running a second time."""
+        pool = FakeIdempotencyPool()
+        with self.assertRaises(RuntimeError):
+            async with idempotent("test_scope_7", "k", pool=pool):
+                raise RuntimeError("boom")
+
+        winner = idempotent("test_scope_7", "k", pool=pool)
+        await winner.__aenter__()          # reclaims the failed row
+        with self.assertRaises(IdempotencyInProgress):
+            async with idempotent("test_scope_7", "k", pool=pool):
+                pass
+        await winner.__aexit__(None, None, None)
+
+    async def test_completed_row_older_than_max_age_is_rerun(self):
+        pool = FakeIdempotencyPool()
+        async with idempotent("test_scope_8", "k", pool=pool, max_age_s=60) as g:
+            g.result = {"n": 1}
+        async with idempotent("test_scope_8", "k", pool=pool, max_age_s=60) as g:
+            self.assertTrue(g.is_replay)   # inside the window: duplicate
+
+        pool.rows[("test_scope_8", "k")]["age_s"] = 61
+        from app.core.cache import get_redis
+        await (await get_redis()).delete("idempotency:test_scope_8:k")
+        ran = []
+        async with idempotent("test_scope_8", "k", pool=pool, max_age_s=60) as g:
+            self.assertFalse(g.is_replay)  # window passed: a new request
+            ran.append(1)
+            g.result = {"n": 2}
+        self.assertEqual(ran, [1])
+        self.assertEqual(pool.rows[("test_scope_8", "k")]["result"], {"n": 2})
+
+    async def test_completed_row_without_max_age_replays_forever(self):
+        pool = FakeIdempotencyPool()
+        async with idempotent("test_scope_9", "k", pool=pool) as g:
+            g.result = {"n": 1}
+        pool.rows[("test_scope_9", "k")]["age_s"] = 10**9
+        from app.core.cache import get_redis
+        await (await get_redis()).delete("idempotency:test_scope_9:k")
+        async with idempotent("test_scope_9", "k", pool=pool) as g:
+            self.assertTrue(g.is_replay)
+            self.assertEqual(g.cached_result, {"n": 1})
 
 
 if __name__ == "__main__":

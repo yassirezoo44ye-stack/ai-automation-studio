@@ -9,7 +9,6 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-import asyncpg
 import stripe
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -21,10 +20,11 @@ from starlette.middleware.gzip import GZipMiddleware
 from app.core.auth import extract_auth_credentials, verify_token
 from app.core.api_keys import extract_raw_api_key, has_api_key_header, validate_api_key
 from app.integrations.social.oauth_handoff import is_public_social_oauth_request
+from app.routers.devices import is_public_device_enroll_request
 from app.core.config import (
     APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
 )
-from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
+from app.core.db import init_db, set_pool, get_pool, create_bounded_pool, PoolExhausted, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware, UploadBodySizeLimitMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
@@ -100,7 +100,9 @@ async def lifespan(app: FastAPI):
     # command_timeout bounds every query — a runaway query fails loudly
     # instead of holding a connection forever. asyncpg also caches prepared
     # statements per connection automatically; no extra layer needed.
-    pool = await asyncpg.create_pool(
+    # BoundedPool: every acquire() waits at most DB_ACQUIRE_TIMEOUT_S, so a
+    # saturated pool sheds requests with 503 instead of hanging them forever.
+    pool = await create_bounded_pool(
         DATABASE_URL,
         min_size=int(os.getenv("DB_POOL_MIN", "2")),
         max_size=int(os.getenv("DB_POOL_MAX", "10")),
@@ -115,7 +117,9 @@ async def lifespan(app: FastAPI):
     from app.core.project_plans import init_schema as init_project_plans_schema
     async with pool.acquire() as conn:
         await init_project_plans_schema(conn)
-    WORKSPACES.mkdir(exist_ok=True)
+    WORKSPACES.mkdir(parents=True, exist_ok=True)
+    from app.core.filesystem import workspaces_persistence_warning
+    workspaces_persistence_warning()
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
     await runtime_registry.discover()
@@ -123,9 +127,6 @@ async def lifespan(app: FastAPI):
     # Initialize AI Platform with DB pool
     from app.core.ai.platform import platform as ai_platform
     ai_platform.init(pool)
-    maintenance_task = asyncio.create_task(maintenance_loop())
-    cleanup_task     = asyncio.create_task(process_cleanup_loop())
-
     # ── Enterprise multi-tenancy + usage + org-billing schemas ─────────────
     from app.tenancy import init_tenancy_schema
     from app.billing import (
@@ -147,6 +148,14 @@ async def lifespan(app: FastAPI):
         await init_coupons_schema(conn)
         await init_credits_schema(conn)
     await get_plan_service(pool).refresh_cache()
+
+    # Start background maintenance only now: its first cycle runs
+    # immediately and queries organizations / organization_members /
+    # org_subscriptions / usage tables, which the schema block above
+    # creates. Starting it earlier raced schema init on a fresh database
+    # and the reconciliation steps failed silently (BE-03).
+    maintenance_task = asyncio.create_task(maintenance_loop())
+    cleanup_task     = asyncio.create_task(process_cleanup_loop())
 
     # Cross-instance cache coherence: when any instance edits the plan
     # catalog (PlanService.update_plan publishes "plans:catalog"), every
@@ -577,7 +586,9 @@ def create_app() -> FastAPI:
     # one tracer, not a second parallel one. Gated by ObservabilityConfig
     # (default on) so it can be disabled without a code change.
     from app.core.observability.config import get_observability_config
-    if get_observability_config().tracing_enabled:
+    # Per-request HTTP spans are on by default only when an OTLP exporter is
+    # configured (see ObservabilityConfig.http_tracing_enabled).
+    if get_observability_config().http_tracing_enabled:
         from app.core.observability.tracer import get_tracer
         get_tracer()  # registers the global TracerProvider first
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -622,6 +633,17 @@ def create_app() -> FastAPI:
             headers={"Retry-After": str(exc.retry_after_s)},
         )
 
+    @app.exception_handler(PoolExhausted)
+    async def pool_exhausted_handler(request: Request, exc: PoolExhausted):
+        # Every pooled DB connection stayed busy for DB_ACQUIRE_TIMEOUT_S:
+        # load shed, like a full bulkhead, not a bug in this request.
+        record_error("db")
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Server is busy — retry shortly.", "error": "db_pool_exhausted"},
+            headers={"Retry-After": "2"},
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception):
         import asyncpg as _asyncpg
@@ -629,6 +651,26 @@ def create_app() -> FastAPI:
         record_error(category)
         print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+    # A malformed id in the URL ("/api/leads/abc") reached uuid.UUID() or a
+    # $1::uuid parameter and surfaced as a 500 on 31 GET routes (journey 11,
+    # M9). The record cannot exist, so the answer is 404, the same as for a
+    # well-formed id that is not there. Only these two exact failures are
+    # mapped; any other ValueError / DataError is still a 500.
+    import asyncpg as _asyncpg_mod
+
+    def _is_malformed_id(exc: Exception) -> bool:
+        msg = str(exc)
+        if isinstance(exc, _asyncpg_mod.exceptions.DataError):
+            return "invalid UUID" in msg or "invalid input syntax for type uuid" in msg
+        return type(exc) is ValueError and msg == "badly formed hexadecimal UUID string"
+
+    @app.exception_handler(ValueError)
+    @app.exception_handler(_asyncpg_mod.exceptions.DataError)
+    async def malformed_id_handler(request: Request, exc: Exception):
+        if _is_malformed_id(exc):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        return await unhandled_error_handler(request, exc)
 
     # ── Tenant context (single source of truth for X-Organization-Id) ──────
     # Extracts the header once into request.state.org_id. This never grants
@@ -693,6 +735,7 @@ def create_app() -> FastAPI:
         if (path.startswith("/api/")
                 and not any(path.startswith(p) for p in PUBLIC_PREFIXES)
                 and not is_public_social_oauth_request(request.method, path)
+                and not is_public_device_enroll_request(request.method, path)
                 and not study_library_router.is_public_study_request(request.method, path)
                 and not study_library_router.is_study_publish_request(request)):
             sub_token, bearer = extract_auth_credentials(request)
