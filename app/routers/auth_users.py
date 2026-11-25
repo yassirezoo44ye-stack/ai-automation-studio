@@ -79,6 +79,20 @@ _reauth_rl = Depends(make_rate_limit_dep(
     error_detail="Too many attempts — please wait a minute.",
 ))
 
+# /refresh gets its own, wider bucket. It used to share the 10/min "auth"
+# bucket above with login/register/reset, but the SPA calls it on every page
+# load and every new tab, so ~10 reloads in a minute locked a signed-in user
+# out behind a full-screen 429 (and also ate the login budget). Brute-forcing
+# a random 256-bit rotating refresh token is not a realistic threat, so a
+# higher per-IP ceiling keeps abuse protection without breaking normal use.
+REFRESH_RATE_LIMIT_MAX_CALLS = 60
+_refresh_rl = Depends(make_rate_limit_dep(
+    "auth_refresh",
+    max_calls=REFRESH_RATE_LIMIT_MAX_CALLS,
+    window=60,
+    error_detail="Too many session refreshes — please wait a moment.",
+))
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -403,7 +417,7 @@ async def login_mfa(body: LoginMfaRequest, request: Request, _rl: None = _auth_r
 
 
 @router.post("/refresh")
-async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
+async def refresh_token(body: RefreshRequest, _rl: None = _refresh_rl):
     # AUDIT FIX: two concurrent /refresh calls with the same refresh_token
     # (two tabs, a network-retry racing the original, ...) used to both
     # read the same row (no lock, no transaction) and both write their own
