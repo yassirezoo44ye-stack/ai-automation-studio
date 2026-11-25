@@ -164,6 +164,14 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
       : null,
   );
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  // Set when sign-in is refused because the email isn't verified yet.
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  // Verification token from /verify-email?token= (read once, then cleared from the URL).
+  const [verifyToken] = useState<string | null>(() =>
+    window.location.pathname === "/verify-email"
+      ? new URLSearchParams(window.location.search).get("token")
+      : null,
+  );
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthStarting, setOauthStarting] = useState(false);
   const oauthPending = useRef(false);
@@ -179,10 +187,31 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   // Clean the sensitive token from the URL bar once on mount.
   // No state changes here — tab and resetToken were already set above.
   useEffect(() => {
-    if (window.location.pathname === "/reset-password") {
+    if (window.location.pathname === "/reset-password" || window.location.pathname === "/verify-email") {
       history.replaceState(null, "", "/");
     }
   }, []);
+
+  // ── Verify email (token from /verify-email?token=) ─────────────────────────
+  // Plain fetch, not useAsyncSubmit: the token is single-use, so the request
+  // must run exactly once and must not be aborted by StrictMode's remount.
+  const [verifyState, setVerifyState] = useState<"idle" | "pending" | "done" | "failed">(
+    () => (verifyToken ? "pending" : "idle"),
+  );
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const verifyStarted = useRef(false);
+  useEffect(() => {
+    if (!verifyToken || verifyStarted.current) return;
+    verifyStarted.current = true;
+    fetch(`${API}/api/auth/verify-email/${encodeURIComponent(verifyToken)}`)
+      .then(async res => {
+        if (res.ok) { setVerifyState("done"); return; }
+        const body = await res.json().catch(() => null) as { detail?: string } | null;
+        setVerifyError(body?.detail ?? t("verify.failed"));
+        setVerifyState("failed");
+      })
+      .catch(() => { setVerifyError(t("verify.failed")); setVerifyState("failed"); });
+  }, [verifyToken, t]);
 
   async function handleOAuth(provider: "google" | "github" | "microsoft") {
     if (oauthPending.current) return;
@@ -201,9 +230,11 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
       password: required(t("validation.passwordRequired")),
     },
     onValid: values => loginSubmit.run(async () => {
+      setUnverifiedEmail(null);
       try {
         await login(values.email, values.password, values.remember);
       } catch (err) {
+        if ((err as { status?: number }).status === 403) setUnverifiedEmail(values.email);
         if (err instanceof MfaRequiredError) {
           // Setting localMfaChallenge is enough — effectiveTab derives "mfa" from it.
           setLocalMfaChallenge({ token: err.challengeToken, remember: err.remember });
@@ -270,11 +301,12 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   // ── Resend verification (button action, no fields) ────────────────────────
   const resendSubmit = useAsyncSubmit<{ message: string }>();
   function handleResend() {
-    if (!registeredEmail) return;
+    const email = registeredEmail ?? unverifiedEmail;
+    if (!email) return;
     resendSubmit.run(async signal => {
       const res = await fetch(`${API}/api/auth/resend-verification`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: registeredEmail }),
+        body: JSON.stringify({ email }),
         signal,
       });
       return parseJSON<{ message: string }>(res, "/api/auth/resend-verification");
@@ -297,6 +329,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     setTab(next);
     loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset(); resetSubmit.reset(); mfaSubmit.reset();
     if (next !== "register") setRegisteredEmail(null);
+    setUnverifiedEmail(null);
     if (next !== "mfa") { setLocalMfaChallenge(null); clearMfaChallenge(); }
   }
 
@@ -428,8 +461,20 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
             {/* ── Login ── */}
             {effectiveTab === "login" && (
               <>
+                {verifyState === "pending" && <p style={{ color: "var(--t3)", fontSize: 13, textAlign: "center" }}>{t("verify.verifying")}</p>}
+                {verifyState === "done" && <SuccessBanner message={t("verify.verified")} />}
+                {verifyState === "failed" && verifyError && <ErrorBanner message={verifyError} />}
                 <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} />
-                {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
+                {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid && !unverifiedEmail ? loginSubmit.retry : undefined} />}
+                {unverifiedEmail && (
+                  <div style={{ marginBottom: 14, textAlign: "center" }}>
+                    {resendSubmit.error && <ErrorBanner message={resendSubmit.error} suggestedFix={resendSubmit.suggestedFix} onRetry={resendSubmit.retry} />}
+                    {resendSubmit.success && <SuccessBanner message={t("verify.emailSent")} />}
+                    <button type="button" style={S.btnText} disabled={resendSubmit.isSubmitting} onClick={handleResend}>
+                      {resendSubmit.isSubmitting ? t("verify.sending") : t("verify.resend")}
+                    </button>
+                  </div>
+                )}
                 <form onSubmit={loginForm.handleSubmit} noValidate>
                   <EmailField {...loginForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
                   <PasswordField {...loginForm.register("password")} label={t("login.password")} required autoComplete="current-password" />
