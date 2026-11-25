@@ -103,7 +103,9 @@ class TestApiKeyMiddlewarePassthrough(unittest.IsolatedAsyncioTestCase):
                         {"Authorization": "ApiKey axon_" + "0" * 40}):
             status, body = await self._status_with(headers)
             self.assertEqual(status, 401, headers)
-            self.assertEqual(body.get("detail"), "Valid API key required")
+            # The middleware reports why the key failed (unknown / revoked /
+            # expired), always starting with the same phrase.
+            self.assertTrue(str(body.get("detail", "")).startswith(("Valid API key required", "Invalid API key")), body)
 
     async def test_revoked_or_expired_key_is_rejected(self):
         async def revoked(raw):

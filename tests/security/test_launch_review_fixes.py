@@ -193,6 +193,8 @@ def test_orchestrator_500_does_not_echo_exception_text():
 
 @pytest.mark.parametrize("path", ["public/dashboard.html", "dashboard.html"])
 def test_dashboard_activity_feed_does_not_use_innerhtml_for_user_text(path):
+    if not (ROOT / path).exists():
+        pytest.skip(f"{path} was removed (the SPA replaced the static dashboard)")
     src = (ROOT / path).read_text()
     assert "prompt_preview" in src
     assert "el.innerHTML" not in src

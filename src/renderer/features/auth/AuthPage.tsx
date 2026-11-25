@@ -178,6 +178,7 @@ function ConsentNote() {
 const SERVER_AUTH_ERRORS: Record<string, string> = {
   "Invalid email or password": "serverErrors.invalidCredentials",
   "email_not_verified": "serverErrors.emailNotVerified",
+  "Please verify your email before signing in.": "serverErrors.emailNotVerified",
   "Email already registered": "serverErrors.emailTaken",
 };
 

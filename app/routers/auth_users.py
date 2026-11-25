@@ -428,7 +428,7 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
             raise HTTPException(401, "Invalid email or password")
         if not user["email_verified"]:
             span.set_tag("error", "email_not_verified")
-            raise HTTPException(403, "email_not_verified")
+            raise HTTPException(403, "Please verify your email before signing in.")
         await clear_login_failures_async(body.email)
         span.set_tag("user_id", str(user["id"]))
 
@@ -707,7 +707,7 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
     if user_id_str:
         await revoke_user_tokens(user_id_str)
     if user_email:
-        asyncio.create_task(write_audit(user_email, "password.reset"))
+        await write_audit(user_email, "password.reset")
     return {"message": "Password reset successfully. Please log in with your new password."}
 
 

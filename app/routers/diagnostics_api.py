@@ -128,7 +128,7 @@ class AlertRuleCreate(BaseModel):
         return v
 
 
-@router.get("/alerts/rules")
+@router.get("/alerts/rules", dependencies=[Depends(require_platform_admin)])
 async def list_alert_rules():
     from app.core.db import get_pool
     async with get_pool().acquire() as conn:
@@ -164,7 +164,7 @@ async def toggle_alert_rule(rule_id: str, enabled: bool):
     return dict(row)
 
 
-@router.get("/alerts/history")
+@router.get("/alerts/history", dependencies=[Depends(require_platform_admin)])
 async def alert_history(limit: int = 100, open_only: bool = False):
     from app.core.db import get_pool
     query = "SELECT h.*, r.name AS rule_name FROM alert_history h JOIN alert_rules r ON r.id = h.rule_id"
@@ -216,7 +216,7 @@ async def diagnostics_memory_search(req: MemorySearchRequest, request: Request):
 
 # ── Code generation ───────────────────────────────────────────────────────────
 
-@router.get("/codegen")
+@router.get("/codegen", dependencies=[Depends(require_platform_admin)])
 async def diagnostics_codegen():
     from app.codegen.pipeline import get_codegen_pipeline
     pending = get_codegen_pipeline().list_pending()

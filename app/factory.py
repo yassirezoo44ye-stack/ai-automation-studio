@@ -697,15 +697,15 @@ def create_app() -> FastAPI:
         t0       = _time.perf_counter()
         response = await call_next(request)
         duration = _time.perf_counter() - t0
-        # Collapse dynamic path segments so cardinality stays low
         path = request.url.path
-        for seg in path.split("/"):
-            if seg and (len(seg) > 20 or (seg.count("-") > 2)):
-                path = path.replace(seg, "{id}")
-                break
+        # Label by the matched route template, not the raw path: anonymous
+        # requests to arbitrary unique paths used to add a permanent metrics
+        # key each, growing memory without bound.
+        route = request.scope.get("route")
+        label = getattr(route, "path", None) or "unmatched"
         try:
             from app.routers.metrics import record_http
-            record_http(request.method, path, response.status_code, duration)
+            record_http(request.method, label, response.status_code, duration)
         except Exception:
             pass
         # Best-effort org-scoped API request metering — fire-and-forget so a

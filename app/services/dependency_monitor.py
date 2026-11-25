@@ -60,10 +60,12 @@ class DependencyMonitorService(BaseService):
             log.error("Dependency monitor: missing required env vars: %s", missing_required)
         current_optional = tuple(missing_optional)
         if current_optional != self._last_missing_optional:
+            # Optional means the feature is switched off on purpose (e.g. no
+            # GitHub sign-in): worth one INFO line, not a recurring warning.
             if missing_optional:
-                log.warning("Dependency monitor: missing optional env vars: %s", missing_optional)
+                log.info("Dependency monitor: missing optional env vars: %s", missing_optional)
             elif self._last_missing_optional:
-                log.info("Dependency monitor: all optional env vars are now set")
+                log.info("Dependency monitor: optional settings are now set")
             self._last_missing_optional = current_optional
 
         log.debug("Dependency monitor tick complete — pkgs=%d env_req=%d env_opt=%d",

@@ -107,9 +107,12 @@ async def test_ai_key_bills_its_own_org():
 
 @pytest.mark.parametrize("actor,role,allowed", [
     ("manager", "admin", False),
-    ("manager", "manager", True),
+    # Non-owners invite only below their own rank (PR #45): an invite at
+    # one's own rank could be accepted by a second account of the inviter.
+    ("manager", "manager", False),
     ("manager", "developer", True),
-    ("admin", "admin", True),
+    ("admin", "admin", False),
+    ("admin", "manager", True),
 ])
 async def test_invite_cannot_exceed_own_role(monkeypatch, actor, role, allowed):
     from app.tenancy.service import TenancyError, TenancyService
