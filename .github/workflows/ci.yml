@@ -27,6 +27,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
       STUDY_TEST_DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
+      FLOW_SNAPSHOT_DATABASE_URL: postgresql://test:test@localhost:5432/test_axon
       SESSION_SECRET: ci-test-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
     services:

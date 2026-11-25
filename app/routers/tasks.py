@@ -38,6 +38,9 @@ class TaskCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     due_date: str | None = None
     recurrence: str = Field("none", pattern="^(none|daily|weekly|monthly)$")
+    # "assistant" marks tasks the user confirmed from an assistant
+    # suggestion card (audit trail); anything else is rejected.
+    source: str = Field("manual", pattern="^(manual|assistant)$")
 
 
 class TaskUpdate(BaseModel):
@@ -163,10 +166,10 @@ async def create_task(body: TaskCreate, request: Request):
             uid = await owner_user_id(conn, request)
             await resolve_project_id(conn, str(pid), uid)
         row = await conn.fetchrow('''
-            INSERT INTO tasks (owner_email, project_id, title, notes, priority, category, tags, due_date, recurrence)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+            INSERT INTO tasks (owner_email, project_id, title, notes, priority, category, tags, due_date, recurrence, source)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
         ''', owner, pid, body.title.strip(), body.notes, body.priority,
-             body.category, body.tags, due, body.recurrence)
+             body.category, body.tags, due, body.recurrence, body.source)
     return _task_row_to_dict(row)
 
 
