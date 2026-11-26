@@ -164,7 +164,7 @@ function classifyHtml(html: string): string {
   if (lc.includes("503") || lc.includes("service unavailable")) return "503 Service Unavailable — backend is starting up or overloaded.";
   if (lc.includes("404") || lc.includes("not found"))      return "404 page — endpoint does not exist on the server.";
   if (lc.includes("login") || lc.includes("sign in") || lc.includes("redirect")) return "Auth redirect — session expired or auth middleware issued a redirect.";
-  if (lc.includes("render") || lc.includes("render.com"))  return "Render platform error page — check Render dashboard logs.";
+  if (lc.includes("render"))  return "Render platform error page — check Render dashboard logs.";
   return "HTML page — server returned HTML instead of JSON.";
 }
 
