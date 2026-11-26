@@ -38,7 +38,10 @@ beforeEach(() => {
   streamEvents = [{ type: "delta", text: "Nice to meet you, Yassir!" }, { type: "done" }];
   setPage.mockReset();
   posted = [];
-  try { localStorage.clear(); } catch { /* ignore */ }
+  // Drafts live in localStorage and the open conversation in sessionStorage
+  // (chatPersistence): clear both so a test never starts inside the
+  // conversation the previous test created.
+  try { localStorage.clear(); sessionStorage.clear(); } catch { /* ignore */ }
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes("/api/run/stream")) {
@@ -132,4 +135,22 @@ it("dismissing a proposal sends nothing", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "chatTab.actions.dismiss" }, { timeout: 2000 }));
   expect(screen.queryByRole("button", { name: "chatTab.actions.confirm" })).not.toBeInTheDocument();
   expect(posted).toHaveLength(0);
+});
+
+it("keeps the reply when the user sends right after a refresh restored the conversation", async () => {
+  // A refresh reopens the last conversation; its history is still loading
+  // when the user sends. The late history must not replace the new reply.
+  sessionStorage.setItem("flow.chat.session.v1", JSON.stringify({ projectId: "demo", activeConv: CONV_ID }));
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (String(input).includes(`/api/conversations/${CONV_ID}/messages`)) {
+      await new Promise(r => setTimeout(r, 150));
+    }
+    return base(input, init);
+  });
+  await send("hello again");
+  expect(await screen.findByText("Nice to meet you, Yassir!", {}, { timeout: 2000 })).toBeInTheDocument();
+  await new Promise(r => setTimeout(r, 300));
+  expect(screen.getByText("Nice to meet you, Yassir!")).toBeInTheDocument();
+  expect(screen.getByText("hello again")).toBeInTheDocument();
 });
