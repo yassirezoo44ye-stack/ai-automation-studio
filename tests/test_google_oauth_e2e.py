@@ -1239,9 +1239,9 @@ class TestFrontendUrlSeparation:
         location = resp.headers["location"]
         # redirect_uri must target the backend, not the frontend.
         # The value may or may not be percent-encoded depending on the HTTP library.
-        redirect_uri_value = location.split("redirect_uri=")[1].split("&")[0]
-        assert "api.example.com" in redirect_uri_value
-        assert "app.example.com" not in redirect_uri_value
+        from urllib.parse import parse_qs, urlsplit
+        redirect_uri_value = parse_qs(urlsplit(location).query)["redirect_uri"][0]
+        assert urlsplit(redirect_uri_value).hostname == "api.example.com"
 
     def test_post_oauth_redirect_uses_frontend_base(self, client):
         """Callback must send the browser to FRONTEND_URL/oauth-callback, not APP_URL."""
@@ -1334,8 +1334,7 @@ class TestFrontendUrlInCors:
             "https://app.example.com",
             [],
         )
-        assert "https://app.example.com" in origins
-        assert "https://api.example.com" in origins
+        assert {"https://app.example.com", "https://api.example.com"} <= set(origins)
 
     def test_frontend_url_not_duplicated_when_same_as_app_url(self):
         origins = self._build_cors_origins(
@@ -1351,7 +1350,7 @@ class TestFrontendUrlInCors:
             "https://app.example.com",
             ["https://staging.example.com"],
         )
-        assert "https://staging.example.com" in origins
+        assert {"https://staging.example.com"} <= set(origins)
 
     def test_no_duplicate_if_frontend_url_already_in_extra(self):
         origins = self._build_cors_origins(
