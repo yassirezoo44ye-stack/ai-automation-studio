@@ -152,11 +152,14 @@ class HealthRegistry:
         else:
             overall = HealthStatus.HEALTHY
 
-        return {
+        ts = time.time()
+        report = {
             "status" : overall.value,
             "probes" : [r.to_dict() for r in results],
-            "ts"     : time.time(),
+            "ts"     : ts,
         }
+        self._snapshot = (report, ts)
+        return report
 
     async def check(self, name: str) -> ProbeResult | None:
         entry = self._probes.get(name)
