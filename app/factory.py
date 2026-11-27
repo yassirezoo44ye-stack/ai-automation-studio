@@ -80,6 +80,7 @@ from app.routers import discover         as discover_router
 # Lead Engine
 from app.routers import careers          as careers_router
 from app.routers import leads            as leads_router
+from app.routers import pilot_requests   as pilot_requests_router
 # SaaS Factory
 from app.routers import saas_factory     as saas_factory_router
 # Social Publisher — Phase 1
@@ -865,6 +866,7 @@ def create_app() -> FastAPI:
     # Lead Engine
     app.include_router(careers_router.router)
     app.include_router(leads_router.router)
+    app.include_router(pilot_requests_router.router)
     app.include_router(saas_factory_router.router)
     # Social Publisher — Phase 1
     app.include_router(social_publisher_router.router)

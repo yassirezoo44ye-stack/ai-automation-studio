@@ -998,6 +998,7 @@
   font-size: 13px;
   color: var(--t3);
   line-height: 1.4;
+  text-align: start;
 }
 .lp-price-card__check {
   width: 16px;
@@ -1108,6 +1109,107 @@
 .lp-section--center .lp-eyebrow::before { display: none; }
 
 /* ── Responsive ───────────────────────────────────────────────── */
+/* ── Pricing: two cards (free + paid pilot) ─────────────────────────────── */
+.lp-pricing__sub {
+  max-width: 620px;
+  margin: 0 auto;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--t3);
+}
+.lp-pricing__grid--two {
+  grid-template-columns: repeat(2, minmax(0, 380px));
+  justify-content: center;
+}
+
+/* ── Paid pilot request ─────────────────────────────────────────────────── */
+.lp-pilot__inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+.lp-pilot__sub {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--t3);
+  margin-bottom: 24px;
+}
+.lp-pilot__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-inline-start: 20px;
+  color: var(--t2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.lp-pilot__card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px;
+  border-radius: var(--r-xl);
+  border: 1px solid var(--accent-border);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-xl);
+}
+.lp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.lp-field input,
+.lp-field select,
+.lp-field textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--b2);
+  background: var(--bg-input);
+  color: var(--t1);
+  font: inherit;
+  font-weight: 400;
+  font-size: 14px;
+}
+.lp-field textarea { resize: vertical; min-height: 96px; }
+.lp-field input:focus-visible,
+.lp-field select:focus-visible,
+.lp-field textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.lp-pilot__hp {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  inset-inline-start: -9999px;
+}
+.lp-pilot__submit { justify-content: center; width: 100%; }
+.lp-pilot__submit:disabled { opacity: 0.6; cursor: progress; }
+.lp-pilot__error {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--red, #e5484d);
+}
+.lp-pilot__error a { color: inherit; text-decoration: underline; }
+.lp-pilot__privacy { font-size: 12px; color: var(--t4); }
+.lp-pilot__done { gap: 8px; }
+.lp-pilot__done-title { font-size: 20px; font-weight: 800; color: var(--t1); }
+.lp-pilot__done p { color: var(--t3); font-size: 14px; line-height: 1.6; }
+
+@media (max-width: 768px) {
+  .lp-pricing__grid--two { grid-template-columns: 1fr; }
+  .lp-pilot__inner { grid-template-columns: 1fr; gap: 28px; }
+  .lp-pilot__card { padding: 20px; }
+}
+
 @media (max-width: 1024px) {
   .lp-features__grid {
     grid-template-columns: repeat(2, 1fr);
