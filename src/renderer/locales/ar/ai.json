@@ -57,6 +57,8 @@
     }
   },
   "chatTab": {
+    "actions": {"kind": {"create_task": "مهمة جديدة", "create_lead": "عميل محتمل جديد", "update_task_status": "تغيير حالة مهمة", "update_lead_status": "تغيير حالة عميل محتمل"}, "needsConfirm": "يحتاج تأكيدك", "confirm": "تأكيد", "dismiss": "تجاهل", "running": "جارٍ الحفظ…", "done": "تم — حُفظ في مساحة عملك.", "failed": "تعذّر الحفظ: {{message}}", "priority": {"low": "منخفضة", "medium": "متوسطة", "high": "عالية"}, "fields": {"title": "العنوان", "priority": "الأولوية", "due": "الموعد", "notes": "ملاحظات", "name": "الاسم", "source": "المصدر", "email": "البريد", "phone": "الهاتف", "task": "المهمة", "lead": "العميل", "current": "الحالة الحالية", "newStatus": "الحالة الجديدة"}, "loading": "جارٍ تحميل السجل الحالي…", "notFound": "لم يُعثر على هذا العنصر في مساحة عملك، لذا لا يمكن تغيير شيء.", "unchanged": "حالته هي هذه بالفعل.", "status": {"task": {"pending": "قيد الانتظار", "in_progress": "قيد التنفيذ", "done": "منجزة"}, "lead": {"new": "جديد", "qualified": "مؤهَّل", "contacted": "تم التواصل", "won": "تم الكسب", "lost": "خسرناه"}}},
+    "nav": {"open": "افتح {{page}}", "groupLabel": "صفحات مقترحة"},
     "sidebar": {
       "demoProject": "مشروع تجريبي",
       "defaultAgent": "🤖 Claude (افتراضي)",
@@ -90,6 +92,7 @@
       "assistantFallback": "Claude",
       "now": "الآن",
       "streamErrorPrefix": "⚠️ {{message}}",
+      "emptyReply": "⚠️ لم يصل رد من الذكاء الاصطناعي. حاول مرة أخرى بعد قليل.",
       "copyCode": "نسخ",
       "copied": "تم النسخ!",
       "interrupted": "انقطع الرد قبل اكتماله. أعد المحاولة."

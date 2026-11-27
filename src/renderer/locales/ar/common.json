@@ -1,4 +1,5 @@
 {
+  "brand": { "tagline": "مساعدك الذكي" },
   "workspaceDetails": {
   "summary": "ملخص الأرقام",
   "examples": "أمثلة",
@@ -39,7 +40,10 @@
     "signOutTitle": "تسجيل الخروج ({{email}})",
     "signOut": "تسجيل الخروج"
   },
+  "notificationsBell": { "label": "الإشعارات", "unread": "الإشعارات، {{count}} غير مقروءة", "unreadLive": "{{count}} إشعارات غير مقروءة" },
   "appLayout": {
+    "search": "بحث…",
+    "openCommandPalette": "فتح لوحة الأوامر",
     "skipToContent": "تخطي إلى المحتوى الرئيسي",
     "loadingWorkspace": "جارٍ تحميل مساحة العمل…",
     "openNavMenu": "فتح قائمة التنقل"
