@@ -12,6 +12,7 @@
  *     Export   → download buttons
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { businessService, type Plan, type PlanDetail, type Section } from "./services/businessService";
 import "./business-lab.css";
 
@@ -30,6 +31,7 @@ const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
 };
 
 function Badge({ label }: { label: string }) {
+  const { t } = useTranslation("businessLab");
   const s = STATUS_BADGE[label] ?? { bg: "#f3f4f6", color: "#374151" };
   return (
     <span style={{
@@ -37,7 +39,7 @@ function Badge({ label }: { label: string }) {
       padding: "2px 7px", borderRadius: 20,
       background: s.bg, color: s.color, letterSpacing: "0.04em",
     }}>
-      {label}
+      {t(`status.${label}`, { defaultValue: label })}
     </span>
   );
 }
@@ -67,22 +69,15 @@ function ScoreRing({ score }: { score: number }) {
 }
 
 // ── Progress timeline ─────────────────────────────────────────────────────────
-const STAGE_LABELS: Record<string, string> = {
-  intake:                  "استيعاب الفكرة",
-  company_description:     "وصف الشركة",
-  market_intelligence:     "تحليل السوق",
-  competitor_intelligence: "تحليل المنافسين",
-  offer_pricing:           "العرض والتسعير",
-  go_to_market:            "استراتيجية الإطلاق",
-  ops_finance:             "العمليات والتمويل",
-  full_plan:               "تجميع الخطة",
-  assumption_audit:        "تدقيق الافتراضات",
-  adversarial_review:      "مراجعة المخاطر",
-};
+const STAGE_ORDER = [
+  "intake", "company_description", "market_intelligence", "competitor_intelligence",
+  "offer_pricing", "go_to_market", "ops_finance", "full_plan", "assumption_audit",
+  "adversarial_review",
+];
 
-const STAGE_ORDER = Object.keys(STAGE_LABELS);
 
 function Timeline({ sections }: { sections: Section[] }) {
+  const { t } = useTranslation("businessLab");
   const secMap = Object.fromEntries(sections.map(s => [s.section_key, s]));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -97,7 +92,7 @@ function Timeline({ sections }: { sections: Section[] }) {
           <div key={key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 10, height: 10, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
             <span style={{ fontSize: 13, color: "var(--t2,#374151)", flex: 1 }}>
-              {STAGE_LABELS[key]}
+              {t(`stages.${key}`)}
             </span>
             <Badge label={status} />
             {sec?.elapsed_ms ? (
@@ -119,9 +114,10 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
   const [stage, setStage]     = useState("IDEA");
   const [loading, setLoading] = useState(false);
   const [err, setErr]         = useState<string | null>(null);
+  const { t } = useTranslation("businessLab");
 
   const submit = async () => {
-    if (idea.trim().length < 10) { setErr("صف فكرتك بجملتين على الأقل"); return; }
+    if (idea.trim().length < 10) { setErr(t("form.tooShort")); return; }
     setLoading(true); setErr(null);
     try {
       const plan = await businessService.createPlan({
@@ -132,7 +128,7 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
       onCreated(plan);
       setIdea(""); setIndustry(""); setStage("IDEA");
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "حدث خطأ");
+      setErr(e instanceof Error ? e.message : t("form.genericError"));
     } finally {
       setLoading(false);
     }
@@ -143,13 +139,13 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
       background: "var(--bg-card,#fff)", border: "1px solid var(--b1,#e5e7eb)",
       borderRadius: 12, padding: 20, display: "flex", flexDirection: "column", gap: 12,
     }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--t1,#111)" }}>خطة عمل جديدة ✨</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--t1,#111)" }}>{t("form.title")}</div>
 
       <textarea
-        aria-label="وصف فكرة العمل"
+        aria-label={t("form.ideaLabel")}
         maxLength={4000}
         value={idea} onChange={e => setIdea(e.target.value)}
-        placeholder="صف فكرتك بحرية… ماذا تريد أن تبني؟ من هم عملاؤك؟ ما المشكلة التي تحلها؟"
+        placeholder={t("form.ideaPlaceholder")}
         rows={4} style={{
           width: "100%", resize: "vertical", padding: "10px 12px",
           border: "1px solid var(--b1,#e5e7eb)", borderRadius: 8,
@@ -160,7 +156,7 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
 
       <div style={{ display: "flex", gap: 10 }}>
         <input value={industry} onChange={e => setIndustry(e.target.value)}
-          placeholder="القطاع (اختياري)" style={{
+          placeholder={t("form.industryPlaceholder")} style={{
             flex: 1, padding: "8px 12px", border: "1px solid var(--b1,#e5e7eb)",
             borderRadius: 8, fontSize: 13, background: "var(--bg-input,#f9fafb)", color: "var(--t1,#111)",
           }} />
@@ -169,10 +165,10 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
           padding: "8px 12px", border: "1px solid var(--b1,#e5e7eb)", borderRadius: 8,
           fontSize: 13, background: "var(--bg-input,#f9fafb)", color: "var(--t1,#111)",
         }}>
-          <option value="IDEA">فكرة</option>
-          <option value="MVP">نموذج أولي</option>
-          <option value="GROWTH">نمو</option>
-          <option value="SCALE">توسع</option>
+          <option value="IDEA">{t("form.stageIdea")}</option>
+          <option value="MVP">{t("form.stageMvp")}</option>
+          <option value="GROWTH">{t("form.stageGrowth")}</option>
+          <option value="SCALE">{t("form.stageScale")}</option>
         </select>
       </div>
 
@@ -183,7 +179,7 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
         background: loading ? "var(--b2,#e5e7eb)" : "var(--accent,#8b5cf6)",
         color: "#fff", fontWeight: 700, fontSize: 13, cursor: loading ? "default" : "pointer",
       }}>
-        {loading ? "جارٍ الإنشاء…" : "ابدأ التحليل 🚀"}
+        {loading ? t("form.submitting") : t("form.submit")}
       </button>
     </div>
   );
@@ -191,6 +187,7 @@ function NewPlanForm({ onCreated }: { onCreated: (plan: Plan) => void }) {
 
 // ── Section viewer ────────────────────────────────────────────────────────────
 function SectionCard({ section }: { section: Section }) {
+  const { t } = useTranslation("businessLab");
   const [open, setOpen] = useState(section.status === "COMPLETED");
   return (
     <div style={{
@@ -208,12 +205,12 @@ function SectionCard({ section }: { section: Section }) {
         }}
       >
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--t1,#111)" }}>
-          {section.title || STAGE_LABELS[section.section_key] || section.section_key}
+          {section.title || t(`stages.${section.section_key}`, { defaultValue: section.section_key })}
         </span>
         <Badge label={section.status} />
         {section.tokens_used > 0 && (
           <span style={{ fontSize: 10, color: "var(--t5,#9ca3af)" }}>
-            {section.tokens_used.toLocaleString()} tokens
+            {t("tokens", { n: section.tokens_used.toLocaleString() })}
           </span>
         )}
         <span style={{ fontSize: 11, color: "var(--t4,#9ca3af)" }}>{open ? "▲" : "▼"}</span>
@@ -241,6 +238,7 @@ function SectionCard({ section }: { section: Section }) {
 type Tab = "overview" | "sections" | "facts" | "competitors" | "score" | "export";
 
 export function BusinessLabPage() {
+  const { t } = useTranslation("businessLab");
   const [plans, setPlans]         = useState<Plan[]>([]);
   const [selected, setSelected]   = useState<string | null>(null);
   const [detail, setDetail]       = useState<PlanDetail | null>(null);
@@ -258,8 +256,8 @@ export function BusinessLabPage() {
   const loadPlans = useCallback(async () => {
     setListError(null);
     try { setPlans(await businessService.listPlans()); }
-    catch (error) { setListError(error instanceof Error ? error.message : "تعذر تحميل الخطط"); }
-  }, []);
+    catch (error) { setListError(error instanceof Error ? error.message : t("errors.loadPlans")); }
+  }, [t]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadPlans(); }, [loadPlans]);
@@ -299,11 +297,11 @@ export function BusinessLabPage() {
         stopStream.current = stop;
       }
     } catch (error) {
-      if (version === selectionVersion.current) setDetailError(error instanceof Error ? error.message : "تعذر تحميل الخطة");
+      if (version === selectionVersion.current) setDetailError(error instanceof Error ? error.message : t("errors.loadPlan"));
     } finally {
       if (version === selectionVersion.current) setLoading(false);
     }
-  }, [loadPlans]);
+  }, [loadPlans, t]);
 
   // Cleanup on unmount
   useEffect(() => () => { ++selectionVersion.current; stopStream.current?.(); }, []);
@@ -325,7 +323,7 @@ export function BusinessLabPage() {
 
   const handleDelete = async () => {
     if (!selected) return;
-    if (!window.confirm("هل تريد حذف هذه الخطة نهائياً؟")) return;
+    if (!window.confirm(t("confirmDelete"))) return;
     await runAction(async () => {
     await businessService.deletePlan(selected);
     ++selectionVersion.current;
@@ -339,7 +337,7 @@ export function BusinessLabPage() {
     if (actionPending.current) return;
     actionPending.current = true; setActionError(null);
     try { await action(); }
-    catch (error) { setActionError(error instanceof Error ? error.message : "تعذر إكمال العملية"); }
+    catch (error) { setActionError(error instanceof Error ? error.message : t("errors.action")); }
     finally { actionPending.current = false; }
   };
 
@@ -356,14 +354,14 @@ export function BusinessLabPage() {
       }}>
         <div style={{ padding: "16px 14px 10px", borderBottom: "1px solid var(--b1,#e5e7eb)" }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: "var(--t1,#111)", marginBottom: 10 }}>
-            🧪 مختبر الأعمال
+            {t("title")}
           </div>
           <button onClick={() => setShowNew(v => !v)} style={{
             width: "100%", padding: "8px", borderRadius: 8, border: "none",
             background: "var(--accent,#8b5cf6)", color: "#fff",
             fontWeight: 700, fontSize: 12, cursor: "pointer",
           }}>
-            + خطة جديدة
+            {t("newPlanButton")}
           </button>
         </div>
 
@@ -380,11 +378,11 @@ export function BusinessLabPage() {
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
           {listError && <div role="alert" style={{ padding: 16 }}>
             <p>{listError}</p>
-            <button onClick={() => void loadPlans()}>إعادة تحميل الخطط</button>
+            <button onClick={() => void loadPlans()}>{t("reloadPlans")}</button>
           </div>}
           {!listError && plans.length === 0 && (
             <div style={{ padding: 16, fontSize: 12, color: "var(--t4,#9ca3af)", textAlign: "center" }}>
-              لا توجد خطط بعد.<br />ابدأ بإضافة فكرتك ✨
+              {t("emptyPlans")}<br />{t("emptyPlansHint")}
             </div>
           )}
           {plans.map(p => (
@@ -418,13 +416,13 @@ export function BusinessLabPage() {
       {/* ── Main content ── */}
       <div className="business-lab-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto" }}>
         {actionError && <div role="alert" style={{ padding: 20 }}>{actionError}</div>}
-        {detailError && <div role="alert" style={{ padding: 20 }}><p>{detailError}</p><button onClick={() => selected && void selectPlan(selected)}>إعادة تحميل الخطة</button></div>}
+        {detailError && <div role="alert" style={{ padding: 20 }}><p>{detailError}</p><button onClick={() => selected && void selectPlan(selected)}>{t("reloadPlan")}</button></div>}
         {!selected && (
           <div style={{
             flex: 1, display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center", gap: 12, color: "var(--t4,#9ca3af)",
           }}>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>اختر خطة أو أنشئ واحدة جديدة</div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>{t("pickPlan")}</div>
           </div>
         )}
 
@@ -437,19 +435,19 @@ export function BusinessLabPage() {
               background: "var(--bg-card,#fff)",
             }}>
               {([
-                ["overview",     "📊 نظرة عامة"],
-                ["sections",     "📄 الأقسام"],
-                ["facts",        "🔍 الحقائق"],
-                ["competitors",  "🏆 المنافسون"],
-                ["score",        "⭐ الدرجة"],
-                ["export",       "📥 تصدير"],
-              ] as [Tab, string][]).map(([t, label]) => (
-                <button key={t} onClick={() => setTab(t)} style={{
+                ["overview",     t("tabs.overview")],
+                ["sections",     t("tabs.sections")],
+                ["facts",        t("tabs.facts")],
+                ["competitors",  t("tabs.competitors")],
+                ["score",        t("tabs.score")],
+                ["export",       t("tabs.export")],
+              ] as [Tab, string][]).map(([key, label]) => (
+                <button key={key} onClick={() => setTab(key)} style={{
                   padding: "7px 14px", border: "none", borderRadius: "8px 8px 0 0",
-                  background: tab === t ? "var(--bg,#f9fafb)" : "transparent",
-                  color: tab === t ? "var(--accent,#8b5cf6)" : "var(--t3,#6b7280)",
-                  fontWeight: tab === t ? 700 : 500, fontSize: 12, cursor: "pointer",
-                  borderBottom: tab === t ? "2px solid var(--accent,#8b5cf6)" : "2px solid transparent",
+                  background: tab === key ? "var(--bg,#f9fafb)" : "transparent",
+                  color: tab === key ? "var(--accent,#8b5cf6)" : "var(--t3,#6b7280)",
+                  fontWeight: tab === key ? 700 : 500, fontSize: 12, cursor: "pointer",
+                  borderBottom: tab === key ? "2px solid var(--accent,#8b5cf6)" : "2px solid transparent",
                 }}>
                   {label}
                 </button>
@@ -460,17 +458,17 @@ export function BusinessLabPage() {
                   <button onClick={handleCancel} style={{
                     padding: "4px 10px", borderRadius: 6, border: "1px solid var(--b2,#e5e7eb)",
                     background: "transparent", color: "var(--t3,#6b7280)", fontSize: 11, cursor: "pointer",
-                  }}>⏸ إيقاف</button>
+                  }}>{t("cancel")}</button>
                 )}
                 <button onClick={handleDelete} style={{
                   padding: "4px 10px", borderRadius: 6, border: "1px solid #fee2e2",
                   background: "transparent", color: "#dc2626", fontSize: 11, cursor: "pointer",
-                }}>🗑 حذف</button>
+                }}>{t("delete")}</button>
               </div>
             </div>
 
             <div style={{ flex: 1, padding: 20, overflowY: "auto" }}>
-              {loading && <div style={{ color: "var(--t4,#9ca3af)", fontSize: 13 }}>جارٍ التحميل…</div>}
+              {loading && <div style={{ color: "var(--t4,#9ca3af)", fontSize: 13 }}>{t("loading")}</div>}
 
               {!loading && detail && (
                 <>
@@ -480,7 +478,7 @@ export function BusinessLabPage() {
                       <div style={{ flex: 1, minWidth: 260 }}>
                         <div style={{ marginBottom: 14 }}>
                           <div style={{ fontSize: 20, fontWeight: 800, color: "var(--t1,#111)", marginBottom: 4 }}>
-                            {detail.plan.title || "خطة بدون عنوان"}
+                            {detail.plan.title || t("untitled")}
                           </div>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                             <Badge label={detail.plan.status} />
@@ -503,11 +501,9 @@ export function BusinessLabPage() {
                           gap: 8, minWidth: 120,
                         }}>
                           <ScoreRing score={detail.score.overall_score} />
-                          <div style={{ fontSize: 11, color: "var(--t4,#9ca3af)" }}>درجة الجاهزية</div>
+                          <div style={{ fontSize: 11, color: "var(--t4,#9ca3af)" }}>{t("readiness")}</div>
                           <div style={{ fontSize: 10, color: "var(--t5,#9ca3af)" }}>
-                            {detail.score.evidence_count} دليل ·{" "}
-                            {detail.score.assumption_count} افتراض ·{" "}
-                            {detail.score.missing_count} مفقود
+                            {t("counts", { evidence: detail.score.evidence_count, assumptions: detail.score.assumption_count, missing: detail.score.missing_count })}
                           </div>
                         </div>
                       )}
@@ -519,7 +515,7 @@ export function BusinessLabPage() {
                     <div>
                       {detail.sections.length === 0 && (
                         <div style={{ color: "var(--t4,#9ca3af)", fontSize: 13 }}>
-                          لا توجد أقسام بعد — الخطة قيد الإنشاء.
+                          {t("noSections")}
                         </div>
                       )}
                       {detail.sections
@@ -535,7 +531,7 @@ export function BusinessLabPage() {
                           background: "#fef3c7", color: "#92400e", fontWeight: 700,
                           fontSize: 12, cursor: "pointer",
                         }}>
-                          🔄 إعادة الأقسام الفاشلة
+                          {t("retryFailed")}
                         </button>
                       )}
                     </div>
@@ -545,11 +541,11 @@ export function BusinessLabPage() {
                   {tab === "facts" && (
                     <div>
                       <div style={{ fontSize: 12, color: "var(--t4,#9ca3af)", marginBottom: 10 }}>
-                        سجل الحقائق — {detail.facts.length} إدخال
+                        {t("factsTitle", { count: detail.facts.length })}
                       </div>
                       {detail.facts.length === 0 && (
                         <div style={{ color: "var(--t4,#9ca3af)", fontSize: 13 }}>
-                          لا توجد حقائق مسجلة بعد.
+                          {t("noFacts")}
                         </div>
                       )}
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -571,7 +567,7 @@ export function BusinessLabPage() {
                             <div style={{ textAlign: "right", flexShrink: 0 }}>
                               <div style={{ fontSize: 10, color: "var(--t5,#9ca3af)" }}>{f.source_type}</div>
                               <div style={{ fontSize: 10, color: "var(--t5,#9ca3af)" }}>
-                                {Math.round(f.confidence * 100)}% ثقة
+                                {t("confidence", { pct: Math.round(f.confidence * 100) })}
                               </div>
                             </div>
                           </div>
@@ -585,7 +581,7 @@ export function BusinessLabPage() {
                     <div>
                       {detail.competitors.length === 0 && (
                         <div style={{ color: "var(--t4,#9ca3af)", fontSize: 13 }}>
-                          لا توجد بيانات منافسين بعد.
+                          {t("noCompetitors")}
                         </div>
                       )}
                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -612,7 +608,7 @@ export function BusinessLabPage() {
                             <div style={{ display: "flex", gap: 16 }}>
                               {c.strengths.length > 0 && (
                                 <div>
-                                  <div style={{ fontSize: 10, color: "#065f46", fontWeight: 700, marginBottom: 3 }}>✅ نقاط القوة</div>
+                                  <div style={{ fontSize: 10, color: "#065f46", fontWeight: 700, marginBottom: 3 }}>{t("strengths")}</div>
                                   {c.strengths.map((s, i) => (
                                     <div key={i} style={{ fontSize: 11, color: "var(--t3,#6b7280)" }}>• {s}</div>
                                   ))}
@@ -620,7 +616,7 @@ export function BusinessLabPage() {
                               )}
                               {c.weaknesses.length > 0 && (
                                 <div>
-                                  <div style={{ fontSize: 10, color: "#991b1b", fontWeight: 700, marginBottom: 3 }}>⚠ نقاط الضعف</div>
+                                  <div style={{ fontSize: 10, color: "#991b1b", fontWeight: 700, marginBottom: 3 }}>{t("weaknesses")}</div>
                                   {c.weaknesses.map((s, i) => (
                                     <div key={i} style={{ fontSize: 11, color: "var(--t3,#6b7280)" }}>• {s}</div>
                                   ))}
@@ -640,12 +636,10 @@ export function BusinessLabPage() {
                         <ScoreRing score={detail.score.overall_score} />
                         <div>
                           <div style={{ fontSize: 18, fontWeight: 800, color: "var(--t1,#111)" }}>
-                            درجة الجاهزية: {detail.score.overall_score}/100
+                            {t("readinessValue", { score: detail.score.overall_score })}
                           </div>
                           <div style={{ fontSize: 12, color: "var(--t4,#9ca3af)", marginTop: 4 }}>
-                            {detail.score.evidence_count} دليل موثق ·{" "}
-                            {detail.score.assumption_count} افتراض ·{" "}
-                            {detail.score.missing_count} معلومة مفقودة
+                            {t("countsLong", { evidence: detail.score.evidence_count, assumptions: detail.score.assumption_count, missing: detail.score.missing_count })}
                           </div>
                         </div>
                       </div>
@@ -675,13 +669,13 @@ export function BusinessLabPage() {
                         border: "1px solid var(--b1,#e5e7eb)", background: "transparent",
                         color: "var(--t2,#374151)", fontSize: 12, cursor: "pointer",
                       }}>
-                        🔄 إعادة الحساب
+                        {t("recompute")}
                       </button>
                     </div>
                   )}
                   {tab === "score" && !detail.score && (
                     <div style={{ color: "var(--t4,#9ca3af)", fontSize: 13 }}>
-                      لم يُحسب التقييم بعد — انتظر اكتمال الخطة.
+                      {t("scoreNotReady")}
                     </div>
                   )}
 
@@ -689,12 +683,12 @@ export function BusinessLabPage() {
                   {tab === "export" && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 380 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1,#111)" }}>
-                        تصدير الخطة
+                        {t("export.title")}
                       </div>
                       {[
-                        { variant: "standard",  label: "📄 نسخة قياسية",      desc: "الخطة الكاملة بالتنسيق العربي" },
-                        { variant: "investor",  label: "💼 نسخة المستثمرين",  desc: "مع ملحق الحقائق والأدلة" },
-                        { variant: "lender",    label: "🏦 نسخة الممولين",    desc: "مع التوقعات المالية والضمانات" },
+                        { variant: "standard",  label: t("export.standard"),  desc: t("export.standardDesc") },
+                        { variant: "investor",  label: t("export.investor"),  desc: t("export.investorDesc") },
+                        { variant: "lender",    label: t("export.lender"),    desc: t("export.lenderDesc") },
                       ].map(({ variant, label, desc }) => (
                         <div key={variant} style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -710,12 +704,12 @@ export function BusinessLabPage() {
                             background: "var(--accent,#8b5cf6)", color: "#fff",
                             fontWeight: 700, fontSize: 12, cursor: "pointer",
                           }}>
-                            تحميل
+                            {t("export.download")}
                           </button>
                         </div>
                       ))}
                       <div style={{ fontSize: 11, color: "var(--t5,#9ca3af)" }}>
-                        PDF و DOCX — قريباً 🚧
+                        {t("export.soon")}
                       </div>
                     </div>
                   )}

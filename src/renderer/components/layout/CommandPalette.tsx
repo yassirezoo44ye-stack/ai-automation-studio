@@ -10,6 +10,7 @@
  * All actions are real (navigate or sessionStorage handoff, never mock).
  */
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Icons } from "../../icons";
 import type { Page } from "../../types";
 import { useAppContext } from "../../contexts/app";
@@ -18,11 +19,41 @@ type CmdItem = {
   id: string;
   label: string;
   sub?: string;
+  /** Extra search terms, e.g. the page name in the UI language. */
+  keywords?: string;
   icon: React.JSX.Element;
   badge?: string;
   action: () => void;
   kbd?: string;
   group: "ai" | "action" | "navigate" | "platform";
+};
+
+/** Pages the palette can open by name, with their sidebar label key. */
+const PAGE_NAV: { id: Page; navKey: string; icon: keyof typeof Icons }[] = [
+  { id: "leads",         navKey: "leads",          icon: "leads" },
+  { id: "billing",       navKey: "billing",        icon: "billing" },
+  { id: "teams",         navKey: "teams",          icon: "teams" },
+  { id: "training",      navKey: "trainingStudio", icon: "training" },
+  { id: "business-lab",  navKey: "businessLab",    icon: "business-lab" },
+  { id: "app-builder",   navKey: "appBuilder",     icon: "app-builder" },
+  { id: "saas-factory",  navKey: "saasFactory",    icon: "saas-factory" },
+  { id: "social",        navKey: "social",         icon: "social" },
+  { id: "design",        navKey: "design",         icon: "design" },
+  { id: "dev",           navKey: "dev",            icon: "dev" },
+  { id: "devices",       navKey: "devices",        icon: "devices" },
+  { id: "discover",      navKey: "discover",       icon: "discover" },
+  { id: "feed",          navKey: "feed",           icon: "feed" },
+  { id: "careers",       navKey: "careers",        icon: "careers" },
+  { id: "sandbox",       navKey: "sandbox",        icon: "sandbox" },
+];
+
+/** Sidebar label keys for pages the palette already lists in English, so
+ *  they can also be found by their Arabic (or other UI-language) name. */
+const EXISTING_NAV_KEYS: Record<string, string> = {
+  home: "home", "new-project": "newProject", agentos: "agentos", automation: "automation",
+  runs: "runs", ai: "ai", "ai-routing": "aiRouting", integrations: "integrations",
+  observability: "observability", plugins: "plugins", marketplace: "marketplace",
+  organizations: "organizations", settings: "settings", "study-library": "studyLibrary",
 };
 
 // ── Inline icons not in Icons registry ──────────────────────────────────────
@@ -53,6 +84,8 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const { activeProjectId, setActiveProject } = useAppContext();
+  const { t, i18n } = useTranslation("common");
+  const tEn = i18n.getFixedT("en", "common");
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -170,30 +203,58 @@ export function CommandPalette({ onNavigate, onClose }: { onNavigate: (p: Page) 
     { id: "settings",      label: "Settings",        sub: "System & app configuration",           icon: Icons.settings(),       group: "platform", action: () => go("settings") },
   ];
 
-  const filtered = q.trim()
-    ? items.filter(i =>
-        i.label.toLowerCase().includes(q.toLowerCase()) ||
-        i.sub?.toLowerCase().includes(q.toLowerCase()) ||
-        i.group === "ai" // AI commands always shown when there's a query
-          ? i.label.toLowerCase().includes(q.toLowerCase()) || i.sub?.toLowerCase().includes(q.toLowerCase())
-          : i.label.toLowerCase().includes(q.toLowerCase()) || i.sub?.toLowerCase().includes(q.toLowerCase())
-      )
+  // Every page reachable from the sidebar must also be findable here: the
+  // palette used to miss Leads, Billing, Teams, Training and others, so
+  // searching for them returned "No results". Labels are shown in the UI
+  // language; the English name stays searchable as the subtitle.
+  for (const item of items) {
+    const navKey = EXISTING_NAV_KEYS[item.id];
+    if (navKey) item.keywords = `${t(`sidebar.nav.${navKey}`)} ${tEn(`sidebar.nav.${navKey}`)}`;
+  }
+  const listed = new Set(items.map(i => i.id));
+  for (const nav of PAGE_NAV) {
+    if (listed.has(nav.id)) continue;
+    const label = t(`sidebar.nav.${nav.navKey}`);
+    const english = tEn(`sidebar.nav.${nav.navKey}`);
+    items.push({
+      id: nav.id, label, sub: label === english ? undefined : english, keywords: english,
+      icon: Icons[nav.icon](), group: "navigate", action: () => go(nav.id),
+    });
+  }
+
+  const needle = q.trim().toLowerCase();
+  // Rank so a page whose name matches the query beats an item that only
+  // mentions it in a subtitle (e.g. "Billing" must open Billing, not an
+  // action whose description says "billing").
+  const score = (i: CmdItem): number => {
+    if (!needle) return 0;
+    const names = [i.label, i.keywords ?? ""].map(x => x.toLowerCase());
+    if (names.some(n => n === needle || n.split(/\s+/).includes(needle))) return 0;
+    if (names.some(n => n.startsWith(needle))) return 1;
+    if (names.some(n => n.includes(needle))) return 2;
+    return 3;
+  };
+  const filtered = needle
+    ? items.filter(i => [i.label, i.sub, i.keywords].some(f => f?.toLowerCase().includes(needle)))
     : items;
 
   function run(item: CmdItem) { item.action(); onClose(); }
 
   function onKey(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown")  { e.preventDefault(); setActive(a => Math.min(a + 1, filtered.length - 1)); }
+    if (e.key === "ArrowDown")  { e.preventDefault(); setActive(a => Math.min(a + 1, ordered.length - 1)); }
     if (e.key === "ArrowUp")    { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
-    if (e.key === "Enter")      { e.preventDefault(); if (filtered[active]) run(filtered[active]); }
+    if (e.key === "Enter")      { e.preventDefault(); if (ordered[active]) run(ordered[active]); }
     if (e.key === "Escape")     { onClose(); }
   }
 
   // Group items preserving order
   const groupOrder: CmdItem["group"][] = ["ai", "action", "navigate", "platform"];
   const grouped = groupOrder
-    .map(g => ({ group: g, items: filtered.filter(i => i.group === g) }))
-    .filter(g => g.items.length > 0);
+    .map(g => ({ group: g, items: filtered.filter(i => i.group === g).sort((a, b) => score(a) - score(b)) }))
+    .filter(g => g.items.length > 0)
+    .sort((a, b) => score(a.items[0]) - score(b.items[0]));
+  // Keyboard selection follows the order shown on screen.
+  const ordered = grouped.flatMap(g => g.items);
 
   let globalIdx = 0;
 

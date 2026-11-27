@@ -59,6 +59,8 @@ import leadsEn from "./locales/en/leads.json";
 import leadsAr from "./locales/ar/leads.json";
 import saasFactoryEn from "./locales/en/saas-factory.json";
 import saasFactoryAr from "./locales/ar/saas-factory.json";
+import businessLabEn from "./locales/en/businessLab.json";
+import businessLabAr from "./locales/ar/businessLab.json";
 
 void i18next.use(initReactI18next).init({
   resources: {
@@ -74,6 +76,7 @@ void i18next.use(initReactI18next).init({
       careers: careersEn,
       leads: leadsEn,
       "saas-factory": saasFactoryEn,
+      businessLab: businessLabEn,
     },
     ar: {
       common: commonAr, home: homeAr, settings: settingsAr, auth: authAr, social: socialAr,
@@ -87,6 +90,7 @@ void i18next.use(initReactI18next).init({
       careers: careersAr,
       leads: leadsAr,
       "saas-factory": saasFactoryAr,
+      businessLab: businessLabAr,
     },
   },
   lng: "en",
@@ -96,7 +100,7 @@ void i18next.use(initReactI18next).init({
     "common", "home", "settings", "auth", "social", "organizations", "sandbox", "plugins",
     "automation", "marketplace", "aiRouting", "observability", "ai", "designStudio", "teams", "billing", "agentos", "dev",
     "appBuilder", "runs", "integrations", "trainingStudio", "landing", "devices",
-    "careers", "discover", "feed", "leads", "saas-factory",
+    "careers", "discover", "feed", "leads", "saas-factory", "businessLab",
   ],
   interpolation: { escapeValue: false },
   returnEmptyString: false,

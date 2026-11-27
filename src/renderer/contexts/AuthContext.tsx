@@ -103,6 +103,25 @@ async function apiFetch(path: string, init?: RequestInit, token?: string): Promi
   }
 }
 
+const REFRESH_429_RETRIES = 3;
+const REFRESH_429_MAX_WAIT_MS = 5_000;
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/** Delay before retrying a 429'd refresh: the server's Retry-After, capped. */
+function retryAfterMs(res: Response): number {
+  const secs = Number(res.headers.get("Retry-After"));
+  const ms = Number.isFinite(secs) && secs > 0 ? secs * 1000 : 1000;
+  return Math.min(ms, REFRESH_429_MAX_WAIT_MS);
+}
+
+function postRefresh(refreshToken: string): Promise<Response> {
+  return apiFetch("/api/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -150,10 +169,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem(REFRESH_KEY);
       if (!stored) return { token: null };
       try {
-        const res = await apiFetch("/api/auth/refresh", {
-          method: "POST",
-          body: JSON.stringify({ refresh_token: stored }),
-        });
+        // A 429 here means "slow down", not "session broken": wait as the
+        // server asks (capped so a page load never hangs long) and try
+        // again instead of putting the user behind a full-screen error.
+        let res = await postRefresh(stored);
+        for (let attempt = 0; res.status === 429 && attempt < REFRESH_429_RETRIES; attempt++) {
+          await sleep(retryAfterMs(res));
+          res = await postRefresh(stored);
+        }
+        if (res.status === 429) {
+          return { token: null, networkError: "Too many requests right now. Please wait a moment and try again." };
+        }
         if (res.status === 401) {
           // Token is legitimately expired/revoked — clear session, not an error.
           // AUDIT FIX: this is the most common way a session actually ends
