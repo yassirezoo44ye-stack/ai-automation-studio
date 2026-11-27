@@ -123,7 +123,7 @@ describe("vercel.json", () => {
     for (const path of ["/no-such-page", "/robots.txt", "/sitemap.xml", "/dashboard.html"]) {
       expect(rewritten(path), path).toBe(false);
     }
-    for (const path of ["/ar", "/en", "/study-library", "/feed/abc", "/project/p1/ai", "/oauth-callback"]) {
+    for (const path of ["/ar", "/en", "/study-library", "/login", "/register", "/feed/abc", "/project/p1/ai", "/oauth-callback"]) {
       expect(rewritten(path), path).toBe(true);
     }
   });

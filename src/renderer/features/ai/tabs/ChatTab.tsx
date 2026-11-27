@@ -48,6 +48,25 @@ function describeError(err: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Stream errors that carry a stable code are shown as a localized, neutral
+ * message: setup details (keys, hosting, billing) are for administrators and
+ * stay in the server logs.
+ */
+const STREAM_ERROR_KEYS: Array<[prefix: string, key: string]> = [
+  ["AI_NOT_CONFIGURED", "chatTab.messages.aiNotConfigured"],
+  ["AI_UNAVAILABLE", "chatTab.messages.aiUnavailable"],
+  ["BILLING_REQUIRED", "chatTab.messages.aiUnavailable"],
+];
+
+function streamErrorKey(message: string | undefined): string | null {
+  const msg = (message ?? "").trim();
+  for (const [prefix, key] of STREAM_ERROR_KEYS) {
+    if (msg.startsWith(prefix + ":")) return key;
+  }
+  return null;
+}
+
 /** Group conversations into Today / This Week / Older buckets. */
 function groupConvsByDate(convs: Conv[]): { label: "today" | "thisWeek" | "older"; items: Conv[] }[] {
   const now = Date.now();
@@ -333,7 +352,13 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           loadConvs();
         }
         else if (ev.type === "delta")  { if (ev.text) gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (ev.text ?? "") } : m)); }
-        else if (ev.type === "error")  { gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
+        else if (ev.type === "error")  {
+          gotText = true;
+          const errKey = streamErrorKey(ev.message);
+          const shown = errKey ? t(errKey) : ev.message;
+          setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + t("chatTab.messages.streamErrorPrefix", { message: shown }) } : m));
+          closed = true; break;
+        }
         else if (ev.type === "done")   {
           loadConvs(); closed = true;
           // The user plainly asked to open a page but the reply carries no

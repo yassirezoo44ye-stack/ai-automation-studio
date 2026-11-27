@@ -120,15 +120,16 @@ function PageTopBar({ onOpenCmd }: { onOpenCmd: () => void }) {
     <div className="flow-topbar">
       <div className="flow-topbar__left">
         {/* Org name when available */}
+        {/* On phones the org name is hidden (CSS) so the page title fits. */}
         {currentOrg && (
-          <>
-            <span style={{ fontSize: 12, color: "var(--t3)", flexShrink: 0, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span className="flow-topbar__org">
+            <span style={{ fontSize: 12, color: "var(--t3)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {currentOrg.name}
             </span>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--b2)", flexShrink: 0 }}>
+            <svg aria-hidden="true" className="flow-topbar__chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--b2)", flexShrink: 0 }}>
               <polyline points="9 18 15 12 9 6"/>
             </svg>
-          </>
+          </span>
         )}
         <span className="flow-topbar__crumb">{pageTitle}</span>
       </div>

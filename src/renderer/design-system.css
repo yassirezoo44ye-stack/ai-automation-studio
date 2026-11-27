@@ -1429,7 +1429,16 @@ kbd {
   flex: 1;
   min-width: 0;
 }
+.flow-topbar__org {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+[dir="rtl"] .flow-topbar__chevron { transform: scaleX(-1); }
 .flow-topbar__crumb {
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--t1);
@@ -2196,9 +2205,10 @@ button, [role="button"], input, textarea, select, a,
     bottom:             calc(20px + env(safe-area-inset-bottom));
     inset-inline-end:   calc(16px + env(safe-area-inset-right));
   }
-  /* Mobile hamburger clears the status bar / notch */
+  /* Mobile hamburger clears the status bar / notch and sits centred in
+     the 56px mobile top bar */
   .mobile-menu-btn {
-    top:                calc(var(--sp-3) + env(safe-area-inset-top));
+    top:                calc(6px + env(safe-area-inset-top));
     inset-inline-start: calc(var(--sp-3) + env(safe-area-inset-left));
     /* Enlarge to 44×44 minimum touch target */
     width:  44px;
@@ -2212,11 +2222,17 @@ button, [role="button"], input, textarea, select, a,
 
   /* ── TopBar: compact mobile header ─────────────────────────────── */
   .flow-topbar {
-    /* Clear the fixed hamburger button on the inline-start side */
-    padding-inline-start: 56px;
+    /* Tall enough for the 44px hamburger, below the notch */
+    height:      calc(56px + env(safe-area-inset-top));
+    min-height:  calc(56px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    /* Clear the fixed hamburger button (12px + 44px) on the inline-start side */
+    padding-inline-start: calc(68px + env(safe-area-inset-left));
     padding-inline-end:   8px;
     gap: 4px;
   }
+  /* The workspace name is in the sidebar; the page title gets the room */
+  .flow-topbar__org { display: none; }
   /* Hide search box text label — keep the icon-only trigger */
   .flow-topbar__search > span:not(.flow-topbar__kbd) { display: none; }
   .flow-topbar__kbd { display: none; }
@@ -2232,9 +2248,9 @@ button, [role="button"], input, textarea, select, a,
     width:  44px;
     height: 44px;
   }
-  /* Breadcrumb: truncate long page titles gracefully */
+  /* Page title: use the free width, truncate only when it truly runs out */
   .flow-topbar__crumb {
-    max-width: 120px;
+    font-size: 15px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

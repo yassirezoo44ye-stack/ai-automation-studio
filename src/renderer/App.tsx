@@ -9,6 +9,7 @@ import { CopilotProvider } from "./contexts/CopilotContext";
 import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
 import { LandingPage }   from "./features/landing/LandingPage";
+import { authViewFromPath, type AuthView } from "./authView";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
 import { LegalPage, legalDocFromPath } from "./features/legal";
 import { lazyPage } from "./shared/lib/staleChunk";
@@ -20,16 +21,11 @@ import "./design-system.css";
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
-type AuthView = "landing" | "login" | "register";
 const StudyLibraryPage = lazyPage(() => import("./features/study-library/StudyLibraryPage").then(m => m.StudyLibraryPage));
 
 function AppInner() {
   const { user, loading, bootstrapError, pendingMfaChallenge } = useAuth();
-  // Links from emails (/verify-email, /reset-password) must open the auth
-  // form directly — the landing page knows nothing about their tokens.
-  const [authView, setAuthView] = useState<AuthView>(() =>
-    ["/verify-email", "/reset-password"].includes(window.location.pathname) ? "login" : "landing",
-  );
+  const [authView, setAuthView] = useState<AuthView>(() => authViewFromPath(window.location.pathname));
 
   // Deep-link routing is handled by AppContext (URL ↔ page sync).
   // The OAuth callback and reset-password paths are handled by AuthContext
@@ -112,7 +108,14 @@ function AppInner() {
   return (
     <AuthPage
       initialTab={authView === "register" ? "register" : "login"}
-      onBack={() => setAuthView("landing")}
+      onBack={() => {
+        // Leaving a /login or /register link: go back to the home URL so a
+        // reload shows the landing page the visitor chose.
+        if (authViewFromPath(window.location.pathname) !== "landing") {
+          window.history.replaceState(null, "", "/");
+        }
+        setAuthView("landing");
+      }}
     />
   );
 }

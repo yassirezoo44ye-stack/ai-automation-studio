@@ -96,6 +96,13 @@ it("shows provider errors in place of the reply", async () => {
   await waitFor(() => expect(screen.getByText(/No AI provider is configured\./)).toBeInTheDocument(), { timeout: 2000 });
 });
 
+it("shows a neutral message, not setup details, when the AI is not configured", async () => {
+  streamEvents = [{ type: "error", message: "AI_NOT_CONFIGURED: The AI assistant isn't set up yet." }];
+  await send("hello");
+  await waitFor(() => expect(screen.getByText(/chatTab\.messages\.aiNotConfigured/)).toBeInTheDocument(), { timeout: 2000 });
+  expect(screen.queryByText(/AI_NOT_CONFIGURED|API_KEY|Render/)).not.toBeInTheDocument();
+});
+
 it("turns [[open:…]] markers into page buttons the user clicks", async () => {
   streamEvents = [{ type: "delta", text: "Your settings are here.\n\n[[open:settings]]" }, { type: "done" }];
   await send("where are my settings?");

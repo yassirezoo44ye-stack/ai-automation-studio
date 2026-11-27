@@ -92,6 +92,8 @@
       "assistantFallback": "Claude",
       "now": "now",
       "streamErrorPrefix": "⚠️ {{message}}",
+      "aiNotConfigured": "The AI assistant isn't set up yet. Please contact your workspace administrator.",
+      "aiUnavailable": "The AI service is temporarily unavailable. Please try again in a few moments.",
       "emptyReply": "⚠️ No reply came back from the AI. Please try again in a moment.",
       "copyCode": "Copy",
       "copied": "Copied!",
