@@ -66,3 +66,34 @@ async def test_exhausted_pool_fails_fast_instead_of_hanging(e2e_transport):
 
     async with pool.acquire() as conn:  # and recovers once released
         assert await conn.fetchval("SELECT 1") == 1
+
+
+async def test_simultaneous_invite_accepts_do_not_deadlock_the_pool(e2e_transport):
+    """accept_invitation held its locked connection while get_limit("seats")
+    acquired a second one: DB_POOL_MAX accepts at once hung the whole pool."""
+    from app.billing import get_usage_service
+
+    n = POOL_MAX + 5
+    labels = ["owner"] + [f"guest{i}" for i in range(n)]
+    async with tenants(e2e_transport, *labels, ip_prefix="10.96.0") as t:
+        owner = t["owner"]
+        await get_usage_service().set_override(owner.org_id, "seats", -1)
+        tokens = []
+        for i in range(n):
+            r = await owner.req("POST", f"/api/orgs/{owner.org_id}/invitations",
+                                json={"email": t[f"guest{i}"].email, "role": "viewer"})
+            assert r.status_code == 201, r.text
+            tokens.append(r.json()["token"])
+
+        async def accept(i: int):
+            g = t[f"guest{i}"]
+            return await g.req("POST", "/api/orgs/invitations/accept", org_id="",
+                               json={"token": tokens[i]})
+
+        responses = await asyncio.wait_for(
+            asyncio.gather(*(accept(i) for i in range(n))), timeout=60,
+        )
+        assert [r.status_code for r in responses] == [200] * n, [r.text for r in responses]
+
+        r = await asyncio.wait_for(owner.req("GET", f"/api/orgs/{owner.org_id}/members"), timeout=15)
+        assert r.status_code == 200, r.text

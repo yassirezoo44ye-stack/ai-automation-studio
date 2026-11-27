@@ -332,6 +332,20 @@ class TenancyService:
     async def accept_invitation(
         self, *, token: str, user_id: str, user_email: str, ip_address: str | None = None,
     ) -> dict[str, Any]:
+        # Read the seat limit BEFORE taking the locked connection: get_limit()
+        # acquires its own connection, and holding one while waiting for a
+        # second deadlocks the pool when DB_POOL_MAX accepts arrive together
+        # (same failure as the login/audit deadlock fixed in perf audit M1).
+        async with self._pool.acquire() as conn:
+            inv_org = await conn.fetchval(
+                "SELECT organization_id FROM invitations WHERE token=$1 AND deleted_at IS NULL",
+                token,
+            )
+        seat_limit: int | None = None
+        if inv_org is not None:
+            from app.billing import get_usage_service
+            seat_limit = await get_usage_service().get_limit(str(inv_org), "seats")
+
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 inv = await conn.fetchrow(
@@ -361,8 +375,9 @@ class TenancyService:
                     inv["organization_id"], uuid.UUID(user_id),
                 )
                 if not already_member:
-                    from app.billing import get_usage_service
-                    limit = await get_usage_service().get_limit(str(inv["organization_id"]), "seats")
+                    # organization_id never changes on an invitation, so the
+                    # limit read above belongs to this row.
+                    limit = seat_limit if seat_limit is not None else -1
                     if limit >= 0:
                         used = await conn.fetchval(
                             "SELECT COUNT(*) FROM organization_members "
