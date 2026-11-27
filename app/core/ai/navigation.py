@@ -66,15 +66,21 @@ ACTIONS: dict[str, str] = {
                    '"due_date": "YYYY-MM-DD" (optional), "notes": str (optional)}',
     "create_lead": '{"name": str (required), "source": str (optional), '
                    '"email": str (optional), "phone": str (optional)}',
+    "update_task_status": '{"id": task id from <workspace-data> (required), '
+                          '"status": "pending"|"in_progress"|"done"}',
+    "update_lead_status": '{"id": lead id from <workspace-data> (required), '
+                          '"status": "new"|"qualified"|"contacted"|"won"|"lost"}',
 }
 
 
 def actions_prompt() -> str:
     lines = "\n".join(f"- {name}: {schema}" for name, schema in ACTIONS.items())
     return (
-        "Proposable actions (only when the user clearly asks to create or add "
-        "something; at most 3 per reply; never invent e-mails or phone numbers the "
-        "user did not give):\n"
+        "Proposable actions (only when the user clearly asks to create, add, or change "
+        "the status of something; at most 3 per reply; never invent e-mails or phone "
+        "numbers the user did not give; for a status change copy the id exactly from "
+        "<workspace-data> and never guess one; if the item is not listed there, say so "
+        "and point to its page instead):\n"
         f"{lines}\n"
         'Propose one on its own line exactly like: [[action:create_task {"title": "Call the supplier", "priority": "high"}]]\n'
         "The JSON must be valid and on one line. Never say an action is done: say "

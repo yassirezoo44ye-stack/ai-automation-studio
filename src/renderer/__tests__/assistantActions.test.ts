@@ -40,3 +40,17 @@ it("keys are stable per message and index", () => {
   expect(actionKey("abc", 0)).toBe(actionKey("abc", 0));
   expect(actionKey("abc", 0)).not.toBe(actionKey("abc", 1));
 });
+
+describe("status changes (M5)", () => {
+  const ID = "3f2b8c1e-9a4d-4c2b-8e1f-0a1b2c3d4e5f";
+  it("accepts only a real uuid and a known status", () => {
+    expect(validateAction("update_task_status", { id: ID.toUpperCase(), status: "done" }))
+      .toEqual({ kind: "update_task_status", id: ID, status: "done" });
+    expect(validateAction("update_lead_status", { id: ID, status: "won" }))
+      .toEqual({ kind: "update_lead_status", id: ID, status: "won" });
+    expect(validateAction("update_task_status", { id: "task-1", status: "done" })).toBeNull();
+    expect(validateAction("update_task_status", { id: ID, status: "deleted" })).toBeNull();
+    expect(validateAction("update_lead_status", { id: ID, status: "done" })).toBeNull();
+    expect(validateAction("update_lead_status", { id: `${ID}'; DROP TABLE leads`, status: "won" })).toBeNull();
+  });
+});

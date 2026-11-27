@@ -155,6 +155,20 @@ async def list_tasks(
     return {"tasks": [_task_row_to_dict(r) for r in rows]}
 
 
+@router.get("/api/tasks/{task_id}")
+async def get_task(task_id: str, request: Request):
+    """One task the caller owns (used by the assistant's confirmation card)."""
+    await ensure_tasks_table()
+    tid = _parse_uuid(task_id, "task_id")
+    async with get_pool().acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM tasks WHERE id = $1 AND owner_email = $2", tid, owner_email(request),
+        )
+    if not row:
+        raise HTTPException(404, "Task not found")
+    return _task_row_to_dict(row)
+
+
 @router.post("/api/tasks")
 async def create_task(body: TaskCreate, request: Request):
     await ensure_tasks_table()

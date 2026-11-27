@@ -10,6 +10,7 @@ vi.mock("../contexts/toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("../contexts/AuthContext", () => ({ useAuth: () => ({ user: { name: "Yassir", email: "y@example.com" } }) }));
 
 const CONV_ID = "11111111-1111-1111-1111-111111111111";
+const TASK_ID = "22222222-2222-4222-8222-222222222222";
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 
 let messagesFetched: () => void;
@@ -49,6 +50,11 @@ beforeEach(() => {
       messagesFetched();
       return json([{ id: "m1", role: "user", content: "hello" }]);
     }
+    if (url.includes(`/api/tasks/${TASK_ID}`)) {
+      if (init?.method === "PUT") { posted.push({ url, body: JSON.parse(String(init.body)) }); return json({ id: TASK_ID }); }
+      return json({ id: TASK_ID, title: "Call supplier", status: "pending" });
+    }
+    if (url.includes("/api/tasks/") && !init?.method) return new Response(JSON.stringify({ detail: "Task not found" }), { status: 404 });
     if (url.includes("/api/tasks") && init?.method === "POST") {
       posted.push({ url, body: JSON.parse(String(init.body)) });
       return json({ id: "t1" });
@@ -130,6 +136,27 @@ it("dismissing a proposal sends nothing", async () => {
   streamEvents = [{ type: "delta", text: '[[action:create_task {"title": "X"}]]' }, { type: "done" }];
   await send("add task X");
   fireEvent.click(await screen.findByRole("button", { name: "chatTab.actions.dismiss" }, { timeout: 2000 }));
+  expect(screen.queryByRole("button", { name: "chatTab.actions.confirm" })).not.toBeInTheDocument();
+  expect(posted).toHaveLength(0);
+});
+
+it("shows the real task and its current status before a status change, then applies it on confirm", async () => {
+  streamEvents = [{ type: "delta", text: `Marking it done.\n[[action:update_task_status {"id": "${TASK_ID}", "status": "done"}]]` }, { type: "done" }];
+  await send("mark call supplier as done");
+  const confirm = await screen.findByRole("button", { name: "chatTab.actions.confirm" }, { timeout: 2000 });
+  expect(screen.getByText("Call supplier")).toBeInTheDocument();
+  expect(screen.getByText("chatTab.actions.status.task.pending")).toBeInTheDocument();
+  expect(screen.getByText("chatTab.actions.status.task.done")).toBeInTheDocument();
+  expect(posted).toHaveLength(0);
+  fireEvent.click(confirm);
+  await screen.findByText(/chatTab.actions.done/);
+  expect(posted).toEqual([{ url: expect.stringContaining(`/api/tasks/${TASK_ID}`), body: { status: "done" } }]);
+});
+
+it("an id the user cannot see offers nothing to confirm", async () => {
+  streamEvents = [{ type: "delta", text: '[[action:update_task_status {"id": "33333333-3333-4333-8333-333333333333", "status": "done"}]]' }, { type: "done" }];
+  await send("mark it done");
+  expect(await screen.findByText("chatTab.actions.notFound", {}, { timeout: 2000 })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "chatTab.actions.confirm" })).not.toBeInTheDocument();
   expect(posted).toHaveLength(0);
 });

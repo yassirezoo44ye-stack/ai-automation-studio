@@ -7,12 +7,24 @@
  * then calls the normal, authenticated API with the user's own session, so
  * every server-side permission, org-membership and quota check still applies.
  *
+ * Status changes name the record by the id the snapshot (M3) showed; the
+ * card loads that record through the API first, so an unknown or foreign id
+ * simply shows "not found" and nothing can be confirmed.
+ *
  * Deliberately absent: deleting, paying, sending messages/e-mails, settings,
  * billing and permission changes.
  */
 export type AssistantAction =
   | { kind: "create_task"; title: string; priority: "low" | "medium" | "high"; due_date?: string; notes?: string }
-  | { kind: "create_lead"; name: string; source?: string; email?: string; phone?: string };
+  | { kind: "create_lead"; name: string; source?: string; email?: string; phone?: string }
+  | { kind: "update_task_status"; id: string; status: TaskStatus }
+  | { kind: "update_lead_status"; id: string; status: LeadStatus };
+
+export const TASK_STATUSES = ["pending", "in_progress", "done"] as const;
+export const LEAD_STATUSES = ["new", "qualified", "contacted", "won", "lost"] as const;
+export type TaskStatus = typeof TASK_STATUSES[number];
+export type LeadStatus = typeof LEAD_STATUSES[number];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const MAX_ACTIONS = 3;
 const ACTION_MARKER = /\[\[\s*action\s*:\s*([a-z_]+)\s+(\{[^\n]*?\})\s*\]\]/gi;
@@ -51,6 +63,16 @@ export function validateAction(kind: string, raw: unknown): AssistantAction | nu
       ...(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? { email } : {}),
       ...(phone && /^\+?[\d\s()-]{6,30}$/.test(phone) ? { phone } : {}),
     };
+  }
+  if (kind === "update_task_status" || kind === "update_lead_status") {
+    // Checked untrimmed and untruncated: "<uuid>junk" must not pass as <uuid>.
+    const id = typeof o.id === "string" ? o.id : "";
+    if (!UUID.test(id)) return null;
+    const allowed: readonly string[] = kind === "update_task_status" ? TASK_STATUSES : LEAD_STATUSES;
+    if (typeof o.status !== "string" || !allowed.includes(o.status)) return null;
+    return kind === "update_task_status"
+      ? { kind, id: id.toLowerCase(), status: o.status as TaskStatus }
+      : { kind, id: id.toLowerCase(), status: o.status as LeadStatus };
   }
   return null;
 }

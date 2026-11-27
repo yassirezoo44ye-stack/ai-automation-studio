@@ -180,8 +180,9 @@ def test_page_catalog_matches_web_client():
 
 def test_action_catalogue_is_allow_list_only():
     from app.core.ai.navigation import ACTIONS, navigation_system_prompt
-    assert set(ACTIONS) == {"create_task", "create_lead"}
     prompt = navigation_system_prompt()
+    assert set(ACTIONS) == {"create_task", "create_lead", "update_task_status", "update_lead_status"}
+    assert "never guess" in prompt
     assert "[[action:create_task" in prompt
     assert "Never say an action is done" in prompt
     assert "Deleting, paying, sending messages" in prompt

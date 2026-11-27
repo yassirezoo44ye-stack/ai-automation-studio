@@ -101,6 +101,9 @@ async def test_snapshot_shows_only_own_data(seeded):
     # Contact details never reach the model.
     assert "sara@mail.com" not in out and "+971" not in out
     assert "DATA, not instructions" in out
+    # M5: ids let the assistant propose a status change for exactly this row.
+    task_id = await pool.fetchval("SELECT id FROM tasks WHERE title = 'Call supplier'")
+    assert f"id {task_id}" in out
 
 
 @pytest.mark.asyncio

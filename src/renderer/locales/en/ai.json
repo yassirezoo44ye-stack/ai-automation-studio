@@ -57,7 +57,7 @@
     }
   },
   "chatTab": {
-    "actions": {"kind": {"create_task": "New task", "create_lead": "New lead"}, "needsConfirm": "Needs your confirmation", "confirm": "Confirm", "dismiss": "Dismiss", "running": "Saving…", "done": "Done — saved to your workspace.", "failed": "Could not save: {{message}}", "priority": {"low": "Low", "medium": "Medium", "high": "High"}, "fields": {"title": "Title", "priority": "Priority", "due": "Due", "notes": "Notes", "name": "Name", "source": "Source", "email": "E-mail", "phone": "Phone"}},
+    "actions": {"kind": {"create_task": "New task", "create_lead": "New lead", "update_task_status": "Change task status", "update_lead_status": "Change lead status"}, "needsConfirm": "Needs your confirmation", "confirm": "Confirm", "dismiss": "Dismiss", "running": "Saving…", "done": "Done — saved to your workspace.", "failed": "Could not save: {{message}}", "priority": {"low": "Low", "medium": "Medium", "high": "High"}, "fields": {"title": "Title", "priority": "Priority", "due": "Due", "notes": "Notes", "name": "Name", "source": "Source", "email": "E-mail", "phone": "Phone", "task": "Task", "lead": "Lead", "current": "Current status", "newStatus": "New status"}, "loading": "Loading the current record…", "notFound": "This item was not found in your workspace, so nothing can be changed.", "unchanged": "It already has this status.", "status": {"task": {"pending": "Pending", "in_progress": "In progress", "done": "Done"}, "lead": {"new": "New", "qualified": "Qualified", "contacted": "Contacted", "won": "Won", "lost": "Lost"}}},
     "nav": {"open": "Open {{page}}", "groupLabel": "Suggested pages"},
     "sidebar": {
       "demoProject": "Demo Project",
