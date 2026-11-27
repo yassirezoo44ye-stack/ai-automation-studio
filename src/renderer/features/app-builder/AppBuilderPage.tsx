@@ -1,5 +1,6 @@
 import { StorePreview } from "./components/StorePreview";
 import { StoreSetup } from "./components/StoreSetup";
+import { RecommendedStack } from "./components/RecommendedStack";
 import { SecondaryActions } from "../../shared/ui/SecondaryActions";
 /**
  * App Builder — 3-panel workspace for building apps with AI.
@@ -1383,6 +1384,8 @@ export function AppBuilderPage() {
       </div>
 
       {runtimeState === "running" && (currentPlan?.delivery_contract === "flow-commerce-cod-v1" || commerceProject === (activeProjectId ?? sessionStorage.getItem("flow_active_project"))) && (activeProjectId ?? sessionStorage.getItem("flow_active_project")) && <StoreSetup key={activeProjectId ?? sessionStorage.getItem("flow_active_project")} projectId={(activeProjectId ?? sessionStorage.getItem("flow_active_project"))!} />}
+
+      {runtimeState === "running" && (activeProjectId ?? sessionStorage.getItem("flow_active_project")) && <RecommendedStack />}
 
       {/* ── 3-panel workspace ─────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>

@@ -21,6 +21,7 @@ from app.core.ai.inference.engine import InferenceEngine
 from app.core.auth import owner_user_id, owner_email
 from app.core.commerce_builder import CONTRACT, is_store_request, store_chunks, store_plan, store_files, validate_store_workspace
 from app.core.build_delivery import validate_delivery
+from app.core.recommended_stack import catalogue as stack_catalogue, find as stack_find
 from app.core.db import get_pool
 from app.core.filesystem import workspace, safe_path
 from app.core.helpers import resolve_project_id, anthropic_error_message, strip_fences
@@ -691,6 +692,26 @@ async def store_owner_setup(project_id: str, request: Request):
         raise HTTPException(404, "No valid store setup token")
     from fastapi.responses import JSONResponse
     return JSONResponse({"token": token.strip()}, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/recommended-stack")
+async def recommended_stack(request: Request):
+    async with get_pool().acquire() as conn:
+        await owner_user_id(conn, request)
+    return {"items": [{k: e[k] for k in ("id", "category", "name", "referral")} for e in stack_catalogue()]}
+
+
+@router.post("/api/recommended-stack/click/{item_id}")
+async def recommended_stack_click(item_id: str, request: Request):
+    """Records the click and returns the configured URL. Only ids configured on
+    the server resolve, so callers cannot supply their own destination."""
+    async with get_pool().acquire() as conn:
+        uid = await owner_user_id(conn, request)
+    item = stack_find(item_id)
+    if not item:
+        raise HTTPException(404, "Unknown recommendation")
+    log.info("recommended_stack_click user=%s item=%s referral=%s", uid, item["id"], item["referral"])
+    return {"url": item["url"]}
 
 
 @router.get("/api/projects/{project_id}/files")

@@ -141,5 +141,18 @@
     "button": "⬇ Export",
     "buttonBusy": "⏳ Exporting…",
     "buttonBusyShort": "⏳…"
+  },
+  "stack": {
+    "title": "Recommended stack for hosting this app (optional)",
+    "unavailable": "Could not load recommendations.",
+    "empty": "No recommendations are configured.",
+    "referral": "referral link",
+    "disclosure": "Links marked “referral link” are affiliate links: Flow may earn a commission if you sign up, at no extra cost to you. Recommendations are not paid placements and your build does not depend on them.",
+    "category": {
+      "hosting": "Hosting",
+      "database": "Database",
+      "domain": "Domain",
+      "email": "Email"
+    }
   }
 }
