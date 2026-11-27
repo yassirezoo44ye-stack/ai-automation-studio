@@ -141,5 +141,11 @@
     "button": "⬇ Export",
     "buttonBusy": "⏳ Exporting…",
     "buttonBusyShort": "⏳…"
+  },
+  "input": {
+    "empty": "Enter a request first.",
+    "tooLong": "Requests can contain up to {{max}} characters. Shorten it while keeping the essential requirements.",
+    "characters": "{{count}} / {{max}} characters",
+    "rejected": "The server rejected planning ({{status}}). Check the inputs or account access and retry; your draft is preserved."
   }
 }

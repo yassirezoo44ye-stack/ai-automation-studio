@@ -9,6 +9,7 @@ Orchestrates:
   - Edge detection and device switching (primary agent only)
   - Display configuration reporting
   - Tray icon state updates
+  - Opt-in read-only inventory reports (device advisor M1)
 
 Session state machine:
   IDLE → CONNECTING → AUTHENTICATED → CONTROL_ACTIVE → IDLE
@@ -35,6 +36,10 @@ log = logging.getLogger(__name__)
 _STATE_LOG = logging.getLogger(__name__ + ".state")
 
 AGENT_VERSION = "1.0.0"
+
+# Opt-in inventory: one report per connection, then every INVENTORY_INTERVAL_S.
+INVENTORY_INTERVAL_S = 6 * 60 * 60
+_INVENTORY_CHECK_S = 60
 
 
 class AgentState:
@@ -63,6 +68,7 @@ class DeviceAgentController:
         device_name: str = "",
         is_primary: bool = False,
         on_state_change: Optional[Callable[[str], None]] = None,
+        inventory_enabled: bool = False,
     ):
         self._device_id = device_id
         self._credential = credential   # NEVER LOGGED
@@ -82,6 +88,12 @@ class DeviceAgentController:
         # Layout: list of dicts with device_id, position_x, position_y, width, height
         self._layout: list[dict] = []
         self._current_device_id: Optional[str] = None  # which device has focus
+
+        # Inventory is off unless the user ran `flow-agent inventory on`.
+        self._inventory_enabled = inventory_enabled
+        self._inventory_due = True
+        self._last_inventory_at = 0.0
+        self._connected = False
 
     # ── State management ────────────────────────────────────────────────────
 
@@ -120,9 +132,14 @@ class DeviceAgentController:
         # Report display configuration on connect
         await self._report_display_config()
 
+        inventory_task = (
+            asyncio.create_task(self._inventory_loop()) if self._inventory_enabled else None
+        )
         try:
             await self._ws_client.run()
         finally:
+            if inventory_task is not None:
+                inventory_task.cancel()
             self._release_control("connection_ended")
             self._set_state(AgentState.IDLE)
 
@@ -138,11 +155,14 @@ class DeviceAgentController:
 
     def _on_connected(self) -> None:
         self._set_state(AgentState.CONNECTED)
+        self._connected = True
+        self._inventory_due = True  # report once on every (re)connect
         _STATE_LOG.info("agent connected device_id=%s", self._device_id)
 
     def _on_disconnected(self) -> None:
         # FAILSAFE: release all hooks FIRST before updating state
         self._release_control("disconnected")
+        self._connected = False
         if self._state not in (AgentState.STOPPING, AgentState.REVOKED):
             self._set_state(AgentState.IDLE)
 
@@ -488,6 +508,33 @@ class DeviceAgentController:
                 await self._ws_client.send(frame)
             except Exception as e:
                 log.warning("display_config failed: %s", type(e).__name__)
+
+    # ── Inventory (opt-in, read-only) ───────────────────────────────────────
+
+    async def _inventory_loop(self) -> None:
+        while True:
+            await asyncio.sleep(_INVENTORY_CHECK_S)
+            if not self._connected:
+                continue
+            elapsed = time.monotonic() - self._last_inventory_at
+            if self._inventory_due or elapsed >= INVENTORY_INTERVAL_S:
+                if await self._report_inventory():
+                    self._inventory_due = False
+                    self._last_inventory_at = time.monotonic()
+
+    async def _report_inventory(self) -> bool:
+        """Collect a snapshot off the event loop and queue it. Never raises."""
+        if not self._ws_client:
+            return False
+        try:
+            from agent.inventory.collector import collect_inventory
+
+            frame = await asyncio.to_thread(collect_inventory)
+            await self._ws_client.send(frame)
+            return True
+        except Exception as e:
+            log.warning("inventory report failed: %s", type(e).__name__)
+            return False
 
     # ── Failsafe ────────────────────────────────────────────────────────────
 

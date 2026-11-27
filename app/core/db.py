@@ -21,6 +21,69 @@ _pool: asyncpg.Pool | None = None
 _ACQUIRE_TIMEOUT_S = float(os.getenv("DB_ACQUIRE_TIMEOUT_S", "10"))
 
 
+class PoolExhausted(TimeoutError):
+    """No pooled connection became free within DB_ACQUIRE_TIMEOUT_S.
+
+    A TimeoutError subclass, so existing `except asyncio.TimeoutError`
+    handlers keep working; app.factory maps it to 503 + Retry-After."""
+
+
+class _BoundedAcquire:
+    """Wraps asyncpg's PoolAcquireContext: only the wait for a connection
+    is translated into PoolExhausted, never a timeout raised inside the
+    caller's own `async with` body."""
+
+    __slots__ = ("_ctx",)
+
+    def __init__(self, ctx):
+        self._ctx = ctx
+
+    async def __aenter__(self):
+        try:
+            return await self._ctx.__aenter__()
+        except TimeoutError as exc:
+            raise PoolExhausted("database connection pool exhausted") from exc
+
+    async def __aexit__(self, *exc_info):
+        return await self._ctx.__aexit__(*exc_info)
+
+    def __await__(self):
+        return self._acquire().__await__()
+
+    async def _acquire(self):
+        try:
+            return await self._ctx
+        except TimeoutError as exc:
+            raise PoolExhausted("database connection pool exhausted") from exc
+
+
+class BoundedPool(asyncpg.Pool):
+    """asyncpg.Pool whose acquire() waits at most DB_ACQUIRE_TIMEOUT_S by
+    default. A plain acquire() waits forever, so code that holds one
+    connection while asking for a second (nested acquire) deadlocked the
+    whole pool once max_size requests did it at the same moment: ten
+    simultaneous logins froze every DB route until the process restarted
+    (performance audit M1, 2026-11-17). With a bound, such a request fails,
+    releases what it holds, and the pool recovers on its own."""
+
+    __slots__ = ()
+
+    def acquire(self, *, timeout=None):
+        return _BoundedAcquire(
+            super().acquire(timeout=_ACQUIRE_TIMEOUT_S if timeout is None else timeout)
+        )
+
+
+async def create_bounded_pool(dsn: str, **kwargs) -> BoundedPool:
+    """asyncpg.create_pool, returning a BoundedPool. The class is swapped
+    after creation (BoundedPool adds no state) because create_pool() takes
+    no pool class and Pool.__init__'s parameters differ between asyncpg
+    releases."""
+    pool = await asyncpg.create_pool(dsn, **kwargs)
+    pool.__class__ = BoundedPool
+    return pool  # type: ignore[return-value]
+
+
 def get_pool() -> asyncpg.Pool:
     """Return the active connection pool (guaranteed non-None after lifespan startup)."""
     return _pool  # type: ignore[return-value]
@@ -75,6 +138,9 @@ async def init_db(conn: asyncpg.Connection) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT",
+        # Which Terms/Privacy version the person accepted at sign-up, and when.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT",
     ):
         await conn.execute(_col_sql)
     await conn.execute('''
@@ -303,21 +369,36 @@ async def write_audit(
     resource_id: str | None = None,
     details: dict | None = None,
     ip_address: str | None = None,
+    conn: asyncpg.Connection | None = None,
 ) -> None:
-    """Fire-and-forget audit record — errors are swallowed to never break the request path."""
+    """Fire-and-forget audit record — errors are swallowed to never break the request path.
+
+    A caller that already holds a connection MUST pass it as `conn`:
+    acquiring a second one while holding the first is a nested acquire,
+    which can exhaust the pool under concurrency (see BoundedPool)."""
     import json
 
     from app.core.observability.config import get_observability_config
     if not get_observability_config().audit_enabled:
         return
 
+    sql = (
+        "INSERT INTO audit_logs (actor_email, action, resource, resource_id, details, ip_address) "
+        "VALUES ($1, $2, $3, $4, $5, $6)"
+    )
+    args = (actor_email, action, resource, resource_id,
+            json.dumps(details) if details else None, ip_address)
     try:
-        async with get_pool().acquire() as conn:
-            await conn.execute(
-                "INSERT INTO audit_logs (actor_email, action, resource, resource_id, details, ip_address) "
-                "VALUES ($1, $2, $3, $4, $5, $6)",
-                actor_email, action, resource, resource_id,
-                json.dumps(details) if details else None, ip_address,
-            )
+        if conn is not None:
+            # A savepoint when the caller is inside a transaction, so a failed
+            # audit insert cannot abort the caller's transaction.
+            if conn.is_in_transaction():
+                async with conn.transaction():
+                    await conn.execute(sql, *args)
+            else:
+                await conn.execute(sql, *args)
+            return
+        async with get_pool().acquire() as own:
+            await own.execute(sql, *args)
     except Exception:
         pass

@@ -39,6 +39,7 @@ import logging
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
+from tests.cookie_client import request_with_cookies
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
@@ -133,6 +134,9 @@ class _FakeOAuthConn:
         s = " ".join(sql.split())
         if "SELECT * FROM users WHERE email=$1" in s:
             return self._by_email(args[0])
+        if "FROM users WHERE lower(email)=$1" in s:
+            return next((dict(u) for u in self.users.values()
+                         if u["email"].lower() == args[0]), None)
         if "FROM users WHERE id=$1" in s:  # covers both `SELECT *` and the column-list variant
             row = self.users.get(str(args[0]))
             return dict(row) if row else None
@@ -158,7 +162,7 @@ class _FakeOAuthConn:
     async def execute(self, sql, *args):
         s = " ".join(sql.split())
         if s.startswith("INSERT INTO users"):
-            new_id, email, name, avatar_url = args
+            new_id, email, name, avatar_url, *_terms = args
             self.users[str(new_id)] = {
                 "id": new_id, "email": email, "name": name, "avatar_url": avatar_url,
                 "email_verified": True, "password_hash": None,
@@ -1115,7 +1119,8 @@ class TestGoogleOAuthLoginCSRFBinding:
         mock_google = _MockGoogleClient()
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(mock_google):
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": state},
                 cookies={"oauth_bind": "wrong-nonce"},
@@ -1139,7 +1144,8 @@ class TestGoogleOAuthLoginCSRFBinding:
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              patch("app.core.cache.redis_adapter.get_redis",
                    _AM(side_effect=RuntimeError("redis down"))):
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": "any-state"},
                 cookies={"oauth_bind": "any-nonce"},
@@ -1157,7 +1163,8 @@ class TestExpiredOAuthState:
     def test_expired_state_returns_400(self, client):
         """A state token that was never stored (simulates TTL expiry) must 400."""
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"):
-            resp = client.get(
+            resp = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": "expired-nonexistent-state"},
                 cookies={"oauth_bind": "some-nonce"},
@@ -1200,7 +1207,8 @@ class TestConcurrentCallbacks:
         # Second callback — same state, same nonce → must be rejected (replayed).
         with patch("app.routers.auth_users._GOOGLE_CLIENT_ID", "fake-id"), \
              _patch_google(mock_google), _mock_pool(conn):
-            resp2 = client.get(
+            resp2 = request_with_cookies(
+                client, "GET",
                 "/api/auth/google/callback",
                 params={"code": "code-2", "state": state},
                 cookies={"oauth_bind": bind_cookie},
@@ -1231,9 +1239,9 @@ class TestFrontendUrlSeparation:
         location = resp.headers["location"]
         # redirect_uri must target the backend, not the frontend.
         # The value may or may not be percent-encoded depending on the HTTP library.
-        redirect_uri_value = location.split("redirect_uri=")[1].split("&")[0]
-        assert "api.example.com" in redirect_uri_value
-        assert "app.example.com" not in redirect_uri_value
+        from urllib.parse import parse_qs, urlsplit
+        redirect_uri_value = parse_qs(urlsplit(location).query)["redirect_uri"][0]
+        assert urlsplit(redirect_uri_value).hostname == "api.example.com"
 
     def test_post_oauth_redirect_uses_frontend_base(self, client):
         """Callback must send the browser to FRONTEND_URL/oauth-callback, not APP_URL."""
@@ -1296,7 +1304,6 @@ class TestFrontendUrlSeparation:
             resp = client.get(
                 "/api/auth/google/callback",
                 params={"code": "auth-code", "state": state},
-                cookies={},
             )
         assert resp.status_code == 400
         assert "Invalid or expired OAuth state" in resp.text
@@ -1327,8 +1334,7 @@ class TestFrontendUrlInCors:
             "https://app.example.com",
             [],
         )
-        assert "https://app.example.com" in origins
-        assert "https://api.example.com" in origins
+        assert {"https://app.example.com", "https://api.example.com"} <= set(origins)
 
     def test_frontend_url_not_duplicated_when_same_as_app_url(self):
         origins = self._build_cors_origins(
@@ -1344,7 +1350,7 @@ class TestFrontendUrlInCors:
             "https://app.example.com",
             ["https://staging.example.com"],
         )
-        assert "https://staging.example.com" in origins
+        assert {"https://staging.example.com"} <= set(origins)
 
     def test_no_duplicate_if_frontend_url_already_in_extra(self):
         origins = self._build_cors_origins(

@@ -372,12 +372,14 @@ class PlatformProviderRegistry:
                 "true" if os.getenv("ANTHROPIC_API_KEY") else "false",
                 "true" if os.getenv("OPENAI_API_KEY") else "false",
             )
+            # Operators get the fix in the log line above (and in
+            # GET /api/ai/providers); end users only see a neutral message
+            # with a stable code the UI can localise.
             yield StreamChunk(
                 type="error",
                 error=(
-                    "No AI provider is configured. "
-                    "Set ANTHROPIC_API_KEY (or OPENAI_API_KEY) in the Render "
-                    "environment variables, then redeploy."
+                    "AI_NOT_CONFIGURED: The AI assistant isn't set up yet. "
+                    "Please contact your workspace administrator."
                 ),
             )
             return
@@ -421,9 +423,8 @@ class PlatformProviderRegistry:
             yield StreamChunk(
                 type="error",
                 error=(
-                    f"No available AI providers — all circuits are open "
-                    f"({', '.join(open_ids)}). "
-                    f"Retry in {cooldown}s or check GET /api/ai/providers."
+                    f"AI_UNAVAILABLE: The AI service is temporarily unavailable. "
+                    f"Please try again in {cooldown} seconds."
                 ),
             )
             return

@@ -16,27 +16,37 @@ export function FeedTopBar({ activeTab, onTabChange }: FeedTopBarProps) {
   const { t } = useTranslation("feed");
 
   return (
-    <div className="feed-topbar" role="tablist" aria-label={t("topBar.ariaLabel")}>
+    <div className="feed-topbar">
       {/* Flow logo mark */}
       <span className="feed-topbar__logo" aria-hidden>
         ⚡
       </span>
 
-      {/* Tab pills */}
+      {/* Tab pills. "Explore" opens another page, so it is a plain button
+          beside the tablist rather than a tab inside it (WCAG 4.1.2). */}
       <div className="feed-topbar__tabs">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            role={tab.id === "explore" ? "button" : "tab"}
-            aria-selected={tab.id === "explore" ? undefined : activeTab === tab.id}
-            disabled={tab.id === "following"}
-            title={tab.id === "following" ? t("topBar.followingUnavailable") : undefined}
-            className={`feed-topbar__tab${activeTab === tab.id ? " feed-topbar__tab--active" : ""}`}
-            onClick={() => onTabChange(tab.id)}
-          >
-            {t(`topBar.${tab.enKey}`)}
-          </button>
-        ))}
+        <div role="tablist" aria-label={t("topBar.ariaLabel")} style={{ display: "flex", alignItems: "center" }}>
+          {TABS.filter(tab => tab.id !== "explore").map(tab => (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              disabled={tab.id === "following"}
+              title={tab.id === "following" ? t("topBar.followingUnavailable") : undefined}
+              className={`feed-topbar__tab${activeTab === tab.id ? " feed-topbar__tab--active" : ""}`}
+              onClick={() => onTabChange(tab.id)}
+            >
+              {t(`topBar.${tab.enKey}`)}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className={`feed-topbar__tab${activeTab === "explore" ? " feed-topbar__tab--active" : ""}`}
+          onClick={() => onTabChange("explore")}
+        >
+          {t("topBar.explore")}
+        </button>
       </div>
     </div>
   );

@@ -97,7 +97,9 @@ export const S: Record<string, React.CSSProperties> = {
 
   // Status badges — shared vocabulary for Build Status / Runtime Status / any
   // other state indicator, so every page reads the same visual language
-  // instead of ad-hoc colored text.
+  // instead of ad-hoc colored text. Colours come from the theme tokens: the
+  // fixed light-theme values (#A16207 etc.) fell to 3.4:1 on the dark theme
+  // (a11y audit M2).
   badge: {
     display: "inline-flex", alignItems: "center", gap: 6,
     padding: "3px 10px", borderRadius: 999,
@@ -106,9 +108,9 @@ export const S: Record<string, React.CSSProperties> = {
   },
   badgeNeutral: { background: "var(--bg-hover)",       color: "var(--t3)", border: "1px solid var(--b1)" },
   badgeInfo:    { background: "rgba(110,50,224,.15)",  color: "var(--ta)", border: "1px solid rgba(110,50,224,.3)" },
-  badgeSuccess: { background: "rgba(22,163,74,.12)",   color: "#16A34A",   border: "1px solid rgba(22,163,74,.3)" },
-  badgeWarning: { background: "rgba(161,98,7,.12)",    color: "#A16207",   border: "1px solid rgba(161,98,7,.3)" },
-  badgeError:   { background: "rgba(220,38,38,.12)",   color: "#DC2626",   border: "1px solid rgba(220,38,38,.3)" },
+  badgeSuccess: { background: "var(--green-dim)",       color: "var(--green)",  border: "1px solid var(--green-dim)" },
+  badgeWarning: { background: "var(--yellow-dim)",      color: "var(--yellow)", border: "1px solid var(--yellow-dim)" },
+  badgeError:   { background: "var(--red-dim)",         color: "var(--red)",    border: "1px solid var(--red-dim)" },
   dot:          { width: 6, height: 6, borderRadius: "50%", background: "currentColor" },
 };
 

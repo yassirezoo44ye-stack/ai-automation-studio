@@ -1,4 +1,5 @@
 {
+  "brand": { "tagline": "مساعدك الذكي" },
   "workspaceDetails": {
   "summary": "ملخص الأرقام",
   "examples": "أمثلة",
@@ -39,12 +40,17 @@
     "signOutTitle": "تسجيل الخروج ({{email}})",
     "signOut": "تسجيل الخروج"
   },
+  "notificationsBell": { "label": "الإشعارات", "unread": "الإشعارات، {{count}} غير مقروءة", "unreadLive": "{{count}} إشعارات غير مقروءة" },
   "appLayout": {
+    "search": "بحث…",
+    "openCommandPalette": "فتح لوحة الأوامر",
     "skipToContent": "تخطي إلى المحتوى الرئيسي",
     "loadingWorkspace": "جارٍ تحميل مساحة العمل…",
     "openNavMenu": "فتح قائمة التنقل"
   },
   "cmdPalette": {
+    "title": "لوحة الأوامر",
+    "clear": "مسح البحث",
     "searchPlaceholder": "ابحث عن صفحات أو إجراءات…",
     "noResults": "لا توجد نتائج لـ \"{{query}}\"",
     "quickActions": "إجراءات سريعة",
@@ -146,6 +152,11 @@
     },
     "saving": "جارٍ الحفظ…",
     "organizationUnavailable": "تعذّر فتح مساحة العمل المرتبطة. حدّث القائمة أو تحقق من صلاحياتك."
+  },
+  "copilot": {
+    "open": "فتح المساعد الذكي",
+    "close": "إغلاق المساعد الذكي",
+    "title": "المساعد الذكي"
   },
   "stream": {"interrupted": "انقطع الرد قبل اكتماله. أعد المحاولة."}
 }

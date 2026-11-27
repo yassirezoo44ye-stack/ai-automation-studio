@@ -132,7 +132,7 @@ export function NotificationPanel({ onClose, triggerRef }: {
       <div className="g-notif-panel__header">
         <span className="g-notif-panel__title">
           {t("notifications.title")}
-          <span className={`g-notif-status g-notif-status--${connectionStatus}`} title={t(`notifications.statuses.${connectionStatus}`)} />
+          <span className={`g-notif-status g-notif-status--${connectionStatus}`} role="img" title={t(`notifications.statuses.${connectionStatus}`)} aria-label={t(`notifications.statuses.${connectionStatus}`)} />
         </span>
         <div style={{ display: "flex", gap: 6 }}>
           <button type="button" className="g-notif-item__op" onClick={markAllRead} title={t("notifications.markAllRead")} aria-label={t("notifications.markAllRead")}>✓✓</button>

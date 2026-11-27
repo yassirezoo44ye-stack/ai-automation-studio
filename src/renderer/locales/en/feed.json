@@ -58,7 +58,7 @@
   },
   "study": {
     "label": "Visual Study Library",
-    "access": "Downloading requires library access.",
+    "access": "🔒 Download with library access",
     "open": "Open summary",
     "filterLabel": "Content type",
     "all": "All",
@@ -82,6 +82,8 @@
     "loadMore": "Load older summaries",
     "loadingMore": "Loading more…",
     "retryMore": "Retry older summaries",
-    "moreError": "Could not load more. Existing items are still available."
+    "moreError": "Could not load more. Existing items are still available.",
+    "pages_one": "{{count}} page",
+    "pages_other": "{{count}} pages"
   }
 }

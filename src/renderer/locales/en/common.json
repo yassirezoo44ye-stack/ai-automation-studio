@@ -1,4 +1,5 @@
 {
+  "brand": { "tagline": "Your AI assistant" },
   "workspaceDetails": {
   "summary": "Summary",
   "examples": "Examples",
@@ -62,12 +63,17 @@
     "signOutTitle": "Sign out ({{email}})",
     "signOut": "Sign Out"
   },
+  "notificationsBell": { "label": "Notifications", "unread": "Notifications, {{count}} unread", "unreadLive": "{{count}} unread notifications" },
   "appLayout": {
+    "search": "Search…",
+    "openCommandPalette": "Open command palette",
     "skipToContent": "Skip to main content",
     "loadingWorkspace": "Loading workspace…",
     "openNavMenu": "Open navigation menu"
   },
   "cmdPalette": {
+    "title": "Command palette",
+    "clear": "Clear search",
     "searchPlaceholder": "Search pages, actions…",
     "noResults": "No results for \"{{query}}\"",
     "quickActions": "Quick Actions",
@@ -169,6 +175,11 @@
     },
     "saving": "Saving…",
     "organizationUnavailable": "The linked workspace is unavailable. Refresh or check your access."
+  },
+  "copilot": {
+    "open": "Open AI Copilot",
+    "close": "Close AI Copilot",
+    "title": "AI Copilot"
   },
   "stream": {"interrupted": "The reply was interrupted. Please retry."}
 }

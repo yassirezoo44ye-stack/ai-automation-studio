@@ -1,6 +1,5 @@
 import { readSSE } from "../../../shared/utils/sse";
 import { loadPrefs } from "../../../shared/utils/preferences";
-import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { SecondaryActions } from "../../../shared/ui/SecondaryActions";
 /**
  * ChatTab — 3-column AI command center.
@@ -19,6 +18,13 @@ import { useFlowSkill } from "../../../shared/hooks/useFlowSkill";
 import { FlowSkillSelect } from "../../../shared/ui/FlowSkillSelect";
 import ReactMarkdown from "react-markdown";
 import { useTranslation } from "react-i18next";
+import { useLangContext } from "../../../contexts/lang";
+import { useAuth } from "../../../contexts/AuthContext";
+import { useAppContext } from "../../../contexts/app";
+import { extractNavSuggestions, suggestPagesForPrompt, navLabelKey } from "../../../shared/utils/assistantNav";
+import { extractActions } from "../../../shared/utils/assistantActions";
+import { AssistantActionCard } from "./AssistantActionCard";
+import { WorkspaceDetails } from "../../../shared/ui/WorkspaceDetails";
 import { useToast } from "../../../contexts/toast";
 import { apiFetch, apiJSON, APIError } from "../../../utils/api";
 import { relTime } from "../../../utils/time";
@@ -26,6 +32,7 @@ import { copyText } from "../../../shared/utils/clipboard";
 import { MD_COMPONENTS } from "../../../shared/ui/md-components";
 import { useAsyncData } from "../../../shared/hooks/useAsyncData";
 import { clearAssistantHandoff, peekAssistantHandoff } from "../../../shared/utils/assistantHandoff";
+import { draftScope, readDraft, readSession, writeDraft, writeSession } from "../chat/chatPersistence";
 import { LoadingSpinner } from "../../../shared/ui/LoadingSpinner";
 import { ErrorState, EmptyState } from "../../../shared/ui/StateViews";
 import { GoldButton } from "../../../shared/ui/gold";
@@ -39,6 +46,25 @@ function describeError(err: unknown, fallback: string): string {
   if (err instanceof APIError) return err.details.probableCause ?? err.message;
   if (err instanceof Error) return err.message || fallback;
   return fallback;
+}
+
+/**
+ * Stream errors that carry a stable code are shown as a localized, neutral
+ * message: setup details (keys, hosting, billing) are for administrators and
+ * stay in the server logs.
+ */
+const STREAM_ERROR_KEYS: Array<[prefix: string, key: string]> = [
+  ["AI_NOT_CONFIGURED", "chatTab.messages.aiNotConfigured"],
+  ["AI_UNAVAILABLE", "chatTab.messages.aiUnavailable"],
+  ["BILLING_REQUIRED", "chatTab.messages.aiUnavailable"],
+];
+
+function streamErrorKey(message: string | undefined): string | null {
+  const msg = (message ?? "").trim();
+  for (const [prefix, key] of STREAM_ERROR_KEYS) {
+    if (msg.startsWith(prefix + ":")) return key;
+  }
+  return null;
 }
 
 /** Group conversations into Today / This Week / Older buckets. */
@@ -59,6 +85,16 @@ function groupConvsByDate(convs: Conv[]): { label: "today" | "thisWeek" | "older
   return groups.filter(g => g.items.length > 0);
 }
 
+const CONTEXT_PANEL_KEY = "flow-chat-context-open";
+
+/** Starter prompts on the empty state — icon + i18n key. */
+const STARTERS: { icon: string; key: string }[] = [
+  { icon: "✉️", key: "chatTab.messages.suggestion1" },
+  { icon: "📈", key: "chatTab.messages.suggestion2" },
+  { icon: "💼", key: "chatTab.messages.suggestion3" },
+  { icon: "🧾", key: "chatTab.messages.suggestion4" },
+];
+
 interface ChatTabProps {
   agents:          Agent[];
   projects:        Project[];
@@ -70,18 +106,32 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const toast = useToast();
 
   // ── Core state (unchanged) ────────────────────────────────────────
-  const [projectId, setProjectId] = useState("demo");
+  // A refresh reopens the project and conversation this tab had open.
+  const [restored] = useState(readSession);
+  const [projectId, setProjectId] = useState(restored?.projectId ?? "demo");
   const skillSelection = useFlowSkill();
   const [agentId, setAgentId]     = useState<string>(initialAgentId ?? "default");
 
   // Layout state
-  const [contextPanelOpen, setContextPanelOpen] = useState(true);
+  // Closed by default so the conversation gets the full width; the choice
+  // is remembered per browser.
+  const [contextPanelOpen, setContextPanelOpenState] = useState(() => {
+    try { return localStorage.getItem(CONTEXT_PANEL_KEY) === "1"; } catch { return false; }
+  });
+  const setContextPanelOpen = (next: boolean | ((prev: boolean) => boolean)) => {
+    setContextPanelOpenState(prev => {
+      const value = typeof next === "function" ? next(prev) : next;
+      try { localStorage.setItem(CONTEXT_PANEL_KEY, value ? "1" : "0"); } catch { /* storage blocked */ }
+      return value;
+    });
+  };
+  const { lang } = useLangContext();
 
   const {
     data: convs = [], status: convsStatus, error: convsError, suggestedFix: convsFix, refetch: loadConvs,
   } = useAsyncData(() => apiJSON<Conv[]>(`/api/conversations?project_id=${projectId}`), [projectId]);
 
-  const [activeConv, setActiveConv]         = useState<string | null>(null);
+  const [activeConv, setActiveConv]         = useState<string | null>(restored?.activeConv ?? null);
   // Local, mutable copy of the active conversation's messages. Backed by
   // useAsyncData below for the *load* — but sendMessage() must keep
   // appending/streaming tokens into this directly, which a hook whose only
@@ -96,9 +146,21 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   // the new id immediately, in the same handler that flips activeConv, so
   // the in-progress streamed reply is never hidden behind a loading state).
   const [messagesConvId, setMessagesConvId] = useState<string | null>(null);
-  // A question handed over from another page (Home's "Ask Flow") prefills the input once.
-  const [prompt, setPrompt]                 = useState(peekAssistantHandoff);
+  // A question handed over from another page (Home's "Ask Flow") prefills
+  // the input once; otherwise the unsent draft of this conversation does.
+  const [prompt, setPrompt]                 = useState(
+    () => peekAssistantHandoff() || readDraft(draftScope(projectId, activeConv)),
+  );
   useEffect(() => { clearAssistantHandoff(); }, []);
+  // Drafts are kept per conversation: switching conversation shows that
+  // conversation's own unsent text (React's adjust-state-on-change pattern).
+  const scope = draftScope(projectId, activeConv);
+  const [prevScope, setPrevScope] = useState(scope);
+  if (prevScope !== scope) { setPrevScope(scope); setPrompt(readDraft(scope)); }
+  useEffect(() => { writeDraft(scope, prompt); }, [scope, prompt]);
+  useEffect(() => { writeSession({ projectId, activeConv }); }, [projectId, activeConv]);
+  const promptRef = useRef(prompt);
+  useEffect(() => { promptRef.current = prompt; }, [prompt]);
   const [streaming, setStreaming]           = useState(false);
   const [searchQ, setSearchQ]               = useState("");
   // Same local-copy-synced-from-hook pattern as messages: setTaskStatus
@@ -114,6 +176,14 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
+  // Mirrors `streaming` for effects that must not clobber an in-flight reply.
+  const streamingRef = useRef(false);
+  // `streaming` state is stale inside a handler until React re-renders, so
+  // two Enter presses in one tick would both send; this ref is not.
+  const sendingRef = useRef(false);
+  // Closing the chat (navigating away) stops the reply instead of leaving
+  // the request running in the background.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -146,11 +216,23 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       return msgs.map(m => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
     },
     [activeConv],
-    { enabled: !!activeConv, isEmpty: () => false },
+    // Only fetch when `messages` doesn't already hold this conversation.
+    // A brand-new conversation's id arrives mid-stream (conv_id event) and
+    // is claimed via setMessagesConvId before activeConv flips; fetching it
+    // anyway returned only the user's message (the reply isn't saved yet)
+    // and the sync effect below then overwrote the streaming reply with it,
+    // so the user saw their message and no answer.
+    { enabled: !!activeConv && messagesConvId !== activeConv, isEmpty: () => false },
   );
-  // Sync loaded history into the local, streaming-mutable copy.
+  // Sync loaded history into the local, streaming-mutable copy — unless the
+  // local copy already belongs to this conversation. sendMessage() claims a
+  // brand-new conversation's id mid-stream (messagesConvId === activeConv);
+  // the load that id switch triggers returns only the user message (the
+  // reply is saved when the stream ends) and would otherwise replace the
+  // streaming reply bubble, hiding the reply until the conversation is
+  // reopened.
   useEffect(() => {
-    if (!loadedMessages) return;
+    if (!loadedMessages || streamingRef.current || messagesConvId === activeConv) return;
     void Promise.resolve().then(() => {
       setMessages(loadedMessages);
       setMessagesConvId(activeConv);
@@ -229,14 +311,18 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
   async function sendMessage() {
     const text = prompt.trim();
-    if (!text || streaming) return;
+    if (!text || sendingRef.current) return;
+    sendingRef.current = true;
     setPrompt("");
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
+    streamingRef.current = true;
     const assistantId = crypto.randomUUID();
+    let gotText = false;
     setMessages(prev => [...prev, { id: assistantId, role: "assistant", content: "" }]);
 
+    let answered = false;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const useAgent = agentId !== "default";
@@ -246,12 +332,13 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       const res = await apiFetch(url, {
         method: "POST",
         body: JSON.stringify({ project_id: projectId, prompt: text, conversation_id: activeConv, agent_id: agentId,
-          ...(!useAgent ? { model: loadPrefs().chatModel, skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [] } : {}) }),
+          ...(!useAgent ? { model: loadPrefs().chatModel, skill_ids: skillSelection.skillId ? [skillSelection.skillId] : [], navigation: true, workspace_data: true } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
       let closed = false;
+      answered = true;  // the server has the message from here on
       for await (const ev of readSSE<{ type: string; conv_id?: string; text?: string; message?: string }>(res.body)) {
         if (ev.type === "conv_id" && ev.conv_id && !activeConv) {
           // Claim this id for the messages already in local state *before*
@@ -259,21 +346,59 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
           // activeConv) sees them as already in sync and never shows a
           // loading state over the reply that's actively streaming in.
           setMessagesConvId(ev.conv_id);
+          // Anything typed while the reply streams moves with the chat.
+          writeDraft(draftScope(projectId, ev.conv_id), promptRef.current);
           setActiveConv(ev.conv_id);
           loadConvs();
         }
-        else if (ev.type === "delta")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + ev.text } : m)); }
-        else if (ev.type === "error")  { setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + t("chatTab.messages.streamErrorPrefix", { message: ev.message }) } : m)); closed = true; break; }
-        else if (ev.type === "done")   { loadConvs(); closed = true; }
+        else if (ev.type === "delta")  { if (ev.text) gotText = true; setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (ev.text ?? "") } : m)); }
+        else if (ev.type === "error")  {
+          gotText = true;
+          const errKey = streamErrorKey(ev.message);
+          const shown = errKey ? t(errKey) : ev.message;
+          setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + t("chatTab.messages.streamErrorPrefix", { message: shown }) } : m));
+          closed = true; break;
+        }
+        else if (ev.type === "done")   {
+          loadConvs(); closed = true;
+          // The user plainly asked to open a page but the reply carries no
+          // [[open:…]] marker: add the button on this device anyway.
+          const asked = suggestPagesForPrompt(text);
+          if (asked.length) {
+            setMessages(p => p.map(m => m.id === assistantId && extractNavSuggestions(extractActions(m.content).text).pages.length === 0
+              ? { ...m, content: `${m.content}\n\n${asked.map(pg => `[[open:${pg}]]`).join("\n")}` } : m));
+          }
+        }
         if (closed) break;
       }
-      if (!closed) throw new Error(t("chatTab.messages.interrupted"));
+      // The body ended without "done" or "error": the connection dropped.
+      // Keep whatever arrived and say it is incomplete.
+      if (!closed) { markInterrupted(assistantId); return; }
+      // The stream finished without a single word of reply: say so instead
+      // of leaving the typing dots up.
+      if (!gotText) {
+        setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: t("chatTab.messages.emptyReply") } : m));
+      }
     } catch (err: unknown) {
-      if ((err as Error).name !== "AbortError") {
+      if ((err as Error).name === "AbortError") {
+        // Stopped before any reply arrived: drop the empty placeholder.
+        if (!gotText) setMessages(p => p.filter(m => m.id !== assistantId || m.content !== ""));
+      } else if (answered) {
+        markInterrupted(assistantId);
+      } else {
+        // Nothing reached the server: give the text back so it isn't lost.
+        setPrompt(current => current || text);
         const msg = (err as Error).message ?? "";
         setMessages(p => p.map(m => m.id === assistantId ? { ...m, content: m.content + (m.content ? "\n\n" : "") + (msg.includes("fetch") ? t("chatTab.toast.backendOffline") : t("chatTab.messages.streamErrorPrefix", { message: msg })) } : m));
       }
-    } finally { setStreaming(false); abortRef.current = null; }
+    } finally { sendingRef.current = false; setStreaming(false); streamingRef.current = false; abortRef.current = null; }
+  }
+
+  /** Keep the partial reply but say it is incomplete. */
+  function markInterrupted(assistantId: string) {
+    const note = t("chatTab.messages.interrupted");
+    setMessages(p => p.map(m => m.id === assistantId
+      ? { ...m, content: m.content ? `${m.content}\n\n${note}` : note } : m));
   }
 
   // ── Derived state ─────────────────────────────────────────────────
@@ -307,7 +432,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         <div className="chat-rail__top">
           <GoldButton
             onClick={() => { setActiveConv(null); setMessages([]); setMessagesConvId(null); setShowTasks(false); }}
-            style={{ fontSize: 12 }}
+            style={{ fontSize: 12, height: 32, padding: "0 12px" }}
           >
             {t("chatTab.sidebar.newChat")}
           </GoldButton>
@@ -382,7 +507,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
                     style={isDeleting ? { opacity: 0.5, pointerEvents: "none" } : undefined}
                   >
                     <div className="conv-item__title">{c.title}</div>
-                    <span className="conv-item__time">{relTime(c.updated_at)}</span>
+                    <span className="conv-item__time">{relTime(c.updated_at, lang)}</span>
                     <button
                       className="conv-item__del"
                       onClick={e => { if (!isDeleting) void deleteConv(e, c.id); }}
@@ -411,7 +536,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
       <div className="chat-main">
 
         {/* Toolbar */}
-        <div className="chat-toolbar" role="toolbar" aria-label="Chat controls">
+        <div className="chat-toolbar" role="toolbar" aria-label={t("chatControls")}>
           <span style={{ fontSize: 16 }}>{activeAgent?.avatar ?? "🤖"}</span>
           <span style={{ fontSize: 12, fontWeight: 500, color: "var(--t2)" }}>
             {activeAgent?.name ?? t("chatTab.contextPanel.defaultAgent")}
@@ -479,7 +604,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         )}
 
         {/* Messages area */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 0", display: "flex", flexDirection: "column", gap: 0, position: "relative" }}>
+        <div className="chat-messages">
           {showMessagesLoading && <LoadingSpinner fullPage label={t("chatTab.messages.loading")} />}
           {showMessagesError && (
             <ErrorState message={messagesError ?? t("chatTab.messages.loadError")} suggestedFix={messagesFix} onRetry={reloadMessages} />
@@ -487,28 +612,33 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 
           {/* Empty state */}
           {!showMessagesLoading && !showMessagesError && messages.length === 0 && (
-            <div style={{ margin: "auto", textAlign: "center", color: "var(--t5)", paddingBottom: 80, animation: "fadeIn .4s ease" }}>
-              <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 16px", background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {activeAgent ? <span style={{ fontSize: 32 }}>{activeAgent.avatar}</span> : <AxonLogo size={40} />}
+            <div className="chat-empty">
+              <div className="chat-empty__orb" aria-hidden="true">
+                {activeAgent ? <span style={{ fontSize: 30 }}>{activeAgent.avatar}</span> : <AxonLogo size={36} />}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", letterSpacing: "-.4px" }}>
+              <div className="chat-empty__title">
                 {activeAgent ? activeAgent.name : t("chatTab.messages.emptyAgentName")}
               </div>
-              <div style={{ fontSize: 14, color: "var(--t4)", maxWidth: 320, lineHeight: 1.65, marginTop: 6 }}>
+              <div className="chat-empty__desc">
                 {activeAgent?.description ?? t("chatTab.messages.emptyDescription")}
               </div>
+              {/* AGENTS.md: optional examples stay collapsed under a heading. */}
               <WorkspaceDetails kind="examples">
-<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 16 }}>
-                {[
-                  t("chatTab.messages.suggestion1"),
-                  t("chatTab.messages.suggestion2"),
-                  t("chatTab.messages.suggestion3"),
-                  t("chatTab.messages.suggestion4"),
-                ].map(s => (
-                  <GoldButton key={s} variant="ghost" onClick={() => setPrompt(s)} style={{ fontSize: 12, padding: "6px 14px" }}>{s}</GoldButton>
+              <div className="chat-starters">
+                {STARTERS.map(({ icon, key }, i) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="chat-starter"
+                    style={{ animationDelay: `${80 + i * 60}ms` }}
+                    onClick={() => setPrompt(t(key))}
+                  >
+                    <span className="chat-starter__icon" aria-hidden="true">{icon}</span>
+                    <span>{t(key)}</span>
+                  </button>
                 ))}
               </div>
-</WorkspaceDetails>
+              </WorkspaceDetails>
             </div>
           )}
 
@@ -519,6 +649,7 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
               key={m.id}
               msg={m}
               isLast={idx === messages.length - 1}
+              pending={streaming && idx === messages.length - 1}
               agentName={activeAgent?.name ?? null}
               agentAvatar={activeAgent?.avatar ?? null}
             />
@@ -527,36 +658,38 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
         </div>
 
         {/* Composer */}
-        <div style={{ padding: "10px 16px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-surface)", flexShrink: 0 }}>
-          <textarea
-            value={prompt}
-            onChange={e => setPrompt(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
-            placeholder={t("chatTab.input.placeholder")}
-            className="g-input"
-            rows={2}
-            aria-label={t("chatTab.input.placeholder")}
-            style={{ width: "100%", maxHeight: 160, resize: "none", marginBottom: 8 }}
-          />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+        <div className="chat-composer-wrap">
+          <div className="chat-composer">
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
+              placeholder={t("chatTab.input.placeholder")}
+              className="chat-composer__input"
+              rows={1}
+              aria-label={t("chatTab.input.placeholder")}
+            />
             {streaming ? (
-              <GoldButton
-                variant="danger"
+              <button
+                type="button"
+                className="chat-send chat-send--stop"
                 onClick={() => abortRef.current?.abort()}
                 aria-label={t("chatTab.input.stop")}
-                style={{ height: 36, paddingInline: 16, fontSize: 13 }}
-              >
-                ■ {t("chatTab.input.stop")}
-              </GoldButton>
+                title={t("chatTab.input.stop")}
+              >■</button>
             ) : (
-              <GoldButton
+              <button
+                type="button"
+                className="chat-send"
                 onClick={() => void sendMessage()}
                 disabled={!prompt.trim()}
                 aria-label={t("chatTab.input.send")}
-                style={{ height: 36, paddingInline: 16, fontSize: 13 }}
+                title={t("chatTab.input.send")}
               >
-                {t("chatTab.input.send")} ↑
-              </GoldButton>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+                </svg>
+              </button>
             )}
           </div>
         </div>
@@ -659,16 +792,16 @@ export function ChatTab({ agents, projects, initialAgentId }: ChatTabProps) {
 // memo stops React re-rendering (and re-parsing markdown for) every earlier
 // message on each streamed token.
 const MessageRow = memo(function MessageRow({
-  msg, isLast, agentName, agentAvatar,
+  msg, isLast, pending, agentName, agentAvatar,
 }: {
-  msg: Message; isLast: boolean; agentName: string | null; agentAvatar: string | null;
+  msg: Message; isLast: boolean; pending: boolean; agentName: string | null; agentAvatar: string | null;
 }) {
   const { t } = useTranslation("ai");
   const toast = useToast();
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    void copyText(msg.content).then(() => {
+    void copyText(extractNavSuggestions(extractActions(msg.content).text).text).then(() => {
       setCopied(true);
       // Reset the "Copied!" indicator after 2 s so it's ready for re-use.
       const id = setTimeout(() => setCopied(false), 2000);
@@ -677,27 +810,39 @@ const MessageRow = memo(function MessageRow({
   }
 
   const isUser = msg.role === "user";
+  const { setPage } = useAppContext();
+  const nav = useMemo(
+    () => {
+      if (isUser) return { text: msg.content, pages: [], actions: [] };
+      const { text, actions } = extractActions(msg.content);
+      return { ...extractNavSuggestions(text), actions };
+    },
+    [isUser, msg.content],
+  );
+  const { user } = useAuth();
+  const userInitial = (user?.name || user?.email || "?").trim().charAt(0).toUpperCase();
   const rowStyle: CSSProperties = {
     display: "flex",
     gap: 14,
     alignItems: "flex-start",
-    padding: "14px 24px",
-    maxWidth: 900,
+    padding: "12px 24px",
+    maxWidth: 960,
     width: "100%",
+    marginInline: "auto",
     animation: "slideIn .22s ease",
-    ...(isUser ? { flexDirection: "row-reverse", alignSelf: "flex-end" } : {}),
+    ...(isUser ? { justifyContent: "flex-end" } : {}),
   };
 
   return (
     <div style={rowStyle} className="msg-row">
       {/* Assistant avatar */}
       {!isUser && (
-        <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: "var(--accent-dim)", border: "1px solid var(--accent-border)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+        <div className="msg-avatar msg-avatar--ai">
           <span style={{ fontSize: 18 }}>{agentAvatar ?? "◈"}</span>
         </div>
       )}
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={isUser ? { minWidth: 0, maxWidth: "80%", textAlign: "end" } : { flex: 1, minWidth: 0 }}>
         {/* Label + copy button */}
         <div style={{
           fontSize: 11, fontWeight: 600, marginBottom: 7,
@@ -731,23 +876,38 @@ const MessageRow = memo(function MessageRow({
             borderRadius: 16, borderTopRightRadius: 4, padding: "12px 18px",
             boxShadow: "0 2px 16px var(--accent-dim)", display: "inline-block",
           }}>{msg.content}</div>
-        ) : msg.content === "" ? (
+        ) : nav.text === "" && nav.pages.length === 0 && nav.actions.length === 0 && pending ? (
           <div style={{ padding: "8px 0" }} className="typing"><span /><span /><span /></div>
+        ) : nav.text === "" && nav.pages.length === 0 && nav.actions.length === 0 ? (
+          // An empty reply saved by an earlier failed run — never show
+          // endless typing dots for history.
+          <div style={{ fontSize: 14, color: "var(--t4)" }}>{t("chatTab.messages.emptyReply")}</div>
         ) : (
           <div style={{ fontSize: 15, color: "var(--t2)", lineHeight: 1.8 }} className="md-body">
-            <ReactMarkdown components={MD_COMPONENTS}>{msg.content}</ReactMarkdown>
+            {nav.text && <ReactMarkdown components={MD_COMPONENTS}>{nav.text}</ReactMarkdown>}
+            {nav.actions.length > 0 && !pending && (
+              <div className="action-cards">
+                {nav.actions.map((a, i) => (
+                  <AssistantActionCard key={i} action={a} messageContent={msg.content} index={i} />
+                ))}
+              </div>
+            )}
+            {nav.pages.length > 0 && !pending && (
+              <div className="msg-nav" role="group" aria-label={t("chatTab.nav.groupLabel")}>
+                {nav.pages.map(pg => (
+                  <button key={pg} type="button" className="msg-nav__btn" onClick={() => setPage(pg)}>
+                    <span aria-hidden="true">↗</span> {t("chatTab.nav.open", { page: t(navLabelKey(pg)) })}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* User avatar */}
       {isUser && (
-        <div style={{
-          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-          background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 13, fontWeight: 700, color: "#121008", marginTop: 2,
-        }}>Y</div>
+        <div className="msg-avatar msg-avatar--user" aria-hidden="true">{userInitial}</div>
       )}
     </div>
   );

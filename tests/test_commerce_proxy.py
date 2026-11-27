@@ -18,7 +18,7 @@ async def test_preview_strips_platform_credentials_and_scopes_store_cookies():
     context=MagicMock()
     context.__aenter__=AsyncMock(return_value=transport)
     context.__aexit__=AsyncMock(return_value=False)
-    with patch.object(build,'_require_project_owner',AsyncMock()),patch.object(build.process_mgr,'get_running',return_value=SimpleNamespace(port=8100)),patch.object(build.httpx,'AsyncClient',return_value=context):
+    with patch.object(build,'_require_project_owner',AsyncMock(return_value=pid)),patch.object(build.process_mgr,'get_running',return_value=SimpleNamespace(port=8100)),patch.object(build.httpx,'AsyncClient',return_value=context):
         response=await build.proxy_to_project(pid,'api/login',request)
     headers=transport.request.call_args.kwargs['headers']
     assert 'authorization' not in headers and 'x-sub-token' not in headers

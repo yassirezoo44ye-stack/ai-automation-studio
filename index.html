@@ -4,11 +4,36 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#090909" />
-  <meta name="description" content="Flow — AI-powered automation studio" />
+  <!-- Search and share metadata. English defaults for crawlers and link
+       previews that do not run JavaScript; shared/lib/seo.ts replaces them
+       per page and language. SITE URL: https://ai-automation-studio-kohl.vercel.app (also in public/robots.txt
+       and public/sitemap.xml; change all three if the domain changes). -->
+  <title>Flow — AI automation for small agencies</title>
+  <meta name="description" content="Flow turns research, reporting, lead follow-up and content operations into workflows that run automatically, with full visibility. Arabic and English." />
   <!-- Opt out of browser auto-translate (Chrome, Edge, Google Translate extension) -->
   <meta name="google" content="notranslate" />
-  <meta http-equiv="content-language" content="ar,en" />
-  <title>Flow</title>
+  <link rel="canonical" href="https://ai-automation-studio-kohl.vercel.app/" />
+  <link rel="alternate" hreflang="en" href="https://ai-automation-studio-kohl.vercel.app/en" />
+  <link rel="alternate" hreflang="ar" href="https://ai-automation-studio-kohl.vercel.app/ar" />
+  <link rel="alternate" hreflang="x-default" href="https://ai-automation-studio-kohl.vercel.app/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Flow" />
+  <meta property="og:title" content="Flow — AI automation for small agencies" />
+  <meta property="og:description" content="Turn research, reporting, lead follow-up and content operations into workflows that run automatically." />
+  <meta property="og:url" content="https://ai-automation-studio-kohl.vercel.app/" />
+  <meta property="og:image" content="https://ai-automation-studio-kohl.vercel.app/icon-512.png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:image:alt" content="Flow logo" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="ar_AR" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Flow — AI automation for small agencies" />
+  <meta name="twitter:description" content="Turn research, reporting, lead follow-up and content operations into workflows that run automatically." />
+  <meta name="twitter:image" content="https://ai-automation-studio-kohl.vercel.app/icon-512.png" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Flow","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"https://ai-automation-studio-kohl.vercel.app/","inLanguage":["en","ar"],"description":"AI automation platform for small agencies: research, reporting, lead follow-up and content workflows that run automatically."}
+  </script>
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
@@ -43,7 +68,9 @@
     // reload never flashes an LTR layout before flipping to RTL.
     (function () {
       var l;
-      try {
+      var m = /^\/(ar|en)\/?$/.exec(location.pathname);
+      if (m) l = m[1];
+      else try {
         l = localStorage.getItem("axon-lang");
         if (l !== "en" && l !== "ar") {
           l = (navigator.language || "").toLowerCase().indexOf("ar") === 0 ? "ar" : "en";

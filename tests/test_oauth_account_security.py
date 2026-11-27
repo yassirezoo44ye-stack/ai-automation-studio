@@ -17,6 +17,7 @@ import datetime
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
+from tests.cookie_client import request_with_cookies
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("SESSION_SECRET", "test-secret-for-unit-tests-do-not-use-in-prod")
@@ -103,7 +104,8 @@ def _do_github_login(client, conn, emails: list[dict], gh_user=None):
          patch("app.routers.auth_users._GITHUB_CLIENT_SECRET", "fake-gh-secret"), \
          _github_mock_client(emails=emails, gh_user=gh_user), \
          _mock_pool(conn):
-        return client.get(
+        return request_with_cookies(
+            client, "GET",
             "/api/auth/github/callback",
             params={"code": "gh-code", "state": state},
             cookies={"oauth_bind": cookie},
@@ -115,7 +117,7 @@ def _do_github_login(client, conn, emails: list[dict], gh_user=None):
 
 def _microsoft_mock_client(*, ms_user: dict | None = None):
     if ms_user is None:
-        ms_user = {"mail": "ms-user@example.com", "displayName": "MS User"}
+        ms_user = {"mail": "ms-user@example.com", "userPrincipalName": "ms-user@example.com", "displayName": "MS User"}
 
     class _MockMicrosoftClient:
         async def __aenter__(self):
@@ -148,7 +150,8 @@ def _do_microsoft_login(client, conn, ms_user=None):
          patch("app.routers.auth_users._MICROSOFT_CLIENT_SECRET", "fake-ms-secret"), \
          _microsoft_mock_client(ms_user=ms_user), \
          _mock_pool(conn):
-        return client.get(
+        return request_with_cookies(
+            client, "GET",
             "/api/auth/microsoft/callback",
             params={"code": "ms-code", "state": state},
             cookies={"oauth_bind": cookie},
@@ -226,7 +229,7 @@ class TestMicrosoftAccountSecurity:
     def test_new_microsoft_user_is_created(self, client):
         conn = _FakeOAuthConn()
         resp = _do_microsoft_login(client, conn, ms_user={
-            "mail": "new-ms@example.com", "displayName": "New MS User",
+            "mail": "new-ms@example.com", "userPrincipalName": "new-ms@example.com", "displayName": "New MS User",
         })
         assert resp.status_code == 307
         assert len(conn.users) == 1
@@ -240,7 +243,7 @@ class TestMicrosoftAccountSecurity:
         }
         conn = _FakeOAuthConn(seed_users=[existing])
         resp = _do_microsoft_login(client, conn, ms_user={
-            "mail": "returning-ms@example.com", "displayName": "Updated MS",
+            "mail": "returning-ms@example.com", "userPrincipalName": "returning-ms@example.com", "displayName": "Updated MS",
         })
         assert resp.status_code == 307
         assert conn.insert_user_calls == 0
@@ -254,7 +257,7 @@ class TestMicrosoftAccountSecurity:
         }
         conn = _FakeOAuthConn(seed_users=[existing])
         resp = _do_microsoft_login(client, conn, ms_user={
-            "mail": "pw-ms@example.com", "displayName": "MS Attacker",
+            "mail": "pw-ms@example.com", "userPrincipalName": "pw-ms@example.com", "displayName": "MS Attacker",
         })
         assert resp.status_code == 409
         assert conn.users[str(existing_id)]["password_hash"] == "$2b$12$mshash"
@@ -267,7 +270,53 @@ class TestMicrosoftAccountSecurity:
             "created_at": datetime.datetime.now(datetime.timezone.utc),
         }
         conn = _FakeOAuthConn(seed_users=[existing])
-        resp = _do_microsoft_login(client, conn, ms_user={"mail": "pw-ms2@example.com", "displayName": "X"})
+        resp = _do_microsoft_login(client, conn, ms_user={
+            "mail": "pw-ms2@example.com", "userPrincipalName": "pw-ms2@example.com", "displayName": "X"})
         detail = resp.json()["detail"].lower()
         assert "password" in detail
         assert "settings" in detail
+
+
+class TestMicrosoftEmailTrust:
+    """Graph `mail` is admin-editable in any tenant; only the UPN is used."""
+
+    def test_spoofed_mail_cannot_take_over_an_oauth_only_account(self, client):
+        victim_id = uuid.uuid4()
+        victim = {
+            "id": victim_id, "email": "victim@example.com", "name": "Victim",
+            "avatar_url": None, "email_verified": True, "password_hash": None,
+            "created_at": datetime.datetime.now(datetime.timezone.utc),
+        }
+        conn = _FakeOAuthConn(seed_users=[victim])
+        resp = _do_microsoft_login(client, conn, ms_user={
+            "mail": "victim@example.com",
+            "userPrincipalName": "attacker@evil.onmicrosoft.com",
+            "displayName": "Attacker",
+        })
+        assert resp.status_code == 307
+        emails = sorted(u["email"] for u in conn.users.values())
+        assert emails == ["attacker@evil.onmicrosoft.com", "victim@example.com"]
+
+    def test_guest_upn_is_refused(self, client):
+        conn = _FakeOAuthConn()
+        resp = _do_microsoft_login(client, conn, ms_user={
+            "mail": "someone@gmail.com",
+            "userPrincipalName": "someone_gmail.com#EXT#@tenant.onmicrosoft.com",
+            "displayName": "Guest",
+        })
+        assert resp.status_code == 400
+        assert conn.users == {}
+
+    def test_case_variant_links_to_the_existing_account(self, client):
+        existing_id = uuid.uuid4()
+        existing = {
+            "id": existing_id, "email": "admin@corp.test", "name": "Admin",
+            "avatar_url": None, "email_verified": True, "password_hash": "$2b$12$h",
+            "created_at": datetime.datetime.now(datetime.timezone.utc),
+        }
+        conn = _FakeOAuthConn(seed_users=[existing])
+        resp = _do_microsoft_login(client, conn, ms_user={
+            "userPrincipalName": "Admin@Corp.test", "displayName": "Imposter",
+        })
+        assert resp.status_code == 409
+        assert conn.insert_user_calls == 0

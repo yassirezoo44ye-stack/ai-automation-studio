@@ -124,6 +124,9 @@ beforeEach(() => {
 
   streamBuildSpy = vi.spyOn(builderService, "streamBuild");
 
+  // vi.restoreAllMocks() does not clear a vi.fn()'s call history, so calls
+  // from an earlier test leaked into P-1's count when tests ran shuffled.
+  apiFetchMock.mockReset();
   // Default: /api/build/plan rejects → handleStartBuild falls through to handleBuild
   apiFetchMock.mockRejectedValue(new Error("plan unavailable"));
 

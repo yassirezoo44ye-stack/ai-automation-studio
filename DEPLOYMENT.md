@@ -111,8 +111,11 @@ cannot run. The real mechanism is the idempotent
 exercises that exact mechanism — it runs the app's real `lifespan()`
 context manager against the CI Postgres service container — rather than
 `alembic upgrade head`, which would fail on every run regardless of any
-real regression. Fixing the Alembic revision chain itself is a separate,
-larger, riskier follow-up, not done in this phase.
+real regression. The check also fails if any table declared in
+`migrations/versions/*.py` is not created by `lifespan()`. The Alembic
+configuration itself was archived to `migrations/_alembic_archive/`
+(2026-11-15); do not run `alembic upgrade head` against an existing
+database.
 
 ## Environments
 

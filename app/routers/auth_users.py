@@ -17,9 +17,14 @@ Endpoints:
   GET  /api/auth/sessions
   DELETE /api/auth/sessions/{session_id}
   DELETE /api/auth/me
+  GET  /api/auth/me/export
 """
 import asyncio
 import datetime
+import hashlib
+import hmac
+import json
+from asyncio import to_thread as _to_thread
 import logging
 import secrets
 import uuid
@@ -29,7 +34,7 @@ import asyncpg
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import Field, BaseModel, EmailStr, field_validator
 
 from app.core.db import get_pool, write_audit
 from app.core.email import send_password_reset_email, send_verification_email
@@ -49,12 +54,57 @@ from app.core.jwt_utils import (
     revoke_user_tokens,
 )
 from app.core.passwords import hash_password, verify_password
+from app.core.legal import TERMS_VERSION
 
 log = logging.getLogger(__name__)
+
+# Password-reset links: short-lived, single-use, stored only as a SHA-256 hash
+# so a read of password_reset_tokens (backup, SQL injection elsewhere, a
+# support query) cannot be replayed into an account takeover.
+PASSWORD_RESET_TTL = datetime.timedelta(minutes=30)
+
+
+def _reset_token_digest(raw: str) -> str:
+    """Keyed digest (HMAC-SHA256 with a SESSION_SECRET-bound key) of a random
+    256-bit reset token. The token is not a password, so a slow KDF adds
+    nothing; the key means a leaked table alone can't even confirm a guess."""
+    from app.core.config import SESSION_SECRET
+    key = hashlib.sha256(f"{SESSION_SECRET}:password-reset".encode("utf-8")).digest()
+    return hmac.new(key, raw.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _email_fingerprint(email: str) -> str:
+    """Stable, non-reversible id for logs — never log the raw address."""
+    return hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()[:12]
+
+
+def _record_failed_login_event(email: str, ip: str, reason: str) -> None:
+    log.warning("auth.login_failed reason=%s account=%s ip=%s",
+                reason, _email_fingerprint(email), ip)
+    try:
+        from app.core.observability.metrics import get_metrics
+        get_metrics().counter("auth_login_failures_total").inc()
+    except Exception:
+        pass
+
 
 # Pre-computed once at startup; used as a timing sentinel so the response time
 # for a non-existent account is indistinguishable from a wrong-password attempt.
 _TIMING_DUMMY_HASH: str = hash_password("__timing_sentinel_do_not_use__")
+
+
+# bcrypt is deliberately slow (~0.3 s of CPU per call on a small instance).
+# Called directly from an async handler it blocks the event loop, so every
+# other request on the server waits behind each login (performance audit
+# M1: 5 simultaneous logins delayed /health by 1.4 s). pyca/bcrypt releases
+# the GIL while hashing, so a worker thread keeps the loop free. The module
+# globals are looked up at call time, so tests can still patch them here.
+async def _hash_pw(plain: str) -> str:
+    return await _to_thread(hash_password, plain)
+
+
+async def _verify_pw(plain: str, hashed: str) -> bool:
+    return await _to_thread(verify_password, plain, hashed)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -67,6 +117,30 @@ _auth_rl = Depends(make_rate_limit_dep(
     max_calls=10,
     window=60,
     error_detail="Too many authentication attempts — please wait a minute.",
+))
+
+# Re-authentication endpoints for signed-in users (password change, MFA
+# disable / backup codes): each one checks a secret, so without a limit a
+# stolen session could brute-force the current password or TOTP code.
+_reauth_rl = Depends(make_rate_limit_dep(
+    "auth_reauth",
+    max_calls=5,
+    window=60,
+    error_detail="Too many attempts — please wait a minute.",
+))
+
+# /refresh gets its own, wider bucket. It used to share the 10/min "auth"
+# bucket above with login/register/reset, but the SPA calls it on every page
+# load and every new tab, so ~10 reloads in a minute locked a signed-in user
+# out behind a full-screen 429 (and also ate the login budget). Brute-forcing
+# a random 256-bit rotating refresh token is not a realistic threat, so a
+# higher per-IP ceiling keeps abuse protection without breaking normal use.
+REFRESH_RATE_LIMIT_MAX_CALLS = 60
+_refresh_rl = Depends(make_rate_limit_dep(
+    "auth_refresh",
+    max_calls=REFRESH_RATE_LIMIT_MAX_CALLS,
+    window=60,
+    error_detail="Too many session refreshes — please wait a moment.",
 ))
 
 
@@ -136,16 +210,32 @@ def _user_response(user) -> dict:
         "email_verified": user["email_verified"],
         "avatar_url": user["avatar_url"],
         "created_at": user["created_at"].isoformat() if user["created_at"] else None,
+        # OAuth-only accounts have no password; the UI uses this to decide how
+        # to confirm account deletion.
+        "has_password": bool(user["password_hash"]) if "password_hash" in user else True,
     }
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
 
+def _normalize_email(v: str) -> str:
+    """One account per mailbox, whatever the casing typed.
+
+    EmailStr lowercases only the domain, so "Ann@example.com" and
+    "ann@example.com" used to become two accounts, and the mixed-case one
+    could neither sign in as "ann@…" nor accept an invitation (invitations
+    are stored and matched in lowercase). Every auth request model runs
+    the address through this before it reaches SQL."""
+    return v.strip().lower()
+
+
 class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
     password: str
+
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
 
     @field_validator("password")
     @classmethod
@@ -161,6 +251,10 @@ class RegisterRequest(BaseModel):
     def non_empty_name(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Name cannot be empty")
+        # users.name is TEXT, so a 10,000-character name was stored and then
+        # shown in headers, member lists and e-mails (found by journey 11).
+        if len(v.strip()) > 120:
+            raise ValueError("Name must be at most 120 characters")
         return v.strip()
 
 
@@ -169,6 +263,8 @@ class LoginRequest(BaseModel):
     password: str
     remember: bool = False
 
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
+
 
 class RefreshRequest(BaseModel):
     refresh_token: str
@@ -176,6 +272,8 @@ class RefreshRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
 
 
 class ResetPasswordRequest(BaseModel):
@@ -193,8 +291,20 @@ class ResetPasswordRequest(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    name: str | None = None
+    name: str | None = Field(None, max_length=120)
     avatar_url: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be empty")
+        if len(v) > 100:
+            raise ValueError("name is too long")
+        return v
 
     @field_validator("avatar_url")
     @classmethod
@@ -225,6 +335,8 @@ class ChangePasswordRequest(BaseModel):
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
 
+    _email_lower = field_validator("email")(classmethod(lambda cls, v: _normalize_email(v)))
+
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -235,7 +347,7 @@ async def register(body: RegisterRequest, request: Request, _rl: None = _auth_rl
     with tracer.start_span("auth.register", service="auth") as span:
         user_id = uuid.uuid4()
         span.set_tag("user_id", str(user_id))
-        pw_hash = hash_password(body.password)
+        pw_hash = await _hash_pw(body.password)
         ev_token = secrets.token_urlsafe(32)
         expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
 
@@ -243,9 +355,10 @@ async def register(body: RegisterRequest, request: Request, _rl: None = _auth_rl
             async with conn.transaction():
                 try:
                     await conn.execute(
-                        """INSERT INTO users (id, email, name, password_hash, email_verified)
-                           VALUES ($1, $2, $3, $4, false)""",
-                        user_id, body.email, body.name, pw_hash,
+                        """INSERT INTO users (id, email, name, password_hash, email_verified,
+                                              terms_accepted_at, terms_version)
+                           VALUES ($1, $2, $3, $4, false, NOW(), $5)""",
+                        user_id, body.email, body.name, pw_hash, TERMS_VERSION,
                     )
                 except asyncpg.UniqueViolationError:
                     span.set_tag("error", "email_already_registered")
@@ -269,7 +382,7 @@ async def _finish_login(conn, user, *, remember: bool, ip: str, ua: str) -> dict
     so they return byte-identical response shapes."""
     refresh_token = await _create_session(conn, str(user["id"]), remember, ip, ua)
     access_token = make_access_token(str(user["id"]), user["email"])
-    await write_audit(user["email"], "login", ip_address=ip)
+    await write_audit(user["email"], "login", ip_address=ip, conn=conn)
 
     from app.core.auth import make_token as _make_sub_token
     sub_token = _make_sub_token(user["email"], trial=True, days_remaining=30)
@@ -291,28 +404,35 @@ async def login(body: LoginRequest, request: Request, _rl: None = _auth_rl):
         ip = _client_ip(request)
         if await check_login_locked_async(body.email):
             span.set_tag("error", "account_locked")
+            _record_failed_login_event(body.email, ip, "account_locked")
             raise HTTPException(429, "Too many failed login attempts — try again in 15 minutes")
+        # The bcrypt check runs with NO pooled connection held and off the
+        # event loop: holding a connection for ~0.3 s of hashing per login
+        # starved the pool, and hashing on the loop stalled every request.
         async with get_pool().acquire() as conn:
             user = await _get_user_by_email(conn, body.email)
-            if not user or not user["password_hash"]:
-                # Always run a dummy hash so response time is indistinguishable
-                # from a wrong-password attempt — prevents account enumeration
-                # via timing side-channel (bcrypt takes ~100 ms; skipping it
-                # reveals whether the account exists).
-                verify_password(body.password, _TIMING_DUMMY_HASH)
-                await record_login_failure_async(body.email)
-                span.set_tag("error", "invalid_credentials")
-                raise HTTPException(401, "Invalid email or password")
-            if not verify_password(body.password, user["password_hash"]):
-                await record_login_failure_async(body.email)
-                span.set_tag("error", "invalid_credentials")
-                raise HTTPException(401, "Invalid email or password")
-            if not user["email_verified"]:
-                span.set_tag("error", "email_not_verified")
-                raise HTTPException(403, "email_not_verified")
-            await clear_login_failures_async(body.email)
-            span.set_tag("user_id", str(user["id"]))
+        if not user or not user["password_hash"]:
+            # Always run a dummy hash so response time is indistinguishable
+            # from a wrong-password attempt — prevents account enumeration
+            # via timing side-channel (bcrypt takes ~100 ms; skipping it
+            # reveals whether the account exists).
+            await _verify_pw(body.password, _TIMING_DUMMY_HASH)
+            await record_login_failure_async(body.email)
+            _record_failed_login_event(body.email, ip, "invalid_credentials")
+            span.set_tag("error", "invalid_credentials")
+            raise HTTPException(401, "Invalid email or password")
+        if not await _verify_pw(body.password, user["password_hash"]):
+            await record_login_failure_async(body.email)
+            _record_failed_login_event(body.email, ip, "invalid_credentials")
+            span.set_tag("error", "invalid_credentials")
+            raise HTTPException(401, "Invalid email or password")
+        if not user["email_verified"]:
+            span.set_tag("error", "email_not_verified")
+            raise HTTPException(403, "Please verify your email before signing in.")
+        await clear_login_failures_async(body.email)
+        span.set_tag("user_id", str(user["id"]))
 
+        async with get_pool().acquire() as conn:
             mfa = await conn.fetchrow(
                 "SELECT enabled FROM mfa_secrets WHERE user_id=$1", user["id"]
             )
@@ -381,7 +501,7 @@ async def login_mfa(body: LoginMfaRequest, request: Request, _rl: None = _auth_r
 
 
 @router.post("/refresh")
-async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
+async def refresh_token(body: RefreshRequest, _rl: None = _refresh_rl):
     # AUDIT FIX: two concurrent /refresh calls with the same refresh_token
     # (two tabs, a network-retry racing the original, ...) used to both
     # read the same row (no lock, no transaction) and both write their own
@@ -407,16 +527,11 @@ async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
                 raise HTTPException(401, "Invalid refresh token")
 
             expired = session["expires_at"] < datetime.datetime.now(datetime.timezone.utc)
-            if expired:
-                # CLEANUP FIX: raising HTTPException *inside* this
-                # transaction would roll back this DELETE along with it —
-                # asyncpg rolls back on any exception propagating out of
-                # `async with conn.transaction():`, so the expired row
-                # would silently survive forever instead of actually being
-                # cleaned up, even though the client still correctly saw
-                # "Session expired". Commit the delete by letting the
-                # transaction block exit normally here, then raise *after*
-                # it below, once we're no longer inside the transaction.
+            # Match the login gate: an unverified account must not keep a
+            # previously issued session alive.
+            unverified = not bool(session["email_verified"])
+            if expired or unverified:
+                # Commit revocation before raising outside the transaction.
                 await conn.execute("DELETE FROM user_sessions WHERE id=$1", session["id"])
             else:
                 # Rotate refresh token
@@ -427,6 +542,11 @@ async def refresh_token(body: RefreshRequest, _rl: None = _auth_rl):
                     session["id"],
                 )
 
+        if unverified:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Email address not verified. Please check your inbox for the verification link.",
+            )
         if expired:
             raise HTTPException(401, "Session expired")
 
@@ -537,9 +657,9 @@ async def forgot_password(body: ForgotPasswordRequest, _rl: None = _auth_rl):
         await conn.execute(
             """INSERT INTO password_reset_tokens (token, user_id, expires_at)
                VALUES ($1, $2, $3)""",
-            reset_token,
+            _reset_token_digest(reset_token),
             user["id"],
-            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+            datetime.datetime.now(datetime.timezone.utc) + PASSWORD_RESET_TTL,
         )
 
     await send_password_reset_email(body.email, reset_token)
@@ -550,30 +670,34 @@ async def forgot_password(body: ForgotPasswordRequest, _rl: None = _auth_rl):
 async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
     user_email: str | None = None
     user_id_str: str | None = None
-    async with get_pool().acquire() as conn:
+    async with get_pool().acquire() as conn, conn.transaction():
+        # Consume the token atomically: DELETE ... RETURNING means two
+        # concurrent requests with the same link cannot both succeed
+        # (single use), and an expired token is removed on first sight.
+        consumed = await conn.fetchrow(
+            "DELETE FROM password_reset_tokens WHERE token=$1 "
+            "RETURNING user_id, expires_at",
+            _reset_token_digest(body.token),
+        )
+        if not consumed:
+            raise HTTPException(400, "Invalid or expired reset link")
+        if consumed["expires_at"] < datetime.datetime.now(datetime.timezone.utc):
+            raise HTTPException(400, "Reset link expired")
         row = await conn.fetchrow(
-            """SELECT prt.user_id, prt.expires_at, u.email
-               FROM password_reset_tokens prt
-               JOIN users u ON u.id = prt.user_id
-               WHERE prt.token=$1""",
-            body.token,
+            "SELECT id AS user_id, email FROM users WHERE id=$1", consumed["user_id"],
         )
         if not row:
             raise HTTPException(400, "Invalid or expired reset link")
-        if row["expires_at"] < datetime.datetime.now(datetime.timezone.utc):
-            await conn.execute(
-                "DELETE FROM password_reset_tokens WHERE token=$1", body.token
-            )
-            raise HTTPException(400, "Reset link expired")
 
         user_email = row["email"]
         user_id_str = str(row["user_id"])
-        pw_hash = hash_password(body.password)
+        pw_hash = await _hash_pw(body.password)
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2", pw_hash, row["user_id"]
         )
+        # Any other outstanding link for this account dies with the change.
         await conn.execute(
-            "DELETE FROM password_reset_tokens WHERE token=$1", body.token
+            "DELETE FROM password_reset_tokens WHERE user_id=$1", row["user_id"]
         )
         # Invalidate all sessions on password reset
         await conn.execute(
@@ -583,7 +707,7 @@ async def reset_password(body: ResetPasswordRequest, _rl: None = _auth_rl):
     if user_id_str:
         await revoke_user_tokens(user_id_str)
     if user_email:
-        asyncio.create_task(write_audit(user_email, "password.reset"))
+        await write_audit(user_email, "password.reset")
     return {"message": "Password reset successfully. Please log in with your new password."}
 
 
@@ -593,7 +717,16 @@ async def get_me(current: Annotated[dict, Depends(get_current_user)]):
         user = await _get_user_by_id(conn, current["id"])
         if not user:
             raise HTTPException(404, "User not found")
-        return _user_response(user)
+        mfa = await conn.fetchrow(
+            "SELECT enabled FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]),
+        )
+    # Settings > Account & security needs these to pick the right forms:
+    # OAuth-only accounts have no password to change or confirm with.
+    return {
+        **_user_response(user),
+        "has_password": bool(user["password_hash"]),
+        "mfa_enabled": bool(mfa and mfa["enabled"]),
+    }
 
 
 @router.get("/me/audit-log")
@@ -684,20 +817,26 @@ async def change_password(
     body: ChangePasswordRequest,
     current: Annotated[dict, Depends(get_current_user)],
     request: Request,
+    _rl: None = _reauth_rl,
 ):
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
         if not user or not user["password_hash"]:
             raise HTTPException(400, "Cannot change password")
-        if not verify_password(body.current_password, user["password_hash"]):
+        if not await _verify_pw(body.current_password, user["password_hash"]):
             raise HTTPException(400, "Current password is incorrect")
         await conn.execute(
             "UPDATE users SET password_hash=$1 WHERE id=$2",
-            hash_password(body.new_password),
+            await _hash_pw(body.new_password),
             uuid.UUID(current["id"]),
         )
         await conn.execute(
             "DELETE FROM user_sessions WHERE user_id=$1",
+            uuid.UUID(current["id"]),
+        )
+        # A reset link mailed before the change must not still work after it.
+        await conn.execute(
+            "DELETE FROM password_reset_tokens WHERE user_id=$1",
             uuid.UUID(current["id"]),
         )
     await revoke_user_tokens(current["id"])
@@ -714,7 +853,26 @@ class MfaEnableRequest(BaseModel):
 
 
 class MfaDisableRequest(BaseModel):
-    password: str
+    code: str
+    password: str | None = None
+
+
+class MfaBackupCodesRequest(BaseModel):
+    code: str
+
+
+async def _verify_current_totp(conn, user_id: str, code: str) -> None:
+    """Require a valid code from the user's active authenticator. Proves
+    possession of the second factor itself, not just of a session."""
+    import pyotp
+
+    row = await conn.fetchrow(
+        "SELECT secret, enabled FROM mfa_secrets WHERE user_id=$1", uuid.UUID(user_id),
+    )
+    if not row or not row["enabled"]:
+        raise HTTPException(400, "MFA is not enabled")
+    if not pyotp.TOTP(row["secret"]).verify(code.strip(), valid_window=1):
+        raise HTTPException(400, "Invalid authentication code")
 
 
 def _generate_backup_codes(n: int = 10) -> list[str]:
@@ -728,7 +886,7 @@ async def mfa_setup(current: Annotated[dict, Depends(get_current_user)]):
     import pyotp
 
     secret = pyotp.random_base32()
-    uri = pyotp.TOTP(secret).provisioning_uri(name=current["email"], issuer_name="Axon")
+    uri = pyotp.TOTP(secret).provisioning_uri(name=current["email"], issuer_name="Flow")
     async with get_pool().acquire() as conn:
         await conn.execute(
             """INSERT INTO mfa_secrets (user_id, secret, enabled, backup_codes)
@@ -741,7 +899,11 @@ async def mfa_setup(current: Annotated[dict, Depends(get_current_user)]):
 
 
 @router.post("/mfa/enable")
-async def mfa_enable(body: MfaEnableRequest, current: Annotated[dict, Depends(get_current_user)]):
+async def mfa_enable(
+    body: MfaEnableRequest,
+    current: Annotated[dict, Depends(get_current_user)],
+    _rl: None = _reauth_rl,
+):
     """Verify one TOTP code to activate MFA; returns one-time backup codes."""
     import pyotp
 
@@ -764,24 +926,38 @@ async def mfa_enable(body: MfaEnableRequest, current: Annotated[dict, Depends(ge
 
 
 @router.post("/mfa/disable")
-async def mfa_disable(body: MfaDisableRequest, current: Annotated[dict, Depends(get_current_user)]):
+async def mfa_disable(
+    body: MfaDisableRequest,
+    current: Annotated[dict, Depends(get_current_user)],
+    _rl: None = _reauth_rl,
+):
+    """Requires a current authenticator code, plus the password for accounts
+    that have one (OAuth-only accounts have none, and previously could never
+    turn MFA off)."""
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
-        if not user or not user["password_hash"] or not verify_password(body.password, user["password_hash"]):
+        if not user:
+            raise HTTPException(404, "User not found")
+        if user["password_hash"] and (
+            not body.password or not await _verify_pw(body.password, user["password_hash"])
+        ):
             raise HTTPException(400, "Incorrect password")
+        await _verify_current_totp(conn, current["id"], body.code)
         await conn.execute("DELETE FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]))
     await write_audit(current["email"], "mfa.disabled")
     return {"enabled": False}
 
 
 @router.post("/mfa/backup-codes")
-async def mfa_regenerate_backup_codes(current: Annotated[dict, Depends(get_current_user)]):
+async def mfa_regenerate_backup_codes(
+    body: MfaBackupCodesRequest,
+    current: Annotated[dict, Depends(get_current_user)],
+    _rl: None = _reauth_rl,
+):
+    """Requires a current authenticator code: new backup codes are a way
+    around MFA, so a session alone must not be enough to mint them."""
     async with get_pool().acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT enabled FROM mfa_secrets WHERE user_id=$1", uuid.UUID(current["id"]),
-        )
-        if not row or not row["enabled"]:
-            raise HTTPException(400, "MFA is not enabled")
+        await _verify_current_totp(conn, current["id"], body.code)
         backup_codes = _generate_backup_codes()
         await conn.execute(
             "UPDATE mfa_secrets SET backup_codes=$2, updated_at=NOW() WHERE user_id=$1",
@@ -816,10 +992,14 @@ async def revoke_session(
     session_id: str,
     current: Annotated[dict, Depends(get_current_user)],
 ):
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(404, "Session not found") from None
     async with get_pool().acquire() as conn:
         result = await conn.execute(
             "DELETE FROM user_sessions WHERE id=$1 AND user_id=$2",
-            uuid.UUID(session_id),
+            sid,
             uuid.UUID(current["id"]),
         )
     if result == "DELETE 0":
@@ -827,26 +1007,88 @@ async def revoke_session(
     return {"message": "Session revoked"}
 
 
+class DeleteAccountRequest(BaseModel):
+    email: EmailStr
+    # Required for accounts that have a password. Accounts created through
+    # Google, GitHub or Microsoft have none and confirm by typing their e-mail.
+    password: str | None = None
+
+
 @router.delete("/me")
 async def delete_account(
-    body: LoginRequest,
+    body: DeleteAccountRequest,
     current: Annotated[dict, Depends(get_current_user)],
     request: Request,
 ):
-    """Permanently delete account. Requires password confirmation."""
-    if body.email != current["email"]:
+    """Permanently delete the account, the organizations only this user is in,
+    and stop their Stripe subscriptions. Nothing is deleted if billing cannot
+    be cancelled."""
+    from app.services.account_lifecycle import (
+        AccountDeletionBlocked,
+        BillingCancellationFailed,
+        apply_account_deletion,
+        cancel_stripe_subscriptions,
+        plan_account_deletion,
+    )
+
+    if body.email.strip().lower() != current["email"].strip().lower():
         raise HTTPException(400, "Email does not match")
     async with get_pool().acquire() as conn:
         user = await _get_user_by_id(conn, current["id"])
-        # password_hash can be NULL for OAuth-created accounts; treat as invalid credentials
-        if not user or not user["password_hash"]:
+        if not user:
             raise HTTPException(400, "Invalid credentials")
-        if not verify_password(body.password, user["password_hash"]):
-            raise HTTPException(400, "Invalid credentials")
-        await conn.execute("DELETE FROM users WHERE id=$1", uuid.UUID(current["id"]))
+        if user["password_hash"]:
+            if not body.password or not await _verify_pw(body.password, user["password_hash"]):
+                raise HTTPException(400, "Invalid credentials")
+        try:
+            plan = await plan_account_deletion(conn, current["id"], user["email"])
+        except AccountDeletionBlocked as exc:
+            raise HTTPException(
+                409, {"message": str(exc), "organizations": exc.org_names}
+            ) from None
+        try:
+            await cancel_stripe_subscriptions(plan.stripe_subscriptions)
+        except BillingCancellationFailed as exc:
+            raise HTTPException(
+                502, f"{exc}. Your account was not deleted; please try again or contact support."
+            ) from None
+        await apply_account_deletion(conn, current["id"], user["email"], plan)
 
+    await revoke_user_tokens(current["id"])
     await write_audit(current["email"], "account_deleted", ip_address=_client_ip(request))
     return {"message": "Account deleted"}
+
+
+_export_rl = Depends(make_rate_limit_dep(
+    "data_export", max_calls=5, window=3600,
+    error_detail="Too many export requests — please try again later.",
+))
+
+
+@router.get("/me/export")
+async def export_account_data(
+    current: Annotated[dict, Depends(get_current_user)],
+    request: Request,
+    _rl: None = _export_rl,
+):
+    """Download a JSON copy of the personal data held for this account."""
+    from app.services.account_lifecycle import export_user_data
+
+    async with get_pool().acquire() as conn:
+        try:
+            payload = await export_user_data(conn, current["id"])
+        except LookupError:
+            raise HTTPException(404, "User not found") from None
+    await write_audit(current["email"], "data_exported", ip_address=_client_ip(request))
+    stamp = datetime.date.today().isoformat()
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="flow-data-export-{stamp}.json"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 # ── OAuth (Google + GitHub + Microsoft) ────────────────────────────────────────
@@ -878,7 +1120,19 @@ async def oauth_public_config(response: Response) -> dict:
     if (url.scheme != "https" and not (local and url.scheme == "http")) or not url.netloc or url.username or url.password or url.path or url.query or url.fragment:
         raise HTTPException(503, "OAuth origin is not configured correctly")
     response.headers["Cache-Control"] = "no-store"
-    return {"origin": base}
+    return {"origin": base, "providers": _configured_oauth_providers()}
+
+
+def _configured_oauth_providers() -> list[str]:
+    """Providers whose start route will not answer 503. The sign-in page
+    hides the others: a button for an unconfigured provider used to send
+    the browser to a bare JSON error page (found on production, M8)."""
+    pairs = (
+        ("google", _GOOGLE_CLIENT_ID, _GOOGLE_CLIENT_SECRET),
+        ("github", _GITHUB_CLIENT_ID, _GITHUB_CLIENT_SECRET),
+        ("microsoft", _MICROSOFT_CLIENT_ID, _MICROSOFT_CLIENT_SECRET),
+    )
+    return [name for name, cid, secret in pairs if cid and secret]
 
 
 def _oauth_not_configured(provider: str):
@@ -1026,7 +1280,13 @@ async def _upsert_oauth_user(
             f"{provider.capitalize()} did not verify this email address. "
             "Sign in with your Flow password and link this provider from Account Settings.",
         )
-    existing = await conn.fetchrow("SELECT * FROM users WHERE email=$1", email)
+    # Emails are compared case-insensitively: users.email is case-sensitive
+    # TEXT, so a provider returning "Admin@Corp.com" used to create a second
+    # account beside "admin@corp.com" — and ADMIN_EMAILS checks lowercase.
+    email = _normalize_email(email)
+    existing = await conn.fetchrow(
+        "SELECT * FROM users WHERE lower(email)=$1 ORDER BY created_at LIMIT 1", email,
+    )
     if existing:
         if existing["password_hash"] is not None:
             raise HTTPException(
@@ -1043,9 +1303,10 @@ async def _upsert_oauth_user(
         return existing
     new_id = uuid.uuid4()
     await conn.execute(
-        """INSERT INTO users (id, email, name, avatar_url, email_verified, password_hash, created_at)
-           VALUES ($1,$2,$3,$4,true,NULL,NOW())""",
-        new_id, email, name or email.split("@")[0], avatar_url or None,
+        """INSERT INTO users (id, email, name, avatar_url, email_verified, password_hash, created_at,
+                              terms_accepted_at, terms_version)
+           VALUES ($1,$2,$3,$4,true,NULL,NOW(),NOW(),$5)""",
+        new_id, email, name or email.split("@")[0], avatar_url or None, TERMS_VERSION,
     )
     return await conn.fetchrow("SELECT * FROM users WHERE id=$1", new_id)
 
@@ -1249,9 +1510,19 @@ async def microsoft_oauth_callback(code: str, request: Request, state: str | Non
     except _httpx.RequestError as exc:
         raise _oauth_provider_unreachable("Microsoft", exc) from exc
 
-    email = info.get("mail") or info.get("userPrincipalName")
-    if not email:
-        raise HTTPException(400, "Microsoft did not return an email address")
+    # Graph `mail` is a directory attribute any tenant admin can set to an
+    # arbitrary address (including someone else's), so it is not proof of
+    # ownership. userPrincipalName must be on a domain the tenant has
+    # verified (or is the Microsoft-verified address of a personal account),
+    # so only it is used for sign-in and linking. Guest UPNs (#EXT#) embed a
+    # foreign address and are refused.
+    email = (info.get("userPrincipalName") or "").strip()
+    if not email or "@" not in email or "#EXT#" in email.upper():
+        raise HTTPException(
+            400,
+            "Microsoft did not return a verified sign-in address for this account. "
+            "Sign in with email and password instead.",
+        )
 
     async with get_pool().acquire() as conn:
         user = await _upsert_oauth_user(conn, email, info.get("displayName", ""), "", "microsoft",

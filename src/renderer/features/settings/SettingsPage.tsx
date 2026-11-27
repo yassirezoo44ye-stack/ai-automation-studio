@@ -10,6 +10,7 @@ import { GlassCard } from "../../shared/ui/gold";
 import AxonLogo from "../../AxonLogo";
 import { loadPrefs, savePrefs, type UserPrefs } from "../../shared/utils/preferences";
 import { copyText } from "../../shared/utils/clipboard";
+import { AccountSecurityTab } from "./AccountSecurityTab";
 
 const codeStyle: React.CSSProperties = {
   background: "var(--accent-dim)", padding: "2px 8px",
@@ -17,7 +18,7 @@ const codeStyle: React.CSSProperties = {
   fontFamily: "var(--font-mono)",
 };
 
-type SettingsTab = "system" | "ai" | "appearance" | "about" | "apiKeys";
+type SettingsTab = "system" | "ai" | "appearance" | "about" | "apiKeys" | "account";
 
 interface RuntimeInfo { available?: boolean; version?: string | null }
 
@@ -40,6 +41,7 @@ interface CreatedKey {
 const SCOPE_DEFS = [
   { id: "read",        labelKey: "apiKeys.scope_read" },
   { id: "write",       labelKey: "apiKeys.scope_write" },
+  { id: "ai",          labelKey: "apiKeys.scope_ai" },
   { id: "agents",      labelKey: "apiKeys.scope_agents" },
   { id: "marketplace", labelKey: "apiKeys.scope_marketplace" },
 ] as const;
@@ -239,7 +241,7 @@ function ApiKeysTab({ orgId }: { orgId: string | null }) {
             <button
               type="submit"
               disabled={creating || !newKeyName.trim() || selectedScopes.length === 0}
-              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: creating || !newKeyName.trim() || selectedScopes.length === 0 ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() || selectedScopes.length === 0 ? 0.6 : 1 }}
+              style={{ alignSelf: "flex-start", padding: "8px 18px", borderRadius: 9, border: "none", background: "var(--accent-fill)", color: "var(--on-accent)", fontSize: 13, fontWeight: 600, cursor: creating || !newKeyName.trim() || selectedScopes.length === 0 ? "not-allowed" : "pointer", opacity: creating || !newKeyName.trim() || selectedScopes.length === 0 ? 0.6 : 1 }}
             >
               {creating ? t("apiKeys.creating") : t("apiKeys.createButton")}
             </button>
@@ -367,6 +369,7 @@ export function SettingsPage() {
   const SETTINGS_NAV: { id: SettingsTab; label: string; icon: React.JSX.Element }[] = [
     { id: "system",     label: t("nav.system"),     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> },
     { id: "ai",         label: t("nav.ai"),         icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
+    { id: "account",    label: t("nav.account"),    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> },
     { id: "apiKeys",    label: t("nav.apiKeys"),    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> },
     { id: "appearance", label: t("nav.appearance"), icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg> },
     { id: "about",      label: t("nav.about"),      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> },
@@ -415,6 +418,7 @@ export function SettingsPage() {
               type="button"
               key={n.id}
               className={`settings-nav-item${tab === n.id ? " active" : ""}`}
+              aria-current={tab === n.id ? "page" : undefined}
               onClick={() => setTab(n.id)}
               aria-pressed={tab === n.id}
             >
@@ -479,10 +483,13 @@ export function SettingsPage() {
                       {Object.entries(runtimes).map(([name, info]) => (
                         <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
                           <span style={{ color: "var(--t3)", fontFamily: "var(--font-mono)", fontSize: 12 }}>{name}</span>
-                          <span className={`badge badge-${info?.available ? "green" : "muted"}`}>{info?.available ? (info.version ?? "available") : "not found"}</span>
+                          <span className={`badge badge-${info?.available ? "green" : "muted"}`}>{info?.available ? (info.version ?? t("system.runtimeAvailable")) : t("system.runtimeNotOnServer")}</span>
                         </div>
                       ))}
                     </div>
+                    {Object.values(runtimes).some(info => !info?.available) && (
+                      <p style={{ margin: "12px 0 0", fontSize: 12, color: "var(--t3)" }}>{t("system.runtimesHint")}</p>
+                    )}
                   </GlassCard>
                 </div>
               )}
@@ -667,6 +674,9 @@ export function SettingsPage() {
               </div>
             </div>
           )}
+
+          {/* ── Account & security ───────────────────────────────────────── */}
+          {tab === "account" && <AccountSecurityTab />}
 
           {/* ── API Keys ────────────────────────────────────────────────── */}
           {tab === "apiKeys" && (

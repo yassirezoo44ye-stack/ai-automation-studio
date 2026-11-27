@@ -5,7 +5,7 @@ export async function loadStudyItems(offset = 0): Promise<FeedItem[]> {
   const response = await apiFetch(`/api/study-library/catalog?limit=30&offset=${offset}`);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const { lessons } = await response.json();
-  return lessons.map((lesson: { slug: string; title: string; description: string; subject: string }) => ({
+  return lessons.map((lesson: { slug: string; title: string; description: string; subject: string; pages?: number; published_at?: string }) => ({
     id: `study:${lesson.slug}`,
     type: "STUDY",
     title: lesson.title,
@@ -18,5 +18,7 @@ export async function loadStudyItems(offset = 0): Promise<FeedItem[]> {
     targetPage: "study-library",
     sourceId: lesson.slug,
     sourceType: "slug",
+    pages: lesson.pages,
+    publishedAt: lesson.published_at,
   }));
 }

@@ -63,7 +63,7 @@ async def create_org_checkout(
     if not check_rate_limit(f"billing_checkout:{ctx.org_id}", max_calls=5, window=60):
         raise HTTPException(429, "Too many checkout attempts — try again shortly.")
     if not stripe.api_key:
-        raise HTTPException(500, "Stripe not configured")
+        raise HTTPException(503, "Payments are not configured on this server")
     price_id = price_id_for(body.plan)
     if not price_id:
         raise HTTPException(
@@ -130,7 +130,7 @@ async def create_billing_portal_session(
     if not check_rate_limit(f"billing_portal:{ctx.org_id}", max_calls=5, window=60):
         raise HTTPException(429, "Too many requests — try again shortly.")
     if not stripe.api_key:
-        raise HTTPException(500, "Stripe not configured")
+        raise HTTPException(503, "Payments are not configured on this server")
     try:
         url = await create_portal_session(ctx.org_id, return_url=f"{APP_URL}/?org_billing=1")
     except NoStripeCustomer:

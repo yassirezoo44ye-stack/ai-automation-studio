@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { useTranslation } from "react-i18next";
 import { useCopilot } from "../../../contexts/copilot";
 import { useAppContext } from "../../../contexts/app";
 import { MD_COMPONENTS } from "../md-components";
@@ -9,6 +10,7 @@ import type { Page } from "../../types";
 export function CopilotPanel() {
   const { messages, streaming, error, suggestedAction, send, dismissAction, reset, setOpen } = useCopilot();
   const { setPage } = useAppContext();
+  const { t } = useTranslation("common");
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -42,7 +44,7 @@ export function CopilotPanel() {
   }
 
   return (
-    <div ref={panelRef} className="g-copilot-panel" role="dialog" aria-label="AI Copilot" aria-modal="false" tabIndex={-1}>
+    <div ref={panelRef} className="g-copilot-panel" role="dialog" aria-label={t("copilot.title")} aria-modal="false" tabIndex={-1}>
       <div className="g-copilot-panel__header">
         <span className="g-copilot-panel__title">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a5 5 0 0 1 5 5v2a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5z"/><path d="M2 20c0-3 3.5-5 10-5s10 2 10 5"/></svg>

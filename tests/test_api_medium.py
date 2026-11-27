@@ -45,6 +45,10 @@ class TestPasswordBounds:
              patch("app.routers.auth_users.write_audit", new_callable=AsyncMock):
             conn = AsyncMock()
             conn.execute = AsyncMock(return_value=None)
+            # asyncpg Connection.transaction() is synchronous (returns an async
+            # context manager); a bare AsyncMock attribute would return an
+            # un-awaited coroutine instead.
+            conn.transaction = MagicMock()
             conn.transaction.return_value.__aenter__ = AsyncMock(return_value=None)
             conn.transaction.return_value.__aexit__ = AsyncMock(return_value=False)
             pool = MagicMock()

@@ -57,7 +57,7 @@ class TestUploadLimits(unittest.TestCase):
     def _upload(self, files, *, project_id=_PROJECT_ID):
         with patch("app.routers.build.get_pool", return_value=self.pool), \
              patch("app.routers.build.owner_email", return_value=_OWNER_EMAIL), \
-             patch("app.routers.build._require_project_owner", new=AsyncMock()):
+             patch("app.routers.build._require_project_owner", new=AsyncMock(return_value=project_id)):
             return self.client.post(
                 f"/api/projects/{project_id}/upload",
                 files=files,

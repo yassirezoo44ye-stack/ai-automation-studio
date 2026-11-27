@@ -36,6 +36,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.auth import require_platform_admin
 from app.routers.auth_users import get_current_user
 from app.core.ai.skills import skill_catalog, validate_skill_ids
 
@@ -322,7 +323,12 @@ async def agentos_memory(request: Request, n: int = 50):
     cross-tenant view."""
     from app.agents.memory import get_memory
     from app.tenancy.context import optional_org_id
+    from app.core.auth import is_platform_admin
     org_id = await optional_org_id(request)
+    # The no-org bucket mixes every caller outside an org (unrelated users),
+    # so only a platform admin may read it.
+    if not org_id and not await is_platform_admin(request):
+        return {"count": 0, "records": []}
     records = get_memory().recent(min(n, 200), org_id=org_id)
     return {"count": len(records), "records": [r.to_dict() for r in reversed(records)]}
 
@@ -351,7 +357,7 @@ async def agentos_performance(request: Request):
 
 # ── Self-evolution ────────────────────────────────────────────────────────────
 
-@router.post("/api/agentos/evolve")
+@router.post("/api/agentos/evolve", dependencies=[Depends(require_platform_admin)])
 async def agentos_evolve(req: EvolveRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id
@@ -382,7 +388,7 @@ async def agentos_reflections(request: Request, n: int = 20):
 
 # ── Autonomous development ─────────────────────────────────────────────────────
 
-@router.post("/api/agentos/generate")
+@router.post("/api/agentos/generate", dependencies=[Depends(require_platform_admin)])
 async def agentos_generate(req: GenerateRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id
@@ -402,7 +408,7 @@ async def agentos_suggest(req: SuggestRequest, request: Request):
     return {"count": len(suggestions), "suggestions": suggestions}
 
 
-@router.post("/api/agentos/implement")
+@router.post("/api/agentos/implement", dependencies=[Depends(require_platform_admin)])
 async def agentos_implement(req: ImplementRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id
@@ -411,7 +417,7 @@ async def agentos_implement(req: ImplementRequest, request: Request):
     )
 
 
-@router.post("/api/agentos/loop")
+@router.post("/api/agentos/loop", dependencies=[Depends(require_platform_admin)])
 async def agentos_loop(req: LoopRequest, request: Request):
     from app.agents.kernel import get_agent_kernel
     from app.tenancy.context import optional_org_id

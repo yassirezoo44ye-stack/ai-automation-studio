@@ -34,7 +34,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.core.db import get_pool
 from app.core.workflow.persistence import decode_jsonb
@@ -167,12 +167,56 @@ def _row_to_step(row: dict) -> dict:
 # Definition schemas
 # ---------------------------------------------------------------------------
 
+# Step kinds the scheduler runs (automation_scheduler._make_step_fn). Any other
+# kind used to be stored and then silently run as a no-op, so a typo such as
+# "emial" never sent anything and still reported success.
+STEP_KINDS = frozenset({"noop", "ai", "approval", "email"})
+
+
+def validate_definition(defn: dict | None) -> dict | None:
+    """Reject a steps list the scheduler would skip or misread."""
+    if defn is None or "steps" not in defn:
+        return defn
+    steps = defn["steps"]
+    if not isinstance(steps, list):
+        raise ValueError("definition.steps must be a list")
+    seen: set[str] = set()
+    for i, spec in enumerate(steps):
+        if not isinstance(spec, dict) or not isinstance(spec.get("id"), str) or not spec["id"].strip():
+            raise ValueError(f"step {i + 1} needs a text id")
+        if spec["id"] in seen:
+            raise ValueError(f"step id '{spec['id']}' is used twice")
+        seen.add(spec["id"])
+        kind = spec.get("kind", "noop")
+        if kind not in STEP_KINDS:
+            raise ValueError(f"step '{spec['id']}' has unknown kind '{kind}'; use one of {sorted(STEP_KINDS)}")
+    for spec in steps:
+        deps = spec.get("depends_on", [])
+        if not isinstance(deps, list) or any(d not in seen or d == spec["id"] for d in deps):
+            raise ValueError(f"step '{spec['id']}' depends on a step that is not in this workflow")
+    return defn
+
+
+def _clean_name(v: str | None) -> str | None:
+    if v is None:
+        return v
+    v = v.strip()
+    if not v:
+        raise ValueError("name must not be empty")
+    if len(v) > 200:
+        raise ValueError("name must be at most 200 characters")
+    return v
+
+
 class DefinitionCreate(BaseModel):
     name: str
     description: str | None = None
     definition: dict = {}
     triggers: list = []
     is_active: bool = False
+
+    _name = field_validator("name")(classmethod(lambda cls, v: _clean_name(v)))
+    _definition = field_validator("definition")(classmethod(lambda cls, v: validate_definition(v)))
 
 
 class DefinitionUpdate(BaseModel):
@@ -181,6 +225,9 @@ class DefinitionUpdate(BaseModel):
     definition: dict | None = None
     triggers: list | None = None
     is_active: bool | None = None
+
+    _name = field_validator("name")(classmethod(lambda cls, v: _clean_name(v)))
+    _definition = field_validator("definition")(classmethod(lambda cls, v: validate_definition(v)))
 
 
 # ---------------------------------------------------------------------------
@@ -634,8 +681,17 @@ async def cancel_run(
             "WHERE run_id = $1 AND organization_id = $2 AND status = 'pending'",
             run_id, uuid.UUID(ctx.org_id),
         )
+        if result == "UPDATE 0":
+            exists_in_org = await conn.fetchval(
+                "SELECT 1 FROM automation_runs WHERE run_id = $1 AND organization_id = $2",
+                run_id, uuid.UUID(ctx.org_id),
+            )
     if result == "UPDATE 0":
-        # Either already running/finished or wrong org — same 404 shape.
+        # A run outside the caller's organization (or no run at all) is a
+        # 404, like every other run endpoint; 409 is reserved for the
+        # caller's own run that is no longer pending.
+        if not exists_in_org:
+            raise _not_found()
         raise HTTPException(409, "Run is not in a cancellable state")
     return {"run_id": run_id, "status": "cancelled"}
 

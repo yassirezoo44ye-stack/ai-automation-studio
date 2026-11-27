@@ -1,3 +1,4 @@
+import { buildPromptError, promptCharacterCount, MAX_BUILD_PROMPT_CHARS } from "./services/promptValidation";
 import { StorePreview } from "./components/StorePreview";
 import { StoreSetup } from "./components/StoreSetup";
 import { SecondaryActions } from "../../shared/ui/SecondaryActions";
@@ -529,6 +530,11 @@ export function AppBuilderPage() {
    */
   const handleBuild = useCallback(async (prompt: string, approvedPlan?: BuildPlan | null) => {
     if (isBuildingRef.current) return;
+    const promptError = buildPromptError(prompt);
+    if (promptError) {
+      const message = t(`input.${promptError}`, { max: MAX_BUILD_PROMPT_CHARS });
+      setBuildError(message); toast(message, "err"); return;
+    }
     isBuildingRef.current = true;
 
     setIsBuilding(true);
@@ -704,7 +710,7 @@ export function AppBuilderPage() {
       setIsBuilding(false);
       abortRef.current = null;
     }
-  }, [toast]);
+  }, [toast, t]);
 
   /** Cancel an in-progress build. */
   const handleCancel = useCallback(() => {
@@ -727,6 +733,12 @@ export function AppBuilderPage() {
    *    fall through directly to handleBuild(prompt).
    */
   const handleStartBuild = useCallback(async (prompt: string) => {
+    const promptError = buildPromptError(prompt);
+    if (promptError) {
+      const message = t(`input.${promptError}`, { max: MAX_BUILD_PROMPT_CHARS });
+      setBuildError(message); toast(message, "err"); return;
+    }
+    setBuildError(null);
     setPendingPrompt(prompt);
     setBuildEvents([]);
 
@@ -751,15 +763,22 @@ export function AppBuilderPage() {
         setPlanState("review");
         return; // Wait for user to approve plan
       }
-      // Non-OK response → skip plan, build directly
+      // A rejected request must not become a second, potentially billable
+      // build attempt. Keep the draft and surface a localized recovery message.
+      if (r.status >= 400 && r.status < 500) {
+        setPlanState("idle");
+        setBuildError(t("input.rejected", { status: r.status }));
+        return;
+      }
+      // Planning service unavailable → preserve the existing fallback.
       setPlanState("idle");
       void handleBuild(prompt);
     } catch {
-      // Plan unavailable (credits, network, or test mock) → build directly
+      // Network failure or malformed plan response → preserve existing fallback
       setPlanState("idle");
       void handleBuild(prompt);
     }
-  }, [handleBuild, buildDone]);
+  }, [handleBuild, buildDone, t, toast]);
 
   // ── Phase 3: Runtime handlers ──────────────────────────────────────
 
@@ -955,7 +974,9 @@ export function AppBuilderPage() {
       "متجر إلكتروني",
     ];
 
-    const canBuild = entryPrompt.trim().length > 0;
+    const inputError = buildPromptError(entryPrompt);
+    const inputCount = promptCharacterCount(entryPrompt);
+    const canBuild = inputError === null;
 
     return (
       <div style={{
@@ -1018,6 +1039,8 @@ export function AppBuilderPage() {
 
               {/* Textarea */}
               <textarea
+                aria-describedby="build-prompt-feedback"
+                aria-invalid={inputError === "tooLong" || undefined}
                 value={entryPrompt}
                 onChange={e => setEntryPrompt(e.target.value)}
                 onKeyDown={e => {
@@ -1049,7 +1072,14 @@ export function AppBuilderPage() {
                 onBlur={e => { e.currentTarget.style.borderColor = "var(--b1)"; }}
               />
 
-              {/* Error pill — shows verbatim error message for test compatibility */}
+              <div id="build-prompt-feedback" role={inputError === "tooLong" ? "alert" : undefined}
+                style={{ fontSize: 12, marginBottom: 12, color: inputError === "tooLong" ? "var(--red)" : "var(--t4)" }}>
+                {inputError === "tooLong"
+                  ? t("input.tooLong", { max: MAX_BUILD_PROMPT_CHARS })
+                  : t("input.characters", { count: inputCount, max: MAX_BUILD_PROMPT_CHARS })}
+              </div>
+
+              {/* Error recovery preserves the full draft. */}
               {buildError && (
                 <div style={{
                   marginBottom: 14,

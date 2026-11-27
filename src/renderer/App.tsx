@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { OrgProvider }   from "./contexts/OrgContext";
 import { AppProvider }   from "./contexts/AppContext";
@@ -9,7 +9,11 @@ import { CopilotProvider } from "./contexts/CopilotContext";
 import { AppLayout }     from "./components/layout/AppLayout";
 import { AuthPage }      from "./features/auth/AuthPage";
 import { LandingPage }   from "./features/landing/LandingPage";
+import { authViewFromPath, type AuthView } from "./authView";
 import { LoadingSpinner } from "./shared/ui/LoadingSpinner";
+import { LegalPage, legalDocFromPath } from "./features/legal";
+import { lazyPage } from "./shared/lib/staleChunk";
+import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import "./design-system.css";
 
 
@@ -17,16 +21,22 @@ import "./design-system.css";
 const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 setInterval(() => fetch(`${API}/health`).catch(() => {}), 14 * 60 * 1000);
 
-type AuthView = "landing" | "login" | "register";
-const StudyLibraryPage = lazy(() => import("./features/study-library/StudyLibraryPage").then(m => ({ default: m.StudyLibraryPage })));
+const StudyLibraryPage = lazyPage(() => import("./features/study-library/StudyLibraryPage").then(m => m.StudyLibraryPage));
 
 function AppInner() {
   const { user, loading, bootstrapError, pendingMfaChallenge } = useAuth();
-  const [authView, setAuthView] = useState<AuthView>("landing");
+  const [authView, setAuthView] = useState<AuthView>(() => authViewFromPath(window.location.pathname));
 
   // Deep-link routing is handled by AppContext (URL ↔ page sync).
   // The OAuth callback and reset-password paths are handled by AuthContext
   // and AuthPage respectively — no URL manipulation needed here.
+
+  // Policies are public and must open for everyone, signed in or not (they
+  // are linked from sign-up, checkout and OAuth consent screens).
+  const legalDoc = legalDocFromPath(window.location.pathname);
+  if (legalDoc) {
+    return <LegalPage doc={legalDoc} />;
+  }
 
   if (loading) {
     return <LoadingSpinner fullPage label="Starting Flow…" />;
@@ -45,7 +55,7 @@ function AppInner() {
           <p style={{ fontSize: 13, marginBottom: 20 }}>{bootstrapError}</p>
           <button
             onClick={() => window.location.reload()}
-            style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer", fontSize: 14 }}
+            style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "var(--accent-fill)", color: "var(--on-accent)", cursor: "pointer", fontSize: 14 }}
           >
             Retry
           </button>
@@ -54,8 +64,12 @@ function AppInner() {
     );
   }
 
-  // Authenticated — render the full app
-  if (user) {
+  // Email action links must be handled before the authenticated-app branch.
+  // Otherwise an existing session skips AuthPage and leaves the token unused.
+  const isEmailActionLink = ["/verify-email", "/reset-password"].includes(window.location.pathname);
+
+  // Authenticated — render the full app, except when following an email action link.
+  if (user && !isEmailActionLink) {
     return (
       <ToastProvider>
         <OrgProvider>
@@ -78,7 +92,7 @@ function AppInner() {
 
   // Not authenticated — show landing page or auth form
   if (authView === "landing" && window.location.pathname === "/study-library") {
-    return <main className="study-library-public" aria-label="مكتبة الملخصات التعليمية"><Suspense fallback={<LoadingSpinner fullPage label="تحميل المكتبة…" />}><StudyLibraryPage onSignIn={() => setAuthView("login")} /></Suspense></main>;
+    return <main className="study-library-public" aria-label="مكتبة الملخصات التعليمية"><ErrorBoundary name="study-library"><Suspense fallback={<LoadingSpinner fullPage label="تحميل المكتبة…" />}><StudyLibraryPage onSignIn={() => setAuthView("login")} /></Suspense></ErrorBoundary></main>;
   }
 
   if (authView === "landing") {
@@ -94,7 +108,14 @@ function AppInner() {
   return (
     <AuthPage
       initialTab={authView === "register" ? "register" : "login"}
-      onBack={() => setAuthView("landing")}
+      onBack={() => {
+        // Leaving a /login or /register link: go back to the home URL so a
+        // reload shows the landing page the visitor chose.
+        if (authViewFromPath(window.location.pathname) !== "landing") {
+          window.history.replaceState(null, "", "/");
+        }
+        setAuthView("landing");
+      }}
     />
   );
 }

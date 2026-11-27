@@ -80,8 +80,13 @@ describe("LeadsPage — AI", () => {
     const call = mockFetch.mock.calls.find(([p]) => String(p) === "/api/leads/l1/ai-followup");
     expect(call?.[1]?.body).toBe(JSON.stringify({ language: "en" }));
     expect(mockFetch.mock.calls.some(([p]) => /send/.test(String(p)))).toBe(false);
-    fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // The Escape listener is attached in an effect after the drawer renders;
+    // on a loaded machine a single press could land before it (seen once in
+    // 12 audit cycles), so keep pressing until the drawer closes.
+    await waitFor(() => {
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   it("re-scores a lead with AI and moves it to its new column", async () => {

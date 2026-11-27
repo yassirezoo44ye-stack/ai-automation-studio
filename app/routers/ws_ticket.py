@@ -35,6 +35,7 @@ import secrets
 import time
 from threading import Lock
 
+import jwt
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -57,6 +58,11 @@ def _require_jwt_user_id(request: Request) -> str:
         return user_id
     except HTTPException:
         raise
+    except jwt.ExpiredSignatureError:
+        # Same body as get_current_user, so apiFetch refreshes the session and
+        # retries; otherwise every live-update hook kept retrying with the
+        # stale token every ~30s until the page was reloaded.
+        raise HTTPException(401, "Token expired") from None
     except Exception:
         raise HTTPException(401, "Invalid or expired token") from None
 

@@ -10,7 +10,8 @@ import { useAsyncSubmit } from "../../shared/forms/useAsyncSubmit";
 import { all, required, email as emailValidator, minLength, matchesField, passwordStrength } from "../../shared/forms/validators";
 import { EmailField, PasswordField, TextField, Checkbox, SubmitButton, ErrorBanner, SuccessBanner } from "../../shared/ui/forms";
 import { GoldButton } from "../../shared/ui/gold";
-import { oauthStartUrl } from "./oauth";
+import { oauthProviders, oauthStartUrl, type OAuthProvider } from "./oauth";
+import { LEGAL_PATHS } from "../legal";
 
 type Tab = "login" | "register" | "forgot" | "reset" | "mfa";
 
@@ -94,20 +95,33 @@ function MicrosoftIcon() {
   );
 }
 
-function OAuthRow({ onSelect, disabled = false }: { onSelect: (provider: "google" | "github" | "microsoft") => void; disabled?: boolean }) {
+function OAuthRow({ onSelect, disabled = false, available = null }: {
+  onSelect: (provider: OAuthProvider) => void;
+  disabled?: boolean;
+  /** Providers the server has configured; null (unknown) shows them all. */
+  available?: OAuthProvider[] | null;
+}) {
   const { t } = useTranslation("auth");
+  const shows = (p: OAuthProvider) => available === null || available.includes(p);
+  if (available !== null && available.length === 0) return null;
   return (
     <>
       <div style={S.oauthRow}>
-        <button disabled={disabled} style={S.oauthBtn("#4285F4")} onClick={() => onSelect("google")} type="button">
-          <GoogleIcon /> {t("oauth.google")}
-        </button>
-        <button disabled={disabled} style={S.oauthBtn("#24292e")} onClick={() => onSelect("github")} type="button">
-          <GitHubIcon /> {t("oauth.github")}
-        </button>
-        <button disabled={disabled} style={S.oauthBtn("#2f2f2f")} onClick={() => onSelect("microsoft")} type="button">
-          <MicrosoftIcon /> {t("oauth.microsoft")}
-        </button>
+        {shows("google") && (
+          <button disabled={disabled} style={S.oauthBtn("#4285F4")} onClick={() => onSelect("google")} type="button">
+            <GoogleIcon /> {t("oauth.google")}
+          </button>
+        )}
+        {shows("github") && (
+          <button disabled={disabled} style={S.oauthBtn("#24292e")} onClick={() => onSelect("github")} type="button">
+            <GitHubIcon /> {t("oauth.github")}
+          </button>
+        )}
+        {shows("microsoft") && (
+          <button disabled={disabled} style={S.oauthBtn("#2f2f2f")} onClick={() => onSelect("microsoft")} type="button">
+            <MicrosoftIcon /> {t("oauth.microsoft")}
+          </button>
+        )}
       </div>
       <div style={S.divider}>
         <span style={S.divLine} /><span>{t("oauth.or")}</span><span style={S.divLine} />
@@ -142,6 +156,39 @@ interface ForgotValues { email: string }
 interface ResetValues { password: string; confirmPassword: string }
 interface MfaValues { code: string }
 
+/** Clickwrap notice: shown under every way of creating an account (form and
+ *  OAuth). The server records the accepted terms version at sign-up. */
+function ConsentNote() {
+  const { t } = useTranslation("auth");
+  const link: React.CSSProperties = { color: "var(--accent)" };
+  return (
+    <p style={{ color: "var(--t4)", fontSize: 12, lineHeight: 1.6, margin: "12px 0 0", textAlign: "center" }} data-testid="consent-note">
+      {t("consent.prefix")}{" "}
+      <a href={LEGAL_PATHS.terms} target="_blank" rel="noopener" style={link}>{t("consent.terms")}</a>{" "}
+      {t("consent.and")}{" "}
+      <a href={LEGAL_PATHS.privacy} target="_blank" rel="noopener" style={link}>{t("consent.privacy")}</a>.
+    </p>
+  );
+}
+
+// The API answers in English ("Invalid email or password", ...). Shown as is,
+// an Arabic page announced an English error to screen-reader users (WCAG
+// 3.1.2, a11y audit M2). Known messages are mapped to translations; anything
+// else is shown unchanged.
+const SERVER_AUTH_ERRORS: Record<string, string> = {
+  "Invalid email or password": "serverErrors.invalidCredentials",
+  "email_not_verified": "serverErrors.emailNotVerified",
+  "Please verify your email before signing in.": "serverErrors.emailNotVerified",
+  "Email already registered": "serverErrors.emailTaken",
+};
+
+function localizeAuthError(err: unknown, t: (key: string) => string): unknown {
+  if (!(err instanceof Error)) return err;
+  const key = SERVER_AUTH_ERRORS[err.message]
+    ?? (err.message.startsWith("Too many failed login attempts") ? "serverErrors.tooManyAttempts" : undefined);
+  return key ? new Error(t(key)) : err;
+}
+
 export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   const { t } = useTranslation("auth");
   const { login, register, completeMfa, pendingMfaChallenge, clearMfaChallenge } = useAuth();
@@ -164,9 +211,23 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
       : null,
   );
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  // Set when sign-in is refused because the email isn't verified yet.
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  // Verification token from /verify-email?token= (read once, then cleared from the URL).
+  const [verifyToken] = useState<string | null>(() =>
+    window.location.pathname === "/verify-email"
+      ? new URLSearchParams(window.location.search).get("token")
+      : null,
+  );
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthStarting, setOauthStarting] = useState(false);
   const oauthPending = useRef(false);
+  const [oauthAvailable, setOauthAvailable] = useState<OAuthProvider[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void oauthProviders().then(p => { if (live) setOauthAvailable(p); });
+    return () => { live = false; };
+  }, []);
   // Local MFA challenge state for password-login MFA flow.
   // OAuth-initiated MFA is read from context's pendingMfaChallenge.
   const [localMfaChallenge, setLocalMfaChallenge] = useState<MfaChallenge | null>(null);
@@ -179,12 +240,33 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   // Clean the sensitive token from the URL bar once on mount.
   // No state changes here — tab and resetToken were already set above.
   useEffect(() => {
-    if (window.location.pathname === "/reset-password") {
+    if (window.location.pathname === "/reset-password" || window.location.pathname === "/verify-email") {
       history.replaceState(null, "", "/");
     }
   }, []);
 
-  async function handleOAuth(provider: "google" | "github" | "microsoft") {
+  // ── Verify email (token from /verify-email?token=) ─────────────────────────
+  // Plain fetch, not useAsyncSubmit: the token is single-use, so the request
+  // must run exactly once and must not be aborted by StrictMode's remount.
+  const [verifyState, setVerifyState] = useState<"idle" | "pending" | "done" | "failed">(
+    () => (verifyToken ? "pending" : "idle"),
+  );
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const verifyStarted = useRef(false);
+  useEffect(() => {
+    if (!verifyToken || verifyStarted.current) return;
+    verifyStarted.current = true;
+    fetch(`${API}/api/auth/verify-email/${encodeURIComponent(verifyToken)}`)
+      .then(async res => {
+        if (res.ok) { setVerifyState("done"); return; }
+        const body = await res.json().catch(() => null) as { detail?: string } | null;
+        setVerifyError(body?.detail ?? t("verify.failed"));
+        setVerifyState("failed");
+      })
+      .catch(() => { setVerifyError(t("verify.failed")); setVerifyState("failed"); });
+  }, [verifyToken, t]);
+
+  async function handleOAuth(provider: OAuthProvider) {
     if (oauthPending.current) return;
     oauthPending.current = true;
     setOauthStarting(true); setOauthError(null);
@@ -201,15 +283,17 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
       password: required(t("validation.passwordRequired")),
     },
     onValid: values => loginSubmit.run(async () => {
+      setUnverifiedEmail(null);
       try {
         await login(values.email, values.password, values.remember);
       } catch (err) {
+        if ((err as { status?: number }).status === 403) setUnverifiedEmail(values.email);
         if (err instanceof MfaRequiredError) {
           // Setting localMfaChallenge is enough — effectiveTab derives "mfa" from it.
           setLocalMfaChallenge({ token: err.challengeToken, remember: err.remember });
           return;
         }
-        throw err;
+        throw localizeAuthError(err, t);
       }
     }),
   });
@@ -226,7 +310,12 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     },
     onValid: values => {
       registerSubmit.run(async () => {
-        const res = await register(values.name, values.email, values.password);
+        let res;
+        try {
+          res = await register(values.name, values.email, values.password);
+        } catch (err) {
+          throw localizeAuthError(err, t);
+        }
         trackEvent("signup"); // attribution only — no PII sent
         setRegisteredEmail(values.email);
         return res;
@@ -270,11 +359,12 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
   // ── Resend verification (button action, no fields) ────────────────────────
   const resendSubmit = useAsyncSubmit<{ message: string }>();
   function handleResend() {
-    if (!registeredEmail) return;
+    const email = registeredEmail ?? unverifiedEmail;
+    if (!email) return;
     resendSubmit.run(async signal => {
       const res = await fetch(`${API}/api/auth/resend-verification`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: registeredEmail }),
+        body: JSON.stringify({ email }),
         signal,
       });
       return parseJSON<{ message: string }>(res, "/api/auth/resend-verification");
@@ -297,6 +387,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
     setTab(next);
     loginSubmit.reset(); registerSubmit.reset(); forgotSubmit.reset(); resendSubmit.reset(); resetSubmit.reset(); mfaSubmit.reset();
     if (next !== "register") setRegisteredEmail(null);
+    setUnverifiedEmail(null);
     if (next !== "mfa") { setLocalMfaChallenge(null); clearMfaChallenge(); }
   }
 
@@ -398,7 +489,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
                   fontFamily: "var(--font-sans)",
                   transition: "color 0.15s",
                 }}
-                aria-label="Back to home"
+                aria-label={t("backToHome")}
                 onMouseEnter={e => (e.currentTarget.style.color = "var(--t2)")}
                 onMouseLeave={e => (e.currentTarget.style.color = "var(--t4)")}
               >
@@ -428,8 +519,20 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
             {/* ── Login ── */}
             {effectiveTab === "login" && (
               <>
-                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} />
-                {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid ? loginSubmit.retry : undefined} />}
+                {verifyState === "pending" && <p style={{ color: "var(--t3)", fontSize: 13, textAlign: "center" }}>{t("verify.verifying")}</p>}
+                {verifyState === "done" && <SuccessBanner message={t("verify.verified")} />}
+                {verifyState === "failed" && verifyError && <ErrorBanner message={verifyError} />}
+                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} available={oauthAvailable} />
+                {loginSubmit.error && <ErrorBanner message={loginSubmit.error} suggestedFix={loginSubmit.suggestedFix} onRetry={loginForm.isValid && !unverifiedEmail ? loginSubmit.retry : undefined} />}
+                {unverifiedEmail && (
+                  <div style={{ marginBottom: 14, textAlign: "center" }}>
+                    {resendSubmit.error && <ErrorBanner message={resendSubmit.error} suggestedFix={resendSubmit.suggestedFix} onRetry={resendSubmit.retry} />}
+                    {resendSubmit.success && <SuccessBanner message={t("verify.emailSent")} />}
+                    <button type="button" style={S.btnText} disabled={resendSubmit.isSubmitting} onClick={handleResend}>
+                      {resendSubmit.isSubmitting ? t("verify.sending") : t("verify.resend")}
+                    </button>
+                  </div>
+                )}
                 <form onSubmit={loginForm.handleSubmit} noValidate>
                   <EmailField {...loginForm.register("email")} label={t("login.email")} required autoFocus autoComplete="email" />
                   <PasswordField {...loginForm.register("password")} label={t("login.password")} required autoComplete="current-password" />
@@ -442,13 +545,14 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
                   </div>
                   <SubmitButton loading={loginSubmit.isSubmitting} loadingText={t("login.submitting")}>{t("login.submit")}</SubmitButton>
                 </form>
+                <ConsentNote />
               </>
             )}
 
             {/* ── Register ── */}
             {effectiveTab === "register" && !registeredEmail && (
               <>
-                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} />
+                <OAuthRow onSelect={handleOAuth} disabled={oauthStarting} available={oauthAvailable} />
                 {registerSubmit.error && <ErrorBanner message={registerSubmit.error} suggestedFix={registerSubmit.suggestedFix} onRetry={registerForm.isValid ? registerSubmit.retry : undefined} />}
                 <form onSubmit={registerForm.handleSubmit} noValidate>
                   <TextField {...registerForm.register("name")} label={t("register.name")} required autoFocus autoComplete="name" />
@@ -458,6 +562,7 @@ export function AuthPage({ initialTab = "login", onBack }: AuthPageProps = {}) {
                   <PasswordField {...registerForm.register("confirmPassword")} label={t("register.confirmPassword")} required autoComplete="new-password" />
                   <SubmitButton loading={registerSubmit.isSubmitting} loadingText={t("register.submitting")}>{t("register.submit")}</SubmitButton>
                 </form>
+                <ConsentNote />
               </>
             )}
 

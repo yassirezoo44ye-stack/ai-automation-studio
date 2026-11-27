@@ -4,13 +4,13 @@ Centralises app creation, middleware, lifespan, static files, and router registr
 so the entry point (app_main.py or main.py) stays lean.
 """
 import asyncio
+import logging
 import os
-import sys
+import logging
 from contextlib import asynccontextmanager
 
-import asyncpg
 import stripe
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -18,11 +18,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.auth import extract_auth_credentials, verify_token
+from app.core.api_keys import extract_raw_api_key, has_api_key_header, validate_api_key
 from app.integrations.social.oauth_handoff import is_public_social_oauth_request
+from app.routers.devices import is_public_device_enroll_request
 from app.core.config import (
     APP_URL, DATABASE_URL, DIST_DIR, EXTRA_CORS_ORIGINS, FRONTEND_URL, PUBLIC_PREFIXES, WORKSPACES,
 )
-from app.core.db import init_db, set_pool, get_pool, ensure_agents_table, ensure_tasks_table, ensure_audit_table
+from app.core.db import init_db, set_pool, get_pool, create_bounded_pool, PoolExhausted, ensure_agents_table, ensure_tasks_table, ensure_audit_table
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIdMiddleware, UploadBodySizeLimitMiddleware
 from app.core.maintenance import maintenance_loop, process_cleanup_loop, record_error
@@ -98,7 +100,9 @@ async def lifespan(app: FastAPI):
     # command_timeout bounds every query — a runaway query fails loudly
     # instead of holding a connection forever. asyncpg also caches prepared
     # statements per connection automatically; no extra layer needed.
-    pool = await asyncpg.create_pool(
+    # BoundedPool: every acquire() waits at most DB_ACQUIRE_TIMEOUT_S, so a
+    # saturated pool sheds requests with 503 instead of hanging them forever.
+    pool = await create_bounded_pool(
         DATABASE_URL,
         min_size=int(os.getenv("DB_POOL_MIN", "2")),
         max_size=int(os.getenv("DB_POOL_MAX", "10")),
@@ -113,7 +117,9 @@ async def lifespan(app: FastAPI):
     from app.core.project_plans import init_schema as init_project_plans_schema
     async with pool.acquire() as conn:
         await init_project_plans_schema(conn)
-    WORKSPACES.mkdir(exist_ok=True)
+    WORKSPACES.mkdir(parents=True, exist_ok=True)
+    from app.core.filesystem import workspaces_persistence_warning
+    workspaces_persistence_warning()
     DIST_DIR.mkdir(exist_ok=True)
     (DIST_DIR / "zips").mkdir(exist_ok=True)
     await runtime_registry.discover()
@@ -121,9 +127,6 @@ async def lifespan(app: FastAPI):
     # Initialize AI Platform with DB pool
     from app.core.ai.platform import platform as ai_platform
     ai_platform.init(pool)
-    maintenance_task = asyncio.create_task(maintenance_loop())
-    cleanup_task     = asyncio.create_task(process_cleanup_loop())
-
     # ── Enterprise multi-tenancy + usage + org-billing schemas ─────────────
     from app.tenancy import init_tenancy_schema
     from app.billing import (
@@ -145,6 +148,14 @@ async def lifespan(app: FastAPI):
         await init_coupons_schema(conn)
         await init_credits_schema(conn)
     await get_plan_service(pool).refresh_cache()
+
+    # Start background maintenance only now: its first cycle runs
+    # immediately and queries organizations / organization_members /
+    # org_subscriptions / usage tables, which the schema block above
+    # creates. Starting it earlier raced schema init on a fresh database
+    # and the reconciliation steps failed silently (BE-03).
+    maintenance_task = asyncio.create_task(maintenance_loop())
+    cleanup_task     = asyncio.create_task(process_cleanup_loop())
 
     # Cross-instance cache coherence: when any instance edits the plan
     # catalog (PlanService.update_plan publishes "plans:catalog"), every
@@ -501,6 +512,33 @@ async def lifespan(app: FastAPI):
 
 # ── Middleware ─────────────────────────────────────────────────────────────────
 
+class HTTPSRedirectBehindProxyMiddleware:
+    """Pure-ASGI: when the TLS-terminating proxy (Render/Vercel) reports that
+    the client used plain HTTP (X-Forwarded-Proto: http), answer with a 308
+    to the https:// URL instead of serving the request. Requests without the
+    header (container health checks, local runs, tests) pass through, and
+    nothing happens in development."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            from app.core.config import is_development
+            headers = dict(scope.get("headers") or [])
+            proto = headers.get(b"x-forwarded-proto", b"").split(b",")[0].strip().lower()
+            host = headers.get(b"host", b"").decode("latin-1")
+            if proto == b"http" and host and not is_development():
+                qs = scope.get("query_string", b"").decode("latin-1")
+                url = f"https://{host}{scope.get('path', '/')}" + (f"?{qs}" if qs else "")
+                await send({"type": "http.response.start", "status": 308,
+                            "headers": [(b"location", url.encode("latin-1")),
+                                        (b"content-length", b"0")]})
+                await send({"type": "http.response.body", "body": b""})
+                return
+        await self.app(scope, receive, send)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
@@ -530,7 +568,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
-    app = FastAPI(title="Axon", version="1.0.0", lifespan=lifespan)
+    # Interactive API docs and the OpenAPI schema map every endpoint for an
+    # attacker; serve them only in development (ENVIRONMENT unset = production).
+    from app.core.config import is_development as _is_dev
+    _docs = _is_dev()
+    app = FastAPI(
+        title="Axon", version="1.0.0", lifespan=lifespan,
+        docs_url="/docs" if _docs else None,
+        redoc_url="/redoc" if _docs else None,
+        openapi_url="/openapi.json" if _docs else None,
+    )
 
     # ── OpenTelemetry — auto-instruments HTTP request/response spans.
     # get_tracer() (app/core/observability/tracer.py) sets the global
@@ -539,7 +586,9 @@ def create_app() -> FastAPI:
     # one tracer, not a second parallel one. Gated by ObservabilityConfig
     # (default on) so it can be disabled without a code change.
     from app.core.observability.config import get_observability_config
-    if get_observability_config().tracing_enabled:
+    # Per-request HTTP spans are on by default only when an OTLP exporter is
+    # configured (see ObservabilityConfig.http_tracing_enabled).
+    if get_observability_config().http_tracing_enabled:
         from app.core.observability.tracer import get_tracer
         get_tracer()  # registers the global TracerProvider first
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -554,7 +603,9 @@ def create_app() -> FastAPI:
         )
         # Pydantic puts the raw exception object (e.g. the ValueError a
         # field_validator raised) in ctx, which json.dumps can't serialize.
-        safe_errors = [{k: v for k, v in e.items() if k != "ctx"} for e in errors]
+        # Never reflect request inputs (passwords/tokens or whole models) or
+        # exception context into validation responses or browser diagnostics.
+        safe_errors = [{k: e[k] for k in ("type", "loc", "msg") if k in e} for e in errors]
         return JSONResponse(status_code=422, content={"detail": detail, "errors": safe_errors})
 
     @app.exception_handler(QuotaExceeded)
@@ -584,13 +635,49 @@ def create_app() -> FastAPI:
             headers={"Retry-After": str(exc.retry_after_s)},
         )
 
+    @app.exception_handler(PoolExhausted)
+    async def pool_exhausted_handler(request: Request, exc: PoolExhausted):
+        # Every pooled DB connection stayed busy for DB_ACQUIRE_TIMEOUT_S:
+        # load shed, like a full bulkhead, not a bug in this request.
+        record_error("db")
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Server is busy — retry shortly.", "error": "db_pool_exhausted"},
+            headers={"Retry-After": "2"},
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception):
         import asyncpg as _asyncpg
         category = "db" if isinstance(exc, (_asyncpg.exceptions.PostgresError, OSError)) else "app"
         record_error(category)
-        print(f"UNHANDLED ERROR on {request.url.path}: {exc}", file=sys.stderr)
-        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        # Exception messages and attacker-controlled paths can contain secrets,
+        # SQL values or injected log lines. Retain only non-sensitive metadata.
+        logging.getLogger(__name__).error("Unhandled server error", extra={
+            "error_type": type(exc).__name__, "category": category,
+        })
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"},
+                            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+    # A malformed id in the URL ("/api/leads/abc") reached uuid.UUID() or a
+    # $1::uuid parameter and surfaced as a 500 on 31 GET routes (journey 11,
+    # M9). The record cannot exist, so the answer is 404, the same as for a
+    # well-formed id that is not there. Only these two exact failures are
+    # mapped; any other ValueError / DataError is still a 500.
+    import asyncpg as _asyncpg_mod
+
+    def _is_malformed_id(exc: Exception) -> bool:
+        msg = str(exc)
+        if isinstance(exc, _asyncpg_mod.exceptions.DataError):
+            return "invalid UUID" in msg or "invalid input syntax for type uuid" in msg
+        return type(exc) is ValueError and msg == "badly formed hexadecimal UUID string"
+
+    @app.exception_handler(ValueError)
+    @app.exception_handler(_asyncpg_mod.exceptions.DataError)
+    async def malformed_id_handler(request: Request, exc: Exception):
+        if _is_malformed_id(exc):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        return await unhandled_error_handler(request, exc)
 
     # ── Tenant context (single source of truth for X-Organization-Id) ──────
     # Extracts the header once into request.state.org_id. This never grants
@@ -610,15 +697,15 @@ def create_app() -> FastAPI:
         t0       = _time.perf_counter()
         response = await call_next(request)
         duration = _time.perf_counter() - t0
-        # Collapse dynamic path segments so cardinality stays low
         path = request.url.path
-        for seg in path.split("/"):
-            if seg and (len(seg) > 20 or (seg.count("-") > 2)):
-                path = path.replace(seg, "{id}")
-                break
+        # Label by the matched route template, not the raw path: anonymous
+        # requests to arbitrary unique paths used to add a permanent metrics
+        # key each, growing memory without bound.
+        route = request.scope.get("route")
+        label = getattr(route, "path", None) or "unmatched"
         try:
             from app.routers.metrics import record_http
-            record_http(request.method, path, response.status_code, duration)
+            record_http(request.method, label, response.status_code, duration)
         except Exception:
             pass
         # Best-effort org-scoped API request metering — fire-and-forget so a
@@ -655,22 +742,26 @@ def create_app() -> FastAPI:
         if (path.startswith("/api/")
                 and not any(path.startswith(p) for p in PUBLIC_PREFIXES)
                 and not is_public_social_oauth_request(request.method, path)
+                and not is_public_device_enroll_request(request.method, path)
                 and not study_library_router.is_public_study_request(request.method, path)
                 and not study_library_router.is_study_publish_request(request)):
             sub_token, bearer = extract_auth_credentials(request)
 
             if (sub_token and verify_token(sub_token)) or (bearer and verify_token(bearer)):
                 pass  # valid subscription token (X-Sub-Token/cookie, or Authorization: Bearer)
-            elif (
-                request.headers.get("Authorization", "").startswith("ApiKey ")
-                or request.headers.get("X-API-Key", "")
-            ):
-                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...)
-                # — defer to the require_api_key() FastAPI dependency on the specific
-                # route. The middleware's job is subscription/JWT gating; actual key
-                # validation and scope enforcement happen in the dependency so they
-                # stay co-located with the endpoint rather than spread across layers.
-                pass
+            elif has_api_key_header(request):
+                # API-key request (Authorization: ApiKey axon_... or X-API-Key: axon_...).
+                # SECURITY FIX: this branch used to `pass` without checking the
+                # key at all, deferring to a require_api_key() dependency that
+                # most routes never declare — so any junk value bypassed auth.
+                # The key is now validated here; scope checks stay on the route.
+                try:
+                    request.state.api_key = await validate_api_key(extract_raw_api_key(request))
+                except HTTPException as exc:
+                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+                except Exception:
+                    logging.getLogger(__name__).exception("API key validation failed")
+                    return JSONResponse(status_code=503, content={"detail": "Authentication temporarily unavailable"})
             else:
                 # Fall back to JWT — registered users who logged in via the
                 # new auth system are authorized even without a sub_token.
@@ -723,6 +814,8 @@ def create_app() -> FastAPI:
     app.add_middleware(UploadBodySizeLimitMiddleware)
     # Compress responses ≥1KB — runs outermost so it sees the full response.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # Outermost of all: plain-HTTP requests never reach the app.
+    app.add_middleware(HTTPSRedirectBehindProxyMiddleware)
 
     # ── API Routers (must be registered BEFORE the SPA catch-all) ───────────
     app.include_router(auth_users.router)

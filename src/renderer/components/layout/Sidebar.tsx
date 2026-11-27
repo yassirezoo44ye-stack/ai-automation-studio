@@ -61,6 +61,7 @@ function CollapseIcon({ collapsed }: { collapsed: boolean }) {
 
 /** Expanded logo — icon + wordmark */
 function FlowLogo() {
+  const { t } = useTranslation("common");
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 10,
@@ -81,7 +82,7 @@ function FlowLogo() {
       </div>
       <div>
         <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "-0.4px", color: "var(--t1)", lineHeight: 1.2 }}>Flow</div>
-        <div style={{ fontSize: 9.5, color: "var(--t5)", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>مساعدك الذكي</div>
+        <div style={{ fontSize: 9.5, color: "var(--t5)", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>{t("brand.tagline")}</div>
       </div>
     </div>
   );

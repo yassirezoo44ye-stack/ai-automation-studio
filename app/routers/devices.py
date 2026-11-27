@@ -17,10 +17,11 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.tenancy.context import OrgContext, require_permission
 from app.services.device_control import get_device_control_service, DEVICE_CONTROL_ENABLED
+from app.services.device_inventory import get_latest_inventory
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,11 @@ sessions_router = APIRouter(prefix="/api/device-sessions", tags=["device-control
 def _check_enabled() -> None:
     if not DEVICE_CONTROL_ENABLED:
         raise HTTPException(503, "Device Control feature is disabled on this server")
+
+
+def _bad_request(e: ValueError) -> HTTPException:
+    """A session or device the caller's org does not have is 404, like one that does not exist."""
+    return HTTPException(404 if "not found" in str(e).lower() else 400, str(e))
 
 
 # ── Request / Response models ─────────────────────────────────────────────────
@@ -48,9 +54,22 @@ class CreateEnrollmentTokenRequest(BaseModel):
     workspace_id: str | None = None
 
 
+def is_public_device_enroll_request(method: str, path: str) -> bool:
+    """POST /api/devices/enroll is called by the Device Agent before it has
+    any session: the single-use, org-bound enrollment token in the body is
+    its only credential and is verified by consume_enrollment_token(). The
+    API auth middleware must let exactly this request through (and nothing
+    else under /api/devices/, e.g. /enroll-token stays authenticated)."""
+    return method == "POST" and path == "/api/devices/enroll"
+
+
 class EnrollRequest(BaseModel):
     """Sent by the Flow Device Agent to consume an enrollment token."""
-    token: str = Field(..., min_length=10)
+    # The shipped agent (agent/__main__.py) sends "enrollment_token"; accept
+    # both spellings so existing agents can enroll.
+    model_config = ConfigDict(populate_by_name=True)
+    token: str = Field(..., min_length=10,
+                       validation_alias=AliasChoices("token", "enrollment_token"))
     device_name: str = Field(..., min_length=1, max_length=120)
     platform: str = Field("windows")
     hostname: str | None = Field(None, max_length=255)
@@ -130,6 +149,31 @@ async def get_device(
     return device
 
 
+@router.get("/{device_id}/health")
+async def get_device_health(
+    device_id: str,
+    ctx: OrgContext = Depends(require_permission("devices", "read")),  # type: ignore[assignment]
+):
+    """Latest opt-in inventory snapshot for a device (device advisor, read-only).
+
+    Returns nulls when the device has never sent a report (inventory is off by default).
+    """
+    _check_enabled()
+    try:
+        uuid.UUID(device_id)
+    except ValueError:
+        raise HTTPException(404, "Device not found") from None
+    svc = get_device_control_service()
+    if await svc.get_device(ctx.org_id, device_id) is None:
+        raise HTTPException(404, "Device not found")
+    snapshot = await get_latest_inventory(ctx.org_id, device_id)
+    return {
+        "device_id": device_id,
+        "collected_at": snapshot["collected_at"] if snapshot else None,
+        "inventory": snapshot["inventory"] if snapshot else None,
+    }
+
+
 @router.post("/enroll-token", response_model=EnrollmentTokenResponse)
 async def create_enrollment_token(
     body: CreateEnrollmentTokenRequest,
@@ -175,7 +219,7 @@ async def enroll_device(body: EnrollRequest):
             device_fingerprint=body.device_fingerprint,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return result
 
 
@@ -329,7 +373,7 @@ async def create_session(
             workspace_id=body.workspace_id,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return session
 
 
@@ -356,7 +400,7 @@ async def start_session(
     try:
         session = await svc.start_session(ctx.org_id, session_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return session
 
 
@@ -370,7 +414,7 @@ async def stop_session(
     try:
         await svc.stop_session(ctx.org_id, session_id, ctx.user_email)
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return {"status": "stopped"}
 
 
@@ -388,5 +432,5 @@ async def update_layout(
             [item.model_dump() for item in body.layout],
         )
     except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        raise _bad_request(e) from None
     return {"status": "updated"}

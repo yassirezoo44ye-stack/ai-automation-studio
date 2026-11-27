@@ -187,6 +187,14 @@ class TestAnalyzeAgentCostReporting(unittest.IsolatedAsyncioTestCase):
             "claude-haiku-4-5-20251001", 200, 80,
         )
 
+        # _code_review loads the Flow skill files from disk; doing that for the
+        # first time while Path.stat/read_text are mocked below fails ("an
+        # integer is required"). It only passed when an earlier test had
+        # already loaded them, so load them first (the loader caches).
+        import app.core.org_quota  # noqa: F401
+        from app.agents.builtin.analyze_agent import compose_skill_system
+        compose_skill_system("warm-up", ["flow-app-building"])
+
         agent = AnalyzeAgent()
         with unittest.mock.patch.dict("os.environ", {"ANTHROPIC_API_KEY": "fake-key"}), \
              unittest.mock.patch("anthropic.AsyncAnthropic", return_value=fake_client), \

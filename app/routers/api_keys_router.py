@@ -37,10 +37,10 @@ async def create_key(body: CreateKeyRequest, user: dict = Depends(get_current_us
     """
     if not body.scopes:
         raise HTTPException(400, "At least one scope required")
-    valid_scopes = {"read", "write", "admin", "agents", "marketplace"}
-    bad = set(body.scopes) - valid_scopes
+    from app.core.api_keys import VALID_SCOPES
+    bad = set(body.scopes) - VALID_SCOPES
     if bad:
-        raise HTTPException(400, f"Unknown scopes: {bad}. Valid: {valid_scopes}")
+        raise HTTPException(400, f"Unknown scopes: {sorted(bad)}. Valid: {sorted(VALID_SCOPES)}")
 
     # SECURITY FIX: "admin" bypasses require_api_key(scopes=["admin"]) gates
     # on genuinely dangerous endpoints (marketplace publisher trust,

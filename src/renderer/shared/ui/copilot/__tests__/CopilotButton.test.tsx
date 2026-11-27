@@ -30,9 +30,10 @@ describe("CopilotButton", () => {
     expect(screen.queryByRole("dialog", { name: "AI Copilot" })).not.toBeInTheDocument();
   });
 
-  it("shows the panel when open is true", () => {
+  // The panel is lazy-loaded on first open, so its contents appear asynchronously.
+  it("shows the panel when open is true", async () => {
     renderButton(baseCtx({ open: true }));
-    expect(screen.getByRole("dialog", { name: "AI Copilot" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "AI Copilot" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close AI Copilot" })).toBeInTheDocument();
   });
 
@@ -43,19 +44,19 @@ describe("CopilotButton", () => {
     expect(setOpen).toHaveBeenCalledWith(true);
   });
 
-  it("shows the empty-state prompt when there are no messages yet", () => {
+  it("shows the empty-state prompt when there are no messages yet", async () => {
     renderButton(baseCtx({ open: true }));
-    expect(screen.getByText(/ask me anything about this page/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ask me anything about this page/i)).toBeInTheDocument();
   });
 
-  it("renders a suggested-action chip and does not navigate until clicked", () => {
+  it("renders a suggested-action chip and does not navigate until clicked", async () => {
     const dismissAction = vi.fn();
     renderButton(baseCtx({ open: true, suggestedAction: { label: "Open Billing", page: "billing" }, dismissAction }));
-    expect(screen.getByText("Open Billing →")).toBeInTheDocument();
+    expect(await screen.findByText("Open Billing →")).toBeInTheDocument();
   });
 
-  it("surfaces a stream error as an alert", () => {
+  it("surfaces a stream error as an alert", async () => {
     renderButton(baseCtx({ open: true, error: "Backend offline." }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Backend offline.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Backend offline.");
   });
 });

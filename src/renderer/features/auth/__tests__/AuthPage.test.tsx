@@ -2,8 +2,8 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AuthPage } from "../AuthPage";
 import { MfaRequiredError } from "../../../contexts/AuthContext";
-import { oauthStartUrl } from "../oauth";
-vi.mock("../oauth", () => ({ oauthStartUrl: vi.fn() }));
+import { oauthProviders, oauthStartUrl } from "../oauth";
+vi.mock("../oauth", () => ({ oauthStartUrl: vi.fn(), oauthProviders: vi.fn().mockResolvedValue(null) }));
 
 const login = vi.fn();
 const register = vi.fn();
@@ -239,5 +239,34 @@ describe("AuthPage — MFA challenge flow", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: /sign in/i })).toBeInTheDocument());
     expect(screen.queryByLabelText(/verification code/i)).not.toBeInTheDocument();
     expect(clearMfaChallenge).toHaveBeenCalled();
+  });
+});
+
+describe("AuthPage — terms consent", () => {
+  it("links the Terms and Privacy Policy on sign-in and sign-up (OAuth can create accounts on both)", () => {
+    render(<AuthPage initialTab="register" />);
+    const note = screen.getByTestId("consent-note");
+    expect(note.querySelector('a[href="/terms"]')).not.toBeNull();
+    expect(note.querySelector('a[href="/privacy"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /sign in/i }));
+    expect(screen.getByTestId("consent-note")).toBeInTheDocument();
+  });
+});
+
+describe("OAuth buttons follow the server's configured providers", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("hides providers the server has not configured", async () => {
+    // Production had only Google; GitHub/Microsoft opened a raw 503 JSON page.
+    vi.mocked(oauthProviders).mockResolvedValueOnce(["google"]);
+    render(<AuthPage />);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "GitHub" })).toBeNull());
+    expect(screen.getByRole("button", { name: "Google" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Microsoft" })).toBeNull();
+  });
+  it("shows every provider when the list is unknown", async () => {
+    vi.mocked(oauthProviders).mockResolvedValueOnce(null);
+    render(<AuthPage />);
+    await waitFor(() => expect(oauthProviders).toHaveBeenCalled());
+    for (const name of ["Google", "GitHub", "Microsoft"]) expect(screen.getByRole("button", { name })).toBeTruthy();
   });
 });

@@ -5,6 +5,7 @@ import { API } from "../../utils/api";
 import { studyFetch } from "./study-request";
 import "./study-library.css";
 import { StudyContentWorkflow } from "./StudyContentWorkflow";
+import { usePageMeta } from "../../shared/lib/seo";
 
 type Lesson = { slug: string; title: string; subject: string; description: string; pages: number; published_at: string };
 type Catalog = { lessons: Lesson[]; checkout_url: string | null };
@@ -39,6 +40,13 @@ function Publisher({ onPublished }: { onPublished: () => void }) {
 
 export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
   const { user } = useAuth();
+  // The library is written in Arabic only, so it has one URL and no language alternates.
+  usePageMeta({
+    title: "مكتبة الملخصات التعليمية — Flow",
+    description: "ملخصات تعليمية مصوّرة تشرح المفاهيم بصرياً، مع بحث حسب المادة، على Flow.",
+    path: "/study-library",
+    lang: "ar",
+  });
   const [catalogResult, setCatalogResult] = useState<{ key: string; data: Catalog | null; error: string } | null>(null);
   const [lessonSlug, setLessonSlug] = useState(() => new URLSearchParams(window.location.search).get("lesson") ?? "");
   const [subject, setSubject] = useState("");
