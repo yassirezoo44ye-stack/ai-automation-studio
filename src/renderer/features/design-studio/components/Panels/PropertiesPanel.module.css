@@ -4,6 +4,203 @@
   height:     100%;
 }
 
+/* ── Tabs ──────────────────────────────────────────────────────────────────── */
+
+.tabs {
+  display:        flex;
+  border-bottom:  1px solid var(--border);
+  margin-bottom:  4px;
+  padding:        0 4px;
+  gap:            2px;
+}
+
+.tab {
+  flex:           1;
+  padding:        6px 4px;
+  font-size:      11px;
+  font-weight:    500;
+  color:          var(--text-secondary);
+  background:     none;
+  border:         none;
+  border-bottom:  2px solid transparent;
+  cursor:         pointer;
+  transition:     color .15s, border-color .15s;
+  text-align:     center;
+  white-space:    nowrap;
+}
+
+.tab:hover { color: var(--text-primary); }
+
+.tabActive {
+  color:          var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Tab content areas ─────────────────────────────────────────────────────── */
+
+.tabContent {
+  overflow-y: auto;
+}
+
+.placeholder {
+  padding:    24px 12px;
+  font-size:  12px;
+  color:      var(--text-secondary);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.placeholderIcon {
+  font-size:     22px;
+  margin-bottom: 8px;
+  display:       block;
+}
+
+.placeholderTitle {
+  font-weight: 600;
+  color:       var(--text-primary);
+  margin-bottom: 4px;
+}
+
+/* ── Action tab ────────────────────────────────────────────────────────────── */
+
+.eventList {
+  padding: 8px;
+}
+
+.eventItem {
+  display:       flex;
+  align-items:   center;
+  gap:           8px;
+  padding:       6px 8px;
+  border-radius: var(--radius-sm);
+  font-size:     12px;
+  color:         var(--text-secondary);
+  border:        1px dashed var(--border);
+  margin-bottom: 6px;
+  cursor:        pointer;
+  transition:    background .12s;
+}
+
+.eventItem:hover { background: var(--surface-2); }
+
+.eventName {
+  flex:        1;
+  font-weight: 500;
+  color:       var(--text-primary);
+}
+
+.eventAdd {
+  font-size:     11px;
+  padding:       4px 10px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  color:         var(--text-secondary);
+  cursor:        pointer;
+  margin:        0 8px 8px;
+  width:         calc(100% - 16px);
+  transition:    background .12s;
+}
+
+.eventAdd:hover { background: var(--surface-3, var(--surface-2)); color: var(--text-primary); }
+
+/* ── Data tab ──────────────────────────────────────────────────────────────── */
+
+.dataRow {
+  display:       flex;
+  align-items:   center;
+  gap:           6px;
+  padding:       6px 8px;
+  font-size:     12px;
+}
+
+.dataLabel {
+  min-width:  80px;
+  color:      var(--text-secondary);
+  font-size:  11px;
+}
+
+.dataField {
+  flex:          1;
+  padding:       4px 6px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  color:         var(--text-primary);
+  font-size:     11px;
+  outline:       none;
+}
+
+.dataField:focus { border-color: var(--accent); }
+
+.dataSection {
+  padding:        8px 8px 0;
+  font-size:      11px;
+  font-weight:    600;
+  color:          var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom:  4px;
+}
+
+/* ── AI tab ────────────────────────────────────────────────────────────────── */
+
+.aiSuggest {
+  padding:    8px;
+}
+
+.aiChip {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           4px;
+  padding:       4px 10px;
+  border:        1px solid var(--border);
+  border-radius: 999px;
+  font-size:     11px;
+  color:         var(--text-secondary);
+  background:    var(--surface-2);
+  cursor:        pointer;
+  margin:        0 4px 6px 0;
+  transition:    background .12s, color .12s;
+}
+
+.aiChip:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.aiPromptRow {
+  display:    flex;
+  gap:        6px;
+  margin-top: 10px;
+  padding:    0 0 4px;
+}
+
+.aiPromptInput {
+  flex:          1;
+  padding:       5px 8px;
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background:    var(--surface-2);
+  color:         var(--text-primary);
+  font-size:     11px;
+  outline:       none;
+}
+
+.aiPromptInput:focus { border-color: var(--accent); }
+
+.aiPromptBtn {
+  padding:       5px 10px;
+  border:        none;
+  border-radius: var(--radius-sm);
+  background:    var(--accent);
+  color:         #fff;
+  font-size:     11px;
+  cursor:        pointer;
+  font-weight:   600;
+  transition:    opacity .12s;
+}
+
+.aiPromptBtn:hover { opacity: .85; }
+
 .empty {
   padding:    24px 12px;
   font-size:  12px;
