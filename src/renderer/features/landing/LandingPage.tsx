@@ -12,6 +12,7 @@ import { captureUtm, trackEvent } from "../../lib/utm";
 import { LANDING_ALTERNATES, langFromPath, usePageMeta } from "../../shared/lib/seo";
 import "./landing.css";
 import { LegalLinks } from "../legal/LegalPage";
+import { API } from "../../shared/utils/api";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -736,12 +737,20 @@ function TrustSection() {
 }
 
 // ── Pricing Section ───────────────────────────────────────────────────────────
+// Two honest options: try Flow free, or ask for a founder-run paid pilot.
+// There is no self-serve paid plan yet (EXECUTION_BACKLOG.md "مبدأ الفوترة"),
+// so no card here may promise a checkout that does not exist.
 
 function PricingSection({ onSignUp }: Pick<Props, "onSignUp">) {
   const { t } = useTranslation("landing");
   const { ref, inView } = useInView();
 
-  const plans = ["free", "pro", "business"] as const;
+  const plans = ["free", "pilot"] as const;
+
+  const onPilot = () => {
+    trackEvent("cta_click", { action: "pilot" });
+    scrollToId("lp-pilot");
+  };
 
   return (
     <section id="lp-pricing" className="lp-section lp-pricing lp-section--center" aria-labelledby="pricing-headline">
@@ -749,14 +758,13 @@ function PricingSection({ onSignUp }: Pick<Props, "onSignUp">) {
         <div ref={ref} className={`lp-animate ${inView ? "lp-in" : ""}`}>
           <div className="lp-eyebrow">{t("pricing.eyebrow")}</div>
           <h2 id="pricing-headline" className="lp-h2">{t("pricing.headline")}</h2>
+          <p className="lp-pricing__sub">{t("pricing.sub")}</p>
         </div>
 
-        <div className="lp-pricing__grid">
+        <div className="lp-pricing__grid lp-pricing__grid--two">
           {plans.map((plan, i) => {
-            const isFeatured = plan === "pro";
+            const isFeatured = plan === "pilot";
             const features = t(`pricing.plans.${plan}.features`, { returnObjects: true }) as string[];
-            const price = t(`pricing.plans.${plan}.price`);
-            const isCustom = price === "Custom" || price === "مخصص";
 
             return (
               <div
@@ -765,22 +773,19 @@ function PricingSection({ onSignUp }: Pick<Props, "onSignUp">) {
               >
                 {isFeatured && (
                   <div className="lp-price-card__badge">
-                    {t("pricing.mostPopular")}
+                    {t("pricing.pilotBadge")}
                   </div>
                 )}
                 <div className="lp-price-card__name">{t(`pricing.plans.${plan}.name`)}</div>
                 <div className="lp-price-card__price">
-                  <span className="lp-price-card__amount">{price}</span>
-                  {!isCustom && (
-                    <span className="lp-price-card__period">{t("pricing.perMonth")}</span>
-                  )}
+                  <span className="lp-price-card__amount">{t(`pricing.plans.${plan}.price`)}</span>
+                  <span className="lp-price-card__period">{t(`pricing.plans.${plan}.period`)}</span>
                 </div>
                 <div className="lp-price-card__desc">{t(`pricing.plans.${plan}.description`)}</div>
 
                 <button
                   className="lp-price-card__cta"
-                  onClick={onSignUp}
-                  aria-label={t(`pricing.plans.${plan}.cta`)}
+                  onClick={isFeatured ? onPilot : onSignUp}
                 >
                   {t(`pricing.plans.${plan}.cta`)}
                 </button>
@@ -799,6 +804,160 @@ function PricingSection({ onSignUp }: Pick<Props, "onSignUp">) {
             );
           })}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function scrollToId(id: string) {
+  const el = document.getElementById(id);
+  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Move focus into the form so keyboard and screen-reader users land there too.
+  const first = el?.querySelector<HTMLInputElement>("input:not([tabindex='-1'])");
+  first?.focus({ preventScroll: true });
+}
+
+// ── Pilot Request Section ─────────────────────────────────────────────────────
+// Posts to the public POST /api/pilot-requests, which stores the request as a
+// lead for the founder's organisation and notifies its members. When that is
+// unavailable, the visitor is offered email instead (VITE_PILOT_CONTACT_EMAIL).
+
+const PILOT_CONTACT_EMAIL = (import.meta.env.VITE_PILOT_CONTACT_EMAIL ?? "").trim();
+const TEAM_SIZES = ["1", "2-5", "6-20", "20+"] as const;
+
+type PilotStatus = "idle" | "sending" | "sent" | "error" | "rateLimited";
+
+export function PilotRequestSection() {
+  const { t } = useTranslation("landing");
+  const { lang } = useLangContext();
+  const [status, setStatus] = useState<PilotStatus>("idle");
+  const [fieldError, setFieldError] = useState<string | null>(null);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const data = new FormData(form);
+    const body = {
+      name: String(data.get("name") ?? "").trim(),
+      email: String(data.get("email") ?? "").trim(),
+      company: String(data.get("company") ?? "").trim(),
+      team_size: (data.get("team_size") as string) || null,
+      task: String(data.get("task") ?? "").trim(),
+      lang,
+      website: String(data.get("website") ?? ""),
+    };
+    if (body.task.length < 10) {
+      setFieldError(t("pilot.errors.task"));
+      return;
+    }
+    setFieldError(null);
+    setStatus("sending");
+    try {
+      const res = await fetch(`${API}/api/pilot-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        trackEvent("cta_click", { action: "pilot_sent" });
+        setStatus("sent");
+        form.reset();
+        return;
+      }
+      if (res.status === 422) {
+        setStatus("idle");
+        setFieldError(t("pilot.errors.invalid"));
+        return;
+      }
+      setStatus(res.status === 429 ? "rateLimited" : "error");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  const mailto = PILOT_CONTACT_EMAIL
+    ? `mailto:${PILOT_CONTACT_EMAIL}?subject=${encodeURIComponent(t("pilot.mailSubject"))}`
+    : null;
+
+  return (
+    <section id="lp-pilot" className="lp-section lp-pilot" aria-labelledby="pilot-headline">
+      <div className="lp-container lp-pilot__inner">
+        <div className="lp-pilot__copy">
+          <div className="lp-eyebrow">{t("pilot.eyebrow")}</div>
+          <h2 id="pilot-headline" className="lp-h2">{t("pilot.headline")}</h2>
+          <p className="lp-pilot__sub">{t("pilot.sub")}</p>
+          <ol className="lp-pilot__steps">
+            {(t("pilot.steps", { returnObjects: true }) as string[]).map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+        </div>
+
+        {status === "sent" ? (
+          <div className="lp-pilot__card lp-pilot__done" role="status">
+            <div className="lp-pilot__done-title">{t("pilot.sent.title")}</div>
+            <p>{t("pilot.sent.body")}</p>
+          </div>
+        ) : (
+          <form className="lp-pilot__card" onSubmit={onSubmit} noValidate={false} aria-describedby="pilot-privacy">
+            <label className="lp-field">
+              <span>{t("pilot.fields.name")}</span>
+              <input name="name" required maxLength={120} autoComplete="name" />
+            </label>
+            <label className="lp-field">
+              <span>{t("pilot.fields.email")}</span>
+              <input name="email" type="email" required maxLength={254} autoComplete="email" dir="ltr" />
+            </label>
+            <label className="lp-field">
+              <span>{t("pilot.fields.company")}</span>
+              <input name="company" required maxLength={120} autoComplete="organization" />
+            </label>
+            <label className="lp-field">
+              <span>{t("pilot.fields.teamSize")}</span>
+              <select name="team_size" defaultValue="">
+                <option value="">{t("pilot.fields.teamSizeAny")}</option>
+                {TEAM_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label className="lp-field">
+              <span>{t("pilot.fields.task")}</span>
+              <textarea
+                name="task"
+                required
+                minLength={10}
+                maxLength={1000}
+                rows={4}
+                placeholder={t("pilot.fields.taskPlaceholder")}
+              />
+            </label>
+            {/* Honeypot: hidden from people and assistive tech, filled by naive bots. */}
+            <input
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              className="lp-pilot__hp"
+            />
+
+            {fieldError && <p className="lp-pilot__error" role="alert">{fieldError}</p>}
+            {(status === "error" || status === "rateLimited") && (
+              <p className="lp-pilot__error" role="alert">
+                {t(status === "rateLimited" ? "pilot.errors.rateLimited" : "pilot.errors.failed")}
+                {mailto && (
+                  <>
+                    {" "}
+                    <a href={mailto}>{t("pilot.errors.emailInstead", { email: PILOT_CONTACT_EMAIL })}</a>
+                  </>
+                )}
+              </p>
+            )}
+
+            <button type="submit" className="lp-btn-primary lp-pilot__submit" disabled={status === "sending"}>
+              {status === "sending" ? t("pilot.sending") : t("pilot.submit")}
+            </button>
+            <p id="pilot-privacy" className="lp-pilot__privacy">{t("pilot.privacy")}</p>
+          </form>
+        )}
       </div>
     </section>
   );
@@ -958,6 +1117,7 @@ export function LandingPage({ onSignIn, onSignUp }: Props) {
         <BenefitsSection />
         <TrustSection />
         <PricingSection onSignUp={trackedSignUp} />
+        <PilotRequestSection />
         <FinalCtaSection onSignIn={trackedSignIn} onSignUp={trackedSignUp} />
       </main>
 

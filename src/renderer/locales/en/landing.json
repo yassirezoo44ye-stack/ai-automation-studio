@@ -157,32 +157,73 @@
   },
   "pricing": {
     "eyebrow": "Pricing",
-    "headline": "Start free. Scale when you're ready.",
-    "perMonth": "/month",
-    "mostPopular": "Most Popular",
+    "headline": "Try it free, or let us set it up with you.",
+    "sub": "Flow is new. Our first agencies work with the founder directly in a paid pilot, at early-partner prices.",
+    "pilotBadge": "Early partners",
     "plans": {
       "free": {
         "name": "Free",
         "price": "$0",
         "description": "For individuals exploring AI automation.",
         "cta": "Start Free",
-        "features": ["1 workspace", "3 AI agents", "10 runs / month", "Workflow builder", "Community support"]
+        "features": [
+          "1 workspace",
+          "3 AI agents",
+          "10 runs / month",
+          "Workflow builder",
+          "Community support"
+        ],
+        "period": "/month"
       },
-      "pro": {
-        "name": "Pro",
-        "price": "$19",
-        "description": "For agencies moving fast with AI.",
-        "cta": "Start Pro",
-        "features": ["3 workspaces", "Unlimited agents", "1,000 runs / month", "AI Gateway", "Monitoring & observability", "Team access", "Priority support"]
-      },
-      "business": {
-        "name": "Business",
-        "price": "Custom",
-        "description": "For agencies at scale.",
-        "cta": "Talk to Sales",
-        "features": ["Unlimited workspaces", "Unlimited agents & runs", "Dedicated support", "SSO & advanced permissions", "SLA guarantee", "Custom integrations", "Onboarding assistance"]
+      "pilot": {
+        "name": "Paid pilot",
+        "price": "$500",
+        "period": "setup, then from $99/month",
+        "description": "We automate one repetitive process in your agency with you, and run it on your real client work.",
+        "cta": "Request a pilot",
+        "features": [
+          "You pick the process: client reports, lead follow-up, content ops or research",
+          "Set up with you in your own Flow workspace",
+          "A direct line to the founder during the pilot",
+          "Monthly part can be cancelled at any time",
+          "Early-partner price, kept for as long as you stay"
+        ]
       }
     }
+  },
+  "pilot": {
+    "eyebrow": "Paid pilot",
+    "headline": "Tell us the one task that eats your week.",
+    "sub": "We read every request ourselves and reply within two working days to book a 15-minute call. No sales team, no automated sequence.",
+    "steps": [
+      "You describe one repetitive task below.",
+      "We book a 15-minute call to check Flow fits it.",
+      "If it does, we send a written pilot offer. You only pay if you accept it."
+    ],
+    "fields": {
+      "name": "Your name",
+      "email": "Work email",
+      "company": "Agency or company",
+      "teamSize": "Team size",
+      "teamSizeAny": "Prefer not to say",
+      "task": "Which repetitive task would you automate first?",
+      "taskPlaceholder": "e.g. Every Monday we spend six hours building client reports from Google Ads and GA4."
+    },
+    "submit": "Request a pilot",
+    "sending": "Sending…",
+    "sent": {
+      "title": "Request received.",
+      "body": "Thank you. We will reply by email within two working days to book a short call."
+    },
+    "errors": {
+      "task": "Please describe the task in a sentence or two.",
+      "invalid": "Please check your name, email and company.",
+      "failed": "We could not send your request right now. Please try again in a few minutes.",
+      "rateLimited": "Too many requests from this network. Please try again later.",
+      "emailInstead": "Or email us at {{email}}."
+    },
+    "mailSubject": "Flow pilot request",
+    "privacy": "We use these details only to reply to your request."
   },
   "finalCta": {
     "headline1": "Your agency's repetitive work",
