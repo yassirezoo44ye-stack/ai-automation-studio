@@ -3,7 +3,8 @@
  * Tests the page renders and the service mock integration.
  */
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import i18n from "../../../i18n";
 import { BusinessLabPage } from "../BusinessLabPage";
 
 // Mock the service
@@ -56,6 +57,10 @@ vi.mock("../services/businessService", () => ({
     streamStatus:     vi.fn().mockReturnValue(() => {}),
   },
 }));
+
+// The smoke tests below assert the Arabic copy, so they run in Arabic.
+beforeEach(async () => { await i18n.changeLanguage("ar"); });
+afterEach(async () => { await i18n.changeLanguage("en"); });
 
 describe("BusinessLabPage", () => {
   it("shows a retry control instead of a misleading empty state on list failure", async () => {
@@ -137,5 +142,37 @@ describe("BusinessLabPage", () => {
 
     // After load, score ring should show
     await waitFor(() => expect(screen.getByText("72")).toBeInTheDocument());
+  });
+});
+
+describe("BusinessLabPage in English", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    await i18n.changeLanguage("en");
+  });
+
+  it("shows English copy, not hard-coded Arabic, when the UI is in English", async () => {
+    render(<BusinessLabPage />);
+    expect(await screen.findByText(/Business Lab/)).toBeInTheDocument();
+    expect(screen.getByText("Pick a plan or create a new one")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("+ New plan"));
+    expect(screen.getByText(/New business plan/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Start analysis/));
+    expect(await screen.findByText("Describe your idea in at least two sentences")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/[\u0600-\u06FF]/);
+  });
+
+  it("translates stage names, status badges and score counts", async () => {
+    const { businessService } = await import("../services/businessService");
+    vi.mocked(businessService.listPlans).mockResolvedValueOnce([{
+      id: "plan-1", title: "Test Plan", idea_raw: "Test idea", industry: "Tech", stage: "IDEA",
+      status: "COMPLETED", readiness_score: 72, workflow_run_id: null,
+      created_at: "2026-01-01", updated_at: "2026-01-01",
+    }] as never);
+    render(<BusinessLabPage />);
+    fireEvent.click(await screen.findByText("Test Plan"));
+    expect(await screen.findByText("Readiness score")).toBeInTheDocument();
+    expect(screen.getByText("5 evidence · 2 assumptions · 1 missing")).toBeInTheDocument();
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
   });
 });
