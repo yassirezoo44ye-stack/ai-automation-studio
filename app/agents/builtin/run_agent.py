@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextlib import aclosing
 from pathlib import Path
 
 from app.agents.base import AgentContext, AgentPermissions, AgentResult, EvolvableAgent
@@ -143,28 +144,32 @@ class RunAgent(EvolvableAgent):
             engine = UnifiedExecutionEngine()
 
             events: list[dict] = []
-            async for raw_event in engine.run(ws, project_id, execution_id):
-                # engine.run() yields TypedEvent dataclass instances, not
-                # dicts — to_sse_dict() is the documented way to get a plain
-                # dict view (see app/execution/platform/events.py).
-                event = raw_event.to_sse_dict()
-                events.append(event)
-                # Forward the engine's own progress narration live — this is
-                # the same event stream DevWorkspace's RunTab already renders
-                # after the fact; ctx.step() is what makes it live instead.
-                narration = event.get("message") or event.get("line") or event.get("type")
-                if narration:
-                    await ctx.step(str(narration), "terminal")
-                if event.get("type") in _FAILURE_EVENT_TYPES:
-                    return AgentResult.fail(
-                        self.name,
-                        event.get("message", f"execution failed: {event.get('type')}"),
-                        data={
-                            "events"    : events[-10:],
-                            "workspace" : str(ws),
-                            "error_code": event.get("error_code", "EXECUTION_FAILED"),
-                        },
-                    )
+            # aclosing(): returning on a failure event must still run the
+            # engine's own cleanup (its finally blocks) now, not at garbage
+            # collection.
+            async with aclosing(engine.run(ws, project_id, execution_id)) as stream:
+                async for raw_event in stream:
+                    # engine.run() yields TypedEvent dataclass instances, not
+                    # dicts — to_sse_dict() is the documented way to get a plain
+                    # dict view (see app/execution/platform/events.py).
+                    event = raw_event.to_sse_dict()
+                    events.append(event)
+                    # Forward the engine's own progress narration live — this is
+                    # the same event stream DevWorkspace's RunTab already renders
+                    # after the fact; ctx.step() is what makes it live instead.
+                    narration = event.get("message") or event.get("line") or event.get("type")
+                    if narration:
+                        await ctx.step(str(narration), "terminal")
+                    if event.get("type") in _FAILURE_EVENT_TYPES:
+                        return AgentResult.fail(
+                            self.name,
+                            event.get("message", f"execution failed: {event.get('type')}"),
+                            data={
+                                "events"    : events[-10:],
+                                "workspace" : str(ws),
+                                "error_code": event.get("error_code", "EXECUTION_FAILED"),
+                            },
+                        )
 
             return AgentResult.ok(
                 self.name,
