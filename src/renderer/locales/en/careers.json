@@ -132,5 +132,7 @@
   "bioAskRole": "What role are you looking for?",
   "bioAskLanguages": "Which languages do you speak?",
   "bioAskYears": "How many years of experience do you have?",
-  "bioAskCity": "Which city would you like to work in?"
+  "bioAskCity": "Which city would you like to work in?",
+  "importDuplicates": "These jobs are already in your list. No duplicates were added.",
+  "importNoJobs": "No job openings were identified in this text. Paste a complete job alert or listing with a job title and employer, then try again."
 }

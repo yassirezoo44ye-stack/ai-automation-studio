@@ -239,7 +239,7 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
               });
               setNotice(t("aiFilled"));
               setBioProcessed(true);
-              setReviewOpen(false);
+              setReviewOpen(true);
             }, true)}>{busy === "profile-ai" ? t("aiWorking") : t("aiFill")}</button>
           </div>
 
@@ -272,9 +272,9 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
         <section id="career-add" className="career-panel" aria-labelledby="career-add-title">
           <h2 id="career-add-title"><span className="career-step-num" aria-hidden="true">2</span>{t("addJobs")}</h2>
           <form onSubmit={e => { e.preventDefault(); void act("import", async () => {
-            const result = await request<{ inserted: number; warning: string | null; method?: string }>("/import", "POST", { text, source: "manual", use_ai: true });
+            const result = await request<{ found: number; inserted: number; duplicates: number; warning: string | null; method?: string }>("/import", "POST", { text, source: "manual", use_ai: true });
             await load();
-            setNotice(result.warning ? bilingual(result.warning) : t(result.method === "ai" ? "importedAi" : "imported", { count: result.inserted }));
+            setNotice(result.inserted > 0 ? t(result.method === "ai" ? "importedAi" : "imported", { count: result.inserted }) : result.found > 0 ? t("importDuplicates") : t("importNoJobs"));
           }, true); }}>
             <h3>{t("pasteTitle")}</h3>
             <label>{t("pasteLabel")}<textarea maxLength={200000} required value={text} onChange={e => setText(e.target.value)} placeholder={t("pasteHint")} /></label>
@@ -283,7 +283,7 @@ function CareerWorkspace({ orgId }: { orgId: string }) {
           </form>
           <hr />
           <h3>{t("inbox")}</h3><p className="career-muted">{t("gmailDescription")}</p>
-          {!connection?.configured && <p className="career-muted">{t("gmailNotConfigured")}</p>}
+          {!connection?.configured && <p className="career-muted" role="status">{t("gmailNotConfigured")}</p>}
           {connection?.last_error && <p role="alert">{connection.last_error}</p>}
           <div className="career-actions">
             <button disabled={working || !connection?.configured} onClick={() => void act("gmail", async () => {
