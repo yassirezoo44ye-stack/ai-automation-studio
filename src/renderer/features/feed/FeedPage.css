@@ -513,3 +513,13 @@
 .feed-study-card .feed-bottom-overlay { padding-bottom: 54px; }
 
 .feed-real-details{position:absolute;inset:15% 16px auto;z-index:30;max-width:600px;max-height:70%;overflow:auto;padding:24px;border:1px solid var(--b1);border-radius:16px;background:var(--bg-surface);color:var(--t1);margin-inline:auto}.feed-real-details p{white-space:pre-wrap;overflow-wrap:anywhere}
+
+.feed-study-cover-fallback { position: absolute; inset: 0; display: grid; place-items: center; background: linear-gradient(145deg, #172554, #312e81); color: #c7d2fe; font-size: 100px; }
+.feed-study-card .feed-bottom-overlay { max-height: 65%; overflow-y: auto; overscroll-behavior: contain; }
+.feed-study-card .flow-secondary-actions { color: #fff; margin-top: 10px; }
+.feed-study-card .flow-secondary-actions > summary { color: #fff; background: #101827; border-color: #ffffff66; }
+.feed-study-card .flow-secondary-actions__content { max-width: 100%; }
+.feed-study-card .flow-secondary-actions__content a, .feed-study-card .flow-secondary-actions__content button { color: #fff; background: #101827; border: 1px solid #ffffff66; border-radius: 8px; padding: 8px 12px; font: inherit; }
+.feed-study-card .flow-secondary-actions__content p { width: 100%; margin: 0; }
+.feed-study-card .flow-secondary-actions__content label { display: grid; gap: 6px; width: 100%; }
+.feed-study-card .flow-secondary-actions__content input { width: 100%; min-width: 0; box-sizing: border-box; color: #fff; background: #101827; padding: 8px; direction: ltr; }

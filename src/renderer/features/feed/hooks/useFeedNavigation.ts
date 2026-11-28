@@ -5,9 +5,9 @@ interface UseFeedNavigationOptions {
 }
 
 export function useFeedNavigation({ total }: UseFeedNavigationOptions) {
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [position, setActiveIndex] = useState(0);
+  const activeIndex = Math.max(0, Math.min(position, total - 1));
   const containerRef = useRef<HTMLDivElement>(null);
-  const isScrollingRef = useRef(false);
 
   const scrollToIndex = useCallback(
     (index: number) => {
@@ -47,50 +47,18 @@ export function useFeedNavigation({ total }: UseFeedNavigationOptions) {
     return () => window.removeEventListener("keydown", onKey);
   }, [goNext, goPrev]);
 
-  /* ── Wheel / trackpad navigation ──────────────────────────── */
+  // Native wheel/touch scrolling uses CSS scroll snap. Observe the resulting
+  // position rather than advancing again on touchend (which can skip cards).
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-
-    function onWheel(e: WheelEvent) {
-      e.preventDefault();
-      if (isScrollingRef.current) return;
-      isScrollingRef.current = true;
-      if (e.deltaY > 0) goNext();
-      else if (e.deltaY < 0) goPrev();
-      // throttle to avoid multi-step jumps
-      setTimeout(() => {
-        isScrollingRef.current = false;
-      }, 600);
-    }
-
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [goNext, goPrev]);
-
-  /* ── Touch swipe ───────────────────────────────────────────── */
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    let startY = 0;
-    function onTouchStart(e: TouchEvent) {
-      startY = e.touches[0].clientY;
-    }
-    function onTouchEnd(e: TouchEvent) {
-      const delta = startY - e.changedTouches[0].clientY;
-      if (Math.abs(delta) < 50) return; // ignore small swipes
-      if (delta > 0) goNext();
-      else goPrev();
-    }
-
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchend", onTouchEnd);
+    const onScroll = () => {
+      if (el.clientHeight <= 0) return;
+      setActiveIndex(Math.max(0, Math.min(Math.round(el.scrollTop / el.clientHeight), total - 1)));
     };
-  }, [goNext, goPrev]);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [total]);
 
   return { activeIndex, containerRef, scrollToIndex, goNext, goPrev };
 }
