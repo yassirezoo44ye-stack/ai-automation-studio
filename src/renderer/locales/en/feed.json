@@ -1,12 +1,12 @@
 {
   "realFeed": {
-  "interactionError": "Could not save this interaction. Please retry.",
-  "view": "View published item",
-  "publisher": "Publisher",
-  "unnamed": "Creator without a display name",
-  "scope": "Project details as published by its creator, with the display name and publication date.",
-  "close": "Close"
-},
+    "interactionError": "Could not save this interaction. Please retry.",
+    "view": "View published item",
+    "publisher": "Publisher",
+    "unnamed": "Creator without a display name",
+    "scope": "Project details as published by its creator, with the display name and publication date.",
+    "close": "Close"
+  },
   "page": {
     "ariaLabel": "Flow Feed",
     "feedLabel": "Content feed"
@@ -82,6 +82,14 @@
     "loadMore": "Load older summaries",
     "loadingMore": "Loading more…",
     "retryMore": "Retry older summaries",
-    "moreError": "Could not load more. Existing items are still available."
+    "moreError": "Could not load more. Existing items are still available.",
+    "more": "Share and related learning",
+    "sharing": "Sharing…",
+    "shared": "Shared.",
+    "copied": "Summary link copied.",
+    "manual": "Automatic sharing failed. Copy the link below.",
+    "copyLink": "Summary link",
+    "related": "More summaries in {{subject}}",
+    "coverUnavailable": "Cover unavailable; you can still open the summary."
   }
 }

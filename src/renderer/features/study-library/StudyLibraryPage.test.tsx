@@ -123,3 +123,21 @@ describe("Study Library purchase boundary", () => {
     })).toBe(true));
   });
 });
+
+it("opens related learning with a validated subject filter", async () => {
+  window.history.replaceState(null, "", "/study-library?subject=computing");
+  respond(); render(<StudyLibraryPage />); await screen.findByText(lesson.title);
+  const catalogCall = vi.mocked(apiFetch).mock.calls.find(([path]) => path.includes("/catalog"));
+  expect(new URL(catalogCall![0], "https://test.local").searchParams.get("subject")).toBe("computing");
+  fireEvent.click(screen.getByRole("button", { name: "عرض كل الملخصات" }));
+  await waitFor(() => {
+    const calls = vi.mocked(apiFetch).mock.calls.filter(([path]) => path.includes("/catalog"));
+    expect(new URL(calls.at(-1)![0], "https://test.local").searchParams.has("subject")).toBe(false);
+  });
+});
+it("ignores unknown subjects in incoming related links", async () => {
+  window.history.replaceState(null, "", "/study-library?subject=unknown");
+  respond(); render(<StudyLibraryPage />); await screen.findByText(lesson.title);
+  const call = vi.mocked(apiFetch).mock.calls.find(([path]) => path.includes("/catalog"));
+  expect(new URL(call![0], "https://test.local").searchParams.has("subject")).toBe(false);
+});

@@ -41,7 +41,10 @@ export function StudyLibraryPage({ onSignIn }: { onSignIn?: () => void }) {
   const { user } = useAuth();
   const [catalogResult, setCatalogResult] = useState<{ key: string; data: Catalog | null; error: string } | null>(null);
   const [lessonSlug, setLessonSlug] = useState(() => new URLSearchParams(window.location.search).get("lesson") ?? "");
-  const [subject, setSubject] = useState("");
+  const [subject, setSubject] = useState(() => {
+    const value = new URLSearchParams(window.location.search).get("subject") ?? "";
+    return subjects.some(([id]) => id === value) ? value : "";
+  });
   const [search, setSearch] = useState(() => (new URLSearchParams(window.location.search).get("q") ?? "").slice(0, 120));
   const [query, setQuery] = useState(search);
   const [offset, setOffset] = useState(0);
